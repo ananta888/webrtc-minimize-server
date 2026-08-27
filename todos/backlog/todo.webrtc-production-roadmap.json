@@ -1,0 +1,62 @@
+{
+  "$schema": "../todo.schema.json",
+  "version": 1,
+  "created": "2026-08-27",
+  "updated": "2026-08-27",
+  "project": "webrtc-minimize-server",
+  "review_basis": {
+    "reviewed_commit_range": "workspace snapshot of /home/krusty/ananta on 2026-08-27",
+    "review_goal": "Alle relevanten Ananta-Ideen für WebRTC Audio, Video, Bildschirm, DataChannel, Rendezvous, E2EE, Mesh, SFU und Betrieb in einen priorisierten Projekt-Backlog überführen."
+  },
+  "categories": [
+    {
+      "name": "identity_security",
+      "label": "Identität und E2EE",
+      "items": [
+        { "id": "PROD-SEC-001", "title": "OIDC-Identität, Geräteschlüssel und zeitlich begrenzte Invite-Grants einführen", "status": "open", "priority": "P0" },
+        { "id": "PROD-SEC-002", "title": "Signierte Membership-, Medienvertrag- und Security-Epochen modellieren", "status": "open", "priority": "P0" },
+        { "id": "PROD-SEC-003", "title": "Browser-Encoded-Transform/SFrame-E2EE mit Downgrade-Schutz evaluieren und implementieren", "status": "open", "priority": "P0" },
+        { "id": "PROD-SEC-004", "title": "Replay-Fenster, Senderauthentizität, Key-Rotation und Revocation härten", "status": "open", "priority": "P0" }
+      ]
+    },
+    {
+      "name": "network_topology",
+      "label": "Netz und Topologien",
+      "items": [
+        { "id": "PROD-NET-001", "title": "Kurzlebige TURN-Credentials, Allowlist, Quotas und IP-Privacy integrieren", "status": "open", "priority": "P0" },
+        { "id": "PROD-NET-002", "title": "Ressourcenadaptive Mesh-Grenze mit Browser-Stats, Hysterese und Degradation ableiten", "status": "open", "priority": "P1" },
+        { "id": "PROD-NET-003", "title": "SFU-Fallback für größere Räume mit E2EE-, Admission- und Layer-Policy anbinden", "status": "open", "priority": "P1" },
+        { "id": "PROD-NET-004", "title": "Verschlüsselten publikationsbezogenen Peer-DAG nur hinter Machbarkeits- und Security-Gates erproben", "status": "open", "priority": "P2" }
+      ]
+    },
+    {
+      "name": "collaboration_data",
+      "label": "Kollaboration und Daten",
+      "items": [
+        { "id": "PROD-DATA-001", "title": "Versionierte Traffic-Klassen, Prioritätsqueue und Backpressure für Control, Chat und Bulk definieren", "status": "open", "priority": "P1" },
+        { "id": "PROD-DATA-002", "title": "Verschlüsselten, gehashten und fortsetzbaren Artefakttransfer über DataChannel bauen", "status": "open", "priority": "P1" },
+        { "id": "PROD-DATA-003", "title": "Persistente Workspace-, Presence-, Thread-, Cursor- und Replay-Verträge ergänzen", "status": "open", "priority": "P2" }
+      ]
+    },
+    {
+      "name": "operations_quality",
+      "label": "Betrieb und Qualität",
+      "items": [
+        { "id": "PROD-OPS-001", "title": "Inhaltsfreie WebRTC-/TURN-Observability, SLOs und Abuse-Rate-Limits einführen", "status": "open", "priority": "P0" },
+        { "id": "PROD-OPS-002", "title": "Chromium-, Firefox- und WebKit-Matrix einschließlich NAT-, Netzwechsel- und Churn-Gates automatisieren", "status": "open", "priority": "P0" },
+        { "id": "PROD-OPS-003", "title": "Accessibility-, Consent-, Device-Wechsel- und Berechtigungsdiagnose härten", "status": "open", "priority": "P1" },
+        { "id": "PROD-OPS-004", "title": "Feature-Flags, Canary, Rollback und sichere Konfigurationsprofile etablieren", "status": "open", "priority": "P1" }
+      ]
+    }
+  ],
+  "meta": {
+    "total_items": 15,
+    "by_status": { "completed": 0, "partial": 0, "open": 15 },
+    "notes": [
+      "Diese Category-Todo ist Portfolio/Research, kein ausführbarer Task-Track.",
+      "Neue Implementierung beginnt erst nach Promotion eines Items in todos/active/todo.<track>.json.",
+      "SFU und Peer-DAG sind bewusste Skalierungs-Folgeschritte; der MVP bleibt ein begrenztes Browser-Mesh."
+    ],
+    "recommended_order": ["PROD-SEC-001", "PROD-SEC-002", "PROD-NET-001", "PROD-OPS-002", "PROD-SEC-003", "PROD-SEC-004", "PROD-OPS-001", "PROD-NET-002", "PROD-DATA-001", "PROD-DATA-002", "PROD-NET-003", "PROD-OPS-003", "PROD-OPS-004", "PROD-DATA-003", "PROD-NET-004"]
+  }
+}

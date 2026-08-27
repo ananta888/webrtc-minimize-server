@@ -1,0 +1,101 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "github-publication-license",
+  "purpose": "Den verifizierten MVP mit klarer Lizenzierung als eigenständiges GitHub-Repository unter dem Account ananta888 veröffentlichen.",
+  "goal": "Ein privates GitHub-Repository ananta888/webrtc-minimize-server besitzt einen nachvollziehbaren main-Branch, BSD-3-Clause-Lizenz, erfolgreiche Gates und einen verifizierten Remote-Push.",
+  "status": "in_progress",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "GHP-M01",
+      "title": "Lizenzierte GitHub-Veröffentlichung",
+      "task_ids": ["GHP-001", "GHP-002", "GHP-003", "GHP-004"],
+      "status": "in_progress"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "GHP-001",
+      "title": "GitHub-Account, Repository-Namen und Git-Identität auf Konflikte prüfen",
+      "status": "done",
+      "priority": "P0",
+      "risk": "low",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Der aktive GitHub-Account ist über gh auth status verifiziert.",
+        "Das Ziel-Repository kollidiert mit keinem vorhandenen Repository.",
+        "Die lokale Commit-Identität stammt aus dem verifizierten Account."
+      ]
+    },
+    {
+      "id": "GHP-002",
+      "title": "BSD-3-Clause-Lizenz konsistent in Source und Metadaten einrichten",
+      "status": "done",
+      "priority": "P0",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": ["GHP-001"],
+      "acceptance_criteria": [
+        "LICENSE entspricht dem offiziellen BSD-3-Clause-Text mit Copyright-Inhaber und Jahr.",
+        "package.json nennt den SPDX-Identifier BSD-3-Clause.",
+        "README verweist sichtbar auf die Lizenz."
+      ]
+    },
+    {
+      "id": "GHP-003",
+      "title": "Repository initialisieren und verifizierten Initial-Commit erstellen",
+      "status": "done",
+      "priority": "P0",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": ["GHP-002"],
+      "acceptance_criteria": [
+        "Der Default-Branch heißt main.",
+        "Generierte und geheime Dateien sind nicht im Commit enthalten.",
+        "Todo-, Test-, Audit- und Docker-Gates sind vor dem Commit erfolgreich."
+      ]
+    },
+    {
+      "id": "GHP-004",
+      "title": "Privates GitHub-Repository erstellen, pushen und Remotezustand verifizieren",
+      "status": "in_progress",
+      "priority": "P0",
+      "risk": "medium",
+      "progress_percent": 20,
+      "depends_on": ["GHP-003"],
+      "acceptance_criteria": [
+        "ananta888/webrtc-minimize-server existiert privat mit main als Default-Branch.",
+        "origin zeigt auf das erwartete HTTPS-Repository.",
+        "Lokaler und entfernter main-Commit sind identisch.",
+        "GitHub erkennt die BSD-3-Clause-Lizenz."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["GHP-001", "GHP-002", "GHP-003", "GHP-004"],
+  "tasks_status_summary": {
+    "total": 4,
+    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 3 },
+    "progress_percent_done": 75,
+    "by_priority": { "P0": 4, "P1": 0, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 1, "medium": 3, "high": 0, "critical": 0 },
+    "critical_path": { "total": 4, "done": 3, "remaining": 1 },
+    "milestones": { "total": 1, "todo": 0, "in_progress": 1, "blocked": 0, "done": 0 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 0,
+    "in_progress": 1,
+    "partial": 0,
+    "blocked": 0,
+    "done": 3
+  },
+  "summary_notes": [
+    "Das Repository wird mangels expliziter Sichtbarkeitsangabe zunächst private erstellt.",
+    "tasks[] ist die Source of Truth; Summen werden vor jedem Commit geprüft."
+  ]
+}
