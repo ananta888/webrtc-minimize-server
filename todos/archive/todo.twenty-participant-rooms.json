@@ -5,7 +5,7 @@
   "track": "twenty-participant-rooms",
   "purpose": "Die vorhandene flüchtige Room-Membership auf bis zu 20 Teilnehmer pro isoliertem Raum erweitern, ohne eine globale Grenze für die Anzahl der Räume und ohne vorläufige Produktbezeichnung.",
   "goal": "Server, Browser, Konfiguration und Tests verwenden eine kanonische harte Obergrenze von 20 Teilnehmern je Raum; der 21. Join scheitert, während beliebig viele unabhängige Räume ohne feste Domain-Grenze entstehen können.",
-  "status": "in_progress",
+  "status": "completed",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
   "risk_scale": ["low", "medium", "high", "critical"],
@@ -14,7 +14,7 @@
       "id": "ROOM20-M01",
       "title": "20-Teilnehmer-Räume",
       "task_ids": ["ROOM20-001", "ROOM20-002", "ROOM20-003", "ROOM20-004", "ROOM20-005"],
-      "status": "in_progress"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -64,10 +64,10 @@
     {
       "id": "ROOM20-004",
       "title": "Mesh-Kosten dokumentieren, committen, pushen und CI verifizieren",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 70,
+      "progress_percent": 100,
       "depends_on": ["ROOM20-003"],
       "acceptance_criteria": [
         "Dokumentation trennt harte Raumkapazität von einer QoS-Garantie.",
@@ -95,23 +95,24 @@
   "critical_path_tasks": ["ROOM20-001", "ROOM20-002", "ROOM20-003", "ROOM20-005", "ROOM20-004"],
   "tasks_status_summary": {
     "total": 5,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 4 },
-    "progress_percent_done": 80,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 5 },
+    "progress_percent_done": 100,
     "by_priority": { "P0": 5, "P1": 0, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 1, "high": 4, "critical": 0 },
-    "critical_path": { "total": 5, "done": 4, "remaining": 1 },
-    "milestones": { "total": 1, "todo": 0, "in_progress": 1, "blocked": 0, "done": 0 }
+    "critical_path": { "total": 5, "done": 5, "remaining": 0 },
+    "milestones": { "total": 1, "todo": 0, "in_progress": 0, "blocked": 0, "done": 1 }
   },
   "progress_summary": {
-    "state": "in_progress",
+    "state": "completed",
     "todo_remaining": 0,
-    "in_progress": 1,
+    "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 4
+    "done": 5
   },
   "summary_notes": [
     "20 ist die harte Membership-Grenze je Raum, aber die Anzahl der Räume hat keine feste Anwendungsgrenze.",
+    "GitHub Actions 33112076621 bestätigte Tests, Browser-E2E, Compose-Konfiguration und Docker-Build für Commit e8b0205.",
     "tasks[] ist die Source of Truth; Summen werden vor Commits geprüft."
   ]
 }
