@@ -5,7 +5,7 @@
   "track": "adaptive-mesh-broadcast",
   "purpose": "Anantas ressourcenadaptive Mesh-, Active-Speaker-, Last-N-, QoS-, View-Sync- und Peer-DAG-Ideen in eine servermedienfreie, browserseitig überprüfbare Optimierung für Räume bis 20 Teilnehmer überführen.",
   "goal": "Audio behält garantierte Priorität, höchstens zwei bis fünf aktive Sprecher erhalten höhere Videoqualität, inaktive Kameras werden gedrosselt und lokal mosaikartig dargestellt, Screenshare erhält Vorrang und ein ausdrücklich erlaubter vertrauenswürdiger Peer-Relay-Baum kann geeignete Videopublikationen ohne zentralen Medienserver weiterleiten.",
-  "status": "in_progress",
+  "status": "done",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
   "risk_scale": ["low", "medium", "high", "critical"],
@@ -32,7 +32,7 @@
       "id": "AMB-M04",
       "title": "Browser-, Bandbreiten- und Release-Gates",
       "task_ids": ["AMB-013", "AMB-014"],
-      "status": "in_progress"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -234,10 +234,10 @@
     {
       "id": "AMB-014",
       "title": "Dokumentation, Herkunft, Backlog, CI und öffentlichen Release abschließen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 90,
+      "progress_percent": 100,
       "depends_on": ["AMB-013"],
       "acceptance_criteria": [
         "README, AGENTS und Herkunftsmatrix erklären Last-N, Mosaik, Qualitätsprofile, Trusted Relay, Fallbacks und verbleibende SFrame-/SFU-Grenzen korrekt.",
@@ -250,20 +250,20 @@
   "critical_path_tasks": ["AMB-001", "AMB-002", "AMB-003", "AMB-004", "AMB-005", "AMB-006", "AMB-007", "AMB-008", "AMB-009", "AMB-010", "AMB-011", "AMB-012", "AMB-013", "AMB-014"],
   "tasks_status_summary": {
     "total": 14,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 13 },
-    "progress_percent_done": 92.86,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 14 },
+    "progress_percent_done": 100,
     "by_priority": { "P0": 12, "P1": 2, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 1, "high": 8, "critical": 5 },
-    "critical_path": { "total": 14, "done": 13, "remaining": 1 },
-    "milestones": { "total": 4, "todo": 0, "in_progress": 1, "blocked": 0, "done": 3 }
+    "critical_path": { "total": 14, "done": 14, "remaining": 0 },
+    "milestones": { "total": 4, "todo": 0, "in_progress": 0, "blocked": 0, "done": 4 }
   },
   "progress_summary": {
-    "state": "in_progress",
+    "state": "done",
     "todo_remaining": 0,
-    "in_progress": 1,
+    "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 13
+    "done": 14
   },
   "summary_notes": [
     "Normale Räume bleiben auf 20 Teilnehmer begrenzt, Pair-Sessions auf zwei Geräte; die Anzahl der Räume erhält keine globale Anwendungsgrenze.",
@@ -271,6 +271,8 @@
     "Das lokale Mosaik spart erst gemeinsam mit Thumbnail-/Paused-Senderprofilen Bandbreite und wird nicht allein als Netzwerkoptimierung verbucht.",
     "Trusted Peer Relay ist hopweise DTLS-SRTP-verschlüsselt, aber der Relay-Browser kann Medien verarbeiten; es ist keine SFrame-/Ciphertext-Relay-Funktion.",
     "Ein echter nicht entschlüsselnder Ciphertext-Peer-DAG bleibt bis zu standardisierter Browser-Evidence im Backlog; fehlende Capability fällt auf adaptive_mesh zurück.",
+    "Der Planungscommit b176306 und der Implementierungscommit 760d745 sind auf origin/main veröffentlicht.",
+    "GitHub Actions Run 33120563241 bestand 12 Angular-Unit-Tests, 39 Node-/Browser-Tests mit sechs Chromium- und zwei Firefox-Peers, Produktionsaudit, Angular-Build, Docker-Build sowie den Live-Keycloak-/Coturn-Gate.",
     "tasks[] ist die Source of Truth; Summen werden vor jedem Commit mit npm run todos:validate geprüft."
   ]
 }
