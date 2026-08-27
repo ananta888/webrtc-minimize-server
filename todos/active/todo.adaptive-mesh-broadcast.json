@@ -1,0 +1,276 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "adaptive-mesh-broadcast",
+  "purpose": "Anantas ressourcenadaptive Mesh-, Active-Speaker-, Last-N-, QoS-, View-Sync- und Peer-DAG-Ideen in eine servermedienfreie, browserseitig überprüfbare Optimierung für Räume bis 20 Teilnehmer überführen.",
+  "goal": "Audio behält garantierte Priorität, höchstens zwei bis fünf aktive Sprecher erhalten höhere Videoqualität, inaktive Kameras werden gedrosselt und lokal mosaikartig dargestellt, Screenshare erhält Vorrang und ein ausdrücklich erlaubter vertrauenswürdiger Peer-Relay-Baum kann geeignete Videopublikationen ohne zentralen Medienserver weiterleiten.",
+  "status": "in_progress",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "AMB-M01",
+      "title": "Audit, Grenzen und ausführbarer Vertrag",
+      "task_ids": ["AMB-001", "AMB-002", "AMB-003"],
+      "status": "in_progress"
+    },
+    {
+      "id": "AMB-M02",
+      "title": "Control-Plane-Topologie und adaptive Medienpolicy",
+      "task_ids": ["AMB-004", "AMB-005", "AMB-006", "AMB-007"],
+      "status": "todo"
+    },
+    {
+      "id": "AMB-M03",
+      "title": "Last-N, Mosaik, Relay und Nutzerkontrolle",
+      "task_ids": ["AMB-008", "AMB-009", "AMB-010", "AMB-011", "AMB-012"],
+      "status": "todo"
+    },
+    {
+      "id": "AMB-M04",
+      "title": "Browser-, Bandbreiten- und Release-Gates",
+      "task_ids": ["AMB-013", "AMB-014"],
+      "status": "todo"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "AMB-001",
+      "title": "Ananta-Broadcast-, Mesh-, QoS- und View-Sync-Ideen gegen den Zielcode auditieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Anantas dezentrales Peer-Media-Overlay, SFU-Broadcast-Track, Pair-View-Sync und zugehörige Architekturgrenzen sind anhand realer Dateien geprüft.",
+        "Portabel implementierbare Active-Speaker-, Last-N-, Sender-Parameter- und lokale Mosaikpfade sind von SFU- oder experimentellen Frame-Forwarding-Pfaden getrennt.",
+        "Der Iststand bestätigt Full-Mesh ohne VAD, Stats-Hysterese, Qualitätsstufen, Mosaik oder Peer-Relay.",
+        "Ein lokales Canvas-Mosaik wird nicht fälschlich allein als Netzwerkersparnis gewertet; Einsparungen müssen aus Pause, Drosselung oder begrenztem Fanout stammen."
+      ]
+    },
+    {
+      "id": "AMB-002",
+      "title": "Ausführlichen Implementierungstrack validieren, committen und pushen",
+      "status": "in_progress",
+      "priority": "P0",
+      "risk": "medium",
+      "progress_percent": 80,
+      "depends_on": ["AMB-001"],
+      "acceptance_criteria": [
+        "Alle Aufgaben besitzen Risiko, Priorität, Abhängigkeiten und reproduzierbare Akzeptanzkriterien.",
+        "Sichere Fallbacks und nicht erfüllbare Ciphertext-Relay-Versprechen sind explizit dokumentiert.",
+        "Der Track besteht npm run todos:validate und wird vor der ersten Implementierungsänderung auf origin/main veröffentlicht."
+      ]
+    },
+    {
+      "id": "AMB-003",
+      "title": "Versionierte Optimierungs-, Qualitäts- und Topologieverträge definieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["AMB-002"],
+      "acceptance_criteria": [
+        "Geschlossene Verträge definieren Audio-, Control-, Screen-, Focus-, Thumbnail- und Paused-Klassen sowie harte Payload- und Queuegrenzen.",
+        "Qualitätsprofile enthalten Bitrate, Framerate, Downscale, Active-Speaker-Rang, Teilnehmerbereich und Hysterese statt verstreuter Magic Numbers.",
+        "Topologiemodi unterscheiden direct_mesh, adaptive_mesh und trusted_peer_relay ohne SFU- oder Frame-E2EE-Behauptung.",
+        "Unbekannte Profile, Nachrichtentypen, Epochen oder Capabilitywerte werden fail-closed abgelehnt."
+      ]
+    },
+    {
+      "id": "AMB-004",
+      "title": "Control-Plane-eigene, deterministische Relay-Topologie mit Epochen implementieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["AMB-003"],
+      "acceptance_criteria": [
+        "Nur der Server erzeugt aus aktueller Membership, Betreiberpolicy und peergebundenem Relay-Consent zyklusfreie publikationsbezogene Bäume.",
+        "Routen begrenzen Kinderzahl und Hopzahl, besitzen eine monoton steigende Room-Epoch und referenzieren ausschließlich aktuelle Room-Peers.",
+        "Join, Leave und Consentwechsel materialisieren eine neue absolute Topologie; stale Clientzustand kann keine Kante reaktivieren.",
+        "Fehlende Relayeignung, zu kleine Räume oder deaktivierte Betreiberpolicy ergeben deterministisch adaptive_mesh."
+      ]
+    },
+    {
+      "id": "AMB-005",
+      "title": "Getrennte DataChannel-Traffic-Klassen für Chat, Control, Aktivität und Quality Feedback bauen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["AMB-003"],
+      "acceptance_criteria": [
+        "Chat und Control besitzen getrennte DataChannels, Größenlimits, BufferedAmount-Grenzen und Drop-Policy.",
+        "VAD, Capability und Quality Feedback sind versioniert, inhaltsfrei, ratebegrenzt und enthalten weder Token noch SDP, ICE oder Medieninhalt.",
+        "Control wird nicht durch Chat oder Mosaikdaten verdrängt; langsame Peers blockieren keine Geschwister.",
+        "Unbekannte, übergroße, zu häufige oder ungültige Peer-Nachrichten werden lokal verworfen."
+      ]
+    },
+    {
+      "id": "AMB-006",
+      "title": "Lokale Sprachaktivität und stabile Top-2-bis-5-Active-Speaker-Auswahl implementieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["AMB-005"],
+      "acceptance_criteria": [
+        "Audioanalyse startet ausschließlich für bereits durch Benutzeraktion freigegebene lokale oder autorisiert empfangene Audiotracks.",
+        "Attack, Mindesthaltezeit, Decay und Cooldown verhindern flackernde Sprecherwechsel.",
+        "Jeder Browser kann aus begrenzten Aktivitätsereignissen lokal höchstens fünf Fokussprecher bestimmen; der Server empfängt kein Audio.",
+        "Fehlende AudioContext- oder VAD-Fähigkeit degradiert sichtbar zu stabiler Teilnehmerreihenfolge."
+      ]
+    },
+    {
+      "id": "AMB-007",
+      "title": "Per-Peer-Senderqualität aus Active-Speaker-Rang, Screenshare und WebRTC-Stats steuern",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["AMB-004", "AMB-006"],
+      "acceptance_criteria": [
+        "RTCRtpSender-Parameter werden pro Peer und Publikation begrenzt, idempotent und ohne erneuten Capture-Aufruf angewandt.",
+        "Die ersten zwei Sprecher erhalten Focus-, Sprecher drei bis fünf Balanced- und inaktive Kameras Thumbnail- oder Paused-Qualität.",
+        "Paketverlust, RTT und verfügbare ausgehende Bitrate können Qualität nur absenken; stale oder fehlende Stats erhöhen sie nicht.",
+        "Unsupported setParameters-Felder lösen einen sicheren kompatiblen Fallback und einen sichtbaren Capabilitystatus aus."
+      ]
+    },
+    {
+      "id": "AMB-008",
+      "title": "Last-N-Fokusansicht und einzelnes lokales Canvas-Mosaik für inaktive Videos umsetzen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["AMB-006", "AMB-007"],
+      "acceptance_criteria": [
+        "Screenshare und höchstens fünf Fokusvideos werden als eigenständige Live-Karten dargestellt.",
+        "Übrige Kameras erscheinen in genau einem lokal erzeugten Canvas-Mosaik und werden netzseitig gleichzeitig gedrosselt oder pausiert.",
+        "Canvas-Refresh, versteckte Videoelemente und Objektverweise besitzen feste Frequenz- und Cleanup-Grenzen.",
+        "Audio bleibt unabhängig von der Videoansicht abspielbar; das Mosaik erzeugt keinen zusätzlichen Medienupload."
+      ]
+    },
+    {
+      "id": "AMB-009",
+      "title": "Audio-Garantie, Screenshare-Vorrang und abgestufte Degradation integrieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["AMB-007"],
+      "acceptance_criteria": [
+        "Mikrofon erhält ein begrenztes Opus-Budget und wird nicht durch Kamera- oder Bildschirmqualität deaktiviert.",
+        "Aktives Screenshare erhält vor Kameravideo Bandbreite; die eigene Kamera wird währenddessen mindestens eine Stufe reduziert.",
+        "Critical-Netzstatus degradiert Video bis paused, ohne Control und Audio zu verdrängen.",
+        "Screen-Audio bleibt an die explizit gestartete Bildschirmfreigabe gebunden und wird beim Stop deterministisch entfernt."
+      ]
+    },
+    {
+      "id": "AMB-010",
+      "title": "Zustimmungspflichtigen vertrauenswürdigen Peer-Relay-Fanout für Video implementieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["AMB-004", "AMB-007", "AMB-009"],
+      "acceptance_criteria": [
+        "Relay ist operatorseitig erlaubt, nutzerseitig default-aus und nur für aktuelle serverautorisierte Routen aktivierbar.",
+        "Ein Publisher sendet geeignete Kamera-/Screenshare-Tracks nur an seine direkten Baumkinder; berechtigte Relays senden empfangene Tracks nur an ihre autorisierten Kinder weiter.",
+        "Routewechsel entfernt alte RTCRtpSender, verhindert Schleifen und fällt bei fehlender Fähigkeit oder Fehler bounded auf adaptive_mesh zurück.",
+        "Die UI erklärt, dass ein Trusted Relay Medien hopweise entschlüsseln/re-encodieren kann und keine SFrame-Ciphertext-Privatsphäre gegenüber dem Relay besteht."
+      ]
+    },
+    {
+      "id": "AMB-011",
+      "title": "Stats-Sampler, Hysterese, Churn-Recovery und inhaltsfreie Telemetrie härten",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["AMB-007", "AMB-010"],
+      "acceptance_criteria": [
+        "Sampling besitzt feste Intervalle, Timeouts, bounded Historie und stoppt bei Leave, Logout, Peer-Remove und Destroy.",
+        "Join, Leave, Relayverlust, ICE-Restart und Hintergrundtab führen zu einer begrenzten Neuberechnung ohne Offer- oder Keyframe-Sturm.",
+        "UI-Telemetrie zeigt nur Topologiemodus, Qualitätsstufe, aktive Sprecher und grobe Linkklasse; SDP, IPs und Medieninhalt bleiben ausgeschlossen.",
+        "Ein fehlerhafter oder lügender Peer kann die Qualität anderer Peers höchstens absenken, nicht Rechte oder globale Membership erweitern."
+      ]
+    },
+    {
+      "id": "AMB-012",
+      "title": "Optimierungs-, Daten­spar-, Relay-Consent- und Accessibility-Oberfläche bauen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["AMB-008", "AMB-010", "AMB-011"],
+      "acceptance_criteria": [
+        "Nutzer können Auto, Ausgewogen und Datensparend wählen, ohne Capture oder neue Autorität auszulösen.",
+        "Relay-Consent ist separat, widerrufbar, verständlich und zeigt Datenschutz-, CPU-, Batterie- und Uploadfolgen.",
+        "Aktive Sprecher, aktuelle lokale Qualitätsklasse, Topologie und Degradationsgrund sind zugänglich beschriftet.",
+        "Versteckte, reduzierte oder pausierte Videos bleiben für Screenreader als Teilnehmerstatus nachvollziehbar."
+      ]
+    },
+    {
+      "id": "AMB-013",
+      "title": "Contract-, Angular-, Multi-Browser-, Churn- und Bandbreitengates ausbauen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["AMB-005", "AMB-006", "AMB-007", "AMB-008", "AMB-009", "AMB-010", "AMB-011", "AMB-012"],
+      "acceptance_criteria": [
+        "Unit-Tests prüfen Profile, Active-Speaker-Hysterese, Topologie-Zyklusfreiheit, Consent, Epoch-Reorder, Queuecaps und Degradation deterministisch.",
+        "Mindestens fünf echte Chromium-Seiten belegen Focus/Thumbnail/Paused, ein Canvas-Mosaik, Screenshare-Vorrang und vollständiges Cleanup.",
+        "Ein Relay-Gate belegt weniger direkte Video-Sender am Publisher und Empfang über einen autorisierten Zwischenpeer; ohne Consent bleibt Full-Mesh.",
+        "Browser-Evidence erfasst getStats-/Senderparameter oder markiert unsupported sichtbar; Tests behaupten keine nicht beobachtete Byteersparnis.",
+        "Login, Join, Optimierungsmodus, Relay-Consent und eingehende Control-Nachrichten lösen weiterhin keine Capture-API aus."
+      ]
+    },
+    {
+      "id": "AMB-014",
+      "title": "Dokumentation, Herkunft, Backlog, CI und öffentlichen Release abschließen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["AMB-013"],
+      "acceptance_criteria": [
+        "README, AGENTS und Herkunftsmatrix erklären Last-N, Mosaik, Qualitätsprofile, Trusted Relay, Fallbacks und verbleibende SFrame-/SFU-Grenzen korrekt.",
+        "PROD-NET-002 wird nur bei nachgewiesener adaptiver Policy aktualisiert; PROD-NET-004 bleibt für echten Ciphertext-Peer-DAG offen, falls nur Trusted Relay belegt ist.",
+        "npm run check, Produktionsaudit, Angular-Build, Docker-Build und öffentliche GitHub Actions sind erfolgreich.",
+        "Planungs-, Implementierungs- und Abschlusscommits sind auf origin/main; der erledigte Track wird erst danach archiviert."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["AMB-001", "AMB-002", "AMB-003", "AMB-004", "AMB-005", "AMB-006", "AMB-007", "AMB-008", "AMB-009", "AMB-010", "AMB-011", "AMB-012", "AMB-013", "AMB-014"],
+  "tasks_status_summary": {
+    "total": 14,
+    "by_status": { "todo": 12, "in_progress": 1, "partial": 0, "blocked": 0, "done": 1 },
+    "progress_percent_done": 7.14,
+    "by_priority": { "P0": 12, "P1": 2, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 8, "critical": 5 },
+    "critical_path": { "total": 14, "done": 1, "remaining": 13 },
+    "milestones": { "total": 4, "todo": 3, "in_progress": 1, "blocked": 0, "done": 0 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 12,
+    "in_progress": 1,
+    "partial": 0,
+    "blocked": 0,
+    "done": 1
+  },
+  "summary_notes": [
+    "Normale Räume bleiben auf 20 Teilnehmer begrenzt, Pair-Sessions auf zwei Geräte; die Anzahl der Räume erhält keine globale Anwendungsgrenze.",
+    "Active-Speaker-Metadaten und WebRTC-Stats sind inhaltsfreie Peer-Control-Daten; der Node-Server terminiert weiterhin keine Medien.",
+    "Das lokale Mosaik spart erst gemeinsam mit Thumbnail-/Paused-Senderprofilen Bandbreite und wird nicht allein als Netzwerkoptimierung verbucht.",
+    "Trusted Peer Relay ist hopweise DTLS-SRTP-verschlüsselt, aber der Relay-Browser kann Medien verarbeiten; es ist keine SFrame-/Ciphertext-Relay-Funktion.",
+    "Ein echter nicht entschlüsselnder Ciphertext-Peer-DAG bleibt bis zu standardisierter Browser-Evidence im Backlog; fehlende Capability fällt auf adaptive_mesh zurück.",
+    "tasks[] ist die Source of Truth; Summen werden vor jedem Commit mit npm run todos:validate geprüft."
+  ]
+}
