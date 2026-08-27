@@ -5,7 +5,7 @@
   "track": "github-actions-public-release",
   "purpose": "Das Repository öffentlich zugänglich machen und Änderungen durch reproduzierbare GitHub-Actions-Gates schützen.",
   "goal": "Pushes und Pull Requests auf main führen Todo-, Node-, Browser- und Docker-Gates mit minimalen Tokenrechten aus; der erste Lauf ist erfolgreich und das Repository öffentlich.",
-  "status": "in_progress",
+  "status": "completed",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
   "risk_scale": ["low", "medium", "high", "critical"],
@@ -14,7 +14,7 @@
       "id": "CI-M01",
       "title": "Öffentliche CI-gesicherte Veröffentlichung",
       "task_ids": ["CI-001", "CI-002", "CI-003", "CI-004"],
-      "status": "in_progress"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -50,10 +50,10 @@
     {
       "id": "CI-003",
       "title": "Workflow committen, pushen und ersten Lauf bis zum Ergebnis beobachten",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 25,
+      "progress_percent": 100,
       "depends_on": ["CI-002"],
       "acceptance_criteria": [
         "Workflow-Syntax und lokale Gates sind erfolgreich.",
@@ -64,10 +64,10 @@
     {
       "id": "CI-004",
       "title": "Repository öffentlich schalten und finalen Remotezustand verifizieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["CI-003"],
       "acceptance_criteria": [
         "GitHub meldet visibility PUBLIC und main als Default-Branch.",
@@ -80,23 +80,23 @@
   "critical_path_tasks": ["CI-001", "CI-002", "CI-003", "CI-004"],
   "tasks_status_summary": {
     "total": 4,
-    "by_status": { "todo": 1, "in_progress": 1, "partial": 0, "blocked": 0, "done": 2 },
-    "progress_percent_done": 50,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 4 },
+    "progress_percent_done": 100,
     "by_priority": { "P0": 4, "P1": 0, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 1, "high": 2, "critical": 1 },
-    "critical_path": { "total": 4, "done": 2, "remaining": 2 },
-    "milestones": { "total": 1, "todo": 0, "in_progress": 1, "blocked": 0, "done": 0 }
+    "critical_path": { "total": 4, "done": 4, "remaining": 0 },
+    "milestones": { "total": 1, "todo": 0, "in_progress": 0, "blocked": 0, "done": 1 }
   },
   "progress_summary": {
-    "state": "in_progress",
-    "todo_remaining": 1,
-    "in_progress": 1,
+    "state": "completed",
+    "todo_remaining": 0,
+    "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 2
+    "done": 4
   },
   "summary_notes": [
-    "Das Repository bleibt bis zum erfolgreichen ersten CI-Lauf private.",
-    "tasks[] ist die Source of Truth; Summen werden vor Commits geprüft."
+    "Der erste CI-Lauf 33110689730 war mit Test- und Dockerjob erfolgreich.",
+    "GitHub bestätigt PUBLIC, main, read-only Workflowrechte und BSD-3-Clause."
   ]
 }
