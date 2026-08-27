@@ -122,6 +122,7 @@ Tests dürfen externe STUN-/TURN-Dienste sauber überspringen, aber nicht stills
 | Pfad | Kategorie | Versionieren |
 |---|---|---|
 | `src/`, `public/`, `test/`, `scripts/` | Source/Test | ja |
+| `.github/workflows/` | CI-Infrastruktur | ja |
 | `AGENTS.md`, `README.md`, `LICENSE`, `docs/` | Dokumentation/Lizenz | ja |
 | `todos/**/*.json`, `todos/archive/README.md` | Planung | ja |
 | `.env.example`, `Dockerfile`, `compose.yaml` | reproduzierbare Infrastruktur | ja |

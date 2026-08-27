@@ -1,5 +1,7 @@
 # WebRTC Minimize Server
 
+[![CI](https://github.com/ananta888/webrtc-minimize-server/actions/workflows/ci.yml/badge.svg)](https://github.com/ananta888/webrtc-minimize-server/actions/workflows/ci.yml)
+
 Ein eigenständiger MVP für Audio, Video, Bildschirmfreigabe und Peer-Chat. Ein kleiner Node-Server liefert die Browser-App und vermittelt SDP/ICE über WebSocket; Medien und Chat laufen danach direkt im WebRTC-Mesh zwischen bis zu vier Browsern.
 
 ## Lokal starten

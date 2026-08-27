@@ -10,7 +10,8 @@
     "dev": "node --watch src/server.js",
     "test": "node --test",
     "todos:validate": "node scripts/validate-todos.mjs",
-    "check": "npm run todos:validate && npm test"
+    "workflows:validate": "node scripts/validate-workflows.mjs",
+    "check": "npm run todos:validate && npm run workflows:validate && npm test"
   },
   "engines": {
     "node": ">=20"
@@ -20,6 +21,7 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
-    "playwright": "^1.62.1"
+    "playwright": "^1.62.1",
+    "yaml": "^2.9.0"
   }
 }
