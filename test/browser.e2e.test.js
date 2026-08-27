@@ -19,7 +19,7 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
       publicOrigin: "",
       stunUrls: [],
       turnServers: [],
-      maxRoomParticipants: 4,
+      maxRoomParticipants: 20,
       roomIdleTtlMs: 60_000,
       signalRateLimit: 120,
     },
@@ -70,8 +70,8 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   await grace.goto(`${origin}/?room=${roomId}`);
   await grace.locator("#display-name").fill("Grace");
   await grace.locator("#join-room").click();
-  await grace.locator("#participant-count", { hasText: "2 / 4" }).waitFor();
-  await ada.locator("#participant-count", { hasText: "2 / 4" }).waitFor();
+  await grace.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
+  await ada.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
   await ada.locator("#chat-log").getByText("Grace: Peer-Chat verbunden").waitFor();
   assert.deepEqual(await ada.evaluate(() => window.__captureCalls), []);
   assert.deepEqual(await grace.evaluate(() => window.__captureCalls), []);
@@ -94,5 +94,5 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
 
   assert.deepEqual(pageErrors, []);
   await ada.locator("#leave-room").click();
-  await grace.locator("#participant-count", { hasText: "1 / 4" }).waitFor();
+  await grace.locator("#participant-count", { hasText: "1 / 20" }).waitFor();
 });

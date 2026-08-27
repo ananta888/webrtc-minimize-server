@@ -11,7 +11,7 @@ async function startTestServer(overrides = {}) {
     publicOrigin: "",
     stunUrls: ["stun:stun.test:3478"],
     turnServers: [],
-    maxRoomParticipants: 4,
+    maxRoomParticipants: 20,
     roomIdleTtlMs: 60_000,
     signalRateLimit: 120,
     ...overrides,
@@ -74,7 +74,7 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
 
   const configResponse = await fetch(`${app.httpUrl}/config`);
   assert.deepEqual(await configResponse.json(), {
-    iceServers: [{ urls: "stun:stun.test:3478" }], maxRoomParticipants: 4,
+    iceServers: [{ urls: "stun:stun.test:3478" }], maxRoomParticipants: 20,
   });
   assert.match(configResponse.headers.get("content-security-policy"), /default-src 'self'/);
 
@@ -116,6 +116,42 @@ test("two room peers receive membership and target-bound signals", async (contex
   const left = await ada.next((message) => message.type === "peer-left");
   assert.equal(left.peerId, graceWelcome.peerId);
   ada.socket.close();
+});
+
+test("signaling admits 20 peers, rejects peer 21 and isolates another room", async (context) => {
+  const app = await startTestServer();
+  context.after(() => app.close());
+  const peers = [];
+  for (let index = 1; index <= 20; index += 1) {
+    const peer = connect(
+      `${app.wsUrl}/signal?room=room-twenty&name=Peer%20${index}`,
+      app.httpUrl,
+    );
+    const welcome = await peer.next((message) => message.type === "welcome");
+    assert.equal(welcome.maxParticipants, 20);
+    assert.equal(welcome.peers.length, index - 1);
+    peers.push(peer);
+  }
+
+  const overflow = connect(
+    `${app.wsUrl}/signal?room=room-twenty&name=Peer%2021`,
+    app.httpUrl,
+  );
+  const overflowError = await overflow.next((message) => message.type === "error");
+  assert.equal(overflowError.code, "room_full");
+
+  const otherRoom = connect(
+    `${app.wsUrl}/signal?room=room-other&name=Independent`,
+    app.httpUrl,
+  );
+  const otherWelcome = await otherRoom.next((message) => message.type === "welcome");
+  assert.deepEqual(otherWelcome.peers, []);
+  assert.equal(app.registry.participantCount, 21);
+  assert.equal(app.registry.roomCount, 2);
+
+  for (const peer of peers) peer.socket.close();
+  overflow.socket.close();
+  otherRoom.socket.close();
 });
 
 test("signaling rejects cross-origin browsers and caps rooms", async (context) => {

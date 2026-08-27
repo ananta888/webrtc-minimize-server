@@ -1,3 +1,5 @@
+const HARD_MAX_ROOM_PARTICIPANTS = 20;
+
 const elements = Object.freeze({
   statusDot: document.querySelector("#status-dot"),
   connectionStatus: document.querySelector("#connection-status"),
@@ -22,7 +24,7 @@ const elements = Object.freeze({
 });
 
 const state = {
-  config: { iceServers: [], maxRoomParticipants: 4 },
+  config: { iceServers: [], maxRoomParticipants: HARD_MAX_ROOM_PARTICIPANTS },
   socket: null,
   ownId: null,
   ownName: "",
@@ -36,6 +38,12 @@ const state = {
 function setConnectionStatus(label, kind = "idle") {
   elements.connectionStatus.textContent = label;
   elements.statusDot.className = `dot ${kind}`;
+}
+
+function normalizeParticipantLimit(value) {
+  return Number.isSafeInteger(value) && value >= 2 && value <= HARD_MAX_ROOM_PARTICIPANTS
+    ? value
+    : HARD_MAX_ROOM_PARTICIPANTS;
 }
 
 function setJoined(joined) {
@@ -289,7 +297,7 @@ function handleServerMessage(message) {
   if (message.type === "welcome") {
     state.ownId = message.peerId;
     state.roomId = message.roomId;
-    state.config.maxRoomParticipants = message.maxParticipants;
+    state.config.maxRoomParticipants = normalizeParticipantLimit(message.maxParticipants);
     for (const peer of message.peers) createPeer(peer.id, peer.name);
     setJoined(true);
     setConnectionStatus("Signaling verbunden", "connected");
@@ -524,7 +532,11 @@ async function initialize() {
   try {
     const response = await fetch("/config");
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    state.config = await response.json();
+    const runtimeConfig = await response.json();
+    state.config = {
+      ...runtimeConfig,
+      maxRoomParticipants: normalizeParticipantLimit(runtimeConfig.maxRoomParticipants),
+    };
     updateParticipantCount();
   } catch (error) {
     setConnectionStatus(`Konfiguration fehlt: ${error.message}`, "error");

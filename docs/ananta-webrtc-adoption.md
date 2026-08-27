@@ -21,7 +21,7 @@ Stand: 2026-08-27. Analysiert wurden insbesondere Anantas WebRTC-Contracts, Sign
 | Hub/Control Plane besitzt Membership und Policy | flüchtige `RoomRegistry`, zielgebundenes Signaling | OIDC, Grants, signierte Membership-Epochen |
 | Keine implizite Medienaufnahme | jede Quelle startet nur durch separaten Klick | zeitgebundene, signierte Publication-Consents |
 | Audio, Kamera und Bildschirm als getrennte Publikationen | getrennte Start-/Stop-Lifecycles; Bildschirmton wird verwendet, falls der Browser ihn liefert | Device-Wechsel, Mute, Limits, signed media contract |
-| Direkte Peer-Verbindung und kleines Mesh | Perfect-Negotiation-Mesh bis maximal vier Teilnehmer | stats-basierte dynamische Grenze und SFU-Fallback |
+| Direkte Peer-Verbindung und Räume | Perfect-Negotiation-Mesh in isolierten Räumen mit harter Membership-Grenze 20; keine QoS-Garantie bei voller Belegung | stats-basierte dynamische Mediengrenze und SFU-Fallback |
 | Austauschbares STUN/TURN | Server liefert ICE-Konfiguration aus Environment | kurzlebige TURN-Credentials, Quotas, IP-Privacy, Failover |
 | Bounded DataChannel | Chat v1, 2.000 Zeichen, geschlossener Nachrichtentyp | Traffic-Klassen, Prioritätsqueue, Backpressure, Artefakt-Chunks |
 | E2EE und Security-Epochen | nur WebRTC-Transportverschlüsselung, ausdrücklich als MVP-Grenze dokumentiert | SFrame/Encoded Transform, Geräteschlüssel, Replay-Fenster, Rotation |

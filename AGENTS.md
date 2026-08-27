@@ -36,7 +36,8 @@ Peers dürfen aus Signalen keine Room-Membership oder zusätzliche Autorität ab
 
 ## MVP-Grenzen
 
-- Ein Raum hat höchstens vier Teilnehmer.
+- Ein Raum hat eine harte Membership-Grenze von 20 Teilnehmern.
+- Das Full-Mesh erzeugt bei 20 Teilnehmern bis zu 19 PeerConnections und Medienkopien je Sender. Die Raumgrenze ist daher keine QoS-Garantie; produktive große Videoräume benötigen den geplanten SFU-Pfad.
 - Räume und Peer-IDs sind flüchtig und werden nicht persistiert.
 - Der Raumcode ist im MVP ein Bearer-Invite, keine verifizierte Identität.
 - WebRTC bietet Transportverschlüsselung; anwendungsseitige SFrame-/Insertable-Streams-E2EE ist noch nicht implementiert.

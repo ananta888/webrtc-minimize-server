@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ananta888/webrtc-minimize-server/actions/workflows/ci.yml/badge.svg)](https://github.com/ananta888/webrtc-minimize-server/actions/workflows/ci.yml)
 
-Ein eigenständiger MVP für Audio, Video, Bildschirmfreigabe und Peer-Chat. Ein kleiner Node-Server liefert die Browser-App und vermittelt SDP/ICE über WebSocket; Medien und Chat laufen danach direkt im WebRTC-Mesh zwischen bis zu vier Browsern.
+Ein eigenständiger MVP für Audio, Video, Bildschirmfreigabe und Peer-Chat. Ein kleiner Node-Server liefert die Browser-App und vermittelt SDP/ICE über WebSocket; Medien und Chat laufen danach direkt in voneinander isolierten Räumen mit bis zu 20 Browsern.
 
 ## Lokal starten
 
@@ -18,6 +18,10 @@ Danach `http://localhost:8080` in zwei Browserfenstern öffnen, einen Raum erzeu
 
 Medien werden niemals automatisch angefordert. Mikrofon, Kamera und Bildschirm starten nur über ihre jeweiligen Buttons. Beim Verlassen stoppt die App alle eigenen Tracks.
 
+## Räume
+
+`Neuen Raum` erzeugt einen kryptografisch zufälligen Einladungslink. Ein Raum entsteht flüchtig beim ersten Join, besitzt eine vollständig getrennte Teilnehmerliste und akzeptiert standardmäßig höchstens 20 gleichzeitig verbundene Browser. Signale können ausschließlich an Teilnehmer desselben Raums adressiert werden. Leere Räume werden verworfen; der MVP persistiert weder Membership noch Raumverlauf.
+
 ## Konfiguration
 
 Die Variablen sind in `.env.example` dokumentiert. Die Anwendung lädt `.env` nicht selbst; Variablen werden von Shell, Compose oder Secret-Management gesetzt.
@@ -25,7 +29,7 @@ Die Variablen sind in `.env.example` dokumentiert. Die Anwendung lädt `.env` ni
 - `PUBLIC_ORIGIN`: exakte öffentliche HTTPS-Origin für Invite-Links und WebSocket-Origin-Prüfung.
 - `STUN_URLS`: kommaseparierte STUN-URLs.
 - `TURN_SERVERS_JSON`: JSON-Array im `RTCIceServer`-Format.
-- `MAX_ROOM_PARTICIPANTS`: 2 bis 4.
+- `MAX_ROOM_PARTICIPANTS`: Betreiberlimit von 2 bis höchstens 20; Default ist 20.
 - `ROOM_IDLE_TTL_MS`: Obergrenze für inaktive Room-Metadaten.
 - `SIGNAL_RATE_LIMIT`: Nachrichten je Peer und 10 Sekunden.
 
@@ -36,6 +40,10 @@ TURN_SERVERS_JSON='[{"urls":"turn:turn.example.org:3478","username":"short-lived
 ```
 
 Statische TURN-Credentials sollten nicht produktiv verwendet werden. Das geplante Produktionsmodell nutzt kurzlebige Credentials.
+
+### Kapazitätsgrenze
+
+20 ist die harte Membership-Grenze je Raum, keine garantierte Medienqualität. Im aktuellen Full-Mesh hält jeder Teilnehmer bis zu 19 `RTCPeerConnection`-Verbindungen und ein Sender kann dieselbe Medienquelle bis zu 19-mal hochladen. Für zuverlässig hohe Videoqualität bei vollen Räumen ist der im Backlog geführte SFU-Pfad vorgesehen.
 
 ## Docker
 

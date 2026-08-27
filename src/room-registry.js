@@ -1,5 +1,11 @@
 import crypto from "node:crypto";
 
+import {
+  DEFAULT_ROOM_PARTICIPANTS,
+  MAX_ROOM_PARTICIPANTS,
+  MIN_ROOM_PARTICIPANTS,
+} from "./room-limits.js";
+
 export class RoomFullError extends Error {
   constructor() {
     super("room_full");
@@ -12,7 +18,16 @@ export class RoomRegistry {
   #maxParticipants;
   #idleTtlMs;
 
-  constructor({ maxParticipants = 4, idleTtlMs = 3_600_000 } = {}) {
+  constructor({ maxParticipants = DEFAULT_ROOM_PARTICIPANTS, idleTtlMs = 3_600_000 } = {}) {
+    if (
+      !Number.isSafeInteger(maxParticipants)
+      || maxParticipants < MIN_ROOM_PARTICIPANTS
+      || maxParticipants > MAX_ROOM_PARTICIPANTS
+    ) {
+      throw new RangeError(
+        `maxParticipants must be between ${MIN_ROOM_PARTICIPANTS} and ${MAX_ROOM_PARTICIPANTS}`,
+      );
+    }
     this.#maxParticipants = maxParticipants;
     this.#idleTtlMs = idleTtlMs;
   }

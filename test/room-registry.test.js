@@ -29,3 +29,23 @@ test("RoomRegistry rate window is bounded per peer", () => {
   assert.equal(registry.allowMessage(peer, 1099, { limit: 2, windowMs: 100 }), false);
   assert.equal(registry.allowMessage(peer, 1100, { limit: 2, windowMs: 100 }), true);
 });
+
+test("RoomRegistry admits 20 peers per room and keeps rooms isolated", () => {
+  const registry = new RoomRegistry();
+  const firstRoomPeers = Array.from(
+    { length: 20 },
+    (_, index) => registry.join("room-twenty", {}, `Peer ${index + 1}`).peer,
+  );
+  assert.equal(new Set(firstRoomPeers.map((peer) => peer.id)).size, 20);
+  assert.throws(() => registry.join("room-twenty", {}, "Peer 21"), RoomFullError);
+
+  const otherRoomPeer = registry.join("room-other", {}, "Independent").peer;
+  assert.equal(otherRoomPeer.roomId, "room-other");
+  assert.equal(registry.participantCount, 21);
+  assert.equal(registry.roomCount, 2);
+});
+
+test("RoomRegistry rejects limits outside the supported 2..20 range", () => {
+  assert.throws(() => new RoomRegistry({ maxParticipants: 1 }), /between 2 and 20/);
+  assert.throws(() => new RoomRegistry({ maxParticipants: 21 }), /between 2 and 20/);
+});

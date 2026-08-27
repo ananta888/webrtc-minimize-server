@@ -1,10 +1,16 @@
+import {
+  DEFAULT_ROOM_PARTICIPANTS,
+  MAX_ROOM_PARTICIPANTS,
+  MIN_ROOM_PARTICIPANTS,
+} from "./room-limits.js";
+
 const DEFAULTS = Object.freeze({
   host: "0.0.0.0",
   port: 8080,
   publicOrigin: "",
   stunUrls: ["stun:stun.l.google.com:19302"],
   turnServers: [],
-  maxRoomParticipants: 4,
+  maxRoomParticipants: DEFAULT_ROOM_PARTICIPANTS,
   roomIdleTtlMs: 60 * 60 * 1000,
   signalRateLimit: 120,
 });
@@ -67,7 +73,11 @@ export function loadConfig(env = process.env) {
     maxRoomParticipants: boundedInteger(
       env.MAX_ROOM_PARTICIPANTS,
       DEFAULTS.maxRoomParticipants,
-      { minimum: 2, maximum: 4, name: "MAX_ROOM_PARTICIPANTS" },
+      {
+        minimum: MIN_ROOM_PARTICIPANTS,
+        maximum: MAX_ROOM_PARTICIPANTS,
+        name: "MAX_ROOM_PARTICIPANTS",
+      },
     ),
     roomIdleTtlMs: boundedInteger(env.ROOM_IDLE_TTL_MS, DEFAULTS.roomIdleTtlMs, {
       minimum: 60_000, maximum: 24 * 60 * 60 * 1000, name: "ROOM_IDLE_TTL_MS",
