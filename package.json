@@ -12,6 +12,7 @@
     "build": "ng build --configuration production",
     "test:frontend": "vitest run --config vitest.config.mjs",
     "test:infrastructure": "node scripts/live-infrastructure-gate.mjs",
+    "keycloak:client-config": "node scripts/keycloak-client-config.mjs",
     "test": "node --test",
     "todos:validate": "node scripts/validate-todos.mjs",
     "workflows:validate": "node scripts/validate-workflows.mjs",

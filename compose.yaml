@@ -2,24 +2,21 @@ services:
   webrtc:
     build: .
     restart: unless-stopped
-    depends_on:
-      keycloak:
-        condition: service_started
-      coturn:
-        condition: service_started
     environment:
       HOST: 0.0.0.0
       PORT: 8080
-      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8080}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://webrtc.ananta.de}
       AUTH_MODE: ${AUTH_MODE:-required}
-      OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8081/realms/webrtc}
-      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://keycloak:8080/realms/webrtc/protocol/openid-connect/certs}
+      KEYCLOAK_ORIGIN: ${KEYCLOAK_ORIGIN:-https://keycloak.ananta.de}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-ananta}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}
       OIDC_AUDIENCE: ${OIDC_AUDIENCE:-webrtc-room-server}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-webrtc-browser}
-      STUN_URLS: ${STUN_URLS:-stun:localhost:3478}
-      TURN_URLS: ${TURN_URLS:-turn:localhost:3478?transport=udp,turn:localhost:3478?transport=tcp}
-      TURN_SHARED_SECRET: ${TURN_SHARED_SECRET:-local-development-only-change-me}
-      TURN_REALM: ${TURN_REALM:-webrtc.local}
+      STUN_URLS: ${STUN_URLS:-stun:stun.l.google.com:19302}
+      TURN_URLS: ${TURN_URLS:-}
+      TURN_SHARED_SECRET: ${TURN_SHARED_SECRET:-}
+      TURN_REALM: ${TURN_REALM:-webrtc.ananta.de}
       TURN_CREDENTIAL_TTL_MS: ${TURN_CREDENTIAL_TTL_MS:-600000}
       MAX_ROOM_PARTICIPANTS: ${MAX_ROOM_PARTICIPANTS:-20}
       PEER_MEDIA_RELAY_ENABLED: ${PEER_MEDIA_RELAY_ENABLED:-true}
@@ -31,6 +28,7 @@ services:
       - "${PORT:-8080}:8080"
 
   keycloak:
+    profiles: ["local"]
     image: quay.io/keycloak/keycloak:26.6.1@sha256:dea26401d06341095cc4ea9d66896200b55de5ca1daa1d2fcbe58493afa6e0ad
     command: ["start-dev", "--import-realm", "--http-port=8080"]
     restart: unless-stopped
@@ -46,6 +44,7 @@ services:
       - no-new-privileges:true
 
   coturn:
+    profiles: ["local"]
     image: coturn/coturn:4.6.3-r3@sha256:71c3c990283385567f11794ee692e3a47b66fd9b0bb39e42afbe776e331dd888
     command:
       - --no-cli

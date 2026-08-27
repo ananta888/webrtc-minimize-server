@@ -32,16 +32,18 @@
       "fullScopeAllowed": false,
       "protocol": "openid-connect",
       "redirectUris": [
+        "https://webrtc.ananta.de/oidc-callback",
         "http://localhost:8080/oidc-callback",
         "http://127.0.0.1:8080/oidc-callback"
       ],
       "webOrigins": [
+        "https://webrtc.ananta.de",
         "http://localhost:8080",
         "http://127.0.0.1:8080"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:8080/*##http://127.0.0.1:8080/*",
+        "post.logout.redirect.uris": "https://webrtc.ananta.de/*##http://localhost:8080/*##http://127.0.0.1:8080/*",
         "backchannel.logout.session.required": "true"
       },
       "defaultClientScopes": ["web-origins", "profile", "email", "roles", "basic"],

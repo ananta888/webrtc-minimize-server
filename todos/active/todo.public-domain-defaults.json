@@ -1,0 +1,96 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "public-domain-defaults",
+  "purpose": "Die vorhandenen Ananta-Endpunkte als sichere, leicht austauschbare Deployment-Defaults verwenden, ohne lokale Entwicklung oder OIDC-Issuer-Prüfung zu verwässern.",
+  "goal": "Ein Standarddeployment verwendet https://webrtc.ananta.de und den erreichbaren Realm https://keycloak.ananta.de/realms/ananta; Betreiber ersetzen Anwendung, Keycloak und Realm ausschließlich über dokumentierte Environment-Variablen.",
+  "status": "in_progress",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "PDD-M01",
+      "title": "Bestands- und Endpointprüfung",
+      "task_ids": ["PDD-001"],
+      "status": "done"
+    },
+    {
+      "id": "PDD-M02",
+      "title": "Konfiguration und Release-Gates",
+      "task_ids": ["PDD-002", "PDD-003"],
+      "status": "in_progress"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "PDD-001",
+      "title": "Öffentliche Domains, Realm und vorhandene Konfigurationspfade verifizieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "keycloak.ananta.de wird über die reale OIDC-Discovery geprüft und der exakte Issuer statt eines geratenen Realms verwendet.",
+        "webrtc.ananta.de, bestehende Compose-Defaults, Runtime-Konfiguration und lokales Entwicklungsprofil sind geprüft.",
+        "Öffentliche Defaults werden von lokal unsicheren Entwicklungswerten und Secrets getrennt."
+      ]
+    },
+    {
+      "id": "PDD-002",
+      "title": "Austauschbare Ananta-Defaults und lokales Override-Profil implementieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["PDD-001"],
+      "acceptance_criteria": [
+        "Das Deploymentprofil verwendet standardmäßig https://webrtc.ananta.de und https://keycloak.ananta.de/realms/ananta mit required OIDC.",
+        "Eigene Betreiber ersetzen App-Origin, Keycloak-Origin, Realm, Client und Audience über Environment-Variablen ohne Quellcodeänderung.",
+        "JWKS wird standardmäßig aus dem exakten öffentlichen Issuer abgeleitet; ein expliziter interner Override bleibt möglich.",
+        "Ein getrenntes lokales Profil erhält localhost, ephemeren Keycloak und Coturn für reproduzierbare Entwicklung und CI."
+      ]
+    },
+    {
+      "id": "PDD-003",
+      "title": "Dokumentation, Negativtests und öffentliche CI-Abnahme abschließen",
+      "status": "in_progress",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 90,
+      "depends_on": ["PDD-002"],
+      "acceptance_criteria": [
+        "README und Env-Beispiele zeigen den Zwei-Domain-Override sowie die erforderliche Keycloak-Client-Registrierung.",
+        "Tests belegen Defaults, vollständigen Override, Realmvalidierung und unveränderte localhost-Entwicklung.",
+        "npm run check, Compose-Konfiguration, Produktionsaudit und GitHub Actions sind erfolgreich; der Track wird danach archiviert."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["PDD-001", "PDD-002", "PDD-003"],
+  "tasks_status_summary": {
+    "total": 3,
+    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 2 },
+    "progress_percent_done": 66.67,
+    "by_priority": { "P0": 2, "P1": 1, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 0, "high": 2, "critical": 1 },
+    "critical_path": { "total": 3, "done": 2, "remaining": 1 },
+    "milestones": { "total": 2, "todo": 0, "in_progress": 1, "blocked": 0, "done": 1 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 0,
+    "in_progress": 1,
+    "partial": 0,
+    "blocked": 0,
+    "done": 2
+  },
+  "summary_notes": [
+    "Der frühere angenommene Realm /realms/webrtc antwortet öffentlich mit 404; Anantas vorhandener und per Discovery bestätigter Realm ist /realms/ananta.",
+    "Der öffentliche Realm meldet den noch nicht registrierten Client webrtc-browser aktuell als Client not found; der vorhandene ananta-tui-Client lehnt https://webrtc.ananta.de/oidc-callback als ungültige Redirect-URI ab.",
+    "Domain-Defaults registrieren oder verändern keinen externen Keycloak-Client automatisch; Redirect-URIs, Web Origins und Audience bleiben eine explizite Betreiberaufgabe.",
+    "Das öffentliche Compose-Profil lieferte required OIDC mit https://keycloak.ananta.de/realms/ananta aus; das getrennte localhost-Profil bestand PKCE, JWKS, Session-Ticket und reale Coturn-Relay-Allokation.",
+    "Secrets, DNS, TLS-Zertifikate und externe Infrastrukturzustände werden nicht in das Repository geschrieben."
+  ]
+}

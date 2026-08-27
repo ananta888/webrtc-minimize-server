@@ -56,3 +56,39 @@ test("loadConfig accepts explicit OIDC and ephemeral TURN settings", () => {
     "turn:turn.example:3478?transport=udp", "turns:turn.example:5349",
   ]);
 });
+
+test("loadConfig derives a replaceable issuer from Keycloak origin and realm", () => {
+  const config = loadConfig({
+    AUTH_MODE: "required",
+    PUBLIC_ORIGIN: "https://webrtc.ananta.de",
+    KEYCLOAK_ORIGIN: "https://keycloak.ananta.de/",
+    KEYCLOAK_REALM: "ananta",
+  });
+  assert.equal(config.publicOrigin, "https://webrtc.ananta.de");
+  assert.equal(config.oidcIssuer, "https://keycloak.ananta.de/realms/ananta");
+  assert.equal(
+    config.oidcJwksUrl,
+    "https://keycloak.ananta.de/realms/ananta/protocol/openid-connect/certs",
+  );
+  assert.equal(config.oidcClientId, "webrtc-browser");
+  assert.equal(config.oidcAudience, "webrtc-room-server");
+});
+
+test("loadConfig rejects ambiguous or unsafe Keycloak shortcuts", () => {
+  assert.throws(
+    () => loadConfig({ KEYCLOAK_ORIGIN: "https://identity.example" }),
+    /must be configured together/,
+  );
+  assert.throws(
+    () => loadConfig({ KEYCLOAK_REALM: "custom" }),
+    /must be configured together/,
+  );
+  assert.throws(
+    () => loadConfig({ KEYCLOAK_ORIGIN: "https://identity.example/auth", KEYCLOAK_REALM: "custom" }),
+    /without a path/,
+  );
+  assert.throws(
+    () => loadConfig({ KEYCLOAK_ORIGIN: "https://identity.example", KEYCLOAK_REALM: "../master" }),
+    /only letters/,
+  );
+});

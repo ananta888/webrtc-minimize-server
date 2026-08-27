@@ -19,7 +19,8 @@ for attempt in $(seq 1 45); do
   sleep 2
 done
 
-kcadm=(docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh)
+compose=(docker compose --profile local --env-file "${LIVE_COMPOSE_ENV_FILE:-.env.local.example}")
+kcadm=("${compose[@]}" exec -T keycloak /opt/keycloak/bin/kcadm.sh)
 "${kcadm[@]}" config credentials \
   --server http://localhost:8080 \
   --realm master \

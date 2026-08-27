@@ -92,6 +92,24 @@ function httpUrl(value, name) {
   return parsed.href.replace(/\/$/, "");
 }
 
+function httpOrigin(value, name) {
+  const normalized = httpUrl(value, name);
+  if (!normalized) return "";
+  const parsed = new URL(normalized);
+  if (parsed.pathname !== "/" || parsed.search || parsed.hash || parsed.username || parsed.password) {
+    throw new Error(`${name} must be an HTTP(S) origin without a path, credentials, query or fragment`);
+  }
+  return parsed.origin;
+}
+
+function keycloakRealm(value) {
+  const normalized = String(value || "").trim();
+  if (normalized && !/^[A-Za-z0-9._-]{1,128}$/.test(normalized)) {
+    throw new Error("KEYCLOAK_REALM must contain only letters, numbers, dot, underscore or hyphen");
+  }
+  return normalized;
+}
+
 export function loadConfig(env = process.env) {
   const publicOrigin = String(env.PUBLIC_ORIGIN || DEFAULTS.publicOrigin).replace(/\/$/, "");
   if (publicOrigin) {
@@ -102,7 +120,15 @@ export function loadConfig(env = process.env) {
   }
   const authMode = String(env.AUTH_MODE || DEFAULTS.authMode).toLowerCase();
   if (!AUTH_MODES.has(authMode)) throw new Error("AUTH_MODE must be disabled, optional or required");
-  const oidcIssuer = httpUrl(env.OIDC_ISSUER || DEFAULTS.oidcIssuer, "OIDC_ISSUER");
+  const configuredKeycloakOrigin = httpOrigin(env.KEYCLOAK_ORIGIN, "KEYCLOAK_ORIGIN");
+  const configuredKeycloakRealm = keycloakRealm(env.KEYCLOAK_REALM);
+  if (Boolean(configuredKeycloakOrigin) !== Boolean(configuredKeycloakRealm)) {
+    throw new Error("KEYCLOAK_ORIGIN and KEYCLOAK_REALM must be configured together");
+  }
+  const derivedIssuer = configuredKeycloakOrigin
+    ? `${configuredKeycloakOrigin}/realms/${configuredKeycloakRealm}`
+    : "";
+  const oidcIssuer = httpUrl(env.OIDC_ISSUER || derivedIssuer || DEFAULTS.oidcIssuer, "OIDC_ISSUER");
   const oidcAudience = String(env.OIDC_AUDIENCE || DEFAULTS.oidcAudience).trim();
   const oidcClientId = String(env.OIDC_CLIENT_ID || DEFAULTS.oidcClientId).trim();
   if (authMode !== "disabled" && (!oidcIssuer || !oidcAudience || !oidcClientId)) {

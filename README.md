@@ -42,15 +42,44 @@ Das Canvas allein spart keine Netzwerkbytes. Die Ersparnis entsteht aus den glei
 
 Ab sechs Teilnehmern kann die Control Plane einen zyklusfreien Video-Relay-Baum mit begrenzter Kinder- und Hopzahl ausstellen. Das geschieht nur, wenn der Betreiber den Pfad erlaubt und genügend Browser ihre separate Relay-Zustimmung erteilen. Bei fehlender Zustimmung, Capability, Membership oder nach einem Leave fällt jede Publikation epochgebunden auf das adaptive Mesh zurück. Ein Trusted Relay verarbeitet und re-encodiert empfangene Medien; es ist daher kein nicht entschlüsselnder SFrame-Relay und wird in der UI entsprechend erklärt.
 
-## Vollständiger lokaler Stack
+## Öffentliche Ananta-Voreinstellung
 
-Compose startet die Angular-/Node-Anwendung, Keycloak 26.6.1 und Coturn 4.6.3:
+Das Compose-Deployment verwendet ohne Domain-Overrides bereits diese öffentlichen Endpunkte:
+
+- Anwendung: `https://webrtc.ananta.de`
+- Identity Provider: `https://keycloak.ananta.de/realms/ananta`
+- Browser-Client: `webrtc-browser`
+- Access-Token-Audience: `webrtc-room-server`
+
+Die OIDC-Discovery des Realms ist öffentlich erreichbar. Damit der Login funktioniert, muss der öffentliche Keycloak-Client zusätzlich im Realm `ananta` registriert sein; DNS und HTTPS für `webrtc.ananta.de` müssen auf dieses Deployment zeigen. Das Repository verändert den externen Realm nicht automatisch.
+
+Die passende, geschlossene Keycloak-Clientdefinition lässt sich ohne Secret erzeugen:
 
 ```bash
-cp .env.example .env
+npm run --silent keycloak:client-config
+```
+
+Sie enthält exakt `https://webrtc.ananta.de/oidc-callback`, den Web Origin, PKCE S256 und den Audience-Mapper. Ein Realm-Administrator kann die Ausgabe über Keycloak Admin oder `kcadm.sh` importieren. Für eigene Domains werden nur die Betreiberwerte ersetzt:
+
+```dotenv
+PUBLIC_ORIGIN=https://call.example.org
+KEYCLOAK_ORIGIN=https://login.example.org
+KEYCLOAK_REALM=company
+OIDC_CLIENT_ID=webrtc-browser
+OIDC_AUDIENCE=webrtc-room-server
+```
+
+`OIDC_ISSUER` bleibt normalerweise leer und wird daraus als `KEYCLOAK_ORIGIN/realms/KEYCLOAK_REALM` abgeleitet. Ein explizites `OIDC_ISSUER` hat für abweichende Provider Vorrang. `OIDC_JWKS_URL` bleibt normalerweise ebenfalls leer und wird aus dem exakt geprüften Issuer abgeleitet.
+
+## Vollständiger lokaler Stack
+
+Das öffentliche Standardprofil startet nur die Anwendung. Das ausdrücklich gewählte Profil `local` ergänzt Keycloak 26.6.1 und Coturn 4.6.3 mit localhost-Werten:
+
+```bash
+cp .env.local.example .env
 # Vor gemeinsamem oder öffentlichem Betrieb mindestens alle Beispielpasswörter
 # und TURN_SHARED_SECRET ersetzen.
-docker compose up --build
+docker compose --profile local up --build
 ```
 
 Danach:
@@ -64,12 +93,14 @@ Im Browser `Mit Keycloak anmelden` wählen und bei Bedarf über Keycloak ein Kon
 
 ## Konfiguration
 
-Die Variablen sind in `.env.example` dokumentiert. Die Anwendung lädt `.env` nicht selbst; Variablen werden von Shell, Compose oder Secret-Management gesetzt.
+Die öffentliche Voreinstellung steht in `.env.example`, das getrennte localhost-Profil in `.env.local.example`. Die Anwendung lädt `.env` nicht selbst; Variablen werden von Shell, Compose oder Secret-Management gesetzt.
 
 - `PUBLIC_ORIGIN`: exakte öffentliche HTTPS-Origin für Invite-Links und WebSocket-Origin-Prüfung.
 - `AUTH_MODE`: `required`, `optional` oder `disabled`; Compose verwendet `required`, direkter Node-Start standardmäßig `disabled`.
-- `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_CLIENT_ID`: browserseitig sichtbare, exakt geprüfte OIDC-Autorität.
-- `OIDC_JWKS_URL`: optional getrennte interne JWKS-Adresse, etwa der Compose-Service `keycloak`.
+- `KEYCLOAK_ORIGIN`, `KEYCLOAK_REALM`: leicht austauschbare Kurzform, aus der der OIDC-Issuer gebildet wird; beide müssen gemeinsam gesetzt sein.
+- `OIDC_AUDIENCE`, `OIDC_CLIENT_ID`: browserseitig sichtbare und serverseitig exakt geprüfte Clientwerte.
+- `OIDC_ISSUER`: optionaler vollständiger Issuer-Override mit Vorrang vor der Keycloak-Kurzform.
+- `OIDC_JWKS_URL`: optional getrennte interne JWKS-Adresse, etwa der lokale Compose-Service `keycloak`; öffentlich wird sie sicher aus dem Issuer abgeleitet.
 - `SESSION_TICKET_TTL_MS`, `DEVICE_PROOF_MAX_AGE_MS`: enge Gültigkeitsfenster für Ticket und signierten Gerätenachweis.
 - `STUN_URLS`: kommaseparierte STUN-URLs.
 - `TURN_URLS`, `TURN_SHARED_SECRET`, `TURN_REALM`, `TURN_CREDENTIAL_TTL_MS`: Coturn-REST-Credentials mit HMAC und kurzer Gültigkeit.
@@ -98,7 +129,7 @@ Das Shared Secret bleibt ausschließlich auf Server und Coturn. Der Browser erh�
 
 ## Öffentliches Deployment
 
-Für ein öffentliches Deployment müssen ein HTTPS-Reverse-Proxy WebSocket-Upgrades für `/signal` durchreichen, `PUBLIC_ORIGIN` exakt gesetzt und Keycloak sowie Coturn mit produktiver Datenbank, TLS, gesicherten Adminzugängen und Secret-Management betrieben werden. `TURN_EXTERNAL_IP` muss die von Clients erreichbare Adresse enthalten; für TURN/TLS werden `turns:` und ein gültiges Zertifikat benötigt. Der lokale Compose-Stack ist keine unveränderte Produktionsvorlage.
+Für das Ananta-Preset muss ein HTTPS-Reverse-Proxy `webrtc.ananta.de` auf Port 8080 weiterleiten und WebSocket-Upgrades für `/signal` durchreichen. Für eine eigene Installation werden `PUBLIC_ORIGIN`, `KEYCLOAK_ORIGIN` und gegebenenfalls `KEYCLOAK_REALM` in `.env` ersetzt; dieselbe Origin muss in der erzeugten Keycloak-Clientdefinition registriert werden. Keycloak und Coturn benötigen produktive Datenbank, TLS, gesicherte Adminzugänge und Secret-Management. `TURN_EXTERNAL_IP` muss die von Clients erreichbare Adresse enthalten; für TURN/TLS werden `turns:` und ein gültiges Zertifikat benötigt. Der lokale Compose-Stack ist keine unveränderte Produktionsvorlage.
 
 ## API
 
@@ -123,6 +154,7 @@ Die vollständige Herkunfts- und Lückenmatrix steht in [docs/ananta-webrtc-adop
 npm run check
 npm audit --omit=dev
 docker compose config --quiet
+docker compose --profile local --env-file .env.local.example config --quiet
 docker build --tag webrtc-room-server:local .
 ```
 
