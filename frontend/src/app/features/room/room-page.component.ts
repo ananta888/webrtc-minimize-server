@@ -5,6 +5,8 @@ import { OidcAuthService } from "../../auth/oidc-auth.service";
 import { RuntimeConfigService } from "../../core/runtime-config.service";
 import { DeviceIdentityService } from "../../identity/device-identity.service";
 import { MediaStreamDirective } from "../../shared/media-stream.directive";
+import { MediaMosaicComponent } from "../../shared/media-mosaic.component";
+import { OptimizationMode } from "../../webrtc/media-optimization-policy";
 import { MediaPublicationService } from "../../webrtc/media-publication.service";
 import { PeerMeshService } from "../../webrtc/peer-mesh.service";
 import { RoomMode, RoomSessionService } from "../../webrtc/room-session.service";
@@ -13,7 +15,7 @@ import { SignalingService } from "../../webrtc/signaling.service";
 @Component({
   selector: "app-room-page",
   standalone: true,
-  imports: [FormsModule, MediaStreamDirective],
+  imports: [FormsModule, MediaStreamDirective, MediaMosaicComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: "./room-page.component.html",
 })
@@ -110,6 +112,18 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   sendChat(): void {
     this.mesh.sendChat(this.chatInput());
     this.chatInput.set("");
+  }
+
+  setOptimizationMode(mode: OptimizationMode): void {
+    this.mesh.setOptimizationMode(mode);
+  }
+
+  setRelayConsent(enabled: boolean): void {
+    try {
+      this.mesh.setRelayConsent(enabled);
+    } catch (error) {
+      this.pageError.set(error instanceof Error ? error.message : "relay_consent_failed");
+    }
   }
 
   mediaLabel(source: string): string {

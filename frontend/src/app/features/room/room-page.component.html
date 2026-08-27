@@ -8,6 +8,7 @@
     <div class="status-stack">
       <div class="status-pill"><span class="dot" [class.connected]="session.joined()" [class.connecting]="signaling.status() === 'connecting'" [class.error]="signaling.status() === 'error'"></span><span id="connection-status">{{ connectionLabel() }}</span></div>
       <div class="status-pill"><span class="status-key">ICE</span><span id="ice-status">{{ mesh.iceState() }}</span></div>
+      <div class="status-pill"><span class="status-key">Topologie</span><span id="topology-status">{{ mesh.topologyMode() }} · E{{ mesh.topologyEpoch() }}</span></div>
     </div>
   </header>
 
@@ -76,13 +77,25 @@
             @else { <audio autoplay muted controls [appMediaStream]="item.stream"></audio> }
           </article>
         }
-        @for (item of mesh.remoteMedia(); track item.key) {
+        @for (item of mesh.focusRemoteMedia(); track item.key) {
           <article class="media-card remote-media">
             <span class="media-label">{{ item.peerName }} · {{ mediaLabel(item.source) }}</span>
             @if (item.kind === 'video') { <video autoplay playsinline [appMediaStream]="item.stream"></video> }
             @else { <audio autoplay controls [appMediaStream]="item.stream"></audio> }
           </article>
         }
+        @if (mesh.mosaicRemoteMedia().length > 0) {
+          <article id="inactive-mosaic" class="media-card mosaic-media">
+            <span class="media-label">Inaktive Kameras · {{ mesh.mosaicRemoteMedia().length }} Vorschauen</span>
+            <app-media-mosaic [items]="mesh.mosaicRemoteMedia()" />
+          </article>
+        }
+        <div class="remote-audio" aria-label="Aktive Remote-Audiospuren">
+          @for (item of mesh.remoteAudio(); track item.key) {
+            <span class="media-label audio-label">{{ item.peerName }} · {{ mediaLabel(item.source) }}</span>
+            <audio autoplay [appMediaStream]="item.stream" [attr.aria-label]="item.peerName + ' · ' + mediaLabel(item.source)"></audio>
+          }
+        </div>
         @if (media.publications().length === 0 && mesh.remoteMedia().length === 0) {
           <div id="empty-media" class="empty-state">Noch keine Medien aktiv. Login, Join und eingehende Signale starten niemals eine Aufnahme.</div>
         }
@@ -97,6 +110,30 @@
         <button id="toggle-camera" type="button" [disabled]="!session.joined() || !!media.pending()" (click)="media.toggle('camera')">● Kamera {{ media.active('camera') ? 'stoppen' : 'freigeben' }}</button>
         <button id="toggle-screen" type="button" [disabled]="!session.joined() || !!media.pending()" (click)="media.toggle('screen')">▣ {{ media.active('screen') ? 'Bildschirmfreigabe stoppen' : 'Bildschirm freigeben' }}</button>
         <div id="media-error" class="error" role="alert">{{ media.error() }}</div>
+      </section>
+
+      <section class="panel optimization" aria-labelledby="optimization-heading">
+        <div class="section-heading"><div><p class="eyebrow">Adaptive Mesh</p><h2 id="optimization-heading">Bandbreite &amp; Fokus</h2></div></div>
+        <label>Qualitätsprofil
+          <select id="optimization-mode" [ngModel]="mesh.optimizationMode()" (ngModelChange)="setOptimizationMode($event)">
+            <option value="auto">Auto · Active Speaker</option>
+            <option value="balanced">Ausgewogen</option>
+            <option value="data-saver">Datensparend</option>
+          </select>
+        </label>
+        <dl class="optimization-facts">
+          <div><dt>Eigene Videoqualität</dt><dd id="local-quality">{{ mesh.localQuality() }}</dd></div>
+          <div><dt>Linkklasse</dt><dd id="link-quality">{{ mesh.linkSummary() }}</dd></div>
+          <div><dt>Sendersteuerung</dt><dd>{{ mesh.qualityCapability() }}</dd></div>
+        </dl>
+        <p id="active-speakers" class="hint">Fokus: {{ mesh.activeSpeakerNames().length ? mesh.activeSpeakerNames().join(', ') : 'stabile Teilnehmerreihenfolge' }}. Audio und Control bleiben vor Video priorisiert.</p>
+        @if (config.value()?.optimization?.peerRelayEnabled) {
+          <label class="relay-consent">
+            <input id="relay-consent" type="checkbox" [disabled]="!session.joined()" [ngModel]="mesh.relayConsent()" (ngModelChange)="setRelayConsent($event)">
+            Diesem Browser erlauben, Video für andere Raumteilnehmer weiterzuleiten
+          </label>
+          <p class="relay-warning">Trusted Relay kann Medien hopweise verarbeiten und neu encodieren. Es bietet keine SFrame-Privatsphäre gegenüber diesem Relay-Gerät und kann CPU, Akku sowie Upload beanspruchen.</p>
+        }
       </section>
 
       <section class="panel chat" aria-labelledby="chat-heading">
@@ -116,7 +153,7 @@
 
   <section class="panel facts">
     <h2>Sicherheitsstatus</h2>
-    <p>Keycloak-Tokens werden vor dem Join serverseitig über JWKS geprüft. Das WebSocket erhält nur ein kurzlebiges, einmal verwendbares Ticket. WebRTC verschlüsselt Medien mit DTLS-SRTP und DataChannels mit DTLS/SCTP; eine zusätzliche Insertable-Streams-/SFrame-Schicht ist nicht aktiviert.</p>
+    <p>Keycloak-Tokens werden vor dem Join serverseitig über JWKS geprüft. Das WebSocket erhält nur ein kurzlebiges, einmal verwendbares Ticket. WebRTC verschlüsselt jeden direkten oder Relay-Hop mit DTLS-SRTP und DataChannels mit DTLS/SCTP; eine zusätzliche Insertable-Streams-/SFrame-Schicht ist nicht aktiviert.</p>
     <dl class="facts-grid">
       <div><dt>Auth</dt><dd>{{ config.value()?.auth?.mode }}</dd></div>
       <div><dt>TURN</dt><dd>{{ config.value()?.turnConfigured ? 'kurzlebige Credentials' : 'nicht konfiguriert' }}</dd></div>

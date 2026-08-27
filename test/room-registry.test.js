@@ -30,6 +30,18 @@ test("RoomRegistry rate window is bounded per peer", () => {
   assert.equal(registry.allowMessage(peer, 1100, { limit: 2, windowMs: 100 }), true);
 });
 
+test("RoomRegistry binds relay consent to current room membership", () => {
+  const registry = new RoomRegistry();
+  const peer = registry.join("room-alpha", {}, "Ada").peer;
+  assert.equal(peer.relayConsent, false);
+  assert.equal(registry.setRelayConsent(peer, true), true);
+  assert.deepEqual(registry.members("room-alpha"), [peer]);
+  registry.leave(peer);
+  assert.throws(() => registry.setRelayConsent(peer, false), (error) => (
+    error instanceof RoomAdmissionError && error.code === "peer_not_joined"
+  ));
+});
+
 test("RoomRegistry admits 20 peers per room and keeps rooms isolated", () => {
   const registry = new RoomRegistry();
   const firstRoomPeers = Array.from(

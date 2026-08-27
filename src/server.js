@@ -7,6 +7,7 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import { loadConfig } from "./config.js";
 import { DeviceProofError, DeviceProofVerifier } from "./device-proof.js";
+import { buildRoomTopology } from "./media-topology.js";
 import { AuthenticationError, bearerToken, createOidcVerifier } from "./oidc-verifier.js";
 import {
   encodeServerMessage,
@@ -97,6 +98,13 @@ function publicRuntimeConfig(config) {
     },
     pairParticipants: 2,
     turnConfigured: config.turnUrls.length > 0,
+    optimization: {
+      activeSpeakerLimit: config.activeSpeakerLimit,
+      peerRelayEnabled: config.peerMediaRelayEnabled,
+      peerRelayMinParticipants: config.peerMediaRelayMinParticipants,
+      peerRelayMaxChildren: config.peerMediaRelayMaxChildren,
+      peerRelayMaxHops: config.peerMediaRelayMaxHops,
+    },
   };
 }
 
@@ -302,6 +310,24 @@ function rejectUpgrade(socket, statusCode, message) {
 
 function configureSignaling(server, config, registry, ticketStore) {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
+  const topologyEpochs = new Map();
+
+  const broadcastTopology = (roomId) => {
+    const members = registry.members(roomId);
+    if (members.length === 0) {
+      topologyEpochs.delete(roomId);
+      return;
+    }
+    const epoch = (topologyEpochs.get(roomId) || 0) + 1;
+    topologyEpochs.set(roomId, epoch);
+    const topology = buildRoomTopology(members, epoch, {
+      enabled: config.peerMediaRelayEnabled,
+      minimumParticipants: config.peerMediaRelayMinParticipants,
+      maxChildren: config.peerMediaRelayMaxChildren,
+      maxHops: config.peerMediaRelayMaxHops,
+    });
+    for (const member of members) safeSend(member.socket, topology);
+  };
 
   server.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url, "http://localhost");
@@ -357,6 +383,7 @@ function configureSignaling(server, config, registry, ticketStore) {
     for (const recipient of registry.recipients(peer)) {
       safeSend(recipient.socket, { type: "peer-joined", peer: { id: peer.id, name: peer.name } });
     }
+    broadcastTopology(peer.roomId);
 
     socket.on("pong", () => { socket.isAlive = true; });
     socket.on("message", (raw, isBinary) => {
@@ -377,6 +404,11 @@ function configureSignaling(server, config, registry, ticketStore) {
           });
           return;
         }
+        if (message.type === "relay-consent") {
+          registry.setRelayConsent(peer, message.enabled);
+          broadcastTopology(peer.roomId);
+          return;
+        }
         for (const recipient of registry.recipients(peer)) {
           safeSend(recipient.socket, { ...message, from: peer.id, fromName: peer.name });
         }
@@ -395,6 +427,7 @@ function configureSignaling(server, config, registry, ticketStore) {
       for (const recipient of registry.leave(peer)) {
         safeSend(recipient.socket, { type: "peer-left", peerId: peer.id });
       }
+      broadcastTopology(peer.roomId);
     };
     socket.on("close", leave);
     socket.on("error", leave);

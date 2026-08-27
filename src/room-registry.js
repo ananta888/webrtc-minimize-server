@@ -69,6 +69,7 @@ export class RoomRegistry {
       mode,
       principal: admission.principal || "anonymous",
       deviceFingerprint: admission.deviceFingerprint || "",
+      relayConsent: false,
     };
     room.peers.set(peerId, peer);
     room.updatedAt = now;
@@ -93,6 +94,19 @@ export class RoomRegistry {
     const room = this.#rooms.get(peer.roomId);
     if (!room || room.peers.get(peer.id) !== peer || recipientId === peer.id) return null;
     return room.peers.get(recipientId) || null;
+  }
+
+  members(roomId) {
+    const room = this.#rooms.get(roomId);
+    return room ? [...room.peers.values()] : [];
+  }
+
+  setRelayConsent(peer, enabled, now = Date.now()) {
+    const room = this.#rooms.get(peer.roomId);
+    if (!room || room.peers.get(peer.id) !== peer) throw new RoomAdmissionError("peer_not_joined");
+    peer.relayConsent = enabled === true;
+    room.updatedAt = now;
+    return peer.relayConsent;
   }
 
   allowMessage(peer, now = Date.now(), { limit, windowMs = 10_000 }) {

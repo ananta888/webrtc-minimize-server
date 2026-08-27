@@ -94,7 +94,7 @@ export class RoomSessionService {
   private handleMessage(message: ServerMessage, iceServers: readonly RTCIceServer[]): void {
     if (message.type === "welcome") {
       const ownId = String(message["peerId"] || "");
-      this.mesh.initialize(ownId, this.displayName(), iceServers);
+      this.mesh.initialize(ownId, this.displayName(), iceServers, this.config.value()?.optimization);
       const peers = Array.isArray(message["peers"]) ? message["peers"] as Array<{ id: string; name: string }> : [];
       for (const peer of peers) this.mesh.addPeer(peer.id, peer.name);
       this.joined.set(true);
@@ -117,6 +117,10 @@ export class RoomSessionService {
     }
     if (message.type === "media-state") {
       this.mesh.updateRemoteSource(message);
+      return;
+    }
+    if (message.type === "topology-state") {
+      this.mesh.applyTopology(message);
       return;
     }
     if (message.type === "error") {

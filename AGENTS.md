@@ -18,6 +18,7 @@ Der Node-Server ist allein verantwortlich für:
 - Room-Membership innerhalb der laufenden Instanz,
 - Zuweisung kurzlebiger Peer-IDs,
 - Prüfung und begrenzte Weiterleitung von SDP-/ICE-Signalen,
+- Ausgabe absoluter, epochgebundener und zyklusfreier Trusted-Relay-Topologien aus aktueller Membership und Consent,
 - kryptografische OIDC-Tokenprüfung und Ausgabe kurzlebiger Einmal-Tickets,
 - Prüfung frischer, raumgebundener P-256-Gerätenachweise,
 - Ausgabe kurzlebiger Coturn-REST-Credentials nach Session-Autorisierung,
@@ -33,9 +34,11 @@ Browser sind verantwortlich für:
 - eine isolierte `RTCPeerConnection` pro Gegenüber,
 - DTLS-SRTP-Medientransport und SCTP-DataChannels,
 - lokale Darstellung und Freigabestopps,
-- Perfect Negotiation ohne globale Peer-Orchestrierungsloops.
+- Perfect Negotiation ohne globale Peer-Orchestrierungsloops,
 - OIDC Authorization Code Flow mit PKCE und sitzungsgebundene Tokens,
-- eine nicht exportierbare P-256-Geräteidentität im Browserprofil.
+- eine nicht exportierbare P-256-Geräteidentität im Browserprofil,
+- lokale VAD-/Active-Speaker-Auswahl, per Peer begrenzte Senderqualität und ein lokales Inaktiv-Mosaik,
+- Ausführung ausschließlich serverautorisierter Trusted-Relay-Kanten nach separatem Nutzerconsent.
 
 Peers dürfen aus Signalen keine Room-Membership oder zusätzliche Autorität ableiten. Die Control Plane bleibt Eigentümerin der Membership.
 
@@ -44,12 +47,12 @@ Peers dürfen aus Signalen keine Room-Membership oder zusätzliche Autorität ab
 - Ein Raum hat eine harte Membership-Grenze von 20 Teilnehmern.
 - Eine Pair-Session hat eine harte Grenze von zwei unterschiedlichen Gerätefingerprints und kann nicht in einen normalen Raum umgedeutet werden.
 - Die Anzahl gleichzeitig aktiver Räume besitzt keine anwendungsseitige Obergrenze. Praktische Ressourcenbudgets dürfen beobachtet und geschützt werden, aber keine feste globale Room-Anzahl in die Domain einführen.
-- Das Full-Mesh erzeugt bei 20 Teilnehmern bis zu 19 PeerConnections und Medienkopien je Sender. Die Raumgrenze ist daher keine QoS-Garantie; produktive große Videoräume benötigen den geplanten SFU-Pfad.
+- Das Control-/Audio-Mesh erzeugt bei 20 Teilnehmern bis zu 19 PeerConnections. Video wird Active-Speaker-, Stats- und profilabhängig gedrosselt; ein consentierter Trusted-Relay-Baum kann direkten Publisher-Fanout reduzieren, ist aber keine QoS-Garantie.
 - Räume und Peer-IDs sind flüchtig und werden nicht persistiert.
 - Der Raumcode ist ein Bearer-Invite, keine Identität. Identität stammt ausschließlich aus verifizierten OIDC-Claims; das Gerät stammt ausschließlich aus einem serverseitig geprüften P-256-Nachweis.
 - WebRTC bietet Transportverschlüsselung; anwendungsseitige SFrame-/Insertable-Streams-E2EE ist noch nicht implementiert.
 - STUN/TURN sind konfigurierbare Infrastrukturhilfen, keine Policy-Autorität. TURN-Credentials werden kurzlebig und erst nach Session-Autorisierung erzeugt.
-- SFU, Peer-DAG, langlebige Workspaces, Frame-E2EE und Artefakttransfer sind Backlog-Fähigkeiten und dürfen nicht als vorhandene Funktionen dargestellt werden.
+- Ein decode/re-encode-fähiger Trusted-Video-Relay-Baum ist vorhanden. Ein nicht entschlüsselnder SFrame-/Ciphertext-Peer-DAG, SFU, langlebige Workspaces, Frame-E2EE und Artefakttransfer bleiben Backlog-Fähigkeiten und dürfen nicht als vorhanden dargestellt werden.
 
 ## Todo-gesteuerte Entwicklung
 
@@ -90,6 +93,7 @@ Ein Track kommt nur ins Archiv, wenn alle Tasks und Milestones `done` sind und d
 - Gerätebeweise an die normalisierten Join-Felder binden, zeitlich begrenzen und gegen Replay schützen. Private Geräteschlüssel dürfen nicht exportierbar oder serverseitig gespeichert sein.
 - `AUTH_MODE=disabled`, Keycloak `start-dev`, lokale Beispielpasswörter und unverschlüsseltes TURN sind ausschließlich Entwicklungsprofile und dürfen nicht als produktionssicher dokumentiert werden.
 - Kein E2EE-, Anonymitäts- oder Identitätsversprechen machen, das der implementierte Pfad nicht beweist.
+- Trusted Peer Relay bleibt operatorseitig begrenzt, nutzerseitig default-aus und widerrufbar; die UI muss die Medienverarbeitung, Upload-, CPU- und Batteriefolgen erklären.
 - Öffentliches Deployment ausschließlich über HTTPS/WSS. Secure Context ist für Medienzugriff erforderlich.
 
 ## Engineering-Regeln
@@ -125,6 +129,7 @@ Je nach Änderung zusätzlich:
 - zwei echte Browseridentitäten für Medien/DataChannel,
 - zwei getrennte Browserkontexte für Pair-Gerätebindung,
 - Chromium/Firefox-Matrix bei Capture-/Negotiation-Änderungen,
+- reale Multi-Peer-Evidence für Relay-Fanout, Mosaik, Active Speaker, Senderparameter und epochgebundenen Mesh-Fallback,
 - NAT-/TURN-Test bei ICE-Konfigurationsänderungen,
 - realer PKCE-/JWKS-/TURN-Live-Gate bei Identity- oder Coturn-Änderungen; fehlende Infrastruktur muss als sichtbarer Skip erscheinen,
 - Negativtests für unbekannte Messages, falsche Rooms, Oversize, Rate-Limit und Disconnect,

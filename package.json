@@ -4,7 +4,7 @@
   "private": true,
   "license": "BSD-3-Clause",
   "type": "module",
-  "description": "Keycloak-enabled Angular WebRTC rooms and Pair Dev with ephemeral Coturn access.",
+  "description": "Adaptive Angular WebRTC rooms with Keycloak, Active Speaker, trusted peer relay and Coturn.",
   "scripts": {
     "start": "node src/server.js",
     "dev": "ng build --watch --configuration development",

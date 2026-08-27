@@ -14,25 +14,25 @@
       "id": "AMB-M01",
       "title": "Audit, Grenzen und ausführbarer Vertrag",
       "task_ids": ["AMB-001", "AMB-002", "AMB-003"],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "AMB-M02",
       "title": "Control-Plane-Topologie und adaptive Medienpolicy",
       "task_ids": ["AMB-004", "AMB-005", "AMB-006", "AMB-007"],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "AMB-M03",
       "title": "Last-N, Mosaik, Relay und Nutzerkontrolle",
       "task_ids": ["AMB-008", "AMB-009", "AMB-010", "AMB-011", "AMB-012"],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "AMB-M04",
       "title": "Browser-, Bandbreiten- und Release-Gates",
       "task_ids": ["AMB-013", "AMB-014"],
-      "status": "todo"
+      "status": "in_progress"
     }
   ],
   "tasks": [
@@ -54,10 +54,10 @@
     {
       "id": "AMB-002",
       "title": "Ausführlichen Implementierungstrack validieren, committen und pushen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "medium",
-      "progress_percent": 80,
+      "progress_percent": 100,
       "depends_on": ["AMB-001"],
       "acceptance_criteria": [
         "Alle Aufgaben besitzen Risiko, Priorität, Abhängigkeiten und reproduzierbare Akzeptanzkriterien.",
@@ -68,10 +68,10 @@
     {
       "id": "AMB-003",
       "title": "Versionierte Optimierungs-, Qualitäts- und Topologieverträge definieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["AMB-002"],
       "acceptance_criteria": [
         "Geschlossene Verträge definieren Audio-, Control-, Screen-, Focus-, Thumbnail- und Paused-Klassen sowie harte Payload- und Queuegrenzen.",
@@ -83,10 +83,10 @@
     {
       "id": "AMB-004",
       "title": "Control-Plane-eigene, deterministische Relay-Topologie mit Epochen implementieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["AMB-003"],
       "acceptance_criteria": [
         "Nur der Server erzeugt aus aktueller Membership, Betreiberpolicy und peergebundenem Relay-Consent zyklusfreie publikationsbezogene Bäume.",
@@ -98,10 +98,10 @@
     {
       "id": "AMB-005",
       "title": "Getrennte DataChannel-Traffic-Klassen für Chat, Control, Aktivität und Quality Feedback bauen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["AMB-003"],
       "acceptance_criteria": [
         "Chat und Control besitzen getrennte DataChannels, Größenlimits, BufferedAmount-Grenzen und Drop-Policy.",
@@ -113,10 +113,10 @@
     {
       "id": "AMB-006",
       "title": "Lokale Sprachaktivität und stabile Top-2-bis-5-Active-Speaker-Auswahl implementieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["AMB-005"],
       "acceptance_criteria": [
         "Audioanalyse startet ausschließlich für bereits durch Benutzeraktion freigegebene lokale oder autorisiert empfangene Audiotracks.",
@@ -128,10 +128,10 @@
     {
       "id": "AMB-007",
       "title": "Per-Peer-Senderqualität aus Active-Speaker-Rang, Screenshare und WebRTC-Stats steuern",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["AMB-004", "AMB-006"],
       "acceptance_criteria": [
         "RTCRtpSender-Parameter werden pro Peer und Publikation begrenzt, idempotent und ohne erneuten Capture-Aufruf angewandt.",
@@ -143,10 +143,10 @@
     {
       "id": "AMB-008",
       "title": "Last-N-Fokusansicht und einzelnes lokales Canvas-Mosaik für inaktive Videos umsetzen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["AMB-006", "AMB-007"],
       "acceptance_criteria": [
         "Screenshare und höchstens fünf Fokusvideos werden als eigenständige Live-Karten dargestellt.",
@@ -158,10 +158,10 @@
     {
       "id": "AMB-009",
       "title": "Audio-Garantie, Screenshare-Vorrang und abgestufte Degradation integrieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["AMB-007"],
       "acceptance_criteria": [
         "Mikrofon erhält ein begrenztes Opus-Budget und wird nicht durch Kamera- oder Bildschirmqualität deaktiviert.",
@@ -173,10 +173,10 @@
     {
       "id": "AMB-010",
       "title": "Zustimmungspflichtigen vertrauenswürdigen Peer-Relay-Fanout für Video implementieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["AMB-004", "AMB-007", "AMB-009"],
       "acceptance_criteria": [
         "Relay ist operatorseitig erlaubt, nutzerseitig default-aus und nur für aktuelle serverautorisierte Routen aktivierbar.",
@@ -188,10 +188,10 @@
     {
       "id": "AMB-011",
       "title": "Stats-Sampler, Hysterese, Churn-Recovery und inhaltsfreie Telemetrie härten",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["AMB-007", "AMB-010"],
       "acceptance_criteria": [
         "Sampling besitzt feste Intervalle, Timeouts, bounded Historie und stoppt bei Leave, Logout, Peer-Remove und Destroy.",
@@ -203,10 +203,10 @@
     {
       "id": "AMB-012",
       "title": "Optimierungs-, Daten­spar-, Relay-Consent- und Accessibility-Oberfläche bauen",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["AMB-008", "AMB-010", "AMB-011"],
       "acceptance_criteria": [
         "Nutzer können Auto, Ausgewogen und Datensparend wählen, ohne Capture oder neue Autorität auszulösen.",
@@ -218,10 +218,10 @@
     {
       "id": "AMB-013",
       "title": "Contract-, Angular-, Multi-Browser-, Churn- und Bandbreitengates ausbauen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["AMB-005", "AMB-006", "AMB-007", "AMB-008", "AMB-009", "AMB-010", "AMB-011", "AMB-012"],
       "acceptance_criteria": [
         "Unit-Tests prüfen Profile, Active-Speaker-Hysterese, Topologie-Zyklusfreiheit, Consent, Epoch-Reorder, Queuecaps und Degradation deterministisch.",
@@ -234,10 +234,10 @@
     {
       "id": "AMB-014",
       "title": "Dokumentation, Herkunft, Backlog, CI und öffentlichen Release abschließen",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 90,
       "depends_on": ["AMB-013"],
       "acceptance_criteria": [
         "README, AGENTS und Herkunftsmatrix erklären Last-N, Mosaik, Qualitätsprofile, Trusted Relay, Fallbacks und verbleibende SFrame-/SFU-Grenzen korrekt.",
@@ -250,20 +250,20 @@
   "critical_path_tasks": ["AMB-001", "AMB-002", "AMB-003", "AMB-004", "AMB-005", "AMB-006", "AMB-007", "AMB-008", "AMB-009", "AMB-010", "AMB-011", "AMB-012", "AMB-013", "AMB-014"],
   "tasks_status_summary": {
     "total": 14,
-    "by_status": { "todo": 12, "in_progress": 1, "partial": 0, "blocked": 0, "done": 1 },
-    "progress_percent_done": 7.14,
+    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 13 },
+    "progress_percent_done": 92.86,
     "by_priority": { "P0": 12, "P1": 2, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 1, "high": 8, "critical": 5 },
-    "critical_path": { "total": 14, "done": 1, "remaining": 13 },
-    "milestones": { "total": 4, "todo": 3, "in_progress": 1, "blocked": 0, "done": 0 }
+    "critical_path": { "total": 14, "done": 13, "remaining": 1 },
+    "milestones": { "total": 4, "todo": 0, "in_progress": 1, "blocked": 0, "done": 3 }
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 12,
+    "todo_remaining": 0,
     "in_progress": 1,
     "partial": 0,
     "blocked": 0,
-    "done": 1
+    "done": 13
   },
   "summary_notes": [
     "Normale Räume bleiben auf 20 Teilnehmer begrenzt, Pair-Sessions auf zwei Geräte; die Anzahl der Räume erhält keine globale Anwendungsgrenze.",

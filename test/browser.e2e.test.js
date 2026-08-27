@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chromium } from "playwright";
+import { chromium, firefox } from "playwright";
 
 import { createAppServer } from "../src/server.js";
 
@@ -175,4 +175,221 @@ test("two independent Chromium devices join Pair Dev while device three is rejec
 
   await peer.locator("#leave-room").click();
   await owner.locator("#participant-count", { hasText: "1 / 2" }).waitFor();
+});
+
+test("six Chromium peers use consented video relay, adaptive sender tiers and one inactive mosaic", { timeout: 60_000 }, async (context) => {
+  try {
+    await fs.access(chromium.executablePath());
+  } catch {
+    context.skip("Playwright Chromium is not installed; run: npx playwright install chromium");
+    return;
+  }
+  const app = createAppServer({
+    config: {
+      host: "127.0.0.1",
+      port: 0,
+      publicOrigin: "",
+      stunUrls: [],
+      turnServers: [],
+      maxRoomParticipants: 20,
+      roomIdleTtlMs: 60_000,
+      signalRateLimit: 240,
+      activeSpeakerLimit: 2,
+      peerMediaRelayEnabled: true,
+      peerMediaRelayMinParticipants: 6,
+      peerMediaRelayMaxChildren: 3,
+      peerMediaRelayMaxHops: 3,
+    },
+  });
+  await new Promise((resolve, reject) => {
+    app.server.once("error", reject);
+    app.server.listen(0, "127.0.0.1", resolve);
+  });
+  const origin = `http://127.0.0.1:${app.server.address().port}`;
+  const browser = await chromium.launch({
+    headless: true,
+    args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
+  });
+  const browserContext = await browser.newContext({ permissions: ["camera", "microphone"] });
+  await browserContext.addInitScript(() => {
+    window.__captureCalls = [];
+    window.__localTrackIds = [];
+    window.__addTrackEvents = [];
+    window.__senderParameterEvents = [];
+    const devices = navigator.mediaDevices;
+    for (const method of ["getUserMedia", "getDisplayMedia"]) {
+      const original = devices[method]?.bind(devices);
+      if (!original) continue;
+      devices[method] = async (...args) => {
+        window.__captureCalls.push(method);
+        const stream = await original(...args);
+        for (const track of stream.getTracks()) window.__localTrackIds.push(track.id);
+        return stream;
+      };
+    }
+    const NativePeerConnection = window.RTCPeerConnection;
+    window.RTCPeerConnection = class ObservedPeerConnection extends NativePeerConnection {
+      addTrack(track, ...streams) {
+        window.__addTrackEvents.push({ trackId: track.id, kind: track.kind });
+        return super.addTrack(track, ...streams);
+      }
+    };
+    const originalSetParameters = RTCRtpSender.prototype.setParameters;
+    RTCRtpSender.prototype.setParameters = function observedSetParameters(parameters) {
+      window.__senderParameterEvents.push({
+        trackId: this.track?.id || "",
+        encodings: parameters.encodings.map((encoding) => ({
+          active: encoding.active,
+          maxBitrate: encoding.maxBitrate,
+          maxFramerate: encoding.maxFramerate,
+          scaleResolutionDownBy: encoding.scaleResolutionDownBy,
+        })),
+      });
+      return originalSetParameters.call(this, parameters);
+    };
+  });
+  context.after(async () => {
+    await browserContext.close();
+    await browser.close();
+    for (const socket of app.webSocketServer.clients) socket.terminate();
+    await new Promise((resolve) => app.server.close(resolve));
+  });
+
+  const names = ["Ada", "Grace", "Linus", "Margaret", "Alan", "Katherine"];
+  const pages = await Promise.all(names.map(() => browserContext.newPage()));
+  const pageErrors = [];
+  for (const page of pages) page.on("pageerror", (error) => pageErrors.push(error.message));
+  await pages[0].goto(origin);
+  await pages[0].locator("#display-name").fill(names[0]);
+  await pages[0].locator("#create-room").click();
+  await pages[0].waitForFunction(() => document.querySelector("#room-id").value.startsWith("room-"));
+  const roomId = await pages[0].locator("#room-id").inputValue();
+  await pages[0].locator("#join-room").click();
+  for (let index = 1; index < pages.length; index += 1) {
+    await pages[index].goto(`${origin}/?room=${roomId}`);
+    await pages[index].locator("#display-name").fill(names[index]);
+    await pages[index].locator("#join-room").click();
+  }
+  await Promise.all(pages.map((page) => page.locator("#participant-count", { hasText: "6 / 20" }).waitFor()));
+  for (const page of pages) assert.deepEqual(await page.evaluate(() => window.__captureCalls), []);
+  await pages[0].locator("#relay-consent").check();
+  await pages[1].locator("#relay-consent").check();
+  await Promise.all(pages.map((page) => page.locator("#topology-status", { hasText: "trusted_peer_relay" }).waitFor()));
+  for (const page of pages) assert.deepEqual(await page.evaluate(() => window.__captureCalls), []);
+
+  for (const page of pages) {
+    await page.locator("#toggle-camera").click();
+    await page.locator("#toggle-camera", { hasText: "Kamera stoppen" }).waitFor();
+  }
+  await pages[0].waitForTimeout(3_000);
+  for (let index = 0; index < pages.length; index += 1) {
+    const focused = await pages[index].locator(".remote-media").count();
+    const mosaic = pages[index].locator("#inactive-mosaic .media-label");
+    const mosaicLabel = await mosaic.count() ? await mosaic.textContent() : "";
+    const mosaicked = Number(/(\d+) Vorschauen/.exec(mosaicLabel || "")?.[1] || 0);
+    assert.equal(focused + mosaicked, 5, `page ${names[index]} received ${focused + mosaicked} remote cameras`);
+  }
+  await pages[0].locator("#inactive-mosaic").waitFor();
+  assert.equal(await pages[0].locator("#inactive-mosaic canvas").count(), 1);
+
+  await pages[2].locator("#toggle-microphone").click();
+  await pages[2].locator("#toggle-microphone", { hasText: "Mikrofon stoppen" }).waitFor();
+  await pages[0].locator("#active-speakers", { hasText: "Linus" }).waitFor();
+
+  const publisherFanout = await pages[0].evaluate(() => {
+    const local = new Set(window.__localTrackIds);
+    return window.__addTrackEvents.filter((event) => event.kind === "video" && local.has(event.trackId)).length;
+  });
+  assert.ok(publisherFanout >= 1 && publisherFanout <= 3, `publisher fanout was ${publisherFanout}, expected 1..3`);
+  const forwardedByConsentingPeer = await pages[1].evaluate(() => {
+    const local = new Set(window.__localTrackIds);
+    return window.__addTrackEvents.some((event) => event.kind === "video" && !local.has(event.trackId));
+  });
+  assert.equal(forwardedByConsentingPeer, true);
+
+  await pages[0].locator("#optimization-mode").selectOption("data-saver");
+  await pages[0].waitForFunction(() => {
+    const local = new Set(window.__localTrackIds);
+    return window.__senderParameterEvents.some((event) => local.has(event.trackId)
+      && event.encodings.some((encoding) => encoding.maxBitrate && encoding.maxBitrate <= 420_000));
+  });
+  assert.equal(await pages[0].evaluate(() => window.__captureCalls.length), 1);
+
+  await pages[5].locator("#leave-room").click();
+  await pages[0].locator("#participant-count", { hasText: "5 / 20" }).waitFor();
+  await pages[0].locator("#topology-status", { hasText: "adaptive_mesh" }).waitFor();
+  assert.deepEqual(pageErrors, []);
+});
+
+test("two Firefox peers retain direct adaptive mesh, chat and camera fallback", { timeout: 30_000 }, async (context) => {
+  try {
+    await fs.access(firefox.executablePath());
+  } catch {
+    context.skip("Playwright Firefox is not installed; run: npx playwright install firefox");
+    return;
+  }
+  const app = createAppServer({
+    config: {
+      host: "127.0.0.1",
+      port: 0,
+      publicOrigin: "",
+      stunUrls: [],
+      turnServers: [],
+      maxRoomParticipants: 20,
+      roomIdleTtlMs: 60_000,
+      signalRateLimit: 120,
+    },
+  });
+  await new Promise((resolve, reject) => {
+    app.server.once("error", reject);
+    app.server.listen(0, "127.0.0.1", resolve);
+  });
+  const origin = `http://127.0.0.1:${app.server.address().port}`;
+  const browser = await firefox.launch({
+    headless: true,
+    firefoxUserPrefs: {
+      "media.navigator.streams.fake": true,
+      "media.navigator.permission.disabled": true,
+    },
+  });
+  const browserContext = await browser.newContext();
+  await browserContext.addInitScript(() => {
+    window.__captureCalls = [];
+    const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = (...args) => {
+      window.__captureCalls.push("getUserMedia");
+      return original(...args);
+    };
+  });
+  context.after(async () => {
+    await browserContext.close();
+    await browser.close();
+    for (const socket of app.webSocketServer.clients) socket.terminate();
+    await new Promise((resolve) => app.server.close(resolve));
+  });
+  const ada = await browserContext.newPage();
+  const grace = await browserContext.newPage();
+  const pageErrors = [];
+  for (const page of [ada, grace]) page.on("pageerror", (error) => pageErrors.push(error.message));
+  await ada.goto(origin);
+  await ada.locator("#display-name").fill("Ada");
+  await ada.locator("#create-room").click();
+  await ada.waitForFunction(() => document.querySelector("#room-id").value.startsWith("room-"));
+  const roomId = await ada.locator("#room-id").inputValue();
+  await ada.locator("#join-room").click();
+  await grace.goto(`${origin}/?room=${roomId}`);
+  await grace.locator("#display-name").fill("Grace");
+  await grace.locator("#join-room").click();
+  await Promise.all([ada, grace].map((page) => page.locator("#participant-count", { hasText: "2 / 20" }).waitFor()));
+  assert.deepEqual(await ada.evaluate(() => window.__captureCalls), []);
+  assert.deepEqual(await grace.evaluate(() => window.__captureCalls), []);
+  await ada.locator("#chat-message").fill("Firefox DataChannel");
+  await ada.locator("#chat-form button").click();
+  await grace.locator("#chat-log").getByText("Firefox DataChannel").waitFor();
+  await ada.locator("#optimization-mode").selectOption("data-saver");
+  await ada.locator("#toggle-camera").click();
+  await ada.locator("#toggle-camera", { hasText: "Kamera stoppen" }).waitFor();
+  await grace.locator(".media-label").getByText("Ada · Kamera").waitFor();
+  await grace.locator("#topology-status", { hasText: "adaptive_mesh" }).waitFor();
+  assert.deepEqual(pageErrors, []);
 });

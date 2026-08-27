@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ananta888/webrtc-minimize-server/actions/workflows/ci.yml/badge.svg)](https://github.com/ananta888/webrtc-minimize-server/actions/workflows/ci.yml)
 
-Ein eigenständiger, Keycloak-fähiger Raumserver mit Angular-Oberfläche für Audio, Video, Bildschirmfreigabe und Peer-Chat. Der Node-Server autorisiert Membership und vermittelt SDP/ICE; Medien und Chat laufen direkt zwischen den Browsern oder bei schwierigen NAT-/Firewall-Pfaden über den mitgelieferten Coturn-Dienst.
+Ein eigenständiger, Keycloak-fähiger Raumserver mit Angular-Oberfläche für Audio, Video, Bildschirmfreigabe und Peer-Chat. Der Node-Server autorisiert Membership, Topologie und SDP/ICE, terminiert aber keine Medien. Audio, Video und Chat laufen direkt zwischen Browsern, über ausdrücklich erlaubte Browser-Relays oder bei schwierigen NAT-/Firewall-Pfaden über Coturn.
 
 ## Lokal starten
 
@@ -25,6 +25,22 @@ Medien werden niemals automatisch angefordert. Mikrofon, Kamera und Bildschirm s
 `Neue Pair-Session` erzeugt einen eigenen Sessiontyp für Pair Dev. Er akzeptiert höchstens zwei unterschiedliche P-256-Geräte. Ein vorhandener Raum kann nicht zwischen Pair- und Room-Modus wechseln; derselbe Gerätefingerprint darf nicht zweimal derselben Pair-Session beitreten.
 
 Vor jedem WebSocket-Upgrade autorisiert `POST /api/sessions` Identität, Gerät, Raum, Modus und Origin. Das Access Token wird niemals in eine WebSocket-URL geschrieben. Stattdessen erhält der Browser ein zufälliges, kurzlebiges und nur einmal verwendbares Signaling-Ticket.
+
+## Adaptive Bandbreite und Active Speaker
+
+Normale Räume verwenden weiterhin eine isolierte PeerConnection je Gegenüber, übertragen aber nicht mehr zwangsläufig jede Kamera in voller Qualität zu jedem Peer:
+
+- lokale Audioanalyse verteilt ausschließlich begrenzte Aktivitätswerte über einen eigenen Control-DataChannel;
+- Sprecher 1–2 erhalten Focus-, Sprecher 3–5 Balanced-Qualität;
+- inaktive Kameras werden abhängig von Raumgröße, Profil und Linkzustand auf Thumbnail reduziert oder pausiert;
+- Screenshare hat Vorrang vor Kameravideo; Mikrofon und Control behalten ein eigenes Mindestbudget;
+- WebRTC-Stats können Qualität nur absenken; Recovery benötigt eine stabile Haltezeit;
+- höchstens fünf Fokusvideos bleiben einzeln sichtbar, die übrigen Kameras werden in genau einem lokalen Canvas-Mosaik dargestellt;
+- `Auto`, `Ausgewogen` und `Datensparend` können ohne erneuten Capture-Aufruf gewechselt werden.
+
+Das Canvas allein spart keine Netzwerkbytes. Die Ersparnis entsteht aus den gleichzeitig angewandten Senderstufen `focus`, `balanced`, `thumbnail` und `paused`.
+
+Ab sechs Teilnehmern kann die Control Plane einen zyklusfreien Video-Relay-Baum mit begrenzter Kinder- und Hopzahl ausstellen. Das geschieht nur, wenn der Betreiber den Pfad erlaubt und genügend Browser ihre separate Relay-Zustimmung erteilen. Bei fehlender Zustimmung, Capability, Membership oder nach einem Leave fällt jede Publikation epochgebunden auf das adaptive Mesh zurück. Ein Trusted Relay verarbeitet und re-encodiert empfangene Medien; es ist daher kein nicht entschlüsselnder SFrame-Relay und wird in der UI entsprechend erklärt.
 
 ## Vollständiger lokaler Stack
 
@@ -61,6 +77,10 @@ Die Variablen sind in `.env.example` dokumentiert. Die Anwendung lädt `.env` ni
 - `MAX_ROOM_PARTICIPANTS`: Betreiberlimit von 2 bis höchstens 20; Default ist 20.
 - `ROOM_IDLE_TTL_MS`: Obergrenze für inaktive Room-Metadaten.
 - `SIGNAL_RATE_LIMIT`: Nachrichten je Peer und 10 Sekunden.
+- `ACTIVE_SPEAKER_LIMIT`: Zahl einzeln fokussierter Sprecher, begrenzt auf 2 bis 5.
+- `PEER_MEDIA_RELAY_ENABLED`: Betreiberfreigabe für Trusted Peer Relay; Nutzerzustimmung bleibt trotzdem standardmäßig aus.
+- `PEER_MEDIA_RELAY_MIN_PARTICIPANTS`: kleinste Raumgröße für einen Relay-Baum, Default 6.
+- `PEER_MEDIA_RELAY_MAX_CHILDREN`, `PEER_MEDIA_RELAY_MAX_HOPS`: harte Fanout- und Tiefengrenzen.
 
 Beispiel für einen externen Coturn-Dienst:
 
@@ -74,7 +94,7 @@ Das Shared Secret bleibt ausschließlich auf Server und Coturn. Der Browser erh�
 
 ### Kapazitätsgrenze
 
-20 ist die harte Membership-Grenze je Raum, keine garantierte Medienqualität. Im aktuellen Full-Mesh hält jeder Teilnehmer bis zu 19 `RTCPeerConnection`-Verbindungen und ein Sender kann dieselbe Medienquelle bis zu 19-mal hochladen. Für zuverlässig hohe Videoqualität bei vollen Räumen ist der im Backlog geführte SFU-Pfad vorgesehen.
+20 ist die harte Membership-Grenze je Raum, keine garantierte Medienqualität. Jeder Teilnehmer hält für direkten Control-, Chat- und Audiotransport weiterhin bis zu 19 `RTCPeerConnection`-Verbindungen. Kamera und Screenshare werden jedoch nach Active-Speaker-, Link- und Nutzerprofil gedrosselt; ein autorisierter Trusted-Relay-Baum begrenzt den direkten Video-Fanout des Publishers standardmäßig auf drei Kinder. Relay-Peers übernehmen dafür zusätzliche CPU-, Akku- und Uploadlast. Für nicht vertrauenswürdige Relays, zusätzliche Frame-E2EE oder garantierte Großraumqualität bleiben SFrame beziehungsweise ein optionaler SFU-Fallback im Backlog.
 
 ## Öffentliches Deployment
 
@@ -91,7 +111,7 @@ Für ein öffentliches Deployment müssen ein HTTPS-Reverse-Proxy WebSocket-Upgr
 
 ## Sicherheitsstatus
 
-Im `required`- oder `optional`-Modus prüft der Server Access Tokens über JWKS auf Signatur, erlaubten Algorithmus, Issuer, Audience, Ablaufzeit und Subject. Join-Nachweise werden zusätzlich durch eine nicht exportierbare Browser-P-256-Identität signiert. WebRTC verschlüsselt Medien mit DTLS-SRTP und DataChannels mit DTLS/SCTP. Signaling und TURN sehen notwendige Verbindungsmetadaten, aber TURN erhält keine Membership-Autorität. Eine zusätzliche Insertable-Streams-/SFrame-Frameverschlüsselung ist noch nicht implementiert und wird nicht behauptet.
+Im `required`- oder `optional`-Modus prüft der Server Access Tokens über JWKS auf Signatur, erlaubten Algorithmus, Issuer, Audience, Ablaufzeit und Subject. Join-Nachweise werden zusätzlich durch eine nicht exportierbare Browser-P-256-Identität signiert. WebRTC verschlüsselt Medien auf jedem direkten, TURN- oder Trusted-Relay-Hop mit DTLS-SRTP und DataChannels mit DTLS/SCTP. Ein zustimmender Relay-Browser kann weitergeleitete Medien verarbeiten; eine zusätzliche Insertable-Streams-/SFrame-Frameverschlüsselung gegen diesen Relay ist noch nicht implementiert und wird nicht behauptet.
 
 Die vollständige Herkunfts- und Lückenmatrix steht in [docs/ananta-webrtc-adoption.md](docs/ananta-webrtc-adoption.md). Produktionsschritte stehen schema-validiert unter `todos/backlog/`.
 
@@ -106,7 +126,7 @@ docker compose config --quiet
 docker build --tag webrtc-room-server:local .
 ```
 
-`npm run check` umfasst Todo-/Workflow-Schemas, Angular-Unit-Tests, Angular-Produktionbuild, Node-Unit-/Integrationstests sowie zwei echte Chromium-E2E-Szenarien für Room und Pair Dev. Fehlt Chromium, wird der Browserteil mit sichtbarer Begründung übersprungen.
+`npm run check` umfasst Todo-/Workflow-Schemas, Angular-Unit-Tests, Angular-Produktionbuild und Node-/Integrationstests. Die Browsermatrix prüft Room, Pair Dev und einen realen Sechs-Chromium-Relay-Baum einschließlich Sender-Fanout, Active Speaker, Datensparprofil, Mosaik und Churn-Fallback; zwei Firefox-Peers belegen den kompatiblen Direct-/Adaptive-Mesh-Pfad. Fehlende Browser werden ausschließlich mit sichtbarer Begründung übersprungen.
 
 Der Live-Infrastruktur-Gate startet absichtlich nicht implizit. Mit laufendem Compose-Stack, einer eigens angelegten Testidentität und expliziten Variablen prüft er Keycloak Discovery, PKCE-Login, JWKS-Tokenprüfung, autorisierte Einmal-Tickets sowie eine echte Coturn-Relay-Allokation:
 

@@ -135,6 +135,13 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
     },
     pairParticipants: 2,
     turnConfigured: false,
+    optimization: {
+      activeSpeakerLimit: 5,
+      peerRelayEnabled: true,
+      peerRelayMinParticipants: 6,
+      peerRelayMaxChildren: 3,
+      peerRelayMaxHops: 3,
+    },
   });
   assert.match(configResponse.headers.get("content-security-policy"), /default-src 'self'/);
 
@@ -177,6 +184,39 @@ test("two room peers receive membership and target-bound signals", async (contex
   const left = await ada.next((message) => message.type === "peer-left");
   assert.equal(left.peerId, graceWelcome.peerId);
   ada.socket.close();
+});
+
+test("control plane publishes epoch-bound relay trees only after enough explicit consent", async (context) => {
+  const app = await startTestServer();
+  context.after(() => app.close());
+  const peers = [];
+  for (let index = 0; index < 6; index += 1) {
+    const peer = await connectAuthorized(app, "room-relay", `Peer ${index + 1}`);
+    await peer.next((message) => message.type === "welcome");
+    peers.push(peer);
+  }
+  const mesh = await peers[0].next((message) => message.type === "topology-state"
+    && message.routes.length === 6
+    && message.routes.every((route) => route.mode === "adaptive_mesh"));
+  peers[0].socket.send(JSON.stringify({ type: "relay-consent", enabled: true }));
+  peers[1].socket.send(JSON.stringify({ type: "relay-consent", enabled: true }));
+  const relayed = await peers[0].next((message) => message.type === "topology-state"
+    && message.routes.length === 6
+    && message.routes.every((route) => route.mode === "trusted_peer_relay"));
+  assert.ok(relayed.epoch > mesh.epoch);
+  for (const route of relayed.routes) {
+    assert.equal(route.edges.length, 5);
+    assert.ok(route.edges.every((edge) => edge.depth >= 1 && edge.depth <= 3));
+    assert.equal(new Set(route.edges.map((edge) => edge.childPeerId)).size, 5);
+  }
+
+  peers[5].socket.close();
+  await peers[0].next((message) => message.type === "peer-left");
+  const degraded = await peers[0].next((message) => message.type === "topology-state"
+    && message.routes.length === 5 && message.epoch > relayed.epoch);
+  assert.ok(degraded.epoch > relayed.epoch);
+  assert.ok(degraded.routes.every((route) => route.mode === "adaptive_mesh"));
+  for (const peer of peers.slice(0, 5)) peer.socket.close();
 });
 
 test("signaling admits 20 peers, rejects peer 21 and isolates another room", async (context) => {

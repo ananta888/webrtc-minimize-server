@@ -114,6 +114,13 @@ export function parseClientMessage(raw) {
       trackId: value.active ? value.trackId : null,
     });
   }
+  if (value.type === "relay-consent") {
+    if (Object.keys(value).some((key) => !new Set(["type", "enabled"]).has(key))) {
+      throw new ProtocolError("unknown_message_field");
+    }
+    if (typeof value.enabled !== "boolean") throw new ProtocolError("invalid_relay_consent");
+    return Object.freeze({ type: "relay-consent", enabled: value.enabled });
+  }
   throw new ProtocolError("unknown_message_type");
 }
 

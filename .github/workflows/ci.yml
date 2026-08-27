@@ -31,8 +31,8 @@ jobs:
         run: npm ci
       - name: Audit production dependency graph
         run: npm audit --omit=dev
-      - name: Install Chromium and system dependencies
-        run: npx playwright install --with-deps chromium
+      - name: Install Chromium, Firefox and system dependencies
+        run: npx playwright install --with-deps chromium firefox
       - name: Run todo, unit, integration and browser gates
         run: npm run check
 

@@ -55,3 +55,15 @@ test("parseClientMessage requires exactly one signal payload", () => {
     type: "signal", to: recipient, description: { type: "offer", sdp: "v=0" }, candidate: null,
   }))), (error) => error.code === "invalid_signal");
 });
+
+test("parseClientMessage accepts only closed relay consent", () => {
+  assert.deepEqual(parseClientMessage(Buffer.from(JSON.stringify({
+    type: "relay-consent", enabled: true,
+  }))), { type: "relay-consent", enabled: true });
+  assert.throws(() => parseClientMessage(Buffer.from(JSON.stringify({
+    type: "relay-consent", enabled: true, ignored: "rejected",
+  }))), (error) => error.code === "unknown_message_field");
+  assert.throws(() => parseClientMessage(Buffer.from(JSON.stringify({
+    type: "relay-consent", enabled: "yes",
+  }))), (error) => error.code === "invalid_relay_consent");
+});

@@ -7,6 +7,13 @@ export interface RuntimeConfig {
   readonly maxRoomParticipants: number;
   readonly pairParticipants: number;
   readonly turnConfigured: boolean;
+  readonly optimization: Readonly<{
+    activeSpeakerLimit: number;
+    peerRelayEnabled: boolean;
+    peerRelayMinParticipants: number;
+    peerRelayMaxChildren: number;
+    peerRelayMaxHops: number;
+  }>;
   readonly auth: Readonly<{
     mode: AuthMode;
     issuer: string;

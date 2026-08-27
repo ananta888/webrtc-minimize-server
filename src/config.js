@@ -25,6 +25,11 @@ const DEFAULTS = Object.freeze({
   turnSharedSecret: "",
   turnRealm: "webrtc.local",
   turnCredentialTtlMs: 10 * 60 * 1000,
+  peerMediaRelayEnabled: true,
+  peerMediaRelayMinParticipants: 6,
+  peerMediaRelayMaxChildren: 3,
+  peerMediaRelayMaxHops: 3,
+  activeSpeakerLimit: 5,
 });
 
 const AUTH_MODES = new Set(["disabled", "optional", "required"]);
@@ -68,6 +73,14 @@ function parseTurnServers(raw) {
 
 function commaSeparated(value) {
   return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function booleanValue(value, fallback, name) {
+  if (value === undefined || value === "") return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === "true" || normalized === "1") return true;
+  if (normalized === "false" || normalized === "0") return false;
+  throw new Error(`${name} must be true or false`);
 }
 
 function httpUrl(value, name) {
@@ -153,6 +166,29 @@ export function loadConfig(env = process.env) {
     turnRealm: String(env.TURN_REALM || DEFAULTS.turnRealm).trim(),
     turnCredentialTtlMs: boundedInteger(env.TURN_CREDENTIAL_TTL_MS, DEFAULTS.turnCredentialTtlMs, {
       minimum: 60_000, maximum: 24 * 60 * 60 * 1000, name: "TURN_CREDENTIAL_TTL_MS",
+    }),
+    peerMediaRelayEnabled: booleanValue(
+      env.PEER_MEDIA_RELAY_ENABLED,
+      DEFAULTS.peerMediaRelayEnabled,
+      "PEER_MEDIA_RELAY_ENABLED",
+    ),
+    peerMediaRelayMinParticipants: boundedInteger(
+      env.PEER_MEDIA_RELAY_MIN_PARTICIPANTS,
+      DEFAULTS.peerMediaRelayMinParticipants,
+      { minimum: 3, maximum: 20, name: "PEER_MEDIA_RELAY_MIN_PARTICIPANTS" },
+    ),
+    peerMediaRelayMaxChildren: boundedInteger(
+      env.PEER_MEDIA_RELAY_MAX_CHILDREN,
+      DEFAULTS.peerMediaRelayMaxChildren,
+      { minimum: 2, maximum: 5, name: "PEER_MEDIA_RELAY_MAX_CHILDREN" },
+    ),
+    peerMediaRelayMaxHops: boundedInteger(
+      env.PEER_MEDIA_RELAY_MAX_HOPS,
+      DEFAULTS.peerMediaRelayMaxHops,
+      { minimum: 1, maximum: 4, name: "PEER_MEDIA_RELAY_MAX_HOPS" },
+    ),
+    activeSpeakerLimit: boundedInteger(env.ACTIVE_SPEAKER_LIMIT, DEFAULTS.activeSpeakerLimit, {
+      minimum: 2, maximum: 5, name: "ACTIVE_SPEAKER_LIMIT",
     }),
   });
 }

@@ -11,6 +11,8 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.deepEqual(config.turnServers, []);
   assert.equal(config.authMode, "disabled");
   assert.deepEqual(config.turnUrls, []);
+  assert.equal(config.peerMediaRelayEnabled, true);
+  assert.equal(config.activeSpeakerLimit, 5);
 });
 
 test("loadConfig parses TURN configuration without preserving unknown fields", () => {
@@ -34,6 +36,8 @@ test("loadConfig rejects unsafe bounds and malformed public origins", () => {
   assert.throws(() => loadConfig({ AUTH_MODE: "required" }), /OIDC_ISSUER/);
   assert.throws(() => loadConfig({ TURN_URLS: "turn:localhost:3478" }), /configured together/);
   assert.throws(() => loadConfig({ TURN_URLS: "https://turn.test", TURN_SHARED_SECRET: "secret" }), /turn: or turns:/);
+  assert.throws(() => loadConfig({ PEER_MEDIA_RELAY_ENABLED: "sometimes" }), /true or false/);
+  assert.throws(() => loadConfig({ ACTIVE_SPEAKER_LIMIT: "6" }), /between 2 and 5/);
 });
 
 test("loadConfig accepts explicit OIDC and ephemeral TURN settings", () => {
