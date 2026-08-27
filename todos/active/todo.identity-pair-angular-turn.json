@@ -1,0 +1,253 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "identity-pair-angular-turn",
+  "purpose": "Die in Ananta vorhandenen Keycloak-/OIDC-, Pair-Dev-, WebRTC-Medien-, Angular- und Coturn-Grundlagen als eigenständig betreibbaren, sicher überprüfbaren Raumserver integrieren.",
+  "goal": "Authentifizierte Benutzer verwenden ein Angular-Frontend für normale Räume und auf zwei Geräte begrenzte Pair-Sessions; Kamera, Mikrofon, Bildschirm und Chat laufen nach expliziter Freigabe über WebRTC, während Keycloak Identität und Coturn kurzlebig autorisierten NAT-Relay bereitstellen.",
+  "status": "in_progress",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "IPAT-M01",
+      "title": "Quellenaudit und ausführbarer Track",
+      "task_ids": ["IPAT-001", "IPAT-002"],
+      "status": "in_progress"
+    },
+    {
+      "id": "IPAT-M02",
+      "title": "Identität, Session-Autorität und Pair-Domain",
+      "task_ids": ["IPAT-003", "IPAT-004", "IPAT-005"],
+      "status": "todo"
+    },
+    {
+      "id": "IPAT-M03",
+      "title": "Angular-Medienoberfläche und lokale Infrastruktur",
+      "task_ids": ["IPAT-006", "IPAT-007", "IPAT-008", "IPAT-009", "IPAT-010"],
+      "status": "todo"
+    },
+    {
+      "id": "IPAT-M04",
+      "title": "Sicherheits-, Browser-, Netzwerk- und Release-Gates",
+      "task_ids": ["IPAT-011", "IPAT-012"],
+      "status": "todo"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "IPAT-001",
+      "title": "Ananta- und Zielbestand zu Identität, Pair-Medien, Angular und ICE auditieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Anantas Keycloak-Realm, OIDC/JWKS-Prüfung, Pair-Dev-Mediendokumentation, Angular-WebRTC-Services und Coturn-Konfiguration sind anhand realer Dateien geprüft.",
+        "Im Ziel vorhandene Raum-, Signaling-, Kamera-, Mikrofon-, Screenshare- und Chat-Fähigkeiten sind von fehlenden Laufzeitfähigkeiten getrennt.",
+        "Angular, serverseitige OIDC-Prüfung, Pair-Autorität und ein mitgelieferter TURN/STUN-Stack sind als echte Ziellücken bestätigt.",
+        "Die Herkunftsmatrix behauptet keine ungeprüfte Ananta-Fähigkeit als bereits implementiert."
+      ]
+    },
+    {
+      "id": "IPAT-002",
+      "title": "Umfangreichen Implementierungstrack validieren, committen und pushen",
+      "status": "in_progress",
+      "priority": "P0",
+      "risk": "medium",
+      "progress_percent": 90,
+      "depends_on": ["IPAT-001"],
+      "acceptance_criteria": [
+        "Alle Arbeitspakete besitzen Risiko, Priorität, Abhängigkeiten und reproduzierbare Akzeptanzkriterien.",
+        "Der Track besteht npm run todos:validate.",
+        "Der Planungscommit ist vor der ersten Implementierungsänderung auf origin/main veröffentlicht."
+      ]
+    },
+    {
+      "id": "IPAT-003",
+      "title": "OIDC-Konfiguration und fail-closed JWKS-Tokenprüfung implementieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["IPAT-002"],
+      "acceptance_criteria": [
+        "Issuer, Audience, Client-ID, JWKS-URL und Auth-Modus sind explizit konfigurierbar und werden beim Start geprüft.",
+        "Access Tokens werden kryptografisch gegen JWKS sowie auf Algorithmus, Issuer, Audience, Ablaufzeit und Subject geprüft.",
+        "Fehlende, abgelaufene, falsch signierte oder für eine andere Audience ausgestellte Tokens werden mit stabilen Fehlercodes abgelehnt.",
+        "JWKS-Caching besitzt eine begrenzte Lebensdauer; Token oder Claims werden nicht in Logs geschrieben."
+      ]
+    },
+    {
+      "id": "IPAT-004",
+      "title": "Kurzlebige Einmal-Tickets zwischen HTTP-Autorisierung und WebSocket-Signaling einführen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["IPAT-003"],
+      "acceptance_criteria": [
+        "Ein begrenzter POST-Endpunkt autorisiert Raum, Modus, Anzeigename und Gerät vor dem WebSocket-Upgrade.",
+        "OIDC-Access-Tokens erscheinen weder in WebSocket-URLs noch in Signaling-Nachrichten.",
+        "Tickets sind zufällig, kurzlebig, nur einmal verwendbar und an Origin, Raum, Modus, Principal und Gerät gebunden.",
+        "Abgelaufene, wiederverwendete, fremde oder manipulierte Tickets werden fail-closed abgelehnt."
+      ]
+    },
+    {
+      "id": "IPAT-005",
+      "title": "Pair-Sessions und Gerätebindung als eigene Domain-Regeln ergänzen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["IPAT-004"],
+      "acceptance_criteria": [
+        "Normale Räume behalten maximal 20 Teilnehmer; Pair-Sessions akzeptieren exakt höchstens zwei unterschiedliche Geräte.",
+        "Ein Raum kann nicht still zwischen Pair- und Room-Modus wechseln.",
+        "Der Browser erzeugt eine nicht exportierbare P-256-Geräteidentität und der Server prüft einen frischen signierten Join-Nachweis.",
+        "OIDC-Subject und Gerätefingerprint werden serverseitig an Membership und Ticket gebunden, ohne Klartexttoken zu persistieren.",
+        "Leave, Seitenende, Identitätswechsel und Pair-Wechsel stoppen lokale Tracks und entwerten die lokale Signaling-Sitzung."
+      ]
+    },
+    {
+      "id": "IPAT-006",
+      "title": "Eigenständiges Angular-Frontend mit OIDC-PKCE und klarer Modultrennung aufbauen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["IPAT-003"],
+      "acceptance_criteria": [
+        "Die ausgelieferte Anwendung wird mit Angular gebaut und nicht mehr aus einer monolithischen Vanilla-JavaScript-Datei betrieben.",
+        "OIDC Authorization Code Flow mit PKCE nutzt State und Nonce und speichert Tokens ausschließlich sitzungsgebunden.",
+        "Login, Callback, Logout, Tokenablauf und anonymer Entwicklungsmodus besitzen sichtbare, verständliche Zustände.",
+        "Auth-, Device-, Signaling-, Peer-, Media- und UI-Verantwortung sind in kleine austauschbare Services und Komponenten getrennt.",
+        "Der Produktionscontainer erzeugt und liefert den reproduzierbaren Angular-Build aus."
+      ]
+    },
+    {
+      "id": "IPAT-007",
+      "title": "Raum-Mesh, Medienpublikationen, Screenshare und DataChannel in Angular portieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["IPAT-004", "IPAT-006"],
+      "acceptance_criteria": [
+        "Angular verbindet bis zu 20 Browser pro Raum über Perfect Negotiation und zielgebundenes Signaling.",
+        "Mikrofon, Kamera und Bildschirm werden ausschließlich durch separate sichtbare Benutzeraktionen gestartet und separat gestoppt.",
+        "Screen-Audio wird nur übertragen, wenn der Browser es nach ausdrücklicher Bildschirmfreigabe tatsächlich bereitstellt.",
+        "Remote-Tracks werden pro Peer und Quelle korrekt dargestellt und bei Track-Ende, Peer-Leave oder Sessionwechsel freigegeben.",
+        "Peer-Chat bleibt auf 2.000 Zeichen begrenzt und verwendet einen geordneten WebRTC-DataChannel."
+      ]
+    },
+    {
+      "id": "IPAT-008",
+      "title": "Pair-Dev-Oberfläche und sichere Medien-Lifecycles umsetzen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["IPAT-005", "IPAT-007"],
+      "acceptance_criteria": [
+        "Benutzer können einen normalen Raum oder eine auf zwei Geräte begrenzte Pair-Session erstellen und über einen Einladungslink öffnen.",
+        "Die Oberfläche zeigt Authentifizierungs-, Geräte-, Signaling-, ICE- und Medienstatus getrennt an.",
+        "Das Öffnen der Anwendung, Login, Join, Panelwechsel und eingehende Signale lösen keine Capture-API aus.",
+        "Leave, Logout und Identitätswechsel stoppen Kamera, Mikrofon, Bildschirm, PeerConnections und DataChannels deterministisch.",
+        "Transportverschlüsselung wird korrekt beschrieben; zusätzliche Frame-E2EE wird nicht behauptet, solange sie nicht verifiziert implementiert ist."
+      ]
+    },
+    {
+      "id": "IPAT-009",
+      "title": "Coturn als lokalen STUN/TURN-Dienst mit kurzlebigen Credentials integrieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["IPAT-004"],
+      "acceptance_criteria": [
+        "Docker Compose stellt Coturn für STUN sowie TURN über UDP und TCP mit begrenztem Relay-Portbereich bereit.",
+        "Der Server erzeugt Coturn-REST-Credentials per HMAC mit kurzer Gültigkeit und liefert sie nur nach Session-Autorisierung aus.",
+        "TURN-Shared-Secret und produktive Zertifikatsschlüssel werden nie in Git eingecheckt oder öffentlich ausgeliefert.",
+        "TURN-URL, Realm, externe IP, Ports, Quoten und Credential-TTL sind betreiberseitig konfigurierbar.",
+        "Ein reproduzierbarer Gate belegt eine echte Relay-Allokation oder meldet den Live-Test ausdrücklich als übersprungen."
+      ]
+    },
+    {
+      "id": "IPAT-010",
+      "title": "Keycloak-Realm und lokalen Identity-Stack reproduzierbar bereitstellen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["IPAT-003", "IPAT-006"],
+      "acceptance_criteria": [
+        "Docker Compose startet einen versionierten Keycloak-Dienst mit importierbarem Realm und öffentlichem Browser-Client.",
+        "Der Client erzwingt Authorization Code Flow und PKCE S256; Implicit Flow und Direct Access Grants bleiben deaktiviert.",
+        "Redirect-URIs, Web Origins, Audience und lokale Entwicklungsports sind minimal und per Deployment-Dokumentation anpassbar.",
+        "Bootstrap-Zugangsdaten sind klar als lokale Defaults markiert und müssen für öffentliche Deployments ersetzt werden.",
+        "Der Raumserver kann JWKS intern erreichen, prüft aber weiterhin den browserseitig sichtbaren Issuer."
+      ]
+    },
+    {
+      "id": "IPAT-011",
+      "title": "Unit-, Integrations-, Angular-, Browser-, OIDC- und TURN-Gates ausbauen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["IPAT-005", "IPAT-008", "IPAT-009", "IPAT-010"],
+      "acceptance_criteria": [
+        "Unit-Tests prüfen Tokenclaims, Ticket-Einmaligkeit, Gerätebeweise, Pair-Limit, 20er-Raumlimit und TURN-HMAC deterministisch.",
+        "Integrationstests prüfen Auth-Fehler, Cross-Origin, Cross-Room, Mode-Mismatch, Ticket-Replay, Oversize, Rate-Limit und Disconnect.",
+        "Angular-Build und Frontend-Tests laufen ohne Warnungsverschleierung durch.",
+        "Zwei echte Chromium-Seiten verifizieren Pair- und Room-Join, DataChannel, Kamera, Mikrofon, Bildschirm und vollständiges Cleanup.",
+        "Ein Browser-Gate beweist, dass vor dem jeweiligen Medienklick keine Capture-API aufgerufen wird.",
+        "Lokale Keycloak-Discovery/Tokenprüfung und Coturn-Relay werden mit echten Containern getestet, sofern Docker verfügbar ist; jeder Skip wird sichtbar gemeldet."
+      ]
+    },
+    {
+      "id": "IPAT-012",
+      "title": "Betrieb, Sicherheit, Herkunft, CI und öffentlichen Release abschließen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["IPAT-011"],
+      "acceptance_criteria": [
+        "README und Herkunftsmatrix erklären lokalen Vollstack, eigene Keycloak-/Coturn-Endpunkte, HTTPS/WSS, Pair-vs-Room und verbleibende Grenzen.",
+        "AGENTS.md beschreibt die neue Identity-, Ticket-, Device- und ICE-Credential-Autorität ohne SOLID-Verantwortungen zu vermischen.",
+        "npm run check, npm audit, Angular-Produktionbuild, Compose-Validierung, Containerbuild und öffentliche GitHub Actions sind erfolgreich.",
+        "Planungs-, Implementierungs- und Abschlusscommits sind auf origin/main veröffentlicht; lokaler und entfernter HEAD sind identisch.",
+        "Der vollständig erledigte Track wird erst nach allen Gates nach todos/archive verschoben."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["IPAT-001", "IPAT-002", "IPAT-003", "IPAT-004", "IPAT-005", "IPAT-006", "IPAT-007", "IPAT-008", "IPAT-009", "IPAT-010", "IPAT-011", "IPAT-012"],
+  "tasks_status_summary": {
+    "total": 12,
+    "by_status": { "todo": 10, "in_progress": 1, "partial": 0, "blocked": 0, "done": 1 },
+    "progress_percent_done": 8.33,
+    "by_priority": { "P0": 11, "P1": 1, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 6, "critical": 5 },
+    "critical_path": { "total": 12, "done": 1, "remaining": 11 },
+    "milestones": { "total": 4, "todo": 3, "in_progress": 1, "blocked": 0, "done": 0 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 10,
+    "in_progress": 1,
+    "partial": 0,
+    "blocked": 0,
+    "done": 1
+  },
+  "summary_notes": [
+    "Ananta bleibt Herkunftsquelle und keine Runtime-Abhängigkeit; nur eigenständig integrierte und reproduzierbar getestete Bausteine gelten hier als vorhanden.",
+    "Normale Räume bleiben auf 20 Teilnehmer begrenzt, Pair-Sessions auf zwei Geräte; die Anzahl der Räume besitzt weiterhin keine anwendungsseitige Obergrenze.",
+    "Keycloak besitzt Identität, die Control Plane besitzt Membership und Tickets, Coturn relayed ausschließlich ICE/Medien und erhält keine Policy-Autorität.",
+    "Zusätzliche Insertable-Streams-/SFrame-Frameverschlüsselung bleibt außerhalb dieses Tracks, bis Browsermatrix und kryptografische Konformitätsgates übernommen sind.",
+    "tasks[] ist die Source of Truth; Summen werden vor jedem Commit mit npm run todos:validate geprüft."
+  ]
+}
