@@ -2,36 +2,36 @@
   "$schema": "../todo.track.schema.json",
   "version": 1,
   "owner": "webrtc-minimize-server",
-  "track": "webrtc-mesh-mvp",
-  "purpose": "Die aus Ananta extrahierten Audio-, Video-, Screenshare-, Signaling- und DataChannel-Ideen als kleinen, überprüfbaren Browser-MVP bereitstellen.",
-  "goal": "Bis zu vier eingeladene Browser verbinden sich über einen bounded Signaling-Control-Plane und tauschen ausdrücklich freigegebene Medien und Chat direkt per WebRTC aus.",
+  "track": "webrtc-mesh-foundation",
+  "purpose": "Die aus Ananta extrahierten Audio-, Video-, Screenshare-, Signaling- und DataChannel-Ideen als überprüfbare Browser-Grundlage bereitstellen.",
+  "goal": "Eingeladene Browser verbinden sich über eine bounded Signaling-Control-Plane und tauschen ausdrücklich freigegebene Medien und Chat direkt per WebRTC aus.",
   "status": "completed",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
   "risk_scale": ["low", "medium", "high", "critical"],
   "milestones": [
     {
-      "id": "MVP-M01",
+      "id": "CORE-M01",
       "title": "Architektur und Tracking",
-      "task_ids": ["WMVP-001", "WMVP-002"],
+      "task_ids": ["WCORE-001", "WCORE-002"],
       "status": "done"
     },
     {
-      "id": "MVP-M02",
+      "id": "CORE-M02",
       "title": "Signaling und Browser-Medien",
-      "task_ids": ["WMVP-003", "WMVP-004"],
+      "task_ids": ["WCORE-003", "WCORE-004"],
       "status": "done"
     },
     {
-      "id": "MVP-M03",
+      "id": "CORE-M03",
       "title": "Verifikation und Übergabe",
-      "task_ids": ["WMVP-005", "WMVP-006"],
+      "task_ids": ["WCORE-005", "WCORE-006"],
       "status": "done"
     }
   ],
   "tasks": [
     {
-      "id": "WMVP-001",
+      "id": "WCORE-001",
       "title": "Ananta-WebRTC-Ideen und Sicherheitsgrenzen inventarisieren",
       "status": "done",
       "priority": "P0",
@@ -39,18 +39,18 @@
       "progress_percent": 100,
       "depends_on": [],
       "acceptance_criteria": [
-        "Audio, Kamera, Screenshare, DataChannel, Signaling, STUN/TURN, E2EE, Mesh, SFU und Peer-DAG sind als present, MVP oder backlog eingeordnet.",
+        "Audio, Kamera, Screenshare, DataChannel, Signaling, STUN/TURN, E2EE, Mesh, SFU und Peer-DAG sind als vorhanden, Grundlage oder Backlog eingeordnet.",
         "Nicht implementierte Sicherheitsfähigkeiten werden nicht als vorhanden dargestellt."
       ]
     },
     {
-      "id": "WMVP-002",
+      "id": "WCORE-002",
       "title": "AGENTS-Regeln, Todo-Ordner und JSON-Schema-Gate übernehmen",
       "status": "done",
       "priority": "P0",
       "risk": "medium",
       "progress_percent": 100,
-      "depends_on": ["WMVP-001"],
+      "depends_on": ["WCORE-001"],
       "acceptance_criteria": [
         "AGENTS.md verpflichtet Änderungen zur task-basierten Statuspflege.",
         "Category- und Track-Todos werden durch ein deterministisches Gate validiert.",
@@ -58,27 +58,27 @@
       ]
     },
     {
-      "id": "WMVP-003",
+      "id": "WCORE-003",
       "title": "Bounded WebSocket-Signaling-Control-Plane implementieren",
       "status": "done",
       "priority": "P0",
       "risk": "high",
       "progress_percent": 100,
-      "depends_on": ["WMVP-001"],
+      "depends_on": ["WCORE-001"],
       "acceptance_criteria": [
-        "Räume sind auf höchstens vier Teilnehmer begrenzt.",
+        "Räume besitzen eine serverseitig durchgesetzte Teilnehmergrenze.",
         "Nachrichtengröße, Typen, Empfänger, Rate und Browser-Origin werden geprüft.",
         "Der Server leitet keine Medieninhalte weiter und persistiert keine Sitzung."
       ]
     },
     {
-      "id": "WMVP-004",
+      "id": "WCORE-004",
       "title": "Browser-Mesh für Mikrofon, Kamera, Bildschirm und Peer-Chat implementieren",
       "status": "done",
       "priority": "P0",
       "risk": "high",
       "progress_percent": 100,
-      "depends_on": ["WMVP-003"],
+      "depends_on": ["WCORE-003"],
       "acceptance_criteria": [
         "Keine Capture-API wird ohne expliziten Klick aufgerufen.",
         "Mikrofon, Kamera und Bildschirm werden getrennt gestartet und gestoppt.",
@@ -87,13 +87,13 @@
       ]
     },
     {
-      "id": "WMVP-005",
+      "id": "WCORE-005",
       "title": "Contract-, Registry- und Signaling-Integrationstests ausführen",
       "status": "done",
       "priority": "P0",
       "risk": "high",
       "progress_percent": 100,
-      "depends_on": ["WMVP-003", "WMVP-004"],
+      "depends_on": ["WCORE-003", "WCORE-004"],
       "acceptance_criteria": [
         "Protocol- und Raumgrenzen besitzen deterministische Tests.",
         "Zwei echte WebSocket-Clients können über den Server Signale austauschen.",
@@ -101,21 +101,21 @@
       ]
     },
     {
-      "id": "WMVP-006",
+      "id": "WCORE-006",
       "title": "Betrieb, Sicherheitsgrenzen und Ananta-Herkunft dokumentieren",
       "status": "done",
       "priority": "P1",
       "risk": "medium",
       "progress_percent": 100,
-      "depends_on": ["WMVP-005"],
+      "depends_on": ["WCORE-005"],
       "acceptance_criteria": [
         "README enthält lokalen Start und HTTPS-/TURN-Hinweise.",
-        "Eine Herkunftsmatrix trennt übernommene MVP-Fähigkeiten von Produktions-Folgeschritten.",
+        "Eine Herkunftsmatrix trennt übernommene Fähigkeiten von Produktions-Folgeschritten.",
         "Containerbetrieb ist reproduzierbar beschrieben."
       ]
     }
   ],
-  "critical_path_tasks": ["WMVP-001", "WMVP-002", "WMVP-003", "WMVP-004", "WMVP-005", "WMVP-006"],
+  "critical_path_tasks": ["WCORE-001", "WCORE-002", "WCORE-003", "WCORE-004", "WCORE-005", "WCORE-006"],
   "tasks_status_summary": {
     "total": 6,
     "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 6 },

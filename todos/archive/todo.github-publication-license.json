@@ -3,7 +3,7 @@
   "version": 1,
   "owner": "webrtc-minimize-server",
   "track": "github-publication-license",
-  "purpose": "Den verifizierten MVP mit klarer Lizenzierung als eigenständiges GitHub-Repository unter dem Account ananta888 veröffentlichen.",
+  "purpose": "Den verifizierten Raumserver mit klarer Lizenzierung als eigenständiges GitHub-Repository unter dem Account ananta888 veröffentlichen.",
   "goal": "Ein privates GitHub-Repository ananta888/webrtc-minimize-server besitzt einen nachvollziehbaren main-Branch, BSD-3-Clause-Lizenz, erfolgreiche Gates und einen verifizierten Remote-Push.",
   "status": "completed",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],

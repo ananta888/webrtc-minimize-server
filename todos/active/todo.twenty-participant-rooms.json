@@ -3,8 +3,8 @@
   "version": 1,
   "owner": "webrtc-minimize-server",
   "track": "twenty-participant-rooms",
-  "purpose": "Die vorhandene flüchtige Room-Membership im ersten produktiven Schnitt auf bis zu 20 Teilnehmer pro isoliertem Raum erweitern.",
-  "goal": "Server, Browser, Konfiguration und Tests verwenden eine kanonische harte Obergrenze von 20 Teilnehmern je Raum; der 21. Join scheitert, während andere Räume unabhängig bleiben.",
+  "purpose": "Die vorhandene flüchtige Room-Membership auf bis zu 20 Teilnehmer pro isoliertem Raum erweitern, ohne eine globale Grenze für die Anzahl der Räume und ohne vorläufige Produktbezeichnung.",
+  "goal": "Server, Browser, Konfiguration und Tests verwenden eine kanonische harte Obergrenze von 20 Teilnehmern je Raum; der 21. Join scheitert, während beliebig viele unabhängige Räume ohne feste Domain-Grenze entstehen können.",
   "status": "in_progress",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
@@ -13,7 +13,7 @@
     {
       "id": "ROOM20-M01",
       "title": "20-Teilnehmer-Räume",
-      "task_ids": ["ROOM20-001", "ROOM20-002", "ROOM20-003", "ROOM20-004"],
+      "task_ids": ["ROOM20-001", "ROOM20-002", "ROOM20-003", "ROOM20-004", "ROOM20-005"],
       "status": "in_progress"
     }
   ],
@@ -75,16 +75,31 @@
         "Lokale Gates und öffentlicher GitHub-Actions-Lauf sind erfolgreich.",
         "Lokaler und entfernter main-Commit sind identisch."
       ]
+    },
+    {
+      "id": "ROOM20-005",
+      "title": "Vorläufige Produktbezeichnung entfernen und unbegrenzte Room-Anzahl absichern",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["ROOM20-003"],
+      "acceptance_criteria": [
+        "Die vorläufige Produktbezeichnung kommt in keiner menschenlesbaren versionierten Datei mehr vor.",
+        "UI, Serverlog, Paketmetadaten, Dokumentation und GitHub-Beschreibung verwenden Raumserver-Terminologie.",
+        "Es existiert keine globale anwendungsseitige Obergrenze für die Zahl aktiver Räume.",
+        "Ein Test erzeugt mindestens 250 isolierte Räume und bestätigt deren vollständige Freigabe nach Leave."
+      ]
     }
   ],
-  "critical_path_tasks": ["ROOM20-001", "ROOM20-002", "ROOM20-003", "ROOM20-004"],
+  "critical_path_tasks": ["ROOM20-001", "ROOM20-002", "ROOM20-003", "ROOM20-005", "ROOM20-004"],
   "tasks_status_summary": {
-    "total": 4,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 3 },
-    "progress_percent_done": 75,
-    "by_priority": { "P0": 4, "P1": 0, "P2": 0, "P3": 0 },
-    "by_risk": { "low": 0, "medium": 1, "high": 3, "critical": 0 },
-    "critical_path": { "total": 4, "done": 3, "remaining": 1 },
+    "total": 5,
+    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 4 },
+    "progress_percent_done": 80,
+    "by_priority": { "P0": 5, "P1": 0, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 4, "critical": 0 },
+    "critical_path": { "total": 5, "done": 4, "remaining": 1 },
     "milestones": { "total": 1, "todo": 0, "in_progress": 1, "blocked": 0, "done": 0 }
   },
   "progress_summary": {
@@ -93,10 +108,10 @@
     "in_progress": 1,
     "partial": 0,
     "blocked": 0,
-    "done": 3
+    "done": 4
   },
   "summary_notes": [
-    "20 ist die harte Membership-Grenze, keine garantierte Medienqualität eines Full-Mesh.",
+    "20 ist die harte Membership-Grenze je Raum, aber die Anzahl der Räume hat keine feste Anwendungsgrenze.",
     "tasks[] ist die Source of Truth; Summen werden vor Commits geprüft."
   ]
 }

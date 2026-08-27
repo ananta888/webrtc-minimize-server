@@ -55,7 +55,7 @@
     "notes": [
       "Diese Category-Todo ist Portfolio/Research, kein ausführbarer Task-Track.",
       "Neue Implementierung beginnt erst nach Promotion eines Items in todos/active/todo.<track>.json.",
-      "SFU und Peer-DAG sind bewusste Skalierungs-Folgeschritte; der MVP bleibt ein begrenztes Browser-Mesh."
+      "SFU und Peer-DAG sind bewusste Skalierungs-Folgeschritte; aktuell arbeitet jeder Raum als begrenztes Browser-Mesh."
     ],
     "recommended_order": ["PROD-SEC-001", "PROD-SEC-002", "PROD-NET-001", "PROD-OPS-002", "PROD-SEC-003", "PROD-SEC-004", "PROD-OPS-001", "PROD-NET-002", "PROD-DATA-001", "PROD-DATA-002", "PROD-NET-003", "PROD-OPS-003", "PROD-OPS-004", "PROD-DATA-003", "PROD-NET-004"]
   }

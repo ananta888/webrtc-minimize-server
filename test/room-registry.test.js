@@ -49,3 +49,16 @@ test("RoomRegistry rejects limits outside the supported 2..20 range", () => {
   assert.throws(() => new RoomRegistry({ maxParticipants: 1 }), /between 2 and 20/);
   assert.throws(() => new RoomRegistry({ maxParticipants: 21 }), /between 2 and 20/);
 });
+
+test("RoomRegistry imposes no application-level limit on room count", () => {
+  const registry = new RoomRegistry();
+  const peers = Array.from(
+    { length: 250 },
+    (_, index) => registry.join(`room-independent-${index}`, {}, `Peer ${index}`).peer,
+  );
+  assert.equal(registry.roomCount, 250);
+  assert.equal(registry.participantCount, 250);
+  for (const peer of peers) registry.leave(peer);
+  assert.equal(registry.roomCount, 0);
+  assert.equal(registry.participantCount, 0);
+});

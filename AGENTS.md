@@ -20,7 +20,7 @@ Der Node-Server ist allein verantwortlich für:
 - Prüfung und begrenzte Weiterleitung von SDP-/ICE-Signalen,
 - Teilnehmer-, Origin-, Größen- und Rate-Grenzen.
 
-Der MVP-Server darf keine Audio-, Video-, Bildschirm- oder Chat-Inhalte terminieren, aufzeichnen oder persistieren.
+Der Signaling-Server darf keine Audio-, Video-, Bildschirm- oder Chat-Inhalte terminieren, aufzeichnen oder persistieren.
 
 ### WebRTC Data Plane
 
@@ -34,15 +34,16 @@ Browser sind verantwortlich für:
 
 Peers dürfen aus Signalen keine Room-Membership oder zusätzliche Autorität ableiten. Die Control Plane bleibt Eigentümerin der Membership.
 
-## MVP-Grenzen
+## Systemgrenzen
 
 - Ein Raum hat eine harte Membership-Grenze von 20 Teilnehmern.
+- Die Anzahl gleichzeitig aktiver Räume besitzt keine anwendungsseitige Obergrenze. Praktische Ressourcenbudgets dürfen beobachtet und geschützt werden, aber keine feste globale Room-Anzahl in die Domain einführen.
 - Das Full-Mesh erzeugt bei 20 Teilnehmern bis zu 19 PeerConnections und Medienkopien je Sender. Die Raumgrenze ist daher keine QoS-Garantie; produktive große Videoräume benötigen den geplanten SFU-Pfad.
 - Räume und Peer-IDs sind flüchtig und werden nicht persistiert.
-- Der Raumcode ist im MVP ein Bearer-Invite, keine verifizierte Identität.
+- Der Raumcode ist ein Bearer-Invite, keine verifizierte Identität.
 - WebRTC bietet Transportverschlüsselung; anwendungsseitige SFrame-/Insertable-Streams-E2EE ist noch nicht implementiert.
 - STUN/TURN sind konfigurierbare Infrastrukturhilfen, keine Policy-Autorität.
-- SFU, Peer-DAG, OIDC, langlebige Workspaces und Artefakttransfer sind Backlog-Fähigkeiten und dürfen nicht als MVP-Funktionen dargestellt werden.
+- SFU, Peer-DAG, OIDC, langlebige Workspaces und Artefakttransfer sind Backlog-Fähigkeiten und dürfen nicht als vorhandene Funktionen dargestellt werden.
 
 ## Todo-gesteuerte Entwicklung
 

@@ -86,7 +86,7 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
 
   const indexResponse = await fetch(app.httpUrl);
   assert.equal(indexResponse.status, 200);
-  assert.match(await indexResponse.text(), /WebRTC Mesh MVP/);
+  assert.match(await indexResponse.text(), /WebRTC Räume/);
 });
 
 test("two room peers receive membership and target-bound signals", async (context) => {

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ananta888/webrtc-minimize-server/actions/workflows/ci.yml/badge.svg)](https://github.com/ananta888/webrtc-minimize-server/actions/workflows/ci.yml)
 
-Ein eigenständiger MVP für Audio, Video, Bildschirmfreigabe und Peer-Chat. Ein kleiner Node-Server liefert die Browser-App und vermittelt SDP/ICE über WebSocket; Medien und Chat laufen danach direkt in voneinander isolierten Räumen mit bis zu 20 Browsern.
+Ein eigenständiger Raumserver für Audio, Video, Bildschirmfreigabe und Peer-Chat. Ein kleiner Node-Server liefert die Browser-App und vermittelt SDP/ICE über WebSocket; Medien und Chat laufen danach direkt in voneinander isolierten Räumen mit bis zu 20 Browsern.
 
 ## Lokal starten
 
@@ -20,7 +20,7 @@ Medien werden niemals automatisch angefordert. Mikrofon, Kamera und Bildschirm s
 
 ## Räume
 
-`Neuen Raum` erzeugt einen kryptografisch zufälligen Einladungslink. Ein Raum entsteht flüchtig beim ersten Join, besitzt eine vollständig getrennte Teilnehmerliste und akzeptiert standardmäßig höchstens 20 gleichzeitig verbundene Browser. Signale können ausschließlich an Teilnehmer desselben Raums adressiert werden. Leere Räume werden verworfen; der MVP persistiert weder Membership noch Raumverlauf.
+`Neuen Raum` erzeugt einen kryptografisch zufälligen Einladungslink. Ein Raum entsteht flüchtig beim ersten Join, besitzt eine vollständig getrennte Teilnehmerliste und akzeptiert standardmäßig höchstens 20 gleichzeitig verbundene Browser. Signale können ausschließlich an Teilnehmer desselben Raums adressiert werden. Es gibt keine anwendungsseitige Obergrenze für die Anzahl gleichzeitig aktiver Räume; praktisch begrenzen nur die verfügbaren Serverressourcen. Leere Räume werden sofort verworfen. Membership und Raumverlauf werden nicht persistiert.
 
 ## Konfiguration
 
@@ -63,7 +63,7 @@ Der Container exponiert HTTP auf Port 8080. Für ein öffentliches Deployment mu
 
 ## Sicherheitsstatus
 
-WebRTC verschlüsselt Medien mit DTLS-SRTP und DataChannels mit DTLS/SCTP. Der Signaling-Server sieht SDP, ICE-Kandidaten, Raumzuordnung und Anzeigenamen. Der MVP hat noch keine verifizierte Benutzeridentität und keine zusätzliche Insertable-Streams-/SFrame-E2EE-Schicht. Der Raumcode ist ein Einladungsgeheimnis und wird nicht persistiert.
+WebRTC verschlüsselt Medien mit DTLS-SRTP und DataChannels mit DTLS/SCTP. Der Signaling-Server sieht SDP, ICE-Kandidaten, Raumzuordnung und Anzeigenamen. Das System hat noch keine verifizierte Benutzeridentität und keine zusätzliche Insertable-Streams-/SFrame-E2EE-Schicht. Der Raumcode ist ein Einladungsgeheimnis und wird nicht persistiert.
 
 Die vollständige Herkunfts- und Lückenmatrix steht in [docs/ananta-webrtc-adoption.md](docs/ananta-webrtc-adoption.md). Produktionsschritte stehen schema-validiert unter `todos/backlog/`.
 

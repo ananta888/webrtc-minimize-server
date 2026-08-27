@@ -290,7 +290,7 @@ export async function startServer(options = {}) {
     app.server.listen(app.config.port, app.config.host, resolve);
   });
   const address = app.server.address();
-  console.log(`WebRTC MVP listening on http://${app.config.host}:${address.port}`);
+  console.log(`WebRTC room server listening on http://${app.config.host}:${address.port}`);
   return app;
 }
 

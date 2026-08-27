@@ -4,7 +4,7 @@
   "private": true,
   "license": "BSD-3-Clause",
   "type": "module",
-  "description": "Bounded WebRTC mesh MVP for camera, microphone, screen sharing and peer chat.",
+  "description": "Room-based WebRTC mesh for camera, microphone, screen sharing and peer chat.",
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
