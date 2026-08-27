@@ -5,7 +5,7 @@
   "track": "github-publication-license",
   "purpose": "Den verifizierten MVP mit klarer Lizenzierung als eigenständiges GitHub-Repository unter dem Account ananta888 veröffentlichen.",
   "goal": "Ein privates GitHub-Repository ananta888/webrtc-minimize-server besitzt einen nachvollziehbaren main-Branch, BSD-3-Clause-Lizenz, erfolgreiche Gates und einen verifizierten Remote-Push.",
-  "status": "in_progress",
+  "status": "completed",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
   "risk_scale": ["low", "medium", "high", "critical"],
@@ -14,7 +14,7 @@
       "id": "GHP-M01",
       "title": "Lizenzierte GitHub-Veröffentlichung",
       "task_ids": ["GHP-001", "GHP-002", "GHP-003", "GHP-004"],
-      "status": "in_progress"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -63,10 +63,10 @@
     {
       "id": "GHP-004",
       "title": "Privates GitHub-Repository erstellen, pushen und Remotezustand verifizieren",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "medium",
-      "progress_percent": 20,
+      "progress_percent": 100,
       "depends_on": ["GHP-003"],
       "acceptance_criteria": [
         "ananta888/webrtc-minimize-server existiert privat mit main als Default-Branch.",
@@ -79,23 +79,23 @@
   "critical_path_tasks": ["GHP-001", "GHP-002", "GHP-003", "GHP-004"],
   "tasks_status_summary": {
     "total": 4,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 3 },
-    "progress_percent_done": 75,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 4 },
+    "progress_percent_done": 100,
     "by_priority": { "P0": 4, "P1": 0, "P2": 0, "P3": 0 },
     "by_risk": { "low": 1, "medium": 3, "high": 0, "critical": 0 },
-    "critical_path": { "total": 4, "done": 3, "remaining": 1 },
-    "milestones": { "total": 1, "todo": 0, "in_progress": 1, "blocked": 0, "done": 0 }
+    "critical_path": { "total": 4, "done": 4, "remaining": 0 },
+    "milestones": { "total": 1, "todo": 0, "in_progress": 0, "blocked": 0, "done": 1 }
   },
   "progress_summary": {
-    "state": "in_progress",
+    "state": "completed",
     "todo_remaining": 0,
-    "in_progress": 1,
+    "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 3
+    "done": 4
   },
   "summary_notes": [
     "Das Repository wird mangels expliziter Sichtbarkeitsangabe zunächst private erstellt.",
-    "tasks[] ist die Source of Truth; Summen werden vor jedem Commit geprüft."
+    "Repository, Remote-Commit, Default-Branch und GitHub-Lizenzerkennung wurden nach dem ersten Push verifiziert."
   ]
 }
