@@ -13,7 +13,7 @@
       "name": "identity_security",
       "label": "Identität und E2EE",
       "items": [
-        { "id": "PROD-SEC-001", "title": "OIDC-Identität, Geräteschlüssel und zeitlich begrenzte Invite-Grants einführen", "status": "open", "priority": "P0" },
+        { "id": "PROD-SEC-001", "title": "OIDC-Identität, Geräteschlüssel und zeitlich begrenzte Invite-Grants einführen", "status": "partial", "priority": "P0" },
         { "id": "PROD-SEC-002", "title": "Signierte Membership-, Medienvertrag- und Security-Epochen modellieren", "status": "open", "priority": "P0" },
         { "id": "PROD-SEC-003", "title": "Browser-Encoded-Transform/SFrame-E2EE mit Downgrade-Schutz evaluieren und implementieren", "status": "open", "priority": "P0" },
         { "id": "PROD-SEC-004", "title": "Replay-Fenster, Senderauthentizität, Key-Rotation und Revocation härten", "status": "open", "priority": "P0" }
@@ -23,7 +23,7 @@
       "name": "network_topology",
       "label": "Netz und Topologien",
       "items": [
-        { "id": "PROD-NET-001", "title": "Kurzlebige TURN-Credentials, Allowlist, Quotas und IP-Privacy integrieren", "status": "open", "priority": "P0" },
+        { "id": "PROD-NET-001", "title": "Kurzlebige TURN-Credentials, Allowlist, Quotas und IP-Privacy integrieren", "status": "partial", "priority": "P0" },
         { "id": "PROD-NET-002", "title": "Ressourcenadaptive Mesh-Grenze mit Browser-Stats, Hysterese und Degradation ableiten", "status": "open", "priority": "P1" },
         { "id": "PROD-NET-003", "title": "SFU-Fallback für größere Räume mit E2EE-, Admission- und Layer-Policy anbinden", "status": "open", "priority": "P1" },
         { "id": "PROD-NET-004", "title": "Verschlüsselten publikationsbezogenen Peer-DAG nur hinter Machbarkeits- und Security-Gates erproben", "status": "open", "priority": "P2" }
@@ -51,10 +51,12 @@
   ],
   "meta": {
     "total_items": 15,
-    "by_status": { "completed": 0, "partial": 0, "open": 15 },
+    "by_status": { "completed": 0, "partial": 2, "open": 13 },
     "notes": [
       "Diese Category-Todo ist Portfolio/Research, kein ausführbarer Task-Track.",
       "Neue Implementierung beginnt erst nach Promotion eines Items in todos/active/todo.<track>.json.",
+      "PROD-SEC-001 bleibt partial: OIDC, P-256-Gerätebindung und Einmal-Tickets sind vorhanden; langlebige zeitbegrenzte Invite-Grants und Gerätewiderruf fehlen.",
+      "PROD-NET-001 bleibt partial: kurzlebige Coturn-REST-Credentials und Quoten sind vorhanden; TURN/TLS, Allowlist-Härtung, IP-Privacy und Failover fehlen.",
       "SFU und Peer-DAG sind bewusste Skalierungs-Folgeschritte; aktuell arbeitet jeder Raum als begrenztes Browser-Mesh."
     ],
     "recommended_order": ["PROD-SEC-001", "PROD-SEC-002", "PROD-NET-001", "PROD-OPS-002", "PROD-SEC-003", "PROD-SEC-004", "PROD-OPS-001", "PROD-NET-002", "PROD-DATA-001", "PROD-DATA-002", "PROD-NET-003", "PROD-OPS-003", "PROD-OPS-004", "PROD-DATA-003", "PROD-NET-004"]

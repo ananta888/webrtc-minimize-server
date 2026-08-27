@@ -13,6 +13,13 @@ export class RoomFullError extends Error {
   }
 }
 
+export class RoomAdmissionError extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+  }
+}
+
 export class RoomRegistry {
   #rooms = new Map();
   #maxParticipants;
@@ -32,19 +39,37 @@ export class RoomRegistry {
     this.#idleTtlMs = idleTtlMs;
   }
 
-  join(roomId, socket, name, now = Date.now()) {
+  join(roomId, socket, name, now = Date.now(), admission = {}) {
+    const mode = admission.mode || "room";
+    const capacity = mode === "pair" ? 2 : this.#maxParticipants;
+    if (!new Set(["room", "pair"]).has(mode)) throw new RoomAdmissionError("invalid_room_mode");
     let room = this.#rooms.get(roomId);
     if (!room) {
-      room = { peers: new Map(), updatedAt: now };
+      room = { peers: new Map(), updatedAt: now, mode, capacity };
       this.#rooms.set(roomId, room);
     }
-    if (room.peers.size >= this.#maxParticipants) throw new RoomFullError();
+    if (room.mode !== mode || room.capacity !== capacity) throw new RoomAdmissionError("room_mode_mismatch");
+    if (
+      mode === "pair" && admission.deviceFingerprint
+      && [...room.peers.values()].some((candidate) => candidate.deviceFingerprint === admission.deviceFingerprint)
+    ) throw new RoomAdmissionError("duplicate_pair_device");
+    if (room.peers.size >= room.capacity) throw new RoomFullError();
     let peerId;
     do peerId = crypto.randomBytes(8).toString("hex"); while (room.peers.has(peerId));
     const existingPeers = [...room.peers.values()].map(({ id, name: peerName }) => ({
       id, name: peerName,
     }));
-    const peer = { id: peerId, roomId, name, socket, joinedAt: now, messages: [] };
+    const peer = {
+      id: peerId,
+      roomId,
+      name,
+      socket,
+      joinedAt: now,
+      messages: [],
+      mode,
+      principal: admission.principal || "anonymous",
+      deviceFingerprint: admission.deviceFingerprint || "",
+    };
     room.peers.set(peerId, peer);
     room.updatedAt = now;
     return { peer, existingPeers };

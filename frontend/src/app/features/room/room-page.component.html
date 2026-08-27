@@ -1,0 +1,126 @@
+<main class="shell">
+  <header class="hero">
+    <div>
+      <p class="eyebrow">WebRTC Räume &amp; Pair Dev</p>
+      <h1>Direkte Zusammenarbeit mit eigener Infrastruktur.</h1>
+      <p class="lede">Keycloak bestätigt Identitäten, der Raumserver autorisiert Membership und Coturn hilft bei schwierigen Netzwerken. Medien und Chat bleiben im WebRTC-Datenpfad.</p>
+    </div>
+    <div class="status-stack">
+      <div class="status-pill"><span class="dot" [class.connected]="session.joined()" [class.connecting]="signaling.status() === 'connecting'" [class.error]="signaling.status() === 'error'"></span><span id="connection-status">{{ connectionLabel() }}</span></div>
+      <div class="status-pill"><span class="status-key">ICE</span><span id="ice-status">{{ mesh.iceState() }}</span></div>
+    </div>
+  </header>
+
+  <section class="panel identity-panel" aria-labelledby="identity-heading">
+    <div>
+      <p class="eyebrow">Identität</p>
+      <h2 id="identity-heading">Keycloak &amp; Gerät</h2>
+      @if (config.value()?.auth?.mode === 'disabled') {
+        <p>Lokaler anonymer Entwicklungsmodus. Der Join bleibt kryptografisch an dieses Browsergerät gebunden.</p>
+      } @else if (auth.authenticated()) {
+        <p>Angemeldet als <strong>{{ auth.username() }}</strong></p>
+      } @else {
+        <p>Für dieses Deployment ist eine Keycloak-Anmeldung {{ authRequired() ? 'erforderlich' : 'optional' }}.</p>
+      }
+      @if (device.fingerprint()) { <code class="fingerprint">Gerät {{ device.fingerprint().slice(0, 14) }}…</code> }
+    </div>
+    <div class="identity-actions">
+      @if (config.value()?.auth?.mode !== 'disabled' && !auth.authenticated()) {
+        <button id="login" class="primary" type="button" [disabled]="auth.busy()" (click)="auth.login()">Mit Keycloak anmelden</button>
+      }
+      @if (auth.authenticated()) { <button id="logout" class="secondary" type="button" (click)="logout()">Abmelden</button> }
+    </div>
+  </section>
+
+  <section class="panel join-panel" aria-labelledby="join-heading">
+    <div>
+      <p class="eyebrow">Session</p>
+      <h2 id="join-heading">Raum oder Pair Dev</h2>
+      <p>Normale Räume erlauben bis zu 20 Geräte. Pair Dev ist strikt auf zwei unterschiedliche Geräte begrenzt.</p>
+    </div>
+    <div class="join-grid">
+      <label>Name<input id="display-name" maxlength="40" autocomplete="name" placeholder="Dein Name" [ngModel]="nameInput()" (ngModelChange)="nameInput.set($event)"></label>
+      <label>Raumcode<input id="room-id" maxlength="48" spellcheck="false" placeholder="room-… oder pair-…" [ngModel]="roomInput()" (ngModelChange)="roomInput.set($event)"></label>
+      <fieldset class="mode-select">
+        <legend>Modus</legend>
+        <label><input type="radio" name="room-mode" value="room" [ngModel]="selectedMode()" (ngModelChange)="selectedMode.set($event)"> Raum · bis 20</label>
+        <label><input type="radio" name="room-mode" value="pair" [ngModel]="selectedMode()" (ngModelChange)="selectedMode.set($event)"> Pair Dev · genau 2</label>
+      </fieldset>
+      <div class="join-actions">
+        <button id="create-room" class="secondary" type="button" [disabled]="!canEnter() || session.joined()" (click)="create('room')">Neuen Raum</button>
+        <button id="create-pair" class="secondary" type="button" [disabled]="!canEnter() || session.joined()" (click)="create('pair')">Neue Pair-Session</button>
+        <button id="join-room" class="primary" type="button" [disabled]="!canEnter() || session.joined()" (click)="join()">Beitreten</button>
+        <button id="leave-room" class="danger" type="button" [disabled]="!session.joined()" (click)="leave()">Verlassen</button>
+      </div>
+      <div class="invite-row">
+        <input id="invite-url" readonly aria-label="Einladungslink" [value]="session.inviteUrl()" placeholder="Einladungslink erscheint hier">
+        <button id="copy-invite" class="secondary" type="button" [disabled]="!session.inviteUrl()" (click)="copyInvite()">Link kopieren</button>
+      </div>
+      @if (pageError() || session.error() || media.error() || auth.error()) {
+        <div id="app-error" class="error" role="alert">{{ pageError() || session.error() || media.error() || auth.error() }}</div>
+      }
+    </div>
+  </section>
+
+  <section class="workspace">
+    <div class="stage panel">
+      <div class="section-heading">
+        <div><p class="eyebrow">{{ session.mode() === 'pair' ? 'Pair Dev' : 'Raum' }}</p><h2>Live-Medien</h2></div>
+        <span id="participant-count" class="counter">{{ mesh.participantCount() }} / {{ session.maxParticipants() }}</span>
+      </div>
+      <div id="media-grid" class="media-grid">
+        @for (item of media.publications(); track item.source) {
+          <article class="media-card local-media">
+            <span class="media-label">Du · {{ mediaLabel(item.source) }}</span>
+            @if (item.kind === 'video') { <video autoplay muted playsinline [appMediaStream]="item.stream"></video> }
+            @else { <audio autoplay muted controls [appMediaStream]="item.stream"></audio> }
+          </article>
+        }
+        @for (item of mesh.remoteMedia(); track item.key) {
+          <article class="media-card remote-media">
+            <span class="media-label">{{ item.peerName }} · {{ mediaLabel(item.source) }}</span>
+            @if (item.kind === 'video') { <video autoplay playsinline [appMediaStream]="item.stream"></video> }
+            @else { <audio autoplay controls [appMediaStream]="item.stream"></audio> }
+          </article>
+        }
+        @if (media.publications().length === 0 && mesh.remoteMedia().length === 0) {
+          <div id="empty-media" class="empty-state">Noch keine Medien aktiv. Login, Join und eingehende Signale starten niemals eine Aufnahme.</div>
+        }
+      </div>
+    </div>
+
+    <aside class="sidebar">
+      <section class="panel controls" aria-labelledby="controls-heading">
+        <div class="section-heading"><div><p class="eyebrow">Eigene Freigaben</p><h2 id="controls-heading">Medien</h2></div></div>
+        <p class="hint">Jede Quelle fordert die Browserberechtigung erst durch ihren eigenen Klick an und kann separat beendet werden.</p>
+        <button id="toggle-microphone" type="button" [disabled]="!session.joined() || !!media.pending()" (click)="media.toggle('microphone')">🎙 Mikrofon {{ media.active('microphone') ? 'stoppen' : 'freigeben' }}</button>
+        <button id="toggle-camera" type="button" [disabled]="!session.joined() || !!media.pending()" (click)="media.toggle('camera')">● Kamera {{ media.active('camera') ? 'stoppen' : 'freigeben' }}</button>
+        <button id="toggle-screen" type="button" [disabled]="!session.joined() || !!media.pending()" (click)="media.toggle('screen')">▣ {{ media.active('screen') ? 'Bildschirmfreigabe stoppen' : 'Bildschirm freigeben' }}</button>
+        <div id="media-error" class="error" role="alert">{{ media.error() }}</div>
+      </section>
+
+      <section class="panel chat" aria-labelledby="chat-heading">
+        <div class="section-heading"><div><p class="eyebrow">DataChannel</p><h2 id="chat-heading">Peer-Chat</h2></div></div>
+        <div id="chat-log" class="chat-log" aria-live="polite">
+          @for (entry of mesh.chat(); track entry.id) {
+            <div class="chat-entry" [class.system]="entry.system"><strong>{{ entry.author }}</strong><span>{{ entry.text }}</span></div>
+          }
+        </div>
+        <form id="chat-form" class="chat-form" (submit)="$event.preventDefault(); sendChat()">
+          <input id="chat-message" maxlength="2000" autocomplete="off" placeholder="Nachricht an alle Peers" [disabled]="!session.joined()" [ngModel]="chatInput()" (ngModelChange)="chatInput.set($event)" name="chatMessage">
+          <button class="primary" type="submit" [disabled]="!session.joined() || !chatInput().trim()">Senden</button>
+        </form>
+      </section>
+    </aside>
+  </section>
+
+  <section class="panel facts">
+    <h2>Sicherheitsstatus</h2>
+    <p>Keycloak-Tokens werden vor dem Join serverseitig über JWKS geprüft. Das WebSocket erhält nur ein kurzlebiges, einmal verwendbares Ticket. WebRTC verschlüsselt Medien mit DTLS-SRTP und DataChannels mit DTLS/SCTP; eine zusätzliche Insertable-Streams-/SFrame-Schicht ist nicht aktiviert.</p>
+    <dl class="facts-grid">
+      <div><dt>Auth</dt><dd>{{ config.value()?.auth?.mode }}</dd></div>
+      <div><dt>TURN</dt><dd>{{ config.value()?.turnConfigured ? 'kurzlebige Credentials' : 'nicht konfiguriert' }}</dd></div>
+      <div><dt>Gerät</dt><dd>{{ device.fingerprint() ? 'P-256 gebunden' : 'beim ersten Join' }}</dd></div>
+    </dl>
+  </section>
+</main>

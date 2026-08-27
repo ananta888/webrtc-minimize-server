@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import test from "node:test";
 import { WebSocket } from "ws";
 
 import { createAppServer } from "../src/server.js";
+import { deviceProofMessage } from "../src/device-proof.js";
+import { AuthenticationError } from "../src/oidc-verifier.js";
 
-async function startTestServer(overrides = {}) {
+async function startTestServer(overrides = {}, serverOptions = {}) {
   const config = {
     host: "127.0.0.1",
     port: 0,
@@ -16,7 +19,7 @@ async function startTestServer(overrides = {}) {
     signalRateLimit: 120,
     ...overrides,
   };
-  const app = createAppServer({ config });
+  const app = createAppServer({ config, ...serverOptions });
   await new Promise((resolve, reject) => {
     app.server.once("error", reject);
     app.server.listen(0, "127.0.0.1", resolve);
@@ -65,6 +68,57 @@ function connect(url, origin) {
   };
 }
 
+function createDevice() {
+  return crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+}
+
+function signedDeviceProof(device, { roomId, displayName, mode = "room" }, overrides = {}) {
+  const timestamp = overrides.timestamp ?? Date.now();
+  const nonce = overrides.nonce || crypto.randomBytes(24).toString("base64url");
+  const signature = crypto.sign(
+    "sha256",
+    Buffer.from(deviceProofMessage({ roomId, displayName, mode, timestamp, nonce })),
+    { key: device.privateKey, dsaEncoding: "ieee-p1363" },
+  ).toString("base64url");
+  return {
+    publicKey: device.publicKey.export({ format: "jwk" }),
+    timestamp,
+    nonce,
+    signature,
+    ...overrides,
+  };
+}
+
+async function authorize(app, roomId, displayName, options = {}) {
+  const mode = options.mode || "room";
+  const device = options.device || createDevice();
+  const response = await fetch(`${app.httpUrl}/api/sessions`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: options.origin || app.httpUrl,
+      ...(options.authorization ? { authorization: options.authorization } : {}),
+    },
+    body: JSON.stringify({
+      roomId,
+      displayName,
+      mode,
+      deviceProof: signedDeviceProof(device, { roomId, displayName, mode }, options.proofOverrides),
+    }),
+  });
+  const body = await response.json();
+  return { response, body, device };
+}
+
+async function connectAuthorized(app, roomId, displayName, options = {}) {
+  const authorization = await authorize(app, roomId, displayName, options);
+  assert.equal(authorization.response.status, 201, JSON.stringify(authorization.body));
+  return {
+    ...connect(`${app.wsUrl}${authorization.body.signalingPath}`, options.wsOrigin || app.httpUrl),
+    authorization,
+  };
+}
+
 test("HTTP surface serves health, runtime config, rooms and app", async (context) => {
   const app = await startTestServer();
   context.after(() => app.close());
@@ -74,7 +128,13 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
 
   const configResponse = await fetch(`${app.httpUrl}/config`);
   assert.deepEqual(await configResponse.json(), {
-    iceServers: [{ urls: "stun:stun.test:3478" }], maxRoomParticipants: 20,
+    iceServers: [{ urls: "stun:stun.test:3478" }],
+    maxRoomParticipants: 20,
+    auth: {
+      mode: "disabled", issuer: "", clientId: "webrtc-browser", audience: "webrtc-room-server",
+    },
+    pairParticipants: 2,
+    turnConfigured: false,
   });
   assert.match(configResponse.headers.get("content-security-policy"), /default-src 'self'/);
 
@@ -82,20 +142,21 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
   assert.equal(roomResponse.status, 201);
   const room = await roomResponse.json();
   assert.match(room.roomId, /^room-[a-f0-9]{18}$/);
-  assert.equal(room.inviteUrl, `${app.httpUrl}/?room=${room.roomId}`);
+  assert.equal(room.mode, "room");
+  assert.equal(room.inviteUrl, `${app.httpUrl}/?room=${room.roomId}&mode=room`);
 
   const indexResponse = await fetch(app.httpUrl);
   assert.equal(indexResponse.status, 200);
-  assert.match(await indexResponse.text(), /WebRTC Räume/);
+  assert.match(await indexResponse.text(), /<app-root>/);
 });
 
 test("two room peers receive membership and target-bound signals", async (context) => {
   const app = await startTestServer();
   context.after(() => app.close());
   const origin = app.httpUrl;
-  const ada = connect(`${app.wsUrl}/signal?room=room-alpha&name=Ada`, origin);
+  const ada = await connectAuthorized(app, "room-alpha", "Ada");
   const adaWelcome = await ada.next((message) => message.type === "welcome");
-  const grace = connect(`${app.wsUrl}/signal?room=room-alpha&name=Grace`, origin);
+  const grace = await connectAuthorized(app, "room-alpha", "Grace");
   const graceWelcome = await grace.next((message) => message.type === "welcome");
   const joined = await ada.next((message) => message.type === "peer-joined");
   assert.equal(joined.peer.id, graceWelcome.peerId);
@@ -123,27 +184,18 @@ test("signaling admits 20 peers, rejects peer 21 and isolates another room", asy
   context.after(() => app.close());
   const peers = [];
   for (let index = 1; index <= 20; index += 1) {
-    const peer = connect(
-      `${app.wsUrl}/signal?room=room-twenty&name=Peer%20${index}`,
-      app.httpUrl,
-    );
+    const peer = await connectAuthorized(app, "room-twenty", `Peer ${index}`);
     const welcome = await peer.next((message) => message.type === "welcome");
     assert.equal(welcome.maxParticipants, 20);
     assert.equal(welcome.peers.length, index - 1);
     peers.push(peer);
   }
 
-  const overflow = connect(
-    `${app.wsUrl}/signal?room=room-twenty&name=Peer%2021`,
-    app.httpUrl,
-  );
+  const overflow = await connectAuthorized(app, "room-twenty", "Peer 21");
   const overflowError = await overflow.next((message) => message.type === "error");
   assert.equal(overflowError.code, "room_full");
 
-  const otherRoom = connect(
-    `${app.wsUrl}/signal?room=room-other&name=Independent`,
-    app.httpUrl,
-  );
+  const otherRoom = await connectAuthorized(app, "room-other", "Independent");
   const otherWelcome = await otherRoom.next((message) => message.type === "welcome");
   assert.deepEqual(otherWelcome.peers, []);
   assert.equal(app.registry.participantCount, 21);
@@ -157,20 +209,123 @@ test("signaling admits 20 peers, rejects peer 21 and isolates another room", asy
 test("signaling rejects cross-origin browsers and caps rooms", async (context) => {
   const app = await startTestServer({ maxRoomParticipants: 2 });
   context.after(() => app.close());
-  const invalid = new WebSocket(`${app.wsUrl}/signal?room=room-alpha&name=Eve`, {
+  const eve = await authorize(app, "room-alpha", "Eve");
+  const invalid = new WebSocket(`${app.wsUrl}${eve.body.signalingPath}`, {
     origin: "https://evil.example",
   });
   const invalidStatus = await new Promise((resolve) => invalid.on("unexpected-response", (_request, response) => resolve(response.statusCode)));
   assert.equal(invalidStatus, 403);
 
-  const first = connect(`${app.wsUrl}/signal?room=room-alpha&name=Ada`, app.httpUrl);
+  const first = await connectAuthorized(app, "room-alpha", "Ada");
   await first.next((message) => message.type === "welcome");
-  const second = connect(`${app.wsUrl}/signal?room=room-alpha&name=Grace`, app.httpUrl);
+  const second = await connectAuthorized(app, "room-alpha", "Grace");
   await second.next((message) => message.type === "welcome");
-  const third = connect(`${app.wsUrl}/signal?room=room-alpha&name=Linus`, app.httpUrl);
+  const third = await connectAuthorized(app, "room-alpha", "Linus");
   const error = await third.next((message) => message.type === "error");
   assert.equal(error.code, "room_full");
   first.socket.close();
   second.socket.close();
   third.socket.close();
+});
+
+test("session authorization requires a fresh device proof and tickets cannot be replayed", async (context) => {
+  const app = await startTestServer();
+  context.after(() => app.close());
+  const missingProof = await fetch(`${app.httpUrl}/api/sessions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: app.httpUrl },
+    body: JSON.stringify({ roomId: "room-alpha", displayName: "Ada", mode: "room" }),
+  });
+  assert.equal(missingProof.status, 400);
+  assert.deepEqual(await missingProof.json(), { error: "device_proof_required" });
+
+  const unknownDevice = createDevice();
+  const unknownField = await fetch(`${app.httpUrl}/api/sessions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: app.httpUrl },
+    body: JSON.stringify({
+      roomId: "room-alpha",
+      displayName: "Ada",
+      mode: "room",
+      deviceProof: signedDeviceProof(unknownDevice, {
+        roomId: "room-alpha", displayName: "Ada", mode: "room",
+      }),
+      authority: "client-supplied",
+    }),
+  });
+  assert.equal(unknownField.status, 400);
+  assert.deepEqual(await unknownField.json(), { error: "unknown_request_field" });
+
+  const authorization = await authorize(app, "room-alpha", "Ada");
+  assert.equal(authorization.response.status, 201);
+  const first = connect(`${app.wsUrl}${authorization.body.signalingPath}`, app.httpUrl);
+  await first.next((message) => message.type === "welcome");
+  const replay = new WebSocket(`${app.wsUrl}${authorization.body.signalingPath}`, { origin: app.httpUrl });
+  const replayStatus = await new Promise((resolve) => replay.on("unexpected-response", (_request, response) => resolve(response.statusCode)));
+  assert.equal(replayStatus, 401);
+  first.socket.close();
+});
+
+test("pair sessions admit two distinct devices and reject duplicate device or room mode", async (context) => {
+  const app = await startTestServer();
+  context.after(() => app.close());
+  const firstDevice = createDevice();
+  const first = await connectAuthorized(app, "pair-alpha", "Ada", { mode: "pair", device: firstDevice });
+  await first.next((message) => message.type === "welcome");
+  const duplicate = await connectAuthorized(app, "pair-alpha", "Ada second tab", { mode: "pair", device: firstDevice });
+  const duplicateError = await duplicate.next((message) => message.type === "error");
+  assert.equal(duplicateError.code, "duplicate_pair_device");
+
+  const second = await connectAuthorized(app, "pair-alpha", "Grace", { mode: "pair" });
+  const secondWelcome = await second.next((message) => message.type === "welcome");
+  assert.equal(secondWelcome.maxParticipants, 2);
+  assert.equal(secondWelcome.mode, "pair");
+
+  const wrongMode = await connectAuthorized(app, "pair-alpha", "Wrong mode", { mode: "room" });
+  const modeError = await wrongMode.next((message) => message.type === "error");
+  assert.equal(modeError.code, "room_mode_mismatch");
+  first.socket.close();
+  duplicate.socket.close();
+  second.socket.close();
+  wrongMode.socket.close();
+});
+
+test("required OIDC mode denies missing tokens and binds verified identity to a session", async (context) => {
+  const oidcVerifier = {
+    async verify(token) {
+      if (token !== "valid-token") throw new AuthenticationError("invalid_access_token");
+      return { issuer: "https://identity.test/realms/webrtc", subject: "user-123", displayName: "Ada" };
+    },
+  };
+  const app = await startTestServer({
+    authMode: "required",
+    oidcIssuer: "https://identity.test/realms/webrtc",
+    oidcJwksUrl: "https://identity.test/certs",
+    oidcAudience: "webrtc-room-server",
+    oidcClientId: "webrtc-browser",
+  }, { oidcVerifier });
+  context.after(() => app.close());
+  const denied = await authorize(app, "room-auth", "Ada");
+  assert.equal(denied.response.status, 401);
+  assert.equal(denied.body.error, "authentication_required");
+  const invalid = await authorize(app, "room-auth", "Ada", { authorization: "Bearer wrong-token" });
+  assert.equal(invalid.response.status, 401);
+  assert.equal(invalid.body.error, "invalid_access_token");
+  const allowed = await authorize(app, "room-auth", "Ada", { authorization: "Bearer valid-token" });
+  assert.equal(allowed.response.status, 201);
+  assert.deepEqual(allowed.body.identity, { authenticated: true, displayName: "Ada" });
+});
+
+test("authorized sessions receive ephemeral TURN credentials", async (context) => {
+  const app = await startTestServer({
+    turnUrls: ["turn:turn.test:3478?transport=udp"],
+    turnSharedSecret: "integration-secret",
+    turnCredentialTtlMs: 600_000,
+  });
+  context.after(() => app.close());
+  const authorization = await authorize(app, "room-turn", "Ada");
+  assert.equal(authorization.response.status, 201);
+  assert.equal(authorization.body.iceServers.length, 2);
+  assert.match(authorization.body.iceServers[1].username, /^\d+:[a-f0-9]{20}$/);
+  assert.equal(authorization.body.iceServers[1].credentialType, "password");
 });

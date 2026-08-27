@@ -4,24 +4,43 @@
   "private": true,
   "license": "BSD-3-Clause",
   "type": "module",
-  "description": "Room-based WebRTC mesh for camera, microphone, screen sharing and peer chat.",
+  "description": "Keycloak-enabled Angular WebRTC rooms and Pair Dev with ephemeral Coturn access.",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
+    "dev": "ng build --watch --configuration development",
+    "dev:server": "node --watch src/server.js",
+    "build": "ng build --configuration production",
+    "test:frontend": "vitest run --config vitest.config.mjs",
+    "test:infrastructure": "node scripts/live-infrastructure-gate.mjs",
     "test": "node --test",
     "todos:validate": "node scripts/validate-todos.mjs",
     "workflows:validate": "node scripts/validate-workflows.mjs",
-    "check": "npm run todos:validate && npm run workflows:validate && npm test"
+    "check": "npm run todos:validate && npm run workflows:validate && npm run test:frontend && npm run build && npm test && npm run test:infrastructure"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
     "ajv": "^8.17.1",
+    "jose": "6.1.3",
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@angular-devkit/build-angular": "21.2.22",
+    "@angular/cli": "21.2.22",
+    "@angular/common": "21.2.22",
+    "@angular/compiler": "21.2.22",
+    "@angular/compiler-cli": "21.2.22",
+    "@angular/core": "21.2.22",
+    "@angular/forms": "21.2.22",
+    "@angular/platform-browser": "21.2.22",
+    "@angular/router": "21.2.22",
+    "jsdom": "26.1.0",
     "playwright": "^1.62.1",
-    "yaml": "^2.9.0"
+    "rxjs": "7.8.2",
+    "typescript": "5.9.3",
+    "vitest": "3.2.6",
+    "yaml": "^2.9.0",
+    "zone.js": "0.16.0"
   }
 }

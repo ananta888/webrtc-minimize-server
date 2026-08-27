@@ -1,0 +1,69 @@
+{
+  "realm": "webrtc",
+  "enabled": true,
+  "displayName": "WebRTC Rooms",
+  "sslRequired": "external",
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "bruteForceProtected": true,
+  "failureFactor": 8,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 3600,
+  "ssoSessionMaxLifespan": 28800,
+  "passwordPolicy": "length(12) and notUsername(undefined)",
+  "clients": [
+    {
+      "clientId": "webrtc-browser",
+      "name": "WebRTC Browser",
+      "description": "Public Angular browser client using Authorization Code Flow with PKCE S256.",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "http://localhost:8080/oidc-callback",
+        "http://127.0.0.1:8080/oidc-callback"
+      ],
+      "webOrigins": [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:8080/*##http://127.0.0.1:8080/*",
+        "backchannel.logout.session.required": "true"
+      },
+      "defaultClientScopes": ["web-origins", "profile", "email", "roles", "basic"],
+      "protocolMappers": [
+        {
+          "name": "webrtc-room-server-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "webrtc-room-server",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "roles": {
+    "realm": [
+      { "name": "webrtc-user", "description": "May create and join WebRTC rooms.", "composite": false }
+    ]
+  },
+  "defaultRoles": ["webrtc-user"]
+}

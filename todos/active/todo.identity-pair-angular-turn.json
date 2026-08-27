@@ -14,25 +14,25 @@
       "id": "IPAT-M01",
       "title": "Quellenaudit und ausführbarer Track",
       "task_ids": ["IPAT-001", "IPAT-002"],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "IPAT-M02",
       "title": "Identität, Session-Autorität und Pair-Domain",
       "task_ids": ["IPAT-003", "IPAT-004", "IPAT-005"],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "IPAT-M03",
       "title": "Angular-Medienoberfläche und lokale Infrastruktur",
       "task_ids": ["IPAT-006", "IPAT-007", "IPAT-008", "IPAT-009", "IPAT-010"],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "IPAT-M04",
       "title": "Sicherheits-, Browser-, Netzwerk- und Release-Gates",
       "task_ids": ["IPAT-011", "IPAT-012"],
-      "status": "todo"
+      "status": "in_progress"
     }
   ],
   "tasks": [
@@ -54,10 +54,10 @@
     {
       "id": "IPAT-002",
       "title": "Umfangreichen Implementierungstrack validieren, committen und pushen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "medium",
-      "progress_percent": 90,
+      "progress_percent": 100,
       "depends_on": ["IPAT-001"],
       "acceptance_criteria": [
         "Alle Arbeitspakete besitzen Risiko, Priorität, Abhängigkeiten und reproduzierbare Akzeptanzkriterien.",
@@ -68,10 +68,10 @@
     {
       "id": "IPAT-003",
       "title": "OIDC-Konfiguration und fail-closed JWKS-Tokenprüfung implementieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["IPAT-002"],
       "acceptance_criteria": [
         "Issuer, Audience, Client-ID, JWKS-URL und Auth-Modus sind explizit konfigurierbar und werden beim Start geprüft.",
@@ -83,10 +83,10 @@
     {
       "id": "IPAT-004",
       "title": "Kurzlebige Einmal-Tickets zwischen HTTP-Autorisierung und WebSocket-Signaling einführen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["IPAT-003"],
       "acceptance_criteria": [
         "Ein begrenzter POST-Endpunkt autorisiert Raum, Modus, Anzeigename und Gerät vor dem WebSocket-Upgrade.",
@@ -98,10 +98,10 @@
     {
       "id": "IPAT-005",
       "title": "Pair-Sessions und Gerätebindung als eigene Domain-Regeln ergänzen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["IPAT-004"],
       "acceptance_criteria": [
         "Normale Räume behalten maximal 20 Teilnehmer; Pair-Sessions akzeptieren exakt höchstens zwei unterschiedliche Geräte.",
@@ -114,10 +114,10 @@
     {
       "id": "IPAT-006",
       "title": "Eigenständiges Angular-Frontend mit OIDC-PKCE und klarer Modultrennung aufbauen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["IPAT-003"],
       "acceptance_criteria": [
         "Die ausgelieferte Anwendung wird mit Angular gebaut und nicht mehr aus einer monolithischen Vanilla-JavaScript-Datei betrieben.",
@@ -130,10 +130,10 @@
     {
       "id": "IPAT-007",
       "title": "Raum-Mesh, Medienpublikationen, Screenshare und DataChannel in Angular portieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["IPAT-004", "IPAT-006"],
       "acceptance_criteria": [
         "Angular verbindet bis zu 20 Browser pro Raum über Perfect Negotiation und zielgebundenes Signaling.",
@@ -146,10 +146,10 @@
     {
       "id": "IPAT-008",
       "title": "Pair-Dev-Oberfläche und sichere Medien-Lifecycles umsetzen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["IPAT-005", "IPAT-007"],
       "acceptance_criteria": [
         "Benutzer können einen normalen Raum oder eine auf zwei Geräte begrenzte Pair-Session erstellen und über einen Einladungslink öffnen.",
@@ -162,10 +162,10 @@
     {
       "id": "IPAT-009",
       "title": "Coturn als lokalen STUN/TURN-Dienst mit kurzlebigen Credentials integrieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["IPAT-004"],
       "acceptance_criteria": [
         "Docker Compose stellt Coturn für STUN sowie TURN über UDP und TCP mit begrenztem Relay-Portbereich bereit.",
@@ -178,10 +178,10 @@
     {
       "id": "IPAT-010",
       "title": "Keycloak-Realm und lokalen Identity-Stack reproduzierbar bereitstellen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["IPAT-003", "IPAT-006"],
       "acceptance_criteria": [
         "Docker Compose startet einen versionierten Keycloak-Dienst mit importierbarem Realm und öffentlichem Browser-Client.",
@@ -194,10 +194,10 @@
     {
       "id": "IPAT-011",
       "title": "Unit-, Integrations-, Angular-, Browser-, OIDC- und TURN-Gates ausbauen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["IPAT-005", "IPAT-008", "IPAT-009", "IPAT-010"],
       "acceptance_criteria": [
         "Unit-Tests prüfen Tokenclaims, Ticket-Einmaligkeit, Gerätebeweise, Pair-Limit, 20er-Raumlimit und TURN-HMAC deterministisch.",
@@ -211,15 +211,15 @@
     {
       "id": "IPAT-012",
       "title": "Betrieb, Sicherheit, Herkunft, CI und öffentlichen Release abschließen",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 80,
       "depends_on": ["IPAT-011"],
       "acceptance_criteria": [
         "README und Herkunftsmatrix erklären lokalen Vollstack, eigene Keycloak-/Coturn-Endpunkte, HTTPS/WSS, Pair-vs-Room und verbleibende Grenzen.",
         "AGENTS.md beschreibt die neue Identity-, Ticket-, Device- und ICE-Credential-Autorität ohne SOLID-Verantwortungen zu vermischen.",
-        "npm run check, npm audit, Angular-Produktionbuild, Compose-Validierung, Containerbuild und öffentliche GitHub Actions sind erfolgreich.",
+        "npm run check, npm audit --omit=dev, Angular-Produktionbuild, Compose-Validierung, Containerbuild und öffentliche GitHub Actions sind erfolgreich.",
         "Planungs-, Implementierungs- und Abschlusscommits sind auf origin/main veröffentlicht; lokaler und entfernter HEAD sind identisch.",
         "Der vollständig erledigte Track wird erst nach allen Gates nach todos/archive verschoben."
       ]
@@ -228,20 +228,20 @@
   "critical_path_tasks": ["IPAT-001", "IPAT-002", "IPAT-003", "IPAT-004", "IPAT-005", "IPAT-006", "IPAT-007", "IPAT-008", "IPAT-009", "IPAT-010", "IPAT-011", "IPAT-012"],
   "tasks_status_summary": {
     "total": 12,
-    "by_status": { "todo": 10, "in_progress": 1, "partial": 0, "blocked": 0, "done": 1 },
-    "progress_percent_done": 8.33,
+    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 11 },
+    "progress_percent_done": 91.67,
     "by_priority": { "P0": 11, "P1": 1, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 1, "high": 6, "critical": 5 },
-    "critical_path": { "total": 12, "done": 1, "remaining": 11 },
-    "milestones": { "total": 4, "todo": 3, "in_progress": 1, "blocked": 0, "done": 0 }
+    "critical_path": { "total": 12, "done": 11, "remaining": 1 },
+    "milestones": { "total": 4, "todo": 0, "in_progress": 1, "blocked": 0, "done": 3 }
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 10,
+    "todo_remaining": 0,
     "in_progress": 1,
     "partial": 0,
     "blocked": 0,
-    "done": 1
+    "done": 11
   },
   "summary_notes": [
     "Ananta bleibt Herkunftsquelle und keine Runtime-Abhängigkeit; nur eigenständig integrierte und reproduzierbar getestete Bausteine gelten hier als vorhanden.",

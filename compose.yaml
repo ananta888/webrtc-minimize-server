@@ -2,12 +2,74 @@ services:
   webrtc:
     build: .
     restart: unless-stopped
+    depends_on:
+      keycloak:
+        condition: service_started
+      coturn:
+        condition: service_started
     environment:
       HOST: 0.0.0.0
       PORT: 8080
-      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
-      STUN_URLS: ${STUN_URLS:-stun:stun.l.google.com:19302}
-      TURN_SERVERS_JSON: ${TURN_SERVERS_JSON:-[]}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8080}
+      AUTH_MODE: ${AUTH_MODE:-required}
+      OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8081/realms/webrtc}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://keycloak:8080/realms/webrtc/protocol/openid-connect/certs}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-webrtc-room-server}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-webrtc-browser}
+      STUN_URLS: ${STUN_URLS:-stun:localhost:3478}
+      TURN_URLS: ${TURN_URLS:-turn:localhost:3478?transport=udp,turn:localhost:3478?transport=tcp}
+      TURN_SHARED_SECRET: ${TURN_SHARED_SECRET:-local-development-only-change-me}
+      TURN_REALM: ${TURN_REALM:-webrtc.local}
+      TURN_CREDENTIAL_TTL_MS: ${TURN_CREDENTIAL_TTL_MS:-600000}
       MAX_ROOM_PARTICIPANTS: ${MAX_ROOM_PARTICIPANTS:-20}
     ports:
       - "${PORT:-8080}:8080"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.6.1@sha256:dea26401d06341095cc4ea9d66896200b55de5ca1daa1d2fcbe58493afa6e0ad
+    command: ["start-dev", "--import-realm", "--http-port=8080"]
+    restart: unless-stopped
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-local-development-only-change-me}
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./infra/keycloak/webrtc-realm.json:/opt/keycloak/data/import/webrtc-realm.json:ro
+    ports:
+      - "${KEYCLOAK_PORT:-8081}:8080"
+    security_opt:
+      - no-new-privileges:true
+
+  coturn:
+    image: coturn/coturn:4.6.3-r3@sha256:71c3c990283385567f11794ee692e3a47b66fd9b0bb39e42afbe776e331dd888
+    command:
+      - --no-cli
+      - --no-tls
+      - --no-dtls
+      - --fingerprint
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SHARED_SECRET:-local-development-only-change-me}
+      - --realm=${TURN_REALM:-webrtc.local}
+      - --server-name=${TURN_REALM:-webrtc.local}
+      - --listening-port=3478
+      - --external-ip=${TURN_EXTERNAL_IP:-127.0.0.1}
+      - --min-port=${TURN_MIN_PORT:-49160}
+      - --max-port=${TURN_MAX_PORT:-49200}
+      - --total-quota=${TURN_TOTAL_QUOTA:-2000}
+      - --user-quota=${TURN_USER_QUOTA:-20}
+      - --max-bps=${TURN_MAX_BPS:-8000000}
+      - --stale-nonce=600
+      - --log-file=stdout
+      - --pidfile=
+    restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    cap_add: ["NET_BIND_SERVICE"]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /var/lib/coturn:rw,noexec,nosuid,nodev,size=4m,uid=65534,gid=65534
+    ports:
+      - "${TURN_PORT:-3478}:3478/udp"
+      - "${TURN_PORT:-3478}:3478/tcp"
+      - "${TURN_MIN_PORT:-49160}-${TURN_MAX_PORT:-49200}:${TURN_MIN_PORT:-49160}-${TURN_MAX_PORT:-49200}/udp"

@@ -96,3 +96,83 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   await ada.locator("#leave-room").click();
   await grace.locator("#participant-count", { hasText: "1 / 20" }).waitFor();
 });
+
+test("two independent Chromium devices join Pair Dev while device three is rejected", { timeout: 30_000 }, async (context) => {
+  try {
+    await fs.access(chromium.executablePath());
+  } catch {
+    context.skip("Playwright Chromium is not installed; run: npx playwright install chromium");
+    return;
+  }
+  const app = createAppServer({
+    config: {
+      host: "127.0.0.1",
+      port: 0,
+      publicOrigin: "",
+      stunUrls: [],
+      turnServers: [],
+      maxRoomParticipants: 20,
+      roomIdleTtlMs: 60_000,
+      signalRateLimit: 120,
+    },
+  });
+  await new Promise((resolve, reject) => {
+    app.server.once("error", reject);
+    app.server.listen(0, "127.0.0.1", resolve);
+  });
+  const origin = `http://127.0.0.1:${app.server.address().port}`;
+  const browser = await chromium.launch({ headless: true });
+  const contexts = await Promise.all([browser.newContext(), browser.newContext(), browser.newContext()]);
+  context.after(async () => {
+    for (const browserContext of contexts) await browserContext.close();
+    await browser.close();
+    for (const socket of app.webSocketServer.clients) socket.terminate();
+    await new Promise((resolve) => app.server.close(resolve));
+  });
+  for (const browserContext of contexts) {
+    await browserContext.addInitScript(() => {
+      window.__captureCalls = [];
+      const devices = navigator.mediaDevices;
+      if (!devices) return;
+      for (const method of ["getUserMedia", "getDisplayMedia"]) {
+        const original = devices[method]?.bind(devices);
+        if (!original) continue;
+        devices[method] = (...args) => {
+          window.__captureCalls.push(method);
+          return original(...args);
+        };
+      }
+    });
+  }
+  const owner = await contexts[0].newPage();
+  const peer = await contexts[1].newPage();
+  const overflow = await contexts[2].newPage();
+  await owner.goto(origin);
+  await owner.locator("#display-name").fill("Ada");
+  await owner.locator("#create-pair").click();
+  await owner.waitForFunction(() => document.querySelector("#room-id").value.startsWith("pair-"));
+  const roomId = await owner.locator("#room-id").inputValue();
+  await owner.locator("#join-room").click();
+  await owner.locator("#connection-status", { hasText: "Signaling verbunden" }).waitFor();
+
+  await peer.goto(`${origin}/?room=${roomId}&mode=pair`);
+  await peer.locator("#display-name").fill("Grace");
+  await peer.locator("#join-room").click();
+  await peer.locator("#participant-count", { hasText: "2 / 2" }).waitFor();
+  await owner.locator("#participant-count", { hasText: "2 / 2" }).waitFor();
+  assert.deepEqual(await owner.evaluate(() => window.__captureCalls), []);
+  assert.deepEqual(await peer.evaluate(() => window.__captureCalls), []);
+
+  await owner.locator("#chat-message").fill("Pair verbunden");
+  await owner.locator("#chat-form button").click();
+  await peer.locator("#chat-log").getByText("Pair verbunden").waitFor();
+
+  await overflow.goto(`${origin}/?room=${roomId}&mode=pair`);
+  await overflow.locator("#display-name").fill("Linus");
+  await overflow.locator("#join-room").click();
+  await overflow.locator("#app-error", { hasText: "room_full" }).waitFor();
+  assert.deepEqual(await overflow.evaluate(() => window.__captureCalls), []);
+
+  await peer.locator("#leave-room").click();
+  await owner.locator("#participant-count", { hasText: "1 / 2" }).waitFor();
+});

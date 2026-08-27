@@ -18,6 +18,9 @@ Der Node-Server ist allein verantwortlich für:
 - Room-Membership innerhalb der laufenden Instanz,
 - Zuweisung kurzlebiger Peer-IDs,
 - Prüfung und begrenzte Weiterleitung von SDP-/ICE-Signalen,
+- kryptografische OIDC-Tokenprüfung und Ausgabe kurzlebiger Einmal-Tickets,
+- Prüfung frischer, raumgebundener P-256-Gerätenachweise,
+- Ausgabe kurzlebiger Coturn-REST-Credentials nach Session-Autorisierung,
 - Teilnehmer-, Origin-, Größen- und Rate-Grenzen.
 
 Der Signaling-Server darf keine Audio-, Video-, Bildschirm- oder Chat-Inhalte terminieren, aufzeichnen oder persistieren.
@@ -31,19 +34,22 @@ Browser sind verantwortlich für:
 - DTLS-SRTP-Medientransport und SCTP-DataChannels,
 - lokale Darstellung und Freigabestopps,
 - Perfect Negotiation ohne globale Peer-Orchestrierungsloops.
+- OIDC Authorization Code Flow mit PKCE und sitzungsgebundene Tokens,
+- eine nicht exportierbare P-256-Geräteidentität im Browserprofil.
 
 Peers dürfen aus Signalen keine Room-Membership oder zusätzliche Autorität ableiten. Die Control Plane bleibt Eigentümerin der Membership.
 
 ## Systemgrenzen
 
 - Ein Raum hat eine harte Membership-Grenze von 20 Teilnehmern.
+- Eine Pair-Session hat eine harte Grenze von zwei unterschiedlichen Gerätefingerprints und kann nicht in einen normalen Raum umgedeutet werden.
 - Die Anzahl gleichzeitig aktiver Räume besitzt keine anwendungsseitige Obergrenze. Praktische Ressourcenbudgets dürfen beobachtet und geschützt werden, aber keine feste globale Room-Anzahl in die Domain einführen.
 - Das Full-Mesh erzeugt bei 20 Teilnehmern bis zu 19 PeerConnections und Medienkopien je Sender. Die Raumgrenze ist daher keine QoS-Garantie; produktive große Videoräume benötigen den geplanten SFU-Pfad.
 - Räume und Peer-IDs sind flüchtig und werden nicht persistiert.
-- Der Raumcode ist ein Bearer-Invite, keine verifizierte Identität.
+- Der Raumcode ist ein Bearer-Invite, keine Identität. Identität stammt ausschließlich aus verifizierten OIDC-Claims; das Gerät stammt ausschließlich aus einem serverseitig geprüften P-256-Nachweis.
 - WebRTC bietet Transportverschlüsselung; anwendungsseitige SFrame-/Insertable-Streams-E2EE ist noch nicht implementiert.
-- STUN/TURN sind konfigurierbare Infrastrukturhilfen, keine Policy-Autorität.
-- SFU, Peer-DAG, OIDC, langlebige Workspaces und Artefakttransfer sind Backlog-Fähigkeiten und dürfen nicht als vorhandene Funktionen dargestellt werden.
+- STUN/TURN sind konfigurierbare Infrastrukturhilfen, keine Policy-Autorität. TURN-Credentials werden kurzlebig und erst nach Session-Autorisierung erzeugt.
+- SFU, Peer-DAG, langlebige Workspaces, Frame-E2EE und Artefakttransfer sind Backlog-Fähigkeiten und dürfen nicht als vorhandene Funktionen dargestellt werden.
 
 ## Todo-gesteuerte Entwicklung
 
@@ -79,6 +85,10 @@ Ein Track kommt nur ins Archiv, wenn alle Tasks und Milestones `done` sind und d
 - WebSocket-Origin, Room-Membership, Empfänger, Nachrichtentyp, Größe und Rate serverseitig prüfen.
 - Unbekannte Contract-Felder oder Nachrichtentypen fail-closed behandeln.
 - TURN-Secrets nie einchecken. Statische TURN-Credentials sind nur für lokale Tests; Produktion benötigt kurzlebige Credentials.
+- OIDC-Tokens nie in URLs, Signaling-Nachrichten oder Logs schreiben. WebSockets verwenden ausschließlich kurzlebige, einmal verwendbare Session-Tickets.
+- OIDC fail-closed auf Signatur, erlaubten Algorithmus, exakten Issuer, Audience, Ablaufzeit und Subject prüfen; JWKS-Fehler dürfen Auth nicht still deaktivieren.
+- Gerätebeweise an die normalisierten Join-Felder binden, zeitlich begrenzen und gegen Replay schützen. Private Geräteschlüssel dürfen nicht exportierbar oder serverseitig gespeichert sein.
+- `AUTH_MODE=disabled`, Keycloak `start-dev`, lokale Beispielpasswörter und unverschlüsseltes TURN sind ausschließlich Entwicklungsprofile und dürfen nicht als produktionssicher dokumentiert werden.
 - Kein E2EE-, Anonymitäts- oder Identitätsversprechen machen, das der implementierte Pfad nicht beweist.
 - Öffentliches Deployment ausschließlich über HTTPS/WSS. Secure Context ist für Medienzugriff erforderlich.
 
@@ -91,6 +101,7 @@ SOLID gilt bei allen Änderungen:
 - **LSP:** Mock-, P2P-, TURN- und spätere SFU-Adapter müssen ihre deklarierten Capabilities ehrlich und austauschbar erfüllen.
 - **ISP:** Kleine Ports für Membership, Signaling, Publication, Subscription, Stats und DataChannel-Traffic bevorzugen.
 - **DIP:** Domain- und Contract-Code darf nicht von konkreten SFU-/Identity-Vendor-SDKs abhängen.
+- **ISP:** Angular-Services für Runtime-Konfiguration, OIDC, Geräteidentität, Signaling, Peer-Mesh und Capture bleiben getrennt; UI-Komponenten besitzen keine Token- oder PeerConnection-Policy.
 
 Zusätzlich:
 
@@ -112,8 +123,10 @@ npm run check
 Je nach Änderung zusätzlich:
 
 - zwei echte Browseridentitäten für Medien/DataChannel,
+- zwei getrennte Browserkontexte für Pair-Gerätebindung,
 - Chromium/Firefox-Matrix bei Capture-/Negotiation-Änderungen,
 - NAT-/TURN-Test bei ICE-Konfigurationsänderungen,
+- realer PKCE-/JWKS-/TURN-Live-Gate bei Identity- oder Coturn-Änderungen; fehlende Infrastruktur muss als sichtbarer Skip erscheinen,
 - Negativtests für unbekannte Messages, falsche Rooms, Oversize, Rate-Limit und Disconnect,
 - Prüfung, dass ohne Benutzeraktion keine Capture-Berechtigung erscheint.
 
@@ -123,13 +136,13 @@ Tests dürfen externe STUN-/TURN-Dienste sauber überspringen, aber nicht stills
 
 | Pfad | Kategorie | Versionieren |
 |---|---|---|
-| `src/`, `public/`, `test/`, `scripts/` | Source/Test | ja |
+| `src/`, `frontend/`, `test/`, `scripts/` | Source/Test | ja |
 | `.github/workflows/` | CI-Infrastruktur | ja |
 | `AGENTS.md`, `README.md`, `LICENSE`, `docs/` | Dokumentation/Lizenz | ja |
 | `todos/**/*.json`, `todos/archive/README.md` | Planung | ja |
-| `.env.example`, `Dockerfile`, `compose.yaml` | reproduzierbare Infrastruktur | ja |
+| `.env.example`, `Dockerfile`, `compose.yaml`, `infra/keycloak/` | reproduzierbare Infrastruktur | ja |
 | `.env`, TURN-Secrets, Tokens, Zertifikat-Private-Keys | Secret | niemals |
-| `node_modules/`, Logs, Coverage, Test-Results | generiert | nein |
+| `node_modules/`, `dist/`, Logs, Coverage, Test-Results | generiert | nein |
 
 Vor einem Commit `git status` prüfen und Dateien gezielt stagen; niemals ungeprüft `git add .` oder `git add -A` verwenden. Commit-Schema ist Conventional Commits, beispielsweise `feat(signaling): bound room relay` oder `test(webrtc): cover peer departure`.
 

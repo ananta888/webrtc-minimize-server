@@ -13,7 +13,22 @@ const DEFAULTS = Object.freeze({
   maxRoomParticipants: DEFAULT_ROOM_PARTICIPANTS,
   roomIdleTtlMs: 60 * 60 * 1000,
   signalRateLimit: 120,
+  authMode: "disabled",
+  oidcIssuer: "",
+  oidcAudience: "webrtc-room-server",
+  oidcClientId: "webrtc-browser",
+  oidcJwksUrl: "",
+  oidcJwksCacheMs: 5 * 60 * 1000,
+  sessionTicketTtlMs: 30_000,
+  deviceProofMaxAgeMs: 60_000,
+  turnUrls: [],
+  turnSharedSecret: "",
+  turnRealm: "webrtc.local",
+  turnCredentialTtlMs: 10 * 60 * 1000,
 });
+
+const AUTH_MODES = new Set(["disabled", "optional", "required"]);
+const OIDC_ALGORITHMS = Object.freeze(["RS256", "ES256", "RS384", "RS512"]);
 
 function boundedInteger(value, fallback, { minimum, maximum, name }) {
   if (value === undefined || value === "") return fallback;
@@ -51,6 +66,19 @@ function parseTurnServers(raw) {
   });
 }
 
+function commaSeparated(value) {
+  return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function httpUrl(value, name) {
+  if (!value) return "";
+  const parsed = new URL(value);
+  if (!new Set(["http:", "https:"]).has(parsed.protocol)) {
+    throw new Error(`${name} must use HTTP or HTTPS`);
+  }
+  return parsed.href.replace(/\/$/, "");
+}
+
 export function loadConfig(env = process.env) {
   const publicOrigin = String(env.PUBLIC_ORIGIN || DEFAULTS.publicOrigin).replace(/\/$/, "");
   if (publicOrigin) {
@@ -58,6 +86,26 @@ export function loadConfig(env = process.env) {
     if (!new Set(["http:", "https:"]).has(parsed.protocol) || parsed.pathname !== "/") {
       throw new Error("PUBLIC_ORIGIN must be an HTTP(S) origin without a path");
     }
+  }
+  const authMode = String(env.AUTH_MODE || DEFAULTS.authMode).toLowerCase();
+  if (!AUTH_MODES.has(authMode)) throw new Error("AUTH_MODE must be disabled, optional or required");
+  const oidcIssuer = httpUrl(env.OIDC_ISSUER || DEFAULTS.oidcIssuer, "OIDC_ISSUER");
+  const oidcAudience = String(env.OIDC_AUDIENCE || DEFAULTS.oidcAudience).trim();
+  const oidcClientId = String(env.OIDC_CLIENT_ID || DEFAULTS.oidcClientId).trim();
+  if (authMode !== "disabled" && (!oidcIssuer || !oidcAudience || !oidcClientId)) {
+    throw new Error("OIDC_ISSUER, OIDC_AUDIENCE and OIDC_CLIENT_ID are required when authentication is enabled");
+  }
+  const oidcJwksUrl = httpUrl(
+    env.OIDC_JWKS_URL || (oidcIssuer ? `${oidcIssuer}/protocol/openid-connect/certs` : ""),
+    "OIDC_JWKS_URL",
+  );
+  const turnUrls = commaSeparated(env.TURN_URLS || DEFAULTS.turnUrls.join(","));
+  if (turnUrls.some((url) => !/^turns?:/i.test(url))) {
+    throw new Error("TURN_URLS entries must use turn: or turns:");
+  }
+  const turnSharedSecret = String(env.TURN_SHARED_SECRET || DEFAULTS.turnSharedSecret);
+  if ((turnUrls.length > 0) !== Boolean(turnSharedSecret)) {
+    throw new Error("TURN_URLS and TURN_SHARED_SECRET must be configured together");
   }
   return Object.freeze({
     host: env.HOST || DEFAULTS.host,
@@ -84,6 +132,27 @@ export function loadConfig(env = process.env) {
     }),
     signalRateLimit: boundedInteger(env.SIGNAL_RATE_LIMIT, DEFAULTS.signalRateLimit, {
       minimum: 10, maximum: 1000, name: "SIGNAL_RATE_LIMIT",
+    }),
+    authMode,
+    oidcIssuer,
+    oidcAudience,
+    oidcClientId,
+    oidcJwksUrl,
+    oidcAlgorithms: OIDC_ALGORITHMS,
+    oidcJwksCacheMs: boundedInteger(env.OIDC_JWKS_CACHE_MS, DEFAULTS.oidcJwksCacheMs, {
+      minimum: 10_000, maximum: 60 * 60 * 1000, name: "OIDC_JWKS_CACHE_MS",
+    }),
+    sessionTicketTtlMs: boundedInteger(env.SESSION_TICKET_TTL_MS, DEFAULTS.sessionTicketTtlMs, {
+      minimum: 5_000, maximum: 120_000, name: "SESSION_TICKET_TTL_MS",
+    }),
+    deviceProofMaxAgeMs: boundedInteger(env.DEVICE_PROOF_MAX_AGE_MS, DEFAULTS.deviceProofMaxAgeMs, {
+      minimum: 10_000, maximum: 5 * 60 * 1000, name: "DEVICE_PROOF_MAX_AGE_MS",
+    }),
+    turnUrls,
+    turnSharedSecret,
+    turnRealm: String(env.TURN_REALM || DEFAULTS.turnRealm).trim(),
+    turnCredentialTtlMs: boundedInteger(env.TURN_CREDENTIAL_TTL_MS, DEFAULTS.turnCredentialTtlMs, {
+      minimum: 60_000, maximum: 24 * 60 * 60 * 1000, name: "TURN_CREDENTIAL_TTL_MS",
     }),
   });
 }

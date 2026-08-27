@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { RoomFullError, RoomRegistry } from "../src/room-registry.js";
+import { RoomAdmissionError, RoomFullError, RoomRegistry } from "../src/room-registry.js";
 
 test("RoomRegistry isolates rooms, caps membership and removes empty rooms", () => {
   const registry = new RoomRegistry({ maxParticipants: 2 });
@@ -61,4 +61,24 @@ test("RoomRegistry imposes no application-level limit on room count", () => {
   for (const peer of peers) registry.leave(peer);
   assert.equal(registry.roomCount, 0);
   assert.equal(registry.participantCount, 0);
+});
+
+test("RoomRegistry isolates pair mode, caps it at two and rejects a duplicate device", () => {
+  const registry = new RoomRegistry();
+  const first = registry.join("pair-alpha", {}, "Ada", 1, {
+    mode: "pair", principal: "issuer|ada", deviceFingerprint: "device-a",
+  }).peer;
+  registry.join("pair-alpha", {}, "Grace", 2, {
+    mode: "pair", principal: "issuer|grace", deviceFingerprint: "device-b",
+  });
+  assert.equal(first.mode, "pair");
+  assert.throws(() => registry.join("pair-alpha", {}, "Other tab", 3, {
+    mode: "pair", principal: "issuer|ada", deviceFingerprint: "device-a",
+  }), (error) => error instanceof RoomAdmissionError && error.code === "duplicate_pair_device");
+  assert.throws(() => registry.join("pair-alpha", {}, "Third", 3, {
+    mode: "pair", principal: "issuer|third", deviceFingerprint: "device-c",
+  }), RoomFullError);
+  assert.throws(() => registry.join("pair-alpha", {}, "Wrong mode", 3, {
+    mode: "room", principal: "issuer|wrong", deviceFingerprint: "device-d",
+  }), (error) => error instanceof RoomAdmissionError && error.code === "room_mode_mismatch");
 });
