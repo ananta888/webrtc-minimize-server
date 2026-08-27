@@ -5,7 +5,7 @@
   "track": "identity-pair-angular-turn",
   "purpose": "Die in Ananta vorhandenen Keycloak-/OIDC-, Pair-Dev-, WebRTC-Medien-, Angular- und Coturn-Grundlagen als eigenständig betreibbaren, sicher überprüfbaren Raumserver integrieren.",
   "goal": "Authentifizierte Benutzer verwenden ein Angular-Frontend für normale Räume und auf zwei Geräte begrenzte Pair-Sessions; Kamera, Mikrofon, Bildschirm und Chat laufen nach expliziter Freigabe über WebRTC, während Keycloak Identität und Coturn kurzlebig autorisierten NAT-Relay bereitstellen.",
-  "status": "in_progress",
+  "status": "completed",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
   "risk_scale": ["low", "medium", "high", "critical"],
@@ -32,7 +32,7 @@
       "id": "IPAT-M04",
       "title": "Sicherheits-, Browser-, Netzwerk- und Release-Gates",
       "task_ids": ["IPAT-011", "IPAT-012"],
-      "status": "in_progress"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -211,10 +211,10 @@
     {
       "id": "IPAT-012",
       "title": "Betrieb, Sicherheit, Herkunft, CI und öffentlichen Release abschließen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 80,
+      "progress_percent": 100,
       "depends_on": ["IPAT-011"],
       "acceptance_criteria": [
         "README und Herkunftsmatrix erklären lokalen Vollstack, eigene Keycloak-/Coturn-Endpunkte, HTTPS/WSS, Pair-vs-Room und verbleibende Grenzen.",
@@ -228,26 +228,28 @@
   "critical_path_tasks": ["IPAT-001", "IPAT-002", "IPAT-003", "IPAT-004", "IPAT-005", "IPAT-006", "IPAT-007", "IPAT-008", "IPAT-009", "IPAT-010", "IPAT-011", "IPAT-012"],
   "tasks_status_summary": {
     "total": 12,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 11 },
-    "progress_percent_done": 91.67,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 12 },
+    "progress_percent_done": 100,
     "by_priority": { "P0": 11, "P1": 1, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 1, "high": 6, "critical": 5 },
-    "critical_path": { "total": 12, "done": 11, "remaining": 1 },
-    "milestones": { "total": 4, "todo": 0, "in_progress": 1, "blocked": 0, "done": 3 }
+    "critical_path": { "total": 12, "done": 12, "remaining": 0 },
+    "milestones": { "total": 4, "todo": 0, "in_progress": 0, "blocked": 0, "done": 4 }
   },
   "progress_summary": {
-    "state": "in_progress",
+    "state": "completed",
     "todo_remaining": 0,
-    "in_progress": 1,
+    "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 11
+    "done": 12
   },
   "summary_notes": [
     "Ananta bleibt Herkunftsquelle und keine Runtime-Abhängigkeit; nur eigenständig integrierte und reproduzierbar getestete Bausteine gelten hier als vorhanden.",
     "Normale Räume bleiben auf 20 Teilnehmer begrenzt, Pair-Sessions auf zwei Geräte; die Anzahl der Räume besitzt weiterhin keine anwendungsseitige Obergrenze.",
     "Keycloak besitzt Identität, die Control Plane besitzt Membership und Tickets, Coturn relayed ausschließlich ICE/Medien und erhält keine Policy-Autorität.",
     "Zusätzliche Insertable-Streams-/SFrame-Frameverschlüsselung bleibt außerhalb dieses Tracks, bis Browsermatrix und kryptografische Konformitätsgates übernommen sind.",
+    "Planungscommit eeb7770 wurde vor der Implementierung veröffentlicht; Implementierungscommit e511341 integriert Angular, Keycloak, Pair-Autorität und Coturn.",
+    "GitHub Actions 33116218467 bestätigte 31 Node-/Browser-Tests, drei Angular-Tests, Produktionsaudit, Containerbuild sowie den echten Keycloak-PKCE-/JWKS- und Coturn-Relay-Gate.",
     "tasks[] ist die Source of Truth; Summen werden vor jedem Commit mit npm run todos:validate geprüft."
   ]
 }
