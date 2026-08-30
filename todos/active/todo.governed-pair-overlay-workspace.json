@@ -1,0 +1,414 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "governed-pair-overlay-workspace",
+  "purpose": "Die neuen Ananta-Pair-Dev- und Peer-Overlay-Bausteine als eigenständige Node-/Angular-Implementierung übernehmen: gehärtete Trusted-Media-Routen, opaque verschlüsselte Datenpfade und optionale persistente Pair-Workspaces.",
+  "goal": "Räume behalten 20 Teilnehmer und servermedienfreie WebRTC-Kommunikation, während Route-Leases, Ressourcen- und Health-Policy, ein relay-opaquer Data-Overlay sowie dauerhafte Pair-Dev-Events, Rollen, Presence, Cursor und Resume sicher und reproduzierbar hinzukommen.",
+  "status": "in_progress",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "GPOW-M01",
+      "title": "Audit, Verträge und sichere Grenzen",
+      "task_ids": ["GPOW-001", "GPOW-002", "GPOW-003", "GPOW-004"],
+      "status": "in_progress"
+    },
+    {
+      "id": "GPOW-M02",
+      "title": "Governte Media-Route-Leases und Health-Failover",
+      "task_ids": ["GPOW-005", "GPOW-006", "GPOW-007", "GPOW-008", "GPOW-009"],
+      "status": "todo"
+    },
+    {
+      "id": "GPOW-M03",
+      "title": "Opaque verschlüsselter Peer-Data-Overlay",
+      "task_ids": ["GPOW-010", "GPOW-011", "GPOW-012", "GPOW-013"],
+      "status": "todo"
+    },
+    {
+      "id": "GPOW-M04",
+      "title": "Persistenter Pair-Dev-Workspace-Core",
+      "task_ids": ["GPOW-014", "GPOW-015", "GPOW-016", "GPOW-017"],
+      "status": "todo"
+    },
+    {
+      "id": "GPOW-M05",
+      "title": "Angular-Zerlegung und Workspace-Oberfläche",
+      "task_ids": ["GPOW-018", "GPOW-019", "GPOW-020", "GPOW-021"],
+      "status": "todo"
+    },
+    {
+      "id": "GPOW-M06",
+      "title": "Adversarial-, Browser-, Persistenz- und Release-Gates",
+      "task_ids": ["GPOW-022", "GPOW-023", "GPOW-024"],
+      "status": "todo"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "GPOW-001",
+      "title": "Neue Ananta-Pair-Dev- und Peer-Overlay-Commits commitgenau auditieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Die Commits e6edf1c84, 22126b8ce, 8d34030f8, 51ffe79ae und 345f0d4ce sind gegen den realen Zielcode geprüft.",
+        "Portable Route-, Health-, Data-Overlay- und Workspace-Ideen sind von Anantas Python-, Agent-, LiveKit- und Buzz-Abhängigkeiten getrennt.",
+        "Anantas blockierter oder partieller Releasezustand wird nicht als produktionsfertige Evidence übernommen."
+      ]
+    },
+    {
+      "id": "GPOW-002",
+      "title": "Ausführbaren Implementierungstrack validieren, committen und vor Codeänderungen pushen",
+      "status": "in_progress",
+      "priority": "P0",
+      "risk": "medium",
+      "progress_percent": 50,
+      "depends_on": ["GPOW-001"],
+      "acceptance_criteria": [
+        "Alle Aufgaben besitzen Abhängigkeiten, Risiko, Priorität und reproduzierbare Akzeptanzkriterien.",
+        "20 Teilnehmer, unbegrenzte Räume, servermedienfreie Kommunikation und ehrliche SFrame-Grenzen bleiben explizit.",
+        "Der Track besteht npm run todos:validate und liegt vor der ersten Implementierungsänderung auf origin/main."
+      ]
+    },
+    {
+      "id": "GPOW-003",
+      "title": "Geschlossene v2-Verträge für Epochen, Route-Leases, Health und Workspace definieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-002"],
+      "acceptance_criteria": [
+        "Membership-, Route- und Topology-Epoch sind getrennt, monoton und in absoluten Snapshots gebunden.",
+        "Lease-, Capability-, Observation-, Overlay-Packet- und Workspace-Contracts lehnen unbekannte oder übergroße Felder fail-closed ab.",
+        "Verträge enthalten feste TTL-, Hop-, Queue-, Replay-, Chunk-, Text- und Teilnehmergrenzen."
+      ]
+    },
+    {
+      "id": "GPOW-004",
+      "title": "Feature-Flags, Degradationsmatrix und Nichtziele festlegen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-003"],
+      "acceptance_criteria": [
+        "Opaque Data-Overlay und persistente Workspaces sind operatorseitig separat abschaltbar.",
+        "Fehler fallen auf direkten DataChannel, adaptive_mesh oder flüchtige Pair-Session zurück, ohne Membership zu erweitern.",
+        "Kein Pfad behauptet nicht entschlüsselndes Cross-Peer-Medienforwarding, SFrame oder LiveKit-Verfügbarkeit."
+      ]
+    },
+    {
+      "id": "GPOW-005",
+      "title": "Membership-, Route- und Topology-Epochen im Room-State implementieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-003"],
+      "acceptance_criteria": [
+        "Join und Leave erhöhen Membership und erzwingen eine neue Route; reine Health- oder Consentänderungen rotieren nur Route und Topology.",
+        "Browser akzeptieren nur vollständige Snapshots mit aktueller Membership und streng neuer Topology-Epoch.",
+        "Stale Snapshots oder alte Peer-IDs können keine Sender, Kante oder Berechtigung reaktivieren."
+      ]
+    },
+    {
+      "id": "GPOW-006",
+      "title": "Kurzlebige publikationsgebundene Route-Leases mit Primary und Backup bauen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-005"],
+      "acceptance_criteria": [
+        "Jede Media-Route bindet Root, Child, Primary, optionales Backup, Epochen, Ablauf, Fanout und Hopzahl.",
+        "Leases werden vor Ablauf erneuert; abgelaufene oder scope-fremde Leases stoppen Weiterleitung und fallen auf adaptive_mesh.",
+        "Routewechsel entfernt alte Sender idempotent und erzeugt keine Schleife oder dauerhaften Doppeltraffic."
+      ]
+    },
+    {
+      "id": "GPOW-007",
+      "title": "Ressourcen- und beobachtungsbasierte Relay-Eignung integrieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-006"],
+      "acceptance_criteria": [
+        "Consent, Sichtbarkeit, Batterieklasse, Netzklasse, Selbstkapazität und beobachtete Lieferqualität begrenzen Relay-Eignung.",
+        "Unvertrauenswürdige Selbstauskunft kann Qualität nur absenken oder den eigenen Peer anbieten, aber keine Membership oder Capability anderer erweitern.",
+        "Unbekannte Battery-, Network- oder Stats-Werte degradieren konservativ und schließen keinen Teilnehmer aus dem Raum aus."
+      ]
+    },
+    {
+      "id": "GPOW-008",
+      "title": "Quorum-basiertes Relay-Health und Primary-/Backup-Failover implementieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-006", "GPOW-007"],
+      "acceptance_criteria": [
+        "Nur aktuelle, peergebundene Beobachtungen mit Mindeststichprobe und Route-Epoch zählen.",
+        "Mindestens zwei unabhängige aktuelle Beobachter und Mehrheitsquorum sind für eine Relay-Sperre erforderlich.",
+        "Cooldown verhindert Flapping; Failover materialisiert eine neue absolute Route und niemals dauerhaften Doppeltraffic."
+      ]
+    },
+    {
+      "id": "GPOW-009",
+      "title": "Lease-Renewal, Hub-Partition, Churn und Cleanup härten",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-008"],
+      "acceptance_criteria": [
+        "Server erneuert Leases bounded; Browser stoppen Relay nach Ablauf auch ohne neues Signaling.",
+        "Join, Leave, Reconnect, Consentwiderruf, Hintergrundtab und Relayverlust besitzen deterministisches Cleanup.",
+        "20 Teilnehmer und beliebig viele Room-Objekte bleiben durch Unit- und Integrationstests unverändert belegt."
+      ]
+    },
+    {
+      "id": "GPOW-010",
+      "title": "Ephemere browserseitige ECDH-/AES-GCM-Schlüsselbindung für Overlay-Daten implementieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-003", "GPOW-005"],
+      "acceptance_criteria": [
+        "Jede Session erzeugt nicht exportierbare private ECDH-Schlüssel; nur öffentliche Schlüssel werden an aktuelle Room-Peers gebunden.",
+        "Pakete werden für den Zielpeer mit AES-GCM, Room-/Peer-/Epoch-AAD und zufälliger Nonce verschlüsselt.",
+        "Leave, Membershipwechsel und Destroy entfernen Schlüsselmaterial; Relay-Browser erhalten keinen Decrypt-Port."
+      ]
+    },
+    {
+      "id": "GPOW-011",
+      "title": "Opaque Overlay-Packet mit Digest, Pfad, Hop, TTL und Replay-Fenster implementieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-010"],
+      "acceptance_criteria": [
+        "Jedes Paket bindet Origin, Ziel, Membership-/Route-Epoch, Traffic-Klasse, Chunk, Pfad, Hop-Limit und Ablauf.",
+        "Ciphertext-Digest wird auf normalisierte Bytes geprüft; Duplicate-, Loop-, Scope-, TTL-, Chunk- und Größenfehler werden verworfen.",
+        "Ein Relay kann nur den autorisierten nächsten Hop bedienen und sieht weder Schlüssel noch Plaintext."
+      ]
+    },
+    {
+      "id": "GPOW-012",
+      "title": "Per-Child-/Traffic-Class-Queues und sicheren Direct-Fallback bauen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-011"],
+      "acceptance_criteria": [
+        "Control, Rekey, Event und Bulk besitzen getrennte Nachrichten-, Byte- und BufferedAmount-Grenzen.",
+        "Langsame Kinder verlieren bounded niedrige Prioritäten, blockieren aber weder Control noch Geschwister.",
+        "Fehlende Route, Schlüssel- oder Relay-Capability fällt für aktuelle Room-Peers auf direkten verschlüsselten DataChannel zurück."
+      ]
+    },
+    {
+      "id": "GPOW-013",
+      "title": "Verschlüsselte Event- und Artefakt-Chunks mit Resume integrieren",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-012"],
+      "acceptance_criteria": [
+        "Text-/Workspace-Events und begrenzte Dateien werden in gehashte Chunks geteilt, verschlüsselt und am Ziel vollständig verifiziert.",
+        "Empfänger quittieren Chunks; ein bounded Resume fordert nur fehlende Indizes an.",
+        "Dateiname, MIME, Gesamtgröße, Chunkzahl und Speicherbudget sind begrenzt; kein automatischer Download oder Dateisystemzugriff erfolgt."
+      ]
+    },
+    {
+      "id": "GPOW-014",
+      "title": "Tenant- und Workspace-gebundenen persistenten Store mit atomaren Migrationen bauen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-004"],
+      "acceptance_criteria": [
+        "Ein optionaler Store persistiert Workspaces, Pair-Room-Bindings, Membership, Events, Cursor, Presence und Outbox atomar.",
+        "Dateipfad, Größen- und Querygrenzen sind konfiguriert; disabled nutzt keine persistente Datei.",
+        "Restart-Tests belegen Recovery, Migration und Tenant-/Workspace-Isolation ohne Medienpersistenz."
+      ]
+    },
+    {
+      "id": "GPOW-015",
+      "title": "Workspace-Rollen, revisionierte Membership und Pair-Invite-Admission implementieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-014"],
+      "acceptance_criteria": [
+        "Owner, Editor und Viewer besitzen kleine Capability-Sets; jede Operation prüft aktuelle Membership.",
+        "Ein authentifizierter Owner erstellt einen persistenten Pair-Workspace; genau ein eingeladener authentifizierter Gegenpeer kann Editor werden.",
+        "Revocation und Revision-Compare-and-Set wirken sofort; Workspace-Autorität erweitert niemals Room-Kapazität oder Medienrechte."
+      ]
+    },
+    {
+      "id": "GPOW-016",
+      "title": "Geschlossene WorkspaceEvent-Envelopes, Idempotency und atomare Outbox implementieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-015"],
+      "acceptance_criteria": [
+        "Versionierte Events binden Workspace, Room, Actor, Typ, Idempotency, Correlation, Zeitpunkt, Payload und Digest.",
+        "Doppelte Idempotency-Keys liefern dasselbe Ergebnis; abweichende Payload unter gleichem Key wird abgelehnt.",
+        "Event und Outbox-Eintrag entstehen atomar; Command-Events führen keine Tools oder Prozesse aus."
+      ]
+    },
+    {
+      "id": "GPOW-017",
+      "title": "Presence-Leases, monotone Read-Cursor und Timeline-Resume implementieren",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-016"],
+      "acceptance_criteria": [
+        "Presence besitzt Lease-ID, Epoch und kurze TTL; alte Epochen können aktuelle Presence nicht überschreiben.",
+        "Read-Cursor sind pro Actor/Workspace monoton und können nicht zurückgesetzt werden.",
+        "Timeline-Abfragen sind permission-aware, sequenziell, paginiert und nach Restart fortsetzbar."
+      ]
+    },
+    {
+      "id": "GPOW-018",
+      "title": "PeerConnection-Lifecycle aus PeerMeshService extrahieren",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-003"],
+      "acceptance_criteria": [
+        "Ein fokussierter Manager besitzt PeerConnection, Perfect Negotiation, DataChannels und Peer-Cleanup.",
+        "PeerMeshService orchestriert über kleine Ports und besitzt nicht mehr selbst alle Connection-Details.",
+        "Bestehende Room-, Pair-, Kamera-, Mikrofon-, Screenshare- und Chat-Gates bleiben unverändert grün."
+      ]
+    },
+    {
+      "id": "GPOW-019",
+      "title": "Topology-, Trusted-Relay- und Quality-Controller extrahieren",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-005", "GPOW-008", "GPOW-018"],
+      "acceptance_criteria": [
+        "Topologievalidierung/Lease-Ablauf, Track-Fanout und Senderparameter leben in getrennten testbaren Komponenten.",
+        "Controller besitzen keine OIDC-, UI- oder globalen Membership-Verantwortungen.",
+        "Unsupported Browser-Fähigkeiten bleiben sichtbar und degradieren deterministisch."
+      ]
+    },
+    {
+      "id": "GPOW-020",
+      "title": "Angular-Pair-Workspace-Shell mit Rollen, Timeline, Presence und Resume bauen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-017", "GPOW-019"],
+      "acceptance_criteria": [
+        "Authentifizierte Nutzer können einen persistenten Pair-Workspace erstellen, per Invite beitreten und später wieder öffnen.",
+        "Timeline, Rollenstatus, Presence, ungelesener Cursor und Verbindungsdegradation sind zugänglich dargestellt.",
+        "Workspace-Aufruf, Resume oder eingehende Events lösen keine Capture-API aus."
+      ]
+    },
+    {
+      "id": "GPOW-021",
+      "title": "Opaque Event-/Artefakt-UX mit Consent, Limits und Accessibility integrieren",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-013", "GPOW-020"],
+      "acceptance_criteria": [
+        "Nutzer wählen Dateien bewusst aus und bestätigen empfangene Downloads; Größen- und Fortschrittsstatus sind sichtbar.",
+        "UI unterscheidet direkten, opaque Relay- und persistenten Hub-Event-Pfad ehrlich.",
+        "Fehler, Resume und Abbruch räumen Objekt-URLs, Buffer, Timer und Schlüsselmaterial bounded auf."
+      ]
+    },
+    {
+      "id": "GPOW-022",
+      "title": "Contract-, Persistenz-, Property- und adversariale Security-Gates implementieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-009", "GPOW-013", "GPOW-017", "GPOW-019"],
+      "acceptance_criteria": [
+        "Tests prüfen stale Epoch, Lease-Ablauf, Loop, Replay, Digest, Queuecap, Quorum, Revision und Idempotency.",
+        "Restart-, Isolation-, Revocation- und Cursor-Negativtests verwenden echte persistente Dateien in temporären Verzeichnissen.",
+        "Fuzz-nahe Grenzwerttabellen prüfen unbekannte Felder, Oversize, ungültige IDs und Zeitwerte."
+      ]
+    },
+    {
+      "id": "GPOW-023",
+      "title": "Reale Multi-Browser-, Churn-, Artifact-, Resume- und 20er-Raum-Gates abschließen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-021", "GPOW-022"],
+      "acceptance_criteria": [
+        "Mindestens sechs Chromium-Peers belegen Ressourcen-Admission, Primary-Ausfall, neue Route und vollständigen Medienempfang.",
+        "Zwei Browser belegen verschlüsseltes Overlay-Event, Artefakt-Chunking, fehlenden Plaintext am Relay und Resume.",
+        "Persistenter Pair-Workspace überlebt Serverrestart; 20 Teilnehmer pro Raum, Firefox-Fallback und capture-freier Login/Join bleiben grün."
+      ]
+    },
+    {
+      "id": "GPOW-024",
+      "title": "Dokumentation, Herkunft, Backlog, CI und öffentlichen Release abschließen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "medium",
+      "progress_percent": 0,
+      "depends_on": ["GPOW-023"],
+      "acceptance_criteria": [
+        "README, AGENTS, Herkunftsmatrix und Threat Boundaries erklären Leases, opaque Relay, Workspace-Persistenz und verbleibende Medien-E2EE-Grenzen.",
+        "Backlogstatus wird nur entsprechend realer Tests aktualisiert; SFrame-, SFU-, HA-, Backup-/Restore- und Multi-Region-Lücken bleiben ehrlich offen.",
+        "npm run check, Produktionsaudit, Docker, Live-Keycloak/Coturn und öffentliche GitHub Actions sind grün; danach wird der Track archiviert."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["GPOW-001", "GPOW-002", "GPOW-003", "GPOW-004", "GPOW-005", "GPOW-006", "GPOW-007", "GPOW-008", "GPOW-009", "GPOW-010", "GPOW-011", "GPOW-012", "GPOW-013", "GPOW-014", "GPOW-015", "GPOW-016", "GPOW-017", "GPOW-018", "GPOW-019", "GPOW-020", "GPOW-021", "GPOW-022", "GPOW-023", "GPOW-024"],
+  "tasks_status_summary": {
+    "total": 24,
+    "by_status": { "todo": 22, "in_progress": 1, "partial": 0, "blocked": 0, "done": 1 },
+    "progress_percent_done": 4.17,
+    "by_priority": { "P0": 18, "P1": 6, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 2, "high": 10, "critical": 12 },
+    "critical_path": { "total": 24, "done": 1, "remaining": 23 },
+    "milestones": { "total": 6, "todo": 5, "in_progress": 1, "blocked": 0, "done": 0 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 22,
+    "in_progress": 1,
+    "partial": 0,
+    "blocked": 0,
+    "done": 1
+  },
+  "summary_notes": [
+    "Normale Räume behalten hart maximal 20 Teilnehmer, Pair-Sessions zwei unterschiedliche Geräte und die Anwendung keine globale Room-Anzahlgrenze.",
+    "Ressourcen-Admission degradiert Video oder Relay-Eignung, lehnt aber keinen berechtigten Room-Teilnehmer allein wegen schwacher Hardware ab.",
+    "Trusted Media Relay bleibt decode/re-encode-fähig und consentpflichtig; opaque Data Relay besitzt keinen Decrypt-Port. Beides ist kein SFrame-Ciphertext-Medien-DAG.",
+    "Persistente Workspaces speichern Kollaborationsmetadaten und explizite Events, niemals Audio-, Video-, Bildschirm- oder unaufgefordert ausgewählte Dateiinhalte.",
+    "Anantas Python-, Agent-, Worker-, Buzz-, LiveKit- und SQLite-Implementierung wird nicht gekoppelt; nur transportneutrale Verträge und Policies werden eigenständig portiert.",
+    "tasks[] ist die Source of Truth; Summen werden vor jedem Commit mit npm run todos:validate geprüft."
+  ]
+}
