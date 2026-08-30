@@ -19,10 +19,12 @@ Der Node-Server ist allein verantwortlich für:
 - Zuweisung kurzlebiger Peer-IDs,
 - Prüfung und begrenzte Weiterleitung von SDP-/ICE-Signalen,
 - Ausgabe absoluter, epochgebundener und zyklusfreier Trusted-Relay-Topologien aus aktueller Membership und Consent,
+- getrennte Membership-/Route-/Topology-Epochen, kurzlebige Route-Leases und quorum-basiertes Relay-Health,
 - kryptografische OIDC-Tokenprüfung und Ausgabe kurzlebiger Einmal-Tickets,
 - Prüfung frischer, raumgebundener P-256-Gerätenachweise,
 - Ausgabe kurzlebiger Coturn-REST-Credentials nach Session-Autorisierung,
 - Teilnehmer-, Origin-, Größen- und Rate-Grenzen.
+- optional persistente, OIDC-tenantgebundene Pair-Workspace-Metadaten, Rollen, Events/Outbox, Cursor und Presence.
 
 Der Signaling-Server darf keine Audio-, Video-, Bildschirm- oder Chat-Inhalte terminieren, aufzeichnen oder persistieren.
 
@@ -39,6 +41,7 @@ Browser sind verantwortlich für:
 - eine nicht exportierbare P-256-Geräteidentität im Browserprofil,
 - lokale VAD-/Active-Speaker-Auswahl, per Peer begrenzte Senderqualität und ein lokales Inaktiv-Mosaik,
 - Ausführung ausschließlich serverautorisierter Trusted-Relay-Kanten nach separatem Nutzerconsent.
+- zielpeergebundene ECDH-/AES-GCM-Verschlüsselung für opaque Data-Overlay-Pakete einschließlich Replay-, TTL-, Hop-, Queue- und Chunk-Resume-Grenzen.
 
 Peers dürfen aus Signalen keine Room-Membership oder zusätzliche Autorität ableiten. Die Control Plane bleibt Eigentümerin der Membership.
 
@@ -48,11 +51,11 @@ Peers dürfen aus Signalen keine Room-Membership oder zusätzliche Autorität ab
 - Eine Pair-Session hat eine harte Grenze von zwei unterschiedlichen Gerätefingerprints und kann nicht in einen normalen Raum umgedeutet werden.
 - Die Anzahl gleichzeitig aktiver Räume besitzt keine anwendungsseitige Obergrenze. Praktische Ressourcenbudgets dürfen beobachtet und geschützt werden, aber keine feste globale Room-Anzahl in die Domain einführen.
 - Das Control-/Audio-Mesh erzeugt bei 20 Teilnehmern bis zu 19 PeerConnections. Video wird Active-Speaker-, Stats- und profilabhängig gedrosselt; ein consentierter Trusted-Relay-Baum kann direkten Publisher-Fanout reduzieren, ist aber keine QoS-Garantie.
-- Räume und Peer-IDs sind flüchtig und werden nicht persistiert.
+- Room-Membership, Peer-IDs und Medien bleiben flüchtig. Nur ausdrücklich aktivierte Pair-Workspace-Metadaten und Events dürfen im konfigurierten Store persistieren.
 - Der Raumcode ist ein Bearer-Invite, keine Identität. Identität stammt ausschließlich aus verifizierten OIDC-Claims; das Gerät stammt ausschließlich aus einem serverseitig geprüften P-256-Nachweis.
 - WebRTC bietet Transportverschlüsselung; anwendungsseitige SFrame-/Insertable-Streams-E2EE ist noch nicht implementiert.
 - STUN/TURN sind konfigurierbare Infrastrukturhilfen, keine Policy-Autorität. TURN-Credentials werden kurzlebig und erst nach Session-Autorisierung erzeugt.
-- Ein decode/re-encode-fähiger Trusted-Video-Relay-Baum ist vorhanden. Ein nicht entschlüsselnder SFrame-/Ciphertext-Peer-DAG, SFU, langlebige Workspaces, Frame-E2EE und Artefakttransfer bleiben Backlog-Fähigkeiten und dürfen nicht als vorhanden dargestellt werden.
+- Ein decode/re-encode-fähiger Trusted-Video-Relay-Baum ist vorhanden. Der separate Data-Overlay ist für Zielpeers AES-GCM-verschlüsselt und für Zwischenpeers opaque; das macht Medien nicht SFrame-verschlüsselt. Ein nicht entschlüsselnder SFrame-/Ciphertext-Medien-DAG, SFU, Workspace-HA/Backup und Frame-E2EE bleiben Backlog-Fähigkeiten und dürfen nicht als vorhanden dargestellt werden.
 
 ## Todo-gesteuerte Entwicklung
 
@@ -94,6 +97,8 @@ Ein Track kommt nur ins Archiv, wenn alle Tasks und Milestones `done` sind und d
 - `AUTH_MODE=disabled`, Keycloak `start-dev`, lokale Beispielpasswörter und unverschlüsseltes TURN sind ausschließlich Entwicklungsprofile und dürfen nicht als produktionssicher dokumentiert werden.
 - Kein E2EE-, Anonymitäts- oder Identitätsversprechen machen, das der implementierte Pfad nicht beweist.
 - Trusted Peer Relay bleibt operatorseitig begrenzt, nutzerseitig default-aus und widerrufbar; die UI muss die Medienverarbeitung, Upload-, CPU- und Batteriefolgen erklären.
+- Overlay-Relays dürfen keinen Decrypt-Port besitzen; private ECDH-Schlüssel müssen nicht exportierbar sein und bei Leave/Destroy aus dem erreichbaren Browser-State verschwinden.
+- Workspace-Rollen, Tenant, Membership-Revision, Event-Idempotency, Cursor und Presence-Leases werden für jede Operation serverseitig geprüft. Workspace-Rechte erweitern weder Room-Kapazität noch Medienrechte.
 - Öffentliches Deployment ausschließlich über HTTPS/WSS. Secure Context ist für Medienzugriff erforderlich.
 
 ## Engineering-Regeln

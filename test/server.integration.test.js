@@ -17,6 +17,7 @@ async function startTestServer(overrides = {}, serverOptions = {}) {
     maxRoomParticipants: 20,
     roomIdleTtlMs: 60_000,
     signalRateLimit: 120,
+    pairWorkspaceEnabled: false,
     ...overrides,
   };
   const app = createAppServer({ config, ...serverOptions });
@@ -104,6 +105,7 @@ async function authorize(app, roomId, displayName, options = {}) {
       displayName,
       mode,
       deviceProof: signedDeviceProof(device, { roomId, displayName, mode }, options.proofOverrides),
+      ...(options.workspaceInvite ? { workspaceInvite: options.workspaceInvite } : {}),
     }),
   });
   const body = await response.json();
@@ -141,7 +143,10 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
       peerRelayMinParticipants: 6,
       peerRelayMaxChildren: 3,
       peerRelayMaxHops: 3,
+      routeLeaseMs: 60_000,
+      dataOverlayEnabled: true,
     },
+    pairWorkspaceEnabled: false,
   });
   assert.match(configResponse.headers.get("content-security-policy"), /default-src 'self'/);
 
@@ -180,6 +185,15 @@ test("two room peers receive membership and target-bound signals", async (contex
   assert.deepEqual(signal.description, { type: "offer", sdp: "v=0\r\n" });
   assert.equal(Object.hasOwn(signal, "to"), false);
 
+  const coordinate = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+  grace.socket.send(JSON.stringify({
+    type: "overlay-key",
+    key: { kty: "EC", crv: "P-256", x: coordinate, y: coordinate, ext: true },
+  }));
+  const overlayKey = await ada.next((message) => message.type === "overlay-key");
+  assert.equal(overlayKey.from, graceWelcome.peerId);
+  assert.ok(overlayKey.membershipEpoch >= 2);
+
   grace.socket.close();
   const left = await ada.next((message) => message.type === "peer-left");
   assert.equal(left.peerId, graceWelcome.peerId);
@@ -190,9 +204,10 @@ test("control plane publishes epoch-bound relay trees only after enough explicit
   const app = await startTestServer();
   context.after(() => app.close());
   const peers = [];
+  const peerIds = [];
   for (let index = 0; index < 6; index += 1) {
     const peer = await connectAuthorized(app, "room-relay", `Peer ${index + 1}`);
-    await peer.next((message) => message.type === "welcome");
+    peerIds.push((await peer.next((message) => message.type === "welcome")).peerId);
     peers.push(peer);
   }
   const mesh = await peers[0].next((message) => message.type === "topology-state"
@@ -203,18 +218,37 @@ test("control plane publishes epoch-bound relay trees only after enough explicit
   const relayed = await peers[0].next((message) => message.type === "topology-state"
     && message.routes.length === 6
     && message.routes.every((route) => route.mode === "trusted_peer_relay"));
-  assert.ok(relayed.epoch > mesh.epoch);
+  assert.ok(relayed.topologyEpoch > mesh.topologyEpoch);
+  assert.ok(relayed.routeEpoch > mesh.routeEpoch);
+  assert.equal(relayed.membershipEpoch, mesh.membershipEpoch);
   for (const route of relayed.routes) {
     assert.equal(route.edges.length, 5);
     assert.ok(route.edges.every((edge) => edge.depth >= 1 && edge.depth <= 3));
     assert.equal(new Set(route.edges.map((edge) => edge.childPeerId)).size, 5);
   }
+  const unhealthyRelayId = peerIds[0];
+  const badObservation = {
+    type: "relay-observation",
+    relayPeerId: unhealthyRelayId,
+    routeEpoch: relayed.routeEpoch,
+    sampleCount: 8,
+    deliveryRatio: 0.4,
+    delayMs: 4_000,
+    observedCapacity: 20,
+  };
+  for (const observer of peers.slice(2, 5)) observer.socket.send(JSON.stringify(badObservation));
+  const failedOver = await peers[1].next((message) => message.type === "topology-state"
+    && message.routeEpoch > relayed.routeEpoch);
+  assert.ok(failedOver.routes
+    .filter((route) => route.rootPeerId !== unhealthyRelayId)
+    .every((route) => route.edges.every((edge) => edge.parentPeerId !== unhealthyRelayId)));
 
   peers[5].socket.close();
   await peers[0].next((message) => message.type === "peer-left");
   const degraded = await peers[0].next((message) => message.type === "topology-state"
-    && message.routes.length === 5 && message.epoch > relayed.epoch);
-  assert.ok(degraded.epoch > relayed.epoch);
+    && message.routes.length === 5 && message.topologyEpoch > relayed.topologyEpoch);
+  assert.ok(degraded.topologyEpoch > relayed.topologyEpoch);
+  assert.ok(degraded.membershipEpoch > relayed.membershipEpoch);
   assert.ok(degraded.routes.every((route) => route.mode === "adaptive_mesh"));
   for (const peer of peers.slice(0, 5)) peer.socket.close();
 });
@@ -354,6 +388,71 @@ test("required OIDC mode denies missing tokens and binds verified identity to a 
   const allowed = await authorize(app, "room-auth", "Ada", { authorization: "Bearer valid-token" });
   assert.equal(allowed.response.status, 201);
   assert.deepEqual(allowed.body.identity, { authenticated: true, displayName: "Ada" });
+});
+
+test("persistent Pair Workspace binds two OIDC members and exposes an idempotent timeline", async (context) => {
+  const identities = {
+    owner: { issuer: "https://identity.test/realms/webrtc", subject: "owner", displayName: "Owner" },
+    editor: { issuer: "https://identity.test/realms/webrtc", subject: "editor", displayName: "Editor" },
+  };
+  const oidcVerifier = {
+    async verify(token) {
+      const identity = identities[token];
+      if (!identity) throw new AuthenticationError("invalid_access_token");
+      return identity;
+    },
+  };
+  const app = await startTestServer({
+    authMode: "required",
+    oidcIssuer: "https://identity.test/realms/webrtc",
+    oidcJwksUrl: "https://identity.test/certs",
+    oidcAudience: "webrtc-room-server",
+    oidcClientId: "webrtc-browser",
+    pairWorkspaceEnabled: true,
+    pairWorkspaceDb: ":memory:",
+  }, { oidcVerifier });
+  context.after(() => app.close());
+  const createdResponse = await fetch(`${app.httpUrl}/api/rooms`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: app.httpUrl, authorization: "Bearer owner" },
+    body: JSON.stringify({ mode: "pair", persistent: true, title: "Pair Dev" }),
+  });
+  assert.equal(createdResponse.status, 201);
+  const created = await createdResponse.json();
+  assert.equal(created.persistent, true);
+  const invite = new URL(created.inviteUrl).searchParams.get("workspaceInvite");
+  assert.ok(invite);
+  const owner = await authorize(app, created.roomId, "ignored", {
+    mode: "pair", authorization: "Bearer owner",
+  });
+  assert.equal(owner.response.status, 201);
+  assert.deepEqual(owner.body.workspace, { workspaceId: created.workspaceId, role: "owner" });
+  const editor = await authorize(app, created.roomId, "ignored", {
+    mode: "pair", authorization: "Bearer editor", workspaceInvite: invite,
+  });
+  assert.equal(editor.response.status, 201);
+  assert.equal(editor.body.workspace.role, "editor");
+
+  const eventInput = { eventId: "decision-001", kind: "decision", payload: { text: "Ship it" } };
+  const eventResponse = await fetch(`${app.httpUrl}/api/workspaces/${created.workspaceId}/events`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: app.httpUrl, authorization: "Bearer editor" },
+    body: JSON.stringify(eventInput),
+  });
+  assert.equal(eventResponse.status, 201);
+  const event = await eventResponse.json();
+  const repeated = await fetch(`${app.httpUrl}/api/workspaces/${created.workspaceId}/events`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: app.httpUrl, authorization: "Bearer editor" },
+    body: JSON.stringify(eventInput),
+  }).then((response) => response.json());
+  assert.equal(repeated.idempotent, true);
+  assert.equal(repeated.sequence, event.sequence);
+  const timeline = await fetch(`${app.httpUrl}/api/workspaces/${created.workspaceId}/events`, {
+    headers: { origin: app.httpUrl, authorization: "Bearer owner" },
+  }).then((response) => response.json());
+  assert.equal(timeline.events.length, 1);
+  assert.deepEqual(timeline.events[0].payload, { text: "Ship it" });
 });
 
 test("authorized sessions receive ephemeral TURN credentials", async (context) => {

@@ -12,6 +12,7 @@ interface SessionResponse {
   readonly signalingPath: string;
   readonly iceServers: readonly RTCIceServer[];
   readonly identity: Readonly<{ authenticated: boolean; displayName?: string }>;
+  readonly workspace?: Readonly<{ workspaceId: string; role: "owner" | "editor" | "viewer" }> | null;
 }
 
 @Injectable({ providedIn: "root" })
@@ -23,6 +24,9 @@ export class RoomSessionService {
   readonly maxParticipants = signal(20);
   readonly error = signal("");
   readonly inviteUrl = signal("");
+  readonly workspaceId = signal("");
+  readonly workspaceRole = signal<"owner" | "editor" | "viewer" | "">("");
+  private workspaceInvite = "";
 
   constructor(
     private readonly config: RuntimeConfigService,
@@ -32,19 +36,26 @@ export class RoomSessionService {
     private readonly mesh: PeerMeshService,
   ) {}
 
-  async createRoom(mode: RoomMode): Promise<{ roomId: string; inviteUrl: string }> {
+  async createRoom(mode: RoomMode, persistent = false, title = ""): Promise<{ roomId: string; inviteUrl: string; workspaceId?: string }> {
     this.error.set("");
     const response = await fetch("/api/rooms", {
       method: "POST",
       headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
-      body: JSON.stringify({ mode }),
+      body: JSON.stringify({ mode, ...(persistent ? { persistent: true, title } : {}) }),
     });
-    const body = await response.json() as { roomId?: string; inviteUrl?: string; error?: string };
+    const body = await response.json() as { roomId?: string; inviteUrl?: string; workspaceId?: string; role?: "owner"; error?: string };
     if (!response.ok || !body.roomId || !body.inviteUrl) throw new Error(body.error || "room_creation_failed");
     this.roomId.set(body.roomId);
     this.mode.set(mode);
     this.inviteUrl.set(body.inviteUrl);
-    return { roomId: body.roomId, inviteUrl: body.inviteUrl };
+    this.workspaceId.set(body.workspaceId || "");
+    this.workspaceRole.set(body.role || "");
+    this.workspaceInvite = new URL(body.inviteUrl).searchParams.get("workspaceInvite") || "";
+    return { roomId: body.roomId, inviteUrl: body.inviteUrl, workspaceId: body.workspaceId };
+  }
+
+  setWorkspaceInvite(value: string): void {
+    this.workspaceInvite = value.slice(0, 128);
   }
 
   async join(roomId: string, displayName: string, mode: RoomMode): Promise<void> {
@@ -57,7 +68,13 @@ export class RoomSessionService {
       const response = await fetch("/api/sessions", {
         method: "POST",
         headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
-        body: JSON.stringify({ roomId: normalizedRoom, displayName: normalizedName, mode, deviceProof }),
+        body: JSON.stringify({
+          roomId: normalizedRoom,
+          displayName: normalizedName,
+          mode,
+          deviceProof,
+          ...(this.workspaceInvite ? { workspaceInvite: this.workspaceInvite } : {}),
+        }),
       });
       const body = await response.json() as SessionResponse & { error?: string };
       if (!response.ok || !body.signalingPath || !Array.isArray(body.iceServers)) {
@@ -70,7 +87,10 @@ export class RoomSessionService {
       this.displayName.set(authorizedName);
       this.mode.set(mode);
       this.maxParticipants.set(mode === "pair" ? 2 : (this.config.value()?.maxRoomParticipants || 20));
-      this.inviteUrl.set(`${location.origin}/?room=${encodeURIComponent(normalizedRoom)}&mode=${mode}`);
+      this.inviteUrl.set(`${location.origin}/?room=${encodeURIComponent(normalizedRoom)}&mode=${mode}`
+        + (this.workspaceInvite ? `&workspaceInvite=${encodeURIComponent(this.workspaceInvite)}` : ""));
+      this.workspaceId.set(body.workspace?.workspaceId || "");
+      this.workspaceRole.set(body.workspace?.role || "");
       this.signaling.connect(
         body.signalingPath,
         (message) => this.handleMessage(message, body.iceServers),
@@ -89,6 +109,8 @@ export class RoomSessionService {
     this.signaling.close();
     this.mesh.close();
     this.joined.set(false);
+    this.workspaceId.set("");
+    this.workspaceRole.set("");
   }
 
   private handleMessage(message: ServerMessage, iceServers: readonly RTCIceServer[]): void {
@@ -105,6 +127,7 @@ export class RoomSessionService {
       const peer = message["peer"] as { id?: string; name?: string };
       this.mesh.addPeer(String(peer?.id || ""), String(peer?.name || "Peer"));
       this.mesh.announcePublications();
+      this.mesh.announceOverlayKey();
       return;
     }
     if (message.type === "peer-left") {
@@ -121,6 +144,10 @@ export class RoomSessionService {
     }
     if (message.type === "topology-state") {
       this.mesh.applyTopology(message);
+      return;
+    }
+    if (message.type === "overlay-key") {
+      void this.mesh.acceptOverlayKey(message);
       return;
     }
     if (message.type === "error") {

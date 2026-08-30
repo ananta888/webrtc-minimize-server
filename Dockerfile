@@ -18,6 +18,7 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY package.json ./
 COPY --from=build /app/dist ./dist
 COPY src ./src
+RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 EXPOSE 8080
 CMD ["node", "src/server.js"]

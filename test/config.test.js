@@ -12,6 +12,10 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.equal(config.authMode, "disabled");
   assert.deepEqual(config.turnUrls, []);
   assert.equal(config.peerMediaRelayEnabled, true);
+  assert.equal(config.peerRouteLeaseMs, 60_000);
+  assert.equal(config.peerRouteRenewMs, 25_000);
+  assert.equal(config.peerDataOverlayEnabled, true);
+  assert.equal(config.pairWorkspaceEnabled, true);
   assert.equal(config.activeSpeakerLimit, 5);
 });
 
@@ -38,6 +42,10 @@ test("loadConfig rejects unsafe bounds and malformed public origins", () => {
   assert.throws(() => loadConfig({ TURN_URLS: "https://turn.test", TURN_SHARED_SECRET: "secret" }), /turn: or turns:/);
   assert.throws(() => loadConfig({ PEER_MEDIA_RELAY_ENABLED: "sometimes" }), /true or false/);
   assert.throws(() => loadConfig({ ACTIVE_SPEAKER_LIMIT: "6" }), /between 2 and 5/);
+  assert.throws(
+    () => loadConfig({ PEER_ROUTE_LEASE_MS: "30000", PEER_ROUTE_RENEW_MS: "30000" }),
+    /shorter/,
+  );
 });
 
 test("loadConfig accepts explicit OIDC and ephemeral TURN settings", () => {

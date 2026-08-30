@@ -14,37 +14,37 @@
       "id": "GPOW-M01",
       "title": "Audit, Verträge und sichere Grenzen",
       "task_ids": ["GPOW-001", "GPOW-002", "GPOW-003", "GPOW-004"],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "GPOW-M02",
       "title": "Governte Media-Route-Leases und Health-Failover",
       "task_ids": ["GPOW-005", "GPOW-006", "GPOW-007", "GPOW-008", "GPOW-009"],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "GPOW-M03",
       "title": "Opaque verschlüsselter Peer-Data-Overlay",
       "task_ids": ["GPOW-010", "GPOW-011", "GPOW-012", "GPOW-013"],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "GPOW-M04",
       "title": "Persistenter Pair-Dev-Workspace-Core",
       "task_ids": ["GPOW-014", "GPOW-015", "GPOW-016", "GPOW-017"],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "GPOW-M05",
       "title": "Angular-Zerlegung und Workspace-Oberfläche",
       "task_ids": ["GPOW-018", "GPOW-019", "GPOW-020", "GPOW-021"],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "GPOW-M06",
       "title": "Adversarial-, Browser-, Persistenz- und Release-Gates",
       "task_ids": ["GPOW-022", "GPOW-023", "GPOW-024"],
-      "status": "todo"
+      "status": "in_progress"
     }
   ],
   "tasks": [
@@ -65,10 +65,10 @@
     {
       "id": "GPOW-002",
       "title": "Ausführbaren Implementierungstrack validieren, committen und vor Codeänderungen pushen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "medium",
-      "progress_percent": 50,
+      "progress_percent": 100,
       "depends_on": ["GPOW-001"],
       "acceptance_criteria": [
         "Alle Aufgaben besitzen Abhängigkeiten, Risiko, Priorität und reproduzierbare Akzeptanzkriterien.",
@@ -79,10 +79,10 @@
     {
       "id": "GPOW-003",
       "title": "Geschlossene v2-Verträge für Epochen, Route-Leases, Health und Workspace definieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-002"],
       "acceptance_criteria": [
         "Membership-, Route- und Topology-Epoch sind getrennt, monoton und in absoluten Snapshots gebunden.",
@@ -93,10 +93,10 @@
     {
       "id": "GPOW-004",
       "title": "Feature-Flags, Degradationsmatrix und Nichtziele festlegen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-003"],
       "acceptance_criteria": [
         "Opaque Data-Overlay und persistente Workspaces sind operatorseitig separat abschaltbar.",
@@ -107,10 +107,10 @@
     {
       "id": "GPOW-005",
       "title": "Membership-, Route- und Topology-Epochen im Room-State implementieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-003"],
       "acceptance_criteria": [
         "Join und Leave erhöhen Membership und erzwingen eine neue Route; reine Health- oder Consentänderungen rotieren nur Route und Topology.",
@@ -121,10 +121,10 @@
     {
       "id": "GPOW-006",
       "title": "Kurzlebige publikationsgebundene Route-Leases mit Primary und Backup bauen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-005"],
       "acceptance_criteria": [
         "Jede Media-Route bindet Root, Child, Primary, optionales Backup, Epochen, Ablauf, Fanout und Hopzahl.",
@@ -135,10 +135,10 @@
     {
       "id": "GPOW-007",
       "title": "Ressourcen- und beobachtungsbasierte Relay-Eignung integrieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-006"],
       "acceptance_criteria": [
         "Consent, Sichtbarkeit, Batterieklasse, Netzklasse, Selbstkapazität und beobachtete Lieferqualität begrenzen Relay-Eignung.",
@@ -149,10 +149,10 @@
     {
       "id": "GPOW-008",
       "title": "Quorum-basiertes Relay-Health und Primary-/Backup-Failover implementieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-006", "GPOW-007"],
       "acceptance_criteria": [
         "Nur aktuelle, peergebundene Beobachtungen mit Mindeststichprobe und Route-Epoch zählen.",
@@ -163,10 +163,10 @@
     {
       "id": "GPOW-009",
       "title": "Lease-Renewal, Hub-Partition, Churn und Cleanup härten",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-008"],
       "acceptance_criteria": [
         "Server erneuert Leases bounded; Browser stoppen Relay nach Ablauf auch ohne neues Signaling.",
@@ -177,10 +177,10 @@
     {
       "id": "GPOW-010",
       "title": "Ephemere browserseitige ECDH-/AES-GCM-Schlüsselbindung für Overlay-Daten implementieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-003", "GPOW-005"],
       "acceptance_criteria": [
         "Jede Session erzeugt nicht exportierbare private ECDH-Schlüssel; nur öffentliche Schlüssel werden an aktuelle Room-Peers gebunden.",
@@ -191,10 +191,10 @@
     {
       "id": "GPOW-011",
       "title": "Opaque Overlay-Packet mit Digest, Pfad, Hop, TTL und Replay-Fenster implementieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-010"],
       "acceptance_criteria": [
         "Jedes Paket bindet Origin, Ziel, Membership-/Route-Epoch, Traffic-Klasse, Chunk, Pfad, Hop-Limit und Ablauf.",
@@ -205,10 +205,10 @@
     {
       "id": "GPOW-012",
       "title": "Per-Child-/Traffic-Class-Queues und sicheren Direct-Fallback bauen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-011"],
       "acceptance_criteria": [
         "Control, Rekey, Event und Bulk besitzen getrennte Nachrichten-, Byte- und BufferedAmount-Grenzen.",
@@ -219,10 +219,10 @@
     {
       "id": "GPOW-013",
       "title": "Verschlüsselte Event- und Artefakt-Chunks mit Resume integrieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-012"],
       "acceptance_criteria": [
         "Text-/Workspace-Events und begrenzte Dateien werden in gehashte Chunks geteilt, verschlüsselt und am Ziel vollständig verifiziert.",
@@ -233,10 +233,10 @@
     {
       "id": "GPOW-014",
       "title": "Tenant- und Workspace-gebundenen persistenten Store mit atomaren Migrationen bauen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-004"],
       "acceptance_criteria": [
         "Ein optionaler Store persistiert Workspaces, Pair-Room-Bindings, Membership, Events, Cursor, Presence und Outbox atomar.",
@@ -247,10 +247,10 @@
     {
       "id": "GPOW-015",
       "title": "Workspace-Rollen, revisionierte Membership und Pair-Invite-Admission implementieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-014"],
       "acceptance_criteria": [
         "Owner, Editor und Viewer besitzen kleine Capability-Sets; jede Operation prüft aktuelle Membership.",
@@ -261,10 +261,10 @@
     {
       "id": "GPOW-016",
       "title": "Geschlossene WorkspaceEvent-Envelopes, Idempotency und atomare Outbox implementieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-015"],
       "acceptance_criteria": [
         "Versionierte Events binden Workspace, Room, Actor, Typ, Idempotency, Correlation, Zeitpunkt, Payload und Digest.",
@@ -275,10 +275,10 @@
     {
       "id": "GPOW-017",
       "title": "Presence-Leases, monotone Read-Cursor und Timeline-Resume implementieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-016"],
       "acceptance_criteria": [
         "Presence besitzt Lease-ID, Epoch und kurze TTL; alte Epochen können aktuelle Presence nicht überschreiben.",
@@ -289,10 +289,10 @@
     {
       "id": "GPOW-018",
       "title": "PeerConnection-Lifecycle aus PeerMeshService extrahieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-003"],
       "acceptance_criteria": [
         "Ein fokussierter Manager besitzt PeerConnection, Perfect Negotiation, DataChannels und Peer-Cleanup.",
@@ -303,10 +303,10 @@
     {
       "id": "GPOW-019",
       "title": "Topology-, Trusted-Relay- und Quality-Controller extrahieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-005", "GPOW-008", "GPOW-018"],
       "acceptance_criteria": [
         "Topologievalidierung/Lease-Ablauf, Track-Fanout und Senderparameter leben in getrennten testbaren Komponenten.",
@@ -317,10 +317,10 @@
     {
       "id": "GPOW-020",
       "title": "Angular-Pair-Workspace-Shell mit Rollen, Timeline, Presence und Resume bauen",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-017", "GPOW-019"],
       "acceptance_criteria": [
         "Authentifizierte Nutzer können einen persistenten Pair-Workspace erstellen, per Invite beitreten und später wieder öffnen.",
@@ -331,10 +331,10 @@
     {
       "id": "GPOW-021",
       "title": "Opaque Event-/Artefakt-UX mit Consent, Limits und Accessibility integrieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-013", "GPOW-020"],
       "acceptance_criteria": [
         "Nutzer wählen Dateien bewusst aus und bestätigen empfangene Downloads; Größen- und Fortschrittsstatus sind sichtbar.",
@@ -345,10 +345,10 @@
     {
       "id": "GPOW-022",
       "title": "Contract-, Persistenz-, Property- und adversariale Security-Gates implementieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-009", "GPOW-013", "GPOW-017", "GPOW-019"],
       "acceptance_criteria": [
         "Tests prüfen stale Epoch, Lease-Ablauf, Loop, Replay, Digest, Queuecap, Quorum, Revision und Idempotency.",
@@ -359,10 +359,10 @@
     {
       "id": "GPOW-023",
       "title": "Reale Multi-Browser-, Churn-, Artifact-, Resume- und 20er-Raum-Gates abschließen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["GPOW-021", "GPOW-022"],
       "acceptance_criteria": [
         "Mindestens sechs Chromium-Peers belegen Ressourcen-Admission, Primary-Ausfall, neue Route und vollständigen Medienempfang.",
@@ -373,10 +373,10 @@
     {
       "id": "GPOW-024",
       "title": "Dokumentation, Herkunft, Backlog, CI und öffentlichen Release abschließen",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "medium",
-      "progress_percent": 0,
+      "progress_percent": 70,
       "depends_on": ["GPOW-023"],
       "acceptance_criteria": [
         "README, AGENTS, Herkunftsmatrix und Threat Boundaries erklären Leases, opaque Relay, Workspace-Persistenz und verbleibende Medien-E2EE-Grenzen.",
@@ -388,20 +388,20 @@
   "critical_path_tasks": ["GPOW-001", "GPOW-002", "GPOW-003", "GPOW-004", "GPOW-005", "GPOW-006", "GPOW-007", "GPOW-008", "GPOW-009", "GPOW-010", "GPOW-011", "GPOW-012", "GPOW-013", "GPOW-014", "GPOW-015", "GPOW-016", "GPOW-017", "GPOW-018", "GPOW-019", "GPOW-020", "GPOW-021", "GPOW-022", "GPOW-023", "GPOW-024"],
   "tasks_status_summary": {
     "total": 24,
-    "by_status": { "todo": 22, "in_progress": 1, "partial": 0, "blocked": 0, "done": 1 },
-    "progress_percent_done": 4.17,
+    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 23 },
+    "progress_percent_done": 95.83,
     "by_priority": { "P0": 18, "P1": 6, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 2, "high": 10, "critical": 12 },
-    "critical_path": { "total": 24, "done": 1, "remaining": 23 },
-    "milestones": { "total": 6, "todo": 5, "in_progress": 1, "blocked": 0, "done": 0 }
+    "critical_path": { "total": 24, "done": 23, "remaining": 1 },
+    "milestones": { "total": 6, "todo": 0, "in_progress": 1, "blocked": 0, "done": 5 }
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 22,
+    "todo_remaining": 0,
     "in_progress": 1,
     "partial": 0,
     "blocked": 0,
-    "done": 1
+    "done": 23
   },
   "summary_notes": [
     "Normale Räume behalten hart maximal 20 Teilnehmer, Pair-Sessions zwei unterschiedliche Geräte und die Anwendung keine globale Room-Anzahlgrenze.",

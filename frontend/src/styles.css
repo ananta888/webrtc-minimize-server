@@ -87,6 +87,16 @@ code { color: #c3f9e5; }
 .chat-entry span { font-size: .9rem; }
 .chat-entry.system span { color: var(--muted); font-style: italic; }
 .chat-form { display: grid; grid-template-columns: 1fr auto; gap: .5rem; }
+.pair-workspace { display: grid; gap: .75rem; }
+.presence-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+.workspace-timeline { display: grid; max-height: 18rem; gap: .45rem; overflow-y: auto; }
+.workspace-event { display: grid; gap: .2rem; border-left: 2px solid var(--accent); padding: .45rem .6rem; background: rgba(3, 12, 10, .35); }
+.workspace-event strong { color: var(--accent); font-size: .74rem; }
+.workspace-event span { overflow-wrap: anywhere; font-size: .86rem; }
+.artifact-send { display: grid; gap: .5rem; border-top: 1px solid var(--line); padding-top: .7rem; }
+.artifact-send input { padding: .45rem; }
+.workspace-picker { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .45rem; }
+.received-artifact { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font-size: .8rem; overflow-wrap: anywhere; }
 .facts { margin-top: 1rem; }
 .facts-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .7rem; margin-bottom: 0; }
 .facts-grid div { border: 1px solid var(--line); border-radius: .75rem; padding: .7rem; }

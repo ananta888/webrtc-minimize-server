@@ -4,6 +4,27 @@ export const PEER_ID_PATTERN = /^[a-f0-9]{16}$/;
 export const TRACK_ID_PATTERN = /^[A-Za-z0-9_=-]{1,128}$/;
 
 const SOURCES = new Set(["microphone", "camera", "screen", "screen-audio"]);
+const BATTERY_STATES = new Set(["critical", "limited", "mains", "unknown"]);
+const NETWORK_STATES = new Set(["constrained", "normal", "fast", "unknown"]);
+const BASE64URL_COORDINATE = /^[A-Za-z0-9_-]{40,64}$/;
+
+function hasOnlyKeys(value, keys) {
+  return Object.keys(value).every((key) => keys.has(key));
+}
+
+function requireNumber(value, name, minimum, maximum) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < minimum || value > maximum) {
+    throw new ProtocolError(`invalid_${name}`);
+  }
+  return value;
+}
+
+function requireInteger(value, name, minimum, maximum) {
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new ProtocolError(`invalid_${name}`);
+  }
+  return value;
+}
 
 export class ProtocolError extends Error {
   constructor(code, message = code) {
@@ -120,6 +141,51 @@ export function parseClientMessage(raw) {
     }
     if (typeof value.enabled !== "boolean") throw new ProtocolError("invalid_relay_consent");
     return Object.freeze({ type: "relay-consent", enabled: value.enabled });
+  }
+  if (value.type === "relay-capability") {
+    if (!hasOnlyKeys(value, new Set([
+      "type", "visible", "battery", "network", "selfCapacity",
+    ]))) throw new ProtocolError("unknown_message_field");
+    if (typeof value.visible !== "boolean") throw new ProtocolError("invalid_relay_visibility");
+    if (!BATTERY_STATES.has(value.battery)) throw new ProtocolError("invalid_battery_state");
+    if (!NETWORK_STATES.has(value.network)) throw new ProtocolError("invalid_network_state");
+    return Object.freeze({
+      type: "relay-capability",
+      visible: value.visible,
+      battery: value.battery,
+      network: value.network,
+      selfCapacity: requireInteger(value.selfCapacity, "relay_capacity", 0, 100),
+    });
+  }
+  if (value.type === "relay-observation") {
+    if (!hasOnlyKeys(value, new Set([
+      "type", "relayPeerId", "routeEpoch", "sampleCount", "deliveryRatio", "delayMs",
+      "observedCapacity",
+    ]))) throw new ProtocolError("unknown_message_field");
+    if (!PEER_ID_PATTERN.test(value.relayPeerId || "")) throw new ProtocolError("invalid_relay_peer");
+    return Object.freeze({
+      type: "relay-observation",
+      relayPeerId: value.relayPeerId,
+      routeEpoch: requireInteger(value.routeEpoch, "route_epoch", 1, Number.MAX_SAFE_INTEGER),
+      sampleCount: requireInteger(value.sampleCount, "sample_count", 1, 10_000),
+      deliveryRatio: requireNumber(value.deliveryRatio, "delivery_ratio", 0, 1),
+      delayMs: requireNumber(value.delayMs, "relay_delay", 0, 60_000),
+      observedCapacity: requireInteger(value.observedCapacity, "observed_capacity", 0, 100),
+    });
+  }
+  if (value.type === "overlay-key") {
+    if (!hasOnlyKeys(value, new Set(["type", "key"]))) throw new ProtocolError("unknown_message_field");
+    const key = value.key;
+    if (!key || typeof key !== "object" || Array.isArray(key)
+      || !hasOnlyKeys(key, new Set(["kty", "crv", "x", "y", "ext"]))
+      || key.kty !== "EC" || key.crv !== "P-256" || key.ext !== true
+      || !BASE64URL_COORDINATE.test(key.x || "") || !BASE64URL_COORDINATE.test(key.y || "")) {
+      throw new ProtocolError("invalid_overlay_key");
+    }
+    return Object.freeze({
+      type: "overlay-key",
+      key: Object.freeze({ kty: "EC", crv: "P-256", x: key.x, y: key.y, ext: true }),
+    });
   }
   throw new ProtocolError("unknown_message_type");
 }

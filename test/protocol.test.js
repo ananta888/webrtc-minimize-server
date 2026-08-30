@@ -67,3 +67,47 @@ test("parseClientMessage accepts only closed relay consent", () => {
     type: "relay-consent", enabled: "yes",
   }))), (error) => error.code === "invalid_relay_consent");
 });
+
+test("parseClientMessage validates closed relay capability and health observations", () => {
+  assert.deepEqual(parseClientMessage(Buffer.from(JSON.stringify({
+    type: "relay-capability",
+    visible: true,
+    battery: "mains",
+    network: "fast",
+    selfCapacity: 80,
+  }))), {
+    type: "relay-capability",
+    visible: true,
+    battery: "mains",
+    network: "fast",
+    selfCapacity: 80,
+  });
+  assert.deepEqual(parseClientMessage(Buffer.from(JSON.stringify({
+    type: "relay-observation",
+    relayPeerId: recipient,
+    routeEpoch: 3,
+    sampleCount: 5,
+    deliveryRatio: 0.7,
+    delayMs: 3200,
+    observedCapacity: 20,
+  }))).routeEpoch, 3);
+  assert.throws(() => parseClientMessage(Buffer.from(JSON.stringify({
+    type: "relay-capability", visible: true, battery: "full", network: "fast", selfCapacity: 80,
+  }))), (error) => error.code === "invalid_battery_state");
+  assert.throws(() => parseClientMessage(Buffer.from(JSON.stringify({
+    type: "relay-observation", relayPeerId: recipient, routeEpoch: 0, sampleCount: 5,
+    deliveryRatio: 1.1, delayMs: 0, observedCapacity: 100,
+  }))), ProtocolError);
+});
+
+test("parseClientMessage accepts only a closed P-256 overlay public key", () => {
+  const coordinate = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+  assert.deepEqual(parseClientMessage(Buffer.from(JSON.stringify({
+    type: "overlay-key",
+    key: { kty: "EC", crv: "P-256", x: coordinate, y: coordinate, ext: true },
+  }))).key.kty, "EC");
+  assert.throws(() => parseClientMessage(Buffer.from(JSON.stringify({
+    type: "overlay-key",
+    key: { kty: "EC", crv: "P-384", x: coordinate, y: coordinate, ext: true },
+  }))), (error) => error.code === "invalid_overlay_key");
+});

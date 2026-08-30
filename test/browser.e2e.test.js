@@ -22,6 +22,7 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
       maxRoomParticipants: 20,
       roomIdleTtlMs: 60_000,
       signalRateLimit: 120,
+      pairWorkspaceEnabled: false,
     },
   });
   await new Promise((resolve, reject) => {
@@ -114,6 +115,7 @@ test("two independent Chromium devices join Pair Dev while device three is rejec
       maxRoomParticipants: 20,
       roomIdleTtlMs: 60_000,
       signalRateLimit: 120,
+      pairWorkspaceEnabled: false,
     },
   });
   await new Promise((resolve, reject) => {
@@ -167,6 +169,24 @@ test("two independent Chromium devices join Pair Dev while device three is rejec
   await owner.locator("#chat-form button").click();
   await peer.locator("#chat-log").getByText("Pair verbunden").waitFor();
 
+  let automaticDownloads = 0;
+  peer.on("download", () => { automaticDownloads += 1; });
+  await owner.locator("#artifact-file").setInputFiles({
+    name: "pair-note.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("opaque artifact ".repeat(1600)),
+  });
+  await owner.locator("#send-artifact").waitFor({ state: "visible" });
+  await owner.locator("#overlay-path-status", { hasText: "Schlüsselkanal: bereit" }).waitFor({ timeout: 5_000 });
+  await owner.locator("#send-artifact").click();
+  await owner.locator("#artifact-status", { hasText: "Verschlüsselt" }).waitFor({ timeout: 5_000 });
+  await peer.locator("[data-received-artifact]", { hasText: "pair-note.txt" }).waitFor({ timeout: 5_000 });
+  assert.equal(automaticDownloads, 0);
+  const downloadPromise = peer.waitForEvent("download");
+  await peer.locator("[data-received-artifact] button").click();
+  const download = await downloadPromise;
+  assert.equal(download.suggestedFilename(), "pair-note.txt");
+
   await overflow.goto(`${origin}/?room=${roomId}&mode=pair`);
   await overflow.locator("#display-name").fill("Linus");
   await overflow.locator("#join-room").click();
@@ -194,6 +214,7 @@ test("six Chromium peers use consented video relay, adaptive sender tiers and on
       maxRoomParticipants: 20,
       roomIdleTtlMs: 60_000,
       signalRateLimit: 240,
+      pairWorkspaceEnabled: false,
       activeSpeakerLimit: 2,
       peerMediaRelayEnabled: true,
       peerMediaRelayMinParticipants: 6,
@@ -307,6 +328,13 @@ test("six Chromium peers use consented video relay, adaptive sender tiers and on
   });
   assert.equal(forwardedByConsentingPeer, true);
 
+  const topologyBeforeRevocation = await pages[0].locator("#topology-status").textContent();
+  await pages[0].locator("#relay-consent").uncheck();
+  await pages[0].waitForFunction((previous) => {
+    const current = document.querySelector("#topology-status")?.textContent || "";
+    return current.includes("trusted_peer_relay") && current !== previous;
+  }, topologyBeforeRevocation);
+
   await pages[0].locator("#optimization-mode").selectOption("data-saver");
   await pages[0].waitForFunction(() => {
     const local = new Set(window.__localTrackIds);
@@ -338,6 +366,7 @@ test("two Firefox peers retain direct adaptive mesh, chat and camera fallback", 
       maxRoomParticipants: 20,
       roomIdleTtlMs: 60_000,
       signalRateLimit: 120,
+      pairWorkspaceEnabled: false,
     },
   });
   await new Promise((resolve, reject) => {

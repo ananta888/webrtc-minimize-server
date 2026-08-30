@@ -6,7 +6,7 @@ Ein eigenständiger, Keycloak-fähiger Raumserver mit Angular-Oberfläche für A
 
 ## Lokal starten
 
-Voraussetzung: Node.js 20 oder neuer. Der anonyme Entwicklungsmodus benötigt keine externe Infrastruktur:
+Voraussetzung: Node.js 22.5 oder neuer (für den eingebauten SQLite-Workspace-Store). Der anonyme Entwicklungsmodus benötigt keine externe Infrastruktur:
 
 ```bash
 npm install
@@ -24,6 +24,8 @@ Medien werden niemals automatisch angefordert. Mikrofon, Kamera und Bildschirm s
 
 `Neue Pair-Session` erzeugt einen eigenen Sessiontyp für Pair Dev. Er akzeptiert höchstens zwei unterschiedliche P-256-Geräte. Ein vorhandener Raum kann nicht zwischen Pair- und Room-Modus wechseln; derselbe Gerätefingerprint darf nicht zweimal derselben Pair-Session beitreten.
 
+Angemeldete Nutzer können zusätzlich einen persistenten Pair-Workspace anlegen. Der OIDC-Issuer bildet die Tenant-Grenze; der Ersteller wird Owner und genau ein authentifizierter Einladungsnutzer Editor. Owner, Editor und Viewer werden bei jeder Operation neu geprüft. Membership-Änderungen verwenden eine Compare-and-Set-Revision; Timeline-Events sind idempotent und entstehen atomar mit einem Outbox-Eintrag. Monotone Read-Cursor und kurzlebige, epochgebundene Presence-Leases überleben einen Serverneustart. Persistiert werden ausschließlich Workspace-Metadaten und ausdrücklich gespeicherte Events, niemals Medien oder übertragene Dateiinhalte.
+
 Vor jedem WebSocket-Upgrade autorisiert `POST /api/sessions` Identität, Gerät, Raum, Modus und Origin. Das Access Token wird niemals in eine WebSocket-URL geschrieben. Stattdessen erhält der Browser ein zufälliges, kurzlebiges und nur einmal verwendbares Signaling-Ticket.
 
 ## Adaptive Bandbreite und Active Speaker
@@ -40,7 +42,9 @@ Normale Räume verwenden weiterhin eine isolierte PeerConnection je Gegenüber, 
 
 Das Canvas allein spart keine Netzwerkbytes. Die Ersparnis entsteht aus den gleichzeitig angewandten Senderstufen `focus`, `balanced`, `thumbnail` und `paused`.
 
-Ab sechs Teilnehmern kann die Control Plane einen zyklusfreien Video-Relay-Baum mit begrenzter Kinder- und Hopzahl ausstellen. Das geschieht nur, wenn der Betreiber den Pfad erlaubt und genügend Browser ihre separate Relay-Zustimmung erteilen. Bei fehlender Zustimmung, Capability, Membership oder nach einem Leave fällt jede Publikation epochgebunden auf das adaptive Mesh zurück. Ein Trusted Relay verarbeitet und re-encodiert empfangene Medien; es ist daher kein nicht entschlüsselnder SFrame-Relay und wird in der UI entsprechend erklärt.
+Ab sechs Teilnehmern kann die Control Plane einen zyklusfreien Video-Relay-Baum mit begrenzter Kinder- und Hopzahl ausstellen. Membership-, Route- und Topology-Epochen sind getrennt; jede Publikationsroute besitzt eine kurzlebige Lease, Primary und – soweit topologisch möglich – Backup. Relay-Auswahl berücksichtigt ausdrückliche Zustimmung, Sichtbarkeit, Energie-/Netzklasse, Eigenkapazität und beobachtete Lieferqualität. Eine Sperre benötigt aktuelle Meldungen von mindestens zwei unabhängigen Beobachtern und eine Mehrheit; Cooldown verhindert Flapping. Der Browser verwirft abgelaufene Leases selbstständig und fällt auf adaptive Mesh zurück. Ein Trusted Relay verarbeitet und re-encodiert Medien weiterhin und ist daher kein nicht entschlüsselnder SFrame-Relay.
+
+Pair-Sessions besitzen daneben einen eigenständigen Daten-Overlay-Kanal. Jeder Browser erzeugt pro Session einen nicht exportierbaren ECDH-P-256-Schlüssel und verschlüsselt Events oder bewusst ausgewählte Dateien mit AES-GCM für den Zielpeer. Zwischenbrowser sehen nur Ciphertext und begrenzte Routing-Metadaten. Digest, TTL, Membership-/Route-Epoch, schleifenfreier Pfad, Hopzahl, Replay-Fenster, Chunkzahl und per Traffic-Class begrenzte Queues werden geprüft. Fehlende Chunks werden verschlüsselt quittiert und gezielt erneut gesendet; ohne nutzbare Relay-Route wird direkt, aber weiterhin Ende-zu-Ende verschlüsselt übertragen. Ein Download startet ausschließlich durch einen weiteren Nutzerklick.
 
 ## Öffentliche Ananta-Voreinstellung
 
@@ -112,6 +116,10 @@ Die öffentliche Voreinstellung steht in `.env.example`, das getrennte localhost
 - `PEER_MEDIA_RELAY_ENABLED`: Betreiberfreigabe für Trusted Peer Relay; Nutzerzustimmung bleibt trotzdem standardmäßig aus.
 - `PEER_MEDIA_RELAY_MIN_PARTICIPANTS`: kleinste Raumgröße für einen Relay-Baum, Default 6.
 - `PEER_MEDIA_RELAY_MAX_CHILDREN`, `PEER_MEDIA_RELAY_MAX_HOPS`: harte Fanout- und Tiefengrenzen.
+- `PEER_ROUTE_LEASE_MS`, `PEER_ROUTE_RENEW_MS`: Lease-Gültigkeit und frühere Erneuerung; Renewal muss kürzer sein.
+- `PEER_RELAY_HEALTH_WINDOW_MS`, `PEER_RELAY_HEALTH_COOLDOWN_MS`: Quorum-Beobachtungsfenster und Failover-Cooldown.
+- `PEER_DATA_OVERLAY_ENABLED`: schaltet nur den browserseitig E2EE-geschützten Daten-Overlay ab; Direct Chat/Control bleiben erhalten.
+- `PAIR_WORKSPACE_ENABLED`, `PAIR_WORKSPACE_DB`: optionaler persistenter Pair-Workspace und Pfad seines SQLite-Volumes.
 
 Beispiel für einen externen Coturn-Dienst:
 
@@ -136,13 +144,17 @@ Für das Ananta-Preset muss ein HTTPS-Reverse-Proxy `webrtc.ananta.de` auf Port 
 - `GET /`: Browser-App
 - `GET /healthz`: inhaltsfreier Health-/Room-Zähler
 - `GET /config`: öffentliche ICE-Konfiguration
-- `POST /api/rooms`: nach Auth-Policy einen flüchtigen Room- oder Pair-Invite erstellen
+- `POST /api/rooms`: Room-/Pair-Invite oder authentifizierten persistenten Pair-Workspace erstellen
 - `POST /api/sessions`: Bearer-Token und P-256-Gerätebeweis prüfen; Einmal-Ticket und kurzlebige TURN-Credentials ausstellen
+- `GET /api/workspaces`, `GET /api/workspaces/:id`: eigene Workspaces und revisionierte Membership lesen
+- `GET|POST /api/workspaces/:id/events`: permission-aware Timeline fortsetzen oder idempotentes Event schreiben
+- `PUT /api/workspaces/:id/cursor|presence`: monotonen Cursor beziehungsweise epochgebundene Presence-Lease setzen
+- `POST /api/workspaces/:id/roles`: Rolle mit erwarteter Membership-Revision ändern oder widerrufen
 - `GET /signal?ticket=…`: WebSocket-Signaling mit einmal verwendbarem Session-Ticket
 
 ## Sicherheitsstatus
 
-Im `required`- oder `optional`-Modus prüft der Server Access Tokens über JWKS auf Signatur, erlaubten Algorithmus, Issuer, Audience, Ablaufzeit und Subject. Join-Nachweise werden zusätzlich durch eine nicht exportierbare Browser-P-256-Identität signiert. WebRTC verschlüsselt Medien auf jedem direkten, TURN- oder Trusted-Relay-Hop mit DTLS-SRTP und DataChannels mit DTLS/SCTP. Ein zustimmender Relay-Browser kann weitergeleitete Medien verarbeiten; eine zusätzliche Insertable-Streams-/SFrame-Frameverschlüsselung gegen diesen Relay ist noch nicht implementiert und wird nicht behauptet.
+Im `required`- oder `optional`-Modus prüft der Server Access Tokens über JWKS auf Signatur, erlaubten Algorithmus, Issuer, Audience, Ablaufzeit und Subject. Join-Nachweise werden zusätzlich durch eine nicht exportierbare Browser-P-256-Identität signiert. WebRTC verschlüsselt Medien auf jedem direkten, TURN- oder Trusted-Relay-Hop mit DTLS-SRTP und DataChannels mit DTLS/SCTP; Overlay-Nutzdaten erhalten zusätzlich zielpeergebundenes AES-GCM. Ein zustimmender Media-Relay-Browser kann weitergeleitete Medien verarbeiten; eine zusätzliche Insertable-Streams-/SFrame-Frameverschlüsselung gegen diesen Relay ist nicht implementiert und wird nicht behauptet. SQLite ist kein HA-/Backup-System; Betreiber müssen Volume-Sicherung, Dateirechte und Wiederherstellung selbst verantworten.
 
 Die vollständige Herkunfts- und Lückenmatrix steht in [docs/ananta-webrtc-adoption.md](docs/ananta-webrtc-adoption.md). Produktionsschritte stehen schema-validiert unter `todos/backlog/`.
 

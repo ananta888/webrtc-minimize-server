@@ -70,6 +70,14 @@ export class RoomRegistry {
       principal: admission.principal || "anonymous",
       deviceFingerprint: admission.deviceFingerprint || "",
       relayConsent: false,
+      relayCapability: {
+        visible: true,
+        battery: "unknown",
+        network: "unknown",
+        selfCapacity: 50,
+        observedCapacity: 50,
+        deliveryRatio: 1,
+      },
     };
     room.peers.set(peerId, peer);
     room.updatedAt = now;
@@ -107,6 +115,26 @@ export class RoomRegistry {
     peer.relayConsent = enabled === true;
     room.updatedAt = now;
     return peer.relayConsent;
+  }
+
+  setRelayCapability(peer, capability, now = Date.now()) {
+    const room = this.#rooms.get(peer.roomId);
+    if (!room || room.peers.get(peer.id) !== peer) throw new RoomAdmissionError("peer_not_joined");
+    peer.relayCapability = { ...peer.relayCapability, ...capability };
+    room.updatedAt = now;
+    return { ...peer.relayCapability };
+  }
+
+  updateObservedRelay(peer, observedCapacity, deliveryRatio, now = Date.now()) {
+    const room = this.#rooms.get(peer.roomId);
+    if (!room || room.peers.get(peer.id) !== peer) throw new RoomAdmissionError("peer_not_joined");
+    peer.relayCapability = {
+      ...peer.relayCapability,
+      observedCapacity: Math.min(peer.relayCapability.observedCapacity, observedCapacity),
+      deliveryRatio: Math.min(peer.relayCapability.deliveryRatio, deliveryRatio),
+    };
+    room.updatedAt = now;
+    return { ...peer.relayCapability };
   }
 
   allowMessage(peer, now = Date.now(), { limit, windowMs = 10_000 }) {

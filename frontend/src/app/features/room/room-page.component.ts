@@ -11,11 +11,13 @@ import { MediaPublicationService } from "../../webrtc/media-publication.service"
 import { PeerMeshService } from "../../webrtc/peer-mesh.service";
 import { RoomMode, RoomSessionService } from "../../webrtc/room-session.service";
 import { SignalingService } from "../../webrtc/signaling.service";
+import { PairWorkspacePanelComponent } from "../../workspace/pair-workspace-panel.component";
+import { PairWorkspaceService, WorkspaceSummary } from "../../workspace/pair-workspace.service";
 
 @Component({
   selector: "app-room-page",
   standalone: true,
-  imports: [FormsModule, MediaStreamDirective, MediaMosaicComponent],
+  imports: [FormsModule, MediaStreamDirective, MediaMosaicComponent, PairWorkspacePanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: "./room-page.component.html",
 })
@@ -26,6 +28,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   readonly nameInput = signal(sessionStorage.getItem("webrtc-display-name") || "");
   readonly selectedMode = signal<RoomMode>("room");
   readonly chatInput = signal("");
+  readonly workspaceTitle = signal("Pair Dev Workspace");
   readonly connectionLabel = computed(() => {
     if (this.session.joined()) return "Signaling verbunden";
     if (this.signaling.status() === "connecting") return "Verbindung wird aufgebaut";
@@ -47,6 +50,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     readonly session: RoomSessionService,
     readonly mesh: PeerMeshService,
     readonly media: MediaPublicationService,
+    readonly workspaces: PairWorkspaceService,
   ) {}
 
   async ngOnInit(): Promise<void> {
@@ -54,8 +58,10 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     const params = new URLSearchParams(location.search);
     this.roomInput.set(params.get("room") || "");
     this.selectedMode.set(params.get("mode") === "pair" ? "pair" : "room");
+    this.session.setWorkspaceInvite(params.get("workspaceInvite") || "");
     try {
       this.auth.configure(await this.config.load());
+      if (this.auth.authenticated() && this.config.value()?.pairWorkspaceEnabled) void this.workspaces.loadList();
       this.ready.set(true);
     } catch (error) {
       this.pageError.set(error instanceof Error ? error.message : "Konfiguration konnte nicht geladen werden");
@@ -77,6 +83,24 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     } catch (error) {
       this.pageError.set(error instanceof Error ? error.message : "Raum konnte nicht erstellt werden");
     }
+  }
+
+  async createWorkspace(): Promise<void> {
+    try {
+      const room = await this.session.createRoom("pair", true, this.workspaceTitle());
+      this.roomInput.set(room.roomId);
+      this.selectedMode.set("pair");
+      history.replaceState(null, "", new URL(room.inviteUrl).search);
+    } catch (error) {
+      this.pageError.set(error instanceof Error ? error.message : "Workspace konnte nicht erstellt werden");
+    }
+  }
+
+  selectWorkspace(workspace: Omit<WorkspaceSummary, "members">): void {
+    this.roomInput.set(workspace.roomId);
+    this.selectedMode.set("pair");
+    this.session.setWorkspaceInvite("");
+    history.replaceState(null, "", `/?room=${encodeURIComponent(workspace.roomId)}&mode=pair`);
   }
 
   async join(): Promise<void> {

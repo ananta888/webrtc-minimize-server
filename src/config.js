@@ -29,6 +29,13 @@ const DEFAULTS = Object.freeze({
   peerMediaRelayMinParticipants: 6,
   peerMediaRelayMaxChildren: 3,
   peerMediaRelayMaxHops: 3,
+  peerRouteLeaseMs: 60_000,
+  peerRouteRenewMs: 25_000,
+  peerRelayHealthWindowMs: 30_000,
+  peerRelayHealthCooldownMs: 60_000,
+  peerDataOverlayEnabled: true,
+  pairWorkspaceEnabled: true,
+  pairWorkspaceDb: "data/pair-workspaces.sqlite",
   activeSpeakerLimit: 5,
 });
 
@@ -146,6 +153,15 @@ export function loadConfig(env = process.env) {
   if ((turnUrls.length > 0) !== Boolean(turnSharedSecret)) {
     throw new Error("TURN_URLS and TURN_SHARED_SECRET must be configured together");
   }
+  const peerRouteLeaseMs = boundedInteger(env.PEER_ROUTE_LEASE_MS, DEFAULTS.peerRouteLeaseMs, {
+    minimum: 30_000, maximum: 300_000, name: "PEER_ROUTE_LEASE_MS",
+  });
+  const peerRouteRenewMs = boundedInteger(env.PEER_ROUTE_RENEW_MS, DEFAULTS.peerRouteRenewMs, {
+    minimum: 5_000, maximum: 120_000, name: "PEER_ROUTE_RENEW_MS",
+  });
+  if (peerRouteRenewMs >= peerRouteLeaseMs) {
+    throw new Error("PEER_ROUTE_RENEW_MS must be shorter than PEER_ROUTE_LEASE_MS");
+  }
   return Object.freeze({
     host: env.HOST || DEFAULTS.host,
     port: boundedInteger(env.PORT, DEFAULTS.port, {
@@ -213,6 +229,29 @@ export function loadConfig(env = process.env) {
       DEFAULTS.peerMediaRelayMaxHops,
       { minimum: 1, maximum: 4, name: "PEER_MEDIA_RELAY_MAX_HOPS" },
     ),
+    peerRouteLeaseMs,
+    peerRouteRenewMs,
+    peerRelayHealthWindowMs: boundedInteger(
+      env.PEER_RELAY_HEALTH_WINDOW_MS,
+      DEFAULTS.peerRelayHealthWindowMs,
+      { minimum: 10_000, maximum: 120_000, name: "PEER_RELAY_HEALTH_WINDOW_MS" },
+    ),
+    peerRelayHealthCooldownMs: boundedInteger(
+      env.PEER_RELAY_HEALTH_COOLDOWN_MS,
+      DEFAULTS.peerRelayHealthCooldownMs,
+      { minimum: 30_000, maximum: 10 * 60_000, name: "PEER_RELAY_HEALTH_COOLDOWN_MS" },
+    ),
+    peerDataOverlayEnabled: booleanValue(
+      env.PEER_DATA_OVERLAY_ENABLED,
+      DEFAULTS.peerDataOverlayEnabled,
+      "PEER_DATA_OVERLAY_ENABLED",
+    ),
+    pairWorkspaceEnabled: booleanValue(
+      env.PAIR_WORKSPACE_ENABLED,
+      DEFAULTS.pairWorkspaceEnabled,
+      "PAIR_WORKSPACE_ENABLED",
+    ),
+    pairWorkspaceDb: String(env.PAIR_WORKSPACE_DB || DEFAULTS.pairWorkspaceDb).trim(),
     activeSpeakerLimit: boundedInteger(env.ACTIVE_SPEAKER_LIMIT, DEFAULTS.activeSpeakerLimit, {
       minimum: 2, maximum: 5, name: "ACTIVE_SPEAKER_LIMIT",
     }),

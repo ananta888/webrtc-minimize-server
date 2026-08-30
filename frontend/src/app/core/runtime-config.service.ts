@@ -13,7 +13,10 @@ export interface RuntimeConfig {
     peerRelayMinParticipants: number;
     peerRelayMaxChildren: number;
     peerRelayMaxHops: number;
+    routeLeaseMs: number;
+    dataOverlayEnabled: boolean;
   }>;
+  readonly pairWorkspaceEnabled: boolean;
   readonly auth: Readonly<{
     mode: AuthMode;
     issuer: string;

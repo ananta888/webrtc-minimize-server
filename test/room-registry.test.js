@@ -42,6 +42,22 @@ test("RoomRegistry binds relay consent to current room membership", () => {
   ));
 });
 
+test("RoomRegistry binds relay capability and only lowers observed quality", () => {
+  const registry = new RoomRegistry();
+  const { peer } = registry.join("room-a", {}, "Ada");
+  registry.setRelayCapability(peer, {
+    visible: false, battery: "limited", network: "normal", selfCapacity: 90,
+  });
+  assert.equal(peer.relayCapability.selfCapacity, 90);
+  assert.equal(peer.relayCapability.visible, false);
+  registry.updateObservedRelay(peer, 30, 0.7);
+  registry.updateObservedRelay(peer, 80, 0.95);
+  assert.equal(peer.relayCapability.observedCapacity, 30);
+  assert.equal(peer.relayCapability.deliveryRatio, 0.7);
+  registry.leave(peer);
+  assert.throws(() => registry.setRelayCapability(peer, { visible: true }), /peer_not_joined/);
+});
+
 test("RoomRegistry admits 20 peers per room and keeps rooms isolated", () => {
   const registry = new RoomRegistry();
   const firstRoomPeers = Array.from(

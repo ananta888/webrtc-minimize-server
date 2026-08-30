@@ -8,7 +8,9 @@ import { WebSocket, WebSocketServer } from "ws";
 import { loadConfig } from "./config.js";
 import { DeviceProofError, DeviceProofVerifier } from "./device-proof.js";
 import { buildRoomTopology } from "./media-topology.js";
+import { RelayHealthTracker } from "./relay-health.js";
 import { AuthenticationError, bearerToken, createOidcVerifier } from "./oidc-verifier.js";
+import { PairWorkspaceError, PairWorkspaceStore } from "./pair-workspace-store.js";
 import {
   encodeServerMessage,
   normalizeDisplayName,
@@ -31,8 +33,12 @@ const MIME_TYPES = new Map([
   [".woff2", "font/woff2"],
 ]);
 const MAX_HTTP_BODY_BYTES = 16 * 1024;
-const ROOM_REQUEST_FIELDS = new Set(["mode"]);
-const SESSION_REQUEST_FIELDS = new Set(["roomId", "displayName", "mode", "deviceProof"]);
+const ROOM_REQUEST_FIELDS = new Set(["mode", "persistent", "title"]);
+const SESSION_REQUEST_FIELDS = new Set(["roomId", "displayName", "mode", "deviceProof", "workspaceInvite"]);
+const EVENT_REQUEST_FIELDS = new Set(["eventId", "correlationId", "kind", "payload"]);
+const CURSOR_REQUEST_FIELDS = new Set(["sequence"]);
+const PRESENCE_REQUEST_FIELDS = new Set(["state", "documentId", "line", "column", "leaseId", "epoch", "ttlMs"]);
+const ROLE_REQUEST_FIELDS = new Set(["principal", "role", "expectedRevision"]);
 
 function sendJson(response, statusCode, body, extraHeaders = {}) {
   const payload = Buffer.from(JSON.stringify(body));
@@ -104,7 +110,10 @@ function publicRuntimeConfig(config) {
       peerRelayMinParticipants: config.peerMediaRelayMinParticipants,
       peerRelayMaxChildren: config.peerMediaRelayMaxChildren,
       peerRelayMaxHops: config.peerMediaRelayMaxHops,
+      routeLeaseMs: config.peerRouteLeaseMs,
+      dataOverlayEnabled: config.peerDataOverlayEnabled,
     },
+    pairWorkspaceEnabled: config.pairWorkspaceEnabled,
   };
 }
 
@@ -200,13 +209,14 @@ async function authenticateRequest(request, config, oidcVerifier) {
 }
 
 function errorStatus(error) {
+  if (error instanceof PairWorkspaceError) return error.status;
   if (error instanceof AuthenticationError) return 401;
   if (error instanceof ProtocolError || error instanceof DeviceProofError) return 400;
   return 500;
 }
 
 function createHttpHandler(config, registry, services) {
-  const { oidcVerifier, deviceProofVerifier, ticketStore, publicDir } = services;
+  const { oidcVerifier, deviceProofVerifier, ticketStore, workspaceStore, publicDir } = services;
   return async (request, response) => {
     try {
       const url = new URL(request.url, "http://localhost");
@@ -224,16 +234,33 @@ function createHttpHandler(config, registry, services) {
       }
       if (request.method === "POST" && url.pathname === "/api/rooms") {
         if (!requestOriginAllowed(request, config)) throw new ProtocolError("origin_denied");
-        await authenticateRequest(request, config, oidcVerifier);
+        const identity = await authenticateRequest(request, config, oidcVerifier);
         const input = await readJsonBody(request);
         assertAllowedKeys(input, ROOM_REQUEST_FIELDS);
         const mode = normalizeMode(input.mode);
+        if (input.persistent !== undefined && typeof input.persistent !== "boolean") {
+          throw new ProtocolError("invalid_persistent_workspace");
+        }
+        const persistent = input.persistent === true;
+        if (persistent && mode !== "pair") throw new ProtocolError("persistent_workspace_requires_pair");
+        if (persistent && (!config.pairWorkspaceEnabled || !workspaceStore)) {
+          throw new PairWorkspaceError("workspace_disabled", 404);
+        }
+        if (persistent && !identity) throw new PairWorkspaceError("authentication_required", 401);
         const roomId = `${mode}-${crypto.randomBytes(9).toString("hex")}`;
         const origin = requestOrigin(request, config);
+        const workspace = persistent ? workspaceStore.create({
+          roomId,
+          title: input.title,
+          ownerPrincipal: `${identity.issuer}|${identity.subject}`,
+        }) : null;
         sendJson(response, 201, {
           roomId,
           mode,
-          inviteUrl: `${origin}/?room=${encodeURIComponent(roomId)}&mode=${mode}`,
+          persistent,
+          ...(workspace ? { workspaceId: workspace.workspaceId, role: workspace.role } : {}),
+          inviteUrl: `${origin}/?room=${encodeURIComponent(roomId)}&mode=${mode}`
+            + (workspace ? `&workspaceInvite=${encodeURIComponent(workspace.inviteToken)}` : ""),
         }, securityHeaders(config));
         return;
       }
@@ -254,6 +281,12 @@ function createHttpHandler(config, registry, services) {
           ? `${identity.issuer}|${identity.subject}`
           : `anonymous:${device.fingerprint}`;
         const authorizedName = identity ? normalizeDisplayName(identity.displayName) : requestedName;
+        const workspace = workspaceStore?.admit(
+          roomId,
+          identity ? principal : "",
+          String(input.workspaceInvite || ""),
+        ) || null;
+        if (workspace && mode !== "pair") throw new PairWorkspaceError("workspace_pair_mode_required", 409);
         const origin = requestOrigin(request, config);
         const issued = ticketStore.issue({
           roomId,
@@ -263,18 +296,77 @@ function createHttpHandler(config, registry, services) {
           authenticated: Boolean(identity),
           deviceFingerprint: device.fingerprint,
           origin,
+          workspaceId: workspace?.workspaceId || "",
+          workspaceRole: workspace?.role || "",
         });
         sendJson(response, 201, {
           ticket: issued.ticket,
           expiresAt: issued.expiresAt,
           signalingPath: `/signal?ticket=${encodeURIComponent(issued.ticket)}`,
           identity: identity ? { authenticated: true, displayName: identity.displayName } : { authenticated: false },
+          workspace,
           iceServers: [
             ...config.stunUrls.map((urls) => ({ urls })),
             ...config.turnServers,
             ...createTurnCredentials(config, principal),
           ],
         }, securityHeaders(config));
+        return;
+      }
+      if (url.pathname === "/api/workspaces" && request.method === "GET") {
+        if (!config.pairWorkspaceEnabled || !workspaceStore) throw new PairWorkspaceError("workspace_disabled", 404);
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        if (!identity) throw new PairWorkspaceError("authentication_required", 401);
+        sendJson(response, 200, {
+          workspaces: workspaceStore.list(`${identity.issuer}|${identity.subject}`),
+        }, securityHeaders(config));
+        return;
+      }
+      const workspaceMatch = url.pathname.match(/^\/api\/workspaces\/([0-9a-f-]{36})(?:\/(events|cursor|presence|roles))?$/);
+      if (workspaceMatch) {
+        if (!config.pairWorkspaceEnabled || !workspaceStore) throw new PairWorkspaceError("workspace_disabled", 404);
+        if (!requestOriginAllowed(request, config)) throw new ProtocolError("origin_denied");
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        if (!identity) throw new PairWorkspaceError("authentication_required", 401);
+        const principal = `${identity.issuer}|${identity.subject}`;
+        const [, workspaceId, resource] = workspaceMatch;
+        if (!resource && request.method === "GET") {
+          sendJson(response, 200, workspaceStore.get(workspaceId, principal), securityHeaders(config));
+          return;
+        }
+        if (resource === "events" && request.method === "GET") {
+          const after = Number(url.searchParams.get("after") || 0);
+          const limit = Number(url.searchParams.get("limit") || 100);
+          sendJson(response, 200, { events: workspaceStore.timeline(workspaceId, principal, { after, limit }) }, securityHeaders(config));
+          return;
+        }
+        if (resource === "events" && request.method === "POST") {
+          const input = await readJsonBody(request);
+          assertAllowedKeys(input, EVENT_REQUEST_FIELDS);
+          sendJson(response, 201, workspaceStore.appendEvent(workspaceId, principal, input), securityHeaders(config));
+          return;
+        }
+        if (resource === "cursor" && request.method === "PUT") {
+          const input = await readJsonBody(request);
+          assertAllowedKeys(input, CURSOR_REQUEST_FIELDS);
+          sendJson(response, 200, workspaceStore.setCursor(workspaceId, principal, input.sequence), securityHeaders(config));
+          return;
+        }
+        if (resource === "presence" && request.method === "PUT") {
+          const input = await readJsonBody(request);
+          assertAllowedKeys(input, PRESENCE_REQUEST_FIELDS);
+          sendJson(response, 200, workspaceStore.setPresence(workspaceId, principal, input), securityHeaders(config));
+          return;
+        }
+        if (resource === "roles" && request.method === "POST") {
+          const input = await readJsonBody(request);
+          assertAllowedKeys(input, ROLE_REQUEST_FIELDS);
+          sendJson(response, 200, workspaceStore.setRole(
+            workspaceId, principal, input.principal, input.role, input.expectedRevision,
+          ), securityHeaders(config));
+          return;
+        }
+        sendJson(response, 405, { error: "method_not_allowed" }, securityHeaders(config));
         return;
       }
       if (request.method !== "GET" && request.method !== "HEAD") {
@@ -310,21 +402,31 @@ function rejectUpgrade(socket, statusCode, message) {
 
 function configureSignaling(server, config, registry, ticketStore) {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
-  const topologyEpochs = new Map();
+  const roomEpochs = new Map();
+  const relayHealth = new RelayHealthTracker({
+    windowMs: config.peerRelayHealthWindowMs,
+    cooldownMs: config.peerRelayHealthCooldownMs,
+  });
 
-  const broadcastTopology = (roomId) => {
+  const broadcastTopology = (roomId, membershipChanged = false) => {
     const members = registry.members(roomId);
     if (members.length === 0) {
-      topologyEpochs.delete(roomId);
+      roomEpochs.delete(roomId);
+      relayHealth.removeRoom(roomId);
       return;
     }
-    const epoch = (topologyEpochs.get(roomId) || 0) + 1;
-    topologyEpochs.set(roomId, epoch);
-    const topology = buildRoomTopology(members, epoch, {
+    const epochs = roomEpochs.get(roomId) || { membership: 0, route: 0, topology: 0 };
+    if (membershipChanged) epochs.membership += 1;
+    epochs.route += 1;
+    epochs.topology += 1;
+    roomEpochs.set(roomId, epochs);
+    const topology = buildRoomTopology(members, epochs, {
       enabled: config.peerMediaRelayEnabled,
       minimumParticipants: config.peerMediaRelayMinParticipants,
       maxChildren: config.peerMediaRelayMaxChildren,
       maxHops: config.peerMediaRelayMaxHops,
+      leaseMs: config.peerRouteLeaseMs,
+      blockedRelayIds: relayHealth.blockedRelayIds(roomId),
     });
     for (const member of members) safeSend(member.socket, topology);
   };
@@ -379,11 +481,13 @@ function configureSignaling(server, config, registry, ticketStore) {
       maxParticipants: identity.mode === "pair" ? 2 : config.maxRoomParticipants,
       mode: identity.mode,
       authenticated: identity.authenticated,
+      workspaceId: identity.workspaceId || "",
+      workspaceRole: identity.workspaceRole || "",
     });
     for (const recipient of registry.recipients(peer)) {
       safeSend(recipient.socket, { type: "peer-joined", peer: { id: peer.id, name: peer.name } });
     }
-    broadcastTopology(peer.roomId);
+    broadcastTopology(peer.roomId, true);
 
     socket.on("pong", () => { socket.isAlive = true; });
     socket.on("message", (raw, isBinary) => {
@@ -409,6 +513,50 @@ function configureSignaling(server, config, registry, ticketStore) {
           broadcastTopology(peer.roomId);
           return;
         }
+        if (message.type === "relay-capability") {
+          registry.setRelayCapability(peer, {
+            visible: message.visible,
+            battery: message.battery,
+            network: message.network,
+            selfCapacity: message.selfCapacity,
+          });
+          broadcastTopology(peer.roomId);
+          return;
+        }
+        if (message.type === "relay-observation") {
+          const epochs = roomEpochs.get(peer.roomId);
+          if (!epochs || message.routeEpoch !== epochs.route) {
+            throw new ProtocolError("stale_route_observation");
+          }
+          const relay = registry.members(peer.roomId).find((candidate) => (
+            candidate.id === message.relayPeerId && candidate.id !== peer.id
+          ));
+          if (!relay) throw new ProtocolError("relay_unavailable");
+          const unhealthy = relayHealth.observe(
+            peer.roomId,
+            peer.id,
+            message,
+            registry.members(peer.roomId).length,
+          );
+          if (unhealthy) {
+            registry.updateObservedRelay(
+              relay,
+              message.observedCapacity,
+              message.deliveryRatio,
+            );
+            broadcastTopology(peer.roomId);
+          }
+          return;
+        }
+        if (message.type === "overlay-key") {
+          if (!config.peerDataOverlayEnabled) throw new ProtocolError("overlay_disabled");
+          const epochs = roomEpochs.get(peer.roomId);
+          if (!epochs) throw new ProtocolError("topology_unavailable");
+          for (const recipient of registry.recipients(peer)) {
+            safeSend(recipient.socket, { ...message, from: peer.id, membershipEpoch: epochs.membership });
+          }
+          return;
+        }
         for (const recipient of registry.recipients(peer)) {
           safeSend(recipient.socket, { ...message, from: peer.id, fromName: peer.name });
         }
@@ -424,10 +572,11 @@ function configureSignaling(server, config, registry, ticketStore) {
     const leave = () => {
       if (left) return;
       left = true;
+      relayHealth.leave(peer.roomId, peer.id);
       for (const recipient of registry.leave(peer)) {
         safeSend(recipient.socket, { type: "peer-left", peerId: peer.id });
       }
-      broadcastTopology(peer.roomId);
+      broadcastTopology(peer.roomId, true);
     };
     socket.on("close", leave);
     socket.on("error", leave);
@@ -446,7 +595,14 @@ function configureSignaling(server, config, registry, ticketStore) {
     ticketStore.prune();
   }, 30_000);
   heartbeat.unref();
-  server.on("close", () => clearInterval(heartbeat));
+  const leaseRenewal = setInterval(() => {
+    for (const roomId of roomEpochs.keys()) broadcastTopology(roomId);
+  }, config.peerRouteRenewMs);
+  leaseRenewal.unref();
+  server.on("close", () => {
+    clearInterval(heartbeat);
+    clearInterval(leaseRenewal);
+  });
   return webSocketServer;
 }
 
@@ -463,11 +619,14 @@ export function createAppServer(options = {}) {
     maxAgeMs: config.deviceProofMaxAgeMs,
   });
   const ticketStore = options.ticketStore || new SessionTicketStore({ ttlMs: config.sessionTicketTtlMs });
+  const workspaceStore = options.workspaceStore || (config.pairWorkspaceEnabled
+    ? new PairWorkspaceStore({ filename: config.pairWorkspaceDb }) : null);
   const publicDir = path.resolve(options.publicDir || DEFAULT_PUBLIC_DIR);
-  const services = { oidcVerifier, deviceProofVerifier, ticketStore, publicDir };
+  const services = { oidcVerifier, deviceProofVerifier, ticketStore, workspaceStore, publicDir };
   const server = http.createServer(createHttpHandler(config, registry, services));
+  if (!options.workspaceStore && workspaceStore) server.on("close", () => workspaceStore.close());
   const webSocketServer = configureSignaling(server, config, registry, ticketStore);
-  return { server, webSocketServer, config, registry, ticketStore };
+  return { server, webSocketServer, config, registry, ticketStore, workspaceStore };
 }
 
 export async function startServer(options = {}) {

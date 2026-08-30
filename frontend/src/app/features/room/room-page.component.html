@@ -50,9 +50,24 @@
       <div class="join-actions">
         <button id="create-room" class="secondary" type="button" [disabled]="!canEnter() || session.joined()" (click)="create('room')">Neuen Raum</button>
         <button id="create-pair" class="secondary" type="button" [disabled]="!canEnter() || session.joined()" (click)="create('pair')">Neue Pair-Session</button>
+        @if (config.value()?.pairWorkspaceEnabled && auth.authenticated()) {
+          <button id="create-workspace" class="secondary" type="button" [disabled]="!canEnter() || session.joined()" (click)="createWorkspace()">Persistenten Pair-Workspace</button>
+        }
         <button id="join-room" class="primary" type="button" [disabled]="!canEnter() || session.joined()" (click)="join()">Beitreten</button>
         <button id="leave-room" class="danger" type="button" [disabled]="!session.joined()" (click)="leave()">Verlassen</button>
       </div>
+      @if (config.value()?.pairWorkspaceEnabled && auth.authenticated()) {
+        <label class="mode-select">Workspace-Titel
+          <input maxlength="120" [ngModel]="workspaceTitle()" (ngModelChange)="workspaceTitle.set($event)" placeholder="Pair Dev Workspace">
+        </label>
+        @if (workspaces.workspaces().length > 0) {
+          <div class="workspace-picker" aria-label="Vorhandene Pair Workspaces">
+            @for (workspace of workspaces.workspaces(); track workspace.workspaceId) {
+              <button type="button" class="secondary" (click)="selectWorkspace(workspace)">{{ workspace.title }} · {{ workspace.role }}</button>
+            }
+          </div>
+        }
+      }
       <div class="invite-row">
         <input id="invite-url" readonly aria-label="Einladungslink" [value]="session.inviteUrl()" placeholder="Einladungslink erscheint hier">
         <button id="copy-invite" class="secondary" type="button" [disabled]="!session.inviteUrl()" (click)="copyInvite()">Link kopieren</button>
@@ -103,6 +118,7 @@
     </div>
 
     <aside class="sidebar">
+      <app-pair-workspace-panel />
       <section class="panel controls" aria-labelledby="controls-heading">
         <div class="section-heading"><div><p class="eyebrow">Eigene Freigaben</p><h2 id="controls-heading">Medien</h2></div></div>
         <p class="hint">Jede Quelle fordert die Browserberechtigung erst durch ihren eigenen Klick an und kann separat beendet werden.</p>
