@@ -5,7 +5,7 @@
   "track": "governed-pair-overlay-workspace",
   "purpose": "Die neuen Ananta-Pair-Dev- und Peer-Overlay-Bausteine als eigenständige Node-/Angular-Implementierung übernehmen: gehärtete Trusted-Media-Routen, opaque verschlüsselte Datenpfade und optionale persistente Pair-Workspaces.",
   "goal": "Räume behalten 20 Teilnehmer und servermedienfreie WebRTC-Kommunikation, während Route-Leases, Ressourcen- und Health-Policy, ein relay-opaquer Data-Overlay sowie dauerhafte Pair-Dev-Events, Rollen, Presence, Cursor und Resume sicher und reproduzierbar hinzukommen.",
-  "status": "in_progress",
+  "status": "done",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
   "risk_scale": ["low", "medium", "high", "critical"],
@@ -44,7 +44,7 @@
       "id": "GPOW-M06",
       "title": "Adversarial-, Browser-, Persistenz- und Release-Gates",
       "task_ids": ["GPOW-022", "GPOW-023", "GPOW-024"],
-      "status": "in_progress"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -373,10 +373,10 @@
     {
       "id": "GPOW-024",
       "title": "Dokumentation, Herkunft, Backlog, CI und öffentlichen Release abschließen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "medium",
-      "progress_percent": 70,
+      "progress_percent": 100,
       "depends_on": ["GPOW-023"],
       "acceptance_criteria": [
         "README, AGENTS, Herkunftsmatrix und Threat Boundaries erklären Leases, opaque Relay, Workspace-Persistenz und verbleibende Medien-E2EE-Grenzen.",
@@ -388,20 +388,20 @@
   "critical_path_tasks": ["GPOW-001", "GPOW-002", "GPOW-003", "GPOW-004", "GPOW-005", "GPOW-006", "GPOW-007", "GPOW-008", "GPOW-009", "GPOW-010", "GPOW-011", "GPOW-012", "GPOW-013", "GPOW-014", "GPOW-015", "GPOW-016", "GPOW-017", "GPOW-018", "GPOW-019", "GPOW-020", "GPOW-021", "GPOW-022", "GPOW-023", "GPOW-024"],
   "tasks_status_summary": {
     "total": 24,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 23 },
-    "progress_percent_done": 95.83,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 24 },
+    "progress_percent_done": 100,
     "by_priority": { "P0": 18, "P1": 6, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 2, "high": 10, "critical": 12 },
-    "critical_path": { "total": 24, "done": 23, "remaining": 1 },
-    "milestones": { "total": 6, "todo": 0, "in_progress": 1, "blocked": 0, "done": 5 }
+    "critical_path": { "total": 24, "done": 24, "remaining": 0 },
+    "milestones": { "total": 6, "todo": 0, "in_progress": 0, "blocked": 0, "done": 6 }
   },
   "progress_summary": {
-    "state": "in_progress",
+    "state": "done",
     "todo_remaining": 0,
-    "in_progress": 1,
+    "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 23
+    "done": 24
   },
   "summary_notes": [
     "Normale Räume behalten hart maximal 20 Teilnehmer, Pair-Sessions zwei unterschiedliche Geräte und die Anwendung keine globale Room-Anzahlgrenze.",
@@ -409,6 +409,7 @@
     "Trusted Media Relay bleibt decode/re-encode-fähig und consentpflichtig; opaque Data Relay besitzt keinen Decrypt-Port. Beides ist kein SFrame-Ciphertext-Medien-DAG.",
     "Persistente Workspaces speichern Kollaborationsmetadaten und explizite Events, niemals Audio-, Video-, Bildschirm- oder unaufgefordert ausgewählte Dateiinhalte.",
     "Anantas Python-, Agent-, Worker-, Buzz-, LiveKit- und SQLite-Implementierung wird nicht gekoppelt; nur transportneutrale Verträge und Policies werden eigenständig portiert.",
+    "Release-Evidence: Commit 3c46261 bestand lokal npm run check, npm audit --omit=dev, beide Compose-Profile, Produktions-Dockerbuild und GitHub Actions Run 33308073847 einschließlich echtem PKCE/JWKS/TURN-Gate.",
     "tasks[] ist die Source of Truth; Summen werden vor jedem Commit mit npm run todos:validate geprüft."
   ]
 }
