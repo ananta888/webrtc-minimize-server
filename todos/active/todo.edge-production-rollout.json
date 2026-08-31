@@ -1,0 +1,129 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "edge-production-rollout",
+  "purpose": "Den verifizierten SFrame-/Edge-Stand gezielt committen, auf origin/main veroeffentlichen, auf dem Mini-PC ausrollen und diesen Laptop nur bei real nachgewiesener Erreichbarkeit als freiwilligen Edge-TURN-Knoten registrieren.",
+  "goal": "webrtc.ananta.de laeuft mit required-SFrame und gestufter Direct-Edge-Infrastruktur-ICE-Policy; der Laptop bietet einen begrenzten, freiwilligen Pion-TURN-Edge-Pfad, ohne Secrets zu versionieren oder nicht erreichbare Relay-Faehigkeit zu behaupten.",
+  "status": "in_progress",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "EPR-M01",
+      "title": "Preflight und veroeffentlichter Stand",
+      "task_ids": ["EPR-001", "EPR-002"],
+      "status": "in_progress"
+    },
+    {
+      "id": "EPR-M02",
+      "title": "Produktions- und Edge-Rollout",
+      "task_ids": ["EPR-003", "EPR-004"],
+      "status": "todo"
+    },
+    {
+      "id": "EPR-M03",
+      "title": "End-to-End-Nachweis",
+      "task_ids": ["EPR-005"],
+      "status": "todo"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "EPR-001",
+      "title": "Git-, SSH-, DNS-, Host- und Deploymentzustand sicher erfassen",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Branch, Remote, vorhandene Nutzerdateien und Zielhosts sind read-only geprueft; fremde Aenderungen werden erhalten.",
+        "Secretwerte, Tokens, Private Keys, SDP, ICE und IP-Kandidaten erscheinen weder in Git noch in normalen Logs.",
+        "Laptop-NAT, Public-IP, Router-/Firewallgrenzen und der tatsaechliche laufende Caddy-/Compose-Pfad sind vor Portfreigaben bekannt."
+      ]
+    },
+    {
+      "id": "EPR-002",
+      "title": "Geprueften Projektstand gezielt committen und pushen",
+      "status": "in_progress",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 5,
+      "depends_on": ["EPR-001"],
+      "acceptance_criteria": [
+        "Nur gepruefte Projektdateien werden gezielt gestaged; .env, Secrets, Zertifikatschluessel und generierte Artefakte fehlen im Commit.",
+        "Der Commit verwendet Conventional Commits, npm run check ist gruen und origin/main zeigt anschliessend auf den veroeffentlichten Stand.",
+        "Bestehende Keycloak-Self-Registration-Aenderungen bleiben funktionsfaehig und nachvollziehbar enthalten."
+      ]
+    },
+    {
+      "id": "EPR-003",
+      "title": "Aktuellen Stand auf dem Mini-PC ohne zweiten Caddy ausrollen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["EPR-002"],
+      "acceptance_criteria": [
+        "Das bestehende Deployment wird gesichert beziehungsweise reproduzierbar aktualisiert; der vorhandene Caddy bleibt alleiniger Listener auf 80/443.",
+        "Die Anwendung startet mit PUBLIC_ORIGIN webrtc.ananta.de, required Auth und required SFrame, ohne vorhandene Secrets offenzulegen oder zu ueberschreiben.",
+        "Lokales Healthz, HTTPS ueber webrtc.ananta.de und WebSocket-/OIDC-Runtime-Konfiguration antworten nach dem Rollout korrekt."
+      ]
+    },
+    {
+      "id": "EPR-004",
+      "title": "Laptop als begrenzten freiwilligen Edge-TURN-Agent aktivieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["EPR-001", "EPR-002"],
+      "acceptance_criteria": [
+        "Ein neues zufaelliges Shared Secret liegt ausschliesslich in nicht versionierten .env-Dateien auf Laptop und Control Plane.",
+        "Der Agent laeuft read-only mit Quoten und Private-Peer-Deny; nur 3478 UDP/TCP und der feste UDP-Relaybereich werden gezielt exponiert.",
+        "DNS/IP, Windows-/Linux-Firewall, WSL-/Docker-Portpfad und Router-/CGNAT-Grenze sind real geprueft; ohne extern erreichbaren Pfad erfolgt keine irrefuehrende Registrierung."
+      ]
+    },
+    {
+      "id": "EPR-005",
+      "title": "Produktions-, Credential-, Relay- und Rueckfallpfad verifizieren",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["EPR-003", "EPR-004"],
+      "acceptance_criteria": [
+        "Eine autorisierte Session liefert den Laptop ausschliesslich im zweiten ICE-Tier mit kurzlebigem Credential und ohne Shared Secret aus.",
+        "Eine echte TURN-Allokation beziehungsweise ein externer Browserpfad belegt peer-edge; fehlende Routerautoritaet wird konkret als Blocker statt als Erfolg dokumentiert.",
+        "Direct bleibt bevorzugt, Infrastruktur-TURN bleibt letzter Fallback, Healthz bleibt gruen und Rollback-/Secret-Rotationsschritte sind bekannt."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["EPR-001", "EPR-002", "EPR-003", "EPR-004", "EPR-005"],
+  "tasks_status_summary": {
+    "total": 5,
+    "by_status": { "todo": 3, "in_progress": 1, "partial": 0, "blocked": 0, "done": 1 },
+    "progress_percent_done": 20,
+    "by_priority": { "P0": 4, "P1": 1, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 0, "high": 2, "critical": 3 },
+    "critical_path": { "total": 5, "done": 1, "remaining": 4 },
+    "milestones": { "total": 3, "todo": 2, "in_progress": 1, "blocked": 0, "done": 0 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 3,
+    "in_progress": 1,
+    "partial": 0,
+    "blocked": 0,
+    "done": 1
+  },
+  "summary_notes": [
+    "Der Laptop darf nur dann als produktiver Edge registriert werden, wenn andere Teilnehmer seine Listener- und Relay-Ports real erreichen koennen.",
+    "Ein Edge-Agent erzeugt keine Membership- oder Policy-Autoritaet und ersetzt weder Keycloak noch die Signaling Control Plane.",
+    "Router-, Provider- oder Windows-Firewallaenderungen werden nur vorgenommen, soweit der Nutzer dafuer bereits Zugriff und Autoritaet bereitgestellt hat.",
+    "Preflight: Oracle-Caddy leitet den App-Pfad ueber minipc.ananta.de an den vorhandenen Mini-PC-Caddy weiter; Laptop-Windows ist 192.168.178.88, WSL2 laeuft im NAT-Modus und eignet sich deshalb nicht als direkter UDP-Listener.",
+    "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
+  ]
+}

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ananta888/webrtc-minimize-server/actions/workflows/ci.yml/badge.svg)](https://github.com/ananta888/webrtc-minimize-server/actions/workflows/ci.yml)
 
-Ein eigenständiger, Keycloak-fähiger Raumserver mit Angular-Oberfläche für Audio, Video, Bildschirmfreigabe und Peer-Chat. Der Node-Server autorisiert Membership, Topologie und SDP/ICE, terminiert aber keine Medien. Audio, Video und Chat laufen direkt zwischen Browsern, über ausdrücklich erlaubte Browser-Relays oder bei schwierigen NAT-/Firewall-Pfaden über Coturn.
+Ein eigenständiger, Keycloak-fähiger Raumserver mit Angular-Oberfläche für Audio, Video, Bildschirmfreigabe und Peer-Chat. Der Node-Server autorisiert Membership, Topologie und SDP/ICE, terminiert aber keine Medien. Jede PeerConnection versucht zuerst einen direkten Pfad, danach freiwillige Edge-TURN-Knoten und erst zuletzt Infrastruktur-TURN. Audio-, Kamera- und Bildschirmframes sind im Standardmodus zusätzlich mit RFC-9605-SFrame Ende-zu-Ende verschlüsselt.
 
 ## Lokal starten
 
@@ -42,7 +42,7 @@ Normale Räume verwenden weiterhin eine isolierte PeerConnection je Gegenüber, 
 
 Das Canvas allein spart keine Netzwerkbytes. Die Ersparnis entsteht aus den gleichzeitig angewandten Senderstufen `focus`, `balanced`, `thumbnail` und `paused`.
 
-Ab sechs Teilnehmern kann die Control Plane einen zyklusfreien Video-Relay-Baum mit begrenzter Kinder- und Hopzahl ausstellen. Membership-, Route- und Topology-Epochen sind getrennt; jede Publikationsroute besitzt eine kurzlebige Lease, Primary und – soweit topologisch möglich – Backup. Relay-Auswahl berücksichtigt ausdrückliche Zustimmung, Sichtbarkeit, Energie-/Netzklasse, Eigenkapazität und beobachtete Lieferqualität. Eine Sperre benötigt aktuelle Meldungen von mindestens zwei unabhängigen Beobachtern und eine Mehrheit; Cooldown verhindert Flapping. Der Browser verwirft abgelaufene Leases selbstständig und fällt auf adaptive Mesh zurück. Ein Trusted Relay verarbeitet und re-encodiert Medien weiterhin und ist daher kein nicht entschlüsselnder SFrame-Relay.
+Ab sechs Teilnehmern kann die Control Plane im expliziten Legacy-Modus `MEDIA_E2EE_MODE=disabled` einen zyklusfreien Video-Relay-Baum mit begrenzter Kinder- und Hopzahl ausstellen. Membership-, Route- und Topology-Epochen sind getrennt; jede Publikationsroute besitzt eine kurzlebige Lease, Primary und – soweit topologisch möglich – Backup. Relay-Auswahl berücksichtigt ausdrückliche Zustimmung, Sichtbarkeit, Energie-/Netzklasse, Eigenkapazität und beobachtete Lieferqualität. Dieser Browser-Relay dekodiert und re-encodiert fremde Medien und ist daher nicht blind. In den Modi `required` und `preferred` bleibt er deaktiviert; dort transportieren Direct-, Edge-TURN- und Infrastruktur-TURN-Pfade SFrame-Ciphertext.
 
 Pair-Sessions besitzen daneben einen eigenständigen Daten-Overlay-Kanal. Jeder Browser erzeugt pro Session einen nicht exportierbaren ECDH-P-256-Schlüssel und verschlüsselt Events oder bewusst ausgewählte Dateien mit AES-GCM für den Zielpeer. Zwischenbrowser sehen nur Ciphertext und begrenzte Routing-Metadaten. Digest, TTL, Membership-/Route-Epoch, schleifenfreier Pfad, Hopzahl, Replay-Fenster, Chunkzahl und per Traffic-Class begrenzte Queues werden geprüft. Fehlende Chunks werden verschlüsselt quittiert und gezielt erneut gesendet; ohne nutzbare Relay-Route wird direkt, aber weiterhin Ende-zu-Ende verschlüsselt übertragen. Ein Download startet ausschließlich durch einen weiteren Nutzerklick.
 
@@ -109,6 +109,9 @@ Die öffentliche Voreinstellung steht in `.env.example`, das getrennte localhost
 - `STUN_URLS`: kommaseparierte STUN-URLs.
 - `TURN_URLS`, `TURN_SHARED_SECRET`, `TURN_REALM`, `TURN_CREDENTIAL_TTL_MS`: Coturn-REST-Credentials mit HMAC und kurzer Gültigkeit.
 - `TURN_SERVERS_JSON`: optionales statisches `RTCIceServer`-Array für ausdrücklich kontrollierte Tests; nicht für Produktion empfohlen.
+- `EDGE_TURN_SERVERS_JSON`: serverseitige Liste freiwilliger Edge-TURN-Knoten mit `id`, `urls`, `realm` und jeweiligem `sharedSecret`; Secrets werden niemals an den Browser ausgegeben.
+- `PEER_EDGE_FALLBACK_MS`, `INFRASTRUCTURE_TURN_FALLBACK_MS`: begrenzte Eskalation von Direct/STUN zu Edge und anschließend Infrastruktur-TURN; der zweite Wert muss größer sein.
+- `MEDIA_E2EE_MODE`: `required` (Default, kein Klartext-Fallback), `preferred` (sichtbarer Fallback nur ohne Encoded-Transform-Capability) oder `disabled` (Legacy-Relay, keine Frame-E2EE).
 - `MAX_ROOM_PARTICIPANTS`: Betreiberlimit von 2 bis höchstens 20; Default ist 20.
 - `ROOM_IDLE_TTL_MS`: Obergrenze für inaktive Room-Metadaten.
 - `SIGNAL_RATE_LIMIT`: Nachrichten je Peer und 10 Sekunden.
@@ -131,9 +134,21 @@ TURN_REALM='call.example.org' npm start
 
 Das Shared Secret bleibt ausschließlich auf Server und Coturn. Der Browser erhält erst nach autorisiertem `POST /api/sessions` einen zeitlich begrenzten Benutzernamen und das zugehörige HMAC-Credential.
 
+### Freiwilliger Edge-Agent
+
+Unter [`edge-agent/`](edge-agent/) liegt ein optionaler nativer TURN-Agent auf Basis von Pion. Ein geeigneter Rechner kann damit freiwillig zum bevorzugten zweiten ICE-Pfad werden. Er erhält keine Room-Membership, keine OIDC-Tokens und keine SFrame-Schlüssel; er leitet nur WebRTC-Pakete weiter. Globales und nutzerbezogenes Allocation-Limit, feste UDP-Relay-Ports, kurzlebige REST-Credentials und eine standardmäßige Sperre privater Zielnetze begrenzen den Dienst.
+
+Der Rechner muss von den anderen Teilnehmern erreichbar sein: per öffentlicher IPv6-Adresse oder per IPv4-Portweiterleitung für `3478/udp`, optional `3478/tcp` und den konfigurierten UDP-Relay-Bereich. Ein Rechner hinter CGNAT ohne öffentliche IPv6-Adresse, Portmapping oder vorgelagerten Relay kann nicht allein durch den Agent zum erreichbaren Relay werden. Installation, Firewall, Secret-Kopplung und Verifikation beschreibt [docs/edge-agent.md](docs/edge-agent.md).
+
+Beispiel für die ausschließlich serverseitige Registrierung eines Agenten:
+
+```dotenv
+EDGE_TURN_SERVERS_JSON='[{"id":"edge-1","urls":["turn:edge.example.org:3478?transport=udp","turn:edge.example.org:3478?transport=tcp"],"sharedSecret":"aus-secret-management","realm":"webrtc.ananta.de"}]'
+```
+
 ### Kapazitätsgrenze
 
-20 ist die harte Membership-Grenze je Raum, keine garantierte Medienqualität. Jeder Teilnehmer hält für direkten Control-, Chat- und Audiotransport weiterhin bis zu 19 `RTCPeerConnection`-Verbindungen. Kamera und Screenshare werden jedoch nach Active-Speaker-, Link- und Nutzerprofil gedrosselt; ein autorisierter Trusted-Relay-Baum begrenzt den direkten Video-Fanout des Publishers standardmäßig auf drei Kinder. Relay-Peers übernehmen dafür zusätzliche CPU-, Akku- und Uploadlast. Für nicht vertrauenswürdige Relays, zusätzliche Frame-E2EE oder garantierte Großraumqualität bleiben SFrame beziehungsweise ein optionaler SFU-Fallback im Backlog.
+20 ist die harte Membership-Grenze je Raum, keine garantierte Medienqualität. Im SFrame-Standardpfad hält jeder Teilnehmer weiterhin bis zu 19 `RTCPeerConnection`-Verbindungen; Kamera und Screenshare werden nach Active-Speaker-, Link- und Nutzerprofil gedrosselt. SFrame schützt Inhalte, reduziert aber weder Verbindungszahl noch Publisher-Fanout. Der freiwillige Edge-Agent verbessert Erreichbarkeit bei schwierigen NAT-/Firewall-Pfaden, nicht die Mesh-Skalierung. Ein portabler, browserübergreifender Ciphertext-Medien-DAG und ein optionaler SFU-Fallback für garantierte Großraumqualität bleiben im Backlog. Nur der nicht blinde Legacy-Relay kann derzeit direkten Video-Fanout reduzieren.
 
 ## Öffentliches Deployment
 
@@ -154,7 +169,9 @@ Für das Ananta-Preset muss ein HTTPS-Reverse-Proxy `webrtc.ananta.de` auf Port 
 
 ## Sicherheitsstatus
 
-Im `required`- oder `optional`-Modus prüft der Server Access Tokens über JWKS auf Signatur, erlaubten Algorithmus, Issuer, Audience, Ablaufzeit und Subject. Join-Nachweise werden zusätzlich durch eine nicht exportierbare Browser-P-256-Identität signiert. WebRTC verschlüsselt Medien auf jedem direkten, TURN- oder Trusted-Relay-Hop mit DTLS-SRTP und DataChannels mit DTLS/SCTP; Overlay-Nutzdaten erhalten zusätzlich zielpeergebundenes AES-GCM. Ein zustimmender Media-Relay-Browser kann weitergeleitete Medien verarbeiten; eine zusätzliche Insertable-Streams-/SFrame-Frameverschlüsselung gegen diesen Relay ist nicht implementiert und wird nicht behauptet. SQLite ist kein HA-/Backup-System; Betreiber müssen Volume-Sicherung, Dateirechte und Wiederherstellung selbst verantworten.
+Im `required`- oder `optional`-Auth-Modus prüft der Server Access Tokens über JWKS auf Signatur, erlaubten Algorithmus, Issuer, Audience, Ablaufzeit und Subject. Join-Nachweise werden zusätzlich durch eine nicht exportierbare Browser-P-256-Identität signiert. WebRTC verschlüsselt jeden Direct-/TURN-Pfad mit DTLS-SRTP beziehungsweise DTLS/SCTP. Im standardmäßigen Media-Modus `required` schützt RFC-9605-SFrame Audio-, Kamera- und Bildschirmframes zusätzlich mit `AES_128_GCM_SHA256_128`; Key-Material wird pro Publikation, Zielpeer und Membership-Epoch erzeugt, ausschließlich im zielpeergebundenen ECDH-/AES-GCM-Overlay verteilt und erst nach ACK verwendet. Unbekannte KIDs, Authentifizierungsfehler und Replays werden verworfen. Fehlende Browser-Capability oder fehlende ACK ergibt fehlende Medien statt Klartext.
+
+Die Peer-Public-Key-Zuordnung für diesen Overlay stammt weiterhin aus dem authentisierten Signaling-Pfad. Damit verbirgt SFrame Inhalte vor ehrlichen, aber neugierigen TURN-, Edge- und Control-Plane-Betreibern; es beweist keine Ende-zu-Ende-Identität gegen einen vollständig kompromittierten Signaling-Server. `MEDIA_E2EE_MODE=disabled` aktiviert bewusst den alten Decode/Re-encode-Relay und besitzt diese Frame-E2EE-Eigenschaft nicht. SQLite ist kein HA-/Backup-System; Betreiber müssen Volume-Sicherung, Dateirechte und Wiederherstellung selbst verantworten.
 
 Die vollständige Herkunfts- und Lückenmatrix steht in [docs/ananta-webrtc-adoption.md](docs/ananta-webrtc-adoption.md). Produktionsschritte stehen schema-validiert unter `todos/backlog/`.
 
@@ -168,9 +185,12 @@ npm audit --omit=dev
 docker compose config --quiet
 docker compose --profile local --env-file .env.local.example config --quiet
 docker build --tag webrtc-room-server:local .
+(cd edge-agent && go test ./...)
+docker build --tag webrtc-edge-agent:local edge-agent
+(cd edge-agent && EDGE_AGENT_ENV_FILE=.env.example docker compose --env-file .env.example config --quiet)
 ```
 
-`npm run check` umfasst Todo-/Workflow-Schemas, Angular-Unit-Tests, Angular-Produktionbuild und Node-/Integrationstests. Die Browsermatrix prüft Room, Pair Dev und einen realen Sechs-Chromium-Relay-Baum einschließlich Sender-Fanout, Active Speaker, Datensparprofil, Mosaik und Churn-Fallback; zwei Firefox-Peers belegen den kompatiblen Direct-/Adaptive-Mesh-Pfad. Fehlende Browser werden ausschließlich mit sichtbarer Begründung übersprungen.
+`npm run check` umfasst Todo-/Workflow-Schemas, Angular-Unit-Tests, Angular-Produktionbuild und Node-/Integrationstests. Die Browsermatrix prüft SFrame im `required`-Modus mit echten Chromium- und Firefox-Kontexten ohne automatische Capture-Anfrage. Der getrennte Sechs-Chromium-Gate prüft den expliziten Legacy-Relay-Baum einschließlich Sender-Fanout, Active Speaker, Datensparprofil, Mosaik und Churn-Fallback. Fehlende Browser werden ausschließlich mit sichtbarer Begründung übersprungen. Der Edge-Agent besitzt zusätzlich einen echten lokalen TURN-Allokationstest.
 
 Der Live-Infrastruktur-Gate startet absichtlich nicht implizit. Mit laufendem Compose-Stack, einer eigens angelegten Testidentität und expliziten Variablen prüft er Keycloak Discovery, PKCE-Login, JWKS-Tokenprüfung, autorisierte Einmal-Tickets sowie eine echte Coturn-Relay-Allokation:
 

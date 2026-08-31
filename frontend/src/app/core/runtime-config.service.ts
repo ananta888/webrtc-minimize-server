@@ -7,6 +7,11 @@ export interface RuntimeConfig {
   readonly maxRoomParticipants: number;
   readonly pairParticipants: number;
   readonly turnConfigured: boolean;
+  readonly edgeRelayConfigured: boolean;
+  readonly mediaE2ee: Readonly<{
+    mode: "disabled" | "preferred" | "required";
+    cipherSuite: "AES_128_GCM_SHA256_128";
+  }>;
   readonly optimization: Readonly<{
     activeSpeakerLimit: number;
     peerRelayEnabled: boolean;
@@ -32,7 +37,10 @@ export class RuntimeConfigService {
     const response = await fetch("/config", { credentials: "same-origin" });
     if (!response.ok) throw new Error("runtime_config_unavailable");
     const config = await response.json() as RuntimeConfig;
-    if (!config.auth || !Array.isArray(config.iceServers)) throw new Error("runtime_config_invalid");
+    if (!config.auth || !Array.isArray(config.iceServers) || !config.mediaE2ee
+      || !new Set(["disabled", "preferred", "required"]).has(config.mediaE2ee.mode)
+      || config.mediaE2ee.cipherSuite !== "AES_128_GCM_SHA256_128"
+      || typeof config.edgeRelayConfigured !== "boolean") throw new Error("runtime_config_invalid");
     this.value.set(config);
     return config;
   }

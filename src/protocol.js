@@ -1,7 +1,7 @@
 export const MAX_SIGNAL_BYTES = 96 * 1024;
 export const ROOM_ID_PATTERN = /^[a-z0-9][a-z0-9-]{5,47}$/;
 export const PEER_ID_PATTERN = /^[a-f0-9]{16}$/;
-export const TRACK_ID_PATTERN = /^[A-Za-z0-9_=-]{1,128}$/;
+export const TRACK_ID_PATTERN = /^[A-Za-z0-9_={}:-]{1,128}$/;
 
 const SOURCES = new Set(["microphone", "camera", "screen", "screen-audio"]);
 const BATTERY_STATES = new Set(["critical", "limited", "mains", "unknown"]);

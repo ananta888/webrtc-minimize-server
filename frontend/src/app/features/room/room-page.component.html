@@ -7,7 +7,8 @@
     </div>
     <div class="status-stack">
       <div class="status-pill"><span class="dot" [class.connected]="session.joined()" [class.connecting]="signaling.status() === 'connecting'" [class.error]="signaling.status() === 'error'"></span><span id="connection-status">{{ connectionLabel() }}</span></div>
-      <div class="status-pill"><span class="status-key">ICE</span><span id="ice-status">{{ mesh.iceState() }}</span></div>
+      <div class="status-pill"><span class="status-key">ICE</span><span id="ice-status">{{ mesh.iceState() }} · {{ mesh.icePath() }}</span></div>
+      <div class="status-pill"><span class="status-key">SFrame</span><span id="sframe-status">{{ mesh.mediaE2eeState() }}</span></div>
       <div class="status-pill"><span class="status-key">Topologie</span><span id="topology-status">{{ mesh.topologyMode() }} · E{{ mesh.topologyEpoch() }}</span></div>
     </div>
   </header>
@@ -22,12 +23,14 @@
         <p>Angemeldet als <strong>{{ auth.username() }}</strong></p>
       } @else {
         <p>Für dieses Deployment ist eine Keycloak-Anmeldung {{ authRequired() ? 'erforderlich' : 'optional' }}.</p>
+        <p>Neue Nutzer können ihr Konto direkt bei Keycloak registrieren.</p>
       }
       @if (device.fingerprint()) { <code class="fingerprint">Gerät {{ device.fingerprint().slice(0, 14) }}…</code> }
     </div>
     <div class="identity-actions">
       @if (config.value()?.auth?.mode !== 'disabled' && !auth.authenticated()) {
         <button id="login" class="primary" type="button" [disabled]="auth.busy()" (click)="auth.login()">Mit Keycloak anmelden</button>
+        <button id="register" class="secondary" type="button" [disabled]="auth.busy()" (click)="auth.register()">Neues Konto registrieren</button>
       }
       @if (auth.authenticated()) { <button id="logout" class="secondary" type="button" (click)="logout()">Abmelden</button> }
     </div>
@@ -143,12 +146,14 @@
           <div><dt>Sendersteuerung</dt><dd>{{ mesh.qualityCapability() }}</dd></div>
         </dl>
         <p id="active-speakers" class="hint">Fokus: {{ mesh.activeSpeakerNames().length ? mesh.activeSpeakerNames().join(', ') : 'stabile Teilnehmerreihenfolge' }}. Audio und Control bleiben vor Video priorisiert.</p>
-        @if (config.value()?.optimization?.peerRelayEnabled) {
+        @if (config.value()?.optimization?.peerRelayEnabled && config.value()?.mediaE2ee?.mode === 'disabled') {
           <label class="relay-consent">
             <input id="relay-consent" type="checkbox" [disabled]="!session.joined()" [ngModel]="mesh.relayConsent()" (ngModelChange)="setRelayConsent($event)">
             Diesem Browser erlauben, Video für andere Raumteilnehmer weiterzuleiten
           </label>
           <p class="relay-warning">Trusted Relay kann Medien hopweise verarbeiten und neu encodieren. Es bietet keine SFrame-Privatsphäre gegenüber diesem Relay-Gerät und kann CPU, Akku sowie Upload beanspruchen.</p>
+        } @else if (config.value()?.mediaE2ee?.mode !== 'disabled') {
+          <p class="relay-warning">Der entschlüsselnde Browser-Relay ist bei SFrame deaktiviert. Freiwillige Edge-Agenten leiten nur verschlüsselte TURN-Pakete weiter und benötigen erreichbare UDP-/TCP-Ports.</p>
         }
       </section>
 
@@ -169,10 +174,12 @@
 
   <section class="panel facts">
     <h2>Sicherheitsstatus</h2>
-    <p>Keycloak-Tokens werden vor dem Join serverseitig über JWKS geprüft. Das WebSocket erhält nur ein kurzlebiges, einmal verwendbares Ticket. WebRTC verschlüsselt jeden direkten oder Relay-Hop mit DTLS-SRTP und DataChannels mit DTLS/SCTP; eine zusätzliche Insertable-Streams-/SFrame-Schicht ist nicht aktiviert.</p>
+    <p>Keycloak-Tokens werden vor dem Join serverseitig über JWKS geprüft. Das WebSocket erhält nur ein kurzlebiges, einmal verwendbares Ticket. WebRTC verschlüsselt jeden Transport-Hop mit DTLS-SRTP. Im SFrame-Modus werden Audio-, Kamera- und Bildschirmframes zusätzlich vor dem Transport verschlüsselt; TURN- und Edge-Relays erhalten keine Medienschlüssel. Die Peer-Schlüsselzuordnung läuft über die Control Plane und schützt daher nicht vor einem vollständig kompromittierten Signaling-Dienst.</p>
     <dl class="facts-grid">
       <div><dt>Auth</dt><dd>{{ config.value()?.auth?.mode }}</dd></div>
       <div><dt>TURN</dt><dd>{{ config.value()?.turnConfigured ? 'kurzlebige Credentials' : 'nicht konfiguriert' }}</dd></div>
+      <div><dt>Edge-Relay</dt><dd>{{ config.value()?.edgeRelayConfigured ? 'freiwilliger zweiter Pfad' : 'nicht konfiguriert' }}</dd></div>
+      <div><dt>Media-E2EE</dt><dd>{{ config.value()?.mediaE2ee?.mode }} · {{ mesh.mediaE2eeState() }}</dd></div>
       <div><dt>Gerät</dt><dd>{{ device.fingerprint() ? 'P-256 gebunden' : 'beim ersten Join' }}</dd></div>
     </dl>
   </section>

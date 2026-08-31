@@ -37,6 +37,10 @@ test("parseClientMessage validates media metadata and rejects unknown traffic", 
   assert.deepEqual(parseClientMessage(Buffer.from(JSON.stringify({
     type: "media-state", source: "camera", active: true, trackId: "track-1",
   }))), { type: "media-state", source: "camera", active: true, trackId: "track-1" });
+  assert.deepEqual(parseClientMessage(Buffer.from(JSON.stringify({
+    type: "media-state", source: "camera", active: true,
+    trackId: "{4afe877a-4644-44d0-85f4-bee3af582e89}",
+  }))).trackId, "{4afe877a-4644-44d0-85f4-bee3af582e89}");
   assert.throws(
     () => parseClientMessage(Buffer.from(JSON.stringify({ type: "chat", text: "server must not relay this" }))),
     (error) => error.code === "unknown_message_type",

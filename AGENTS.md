@@ -40,8 +40,10 @@ Browser sind verantwortlich für:
 - OIDC Authorization Code Flow mit PKCE und sitzungsgebundene Tokens,
 - eine nicht exportierbare P-256-Geräteidentität im Browserprofil,
 - lokale VAD-/Active-Speaker-Auswahl, per Peer begrenzte Senderqualität und ein lokales Inaktiv-Mosaik,
-- Ausführung ausschließlich serverautorisierter Trusted-Relay-Kanten nach separatem Nutzerconsent.
-- zielpeergebundene ECDH-/AES-GCM-Verschlüsselung für opaque Data-Overlay-Pakete einschließlich Replay-, TTL-, Hop-, Queue- und Chunk-Resume-Grenzen.
+- Ausführung ausschließlich serverautorisierter Trusted-Relay-Kanten nach separatem Nutzerconsent,
+- zielpeergebundene ECDH-/AES-GCM-Verschlüsselung für opaque Data-Overlay-Pakete einschließlich Replay-, TTL-, Hop-, Queue- und Chunk-Resume-Grenzen,
+- RFC-9605-SFrame mit `AES_128_GCM_SHA256_128` über WebRTC Encoded Transform für Audio-, Kamera- und Bildschirmframes sowie
+- publikations-, Zielpeer- und Membership-Epoch-gebundene SFrame-Schlüssel, die ausschließlich über den opaque Data-Overlay verteilt und vor Senderaktivierung quittiert werden.
 
 Peers dürfen aus Signalen keine Room-Membership oder zusätzliche Autorität ableiten. Die Control Plane bleibt Eigentümerin der Membership.
 
@@ -53,9 +55,11 @@ Peers dürfen aus Signalen keine Room-Membership oder zusätzliche Autorität ab
 - Das Control-/Audio-Mesh erzeugt bei 20 Teilnehmern bis zu 19 PeerConnections. Video wird Active-Speaker-, Stats- und profilabhängig gedrosselt; ein consentierter Trusted-Relay-Baum kann direkten Publisher-Fanout reduzieren, ist aber keine QoS-Garantie.
 - Room-Membership, Peer-IDs und Medien bleiben flüchtig. Nur ausdrücklich aktivierte Pair-Workspace-Metadaten und Events dürfen im konfigurierten Store persistieren.
 - Der Raumcode ist ein Bearer-Invite, keine Identität. Identität stammt ausschließlich aus verifizierten OIDC-Claims; das Gerät stammt ausschließlich aus einem serverseitig geprüften P-256-Nachweis.
-- WebRTC bietet Transportverschlüsselung; anwendungsseitige SFrame-/Insertable-Streams-E2EE ist noch nicht implementiert.
+- WebRTC bietet hopweise Transportverschlüsselung. Zusätzlich ist RFC-9605-SFrame für Browser mit WebRTC Encoded Transform implementiert; `required` muss bei fehlender Capability oder fehlendem quittiertem Schlüssel ohne Klartext-Fallback abbrechen.
 - STUN/TURN sind konfigurierbare Infrastrukturhilfen, keine Policy-Autorität. TURN-Credentials werden kurzlebig und erst nach Session-Autorisierung erzeugt.
-- Ein decode/re-encode-fähiger Trusted-Video-Relay-Baum ist vorhanden. Der separate Data-Overlay ist für Zielpeers AES-GCM-verschlüsselt und für Zwischenpeers opaque; das macht Medien nicht SFrame-verschlüsselt. Ein nicht entschlüsselnder SFrame-/Ciphertext-Medien-DAG, SFU, Workspace-HA/Backup und Frame-E2EE bleiben Backlog-Fähigkeiten und dürfen nicht als vorhanden dargestellt werden.
+- Ein decode/re-encode-fähiger Trusted-Video-Relay-Baum bleibt nur im expliziten Legacy-Modus `MEDIA_E2EE_MODE=disabled` vorhanden und darf nicht als blind bezeichnet werden. In `required`/`preferred` ist dieser Medienfanout deaktiviert; direkte ICE-Pfade, freiwillige Edge-TURN-Knoten und Infrastruktur-TURN transportieren SFrame-Ciphertext.
+- SFrame reduziert den Peer-Fanout nicht. Ein portabler, nicht entschlüsselnder SFrame-/Ciphertext-Medien-DAG zwischen Browsern, SFU, Workspace-HA/Backup und MLS-artige Gruppenschlüsselverwaltung bleiben Backlog-Fähigkeiten und dürfen nicht als vorhanden dargestellt werden.
+- Die SFrame-Peer-Key-Zuordnung stammt derzeit aus dem authentisierten Signaling-Pfad. Sie schützt Inhalte vor ehrlichen, aber neugierigen TURN-/Edge-/Control-Plane-Betreibern, beweist jedoch keine Ende-zu-Ende-Identität gegen einen vollständig kompromittierten Signaling-Server.
 
 ## Todo-gesteuerte Entwicklung
 
@@ -96,6 +100,8 @@ Ein Track kommt nur ins Archiv, wenn alle Tasks und Milestones `done` sind und d
 - Gerätebeweise an die normalisierten Join-Felder binden, zeitlich begrenzen und gegen Replay schützen. Private Geräteschlüssel dürfen nicht exportierbar oder serverseitig gespeichert sein.
 - `AUTH_MODE=disabled`, Keycloak `start-dev`, lokale Beispielpasswörter und unverschlüsseltes TURN sind ausschließlich Entwicklungsprofile und dürfen nicht als produktionssicher dokumentiert werden.
 - Kein E2EE-, Anonymitäts- oder Identitätsversprechen machen, das der implementierte Pfad nicht beweist.
+- Im `required`-SFrame-Modus dürfen fehlende Capability, ausstehende ACKs, unbekannte KIDs, Authentifizierungsfehler oder Replays niemals einen Klartext-Fallback auslösen.
+- Freiwillige Edge-Agenten besitzen keine Membership- oder Policy-Autorität, verwenden ausschließlich kurzlebige serverseitig ausgestellte Credentials und benötigen explizit erreichbare TURN- sowie Relay-Ports.
 - Trusted Peer Relay bleibt operatorseitig begrenzt, nutzerseitig default-aus und widerrufbar; die UI muss die Medienverarbeitung, Upload-, CPU- und Batteriefolgen erklären.
 - Overlay-Relays dürfen keinen Decrypt-Port besitzen; private ECDH-Schlüssel müssen nicht exportierbar sein und bei Leave/Destroy aus dem erreichbaren Browser-State verschwinden.
 - Workspace-Rollen, Tenant, Membership-Revision, Event-Idempotency, Cursor und Presence-Leases werden für jede Operation serverseitig geprüft. Workspace-Rechte erweitern weder Room-Kapazität noch Medienrechte.

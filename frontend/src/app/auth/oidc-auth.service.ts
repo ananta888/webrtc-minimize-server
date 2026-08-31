@@ -19,6 +19,16 @@ interface PkceTransaction {
   tokenEndpoint: string;
 }
 
+type AuthorizationIntent = "login" | "register";
+
+interface AuthorizationRequest {
+  clientId: string;
+  redirectUri: string;
+  challenge: string;
+  state: string;
+  nonce: string;
+}
+
 const TOKEN_KEY = "webrtc.oidc.access-token";
 const ID_TOKEN_KEY = "webrtc.oidc.id-token";
 const REFRESH_TOKEN_KEY = "webrtc.oidc.refresh-token";
@@ -42,6 +52,25 @@ function decodeJwt(token: string): Record<string, unknown> | null {
 
 function audienceMatches(value: unknown, expected: string): boolean {
   return value === expected || (Array.isArray(value) && value.includes(expected));
+}
+
+export function buildAuthorizationUrl(
+  endpoint: string,
+  request: AuthorizationRequest,
+  intent: AuthorizationIntent = "login",
+): string {
+  const params = new URLSearchParams({
+    client_id: request.clientId,
+    redirect_uri: request.redirectUri,
+    response_type: "code",
+    scope: "openid profile email",
+    code_challenge: request.challenge,
+    code_challenge_method: "S256",
+    state: request.state,
+    nonce: request.nonce,
+  });
+  if (intent === "register") params.set("prompt", "create");
+  return `${endpoint}?${params}`;
 }
 
 @Injectable({ providedIn: "root" })
@@ -87,6 +116,14 @@ export class OidcAuthService {
   }
 
   async login(returnUrl = "/"): Promise<void> {
+    await this.beginAuthorization("login", returnUrl);
+  }
+
+  async register(returnUrl = "/"): Promise<void> {
+    await this.beginAuthorization("register", returnUrl);
+  }
+
+  private async beginAuthorization(intent: AuthorizationIntent, returnUrl: string): Promise<void> {
     const auth = this.requireAuthConfig();
     this.busy.set(true);
     this.error.set("");
@@ -103,17 +140,13 @@ export class OidcAuthService {
         clientId: auth.clientId, tokenEndpoint: metadata.token_endpoint,
       };
       sessionStorage.setItem(PKCE_KEY, JSON.stringify(transaction));
-      const params = new URLSearchParams({
-        client_id: auth.clientId,
-        redirect_uri: `${location.origin}/oidc-callback`,
-        response_type: "code",
-        scope: "openid profile email",
-        code_challenge: challenge,
-        code_challenge_method: "S256",
+      location.assign(buildAuthorizationUrl(metadata.authorization_endpoint, {
+        clientId: auth.clientId,
+        redirectUri: `${location.origin}/oidc-callback`,
+        challenge,
         state,
         nonce,
-      });
-      location.assign(`${metadata.authorization_endpoint}?${params}`);
+      }, intent));
     } catch (error) {
       this.error.set(error instanceof Error ? error.message : "oidc_login_failed");
       this.busy.set(false);

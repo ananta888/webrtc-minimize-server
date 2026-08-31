@@ -23,6 +23,7 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
       roomIdleTtlMs: 60_000,
       signalRateLimit: 120,
       pairWorkspaceEnabled: false,
+      mediaE2eeMode: "required",
     },
   });
   await new Promise((resolve, reject) => {
@@ -84,6 +85,9 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   await ada.locator("#toggle-camera").click();
   await ada.locator("#toggle-camera", { hasText: "Kamera stoppen" }).waitFor();
   await grace.locator(".media-label").getByText("Ada · Kamera").waitFor();
+  await Promise.all([ada, grace].map((page) => page.locator("#sframe-status", { hasText: "active" }).waitFor()));
+  await grace.waitForFunction(() => [...document.querySelectorAll("video:not([muted])")]
+    .some((video) => video.readyState >= 2 && video.videoWidth > 0));
 
   await ada.locator("#toggle-microphone").click();
   await ada.locator("#toggle-microphone", { hasText: "Mikrofon stoppen" }).waitFor();
@@ -96,6 +100,85 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   assert.deepEqual(pageErrors, []);
   await ada.locator("#leave-room").click();
   await grace.locator("#participant-count", { hasText: "1 / 20" }).waitFor();
+});
+
+test("required SFrame drops media instead of downgrading an unsupported Chromium context", { timeout: 30_000 }, async (context) => {
+  try {
+    await fs.access(chromium.executablePath());
+  } catch {
+    context.skip("Playwright Chromium is not installed; run: npx playwright install chromium");
+    return;
+  }
+  const app = createAppServer({
+    config: {
+      host: "127.0.0.1",
+      port: 0,
+      publicOrigin: "",
+      stunUrls: [],
+      turnServers: [],
+      maxRoomParticipants: 20,
+      roomIdleTtlMs: 60_000,
+      signalRateLimit: 120,
+      pairWorkspaceEnabled: false,
+      mediaE2eeMode: "required",
+    },
+  });
+  await new Promise((resolve, reject) => {
+    app.server.once("error", reject);
+    app.server.listen(0, "127.0.0.1", resolve);
+  });
+  const origin = `http://127.0.0.1:${app.server.address().port}`;
+  const browser = await chromium.launch({
+    headless: true,
+    args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
+  });
+  const browserContext = await browser.newContext({ permissions: ["camera", "microphone"] });
+  await browserContext.addInitScript(() => {
+    Object.defineProperty(globalThis, "RTCRtpScriptTransform", { configurable: true, value: undefined });
+    window.__captureCalls = [];
+    window.__addTrackCalls = 0;
+    const originalCapture = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = (...args) => {
+      window.__captureCalls.push("getUserMedia");
+      return originalCapture(...args);
+    };
+    const NativePeerConnection = window.RTCPeerConnection;
+    window.RTCPeerConnection = class ObservedPeerConnection extends NativePeerConnection {
+      addTrack(...args) {
+        window.__addTrackCalls += 1;
+        return super.addTrack(...args);
+      }
+    };
+  });
+  context.after(async () => {
+    await browserContext.close();
+    await browser.close();
+    for (const socket of app.webSocketServer.clients) socket.terminate();
+    await new Promise((resolve) => app.server.close(resolve));
+  });
+  const ada = await browserContext.newPage();
+  const grace = await browserContext.newPage();
+  const pageErrors = [];
+  for (const page of [ada, grace]) page.on("pageerror", (error) => pageErrors.push(error.message));
+  await ada.goto(origin);
+  await ada.locator("#display-name").fill("Ada");
+  await ada.locator("#create-room").click();
+  await ada.waitForFunction(() => document.querySelector("#room-id").value.startsWith("room-"));
+  const roomId = await ada.locator("#room-id").inputValue();
+  await ada.locator("#join-room").click();
+  await grace.goto(`${origin}/?room=${roomId}`);
+  await grace.locator("#display-name").fill("Grace");
+  await grace.locator("#join-room").click();
+  await Promise.all([ada, grace].map((page) => page.locator("#participant-count", { hasText: "2 / 20" }).waitFor()));
+  assert.deepEqual(await ada.evaluate(() => window.__captureCalls), []);
+  assert.deepEqual(await grace.evaluate(() => window.__captureCalls), []);
+  await ada.locator("#toggle-camera").click();
+  await ada.locator("#toggle-camera", { hasText: "Kamera stoppen" }).waitFor();
+  await Promise.all([ada, grace].map((page) => page.locator("#sframe-status", { hasText: "unsupported" }).waitFor()));
+  await ada.waitForTimeout(300);
+  assert.equal(await ada.evaluate(() => window.__addTrackCalls), 0);
+  assert.equal(await grace.locator(".media-label", { hasText: "Ada · Kamera" }).count(), 0);
+  assert.deepEqual(pageErrors, []);
 });
 
 test("two independent Chromium devices join Pair Dev while device three is rejected", { timeout: 30_000 }, async (context) => {
@@ -220,6 +303,7 @@ test("six Chromium peers use consented video relay, adaptive sender tiers and on
       peerMediaRelayMinParticipants: 6,
       peerMediaRelayMaxChildren: 3,
       peerMediaRelayMaxHops: 3,
+      mediaE2eeMode: "disabled",
     },
   });
   await new Promise((resolve, reject) => {
@@ -349,7 +433,7 @@ test("six Chromium peers use consented video relay, adaptive sender tiers and on
   assert.deepEqual(pageErrors, []);
 });
 
-test("two Firefox peers retain direct adaptive mesh, chat and camera fallback", { timeout: 30_000 }, async (context) => {
+test("two Firefox peers retain direct adaptive mesh, SFrame, chat and camera", { timeout: 30_000 }, async (context) => {
   try {
     await fs.access(firefox.executablePath());
   } catch {
@@ -367,6 +451,7 @@ test("two Firefox peers retain direct adaptive mesh, chat and camera fallback", 
       roomIdleTtlMs: 60_000,
       signalRateLimit: 120,
       pairWorkspaceEnabled: false,
+      mediaE2eeMode: "required",
     },
   });
   await new Promise((resolve, reject) => {
@@ -419,6 +504,9 @@ test("two Firefox peers retain direct adaptive mesh, chat and camera fallback", 
   await ada.locator("#toggle-camera").click();
   await ada.locator("#toggle-camera", { hasText: "Kamera stoppen" }).waitFor();
   await grace.locator(".media-label").getByText("Ada · Kamera").waitFor();
+  await Promise.all([ada, grace].map((page) => page.locator("#sframe-status", { hasText: "active" }).waitFor()));
+  await grace.waitForFunction(() => [...document.querySelectorAll("video:not([muted])")]
+    .some((video) => video.readyState >= 2 && video.videoWidth > 0));
   await grace.locator("#topology-status", { hasText: "adaptive_mesh" }).waitFor();
   assert.deepEqual(pageErrors, []);
 });

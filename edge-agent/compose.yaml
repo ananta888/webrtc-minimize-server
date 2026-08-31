@@ -1,0 +1,15 @@
+services:
+  edge-agent:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - ${EDGE_AGENT_ENV_FILE:-.env}
+    read_only: true
+    user: "65532:65532"
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${EDGE_AGENT_PORT:-3478}:${EDGE_AGENT_PORT:-3478}/udp"
+      - "${EDGE_AGENT_PORT:-3478}:${EDGE_AGENT_PORT:-3478}/tcp"
+      - "${EDGE_AGENT_RELAY_MIN_PORT:-49160}-${EDGE_AGENT_RELAY_MAX_PORT:-49259}:${EDGE_AGENT_RELAY_MIN_PORT:-49160}-${EDGE_AGENT_RELAY_MAX_PORT:-49259}/udp"

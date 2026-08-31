@@ -2,7 +2,7 @@
   "$schema": "../todo.schema.json",
   "version": 1,
   "created": "2026-08-27",
-  "updated": "2026-08-30",
+  "updated": "2026-08-31",
   "project": "webrtc-minimize-server",
   "review_basis": {
     "reviewed_commit_range": "workspace snapshot of /home/krusty/ananta on 2026-08-27",
@@ -15,7 +15,7 @@
       "items": [
         { "id": "PROD-SEC-001", "title": "OIDC-Identität, Geräteschlüssel und zeitlich begrenzte Invite-Grants einführen", "status": "partial", "priority": "P0" },
         { "id": "PROD-SEC-002", "title": "Signierte Membership-, Medienvertrag- und Security-Epochen modellieren", "status": "partial", "priority": "P0" },
-        { "id": "PROD-SEC-003", "title": "Browser-Encoded-Transform/SFrame-E2EE mit Downgrade-Schutz evaluieren und implementieren", "status": "open", "priority": "P0" },
+        { "id": "PROD-SEC-003", "title": "Browser-Encoded-Transform/SFrame-E2EE mit Downgrade-Schutz evaluieren und implementieren", "status": "completed", "priority": "P0" },
         { "id": "PROD-SEC-004", "title": "Replay-Fenster, Senderauthentizität, Key-Rotation und Revocation härten", "status": "partial", "priority": "P0" }
       ]
     },
@@ -51,17 +51,19 @@
   ],
   "meta": {
     "total_items": 15,
-    "by_status": { "completed": 3, "partial": 6, "open": 6 },
+    "by_status": { "completed": 4, "partial": 6, "open": 5 },
     "notes": [
       "Diese Category-Todo ist Portfolio/Research, kein ausführbarer Task-Track.",
       "Neue Implementierung beginnt erst nach Promotion eines Items in todos/active/todo.<track>.json.",
       "PROD-SEC-001 bleibt partial: OIDC, P-256-Gerätebindung und Einmal-Tickets sind vorhanden; langlebige zeitbegrenzte Invite-Grants und Gerätewiderruf fehlen.",
-      "PROD-NET-001 bleibt partial: kurzlebige Coturn-REST-Credentials und Quoten sind vorhanden; TURN/TLS, Allowlist-Härtung, IP-Privacy und Failover fehlen.",
+      "PROD-SEC-003 ist abgeschlossen: RFC-9605-SFrame AES_128_GCM_SHA256_128, Encoded-Transform-Worker, quittierte publikations-/Zielpeer-/Membership-Epoch-Keys, Replay-Schutz und required-Downgrade-Schutz sind mit offiziellen Vektoren sowie Chromium/Firefox belegt.",
+      "PROD-SEC-004 bleibt partial: Frame-Replay-Fenster, Epoch-Rotation und Cleanup sind vorhanden; vom Signaling unabhängige Senderauthentizität, Gerätewiderruf und MLS-artige Gruppenschlüssel fehlen.",
+      "PROD-NET-001 bleibt partial: kurzlebige Coturn-/Edge-REST-Credentials, Private-Network-Policy und Allocation-Quoten sind vorhanden; Edge-TURN/TLS, Secret-Rotation, umfassende IP-Privacy und Multi-Region-Failover fehlen.",
       "PROD-NET-002 ist abgeschlossen: Active-Speaker-Profile, Stats-Hysterese, per-Peer-Senderstufen, Mosaik, Churn-Fallback und Trusted-Relay-Fanout sind in Chromium/Firefox-Gates belegt.",
-      "PROD-NET-004 bleibt offen: Trusted Relay verarbeitet und re-encodiert Medien; ein nicht entschlüsselnder SFrame-/Ciphertext-Peer-DAG ist nicht implementiert.",
+      "PROD-NET-004 bleibt offen: SFrame ist implementiert und Edge-TURN relayed Pakete blind, aber ein portabler, nicht entschlüsselnder SFrame-/Ciphertext-Peer-DAG zwischen Browsern ist nicht implementiert.",
       "PROD-DATA-001/002 sind abgeschlossen: der browserseitige Overlay besitzt Traffic-Class-Caps, ECDH/AES-GCM, Digest, Replay-/TTL-/Hop-Grenzen, Chunk-ACK/Resume und expliziten Download.",
       "PROD-DATA-003 bleibt partial: Workspace, Presence und Cursor sind persistent; Threads, HA sowie Backup/Restore fehlen.",
-      "SFU bleibt ein optionaler Skalierungs-Folgeschritt; aktuell arbeitet jeder Raum als adaptives Browser-Mesh mit consentiertem Trusted-Relay-Pfad."
+      "SFU bleibt ein optionaler Skalierungs-Folgeschritt; required-SFrame arbeitet als adaptives Direct-/Edge-/Infrastruktur-TURN-Mesh, während der consentierte Decode/Re-encode-Trusted-Relay nur im expliziten disabled-Legacy-Modus aktiv ist."
     ],
     "recommended_order": ["PROD-SEC-001", "PROD-SEC-002", "PROD-NET-001", "PROD-OPS-002", "PROD-SEC-003", "PROD-SEC-004", "PROD-OPS-001", "PROD-NET-002", "PROD-DATA-001", "PROD-DATA-002", "PROD-NET-003", "PROD-OPS-003", "PROD-OPS-004", "PROD-DATA-003", "PROD-NET-004"]
   }

@@ -11,6 +11,10 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.deepEqual(config.turnServers, []);
   assert.equal(config.authMode, "disabled");
   assert.deepEqual(config.turnUrls, []);
+  assert.deepEqual(config.edgeTurnServers, []);
+  assert.equal(config.peerEdgeFallbackMs, 4_000);
+  assert.equal(config.infrastructureTurnFallbackMs, 9_000);
+  assert.equal(config.mediaE2eeMode, "required");
   assert.equal(config.peerMediaRelayEnabled, true);
   assert.equal(config.peerRouteLeaseMs, 60_000);
   assert.equal(config.peerRouteRenewMs, 25_000);
@@ -42,10 +46,42 @@ test("loadConfig rejects unsafe bounds and malformed public origins", () => {
   assert.throws(() => loadConfig({ TURN_URLS: "https://turn.test", TURN_SHARED_SECRET: "secret" }), /turn: or turns:/);
   assert.throws(() => loadConfig({ PEER_MEDIA_RELAY_ENABLED: "sometimes" }), /true or false/);
   assert.throws(() => loadConfig({ ACTIVE_SPEAKER_LIMIT: "6" }), /between 2 and 5/);
+  assert.throws(() => loadConfig({ MEDIA_E2EE_MODE: "required", PEER_DATA_OVERLAY_ENABLED: "false" }), /requires/);
+  assert.throws(() => loadConfig({ PEER_EDGE_FALLBACK_MS: "500" }), /between 1000 and 30000/);
+  assert.throws(
+    () => loadConfig({ PEER_EDGE_FALLBACK_MS: "9000", INFRASTRUCTURE_TURN_FALLBACK_MS: "9000" }),
+    /longer/,
+  );
   assert.throws(
     () => loadConfig({ PEER_ROUTE_LEASE_MS: "30000", PEER_ROUTE_RENEW_MS: "30000" }),
     /shorter/,
   );
+});
+
+test("loadConfig accepts closed volunteer Edge-TURN definitions", () => {
+  const config = loadConfig({
+    EDGE_TURN_SERVERS_JSON: JSON.stringify([{
+      id: "friend-edge-1",
+      urls: ["turn:edge.example:3478?transport=udp", "turn:edge.example:3478?transport=tcp"],
+      sharedSecret: "0123456789abcdef0123456789abcdef",
+      realm: "webrtc.example",
+    }]),
+    PEER_EDGE_FALLBACK_MS: "3000",
+    INFRASTRUCTURE_TURN_FALLBACK_MS: "8000",
+  });
+  assert.equal(config.edgeTurnServers.length, 1);
+  assert.equal(config.edgeTurnServers[0].id, "friend-edge-1");
+  assert.equal(config.peerEdgeFallbackMs, 3_000);
+  assert.equal(config.infrastructureTurnFallbackMs, 8_000);
+  assert.throws(() => loadConfig({
+    EDGE_TURN_SERVERS_JSON: JSON.stringify([{
+      id: "EDGE",
+      urls: ["stun:not-edge.example"],
+      sharedSecret: "short",
+      realm: "bad realm",
+      extra: true,
+    }]),
+  }), /invalid entry or field/);
 });
 
 test("loadConfig accepts explicit OIDC and ephemeral TURN settings", () => {

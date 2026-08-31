@@ -20,7 +20,7 @@ import {
 } from "./protocol.js";
 import { RoomAdmissionError, RoomFullError, RoomRegistry } from "./room-registry.js";
 import { SessionTicketError, SessionTicketStore } from "./session-tickets.js";
-import { createTurnCredentials } from "./turn-credentials.js";
+import { createEdgeTurnCredentials, createTurnCredentials } from "./turn-credentials.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
@@ -104,6 +104,11 @@ function publicRuntimeConfig(config) {
     },
     pairParticipants: 2,
     turnConfigured: config.turnUrls.length > 0,
+    edgeRelayConfigured: config.edgeTurnServers.length > 0,
+    mediaE2ee: {
+      mode: config.mediaE2eeMode,
+      cipherSuite: "AES_128_GCM_SHA256_128",
+    },
     optimization: {
       activeSpeakerLimit: config.activeSpeakerLimit,
       peerRelayEnabled: config.peerMediaRelayEnabled,
@@ -299,16 +304,30 @@ function createHttpHandler(config, registry, services) {
           workspaceId: workspace?.workspaceId || "",
           workspaceRole: workspace?.role || "",
         });
+        const directIceServers = config.stunUrls.map((urls) => ({ urls }));
+        const peerRelayIceServers = createEdgeTurnCredentials(config, principal);
+        const infrastructureRelayIceServers = [
+          ...config.turnServers,
+          ...createTurnCredentials(config, principal),
+        ];
         sendJson(response, 201, {
           ticket: issued.ticket,
           expiresAt: issued.expiresAt,
           signalingPath: `/signal?ticket=${encodeURIComponent(issued.ticket)}`,
           identity: identity ? { authenticated: true, displayName: identity.displayName } : { authenticated: false },
           workspace,
+          icePolicy: {
+            version: 1,
+            directIceServers,
+            peerRelayIceServers,
+            infrastructureRelayIceServers,
+            peerRelayAfterMs: config.peerEdgeFallbackMs,
+            infrastructureRelayAfterMs: config.infrastructureTurnFallbackMs,
+          },
           iceServers: [
-            ...config.stunUrls.map((urls) => ({ urls })),
-            ...config.turnServers,
-            ...createTurnCredentials(config, principal),
+            ...directIceServers,
+            ...peerRelayIceServers,
+            ...infrastructureRelayIceServers,
           ],
         }, securityHeaders(config));
         return;

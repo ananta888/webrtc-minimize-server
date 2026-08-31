@@ -1,0 +1,63 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "keycloak-self-registration-entry",
+  "purpose": "Öffentliche Besucher der Raum-App erhalten neben der Anmeldung einen sichtbaren, sicheren Einstieg in die bereits aktivierte Keycloak-Selbstregistrierung.",
+  "goal": "Nicht angemeldete Benutzer können von webrtc.ananta.de aus eine Keycloak-Registrierung im bestehenden Authorization-Code-PKCE-Fluss beginnen und nach erfolgreicher Registrierung zur App zurückkehren.",
+  "status": "completed",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "KSRE-M01",
+      "title": "Registrierungseinstieg implementieren und öffentlich verifizieren",
+      "task_ids": ["KSRE-001"],
+      "status": "done"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "KSRE-001",
+      "title": "Sichtbaren Keycloak-Selbstregistrierungsfluss in Angular ergänzen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Die öffentliche Angular-Seite zeigt für nicht angemeldete Benutzer getrennte Aktionen für Anmeldung und Registrierung.",
+        "Die Registrierung verwendet denselben Authorization-Code-PKCE-Flow mit frischem Verifier, State und Nonce wie die Anmeldung und legt keine Tokens in URLs ab.",
+        "Der Registrierungsstart fordert Keycloak über den Authorization-Endpunkt explizit zur Kontoerstellung auf; der bestehende Login- und Callback-Pfad bleibt kompatibel.",
+        "Frontend-Tests prüfen Login- und Registrierungs-URL sowie die sichtbaren UI-Aktionen.",
+        "npm run check besteht und die öffentliche Keycloak-Registrierungsseite für webrtc-browser ist live erreichbar."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["KSRE-001"],
+  "tasks_status_summary": {
+    "total": 1,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 1 },
+    "progress_percent_done": 100,
+    "by_priority": { "P0": 0, "P1": 1, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 0, "critical": 0 },
+    "critical_path": { "total": 1, "done": 1, "remaining": 0 },
+    "milestones": { "total": 1, "todo": 0, "in_progress": 0, "blocked": 0, "done": 1 }
+  },
+  "progress_summary": {
+    "state": "completed",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 1
+  },
+  "summary_notes": [
+    "Die Realm-Selbstregistrierung ist bereits aktiv; dieser Track macht den sicheren Einstieg auf der Raum-App explizit sichtbar.",
+    "Keycloak bleibt Eigentümer von Registrierung und Identität; die Raum-App sammelt oder speichert keine Registrierungskennwörter.",
+    "npm run check bestand mit 22 Frontend- und 49 ausgeführten Node-Tests; vier Browser-Gates meldeten fehlende lokale Playwright-Binaries als sichtbare Skips.",
+    "Der öffentliche Production-Build main-5QEUPSYE.js enthält die getrennte Registrierungsaktion; Keycloak lieferte Login- und Registrierungsformular für webrtc-browser jeweils mit HTTP 200 aus.",
+    "Der Live-Realm erlaubt Registrierung ohne E-Mail-Verifikation und besitzt Brute-Force-Schutz; SMTP ist deshalb für diesen Testbetrieb nicht erforderlich."
+  ]
+}

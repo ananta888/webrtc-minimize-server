@@ -1,6 +1,7 @@
 import { Injectable, computed, signal } from "@angular/core";
 
 import { AudioActivityService } from "./audio-activity.service";
+import { IcePathClass, IceTierPolicy } from "./ice-policy";
 import {
   LinkClass,
   MediaSource,
@@ -21,6 +22,15 @@ import {
   OverlayPacket,
   OverlayTrafficClass,
 } from "./opaque-data-overlay";
+import { MediaE2eeController } from "./media-e2ee-controller";
+import {
+  createMediaKeyAck,
+  createMediaKeyMessage,
+  decodeMediaBaseKey,
+  MediaKeyMessage,
+  parseMediaE2eeMessage,
+  randomMediaKey,
+} from "./media-e2ee-protocol";
 import { ManagedPeer, PeerConnectionManager } from "./peer-connection-manager";
 import { PeerTopologyController } from "./peer-topology-controller";
 import { TrustedRelayController } from "./trusted-relay-controller";
@@ -49,6 +59,20 @@ export interface OptimizationRuntimeConfig {
   readonly peerRelayMaxHops: number;
   readonly routeLeaseMs: number;
   readonly dataOverlayEnabled: boolean;
+}
+
+interface PendingMediaKey {
+  readonly contextId: string;
+  readonly targetPeerId: string;
+  readonly message: MediaKeyMessage;
+  readonly baseKey: Uint8Array;
+  retries: number;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+export interface MediaE2eeRuntimeConfig {
+  readonly mode: "disabled" | "preferred" | "required";
+  readonly cipherSuite: "AES_128_GCM_SHA256_128";
 }
 
 export interface RemoteMediaView {
@@ -88,6 +112,10 @@ function worseLink(left: LinkClass, right: LinkClass): LinkClass {
   return LINK_ORDER[Math.max(LINK_ORDER.indexOf(left), LINK_ORDER.indexOf(right))];
 }
 
+function sourceKind(source: MediaSource): "audio" | "video" {
+  return source === "microphone" || source === "screen-audio" ? "audio" : "video";
+}
+
 @Injectable({ providedIn: "root" })
 export class PeerMeshService {
   readonly remoteMedia = signal<readonly RemoteMediaView[]>([]);
@@ -98,6 +126,8 @@ export class PeerMeshService {
   readonly overlayReady = signal(false);
   readonly peerChoices = signal<readonly PeerChoice[]>([]);
   readonly iceState = signal("idle");
+  readonly icePath = signal<IcePathClass>("unknown");
+  readonly mediaE2eeState = signal<"disabled" | "unsupported" | "pending" | "active">("disabled");
   readonly topologyMode = signal<"adaptive_mesh" | "trusted_peer_relay">("adaptive_mesh");
   readonly topologyEpoch = signal(0);
   readonly membershipEpoch = signal(0);
@@ -137,10 +167,20 @@ export class PeerMeshService {
   private readonly overlay = new OpaqueDataOverlay();
   private overlayPublicKey: JsonWebKey | null = null;
   private overlayInitialization: Promise<void> = Promise.resolve();
+  private overlayGeneration = 0;
   private overlaySerial = 0;
   private ownId = "";
   private ownName = "";
-  private iceServers: readonly RTCIceServer[] = [];
+  private icePolicy: IceTierPolicy | null = null;
+  private mediaE2ee: MediaE2eeRuntimeConfig = {
+    mode: "disabled",
+    cipherSuite: "AES_128_GCM_SHA256_128",
+  };
+  private mediaE2eeController: MediaE2eeController | null = null;
+  private readonly pendingMediaKeys = new Map<string, PendingMediaKey>();
+  private readonly activeSenderMediaContexts = new Set<string>();
+  private readonly activeReceiverMediaContexts = new Set<string>();
+  private membershipStable = false;
   private optimization: OptimizationRuntimeConfig = {
     activeSpeakerLimit: 5,
     peerRelayEnabled: false,
@@ -168,17 +208,24 @@ export class PeerMeshService {
   initialize(
     ownId: string,
     ownName: string,
-    iceServers: readonly RTCIceServer[],
+    icePolicy: IceTierPolicy,
     optimization?: OptimizationRuntimeConfig,
+    mediaE2ee?: MediaE2eeRuntimeConfig,
   ): void {
     this.close();
     this.ownId = ownId;
     this.ownName = ownName;
-    this.iceServers = iceServers;
+    this.icePolicy = icePolicy;
     if (optimization) this.optimization = optimization;
-    this.connections = new PeerConnectionManager(ownId, iceServers, this.optimization.dataOverlayEnabled, {
+    if (mediaE2ee) this.mediaE2ee = mediaE2ee;
+    this.mediaE2eeController = this.mediaE2ee.mode === "disabled" ? null : new MediaE2eeController();
+    const e2eeSupported = this.mediaE2eeController?.supported === true;
+    this.mediaE2eeState.set(this.mediaE2ee.mode === "disabled"
+      ? "disabled"
+      : e2eeSupported && this.optimization.dataOverlayEnabled ? "pending" : "unsupported");
+    this.connections = new PeerConnectionManager(ownId, icePolicy, this.optimization.dataOverlayEnabled, {
       signal: (to, payload) => this.sendSignal(to, payload),
-      track: (peer, track) => this.acceptRemoteTrack(peer as PeerState, track),
+      track: (peer, track, receiver) => this.acceptRemoteTrack(peer as PeerState, track, receiver),
       channel: (peer, channel) => this.attachChannel(peer as PeerState, channel),
       state: () => this.updateIceState(),
       negotiationError: (peer) => this.addChat("System", `Verhandlung mit ${peer.name} fehlgeschlagen`, true),
@@ -189,9 +236,7 @@ export class PeerMeshService {
     this.startTimers();
     document.addEventListener("visibilitychange", this.visibilityHandler);
     this.publishRelayCapability();
-    if (this.optimization.dataOverlayEnabled) {
-      this.rotateOverlayKey();
-    }
+    // The first key is generated only after the server-authored membership epoch arrives.
   }
 
   addPeer(peerId: string, name: string): void {
@@ -200,6 +245,7 @@ export class PeerMeshService {
     if (!peer) return;
     Object.defineProperty(peer, "overlayQueue", { value: new BoundedOverlayQueue(), enumerable: true });
     this.participantNames.set(peerId, peer.name);
+    if (this.membershipEpoch() > 0) this.membershipStable = false;
     this.participantCount.set(this.peers.size + 1);
     this.peerChoices.set([...this.peers.values()].map(({ id, name }) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)));
     this.reconcileAllPublications();
@@ -264,6 +310,10 @@ export class PeerMeshService {
     const source = String(message["source"] || "") as MediaSource;
     if (message["active"] === true) {
       const trackId = String(message["trackId"] || "");
+      for (const [existingId, descriptor] of this.descriptors) {
+        if (existingId !== trackId && descriptor.rootPeerId === rootPeerId && descriptor.source === source
+          && !this.publications.has(existingId)) this.descriptors.delete(existingId);
+      }
       this.descriptors.set(trackId, {
         rootPeerId,
         rootName: String(message["fromName"] || this.peerName(rootPeerId)),
@@ -300,7 +350,11 @@ export class PeerMeshService {
     this.topologyEpoch.set(state.topologyEpoch);
     this.membershipEpoch.set(state.membershipEpoch);
     this.routeEpoch.set(state.routeEpoch);
-    if (membershipChanged && this.optimization.dataOverlayEnabled) this.rotateOverlayKey();
+    this.membershipStable = true;
+    if (membershipChanged && this.optimization.dataOverlayEnabled) {
+      this.rotateOverlayKey();
+      this.rotateMediaKeys();
+    }
     this.topologyMode.set(this.topology.mode(this.ownId));
     this.reconcileAllPublications();
   }
@@ -313,7 +367,7 @@ export class PeerMeshService {
   }
 
   setRelayConsent(enabled: boolean): void {
-    if (!this.optimization.peerRelayEnabled || !this.ownId) return;
+    if (!this.optimization.peerRelayEnabled || !this.ownId || this.mediaE2ee.mode !== "disabled") return;
     this.signaling.send({ type: "relay-consent", enabled });
     this.relayConsent.set(enabled);
     if (!enabled) this.relayCapability.set("idle");
@@ -331,19 +385,27 @@ export class PeerMeshService {
       await this.overlayInitialization;
       await this.overlay.setPeerKey(peerId, message["key"] as JsonWebKey);
       this.updateOverlayAvailability();
+      this.provisionMediaKeysForPeer(peerId);
     } catch {
       this.addChat("System", "Ungültiger Overlay-Schlüssel wurde verworfen", true);
     }
   }
 
   private rotateOverlayKey(): void {
+    const generation = ++this.overlayGeneration;
     this.overlayReady.set(false);
     this.overlayPublicKey = null;
-    this.overlayInitialization = this.overlay.initialize(this.ownId).then((key) => {
+    this.overlayInitialization = this.overlayInitialization.catch(() => undefined).then(async () => {
+      if (generation !== this.overlayGeneration || !this.ownId) return;
+      const key = await this.overlay.initialize(this.ownId);
+      if (generation !== this.overlayGeneration || !this.ownId) {
+        this.overlay.destroy();
+        return;
+      }
       this.overlayPublicKey = key;
       this.announceOverlayKey();
     }).catch(() => {
-      this.overlayMode.set("unavailable");
+      if (generation === this.overlayGeneration) this.overlayMode.set("unavailable");
     });
   }
 
@@ -372,6 +434,8 @@ export class PeerMeshService {
   removePeer(peerId: string): void {
     const peer = this.peers.get(peerId);
     if (!peer) return;
+    this.membershipStable = false;
+    this.clearAllMediaKeys();
     peer.overlayQueue.clear();
     this.connections?.remove(peerId);
     this.overlay.removePeer(peerId);
@@ -402,6 +466,9 @@ export class PeerMeshService {
     this.stopTimers();
     document.removeEventListener("visibilitychange", this.visibilityHandler);
     this.topology.clear();
+    this.clearAllMediaKeys();
+    this.mediaE2eeController?.destroy();
+    this.mediaE2eeController = null;
     for (const peerId of [...this.peers.keys()]) this.removePeer(peerId);
     this.connections?.close();
     this.connections = null;
@@ -410,6 +477,7 @@ export class PeerMeshService {
     this.descriptors.clear();
     this.localStreams.clear();
     this.overlay.destroy();
+    this.overlayGeneration += 1;
     this.overlayInitialization = Promise.resolve();
     this.overlayPublicKey = null;
     this.overlayDeliveries.set([]);
@@ -421,6 +489,9 @@ export class PeerMeshService {
     this.ownId = "";
     this.participantCount.set(0);
     this.iceState.set("idle");
+    this.icePath.set("unknown");
+    this.mediaE2eeState.set("disabled");
+    this.membershipStable = false;
     this.topologyMode.set("adaptive_mesh");
     this.topologyEpoch.set(0);
     this.membershipEpoch.set(0);
@@ -447,7 +518,7 @@ export class PeerMeshService {
   }
 
   private publishRelayCapability(): void {
-    if (!this.optimization.peerRelayEnabled || !this.ownId) return;
+    if (!this.optimization.peerRelayEnabled || !this.ownId || this.mediaE2ee.mode !== "disabled") return;
     const connection = (navigator as Navigator & {
       connection?: { effectiveType?: string; saveData?: boolean };
     }).connection;
@@ -466,10 +537,15 @@ export class PeerMeshService {
     } catch { /* signaling may already be closing */ }
   }
 
-  private acceptRemoteTrack(peer: PeerState, track: MediaStreamTrack): void {
-    const descriptor = this.descriptors.get(track.id);
+  private acceptRemoteTrack(peer: PeerState, track: MediaStreamTrack, receiver: RTCRtpReceiver): void {
+    const directDescriptor = this.descriptors.get(track.id);
+    const fallbackDescriptor = directDescriptor ? null : [...this.descriptors.entries()].find(([publicationId, value]) => (
+      value.rootPeerId === peer.id && sourceKind(value.source) === track.kind && !this.publications.has(publicationId)
+    ));
+    const publicationId = directDescriptor ? track.id : fallbackDescriptor?.[0] || track.id;
+    const descriptor = directDescriptor || fallbackDescriptor?.[1];
     const publication: Publication = {
-      id: track.id,
+      id: publicationId,
       rootPeerId: descriptor?.rootPeerId || peer.id,
       rootName: descriptor?.rootName || peer.name,
       source: descriptor?.source || (track.kind === "audio" ? "microphone" : "camera"),
@@ -478,6 +554,17 @@ export class PeerMeshService {
       local: false,
       inboundPeerId: peer.id,
     };
+    if (this.shouldProtectMedia()) {
+      const attached = this.mediaE2eeController?.attachReceiver(
+        receiver,
+        this.inboundMediaContext(publication.rootPeerId, publication.id),
+      ) === true;
+      if (!attached && this.mediaE2ee.mode === "required") {
+        track.enabled = false;
+        this.mediaE2eeState.set("unsupported");
+        return;
+      }
+    }
     const existing = this.publications.get(publication.id);
     if (existing && !existing.local) this.removePublication(existing.id);
     this.publications.set(publication.id, publication);
@@ -506,6 +593,7 @@ export class PeerMeshService {
   private removePublication(publicationId: string): void {
     const publication = this.publications.get(publicationId);
     if (!publication) return;
+    this.clearPublicationMediaKeys(publication);
     for (const peer of this.peers.values()) {
       const sender = peer.senders.get(publicationId);
       if (sender) peer.pc.removeTrack(sender);
@@ -523,6 +611,7 @@ export class PeerMeshService {
   }
 
   private shouldSend(publication: Publication, targetPeerId: string): boolean {
+    if (this.mediaE2ee.mode !== "disabled") return publication.local;
     return this.relay.shouldSend({
       trackKind: publication.track.kind,
       publicationLocal: publication.local,
@@ -545,9 +634,22 @@ export class PeerMeshService {
         peer.senders.delete(publication.id);
         peer.appliedTiers.delete(publication.id);
       } else if (shouldSend && !existing && publication.track.readyState === "live") {
+        if (this.mediaE2ee.mode === "required" && !this.shouldProtectMedia()) {
+          this.mediaE2eeState.set("unsupported");
+          continue;
+        }
         try {
           const sender = peer.pc.addTrack(publication.track, publication.stream);
+          if (this.shouldProtectMedia()) {
+            const contextId = this.outboundMediaContext(publication.id, peer.id);
+            if (!this.mediaE2eeController?.attachSender(sender, contextId)) {
+              peer.pc.removeTrack(sender);
+              this.mediaE2eeState.set("unsupported");
+              continue;
+            }
+          }
           peer.senders.set(publication.id, sender);
+          this.provisionMediaKey(publication, peer);
           if (!publication.local) this.relayCapability.set("available");
         } catch {
           if (!publication.local) {
@@ -606,6 +708,10 @@ export class PeerMeshService {
         } catch { /* normal encrypted control payload */ }
       }
       void this.sendOverlayAck(result.originPeerId, result.packetId, []);
+      if (result.trafficClass === "rekey") {
+        void this.acceptMediaE2eeEnvelope(result.originPeerId, result.data);
+        return;
+      }
       this.overlayDeliveries.update((items) => [...items.slice(-63), {
         id: ++this.overlaySerial,
         originPeerId: result.originPeerId,
@@ -644,6 +750,7 @@ export class PeerMeshService {
       else {
         this.flushOverlayQueue(peer);
         this.updateOverlayAvailability();
+        this.provisionMediaKeysForPeer(peer.id);
       }
     };
     channel.onmessage = ({ data }) => {
@@ -773,5 +880,173 @@ export class PeerMeshService {
     else if (states.some((state) => state === "failed")) this.iceState.set("failed");
     else if (states.some((state) => state === "connected" || state === "completed")) this.iceState.set("connected");
     else this.iceState.set(states[0] || "new");
+    const paths = [...this.peers.values()].map((peer) => peer.icePath);
+    if (paths.includes("infrastructure-relay")) this.icePath.set("infrastructure-relay");
+    else if (paths.includes("peer-edge")) this.icePath.set("peer-edge");
+    else if (paths.includes("direct")) this.icePath.set("direct");
+    else this.icePath.set("unknown");
+  }
+
+  private shouldProtectMedia(): boolean {
+    return this.mediaE2ee.mode !== "disabled"
+      && this.optimization.dataOverlayEnabled
+      && this.mediaE2eeController?.supported === true;
+  }
+
+  private outboundMediaContext(publicationId: string, targetPeerId: string): string {
+    return `out:${publicationId}:${targetPeerId}`;
+  }
+
+  private inboundMediaContext(senderPeerId: string, publicationId: string): string {
+    return `in:${senderPeerId}:${publicationId}`;
+  }
+
+  private provisionMediaKeysForPeer(peerId: string): void {
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
+    for (const publication of this.publications.values()) {
+      if (publication.local && peer.senders.has(publication.id)) this.provisionMediaKey(publication, peer);
+    }
+  }
+
+  private provisionMediaKey(publication: Publication, peer: PeerState): void {
+    if (!publication.local || !this.shouldProtectMedia() || !this.membershipStable
+      || this.membershipEpoch() < 1 || this.routeEpoch() < 1 || !this.overlay.hasPeerKey(peer.id)) return;
+    const contextId = this.outboundMediaContext(publication.id, peer.id);
+    const current = this.pendingMediaKeys.get(contextId);
+    if (current?.message.membershipEpoch === this.membershipEpoch()) return;
+    if (current) this.destroyPendingMediaKey(current);
+    const generated = randomMediaKey();
+    const message = createMediaKeyMessage({
+      publicationId: publication.id,
+      senderPeerId: this.ownId,
+      membershipEpoch: this.membershipEpoch(),
+      keyId: generated.keyId,
+      baseKey: generated.baseKey,
+    });
+    const pending: PendingMediaKey = {
+      contextId,
+      targetPeerId: peer.id,
+      message,
+      baseKey: generated.baseKey,
+      retries: 0,
+      timer: null,
+    };
+    this.pendingMediaKeys.set(contextId, pending);
+    this.mediaE2eeState.set("pending");
+    void this.sendPendingMediaKey(pending);
+  }
+
+  private async sendPendingMediaKey(pending: PendingMediaKey): Promise<void> {
+    if (this.pendingMediaKeys.get(pending.contextId) !== pending
+      || pending.message.membershipEpoch !== this.membershipEpoch() || !this.membershipStable) return;
+    await this.sendOverlayData(
+      pending.targetPeerId,
+      new TextEncoder().encode(JSON.stringify(pending.message)),
+      "rekey",
+    );
+    pending.retries += 1;
+    if (pending.retries >= 60 || this.pendingMediaKeys.get(pending.contextId) !== pending) return;
+    pending.timer = setTimeout(() => void this.sendPendingMediaKey(pending), 1_000);
+  }
+
+  private async acceptMediaE2eeEnvelope(originPeerId: string, data: Uint8Array): Promise<void> {
+    let raw: unknown;
+    try { raw = JSON.parse(new TextDecoder().decode(data)); } catch { return; }
+    const message = parseMediaE2eeMessage(raw);
+    if (!message || message.membershipEpoch !== this.membershipEpoch() || !this.membershipStable) return;
+    if (message.type === "media-key") {
+      if (message.senderPeerId !== originPeerId || !this.peers.has(originPeerId) || !this.shouldProtectMedia()) return;
+      const key = decodeMediaBaseKey(message);
+      const installed = this.mediaE2eeController?.setReceiverKey(
+        this.inboundMediaContext(originPeerId, message.publicationId),
+        message.keyId,
+        key,
+      ) === true;
+      key.fill(0);
+      if (!installed) {
+        if (this.mediaE2ee.mode === "required") this.mediaE2eeState.set("unsupported");
+        return;
+      }
+      this.activeReceiverMediaContexts.add(this.inboundMediaContext(originPeerId, message.publicationId));
+      await this.sendOverlayData(
+        originPeerId,
+        new TextEncoder().encode(JSON.stringify(createMediaKeyAck(message))),
+        "rekey",
+      );
+      this.refreshMediaE2eeState();
+      return;
+    }
+    if (message.senderPeerId !== this.ownId) return;
+    const contextId = this.outboundMediaContext(message.publicationId, originPeerId);
+    const pending = this.pendingMediaKeys.get(contextId);
+    if (!pending || pending.message.membershipEpoch !== message.membershipEpoch
+      || pending.message.keyId !== message.keyId) return;
+    const installed = this.mediaE2eeController?.setSenderKey(
+      contextId,
+      message.keyId,
+      pending.baseKey,
+    ) === true;
+    if (installed) this.activeSenderMediaContexts.add(contextId);
+    this.destroyPendingMediaKey(pending);
+    this.pendingMediaKeys.delete(contextId);
+    if (installed) this.refreshMediaE2eeState();
+    else this.mediaE2eeState.set("unsupported");
+  }
+
+  private rotateMediaKeys(): void {
+    if (!this.shouldProtectMedia()) return;
+    this.clearAllMediaKeys();
+    this.membershipStable = true;
+    this.mediaE2eeState.set("pending");
+    for (const peer of this.peers.values()) this.provisionMediaKeysForPeer(peer.id);
+  }
+
+  private clearPublicationMediaKeys(publication: Publication): void {
+    for (const peer of this.peers.values()) {
+      const contextId = this.outboundMediaContext(publication.id, peer.id);
+      const pending = this.pendingMediaKeys.get(contextId);
+      if (pending) this.destroyPendingMediaKey(pending);
+      this.pendingMediaKeys.delete(contextId);
+      this.activeSenderMediaContexts.delete(contextId);
+      this.mediaE2eeController?.clearContext(contextId);
+    }
+    if (!publication.local) {
+      const contextId = this.inboundMediaContext(publication.rootPeerId, publication.id);
+      this.activeReceiverMediaContexts.delete(contextId);
+      this.mediaE2eeController?.clearContext(contextId);
+    }
+    this.refreshMediaE2eeState();
+  }
+
+  private clearAllMediaKeys(): void {
+    for (const pending of this.pendingMediaKeys.values()) this.destroyPendingMediaKey(pending);
+    this.pendingMediaKeys.clear();
+    this.activeSenderMediaContexts.clear();
+    this.activeReceiverMediaContexts.clear();
+    this.mediaE2eeController?.clearKeys();
+    if (this.mediaE2ee.mode !== "disabled" && this.mediaE2eeController?.supported) {
+      this.mediaE2eeState.set("pending");
+    }
+  }
+
+  private refreshMediaE2eeState(): void {
+    if (this.mediaE2ee.mode === "disabled") {
+      this.mediaE2eeState.set("disabled");
+    } else if (!this.shouldProtectMedia()) {
+      this.mediaE2eeState.set("unsupported");
+    } else if (this.pendingMediaKeys.size > 0) {
+      this.mediaE2eeState.set("pending");
+    } else if (this.activeSenderMediaContexts.size > 0 || this.activeReceiverMediaContexts.size > 0) {
+      this.mediaE2eeState.set("active");
+    } else {
+      this.mediaE2eeState.set("pending");
+    }
+  }
+
+  private destroyPendingMediaKey(pending: PendingMediaKey): void {
+    if (pending.timer) clearTimeout(pending.timer);
+    pending.timer = null;
+    pending.baseKey.fill(0);
   }
 }

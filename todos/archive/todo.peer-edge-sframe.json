@@ -1,0 +1,216 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "peer-edge-sframe",
+  "purpose": "Den vorhandenen direkten WebRTC-Pfad um einen bevorzugten freiwilligen Edge-Relay-Fallback und RFC-9605-Frame-E2EE erweitern, ohne Membership- oder Policy-Autoritaet aus der Control Plane zu verlagern.",
+  "goal": "Jede PeerConnection versucht zuerst direkte ICE-Kandidaten, danach kurzlebig autorisierte freiwillige Edge-TURN-Knoten und erst zuletzt Betreiber-TURN. Ein optionaler nativer Edge-Agent leitet nur DTLS-SRTP-Ciphertext weiter. Audio, Kamera und Bildschirm werden zusaetzlich per RFC 9605 SFrame verschluesselt; Schluessel laufen ausschliesslich ueber den zielpeergebundenen opaque Overlay und fehlen Relay- sowie Signaling-Servern.",
+  "status": "done",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "PES-M01",
+      "title": "Audit und geschlossene Vertraege",
+      "task_ids": ["PES-001", "PES-002", "PES-003"],
+      "status": "done"
+    },
+    {
+      "id": "PES-M02",
+      "title": "Bevorzugter Edge-Relay-Pfad",
+      "task_ids": ["PES-004", "PES-005"],
+      "status": "done"
+    },
+    {
+      "id": "PES-M03",
+      "title": "SFrame und Key-Lifecycle",
+      "task_ids": ["PES-006", "PES-007", "PES-008"],
+      "status": "done"
+    },
+    {
+      "id": "PES-M04",
+      "title": "Browser-, NAT- und Release-Gates",
+      "task_ids": ["PES-009", "PES-010"],
+      "status": "done"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "PES-001",
+      "title": "Bestehende Relay-, Overlay-, ICE- und Medienpfade auditieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Control-Plane-Topologie, Trusted-Relay-Fanout, opaque Data-Overlay, PeerConnection-Lifecycle und TURN-Credential-Pfad sind anhand realer Dateien erfasst.",
+        "Trusted Decode/Re-encode Relay, TURN-Paketrelay und SFrame-Ciphertext-Fanout werden als drei unterschiedliche Sicherheitsmodelle behandelt.",
+        "Die vorhandenen nicht versionierten Self-Registration-Aenderungen bleiben unangetastet."
+      ]
+    },
+    {
+      "id": "PES-002",
+      "title": "RFC- und Browser-Machbarkeit fuer SFrame und Edge-Relay entscheiden",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["PES-001"],
+      "acceptance_criteria": [
+        "RFC 9605, W3C WebRTC Encoded Transform, ICE/TURN und die lokalen Ananta-Entscheidungsgates sind gegen den Zielpfad geprueft.",
+        "Portables Cross-PeerConnection-Forwarding codierter Browserframes wird nicht behauptet oder vorausgesetzt.",
+        "Der native Edge-Agent verwendet TURN als standardkonformen blinden Paketpfad; SFrame bleibt eine getrennte Ende-zu-Ende-Schicht."
+      ]
+    },
+    {
+      "id": "PES-003",
+      "title": "Versionierte ICE-Tier-, Edge- und Media-E2EE-Vertraege definieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["PES-002"],
+      "acceptance_criteria": [
+        "Session-Antworten trennen Direct/STUN, freiwillige Edge-TURN-Knoten und Infrastruktur-TURN mit begrenzten Eskalationszeiten.",
+        "Edge-Secrets bleiben serverseitig; Browser erhalten nur principalgebundene kurzlebige REST-Credentials.",
+        "Media-E2EE-Modi, Cipher Suite, Capability, Key-Epoch und Downgradeverhalten sind geschlossen und fail-closed.",
+        "Unbekannte Felder, Protokolle, IDs, URL-Schemata, Zeitwerte und Capabilitywerte werden abgelehnt."
+      ]
+    },
+    {
+      "id": "PES-004",
+      "title": "Direkt-Edge-Infrastruktur als gestufte ICE-Policy implementieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["PES-003"],
+      "acceptance_criteria": [
+        "Neue PeerConnections starten nur mit Host/STUN und erweitern ihre Konfiguration erst bounded um Edge-TURN und danach Infrastruktur-TURN.",
+        "Erfolgreiche direkte Verbindungen werden nicht allein durch Timer neu gestartet; Failure, Cleanup und erneute Eskalation sind idempotent.",
+        "Die UI zeigt nur die grobe aktive Pfadklasse direct, peer-edge oder infrastructure-relay und keine IP-, SDP- oder Candidate-Inhalte.",
+        "Ohne Edge-Konfiguration bleibt der bestehende Direct-zu-TURN-Fallback kompatibel."
+      ]
+    },
+    {
+      "id": "PES-005",
+      "title": "Optionalen nativen, freiwilligen Edge-TURN-Agent bauen",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["PES-003"],
+      "acceptance_criteria": [
+        "Ein eigenstaendiges Go-Binary auf Basis der gepinnten Pion-TURN-Bibliothek bietet UDP und optional TCP mit festem Relay-Portbereich.",
+        "Der Agent akzeptiert nur zeitlich begrenzte HMAC-REST-Credentials, prueft Realm und maximale Zukunfts-TTL und besitzt globale sowie nutzerbezogene Allocation-Grenzen.",
+        "Private, Loopback-, Link-Local-, Multicast- und unspezifizierte Zieladressen sind standardmaessig gesperrt; eine LAN-Freigabe ist explizit.",
+        "Shared Secret, IP-Adressen, ICE-Daten und Nutzernamen erscheinen nicht in Repository oder normalen Produktionslogs; Shutdown raeumt Listener und Allocations auf."
+      ]
+    },
+    {
+      "id": "PES-006",
+      "title": "RFC-9605-SFrame-AES-GCM und Encoded-Transform-Worker implementieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["PES-003"],
+      "acceptance_criteria": [
+        "Header, HKDF-SHA-256, AES-128-GCM, Noncebildung und AAD entsprechen Cipher Suite 0x0004 und bestehen die offiziellen RFC-Testvektoren.",
+        "RTCRtpScriptTransform verschluesselt vor dem Sender-Paketizer und entschluesselt nach dem Receiver-Depaketizer in einem Worker.",
+        "Jeder Sendekontext besitzt einen monotonen 64-Bit-Counter; Counter-/Key-Wiederverwendung, unbekannte KIDs, Auth-Fehler und Replay werden verworfen.",
+        "Fehlende Transformfaehigkeit sendet im required-Modus niemals Klartextmedien."
+      ]
+    },
+    {
+      "id": "PES-007",
+      "title": "Raum-, Peer- und Epoch-gebundenen SFrame-Key-Lifecycle integrieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["PES-006"],
+      "acceptance_criteria": [
+        "Pro Publikation und Membership-Epoch entsteht frisches zufaelliges Sender-Key-Material; Join, Leave und Reconnect rotieren es.",
+        "Keys werden ausschliesslich im zielpeergebundenen ECDH/AES-GCM-Overlay als rekey-Klasse verteilt und vor Aktivierung quittiert.",
+        "Signaling-, TURN- und Edge-Server erhalten weder Base-Key noch Klartext; ausgetretene Peers erhalten keine neue Epoch.",
+        "Leave, Track-Stop, Peer-Remove und Destroy entfernen Timer, Transformzustand und erreichbare rohe Key-Bytes."
+      ]
+    },
+    {
+      "id": "PES-008",
+      "title": "Blind-Relay-Policy, Consent und Downgrade-Schutz integrieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["PES-004", "PES-007"],
+      "acceptance_criteria": [
+        "Required-SFrame deaktiviert den vorhandenen Decode/Re-encode-Medienfanout; er kann nicht still als blindes Relay erscheinen.",
+        "Der opaque Daten-Relay bleibt consentiert, leasegebunden, revokabel und kann keine SFrame- oder Overlay-Nutzdaten entschluesseln.",
+        "Browser zeigen required, active, pending oder unsupported sowie die Folgen eines freiwilligen Edge-Betriebs zugaenglich an.",
+        "Ein Capability- oder Key-Downgrade fuehrt zu sichtbar fehlenden Medien statt zu unverschluesseltem Fallback."
+      ]
+    },
+    {
+      "id": "PES-009",
+      "title": "Contract-, Crypto-, Browser-, NAT- und Negativgates ausbauen",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["PES-005", "PES-008"],
+      "acceptance_criteria": [
+        "Unit-Tests pruefen RFC-Vektoren, Headergrenzen, Auth-Tampering, Replay, Epochwechsel, Ack vor Aktivierung und vollstaendiges Cleanup.",
+        "Integrationstests belegen getrennte ICE-Tiers, kurzlebige Edge-Credentials, unbekannte Felder sowie fehlende oder abgelaufene Secrets.",
+        "Echte Chromium- und Firefox-Kontexte belegen Frame-Transform ohne automatische Capture-Anfrage oder melden fehlende Browserfaehigkeit als sichtbaren Skip.",
+        "Ein echter TURN-Allokationstest gegen den Edge-Agent belegt Relay oder bleibt mit konkreter Infrastrukturbegruendung sichtbar uebersprungen."
+      ]
+    },
+    {
+      "id": "PES-010",
+      "title": "Betriebsdokumentation, Herkunft, Backlog und Release-Gates abschliessen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["PES-009"],
+      "acceptance_criteria": [
+        "README, AGENTS-Herkunftsmatrix und Edge-Agent-Runbook beschreiben Ports, Portweiterleitung, IPv6/NAT-Grenzen, Secrets, Quoten und Fallbacks korrekt.",
+        "Es wird nicht behauptet, ein nicht erreichbarer Rechner koenne ohne erreichbaren Relay-Pfad selbst zum Relay werden oder SFrame ersetze Membership-Policy.",
+        "PROD-SEC-003 und PROD-NET-004 werden nur entsprechend realer Implementierungs- und Browser-Evidence aktualisiert.",
+        "npm run check, npm audit --omit=dev, Compose-Validierung, Edge-Go-Tests und Produktionsbuild sind erfolgreich; externe Live-Gates melden fehlende Infrastruktur sichtbar."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["PES-001", "PES-002", "PES-003", "PES-004", "PES-005", "PES-006", "PES-007", "PES-008", "PES-009", "PES-010"],
+  "tasks_status_summary": {
+    "total": 10,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 10 },
+    "progress_percent_done": 100,
+    "by_priority": { "P0": 9, "P1": 1, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 0, "high": 2, "critical": 8 },
+    "critical_path": { "total": 10, "done": 10, "remaining": 0 },
+    "milestones": { "total": 4, "todo": 0, "in_progress": 0, "blocked": 0, "done": 4 }
+  },
+  "progress_summary": {
+    "state": "done",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 10
+  },
+  "summary_notes": [
+    "Control Plane bleibt Owner von Membership, Epochen, Relay-Policy und kurzlebigen Credentials; Edge-Agent und Browser erzeugen keine zusaetzliche Autoritaet.",
+    "Ein freiwilliger Edge-Agent hilft nur, wenn seine TURN- und Relay-Ports fuer andere Teilnehmer erreichbar sind; CGNAT ohne Public IPv6, Portmapping oder vorgelagerten Relay bleibt eine harte Netzgrenze.",
+    "Der vorhandene Browser-Trusted-Relay verarbeitet Klartext nach der SFrame-Entschluesselung und ist deshalb kein blindes Relay; required-SFrame darf diesen Pfad nicht verwenden.",
+    "SFrame schuetzt Medienframes, aber ersetzt weder die hopweise DTLS-SRTP-Verschluesselung noch authentisierte Membership, Key-Verteilung oder Nutzerconsent.",
+    "RFC-9605-Suite-4-Vektoren, Manipulation, Replay, parallele Counterreservierung und Cleanup bestehen; aktuelle Chromium- und Firefox-Kontexte belegen SFrame-Medien ohne automatische Capture-Anfrage.",
+    "Der Pion-Agent besteht echte REST-authentisierte TURN-Allokation, Unit-Tests, Race Detector, Compose-Validierung und Scratch-Produktionsbuild.",
+    "npm run check, npm audit --omit=dev sowie beide Produktions-Docker-Builds bestehen; der externe Keycloak/Coturn-Gate meldet ohne explizite Testzugaenge einen sichtbaren Skip.",
+    "tasks[] ist die Source of Truth; die Abschlusssummen wurden mit npm run todos:validate geprueft."
+  ]
+}

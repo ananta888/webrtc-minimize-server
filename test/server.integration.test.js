@@ -137,6 +137,11 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
     },
     pairParticipants: 2,
     turnConfigured: false,
+    edgeRelayConfigured: false,
+    mediaE2ee: {
+      mode: "required",
+      cipherSuite: "AES_128_GCM_SHA256_128",
+    },
     optimization: {
       activeSpeakerLimit: 5,
       peerRelayEnabled: true,
@@ -465,6 +470,30 @@ test("authorized sessions receive ephemeral TURN credentials", async (context) =
   const authorization = await authorize(app, "room-turn", "Ada");
   assert.equal(authorization.response.status, 201);
   assert.equal(authorization.body.iceServers.length, 2);
+  assert.deepEqual(authorization.body.icePolicy.directIceServers, [{ urls: "stun:stun.test:3478" }]);
+  assert.deepEqual(authorization.body.icePolicy.peerRelayIceServers, []);
+  assert.equal(authorization.body.icePolicy.infrastructureRelayIceServers.length, 1);
+  assert.equal(authorization.body.icePolicy.peerRelayAfterMs, 4_000);
+  assert.equal(authorization.body.icePolicy.infrastructureRelayAfterMs, 9_000);
   assert.match(authorization.body.iceServers[1].username, /^\d+:[a-f0-9]{20}$/);
   assert.equal(authorization.body.iceServers[1].credentialType, "password");
+});
+
+test("authorized sessions keep Edge-TURN credentials in the second ICE tier", async (context) => {
+  const app = await startTestServer({
+    edgeTurnServers: [{
+      id: "edge-one",
+      urls: ["turn:edge.test:3478?transport=udp"],
+      sharedSecret: "0123456789abcdef0123456789abcdef",
+      realm: "edge.test",
+    }],
+    turnCredentialTtlMs: 600_000,
+  });
+  context.after(() => app.close());
+  const authorization = await authorize(app, "room-edge", "Ada");
+  assert.equal(authorization.response.status, 201);
+  assert.equal(authorization.body.icePolicy.peerRelayIceServers.length, 1);
+  assert.match(authorization.body.icePolicy.peerRelayIceServers[0].username, /^\d+:[a-f0-9]{20}$/);
+  assert.deepEqual(authorization.body.icePolicy.infrastructureRelayIceServers, []);
+  assert.equal(JSON.stringify(authorization.body).includes("0123456789abcdef0123456789abcdef"), false);
 });

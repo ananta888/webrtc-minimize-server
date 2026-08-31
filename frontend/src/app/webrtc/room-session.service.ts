@@ -3,6 +3,7 @@ import { Injectable, signal } from "@angular/core";
 import { OidcAuthService } from "../auth/oidc-auth.service";
 import { RuntimeConfigService } from "../core/runtime-config.service";
 import { DeviceIdentityService } from "../identity/device-identity.service";
+import { IceTierPolicy, parseIceTierPolicy } from "./ice-policy";
 import { PeerMeshService } from "./peer-mesh.service";
 import { ServerMessage, SignalingService } from "./signaling.service";
 
@@ -11,6 +12,7 @@ export type RoomMode = "room" | "pair";
 interface SessionResponse {
   readonly signalingPath: string;
   readonly iceServers: readonly RTCIceServer[];
+  readonly icePolicy: unknown;
   readonly identity: Readonly<{ authenticated: boolean; displayName?: string }>;
   readonly workspace?: Readonly<{ workspaceId: string; role: "owner" | "editor" | "viewer" }> | null;
 }
@@ -77,7 +79,8 @@ export class RoomSessionService {
         }),
       });
       const body = await response.json() as SessionResponse & { error?: string };
-      if (!response.ok || !body.signalingPath || !Array.isArray(body.iceServers)) {
+      const icePolicy = parseIceTierPolicy(body.icePolicy);
+      if (!response.ok || !body.signalingPath || !Array.isArray(body.iceServers) || !icePolicy) {
         throw new Error(body.error || "session_authorization_failed");
       }
       this.roomId.set(normalizedRoom);
@@ -93,7 +96,7 @@ export class RoomSessionService {
       this.workspaceRole.set(body.workspace?.role || "");
       this.signaling.connect(
         body.signalingPath,
-        (message) => this.handleMessage(message, body.iceServers),
+        (message) => this.handleMessage(message, icePolicy),
         () => {
           this.mesh.close();
           this.joined.set(false);
@@ -113,10 +116,16 @@ export class RoomSessionService {
     this.workspaceRole.set("");
   }
 
-  private handleMessage(message: ServerMessage, iceServers: readonly RTCIceServer[]): void {
+  private handleMessage(message: ServerMessage, icePolicy: IceTierPolicy): void {
     if (message.type === "welcome") {
       const ownId = String(message["peerId"] || "");
-      this.mesh.initialize(ownId, this.displayName(), iceServers, this.config.value()?.optimization);
+      this.mesh.initialize(
+        ownId,
+        this.displayName(),
+        icePolicy,
+        this.config.value()?.optimization,
+        this.config.value()?.mediaE2ee,
+      );
       const peers = Array.isArray(message["peers"]) ? message["peers"] as Array<{ id: string; name: string }> : [];
       for (const peer of peers) this.mesh.addPeer(peer.id, peer.name);
       this.joined.set(true);

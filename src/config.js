@@ -25,6 +25,10 @@ const DEFAULTS = Object.freeze({
   turnSharedSecret: "",
   turnRealm: "webrtc.local",
   turnCredentialTtlMs: 10 * 60 * 1000,
+  edgeTurnServers: [],
+  peerEdgeFallbackMs: 4_000,
+  infrastructureTurnFallbackMs: 9_000,
+  mediaE2eeMode: "required",
   peerMediaRelayEnabled: true,
   peerMediaRelayMinParticipants: 6,
   peerMediaRelayMaxChildren: 3,
@@ -40,7 +44,9 @@ const DEFAULTS = Object.freeze({
 });
 
 const AUTH_MODES = new Set(["disabled", "optional", "required"]);
+const MEDIA_E2EE_MODES = new Set(["disabled", "preferred", "required"]);
 const OIDC_ALGORITHMS = Object.freeze(["RS256", "ES256", "RS384", "RS512"]);
+const EDGE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 
 function boundedInteger(value, fallback, { minimum, maximum, name }) {
   if (value === undefined || value === "") return fallback;
@@ -75,6 +81,58 @@ function parseTurnServers(raw) {
       ...(typeof entry.username === "string" ? { username: entry.username } : {}),
       ...(typeof entry.credential === "string" ? { credential: entry.credential } : {}),
     };
+  });
+}
+
+function parseTurnUrls(value, name) {
+  const urls = typeof value === "string"
+    ? [value]
+    : Array.isArray(value) && value.every((url) => typeof url === "string")
+      ? value
+      : null;
+  if (!urls || urls.length < 1 || urls.length > 8
+    || urls.some((url) => !/^turns?:[^\s]+$/i.test(url))) {
+    throw new Error(`${name} must contain 1-8 turn: or turns: URLs`);
+  }
+  return [...new Set(urls)];
+}
+
+function parseEdgeTurnServers(raw) {
+  if (!raw) return [];
+  let value;
+  try {
+    value = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`EDGE_TURN_SERVERS_JSON must contain valid JSON: ${error.message}`);
+  }
+  if (!Array.isArray(value) || value.length > 8) {
+    throw new Error("EDGE_TURN_SERVERS_JSON must be an array with at most 8 entries");
+  }
+  const ids = new Set();
+  return value.map((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)
+      || Object.keys(entry).some((key) => !new Set(["id", "urls", "sharedSecret", "realm"]).has(key))) {
+      throw new Error(`EDGE_TURN_SERVERS_JSON[${index}] contains an invalid entry or field`);
+    }
+    const id = String(entry.id || "");
+    if (!EDGE_ID_PATTERN.test(id) || ids.has(id)) {
+      throw new Error(`EDGE_TURN_SERVERS_JSON[${index}].id must be unique lowercase letters, digits or dashes`);
+    }
+    ids.add(id);
+    const sharedSecret = String(entry.sharedSecret || "");
+    if (sharedSecret.length < 32 || sharedSecret.length > 512 || /[\u0000-\u001f\u007f]/.test(sharedSecret)) {
+      throw new Error(`EDGE_TURN_SERVERS_JSON[${index}].sharedSecret must contain 32-512 printable characters`);
+    }
+    const realm = String(entry.realm || "");
+    if (!realm || realm.length > 253 || /[\u0000-\u0020\u007f]/.test(realm)) {
+      throw new Error(`EDGE_TURN_SERVERS_JSON[${index}].realm is invalid`);
+    }
+    return Object.freeze({
+      id,
+      urls: Object.freeze(parseTurnUrls(entry.urls, `EDGE_TURN_SERVERS_JSON[${index}].urls`)),
+      sharedSecret,
+      realm,
+    });
   });
 }
 
@@ -153,6 +211,30 @@ export function loadConfig(env = process.env) {
   if ((turnUrls.length > 0) !== Boolean(turnSharedSecret)) {
     throw new Error("TURN_URLS and TURN_SHARED_SECRET must be configured together");
   }
+  const edgeTurnServers = parseEdgeTurnServers(env.EDGE_TURN_SERVERS_JSON);
+  const peerEdgeFallbackMs = boundedInteger(env.PEER_EDGE_FALLBACK_MS, DEFAULTS.peerEdgeFallbackMs, {
+    minimum: 1_000, maximum: 30_000, name: "PEER_EDGE_FALLBACK_MS",
+  });
+  const infrastructureTurnFallbackMs = boundedInteger(
+    env.INFRASTRUCTURE_TURN_FALLBACK_MS,
+    DEFAULTS.infrastructureTurnFallbackMs,
+    { minimum: 2_000, maximum: 60_000, name: "INFRASTRUCTURE_TURN_FALLBACK_MS" },
+  );
+  if (infrastructureTurnFallbackMs <= peerEdgeFallbackMs) {
+    throw new Error("INFRASTRUCTURE_TURN_FALLBACK_MS must be longer than PEER_EDGE_FALLBACK_MS");
+  }
+  const mediaE2eeMode = String(env.MEDIA_E2EE_MODE || DEFAULTS.mediaE2eeMode).toLowerCase();
+  if (!MEDIA_E2EE_MODES.has(mediaE2eeMode)) {
+    throw new Error("MEDIA_E2EE_MODE must be disabled, preferred or required");
+  }
+  const peerDataOverlayEnabled = booleanValue(
+    env.PEER_DATA_OVERLAY_ENABLED,
+    DEFAULTS.peerDataOverlayEnabled,
+    "PEER_DATA_OVERLAY_ENABLED",
+  );
+  if (mediaE2eeMode === "required" && !peerDataOverlayEnabled) {
+    throw new Error("MEDIA_E2EE_MODE=required requires PEER_DATA_OVERLAY_ENABLED=true for key delivery");
+  }
   const peerRouteLeaseMs = boundedInteger(env.PEER_ROUTE_LEASE_MS, DEFAULTS.peerRouteLeaseMs, {
     minimum: 30_000, maximum: 300_000, name: "PEER_ROUTE_LEASE_MS",
   });
@@ -209,6 +291,10 @@ export function loadConfig(env = process.env) {
     turnCredentialTtlMs: boundedInteger(env.TURN_CREDENTIAL_TTL_MS, DEFAULTS.turnCredentialTtlMs, {
       minimum: 60_000, maximum: 24 * 60 * 60 * 1000, name: "TURN_CREDENTIAL_TTL_MS",
     }),
+    edgeTurnServers: Object.freeze(edgeTurnServers),
+    peerEdgeFallbackMs,
+    infrastructureTurnFallbackMs,
+    mediaE2eeMode,
     peerMediaRelayEnabled: booleanValue(
       env.PEER_MEDIA_RELAY_ENABLED,
       DEFAULTS.peerMediaRelayEnabled,
@@ -241,11 +327,7 @@ export function loadConfig(env = process.env) {
       DEFAULTS.peerRelayHealthCooldownMs,
       { minimum: 30_000, maximum: 10 * 60_000, name: "PEER_RELAY_HEALTH_COOLDOWN_MS" },
     ),
-    peerDataOverlayEnabled: booleanValue(
-      env.PEER_DATA_OVERLAY_ENABLED,
-      DEFAULTS.peerDataOverlayEnabled,
-      "PEER_DATA_OVERLAY_ENABLED",
-    ),
+    peerDataOverlayEnabled,
     pairWorkspaceEnabled: booleanValue(
       env.PAIR_WORKSPACE_ENABLED,
       DEFAULTS.pairWorkspaceEnabled,
