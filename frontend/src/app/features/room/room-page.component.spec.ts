@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const template = readFileSync("frontend/src/app/features/room/room-page.component.html", "utf8");
 const component = readFileSync("frontend/src/app/features/room/room-page.component.ts", "utf8");
+const mediaControls = readFileSync("frontend/src/app/shared/media-control-bar.component.ts", "utf8");
 
 describe("Room page information architecture", () => {
   it("offers explicit navigation and separate public and owner room collections", () => {
@@ -23,14 +24,16 @@ describe("Room page information architecture", () => {
   });
 
   it("binds every capture source to its visible control and stops tracks before room switching", () => {
-    expect(template).toContain('id="toggle-microphone"');
-    expect(template).toContain('(click)="media.toggle(\'microphone\')"');
-    expect(template).toContain('id="toggle-camera"');
-    expect(template).toContain('(click)="media.toggle(\'camera\')"');
-    expect(template).toContain('id="toggle-screen"');
-    expect(template).toContain('(click)="media.toggle(\'screen\')"');
-    expect(template).not.toContain("getUserMedia");
-    expect(template).not.toContain("getDisplayMedia");
+    expect(template).toContain("session.joined() && activeSection() !== 'live'");
+    expect(template.match(/<app-media-control-bar/g)).toHaveLength(2);
+    expect(mediaControls).toContain('id="toggle-microphone"');
+    expect(mediaControls).toContain('(click)="media.toggle(\'microphone\')"');
+    expect(mediaControls).toContain('id="toggle-camera"');
+    expect(mediaControls).toContain('(click)="media.toggle(\'camera\')"');
+    expect(mediaControls).toContain('id="toggle-screen"');
+    expect(mediaControls).toContain('(click)="media.toggle(\'screen\')"');
+    expect(mediaControls).not.toContain("getUserMedia");
+    expect(mediaControls).not.toContain("getDisplayMedia");
     expect(component.indexOf("if (this.session.joined()) this.media.stopAll();"))
       .toBeLessThan(component.indexOf("await this.session.join(room, name, mode);"));
   });

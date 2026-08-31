@@ -9,6 +9,7 @@ import {
   RoomSummary,
   RoomVisibility,
 } from "../../rooms/room-directory.service";
+import { MediaControlBarComponent } from "../../shared/media-control-bar.component";
 import { MediaStreamDirective } from "../../shared/media-stream.directive";
 import { MediaMosaicComponent } from "../../shared/media-mosaic.component";
 import { OptimizationMode } from "../../webrtc/media-optimization-policy";
@@ -24,7 +25,13 @@ type AppSection = "rooms" | "live" | "chat" | "settings";
 @Component({
   selector: "app-room-page",
   standalone: true,
-  imports: [FormsModule, MediaStreamDirective, MediaMosaicComponent, PairWorkspacePanelComponent],
+  imports: [
+    FormsModule,
+    MediaControlBarComponent,
+    MediaStreamDirective,
+    MediaMosaicComponent,
+    PairWorkspacePanelComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: "./room-page.component.html",
 })

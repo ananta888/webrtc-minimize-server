@@ -1,0 +1,64 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "persistent-media-controls",
+  "purpose": "Bildschirmfreigabe und die uebrigen lokalen Medienaktionen bleiben waehrend jeder aktiven Room- oder Pair-Session unabhaengig von der gewaehlten Menueansicht sichtbar erreichbar.",
+  "goal": "Nutzer finden Bildschirmteilen im normalen Raum und in Pair Dev jederzeit in einer konsistenten Medienleiste, ohne dass Navigation oder Sessionbeitritt selbst Capture ausloesen.",
+  "status": "in_progress",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "PMC-M01",
+      "title": "Dauerhafte Mediensteuerung implementieren und ausrollen",
+      "task_ids": ["PMC-001"],
+      "status": "in_progress"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "PMC-001",
+      "title": "Medienleiste in jeder aktiven Room- und Pair-Ansicht bereitstellen",
+      "status": "in_progress",
+      "priority": "P0",
+      "risk": "medium",
+      "progress_percent": 95,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Mikrofon, Kamera, Bildschirmteilen und Verlassen werden durch eine wiederverwendbare Control-Bar dargestellt; der Bildschirm-Pfad besitzt keine Room-/Pair-Sonderbedingung.",
+        "In der Live-Ansicht ist die Leiste in der Stage angeordnet; in Raumuebersicht, Chat und Einstellungen bleibt sie bei aktiver Session als dauerhaft sichtbarer Dock erreichbar.",
+        "Vor einem erfolgreichen Join ist keine aktive Dock-Steuerung sichtbar und keine Capture-API wird beim Laden, Join oder Menuewechsel aufgerufen.",
+        "Ein echter Browsergate prueft normalen Raum und Pair Dev sowie das Stoppen einer laufenden Bildschirmfreigabe nach einem Menuewechsel.",
+        "npm run check besteht, der Stand ist gepusht und der bestehende WebRTC-Dienst auf dem Mini-PC ohne Aenderung an Caddy, Keycloak oder Coturn aktualisiert."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["PMC-001"],
+  "tasks_status_summary": {
+    "total": 1,
+    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 0 },
+    "progress_percent_done": 0,
+    "by_priority": { "P0": 1, "P1": 0, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 0, "critical": 0 },
+    "critical_path": { "total": 1, "done": 0, "remaining": 1 },
+    "milestones": { "total": 1, "todo": 0, "in_progress": 1, "blocked": 0, "done": 0 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 0,
+    "in_progress": 1,
+    "partial": 0,
+    "blocked": 0,
+    "done": 0
+  },
+  "summary_notes": [
+    "Immer moeglich bedeutet innerhalb einer autorisierten aktiven Session; vor Membership bleibt Capture gemaess Sicherheitsregel gesperrt.",
+    "Alle Capture-Quellen bleiben getrennt, idempotent stoppbar und ausschliesslich an ihren sichtbaren lokalen Klick gebunden.",
+    "Browsernachweis: Ein normaler Raum und Pair Dev starteten und stoppten Bildschirmfreigabe ueber dieselbe mode-unabhaengige Control-Bar; Laden und Join erzeugten jeweils null Capture-Aufrufe.",
+    "Navigationsnachweis: Eine laufende Bildschirmfreigabe blieb beim Wechsel Chat zu Einstellungen beziehungsweise Chat zu Raeume steuerbar und wurde dort explizit beendet.",
+    "Visueller Nachweis: Chromium-Renderings mit 1440x1000 und 390x844 zeigten den vollstaendigen Session-Dock innerhalb des Viewports; vor Join gab es keinen Dock, danach war Bildschirm teilen aktiviert.",
+    "Abschluss-Gate: npm run check bestand mit 45 Frontend- und 62 Node-/Integrationstests einschliesslich Chromium-/Firefox-Matrix; das optionale externe Keycloak-/TURN-Gate meldete ohne explizite Credentials einen sichtbaren Skip."
+  ]
+}

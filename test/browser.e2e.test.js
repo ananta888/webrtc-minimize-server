@@ -93,9 +93,14 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   await ada.locator("#toggle-microphone", { hasText: "Mikrofon stoppen" }).waitFor();
   await grace.locator(".media-label").getByText("Ada · Mikrofon").waitFor();
 
+  await ada.locator(".nav-item", { hasText: "Chat" }).click();
+  await ada.locator(".persistent-media-dock").waitFor();
   await ada.locator("#toggle-screen").click();
   await ada.locator("#toggle-screen", { hasText: "Bildschirmfreigabe stoppen" }).waitFor();
   await grace.locator(".media-label").getByText("Ada · Bildschirm").first().waitFor();
+  await ada.locator(".nav-item", { hasText: "Einstellungen" }).click();
+  await ada.locator(".persistent-media-dock #toggle-screen", { hasText: "Bildschirmfreigabe stoppen" }).click();
+  await ada.locator(".nav-item", { hasText: "Live" }).click();
 
   assert.deepEqual(pageErrors, []);
   await ada.locator("#leave-room").click();
@@ -206,8 +211,19 @@ test("two independent Chromium devices join Pair Dev while device three is rejec
     app.server.listen(0, "127.0.0.1", resolve);
   });
   const origin = `http://127.0.0.1:${app.server.address().port}`;
-  const browser = await chromium.launch({ headless: true });
-  const contexts = await Promise.all([browser.newContext(), browser.newContext(), browser.newContext()]);
+  const browser = await chromium.launch({
+    headless: true,
+    args: [
+      "--use-fake-device-for-media-stream",
+      "--use-fake-ui-for-media-stream",
+      "--auto-select-desktop-capture-source=Entire screen",
+    ],
+  });
+  const contexts = await Promise.all([
+    browser.newContext({ permissions: ["camera", "microphone"] }),
+    browser.newContext({ permissions: ["camera", "microphone"] }),
+    browser.newContext({ permissions: ["camera", "microphone"] }),
+  ]);
   context.after(async () => {
     for (const browserContext of contexts) await browserContext.close();
     await browser.close();
@@ -247,6 +263,16 @@ test("two independent Chromium devices join Pair Dev while device three is rejec
   await owner.locator("#participant-count", { hasText: "2 / 2" }).waitFor();
   assert.deepEqual(await owner.evaluate(() => window.__captureCalls), []);
   assert.deepEqual(await peer.evaluate(() => window.__captureCalls), []);
+
+  await owner.locator("#overlay-path-status", { hasText: "Schlüsselkanal: bereit" }).waitFor({ timeout: 5_000 });
+  await owner.locator(".nav-item", { hasText: "Chat" }).click();
+  await owner.locator(".persistent-media-dock #toggle-screen").click();
+  await owner.locator(".persistent-media-dock #toggle-screen", { hasText: "Bildschirmfreigabe stoppen" }).waitFor();
+  await peer.locator(".media-label").getByText("Ada · Bildschirm").first().waitFor();
+  await owner.locator(".nav-item", { hasText: "Räume" }).click();
+  await owner.locator(".persistent-media-dock #toggle-screen", { hasText: "Bildschirmfreigabe stoppen" }).click();
+  assert.deepEqual(await owner.evaluate(() => window.__captureCalls), ["getDisplayMedia"]);
+  await owner.locator(".nav-item", { hasText: "Live" }).click();
 
   await owner.locator("#chat-message").fill("Pair verbunden");
   await owner.locator("#chat-form button").click();
