@@ -14,13 +14,13 @@
       "id": "EPR-M01",
       "title": "Preflight und veroeffentlichter Stand",
       "task_ids": ["EPR-001", "EPR-002"],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "EPR-M02",
       "title": "Produktions- und Edge-Rollout",
       "task_ids": ["EPR-003", "EPR-004"],
-      "status": "todo"
+      "status": "in_progress"
     },
     {
       "id": "EPR-M03",
@@ -47,10 +47,10 @@
     {
       "id": "EPR-002",
       "title": "Geprueften Projektstand gezielt committen und pushen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 5,
+      "progress_percent": 100,
       "depends_on": ["EPR-001"],
       "acceptance_criteria": [
         "Nur gepruefte Projektdateien werden gezielt gestaged; .env, Secrets, Zertifikatschluessel und generierte Artefakte fehlen im Commit.",
@@ -61,10 +61,10 @@
     {
       "id": "EPR-003",
       "title": "Aktuellen Stand auf dem Mini-PC ohne zweiten Caddy ausrollen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["EPR-002"],
       "acceptance_criteria": [
         "Das bestehende Deployment wird gesichert beziehungsweise reproduzierbar aktualisiert; der vorhandene Caddy bleibt alleiniger Listener auf 80/443.",
@@ -75,10 +75,10 @@
     {
       "id": "EPR-004",
       "title": "Laptop als begrenzten freiwilligen Edge-TURN-Agent aktivieren",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 35,
       "depends_on": ["EPR-001", "EPR-002"],
       "acceptance_criteria": [
         "Ein neues zufaelliges Shared Secret liegt ausschliesslich in nicht versionierten .env-Dateien auf Laptop und Control Plane.",
@@ -104,26 +104,30 @@
   "critical_path_tasks": ["EPR-001", "EPR-002", "EPR-003", "EPR-004", "EPR-005"],
   "tasks_status_summary": {
     "total": 5,
-    "by_status": { "todo": 3, "in_progress": 1, "partial": 0, "blocked": 0, "done": 1 },
-    "progress_percent_done": 20,
+    "by_status": { "todo": 1, "in_progress": 1, "partial": 0, "blocked": 0, "done": 3 },
+    "progress_percent_done": 60,
     "by_priority": { "P0": 4, "P1": 1, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 2, "critical": 3 },
-    "critical_path": { "total": 5, "done": 1, "remaining": 4 },
-    "milestones": { "total": 3, "todo": 2, "in_progress": 1, "blocked": 0, "done": 0 }
+    "critical_path": { "total": 5, "done": 3, "remaining": 2 },
+    "milestones": { "total": 3, "todo": 1, "in_progress": 1, "blocked": 0, "done": 1 }
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 3,
+    "todo_remaining": 1,
     "in_progress": 1,
     "partial": 0,
     "blocked": 0,
-    "done": 1
+    "done": 3
   },
   "summary_notes": [
     "Der Laptop darf nur dann als produktiver Edge registriert werden, wenn andere Teilnehmer seine Listener- und Relay-Ports real erreichen koennen.",
     "Ein Edge-Agent erzeugt keine Membership- oder Policy-Autoritaet und ersetzt weder Keycloak noch die Signaling Control Plane.",
     "Router-, Provider- oder Windows-Firewallaenderungen werden nur vorgenommen, soweit der Nutzer dafuer bereits Zugriff und Autoritaet bereitgestellt hat.",
     "Preflight: Oracle-Caddy leitet den App-Pfad ueber minipc.ananta.de an den vorhandenen Mini-PC-Caddy weiter; Laptop-Windows ist 192.168.178.88, WSL2 laeuft im NAT-Modus und eignet sich deshalb nicht als direkter UDP-Listener.",
+    "Commit 2930c53573375318ff573e3ceec79a816b42e0e3 wurde nach Secret-/Artefaktpruefung erfolgreich auf origin/main veroeffentlicht.",
+    "Mini-PC: lokaler Vorzustand wurde als Patch/Dateikopie und Git-Stash gesichert, origin/main fast-forward uebernommen und der vorhandene einzelne Caddy-Pfad mit neu gebauter App, required SFrame, OIDC, Healthz und Ticket-abweisendem WebSocket verifiziert.",
+    "Laptop: nativer Windows-Agent lauscht begrenzt auf 3478 UDP/TCP; Autostart und private Konfiguration sind eingerichtet, Firewallregeln wurden per UAC auf Binary, WLAN und 3478/49160-49223 begrenzt.",
+    "FRITZ!Box lehnt IGD AddPortMapping mit 403 ab, bietet aber erfolgreiches PCP an; deshalb wird der selbst erneuernde PCP-Pfad vor einer Edge-Registrierung implementiert und real extern geprueft.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
   ]
 }

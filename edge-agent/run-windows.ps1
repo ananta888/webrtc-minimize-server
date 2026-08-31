@@ -16,7 +16,9 @@ $allowed = [System.Collections.Generic.HashSet[string]]::new([System.StringCompa
     "EDGE_AGENT_MAX_ALLOCATIONS",
     "EDGE_AGENT_MAX_USER_ALLOCATIONS",
     "EDGE_AGENT_ENABLE_TCP",
-    "EDGE_AGENT_ALLOW_PRIVATE_PEERS"
+    "EDGE_AGENT_ALLOW_PRIVATE_PEERS",
+    "EDGE_AGENT_PCP_GATEWAY",
+    "EDGE_AGENT_PCP_LIFETIME_SECONDS"
 ) | ForEach-Object { [void]$allowed.Add($_) }
 
 $configPath = if ($env:EDGE_AGENT_CONFIG) {

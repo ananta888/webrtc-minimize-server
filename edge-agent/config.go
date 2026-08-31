@@ -22,6 +22,8 @@ type config struct {
 	allocationTTL      time.Duration
 	maxAllocations     int
 	maxUserAllocations int
+	pcpGateway         net.IP
+	pcpLifetime        time.Duration
 }
 
 type envReader func(string) string
@@ -80,11 +82,30 @@ func loadConfig(getenv envReader) (config, error) {
 	if err != nil {
 		return config{}, err
 	}
+	if port >= minPort && port <= maxPort {
+		return config{}, fmt.Errorf("EDGE_AGENT_PORT must be outside the relay port range")
+	}
 	enableTCP, err := envBool(getenv, "EDGE_AGENT_ENABLE_TCP", true)
 	if err != nil {
 		return config{}, err
 	}
 	allowPrivatePeers, err := envBool(getenv, "EDGE_AGENT_ALLOW_PRIVATE_PEERS", false)
+	if err != nil {
+		return config{}, err
+	}
+	var pcpGateway net.IP
+	pcpGatewayRaw := strings.TrimSpace(getenv("EDGE_AGENT_PCP_GATEWAY"))
+	if pcpGatewayRaw != "" {
+		pcpGateway = net.ParseIP(pcpGatewayRaw)
+		if pcpGateway == nil || pcpGateway.To4() == nil || !pcpGateway.IsPrivate() ||
+			pcpGateway.IsUnspecified() || pcpGateway.IsLoopback() {
+			return config{}, fmt.Errorf("EDGE_AGENT_PCP_GATEWAY must be a private IPv4 address")
+		}
+		if publicIP.To4() == nil {
+			return config{}, fmt.Errorf("EDGE_AGENT_PCP_GATEWAY currently supports only an IPv4 public address")
+		}
+	}
+	pcpLifetimeSeconds, err := envInt(getenv, "EDGE_AGENT_PCP_LIFETIME_SECONDS", 7200, 120, 86400)
 	if err != nil {
 		return config{}, err
 	}
@@ -102,6 +123,8 @@ func loadConfig(getenv envReader) (config, error) {
 		allocationTTL:      time.Duration(allocationSeconds) * time.Second,
 		maxAllocations:     maxAllocations,
 		maxUserAllocations: maxUserAllocations,
+		pcpGateway:         pcpGateway,
+		pcpLifetime:        time.Duration(pcpLifetimeSeconds) * time.Second,
 	}, nil
 }
 

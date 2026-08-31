@@ -45,14 +45,40 @@ func run() error {
 		listeners = append(listeners, tcp)
 	}
 	permissionHandler := newPermissionHandler(cfg.allowPrivatePeers)
-	newGenerator := func() *turn.RelayAddressGeneratorPortRange {
-		return &turn.RelayAddressGeneratorPortRange{
+	var mapper *pcpManager
+	if cfg.pcpGateway != nil {
+		mapper, err = newPCPManager(cfg.pcpGateway, cfg.publicIP, cfg.pcpLifetime)
+		if err != nil {
+			_ = udp.Close()
+			for _, listener := range listeners {
+				_ = listener.Close()
+			}
+			return fmt.Errorf("initialize PCP: %w", err)
+		}
+		if err = mapper.acquire(pcpProtocolUDP, uint16(cfg.port)); err == nil && cfg.enableTCP {
+			err = mapper.acquire(pcpProtocolTCP, uint16(cfg.port))
+		}
+		if err != nil {
+			_ = mapper.Close()
+			_ = udp.Close()
+			for _, listener := range listeners {
+				_ = listener.Close()
+			}
+			return fmt.Errorf("create PCP listener mapping: %w", err)
+		}
+	}
+	newGenerator := func() turn.RelayAddressGenerator {
+		base := &turn.RelayAddressGeneratorPortRange{
 			RelayAddress: cfg.publicIP,
 			Address:      cfg.listenIP.String(),
 			MinPort:      cfg.relayMinPort,
 			MaxPort:      cfg.relayMaxPort,
 			MaxRetries:   32,
 		}
+		if mapper != nil {
+			return newMappedRelayAddressGenerator(base, mapper)
+		}
+		return base
 	}
 	packetConfigs := []turn.PacketConnConfig{{
 		PacketConn:            udp,
@@ -83,6 +109,9 @@ func run() error {
 		ChannelBindTimeout: min(cfg.allocationTTL, 5*time.Minute),
 	})
 	if err != nil {
+		if mapper != nil {
+			_ = mapper.Close()
+		}
 		_ = udp.Close()
 		for _, listener := range listeners {
 			_ = listener.Close()
@@ -93,14 +122,22 @@ func run() error {
 	if cfg.enableTCP {
 		transport = "UDP/TCP"
 	}
-	log.Printf("edge-agent ready: transport=%s port=%d relay_ports=%d-%d private_peers=%t",
-		transport, cfg.port, cfg.relayMinPort, cfg.relayMaxPort, cfg.allowPrivatePeers)
+	log.Printf("edge-agent ready: transport=%s port=%d relay_ports=%d-%d private_peers=%t pcp=%t",
+		transport, cfg.port, cfg.relayMinPort, cfg.relayMaxPort, cfg.allowPrivatePeers, mapper != nil)
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, shutdownSignals()...)
 	<-shutdown
 	signal.Stop(shutdown)
-	if err := server.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-		return fmt.Errorf("close TURN server: %w", err)
+	serverCloseErr := server.Close()
+	var mapperCloseErr error
+	if mapper != nil {
+		mapperCloseErr = mapper.Close()
+	}
+	if serverCloseErr != nil && !errors.Is(serverCloseErr, net.ErrClosed) {
+		return fmt.Errorf("close TURN server: %w", serverCloseErr)
+	}
+	if mapperCloseErr != nil && !errors.Is(mapperCloseErr, net.ErrClosed) {
+		return fmt.Errorf("close PCP mapper: %w", mapperCloseErr)
 	}
 	log.Print("edge-agent stopped cleanly")
 	return nil

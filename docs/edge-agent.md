@@ -57,7 +57,7 @@ docker compose up -d --build
 docker compose logs edge-agent
 ```
 
-Normale Logs enthalten nur Start-/Stopstatus, Transport, Ports, Quotenklasse und die Private-Peer-Policy. Secrets, Nutzernamen, Peer-IP-Adressen und ICE-Inhalte werden nicht protokolliert.
+Normale Logs enthalten nur Start-/Stopstatus, Transport, Ports, Quotenklasse, die Private-Peer-Policy und aggregierten PCP-Lease-Status. Secrets, Nutzernamen, Peer-IP-Adressen und ICE-Inhalte werden nicht protokolliert.
 
 ### Windows und WSL2
 
@@ -75,6 +75,22 @@ docker run --rm --user 1000:1000 \
 ```
 
 `edge-agent.exe`, `run-windows.ps1` und die nicht versionierte `edge-agent.env` werden in einen nur für den Windows-Nutzer lesbaren Ordner kopiert. `EDGE_AGENT_PUBLIC_HOST` kann dort statt einer festen Public-IP gesetzt werden; der Launcher verlangt beim Start genau eine IPv4-Adresse und übergibt sie als `EDGE_AGENT_PUBLIC_IP`. Windows-Firewall und Router müssen weiterhin Listener- und Relay-Ports gezielt auf die Windows-LAN-Adresse freigeben.
+
+Die versionierte `configure-windows-firewall.ps1` legt nach einer sichtbaren Administratorfreigabe ausschließlich programmgebundene Regeln für den TURN-Listener und den festen UDP-Relaybereich am angegebenen Interface an. Beispiel im privaten Installationsordner:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\configure-windows-firewall.ps1 `
+  -InterfaceAlias WLAN -Port 3478 -RelayMinPort 49160 -RelayMaxPort 49259
+```
+
+Unterstützt der Router [PCP nach RFC 6887](https://www.rfc-editor.org/rfc/rfc6887.html), kann der native Agent seine eigenen endlichen Mappings explizit verwalten:
+
+```dotenv
+EDGE_AGENT_PCP_GATEWAY=192.168.178.1
+EDGE_AGENT_PCP_LIFETIME_SECONDS=7200
+```
+
+Der Agent mappt UDP/TCP 3478 erst nach erfolgreichem Listener-Bind. Einen UDP-Relayport mappt er erst nach dessen Allocation-Bind, erneuert aktive Leases mit Jitter und löscht sie beim Schließen wieder. Er akzeptiert nur dieselbe öffentliche IP und denselben externen Port, die der TURN-Allocation gemeldet werden. PCP ist standardmäßig aus und derzeit auf IPv4 beschränkt. Es darf nicht in einem WSL2-/Docker-Bridge-Netz aktiviert werden: Die PCP-Clientadresse muss der vom Router gesehenen nativen Hostadresse entsprechen. Schlägt das initiale Mapping fehl, startet der Agent fail-closed nicht als vermeintlich erreichbarer Edge.
 
 Die Defaults begrenzen den Agent auf 64 gleichzeitige Allokationen und vier je kurzlebigem Benutzer. Die Relay-Allokation lebt maximal 600 Sekunden. `EDGE_AGENT_ALLOW_PRIVATE_PEERS=false` sperrt private, Loopback-, Link-Local-, Multicast- und unspezifizierte Ziele. Die Option sollte nur für einen bewusst isolierten LAN-Test auf `true` gesetzt werden.
 
@@ -102,6 +118,8 @@ EDGE_AGENT_ENV_FILE=.env.example docker compose --env-file .env.example config -
 ```
 
 Für einen Netztest sollten zwei Browser aus unterschiedlichen Netzen verbunden werden. Die UI muss bei einem tatsächlich gewählten Agenten `peer-edge` anzeigen; bloße Erreichbarkeit von Port 3478 beweist noch keine Relay-Allokation. Eine echte NAT-/TURN-Prüfung darf fehlende externe Infrastruktur nur als sichtbaren Skip melden.
+
+Der gezielte Live-Gate `TestExternalRESTAuthenticatedTURNAllocation` bleibt ohne explizite `EDGE_AGENT_TEST_*`-Umgebung sichtbar übersprungen. Mit einem kurzzeitig in einer geschützten Shell bereitgestellten Agent-Secret prüft er eine echte REST-authentisierte UDP-Allokation von außerhalb; er gibt weder das Secret noch Relay-/Clientadressen aus.
 
 Zum Widerruf wird der Agent aus `EDGE_TURN_SERVERS_JSON` entfernt, die Control Plane neu gestartet und anschließend der Agent gestoppt. Bereits ausgestellte Credentials sind kurzlebig; bei Verdacht auf Offenlegung muss das Shared Secret auf beiden Seiten rotiert werden.
 

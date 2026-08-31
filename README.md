@@ -148,7 +148,7 @@ EDGE_TURN_SERVERS_JSON='[{"id":"edge-1","urls":["turn:edge.example.org:3478?tran
 
 ### Kapazitätsgrenze
 
-20 ist die harte Membership-Grenze je Raum, keine garantierte Medienqualität. Im SFrame-Standardpfad hält jeder Teilnehmer weiterhin bis zu 19 `RTCPeerConnection`-Verbindungen; Kamera und Screenshare werden nach Active-Speaker-, Link- und Nutzerprofil gedrosselt. SFrame schützt Inhalte, reduziert aber weder Verbindungszahl noch Publisher-Fanout. Der freiwillige Edge-Agent verbessert Erreichbarkeit bei schwierigen NAT-/Firewall-Pfaden, nicht die Mesh-Skalierung. Ein portabler, browserübergreifender Ciphertext-Medien-DAG und ein optionaler SFU-Fallback für garantierte Großraumqualität bleiben im Backlog. Nur der nicht blinde Legacy-Relay kann derzeit direkten Video-Fanout reduzieren.
+20 ist die harte Membership-Grenze je Raum, keine garantierte Medienqualität. Im SFrame-Standardpfad hält jeder Teilnehmer weiterhin bis zu 19 `RTCPeerConnection`-Verbindungen; Kamera und Screenshare werden nach Active-Speaker-, Link- und Nutzerprofil gedrosselt. SFrame schützt Inhalte, reduziert aber weder Verbindungszahl noch Publisher-Fanout. Der freiwillige Edge-Agent verbessert Erreichbarkeit bei schwierigen NAT-/Firewall-Pfaden, nicht die Mesh-Skalierung; ein geeigneter nativer Host kann seine begrenzten Port-Leases optional per PCP selbst erneuern. Ein portabler, browserübergreifender Ciphertext-Medien-DAG und ein optionaler SFU-Fallback für garantierte Großraumqualität bleiben im Backlog. Nur der nicht blinde Legacy-Relay kann derzeit direkten Video-Fanout reduzieren.
 
 ## Öffentliches Deployment
 
