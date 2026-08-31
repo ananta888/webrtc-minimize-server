@@ -20,7 +20,9 @@ Medien werden niemals automatisch angefordert. Mikrofon, Kamera und Bildschirm s
 
 ## Räume
 
-`Neuen Raum` erzeugt einen kryptografisch zufälligen Einladungslink. Ein Raum entsteht flüchtig beim ersten Join, besitzt eine vollständig getrennte Teilnehmerliste und akzeptiert standardmäßig höchstens 20 gleichzeitig verbundene Browser. Signale können ausschließlich an Teilnehmer desselben Raums adressiert werden. Es gibt keine anwendungsseitige Obergrenze für die Anzahl gleichzeitig aktiver Räume; praktisch begrenzen nur die verfügbaren Serverressourcen. Leere Räume werden sofort verworfen. Membership und Raumverlauf werden nicht persistiert.
+Ein normaler Raum erhält einen Namen, einen kryptografisch zufälligen Einladungslink und die Sichtbarkeit `private` oder `public`. Öffentliche Räume kann jeder Besucher ohne Token im Raumverzeichnis sehen; angemeldete Nutzer sehen daneben alle von ihrer exakten OIDC-Identität erstellten Räume. Nur dieser Ersteller darf Name oder Sichtbarkeit ändern. `private` entfernt einen Raum aus der öffentlichen Liste, widerruft aber keinen bereits bekannten Bearer-Invite. Für einen echten Widerruf muss ein neuer Raumcode verwendet werden.
+
+Ein Raum entsteht flüchtig beim ersten Join, besitzt eine vollständig getrennte Teilnehmerliste und akzeptiert standardmäßig höchstens 20 gleichzeitig verbundene Browser. Signale können ausschließlich an Teilnehmer desselben Raums adressiert werden. Es gibt keine anwendungsseitige Obergrenze für die Anzahl gleichzeitig aktiver Räume; praktisch begrenzen nur die verfügbaren Serverressourcen. Leere Membership wird sofort verworfen. Die ebenfalls nur im Arbeitsspeicher gehaltenen Verzeichnismetadaten bleiben nach der letzten Aktivität höchstens `ROOM_IDLE_TTL_MS` erhalten und gehen bei einem Serverneustart verloren; Membership, Medien und Raumverlauf werden nicht persistiert.
 
 `Neue Pair-Session` erzeugt einen eigenen Sessiontyp für Pair Dev. Er akzeptiert höchstens zwei unterschiedliche P-256-Geräte. Ein vorhandener Raum kann nicht zwischen Pair- und Room-Modus wechseln; derselbe Gerätefingerprint darf nicht zweimal derselben Pair-Session beitreten.
 
@@ -159,7 +161,9 @@ Für das Ananta-Preset muss ein HTTPS-Reverse-Proxy `webrtc.ananta.de` auf Port 
 - `GET /`: Browser-App
 - `GET /healthz`: inhaltsfreier Health-/Room-Zähler
 - `GET /config`: öffentliche ICE-Konfiguration
-- `POST /api/rooms`: Room-/Pair-Invite oder authentifizierten persistenten Pair-Workspace erstellen
+- `GET /api/rooms`: öffentliche Räume und – mit gültigem Bearer-Token – die eigenen Räume auflisten
+- `POST /api/rooms`: privaten/öffentlichen Room-Invite, Pair-Invite oder authentifizierten persistenten Pair-Workspace erstellen
+- `PATCH /api/rooms/:roomId`: Name oder Sichtbarkeit ausschließlich als verifizierter Room-Owner ändern
 - `POST /api/sessions`: Bearer-Token und P-256-Gerätebeweis prüfen; Einmal-Ticket und kurzlebige TURN-Credentials ausstellen
 - `GET /api/workspaces`, `GET /api/workspaces/:id`: eigene Workspaces und revisionierte Membership lesen
 - `GET|POST /api/workspaces/:id/events`: permission-aware Timeline fortsetzen oder idempotentes Event schreiben

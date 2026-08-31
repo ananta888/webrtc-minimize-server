@@ -1,186 +1,389 @@
-<main class="shell">
-  <header class="hero">
-    <div>
-      <p class="eyebrow">WebRTC Räume &amp; Pair Dev</p>
-      <h1>Direkte Zusammenarbeit mit eigener Infrastruktur.</h1>
-      <p class="lede">Keycloak bestätigt Identitäten, der Raumserver autorisiert Membership und Coturn hilft bei schwierigen Netzwerken. Medien und Chat bleiben im WebRTC-Datenpfad.</p>
-    </div>
-    <div class="status-stack">
-      <div class="status-pill"><span class="dot" [class.connected]="session.joined()" [class.connecting]="signaling.status() === 'connecting'" [class.error]="signaling.status() === 'error'"></span><span id="connection-status">{{ connectionLabel() }}</span></div>
-      <div class="status-pill"><span class="status-key">ICE</span><span id="ice-status">{{ mesh.iceState() }} · {{ mesh.icePath() }}</span></div>
-      <div class="status-pill"><span class="status-key">SFrame</span><span id="sframe-status">{{ mesh.mediaE2eeState() }}</span></div>
-      <div class="status-pill"><span class="status-key">Topologie</span><span id="topology-status">{{ mesh.topologyMode() }} · E{{ mesh.topologyEpoch() }}</span></div>
+<div class="app-frame">
+  <header class="topbar">
+    <button class="brand" type="button" (click)="show('rooms')" aria-label="Zur Raumübersicht">
+      <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+      <span><strong>Ananta Meet</strong><small>Direkt. Sicher. Gemeinsam.</small></span>
+    </button>
+    <div class="topbar-actions">
+      <div class="connection-chip" [class.online]="session.joined()">
+        <span class="dot" [class.connected]="session.joined()" [class.connecting]="signaling.status() === 'connecting'" [class.error]="signaling.status() === 'error'"></span>
+        <span id="connection-status">{{ connectionLabel() }}</span>
+      </div>
+      @if (config.value()?.auth?.mode !== 'disabled' && !auth.authenticated()) {
+        <button id="login" class="button ghost compact" type="button" [disabled]="auth.busy()" (click)="auth.login()">Anmelden</button>
+        <button id="register" class="button primary compact" type="button" [disabled]="auth.busy()" (click)="auth.register()">Konto erstellen</button>
+      } @else if (auth.authenticated()) {
+        <div class="user-chip"><span class="avatar" aria-hidden="true">{{ auth.username().slice(0, 1).toUpperCase() }}</span><span>{{ auth.username() }}</span></div>
+        <button id="logout" class="icon-button" type="button" title="Abmelden" aria-label="Abmelden" (click)="logout()">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3M14 3h4a3 3 0 013 3v12a3 3 0 01-3 3h-4"/></svg>
+        </button>
+      }
     </div>
   </header>
 
-  <section class="panel identity-panel" aria-labelledby="identity-heading">
-    <div>
-      <p class="eyebrow">Identität</p>
-      <h2 id="identity-heading">Keycloak &amp; Gerät</h2>
-      @if (config.value()?.auth?.mode === 'disabled') {
-        <p>Lokaler anonymer Entwicklungsmodus. Der Join bleibt kryptografisch an dieses Browsergerät gebunden.</p>
-      } @else if (auth.authenticated()) {
-        <p>Angemeldet als <strong>{{ auth.username() }}</strong></p>
-      } @else {
-        <p>Für dieses Deployment ist eine Keycloak-Anmeldung {{ authRequired() ? 'erforderlich' : 'optional' }}.</p>
-        <p>Neue Nutzer können ihr Konto direkt bei Keycloak registrieren.</p>
-      }
-      @if (device.fingerprint()) { <code class="fingerprint">Gerät {{ device.fingerprint().slice(0, 14) }}…</code> }
-    </div>
-    <div class="identity-actions">
-      @if (config.value()?.auth?.mode !== 'disabled' && !auth.authenticated()) {
-        <button id="login" class="primary" type="button" [disabled]="auth.busy()" (click)="auth.login()">Mit Keycloak anmelden</button>
-        <button id="register" class="secondary" type="button" [disabled]="auth.busy()" (click)="auth.register()">Neues Konto registrieren</button>
-      }
-      @if (auth.authenticated()) { <button id="logout" class="secondary" type="button" (click)="logout()">Abmelden</button> }
-    </div>
-  </section>
+  <div class="app-body">
+    <aside class="side-menu">
+      <nav aria-label="Hauptmenü">
+        <button type="button" class="nav-item" [class.active]="activeSection() === 'rooms'" [attr.aria-current]="activeSection() === 'rooms' ? 'page' : null" (click)="show('rooms')">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>
+          <span>Räume</span>
+        </button>
+        <button type="button" class="nav-item" [class.active]="activeSection() === 'live'" [attr.aria-current]="activeSection() === 'live' ? 'page' : null" (click)="show('live')">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 10l4.5-2.5v9L15 14M4 6h9a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2z"/></svg>
+          <span>Live</span>
+          @if (session.joined()) { <span class="nav-live" aria-label="Aktiv"></span> }
+        </button>
+        <button type="button" class="nav-item" [class.active]="activeSection() === 'chat'" [attr.aria-current]="activeSection() === 'chat' ? 'page' : null" (click)="show('chat')">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 01-4 4H8l-5 3V7a4 4 0 014-4h10a4 4 0 014 4z"/></svg>
+          <span>Chat</span>
+        </button>
+        <button type="button" class="nav-item" [class.active]="activeSection() === 'settings'" [attr.aria-current]="activeSection() === 'settings' ? 'page' : null" (click)="show('settings')">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.6v.2h-4V21a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 00.3-1.9A1.7 1.7 0 003 14H2.8v-4H3a1.7 1.7 0 001.6-1 1.7 1.7 0 00-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 009 4.6a1.7 1.7 0 001-1.6v-.2h4V3a1.7 1.7 0 001 1.6 1.7 1.7 0 001.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 00-.3 1.9 1.7 1.7 0 001.6 1h.2v4H21a1.7 1.7 0 00-1.6 1z"/></svg>
+          <span>Einstellungen</span>
+        </button>
+      </nav>
 
-  <section class="panel join-panel" aria-labelledby="join-heading">
-    <div>
-      <p class="eyebrow">Session</p>
-      <h2 id="join-heading">Raum oder Pair Dev</h2>
-      <p>Normale Räume erlauben bis zu 20 Geräte. Pair Dev ist strikt auf zwei unterschiedliche Geräte begrenzt.</p>
-    </div>
-    <div class="join-grid">
-      <label>Name<input id="display-name" maxlength="40" autocomplete="name" placeholder="Dein Name" [ngModel]="nameInput()" (ngModelChange)="nameInput.set($event)"></label>
-      <label>Raumcode<input id="room-id" maxlength="48" spellcheck="false" placeholder="room-… oder pair-…" [ngModel]="roomInput()" (ngModelChange)="roomInput.set($event)"></label>
-      <fieldset class="mode-select">
-        <legend>Modus</legend>
-        <label><input type="radio" name="room-mode" value="room" [ngModel]="selectedMode()" (ngModelChange)="selectedMode.set($event)"> Raum · bis 20</label>
-        <label><input type="radio" name="room-mode" value="pair" [ngModel]="selectedMode()" (ngModelChange)="selectedMode.set($event)"> Pair Dev · genau 2</label>
-      </fieldset>
-      <div class="join-actions">
-        <button id="create-room" class="secondary" type="button" [disabled]="!canEnter() || session.joined()" (click)="create('room')">Neuen Raum</button>
-        <button id="create-pair" class="secondary" type="button" [disabled]="!canEnter() || session.joined()" (click)="create('pair')">Neue Pair-Session</button>
-        @if (config.value()?.pairWorkspaceEnabled && auth.authenticated()) {
-          <button id="create-workspace" class="secondary" type="button" [disabled]="!canEnter() || session.joined()" (click)="createWorkspace()">Persistenten Pair-Workspace</button>
-        }
-        <button id="join-room" class="primary" type="button" [disabled]="!canEnter() || session.joined()" (click)="join()">Beitreten</button>
-        <button id="leave-room" class="danger" type="button" [disabled]="!session.joined()" (click)="leave()">Verlassen</button>
+      <div class="network-status" aria-label="Verbindungsstatus">
+        <p class="eyebrow">Verbindung</p>
+        <dl>
+          <div><dt>ICE-Pfad</dt><dd id="ice-status">{{ mesh.iceState() }} · {{ mesh.icePath() }}</dd></div>
+          <div><dt>SFrame</dt><dd id="sframe-status">{{ mesh.mediaE2eeState() }}</dd></div>
+          <div><dt>Topologie</dt><dd id="topology-status">{{ mesh.topologyMode() }} · E{{ mesh.topologyEpoch() }}</dd></div>
+        </dl>
       </div>
-      @if (config.value()?.pairWorkspaceEnabled && auth.authenticated()) {
-        <label class="mode-select">Workspace-Titel
-          <input maxlength="120" [ngModel]="workspaceTitle()" (ngModelChange)="workspaceTitle.set($event)" placeholder="Pair Dev Workspace">
-        </label>
-        @if (workspaces.workspaces().length > 0) {
-          <div class="workspace-picker" aria-label="Vorhandene Pair Workspaces">
-            @for (workspace of workspaces.workspaces(); track workspace.workspaceId) {
-              <button type="button" class="secondary" (click)="selectWorkspace(workspace)">{{ workspace.title }} · {{ workspace.role }}</button>
+    </aside>
+
+    <main class="app-main">
+      @if (combinedError()) {
+        <div id="app-error" class="toast error-toast" role="alert">
+          <span aria-hidden="true">!</span><span>{{ combinedError() }}</span>
+        </div>
+      } @else if (notice()) {
+        <div class="toast success-toast" role="status">
+          <span aria-hidden="true">✓</span><span>{{ notice() }}</span>
+        </div>
+      }
+
+      @if (activeSection() === 'rooms') {
+        <section class="welcome">
+          <div>
+            <p class="eyebrow">Raumzentrale</p>
+            <h1>Wo möchtest du dich treffen?</h1>
+            <p>Öffentliche Räume sind für alle sichtbar. Private Räume erreichst du weiterhin nur über ihren Einladungslink.</p>
+          </div>
+          <button class="button ghost refresh-button" type="button" [disabled]="directory.busy()" (click)="refreshRooms()">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/></svg>
+            {{ directory.busy() ? 'Aktualisiere…' : 'Aktualisieren' }}
+          </button>
+        </section>
+
+        @if (!canEnter()) {
+          <section class="signin-callout">
+            <div class="callout-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0110 0v2M5 10h14v11H5z"/></svg>
+            </div>
+            <div><strong>Anmelden, um Räumen beizutreten</strong><p>Die öffentliche Übersicht kannst du bereits ansehen. Anmeldung und Registrierung laufen sicher über Keycloak.</p></div>
+          </section>
+        }
+
+        <section class="action-grid">
+          <form class="surface create-room-card" (submit)="$event.preventDefault(); createRoom()">
+            <div class="surface-heading">
+              <span class="feature-icon mint" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
+              <div><p class="eyebrow">Neuer Raum</p><h2>Treffen starten</h2></div>
+            </div>
+            <label>Raumname
+              <input id="new-room-title" maxlength="80" autocomplete="off" placeholder="z. B. Produkt-Runde" [ngModel]="newRoomTitle()" (ngModelChange)="newRoomTitle.set($event)" name="newRoomTitle">
+            </label>
+            <fieldset class="visibility-picker">
+              <legend>Sichtbarkeit</legend>
+              <button type="button" [class.selected]="newRoomVisibility() === 'private'" [attr.aria-pressed]="newRoomVisibility() === 'private'" (click)="newRoomVisibility.set('private')">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0110 0v2M5 10h14v11H5z"/></svg>
+                <span><strong>Privat</strong><small>Nur mit Link</small></span>
+              </button>
+              <button type="button" [disabled]="!canOwnRooms()" [class.selected]="newRoomVisibility() === 'public'" [attr.aria-pressed]="newRoomVisibility() === 'public'" (click)="newRoomVisibility.set('public')">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 010 18M12 3a15 15 0 000 18"/></svg>
+                <span><strong>Öffentlich</strong><small>Für alle sichtbar</small></span>
+              </button>
+            </fieldset>
+            <button id="create-room" class="button primary wide" type="submit" [disabled]="!canEnter() || directory.busy() || !newRoomTitle().trim()">Raum erstellen</button>
+          </form>
+
+          <section class="surface join-card" aria-labelledby="join-heading">
+            <div class="surface-heading">
+              <span class="feature-icon violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 12h12M16 8l4 4-4 4M4 4h8v16H4z"/></svg></span>
+              <div><p class="eyebrow">Einladung</p><h2 id="join-heading">Mit Code beitreten</h2></div>
+            </div>
+            <div class="join-fields">
+              <label>Anzeigename
+                <input id="display-name" maxlength="40" autocomplete="name" placeholder="Dein Name" [ngModel]="nameInput()" (ngModelChange)="nameInput.set($event)">
+              </label>
+              <label>Raumcode
+                <input id="room-id" maxlength="48" spellcheck="false" placeholder="room-… oder pair-…" [ngModel]="roomInput()" (ngModelChange)="roomInput.set($event)">
+              </label>
+              <fieldset class="mode-picker">
+                <legend>Typ</legend>
+                <label><input type="radio" name="room-mode" value="room" [ngModel]="selectedMode()" (ngModelChange)="selectedMode.set($event)"> Raum · bis 20</label>
+                <label><input type="radio" name="room-mode" value="pair" [ngModel]="selectedMode()" (ngModelChange)="selectedMode.set($event)"> Pair · 2 Geräte</label>
+              </fieldset>
+              <button id="join-room" class="button primary wide" type="button" [disabled]="!canEnter() || session.joined() || !roomInput().trim()" (click)="join()">Jetzt beitreten</button>
+            </div>
+          </section>
+        </section>
+
+        <section class="room-list-section" aria-labelledby="public-rooms-heading">
+          <div class="list-heading">
+            <div><p class="eyebrow">Entdecken</p><h2 id="public-rooms-heading">Öffentliche Räume</h2><p>Diese Räume sind für alle Besucher sichtbar und direkt erreichbar.</p></div>
+            <span class="count-badge">{{ directory.publicRooms().length }}</span>
+          </div>
+          <div class="room-grid">
+            @for (room of directory.publicRooms(); track room.roomId) {
+              <article class="room-card">
+                <div class="room-card-top">
+                  <span class="room-avatar public" aria-hidden="true">{{ room.title.slice(0, 1).toUpperCase() }}</span>
+                  <span class="visibility-badge public"><span></span> Öffentlich</span>
+                </div>
+                <div><h3>{{ room.title }}</h3><code>{{ room.roomId }}</code></div>
+                <div class="room-card-meta">
+                  <span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0112 0M16 5a3 3 0 010 6M18 14a5 5 0 013 6"/></svg>{{ room.participantCount }} / {{ room.maxParticipants }}</span>
+                  <span>{{ room.participantCount ? 'Gerade aktiv' : 'Bereit' }}</span>
+                </div>
+                <button class="button primary wide" type="button" [disabled]="!canEnter()" (click)="enterListedRoom(room)">{{ session.roomId() === room.roomId && session.joined() ? 'Zum Live-Raum' : 'Beitreten' }}</button>
+              </article>
+            } @empty {
+              <div class="list-empty"><span aria-hidden="true">◎</span><strong>Noch kein öffentlicher Raum</strong><p>Ein angemeldeter Nutzer kann den ersten sichtbaren Raum anlegen.</p></div>
             }
           </div>
-        }
-      }
-      <div class="invite-row">
-        <input id="invite-url" readonly aria-label="Einladungslink" [value]="session.inviteUrl()" placeholder="Einladungslink erscheint hier">
-        <button id="copy-invite" class="secondary" type="button" [disabled]="!session.inviteUrl()" (click)="copyInvite()">Link kopieren</button>
-      </div>
-      @if (pageError() || session.error() || media.error() || auth.error()) {
-        <div id="app-error" class="error" role="alert">{{ pageError() || session.error() || media.error() || auth.error() }}</div>
-      }
-    </div>
-  </section>
+        </section>
 
-  <section class="workspace">
-    <div class="stage panel">
-      <div class="section-heading">
-        <div><p class="eyebrow">{{ session.mode() === 'pair' ? 'Pair Dev' : 'Raum' }}</p><h2>Live-Medien</h2></div>
-        <span id="participant-count" class="counter">{{ mesh.participantCount() }} / {{ session.maxParticipants() }}</span>
-      </div>
-      <div id="media-grid" class="media-grid">
-        @for (item of media.publications(); track item.source) {
-          <article class="media-card local-media">
-            <span class="media-label">Du · {{ mediaLabel(item.source) }}</span>
-            @if (item.kind === 'video') { <video autoplay muted playsinline [appMediaStream]="item.stream"></video> }
-            @else { <audio autoplay muted controls [appMediaStream]="item.stream"></audio> }
-          </article>
-        }
-        @for (item of mesh.focusRemoteMedia(); track item.key) {
-          <article class="media-card remote-media">
-            <span class="media-label">{{ item.peerName }} · {{ mediaLabel(item.source) }}</span>
-            @if (item.kind === 'video') { <video autoplay playsinline [appMediaStream]="item.stream"></video> }
-            @else { <audio autoplay controls [appMediaStream]="item.stream"></audio> }
-          </article>
-        }
-        @if (mesh.mosaicRemoteMedia().length > 0) {
-          <article id="inactive-mosaic" class="media-card mosaic-media">
-            <span class="media-label">Inaktive Kameras · {{ mesh.mosaicRemoteMedia().length }} Vorschauen</span>
-            <app-media-mosaic [items]="mesh.mosaicRemoteMedia()" />
-          </article>
-        }
-        <div class="remote-audio" aria-label="Aktive Remote-Audiospuren">
-          @for (item of mesh.remoteAudio(); track item.key) {
-            <span class="media-label audio-label">{{ item.peerName }} · {{ mediaLabel(item.source) }}</span>
-            <audio autoplay [appMediaStream]="item.stream" [attr.aria-label]="item.peerName + ' · ' + mediaLabel(item.source)"></audio>
+        <section class="room-list-section" aria-labelledby="own-rooms-heading">
+          <div class="list-heading">
+            <div><p class="eyebrow">Deine Sammlung</p><h2 id="own-rooms-heading">Meine Räume</h2><p>Hier findest du alle von dir erstellten Räume – öffentliche und private.</p></div>
+            <span class="count-badge">{{ directory.ownRooms().length }}</span>
+          </div>
+          <div class="room-grid">
+            @for (room of directory.ownRooms(); track room.roomId) {
+              <article class="room-card owned">
+                <div class="room-card-top">
+                  <span class="room-avatar" [class.public]="room.visibility === 'public'" aria-hidden="true">{{ room.title.slice(0, 1).toUpperCase() }}</span>
+                  <button class="visibility-badge editable" [class.public]="room.visibility === 'public'" type="button" [disabled]="directory.busy()" (click)="setVisibility(room, room.visibility === 'public' ? 'private' : 'public')" [attr.aria-label]="room.visibility === 'public' ? 'Raum privat schalten' : 'Raum öffentlich schalten'">
+                    <span></span>{{ room.visibility === 'public' ? 'Öffentlich' : 'Privat' }}
+                  </button>
+                </div>
+                <div><h3>{{ room.title }}</h3><code>{{ room.roomId }}</code></div>
+                <div class="room-card-meta">
+                  <span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0112 0M16 5a3 3 0 010 6M18 14a5 5 0 013 6"/></svg>{{ room.participantCount }} / {{ room.maxParticipants }}</span>
+                  <button class="text-action" type="button" (click)="copyRoomInvite(room)">Link kopieren</button>
+                </div>
+                <button class="button primary wide" type="button" [disabled]="!canEnter()" (click)="enterListedRoom(room)">{{ session.roomId() === room.roomId && session.joined() ? 'Zum Live-Raum' : 'Raum öffnen' }}</button>
+              </article>
+            } @empty {
+              <div class="list-empty private-empty"><span aria-hidden="true">◇</span><strong>Noch keine eigenen Räume</strong><p>Erstelle oben einen Raum. Private Einträge erscheinen nur für dich.</p></div>
+            }
+          </div>
+        </section>
+
+        <section class="surface pair-tools">
+          <div>
+            <p class="eyebrow">Direkte Zusammenarbeit</p>
+            <h2>Pair-Session &amp; Pair-Workspace</h2>
+            <p>Pair ist strikt auf zwei unterschiedliche Geräte begrenzt und bleibt aus dem öffentlichen Raumverzeichnis ausgeschlossen.</p>
+          </div>
+          <div class="pair-actions">
+            <button id="create-pair" class="button ghost" type="button" [disabled]="!canEnter() || session.joined()" (click)="create('pair')">Neue Pair-Session</button>
+            @if (config.value()?.pairWorkspaceEnabled && auth.authenticated()) {
+              <label>Workspace-Titel<input maxlength="120" [ngModel]="workspaceTitle()" (ngModelChange)="workspaceTitle.set($event)" placeholder="Pair Dev Workspace"></label>
+              <button id="create-workspace" class="button ghost" type="button" [disabled]="!canEnter() || session.joined()" (click)="createWorkspace()">Persistenten Workspace anlegen</button>
+            }
+          </div>
+          @if (config.value()?.pairWorkspaceEnabled && workspaces.workspaces().length > 0) {
+            <div class="workspace-picker" aria-label="Vorhandene Pair Workspaces">
+              @for (workspace of workspaces.workspaces(); track workspace.workspaceId) {
+                <button type="button" class="workspace-chip" (click)="selectWorkspace(workspace)">{{ workspace.title }} <small>{{ workspace.role }}</small></button>
+              }
+            </div>
           }
-        </div>
-        @if (media.publications().length === 0 && mesh.remoteMedia().length === 0) {
-          <div id="empty-media" class="empty-state">Noch keine Medien aktiv. Login, Join und eingehende Signale starten niemals eine Aufnahme.</div>
-        }
-      </div>
-    </div>
+          <div class="invite-row">
+            <input id="invite-url" readonly aria-label="Einladungslink" [value]="session.inviteUrl()" placeholder="Einladungslink erscheint nach dem Erstellen oder Beitreten">
+            <button id="copy-invite" class="button ghost" type="button" [disabled]="!session.inviteUrl()" (click)="copyInvite()">Link kopieren</button>
+          </div>
+        </section>
+      }
 
-    <aside class="sidebar">
-      <app-pair-workspace-panel />
-      <section class="panel controls" aria-labelledby="controls-heading">
-        <div class="section-heading"><div><p class="eyebrow">Eigene Freigaben</p><h2 id="controls-heading">Medien</h2></div></div>
-        <p class="hint">Jede Quelle fordert die Browserberechtigung erst durch ihren eigenen Klick an und kann separat beendet werden.</p>
-        <button id="toggle-microphone" type="button" [disabled]="!session.joined() || !!media.pending()" (click)="media.toggle('microphone')">🎙 Mikrofon {{ media.active('microphone') ? 'stoppen' : 'freigeben' }}</button>
-        <button id="toggle-camera" type="button" [disabled]="!session.joined() || !!media.pending()" (click)="media.toggle('camera')">● Kamera {{ media.active('camera') ? 'stoppen' : 'freigeben' }}</button>
-        <button id="toggle-screen" type="button" [disabled]="!session.joined() || !!media.pending()" (click)="media.toggle('screen')">▣ {{ media.active('screen') ? 'Bildschirmfreigabe stoppen' : 'Bildschirm freigeben' }}</button>
-        <div id="media-error" class="error" role="alert">{{ media.error() }}</div>
-      </section>
+      @if (activeSection() === 'live') {
+        <section class="view-header">
+          <div>
+            <button class="back-link" type="button" (click)="show('rooms')">← Raumübersicht</button>
+            <div class="live-title-row">
+              <div><p class="eyebrow">{{ session.mode() === 'pair' ? 'Pair Dev' : 'Live-Raum' }}</p><h1>{{ currentRoomTitle() }}</h1></div>
+              @if (session.joined()) { <span class="live-badge"><span></span> Live</span> }
+            </div>
+            <div class="room-context"><code>{{ session.roomId() || roomInput() }}</code><span id="participant-count">{{ mesh.participantCount() }} / {{ session.maxParticipants() }} Teilnehmer</span></div>
+          </div>
+          <div class="view-actions">
+            @if (currentRoom()?.owned) {
+              <button class="button ghost" type="button" [disabled]="directory.busy()" (click)="toggleCurrentVisibility()">{{ currentRoom()?.visibility === 'public' ? 'Öffentlich · privat schalten' : 'Privat · veröffentlichen' }}</button>
+            }
+            <button class="button ghost" type="button" [disabled]="!session.inviteUrl()" (click)="copyInvite()">Einladen</button>
+          </div>
+        </section>
 
-      <section class="panel optimization" aria-labelledby="optimization-heading">
-        <div class="section-heading"><div><p class="eyebrow">Adaptive Mesh</p><h2 id="optimization-heading">Bandbreite &amp; Fokus</h2></div></div>
-        <label>Qualitätsprofil
-          <select id="optimization-mode" [ngModel]="mesh.optimizationMode()" (ngModelChange)="setOptimizationMode($event)">
-            <option value="auto">Auto · Active Speaker</option>
-            <option value="balanced">Ausgewogen</option>
-            <option value="data-saver">Datensparend</option>
-          </select>
-        </label>
-        <dl class="optimization-facts">
-          <div><dt>Eigene Videoqualität</dt><dd id="local-quality">{{ mesh.localQuality() }}</dd></div>
-          <div><dt>Linkklasse</dt><dd id="link-quality">{{ mesh.linkSummary() }}</dd></div>
-          <div><dt>Sendersteuerung</dt><dd>{{ mesh.qualityCapability() }}</dd></div>
-        </dl>
-        <p id="active-speakers" class="hint">Fokus: {{ mesh.activeSpeakerNames().length ? mesh.activeSpeakerNames().join(', ') : 'stabile Teilnehmerreihenfolge' }}. Audio und Control bleiben vor Video priorisiert.</p>
-        @if (config.value()?.optimization?.peerRelayEnabled && config.value()?.mediaE2ee?.mode === 'disabled') {
-          <label class="relay-consent">
-            <input id="relay-consent" type="checkbox" [disabled]="!session.joined()" [ngModel]="mesh.relayConsent()" (ngModelChange)="setRelayConsent($event)">
-            Diesem Browser erlauben, Video für andere Raumteilnehmer weiterzuleiten
-          </label>
-          <p class="relay-warning">Trusted Relay kann Medien hopweise verarbeiten und neu encodieren. Es bietet keine SFrame-Privatsphäre gegenüber diesem Relay-Gerät und kann CPU, Akku sowie Upload beanspruchen.</p>
-        } @else if (config.value()?.mediaE2ee?.mode !== 'disabled') {
-          <p class="relay-warning">Der entschlüsselnde Browser-Relay ist bei SFrame deaktiviert. Freiwillige Edge-Agenten leiten nur verschlüsselte TURN-Pakete weiter und benötigen erreichbare UDP-/TCP-Ports.</p>
-        }
-      </section>
+        <section class="live-workspace">
+          <div class="stage surface">
+            <div id="media-grid" class="media-grid">
+              @for (item of media.publications(); track item.source) {
+                <article class="media-card local-media">
+                  <span class="media-label">Du · {{ mediaLabel(item.source) }}</span>
+                  @if (item.kind === 'video') { <video autoplay muted playsinline [appMediaStream]="item.stream"></video> }
+                  @else { <audio autoplay muted controls [appMediaStream]="item.stream"></audio> }
+                </article>
+              }
+              @for (item of mesh.focusRemoteMedia(); track item.key) {
+                <article class="media-card remote-media">
+                  <span class="media-label">{{ item.peerName }} · {{ mediaLabel(item.source) }}</span>
+                  @if (item.kind === 'video') { <video autoplay playsinline [appMediaStream]="item.stream"></video> }
+                  @else { <audio autoplay controls [appMediaStream]="item.stream"></audio> }
+                </article>
+              }
+              @if (mesh.mosaicRemoteMedia().length > 0) {
+                <article id="inactive-mosaic" class="media-card mosaic-media">
+                  <span class="media-label">Inaktive Kameras · {{ mesh.mosaicRemoteMedia().length }} Vorschauen</span>
+                  <app-media-mosaic [items]="mesh.mosaicRemoteMedia()" />
+                </article>
+              }
+              <div class="remote-audio" aria-label="Aktive Remote-Audiospuren">
+                @for (item of mesh.remoteAudio(); track item.key) {
+                  <span class="media-label audio-label">{{ item.peerName }} · {{ mediaLabel(item.source) }}</span>
+                  <audio autoplay [appMediaStream]="item.stream" [attr.aria-label]="item.peerName + ' · ' + mediaLabel(item.source)"></audio>
+                }
+              </div>
+              @if (media.publications().length === 0 && mesh.remoteMedia().length === 0) {
+                <div id="empty-media" class="empty-media">
+                  <span class="empty-media-orbit" aria-hidden="true"><span></span></span>
+                  <strong>{{ session.joined() ? 'Der Raum ist bereit' : 'Noch keinem Raum beigetreten' }}</strong>
+                  <p>{{ session.joined() ? 'Starte Mikrofon, Kamera oder Bildschirm erst mit den Schaltflächen unten.' : 'Wähle in der Raumübersicht einen Raum aus.' }}</p>
+                  @if (!session.joined()) { <button class="button primary" type="button" (click)="show('rooms')">Räume ansehen</button> }
+                </div>
+              }
+            </div>
 
-      <section class="panel chat" aria-labelledby="chat-heading">
-        <div class="section-heading"><div><p class="eyebrow">DataChannel</p><h2 id="chat-heading">Peer-Chat</h2></div></div>
-        <div id="chat-log" class="chat-log" aria-live="polite">
-          @for (entry of mesh.chat(); track entry.id) {
-            <div class="chat-entry" [class.system]="entry.system"><strong>{{ entry.author }}</strong><span>{{ entry.text }}</span></div>
-          }
-        </div>
-        <form id="chat-form" class="chat-form" (submit)="$event.preventDefault(); sendChat()">
-          <input id="chat-message" maxlength="2000" autocomplete="off" placeholder="Nachricht an alle Peers" [disabled]="!session.joined()" [ngModel]="chatInput()" (ngModelChange)="chatInput.set($event)" name="chatMessage">
-          <button class="primary" type="submit" [disabled]="!session.joined() || !chatInput().trim()">Senden</button>
-        </form>
-      </section>
-    </aside>
-  </section>
+            <div class="media-control-bar" aria-label="Mediensteuerung">
+              <button id="toggle-microphone" class="media-control" [class.active]="media.active('microphone')" type="button" [disabled]="!session.joined() || !!media.pending()" [attr.aria-pressed]="media.active('microphone')" (click)="media.toggle('microphone')">
+                <span class="control-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3M8 21h8"/></svg></span>
+                <span>{{ media.active('microphone') ? 'Mikrofon stoppen' : 'Mikrofon starten' }}</span>
+              </button>
+              <button id="toggle-camera" class="media-control" [class.active]="media.active('camera')" type="button" [disabled]="!session.joined() || !!media.pending()" [attr.aria-pressed]="media.active('camera')" (click)="media.toggle('camera')">
+                <span class="control-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg></span>
+                <span>{{ media.active('camera') ? 'Kamera stoppen' : 'Kamera starten' }}</span>
+              </button>
+              <button id="toggle-screen" class="media-control" [class.active]="media.active('screen')" type="button" [disabled]="!session.joined() || !!media.pending()" [attr.aria-pressed]="media.active('screen')" (click)="media.toggle('screen')">
+                <span class="control-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M9 10l3-3 3 3M12 7v7"/></svg></span>
+                <span>{{ media.active('screen') ? 'Bildschirmfreigabe stoppen' : 'Bildschirm freigeben' }}</span>
+              </button>
+              <span class="control-divider" aria-hidden="true"></span>
+              <button id="leave-room" class="media-control leave" type="button" [disabled]="!session.joined()" (click)="leave()">
+                <span class="control-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15a11 11 0 0114 0M7 14l-2 4-3-2M17 14l2 4 3-2"/></svg></span>
+                <span>Verlassen</span>
+              </button>
+            </div>
+          </div>
 
-  <section class="panel facts">
-    <h2>Sicherheitsstatus</h2>
-    <p>Keycloak-Tokens werden vor dem Join serverseitig über JWKS geprüft. Das WebSocket erhält nur ein kurzlebiges, einmal verwendbares Ticket. WebRTC verschlüsselt jeden Transport-Hop mit DTLS-SRTP. Im SFrame-Modus werden Audio-, Kamera- und Bildschirmframes zusätzlich vor dem Transport verschlüsselt; TURN- und Edge-Relays erhalten keine Medienschlüssel. Die Peer-Schlüsselzuordnung läuft über die Control Plane und schützt daher nicht vor einem vollständig kompromittierten Signaling-Dienst.</p>
-    <dl class="facts-grid">
-      <div><dt>Auth</dt><dd>{{ config.value()?.auth?.mode }}</dd></div>
-      <div><dt>TURN</dt><dd>{{ config.value()?.turnConfigured ? 'kurzlebige Credentials' : 'nicht konfiguriert' }}</dd></div>
-      <div><dt>Edge-Relay</dt><dd>{{ config.value()?.edgeRelayConfigured ? 'freiwilliger zweiter Pfad' : 'nicht konfiguriert' }}</dd></div>
-      <div><dt>Media-E2EE</dt><dd>{{ config.value()?.mediaE2ee?.mode }} · {{ mesh.mediaE2eeState() }}</dd></div>
-      <div><dt>Gerät</dt><dd>{{ device.fingerprint() ? 'P-256 gebunden' : 'beim ersten Join' }}</dd></div>
-    </dl>
-  </section>
-</main>
+          <aside class="live-sidebar">
+            <app-pair-workspace-panel />
+            <section class="surface compact-panel">
+              <div class="surface-heading small"><span class="feature-icon violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 01-4 4H8l-5 3V7a4 4 0 014-4h10a4 4 0 014 4z"/></svg></span><div><p class="eyebrow">DataChannel</p><h2>Raumchat</h2></div></div>
+              <div id="chat-log" class="chat-log" aria-live="polite">
+                @for (entry of mesh.chat(); track entry.id) {
+                  <div class="chat-entry" [class.system]="entry.system"><strong>{{ entry.author }}</strong><span>{{ entry.text }}</span></div>
+                }
+              </div>
+              <form id="chat-form" class="chat-form" (submit)="$event.preventDefault(); sendChat()">
+                <input id="chat-message" maxlength="2000" autocomplete="off" placeholder="Nachricht schreiben…" [disabled]="!session.joined()" [ngModel]="chatInput()" (ngModelChange)="chatInput.set($event)" name="chatMessage">
+                <button class="send-button" type="submit" [disabled]="!session.joined() || !chatInput().trim()" aria-label="Nachricht senden">↑</button>
+              </form>
+            </section>
+
+            <section class="surface compact-panel optimization">
+              <div class="surface-heading small"><span class="feature-icon mint" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 18V8M10 18V4M16 18v-7M22 18H2"/></svg></span><div><p class="eyebrow">Adaptive Mesh</p><h2>Qualität</h2></div></div>
+              <label>Profil<select id="optimization-mode" [ngModel]="mesh.optimizationMode()" (ngModelChange)="setOptimizationMode($event)"><option value="auto">Auto · Active Speaker</option><option value="balanced">Ausgewogen</option><option value="data-saver">Datensparend</option></select></label>
+              <p id="active-speakers" class="hint">Fokus: {{ mesh.activeSpeakerNames().length ? mesh.activeSpeakerNames().join(', ') : 'stabile Teilnehmerreihenfolge' }}</p>
+              @if (config.value()?.optimization?.peerRelayEnabled && config.value()?.mediaE2ee?.mode === 'disabled') {
+                <label class="relay-consent"><input id="relay-consent" type="checkbox" [disabled]="!session.joined()" [ngModel]="mesh.relayConsent()" (ngModelChange)="setRelayConsent($event)"> Diesen Browser als Trusted Video Relay erlauben</label>
+                <p class="relay-warning">Kann Medien verarbeiten und CPU, Akku sowie Upload beanspruchen.</p>
+              }
+            </section>
+          </aside>
+        </section>
+      }
+
+      @if (activeSection() === 'chat') {
+        <section class="view-header">
+          <div><button class="back-link" type="button" (click)="show('live')">← Zum Live-Raum</button><p class="eyebrow">DataChannel</p><h1>Raumchat</h1><p>Nachrichten laufen direkt und verschlüsselt zwischen den verbundenen Browsern.</p></div>
+        </section>
+        <section class="surface chat-page">
+          <div id="chat-log" class="chat-log expanded" aria-live="polite">
+            @for (entry of mesh.chat(); track entry.id) {
+              <div class="chat-entry" [class.system]="entry.system"><strong>{{ entry.author }}</strong><span>{{ entry.text }}</span></div>
+            } @empty {
+              <div class="list-empty"><span aria-hidden="true">···</span><strong>Noch keine Nachrichten</strong><p>Nach dem Beitritt verbindet sich der Peer-Chat automatisch.</p></div>
+            }
+          </div>
+          <form id="chat-form" class="chat-form large" (submit)="$event.preventDefault(); sendChat()">
+            <input id="chat-message" maxlength="2000" autocomplete="off" placeholder="Nachricht an alle Peers" [disabled]="!session.joined()" [ngModel]="chatInput()" (ngModelChange)="chatInput.set($event)" name="chatMessage">
+            <button class="button primary" type="submit" [disabled]="!session.joined() || !chatInput().trim()">Senden</button>
+          </form>
+        </section>
+      }
+
+      @if (activeSection() === 'settings') {
+        <section class="view-header">
+          <div><p class="eyebrow">Kontrolle &amp; Transparenz</p><h1>Einstellungen</h1><p>Verbindungsqualität, Gerätebindung und Sicherheitsstatus auf einen Blick.</p></div>
+        </section>
+        <section class="settings-grid">
+          <section class="surface settings-card">
+            <div class="surface-heading"><span class="feature-icon mint" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 18V8M10 18V4M16 18v-7M22 18H2"/></svg></span><div><p class="eyebrow">Adaptive Mesh</p><h2>Bandbreite &amp; Fokus</h2></div></div>
+            <label>Qualitätsprofil<select id="optimization-mode" [ngModel]="mesh.optimizationMode()" (ngModelChange)="setOptimizationMode($event)"><option value="auto">Auto · Active Speaker</option><option value="balanced">Ausgewogen</option><option value="data-saver">Datensparend</option></select></label>
+            <dl class="fact-list">
+              <div><dt>Eigene Videoqualität</dt><dd id="local-quality">{{ mesh.localQuality() }}</dd></div>
+              <div><dt>Linkklasse</dt><dd id="link-quality">{{ mesh.linkSummary() }}</dd></div>
+              <div><dt>Sendersteuerung</dt><dd>{{ mesh.qualityCapability() }}</dd></div>
+            </dl>
+            <p id="active-speakers" class="hint">Fokus: {{ mesh.activeSpeakerNames().length ? mesh.activeSpeakerNames().join(', ') : 'stabile Teilnehmerreihenfolge' }}. Audio und Control bleiben priorisiert.</p>
+            @if (config.value()?.optimization?.peerRelayEnabled && config.value()?.mediaE2ee?.mode === 'disabled') {
+              <label class="relay-consent"><input id="relay-consent" type="checkbox" [disabled]="!session.joined()" [ngModel]="mesh.relayConsent()" (ngModelChange)="setRelayConsent($event)"> Diesem Browser erlauben, Video für andere Raumteilnehmer weiterzuleiten</label>
+              <p class="relay-warning">Trusted Relay kann Medien hopweise verarbeiten und neu encodieren. Es kann CPU, Akku sowie Upload beanspruchen.</p>
+            } @else if (config.value()?.mediaE2ee?.mode !== 'disabled') {
+              <p class="relay-warning">Der entschlüsselnde Browser-Relay ist bei SFrame deaktiviert. Edge-Agenten leiten nur verschlüsselte TURN-Pakete weiter.</p>
+            }
+          </section>
+
+          <section class="surface settings-card">
+            <div class="surface-heading"><span class="feature-icon violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-5"/></svg></span><div><p class="eyebrow">Sicherheitsstatus</p><h2>Identität &amp; Transport</h2></div></div>
+            <p>Keycloak-Tokens werden serverseitig über JWKS geprüft. Das WebSocket erhält nur ein kurzlebiges Einmal-Ticket. Im SFrame-Modus werden Medienframes zusätzlich vor dem WebRTC-Transport verschlüsselt.</p>
+            <dl class="fact-list">
+              <div><dt>Auth</dt><dd>{{ config.value()?.auth?.mode }}</dd></div>
+              <div><dt>TURN</dt><dd>{{ config.value()?.turnConfigured ? 'kurzlebige Credentials' : 'nicht konfiguriert' }}</dd></div>
+              <div><dt>Edge-Relay</dt><dd>{{ config.value()?.edgeRelayConfigured ? 'freiwilliger zweiter Pfad' : 'nicht konfiguriert' }}</dd></div>
+              <div><dt>Media-E2EE</dt><dd>{{ config.value()?.mediaE2ee?.mode }} · {{ mesh.mediaE2eeState() }}</dd></div>
+              <div><dt>Gerät</dt><dd>{{ device.fingerprint() ? 'P-256 gebunden' : 'beim ersten Join' }}</dd></div>
+            </dl>
+            @if (device.fingerprint()) { <code class="fingerprint">Gerät {{ device.fingerprint().slice(0, 18) }}…</code> }
+          </section>
+
+          <section class="surface settings-card identity-card">
+            <div class="surface-heading"><span class="feature-icon amber" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg></span><div><p class="eyebrow">Konto</p><h2>Keycloak-Identität</h2></div></div>
+            @if (config.value()?.auth?.mode === 'disabled') {
+              <p>Lokaler anonymer Entwicklungsmodus. Der Join bleibt kryptografisch an dieses Browsergerät gebunden.</p>
+            } @else if (auth.authenticated()) {
+              <p>Angemeldet als <strong>{{ auth.username() }}</strong>. Nur deine verifizierte OIDC-Identität darf die Sichtbarkeit deiner Räume ändern.</p>
+              <button class="button ghost" type="button" (click)="logout()">Abmelden</button>
+            } @else {
+              <p>Neue Nutzer können ihr Konto direkt bei Keycloak registrieren und danach eigene Räume verwalten.</p>
+              <div class="inline-actions"><button class="button ghost" type="button" (click)="auth.login()">Anmelden</button><button class="button primary" type="button" (click)="auth.register()">Konto erstellen</button></div>
+            }
+          </section>
+        </section>
+      }
+    </main>
+  </div>
+</div>

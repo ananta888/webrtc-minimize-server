@@ -9,6 +9,12 @@ import { loadConfig } from "./config.js";
 import { DeviceProofError, DeviceProofVerifier } from "./device-proof.js";
 import { buildRoomTopology } from "./media-topology.js";
 import { RelayHealthTracker } from "./relay-health.js";
+import {
+  normalizeRoomTitle,
+  normalizeRoomVisibility,
+  RoomDirectory,
+  RoomDirectoryError,
+} from "./room-directory.js";
 import { AuthenticationError, bearerToken, createOidcVerifier } from "./oidc-verifier.js";
 import { PairWorkspaceError, PairWorkspaceStore } from "./pair-workspace-store.js";
 import {
@@ -33,7 +39,8 @@ const MIME_TYPES = new Map([
   [".woff2", "font/woff2"],
 ]);
 const MAX_HTTP_BODY_BYTES = 16 * 1024;
-const ROOM_REQUEST_FIELDS = new Set(["mode", "persistent", "title"]);
+const ROOM_REQUEST_FIELDS = new Set(["mode", "persistent", "title", "visibility"]);
+const ROOM_UPDATE_FIELDS = new Set(["title", "visibility"]);
 const SESSION_REQUEST_FIELDS = new Set(["roomId", "displayName", "mode", "deviceProof", "workspaceInvite"]);
 const EVENT_REQUEST_FIELDS = new Set(["eventId", "correlationId", "kind", "payload"]);
 const CURSOR_REQUEST_FIELDS = new Set(["sequence"]);
@@ -213,7 +220,19 @@ async function authenticateRequest(request, config, oidcVerifier) {
   return oidcVerifier.verify(token);
 }
 
+async function authenticateOptionalRequest(request, config, oidcVerifier) {
+  const token = bearerToken(request.headers.authorization);
+  if (!token) return null;
+  if (config.authMode === "disabled") throw new AuthenticationError("authentication_disabled");
+  return oidcVerifier.verify(token);
+}
+
+function principalFor(identity) {
+  return identity ? `${identity.issuer}|${identity.subject}` : "";
+}
+
 function errorStatus(error) {
+  if (error instanceof RoomDirectoryError) return error.status;
   if (error instanceof PairWorkspaceError) return error.status;
   if (error instanceof AuthenticationError) return 401;
   if (error instanceof ProtocolError || error instanceof DeviceProofError) return 400;
@@ -221,7 +240,7 @@ function errorStatus(error) {
 }
 
 function createHttpHandler(config, registry, services) {
-  const { oidcVerifier, deviceProofVerifier, ticketStore, workspaceStore, publicDir } = services;
+  const { oidcVerifier, deviceProofVerifier, ticketStore, workspaceStore, directory, publicDir } = services;
   return async (request, response) => {
     try {
       const url = new URL(request.url, "http://localhost");
@@ -235,6 +254,15 @@ function createHttpHandler(config, registry, services) {
       }
       if (request.method === "GET" && url.pathname === "/config") {
         sendJson(response, 200, publicRuntimeConfig(config), securityHeaders(config));
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/api/rooms") {
+        const identity = await authenticateOptionalRequest(request, config, oidcVerifier);
+        directory.prune(Date.now(), (roomId) => registry.members(roomId).length > 0);
+        sendJson(response, 200, directory.list({
+          principal: principalFor(identity),
+          participantCount: (roomId) => registry.members(roomId).length,
+        }), securityHeaders(config));
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/rooms") {
@@ -254,19 +282,59 @@ function createHttpHandler(config, registry, services) {
         if (persistent && !identity) throw new PairWorkspaceError("authentication_required", 401);
         const roomId = `${mode}-${crypto.randomBytes(9).toString("hex")}`;
         const origin = requestOrigin(request, config);
+        let roomMetadata = null;
+        if (mode === "room") {
+          const title = normalizeRoomTitle(input.title, `Raum ${roomId.slice(-6)}`);
+          const visibility = normalizeRoomVisibility(input.visibility);
+          if (visibility === "public" && !identity) {
+            throw new AuthenticationError("authentication_required");
+          }
+          if (identity) {
+            roomMetadata = directory.create({
+              roomId,
+              title,
+              visibility,
+              ownerPrincipal: principalFor(identity),
+            });
+          } else {
+            roomMetadata = { title, visibility, owned: false };
+          }
+        } else if (input.visibility !== undefined) {
+          throw new ProtocolError("room_visibility_requires_room");
+        }
         const workspace = persistent ? workspaceStore.create({
           roomId,
           title: input.title,
-          ownerPrincipal: `${identity.issuer}|${identity.subject}`,
+          ownerPrincipal: principalFor(identity),
         }) : null;
         sendJson(response, 201, {
           roomId,
           mode,
           persistent,
+          ...(roomMetadata ? {
+            title: roomMetadata.title,
+            visibility: roomMetadata.visibility,
+            owned: roomMetadata.owned,
+          } : {}),
           ...(workspace ? { workspaceId: workspace.workspaceId, role: workspace.role } : {}),
           inviteUrl: `${origin}/?room=${encodeURIComponent(roomId)}&mode=${mode}`
             + (workspace ? `&workspaceInvite=${encodeURIComponent(workspace.inviteToken)}` : ""),
         }, securityHeaders(config));
+        return;
+      }
+      const roomMatch = url.pathname.match(/^\/api\/rooms\/(room-[a-f0-9]{18})$/);
+      if (roomMatch && request.method === "PATCH") {
+        if (!requestOriginAllowed(request, config)) throw new ProtocolError("origin_denied");
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        if (!identity) throw new AuthenticationError("authentication_required");
+        const input = await readJsonBody(request);
+        assertAllowedKeys(input, ROOM_UPDATE_FIELDS);
+        directory.update(roomMatch[1], principalFor(identity), input);
+        const room = directory.list({
+          principal: principalFor(identity),
+          participantCount: (roomId) => registry.members(roomId).length,
+        }).ownRooms.find((entry) => entry.roomId === roomMatch[1]);
+        sendJson(response, 200, { room }, securityHeaders(config));
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/sessions") {
@@ -390,7 +458,7 @@ function createHttpHandler(config, registry, services) {
       }
       if (request.method !== "GET" && request.method !== "HEAD") {
         sendJson(response, 405, { error: "method_not_allowed" }, {
-          allow: "GET, HEAD, POST",
+          allow: "GET, HEAD, POST, PATCH",
           ...securityHeaders(config),
         });
         return;
@@ -419,7 +487,7 @@ function rejectUpgrade(socket, statusCode, message) {
   );
 }
 
-function configureSignaling(server, config, registry, ticketStore) {
+function configureSignaling(server, config, registry, ticketStore, directory) {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
   const roomEpochs = new Map();
   const relayHealth = new RelayHealthTracker({
@@ -491,6 +559,7 @@ function configureSignaling(server, config, registry, ticketStore) {
       return;
     }
     const { peer, existingPeers } = joined;
+    directory.touch(peer.roomId);
     socket.isAlive = true;
     safeSend(socket, {
       type: "welcome",
@@ -595,6 +664,7 @@ function configureSignaling(server, config, registry, ticketStore) {
       for (const recipient of registry.leave(peer)) {
         safeSend(recipient.socket, { type: "peer-left", peerId: peer.id });
       }
+      directory.touch(peer.roomId);
       broadcastTopology(peer.roomId, true);
     };
     socket.on("close", leave);
@@ -611,6 +681,7 @@ function configureSignaling(server, config, registry, ticketStore) {
       socket.ping();
     }
     registry.prune();
+    directory.prune(Date.now(), (roomId) => registry.members(roomId).length > 0);
     ticketStore.prune();
   }, 30_000);
   heartbeat.unref();
@@ -633,6 +704,10 @@ export function createAppServer(options = {}) {
     maxParticipants: config.maxRoomParticipants,
     idleTtlMs: config.roomIdleTtlMs,
   });
+  const directory = options.directory || new RoomDirectory({
+    maxParticipants: config.maxRoomParticipants,
+    idleTtlMs: config.roomIdleTtlMs,
+  });
   const oidcVerifier = options.oidcVerifier || createOidcVerifier(config);
   const deviceProofVerifier = options.deviceProofVerifier || new DeviceProofVerifier({
     maxAgeMs: config.deviceProofMaxAgeMs,
@@ -641,11 +716,11 @@ export function createAppServer(options = {}) {
   const workspaceStore = options.workspaceStore || (config.pairWorkspaceEnabled
     ? new PairWorkspaceStore({ filename: config.pairWorkspaceDb }) : null);
   const publicDir = path.resolve(options.publicDir || DEFAULT_PUBLIC_DIR);
-  const services = { oidcVerifier, deviceProofVerifier, ticketStore, workspaceStore, publicDir };
+  const services = { oidcVerifier, deviceProofVerifier, ticketStore, workspaceStore, directory, publicDir };
   const server = http.createServer(createHttpHandler(config, registry, services));
   if (!options.workspaceStore && workspaceStore) server.on("close", () => workspaceStore.close());
-  const webSocketServer = configureSignaling(server, config, registry, ticketStore);
-  return { server, webSocketServer, config, registry, ticketStore, workspaceStore };
+  const webSocketServer = configureSignaling(server, config, registry, ticketStore, directory);
+  return { server, webSocketServer, config, registry, directory, ticketStore, workspaceStore };
 }
 
 export async function startServer(options = {}) {

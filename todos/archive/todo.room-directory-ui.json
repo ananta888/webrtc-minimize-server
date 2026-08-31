@@ -1,0 +1,110 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "room-directory-ui",
+  "purpose": "Die Angular-Anwendung erhaelt eine klare Navigation, ein serverautorisiertes Verzeichnis oeffentlicher und eigener Raeume sowie eine moderne, bedienbare Live-Ansicht.",
+  "goal": "Angemeldete Benutzer koennen normale Raeume benennen, privat oder oeffentlich anlegen, die Sichtbarkeit als Eigentuemer jederzeit wechseln, oeffentliche und eigene Raeume getrennt ueberblicken und mit wenigen Schritten in eine moderne Audio-/Video-/Bildschirmfreigabe wechseln.",
+  "status": "completed",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "RDU-M01",
+      "title": "Serverautorisiertes Raumverzeichnis",
+      "task_ids": ["RDU-001"],
+      "status": "done"
+    },
+    {
+      "id": "RDU-M02",
+      "title": "Strukturierte Angular-Oberflaeche",
+      "task_ids": ["RDU-002"],
+      "status": "done"
+    },
+    {
+      "id": "RDU-M03",
+      "title": "Verifizierter Gesamtpfad",
+      "task_ids": ["RDU-003"],
+      "status": "done"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "RDU-001",
+      "title": "Raummetadaten, Verzeichnis und Eigentuemer-Policy implementieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Normale Raeume erhalten validierte Titel und die Sichtbarkeit private oder public; unbekannte Felder und ungueltige Werte werden fail-closed abgewiesen.",
+        "Eine oeffentliche Liste ist ohne Token lesbar, enthaelt nur public-Raeume und gibt weder Owner-Principals noch andere interne Autoritaetsdaten aus.",
+        "Die authentifizierte eigene Liste enthaelt die vom aktuellen OIDC-Principal erstellten Raeume einschliesslich privater Raeume.",
+        "Nur der exakte verifizierte Ersteller darf Titel oder Sichtbarkeit wechseln; fehlende, fremde oder ungueltige Autorisierung besitzt Negativtests.",
+        "Raummetadaten bleiben auf die laufende Control-Plane-Instanz begrenzt, werden ressourcenbegrenzt bereinigt und aendern weder Membership- noch Bearer-Invite-Semantik."
+      ]
+    },
+    {
+      "id": "RDU-002",
+      "title": "Navigation, Raumlisten und moderne Live-Steuerung in Angular umsetzen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": ["RDU-001"],
+      "acceptance_criteria": [
+        "Eine responsive Hauptnavigation trennt Raumuebersicht, Live-Raum, Chat und Einstellungen, ohne vorhandene Funktionen zu verstecken.",
+        "Oeffentliche und eigene Raeume erscheinen getrennt mit Titel, Sichtbarkeit, Teilnehmerzahl und direkter Beitreten-Aktion; Leer-, Lade- und Fehlerzustaende sind sichtbar.",
+        "Ein Erstellungsdialog erlaubt Titel und private/public; der Eigentuemer kann die Sichtbarkeit aus der Liste und im aktiven Raum wechseln.",
+        "Ein Listenwechsel verlaesst die bestehende Session kontrolliert, stoppt alle lokalen Tracks und tritt erst nach einer expliziten Benutzeraktion dem Zielraum bei.",
+        "Mikrofon, Kamera, Bildschirmfreigabe und Verlassen sind als moderne, responsive Control-Bar angeordnet und jede Capture-API bleibt an ihren sichtbaren lokalen Klick gebunden.",
+        "Frontend-Tests decken die neuen Vertraege und die sicherheitsrelevanten UI-Aktionen ab."
+      ]
+    },
+    {
+      "id": "RDU-003",
+      "title": "Raumverzeichnis und Browseroberflaeche end-to-end verifizieren",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["RDU-001", "RDU-002"],
+      "acceptance_criteria": [
+        "npm run check besteht einschliesslich Todo-, Frontend-, Build-, Node- und sichtbarer Infrastruktur-Gates.",
+        "Integrationstests belegen Erstellen, getrennte Listen, Owner-Update, Fremdzugriffsschutz und den Wechsel public zu private und zurueck.",
+        "Ein Browsernachweis bestaetigt, dass beim Laden, Navigieren und Raumwechsel keine Capture-Berechtigung ohne Klick angefordert wird.",
+        "Bestehende Join-, Pair-Workspace-, OIDC-, TURN-, SFrame-, Chat- und Signaling-Pfade bleiben kompatibel."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["RDU-001", "RDU-002", "RDU-003"],
+  "tasks_status_summary": {
+    "total": 3,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 3 },
+    "progress_percent_done": 100,
+    "by_priority": { "P0": 1, "P1": 2, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 2, "critical": 0 },
+    "critical_path": { "total": 3, "done": 3, "remaining": 0 },
+    "milestones": { "total": 3, "todo": 0, "in_progress": 0, "blocked": 0, "done": 3 }
+  },
+  "progress_summary": {
+    "state": "completed",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 3
+  },
+  "summary_notes": [
+    "Normale Raummetadaten bleiben gemaess Systemgrenze fluechtig; dieser Track fuehrt keine persistente Room-Membership oder unbegrenzte globale Room-Sammlung ein.",
+    "Private Raeume bleiben ueber ihren nicht oeffentlich gelisteten Raumcode als Bearer-Invite erreichbar; die Sichtbarkeit ersetzt keine OIDC-Identitaet und keine Membership-Autorisierung.",
+    "Pair-Sessions und persistente Pair-Workspaces bleiben private Spezialpfade und werden nicht in das oeffentliche Raumverzeichnis umgedeutet.",
+    "Capture bleibt ausschliesslich durch die vorhandenen expliziten Mikrofon-, Kamera- und Bildschirm-Schaltflaechen startbar.",
+    "Backend-Nachweis: Unit- und HTTP-Integrationstests pruefen getrennte public/own-Sichten, fehlende Principal-Leaks, exakte Owner-Autorisierung, Sichtbarkeitswechsel, Validierung und TTL-Bereinigung.",
+    "UI-Nachweis: echte Chromium-Renderings mit 1440x1100 und 390x844 zeigen Raumzentrale und Live-Control-Bar ohne horizontalen Seiten-Overflow; Laden, Join und Menuewechsel erzeugten jeweils null Capture-Aufrufe.",
+    "Der visuelle Gate deckte einen CSP-blockierten Angular-onload-Stylesheetpfad auf; inlineCritical ist nun deaktiviert und der Produktionsbuild liefert ein normales CSP-kompatibles Stylesheet-Linkelement.",
+    "Abschluss-Gate: npm run check bestand mit 43 Frontend- und 62 Node-/Integrationstests einschliesslich echter Chromium-/Firefox-WebRTC-Matrix; das optionale externe Keycloak-/TURN-Gate meldete ohne explizite Credentials einen sichtbaren Skip."
+  ]
+}

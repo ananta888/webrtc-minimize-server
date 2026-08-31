@@ -4,6 +4,11 @@ import { FormsModule } from "@angular/forms";
 import { OidcAuthService } from "../../auth/oidc-auth.service";
 import { RuntimeConfigService } from "../../core/runtime-config.service";
 import { DeviceIdentityService } from "../../identity/device-identity.service";
+import {
+  RoomDirectoryService,
+  RoomSummary,
+  RoomVisibility,
+} from "../../rooms/room-directory.service";
 import { MediaStreamDirective } from "../../shared/media-stream.directive";
 import { MediaMosaicComponent } from "../../shared/media-mosaic.component";
 import { OptimizationMode } from "../../webrtc/media-optimization-policy";
@@ -13,6 +18,8 @@ import { RoomMode, RoomSessionService } from "../../webrtc/room-session.service"
 import { SignalingService } from "../../webrtc/signaling.service";
 import { PairWorkspacePanelComponent } from "../../workspace/pair-workspace-panel.component";
 import { PairWorkspaceService, WorkspaceSummary } from "../../workspace/pair-workspace.service";
+
+type AppSection = "rooms" | "live" | "chat" | "settings";
 
 @Component({
   selector: "app-room-page",
@@ -24,19 +31,41 @@ import { PairWorkspaceService, WorkspaceSummary } from "../../workspace/pair-wor
 export class RoomPageComponent implements OnInit, OnDestroy {
   readonly ready = signal(false);
   readonly pageError = signal("");
+  readonly notice = signal("");
+  readonly activeSection = signal<AppSection>("rooms");
   readonly roomInput = signal("");
   readonly nameInput = signal(sessionStorage.getItem("webrtc-display-name") || "");
   readonly selectedMode = signal<RoomMode>("room");
+  readonly newRoomTitle = signal("Meine Runde");
+  readonly newRoomVisibility = signal<RoomVisibility>("private");
   readonly chatInput = signal("");
   readonly workspaceTitle = signal("Pair Dev Workspace");
   readonly connectionLabel = computed(() => {
     if (this.session.joined()) return "Signaling verbunden";
     if (this.signaling.status() === "connecting") return "Verbindung wird aufgebaut";
-    if (this.signaling.status() === "error") return "Signaling fehlgeschlagen";
+    if (this.signaling.status() === "error") return "Verbindung fehlgeschlagen";
     return "Nicht verbunden";
   });
   readonly authRequired = computed(() => this.config.value()?.auth.mode === "required");
   readonly canEnter = computed(() => this.ready() && (!this.authRequired() || this.auth.authenticated()));
+  readonly canOwnRooms = computed(() => this.auth.authenticated());
+  readonly currentRoom = computed(() => {
+    const roomId = this.session.joined() ? this.session.roomId() : this.roomInput();
+    return [...this.directory.ownRooms(), ...this.directory.publicRooms()]
+      .find((room) => room.roomId === roomId) || null;
+  });
+  readonly currentRoomTitle = computed(() => (
+    this.currentRoom()?.title
+    || (this.session.mode() === "pair" ? "Pair-Session" : "Privater Raum")
+  ));
+  readonly combinedError = computed(() => (
+    this.pageError()
+    || this.directory.error()
+    || this.session.error()
+    || this.media.error()
+    || this.auth.error()
+  ));
+  private directoryRefreshHandle: ReturnType<typeof setInterval> | null = null;
   private readonly beforeUnload = () => this.shutdown();
   private readonly stopCaptureOnSessionEnd = effect(() => {
     if (!this.session.joined() && this.signaling.status() !== "connecting") this.media.stopAll();
@@ -50,6 +79,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     readonly session: RoomSessionService,
     readonly mesh: PeerMeshService,
     readonly media: MediaPublicationService,
+    readonly directory: RoomDirectoryService,
     readonly workspaces: PairWorkspaceService,
   ) {}
 
@@ -61,8 +91,17 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     this.session.setWorkspaceInvite(params.get("workspaceInvite") || "");
     try {
       this.auth.configure(await this.config.load());
-      if (this.auth.authenticated() && this.config.value()?.pairWorkspaceEnabled) void this.workspaces.loadList();
+      if (!this.nameInput().trim() && this.auth.username()) this.nameInput.set(this.auth.username());
       this.ready.set(true);
+      await Promise.all([
+        this.directory.load(),
+        this.auth.authenticated() && this.config.value()?.pairWorkspaceEnabled
+          ? this.workspaces.loadList()
+          : Promise.resolve(),
+      ]);
+      this.directoryRefreshHandle = setInterval(() => {
+        if (document.visibilityState === "visible") void this.directory.load();
+      }, 15_000);
     } catch (error) {
       this.pageError.set(error instanceof Error ? error.message : "Konfiguration konnte nicht geladen werden");
     }
@@ -70,27 +109,56 @@ export class RoomPageComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     window.removeEventListener("beforeunload", this.beforeUnload);
+    if (this.directoryRefreshHandle) clearInterval(this.directoryRefreshHandle);
     this.stopCaptureOnSessionEnd.destroy();
     this.shutdown();
   }
 
+  show(section: AppSection): void {
+    this.activeSection.set(section);
+  }
+
+  async createRoom(): Promise<void> {
+    this.clearMessages();
+    const title = this.newRoomTitle().trim();
+    if (!title) {
+      this.pageError.set("Bitte gib dem Raum einen Titel.");
+      return;
+    }
+    try {
+      const room = await this.directory.create(title, this.newRoomVisibility());
+      if (!room.roomId || !room.inviteUrl) throw new Error("room_creation_invalid");
+      this.roomInput.set(room.roomId);
+      this.selectedMode.set("room");
+      this.session.setWorkspaceInvite("");
+      history.replaceState(null, "", `/?room=${encodeURIComponent(room.roomId)}&mode=room`);
+      await this.directory.load();
+      this.notice.set(`„${room.title || title}“ wurde erstellt.`);
+    } catch (error) {
+      this.pageError.set(error instanceof Error ? error.message : "Raum konnte nicht erstellt werden");
+    }
+  }
+
   async create(mode: RoomMode): Promise<void> {
+    this.clearMessages();
     try {
       const room = await this.session.createRoom(mode);
       this.roomInput.set(room.roomId);
       this.selectedMode.set(mode);
       history.replaceState(null, "", `/?room=${encodeURIComponent(room.roomId)}&mode=${mode}`);
     } catch (error) {
-      this.pageError.set(error instanceof Error ? error.message : "Raum konnte nicht erstellt werden");
+      this.pageError.set(error instanceof Error ? error.message : "Session konnte nicht erstellt werden");
     }
   }
 
   async createWorkspace(): Promise<void> {
+    this.clearMessages();
     try {
       const room = await this.session.createRoom("pair", true, this.workspaceTitle());
       this.roomInput.set(room.roomId);
       this.selectedMode.set("pair");
       history.replaceState(null, "", new URL(room.inviteUrl).search);
+      await this.workspaces.loadList();
     } catch (error) {
       this.pageError.set(error instanceof Error ? error.message : "Workspace konnte nicht erstellt werden");
     }
@@ -103,34 +171,61 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     history.replaceState(null, "", `/?room=${encodeURIComponent(workspace.roomId)}&mode=pair`);
   }
 
+  async enterListedRoom(room: RoomSummary): Promise<void> {
+    await this.enterRoom(room.roomId, "room", { clearWorkspaceInvite: true });
+  }
+
   async join(): Promise<void> {
-    this.pageError.set("");
-    const name = this.nameInput().trim();
-    const room = this.roomInput().trim();
-    if (!name || !room) {
-      this.pageError.set("Name und Raumcode fehlen");
-      return;
-    }
-    sessionStorage.setItem("webrtc-display-name", name);
-    try {
-      await this.session.join(room, name, this.selectedMode());
-    } catch (error) {
-      this.pageError.set(error instanceof Error ? error.message : "Beitritt fehlgeschlagen");
-    }
+    await this.enterRoom(this.roomInput(), this.selectedMode(), {
+      clearWorkspaceInvite: this.selectedMode() === "room",
+    });
   }
 
   leave(): void {
     this.media.stopAll();
     this.session.leave();
+    this.notice.set("Du hast den Raum verlassen.");
+    this.activeSection.set("rooms");
+    void this.directory.load();
   }
 
   async logout(): Promise<void> {
-    this.leave();
+    this.media.stopAll();
+    this.session.leave();
+    this.activeSection.set("rooms");
+    this.directory.clearOwnRooms();
     await this.auth.logout();
   }
 
+  async setVisibility(room: RoomSummary, visibility: RoomVisibility): Promise<void> {
+    if (!room.owned || room.visibility === visibility) return;
+    this.clearMessages();
+    try {
+      const updated = await this.directory.update(room.roomId, { visibility });
+      this.notice.set(updated.visibility === "public"
+        ? `„${updated.title}“ ist jetzt öffentlich sichtbar.`
+        : `„${updated.title}“ ist jetzt nur noch per Einladung sichtbar.`);
+    } catch (error) {
+      this.pageError.set(error instanceof Error ? error.message : "Sichtbarkeit konnte nicht geändert werden");
+    }
+  }
+
+  async toggleCurrentVisibility(): Promise<void> {
+    const room = this.currentRoom();
+    if (room?.owned) await this.setVisibility(room, room.visibility === "public" ? "private" : "public");
+  }
+
+  async refreshRooms(): Promise<void> {
+    await this.directory.load();
+  }
+
   async copyInvite(): Promise<void> {
-    if (this.session.inviteUrl()) await navigator.clipboard.writeText(this.session.inviteUrl());
+    const value = this.session.inviteUrl();
+    if (value) await this.copy(value);
+  }
+
+  async copyRoomInvite(room: RoomSummary): Promise<void> {
+    await this.copy(`${location.origin}/?room=${encodeURIComponent(room.roomId)}&mode=room`);
   }
 
   sendChat(): void {
@@ -152,6 +247,54 @@ export class RoomPageComponent implements OnInit, OnDestroy {
 
   mediaLabel(source: string): string {
     return ({ microphone: "Mikrofon", camera: "Kamera", screen: "Bildschirm", "screen-audio": "Bildschirmton" } as Record<string, string>)[source] || source;
+  }
+
+  private async enterRoom(
+    roomId: string,
+    mode: RoomMode,
+    options: { clearWorkspaceInvite: boolean },
+  ): Promise<void> {
+    this.clearMessages();
+    const room = roomId.trim().toLowerCase();
+    const name = (this.nameInput().trim() || this.auth.username()).trim();
+    if (!name || !room) {
+      this.pageError.set("Name und Raumcode fehlen.");
+      this.activeSection.set("rooms");
+      return;
+    }
+    if (this.session.joined() && this.session.roomId() === room && this.session.mode() === mode) {
+      this.activeSection.set("live");
+      return;
+    }
+    if (this.session.joined()) this.media.stopAll();
+    if (options.clearWorkspaceInvite) this.session.setWorkspaceInvite("");
+    this.roomInput.set(room);
+    this.selectedMode.set(mode);
+    this.nameInput.set(name);
+    sessionStorage.setItem("webrtc-display-name", name);
+    history.replaceState(null, "", `/?room=${encodeURIComponent(room)}&mode=${mode}`);
+    try {
+      await this.session.join(room, name, mode);
+      this.activeSection.set("live");
+      void this.directory.load();
+    } catch (error) {
+      this.pageError.set(error instanceof Error ? error.message : "Beitritt fehlgeschlagen");
+      this.activeSection.set("rooms");
+    }
+  }
+
+  private async copy(value: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(value);
+      this.notice.set("Einladungslink kopiert.");
+    } catch {
+      this.pageError.set("Einladungslink konnte nicht kopiert werden.");
+    }
+  }
+
+  private clearMessages(): void {
+    this.pageError.set("");
+    this.notice.set("");
   }
 
   private shutdown(): void {

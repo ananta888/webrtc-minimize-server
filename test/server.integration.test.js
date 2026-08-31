@@ -395,6 +395,126 @@ test("required OIDC mode denies missing tokens and binds verified identity to a 
   assert.deepEqual(allowed.body.identity, { authenticated: true, displayName: "Ada" });
 });
 
+test("room directory separates public and owned rooms and enforces owner-only visibility changes", async (context) => {
+  const identities = {
+    owner: { issuer: "https://identity.test/realms/webrtc", subject: "owner", displayName: "Owner" },
+    stranger: { issuer: "https://identity.test/realms/webrtc", subject: "stranger", displayName: "Stranger" },
+  };
+  const oidcVerifier = {
+    async verify(token) {
+      const identity = identities[token];
+      if (!identity) throw new AuthenticationError("invalid_access_token");
+      return identity;
+    },
+  };
+  const app = await startTestServer({
+    authMode: "required",
+    oidcIssuer: "https://identity.test/realms/webrtc",
+    oidcJwksUrl: "https://identity.test/certs",
+    oidcAudience: "webrtc-room-server",
+    oidcClientId: "webrtc-browser",
+  }, { oidcVerifier });
+  context.after(() => app.close());
+
+  const create = async (title, visibility) => {
+    const response = await fetch(`${app.httpUrl}/api/rooms`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: app.httpUrl, authorization: "Bearer owner" },
+      body: JSON.stringify({ mode: "room", title, visibility }),
+    });
+    assert.equal(response.status, 201);
+    return response.json();
+  };
+  const publicRoom = await create("Offene Runde", "public");
+  const privateRoom = await create("Nur per Einladung", "private");
+
+  const participant = await connectAuthorized(app, publicRoom.roomId, "ignored", {
+    authorization: "Bearer owner",
+  });
+  await participant.next((message) => message.type === "welcome");
+
+  const anonymousList = await fetch(`${app.httpUrl}/api/rooms`).then((response) => response.json());
+  assert.deepEqual(anonymousList.publicRooms.map((room) => room.roomId), [publicRoom.roomId]);
+  assert.equal(anonymousList.publicRooms[0].participantCount, 1);
+  assert.deepEqual(anonymousList.ownRooms, []);
+  assert.equal(JSON.stringify(anonymousList).includes("issuer|owner"), false);
+
+  const ownerList = await fetch(`${app.httpUrl}/api/rooms`, {
+    headers: { authorization: "Bearer owner" },
+  }).then((response) => response.json());
+  assert.deepEqual(new Set(ownerList.ownRooms.map((room) => room.roomId)), new Set([
+    publicRoom.roomId,
+    privateRoom.roomId,
+  ]));
+
+  const strangerList = await fetch(`${app.httpUrl}/api/rooms`, {
+    headers: { authorization: "Bearer stranger" },
+  }).then((response) => response.json());
+  assert.deepEqual(strangerList.ownRooms, []);
+  const forbidden = await fetch(`${app.httpUrl}/api/rooms/${publicRoom.roomId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", origin: app.httpUrl, authorization: "Bearer stranger" },
+    body: JSON.stringify({ visibility: "private" }),
+  });
+  assert.equal(forbidden.status, 403);
+  assert.deepEqual(await forbidden.json(), { error: "room_owner_required" });
+
+  const hidden = await fetch(`${app.httpUrl}/api/rooms/${publicRoom.roomId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", origin: app.httpUrl, authorization: "Bearer owner" },
+    body: JSON.stringify({ visibility: "private" }),
+  });
+  assert.equal(hidden.status, 200);
+  assert.equal((await hidden.json()).room.visibility, "private");
+  assert.deepEqual((await fetch(`${app.httpUrl}/api/rooms`).then((response) => response.json())).publicRooms, []);
+
+  const shown = await fetch(`${app.httpUrl}/api/rooms/${publicRoom.roomId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", origin: app.httpUrl, authorization: "Bearer owner" },
+    body: JSON.stringify({ title: "Wieder sichtbar", visibility: "public" }),
+  });
+  assert.equal(shown.status, 200);
+  const finalPublic = await fetch(`${app.httpUrl}/api/rooms`).then((response) => response.json());
+  assert.deepEqual(finalPublic.publicRooms.map(({ title, visibility }) => ({ title, visibility })), [
+    { title: "Wieder sichtbar", visibility: "public" },
+  ]);
+
+  const unauthenticatedUpdate = await fetch(`${app.httpUrl}/api/rooms/${publicRoom.roomId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", origin: app.httpUrl },
+    body: JSON.stringify({ visibility: "private" }),
+  });
+  assert.equal(unauthenticatedUpdate.status, 401);
+  const invalidUpdate = await fetch(`${app.httpUrl}/api/rooms/${publicRoom.roomId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", origin: app.httpUrl, authorization: "Bearer owner" },
+    body: JSON.stringify({ visibility: "listed" }),
+  });
+  assert.equal(invalidUpdate.status, 400);
+  assert.deepEqual(await invalidUpdate.json(), { error: "invalid_room_visibility" });
+
+  const unknownCreateField = await fetch(`${app.httpUrl}/api/rooms`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: app.httpUrl, authorization: "Bearer owner" },
+    body: JSON.stringify({ mode: "room", title: "Unknown", visibility: "private", owner: "client" }),
+  });
+  assert.equal(unknownCreateField.status, 400);
+  assert.deepEqual(await unknownCreateField.json(), { error: "unknown_request_field" });
+  const publicPair = await fetch(`${app.httpUrl}/api/rooms`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: app.httpUrl, authorization: "Bearer owner" },
+    body: JSON.stringify({ mode: "pair", visibility: "public" }),
+  });
+  assert.equal(publicPair.status, 400);
+  assert.deepEqual(await publicPair.json(), { error: "room_visibility_requires_room" });
+  const invalidTokenList = await fetch(`${app.httpUrl}/api/rooms`, {
+    headers: { authorization: "Bearer invalid" },
+  });
+  assert.equal(invalidTokenList.status, 401);
+  assert.deepEqual(await invalidTokenList.json(), { error: "invalid_access_token" });
+  participant.socket.close();
+});
+
 test("persistent Pair Workspace binds two OIDC members and exposes an idempotent timeline", async (context) => {
   const identities = {
     owner: { issuer: "https://identity.test/realms/webrtc", subject: "owner", displayName: "Owner" },
