@@ -78,7 +78,7 @@
       "status": "in_progress",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 35,
+      "progress_percent": 85,
       "depends_on": ["EPR-001", "EPR-002"],
       "acceptance_criteria": [
         "Ein neues zufaelliges Shared Secret liegt ausschliesslich in nicht versionierten .env-Dateien auf Laptop und Control Plane.",
@@ -128,6 +128,9 @@
     "Mini-PC: lokaler Vorzustand wurde als Patch/Dateikopie und Git-Stash gesichert, origin/main fast-forward uebernommen und der vorhandene einzelne Caddy-Pfad mit neu gebauter App, required SFrame, OIDC, Healthz und Ticket-abweisendem WebSocket verifiziert.",
     "Laptop: nativer Windows-Agent lauscht begrenzt auf 3478 UDP/TCP; Autostart und private Konfiguration sind eingerichtet, Firewallregeln wurden per UAC auf Binary, WLAN und 3478/49160-49223 begrenzt.",
     "FRITZ!Box lehnt IGD AddPortMapping mit 403 ab, bietet aber erfolgreiches PCP an; deshalb wird der selbst erneuernde PCP-Pfad vor einer Edge-Registrierung implementiert und real extern geprueft.",
+    "PCP ist im nativen Agent fail-closed implementiert und getestet; die FRITZ!Box beantwortet MAP-Erstellung fuer KRUSTYSFRAME derzeit mit NOT_AUTHORIZED, bis die geraetebezogene selbststaendige Portfreigabe aktiviert wird.",
+    "Ein echter REST-authentisierter TURN-Allocationstest vom Mini-PC zum nativen Windows-Agent war gruen; der dafuer verwendete temporaere Secret-Config-Teststand wurde danach entfernt und der Agent wieder fail-closed gestoppt.",
+    "Keycloak-Live-Nachweis: Realm-Registrierung ist aktiv; Client, Redirect, Web-Origin, S256-PKCE und Audience sind gesetzt. Eine temporaere Browser-Selbstregistrierung bestand PKCE, Issuer/Audience, Raum-Erstellung und WebSocket-Join; der Testnutzer wurde geloescht.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
   ]
 }
