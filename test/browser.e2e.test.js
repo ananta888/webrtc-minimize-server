@@ -200,7 +200,7 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
       width: { ideal: 854, max: 854 },
       height: { ideal: 480, max: 480 },
     },
-    audio: true,
+    audio: false,
   });
   assert.match(await ada.locator("#screen-applied-settings").textContent(), /^\d+(?:\.\d+)? × \d+(?:\.\d+)? · \d+(?:\.\d+)? FPS$/);
   await ada.locator("#screen-resolution").selectOption("360p");
@@ -246,6 +246,110 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   assert.deepEqual(pageErrors, []);
   await ada.locator("#leave-room").click();
   await grace.locator("#participant-count", { hasText: "1 / 20" }).waitFor();
+});
+
+test("Chromium keeps screen audio default-off and revokes opted-in audio without stopping video", { timeout: 30_000 }, async (context) => {
+  try {
+    await fs.access(chromium.executablePath());
+  } catch {
+    context.skip("Playwright Chromium is not installed; run: npx playwright install chromium");
+    return;
+  }
+  const app = createAppServer({
+    config: {
+      host: "127.0.0.1",
+      port: 0,
+      publicOrigin: "",
+      stunUrls: [],
+      turnServers: [],
+      maxRoomParticipants: 20,
+      roomIdleTtlMs: 60_000,
+      signalRateLimit: 120,
+      pairWorkspaceEnabled: false,
+      mediaE2eeMode: "disabled",
+    },
+  });
+  await new Promise((resolve, reject) => {
+    app.server.once("error", reject);
+    app.server.listen(0, "127.0.0.1", resolve);
+  });
+  const origin = `http://127.0.0.1:${app.server.address().port}`;
+  const browser = await chromium.launch({
+    headless: true,
+    args: [
+      "--use-fake-device-for-media-stream",
+      "--use-fake-ui-for-media-stream",
+      "--auto-select-desktop-capture-source=Entire screen",
+    ],
+  });
+  const browserContext = await browser.newContext({ permissions: ["camera", "microphone"] });
+  await browserContext.addInitScript(() => {
+    window.__displayCaptureCalls = [];
+    window.__lastDisplayStream = null;
+    window.__lastDisplayVideoTrack = null;
+    window.__lastDisplayAudioTrack = null;
+    const original = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getDisplayMedia = async (constraints) => {
+      window.__displayCaptureCalls.push(JSON.parse(JSON.stringify(constraints || {})));
+      const stream = await original(constraints);
+      window.__lastDisplayStream = stream;
+      window.__lastDisplayVideoTrack = stream.getVideoTracks()[0] || null;
+      window.__lastDisplayAudioTrack = stream.getAudioTracks()[0] || null;
+      return stream;
+    };
+  });
+  context.after(async () => {
+    await browserContext.close();
+    await browser.close();
+    for (const socket of app.webSocketServer.clients) socket.terminate();
+    await new Promise((resolve) => app.server.close(resolve));
+  });
+  const page = await browserContext.newPage();
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  await page.goto(origin);
+  await page.locator(".nav-item", { hasText: "Einstellungen" }).click();
+  await page.locator("#screen-audio-enabled").waitFor();
+  assert.equal(await page.locator("#screen-audio-enabled").isChecked(), false);
+  assert.equal(await page.locator("#screen-audio-status").textContent(), "aus");
+  assert.deepEqual(await page.evaluate(() => window.__displayCaptureCalls), []);
+
+  await page.locator(".nav-item", { hasText: "Räume" }).click();
+  await page.locator("#display-name").fill("Echo-Test");
+  await page.locator("#create-room").click();
+  await page.waitForFunction(() => document.querySelector("#room-id").value.startsWith("room-"));
+  await page.locator("#join-room").click();
+  await page.locator("#connection-status", { hasText: "Signaling verbunden" }).waitFor();
+
+  await page.locator("#toggle-screen").click();
+  await page.locator("#toggle-screen", { hasText: "Bildschirmfreigabe stoppen" }).waitFor();
+  assert.equal(await page.evaluate(() => window.__lastDisplayStream.getAudioTracks().length), 0);
+  assert.equal(await page.evaluate(() => window.__lastDisplayVideoTrack.readyState), "live");
+  assert.equal(await page.evaluate(() => window.__displayCaptureCalls[0].audio), false);
+  await page.locator("#toggle-screen").click();
+
+  await page.locator(".nav-item", { hasText: "Einstellungen" }).click();
+  await page.locator("#screen-audio-enabled").check();
+  await page.locator("#screen-audio-status", { hasText: "beim nächsten Teilen angefordert" }).waitFor();
+  assert.equal(await page.evaluate(() => window.__displayCaptureCalls.length), 1);
+
+  await page.locator(".nav-item", { hasText: "Live" }).click();
+  await page.locator("#toggle-screen").click();
+  await page.locator("#toggle-screen", { hasText: "Bildschirmfreigabe stoppen" }).waitFor();
+  await page.locator(".nav-item", { hasText: "Einstellungen" }).click();
+  await page.locator("#screen-audio-status", { hasText: "aktiv" }).waitFor();
+  assert.deepEqual(await page.evaluate(() => window.__displayCaptureCalls[1].audio), { restrictOwnAudio: true });
+  assert.equal(await page.evaluate(() => window.__lastDisplayStream.getAudioTracks().length), 1);
+
+  await page.locator("#screen-audio-enabled").uncheck();
+  await page.locator("#screen-audio-status", { hasText: "aus" }).waitFor();
+  assert.equal(await page.evaluate(() => window.__displayCaptureCalls.length), 2);
+  assert.equal(await page.evaluate(() => window.__lastDisplayAudioTrack.readyState), "ended");
+  assert.equal(await page.evaluate(() => window.__lastDisplayStream.getAudioTracks().length), 0);
+  assert.equal(await page.evaluate(() => window.__lastDisplayVideoTrack.readyState), "live");
+  await page.locator(".persistent-media-dock #toggle-screen", { hasText: "Bildschirmfreigabe stoppen" }).waitFor();
+  assert.deepEqual(pageErrors, []);
 });
 
 test("required SFrame drops media instead of downgrading an unsupported Chromium context", { timeout: 30_000 }, async (context) => {

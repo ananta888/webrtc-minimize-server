@@ -298,6 +298,18 @@ export class PeerMeshService {
     void this.applyQualityPolicies();
   }
 
+  detachPublicationTrack(source: MediaSource, track: MediaStreamTrack): void {
+    const stream = this.localStreams.get(source);
+    if (!stream || !stream.getTracks().includes(track)) return;
+    const trackSource = source === "screen" && track.kind === "audio" ? "screen-audio" : source;
+    this.removePublication(track.id);
+    this.activity.remove(track.id);
+    try { this.signaling.send({ type: "media-state", source: trackSource, active: false }); } catch { /* disconnected */ }
+    stream.removeTrack(track);
+    if (stream.getTracks().length === 0) this.localStreams.delete(source);
+    void this.applyQualityPolicies();
+  }
+
   announcePublications(): void {
     for (const publication of this.publications.values()) {
       if (!publication.local) continue;

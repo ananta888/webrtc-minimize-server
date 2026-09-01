@@ -18,6 +18,8 @@ Danach `http://localhost:8080` in zwei Browserfenstern öffnen. `npm start` verw
 
 Medien werden niemals automatisch angefordert. Mikrofon, Kamera und Bildschirm starten nur über ihre jeweiligen Buttons. Beim Verlassen stoppt die App alle eigenen Tracks.
 
+Bildschirmfreigabe ist standardmäßig video-only. Bildschirmton muss unter `Einstellungen → Video & Bandbreite` separat und bewusst aktiviert werden, weil Tab- oder Systemaudio den laufenden Gesprächston erneut in den Raum senden und dadurch Echo erzeugen kann. Das Opt-in allein startet keinen Capture-Aufruf und gilt beim nächsten Bildschirm-teilen-Klick. Wird es während einer Freigabe ausgeschaltet, stoppt ausschließlich der Bildschirm-Audiotrack; das geteilte Bild läuft weiter. Unterstützte Browser werden zusätzlich um `restrictOwnAudio` gebeten, diese experimentelle Eigentonfilterung ist jedoch nur Zusatzschutz und keine portable Echo-Garantie. Für Bildschirmton werden Kopfhörer empfohlen.
+
 ## Räume
 
 Ein normaler Raum erhält einen Namen, einen kryptografisch zufälligen Einladungslink und die Sichtbarkeit `private` oder `public`. Öffentliche Räume kann jeder Besucher ohne Token im Raumverzeichnis sehen; angemeldete Nutzer sehen daneben alle von ihrer exakten OIDC-Identität erstellten Räume. Nur dieser Ersteller darf Name oder Sichtbarkeit ändern. `private` entfernt einen Raum aus der öffentlichen Liste, widerruft aber keinen bereits bekannten Bearer-Invite. Für einen echten Widerruf muss ein neuer Raumcode verwendet werden.

@@ -22,6 +22,7 @@ describe("VideoCapturePreferencesService", () => {
     expect(service.constraints("screen")).toEqual({
       frameRate: { ideal: 15, max: 30 },
     });
+    expect(service.screenAudioEnabled()).toBe(false);
   });
 
   it("builds best-effort ceilings for low-bandwidth resolution and FPS choices", () => {
@@ -46,6 +47,7 @@ describe("VideoCapturePreferencesService", () => {
     const service = new VideoCapturePreferencesService();
     expect(service.camera()).toEqual({ resolutionId: "auto", frameRate: 30 });
     expect(service.screen()).toEqual({ resolutionId: "1440p", frameRate: 10 });
+    expect(service.screenAudioEnabled()).toBe(false);
     expect(parseVideoCapturePreferences("not-json").camera).toEqual({ resolutionId: "auto", frameRate: 30 });
   });
 
@@ -57,6 +59,12 @@ describe("VideoCapturePreferencesService", () => {
     expect(service.screen()).toEqual({ resolutionId: "auto", frameRate: 30 });
     expect(JSON.parse(localStorage.getItem(VIDEO_CAPTURE_STORAGE_KEY) || "{}").camera)
       .toEqual({ resolutionId: "240p", frameRate: 2 });
+
+    service.setScreenAudioEnabled(true);
+    expect(service.screenAudioEnabled()).toBe(true);
+    expect(JSON.parse(localStorage.getItem(VIDEO_CAPTURE_STORAGE_KEY) || "{}").screenAudioEnabled).toBe(true);
+    service.setScreenAudioEnabled("true");
+    expect(service.screenAudioEnabled()).toBe(false);
 
     const applied = normalizeAppliedVideoSettings({ width: 426, height: 240, frameRate: 1.98 });
     expect(applied).toEqual({ width: 426, height: 240, frameRate: 2 });

@@ -3,6 +3,14 @@ import { Injectable, signal } from "@angular/core";
 import { PeerMeshService } from "./peer-mesh.service";
 import { VideoCapturePreferencesService, VideoCaptureSource } from "./video-capture-preferences.service";
 
+interface ScreenAudioSupportedConstraints extends MediaTrackSupportedConstraints {
+  readonly restrictOwnAudio?: boolean;
+}
+
+interface ScreenAudioTrackConstraints extends MediaTrackConstraints {
+  readonly restrictOwnAudio?: boolean;
+}
+
 export type LocalMediaSource = "microphone" | "camera" | "screen";
 
 export interface LocalMediaView {
@@ -15,6 +23,7 @@ export class MediaPublicationService {
   readonly publications = signal<readonly LocalMediaView[]>([]);
   readonly error = signal("");
   readonly pending = signal<LocalMediaSource | null>(null);
+  readonly screenAudioActive = signal(false);
   private readonly streams = new Map<LocalMediaSource, MediaStream>();
   private readonly constraintUpdates: Record<VideoCaptureSource, Promise<void>> = {
     camera: Promise.resolve(),
@@ -55,12 +64,19 @@ export class MediaPublicationService {
         if (!navigator.mediaDevices.getDisplayMedia) throw new Error("display_capture_unavailable");
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: this.videoPreferences.constraints("screen"),
-          audio: true,
+          audio: this.videoPreferences.screenAudioEnabled() ? this.screenAudioConstraints() : false,
         });
       }
       if (source !== "microphone" && stream.getVideoTracks().length === 0) throw new Error("video_track_missing");
       if (source === "microphone" && stream.getAudioTracks().length === 0) throw new Error("audio_track_missing");
+      if (source === "screen" && !this.videoPreferences.screenAudioEnabled()) {
+        for (const track of stream.getAudioTracks()) {
+          track.stop();
+          stream.removeTrack(track);
+        }
+      }
       if (source !== "microphone") this.recordAppliedSettings(source, stream.getVideoTracks()[0]);
+      if (source === "screen") this.screenAudioActive.set(stream.getAudioTracks().length > 0);
       this.streams.set(source, stream);
       this.mesh.attachPublication(source, stream);
       const view: LocalMediaView = {
@@ -69,9 +85,14 @@ export class MediaPublicationService {
         kind: stream.getVideoTracks().length ? "video" : "audio",
       };
       this.publications.update((items) => [...items.filter((item) => item.source !== source), view]);
-      for (const track of stream.getTracks()) track.onended = () => this.stop(source);
+      for (const track of stream.getTracks()) {
+        track.onended = source === "screen" && track.kind === "audio"
+          ? () => this.removeScreenAudioTrack(track)
+          : () => this.stop(source);
+      }
     } catch (error) {
       for (const track of stream?.getTracks() || []) track.stop();
+      if (source === "screen") this.screenAudioActive.set(false);
       const name = error instanceof DOMException ? error.name : "";
       this.error.set(name === "NotAllowedError" ? "media_permission_denied" : error instanceof Error ? error.message : "media_capture_failed");
     } finally {
@@ -81,7 +102,10 @@ export class MediaPublicationService {
 
   stop(source: LocalMediaSource): void {
     const stream = this.streams.get(source);
-    if (!stream) return;
+    if (!stream) {
+      if (source === "screen") this.screenAudioActive.set(false);
+      return;
+    }
     this.mesh.detachPublication(source);
     for (const track of stream.getTracks()) {
       track.onended = null;
@@ -90,6 +114,7 @@ export class MediaPublicationService {
     this.streams.delete(source);
     this.publications.update((items) => items.filter((item) => item.source !== source));
     if (source !== "microphone") this.videoPreferences.clearApplied(source);
+    if (source === "screen") this.screenAudioActive.set(false);
   }
 
   stopAll(): void {
@@ -108,6 +133,11 @@ export class MediaPublicationService {
   async setVideoFrameRate(source: VideoCaptureSource, frameRate: unknown): Promise<void> {
     this.videoPreferences.setFrameRate(source, frameRate);
     await this.applyVideoPreferences(source);
+  }
+
+  setScreenAudioEnabled(enabled: unknown): void {
+    this.videoPreferences.setScreenAudioEnabled(enabled);
+    if (enabled !== true) this.stopScreenAudio();
   }
 
   private async applyVideoPreferences(source: VideoCaptureSource): Promise<void> {
@@ -134,5 +164,35 @@ export class MediaPublicationService {
 
   private recordAppliedSettings(source: VideoCaptureSource, track: MediaStreamTrack): void {
     this.videoPreferences.recordApplied(source, track.getSettings());
+  }
+
+  private screenAudioConstraints(): true | ScreenAudioTrackConstraints {
+    try {
+      const supported = typeof navigator.mediaDevices.getSupportedConstraints === "function"
+        ? navigator.mediaDevices.getSupportedConstraints() as ScreenAudioSupportedConstraints
+        : null;
+      if (supported?.restrictOwnAudio) return { restrictOwnAudio: true };
+    } catch {
+      // A boolean audio request is the portable fallback; the explicit opt-in and warning still apply.
+    }
+    return true;
+  }
+
+  private stopScreenAudio(): void {
+    const stream = this.streams.get("screen");
+    if (!stream) {
+      this.screenAudioActive.set(false);
+      return;
+    }
+    for (const track of [...stream.getAudioTracks()]) this.removeScreenAudioTrack(track);
+  }
+
+  private removeScreenAudioTrack(track: MediaStreamTrack): void {
+    const stream = this.streams.get("screen");
+    if (!stream || !stream.getTracks().includes(track)) return;
+    track.onended = null;
+    this.mesh.detachPublicationTrack("screen", track);
+    if (track.readyState !== "ended") track.stop();
+    this.screenAudioActive.set(stream.getAudioTracks().length > 0);
   }
 }

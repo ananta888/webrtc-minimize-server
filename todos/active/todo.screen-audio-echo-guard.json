@@ -1,0 +1,87 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "screen-audio-echo-guard",
+  "purpose": "Bildschirmfreigabe darf den laufenden Gespraechston nicht unbemerkt als System- oder Tab-Audio in den Raum zurueckfuehren und dadurch Echo erzeugen.",
+  "goal": "Bildschirmvideo bleibt jederzeit per Nutzerklick verfuegbar, waehrend Bildschirmton standardmaessig aus ist, nur nach separatem lokalem Opt-in angefordert wird und bei Echo ohne Ende der Bildfreigabe gestoppt werden kann.",
+  "status": "in_progress",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "SAE-M01",
+      "title": "Echo-sicheren Screen-Audio-Lifecycle implementieren",
+      "task_ids": ["SAE-001"],
+      "status": "done"
+    },
+    {
+      "id": "SAE-M02",
+      "title": "Bedienoberfläche, Browsernachweis und Rollout",
+      "task_ids": ["SAE-002"],
+      "status": "in_progress"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "SAE-001",
+      "title": "Bildschirmton als getrenntes Default-off-Opt-in absichern",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Fehlende, alte oder ungültige Präferenzen ergeben Bildschirmton aus; die Entscheidung wird getrennt von Auflösung und FPS lokal gespeichert.",
+        "getDisplayMedia erhält standardmäßig audio:false und fordert Audio nur nach einer sichtbaren lokalen Opt-in-Aktion an; die Display-Auswahl bleibt weiterhin ausschließlich beim Bildschirm-teilen-Klick.",
+        "Beim Deaktivieren eines bereits laufenden Bildschirmtons endet nur dessen Audiotrack; der vorhandene Bildschirm-Videotrack bleibt aktiv und es erfolgt kein weiterer Capture-Aufruf.",
+        "Optionaler Browser-Echoschutz wird nur nach Capability-Prüfung verwendet und ist weder Voraussetzung noch als portable Garantie dokumentiert."
+      ]
+    },
+    {
+      "id": "SAE-002",
+      "title": "Echo-Warnung, Regressionstests und Produktionsrollout abschließen",
+      "status": "in_progress",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 95,
+      "depends_on": ["SAE-001"],
+      "acceptance_criteria": [
+        "Die Screen-Einstellungen erklären das Default-off-Opt-in, Kopfhörerempfehlung, Echo-Risiko und den tatsächlichen Status des Bildschirmtons verständlich auf Desktop und Mobilgeräten.",
+        "Unit- und echte Chromium-Tests belegen Video-only als Default, bewusstes Audio-Opt-in, Live-Abschaltung bei weiterlaufendem Bildschirmvideo und null Capture-Aufrufe durch den Einstellungswechsel allein.",
+        "Mikrofon, Kamera, Bildschirmbild, Pair-Modus und das explizite Capture-only-on-click-Verhalten bleiben in der vollständigen Browsermatrix intakt.",
+        "npm run check besteht; der Stand wird gepusht und auf dem bestehenden Mini-PC-Dienst ohne Änderung an Caddy, Keycloak, Coturn oder Secrets ausgerollt."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["SAE-001", "SAE-002"],
+  "tasks_status_summary": {
+    "total": 2,
+    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 1 },
+    "progress_percent_done": 50,
+    "by_priority": { "P0": 1, "P1": 1, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 0, "high": 2, "critical": 0 },
+    "critical_path": { "total": 2, "done": 1, "remaining": 1 },
+    "milestones": { "total": 2, "todo": 0, "in_progress": 1, "blocked": 0, "done": 1 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 0,
+    "in_progress": 1,
+    "partial": 0,
+    "blocked": 0,
+    "done": 1
+  },
+  "summary_notes": [
+    "Der Nutzer bestätigte das Echo reproduzierbar speziell während der Bildschirmfreigabe.",
+    "Die UI spielt den eigenen Stream stumm und jeden Remote-Audiotrack nur einmal ab; Mikrofon-Capture fordert bereits Echo-, Rausch- und Verstärkungsregelung an.",
+    "Die konkrete Rückkopplungsgefahr ist getDisplayMedia({audio:true}): geteiltes Tab- oder Systemaudio kann den laufenden Gesprächston erneut als screen-audio zurücksenden.",
+    "W3C Screen Capture definiert audio:false als Default und garantiert dann einen Stream ohne Audiotrack; die Spezifikation empfiehlt ausdrücklich eine Video-ohne-Audio-Einwilligungsmöglichkeit.",
+    "restrictOwnAudio kann unterstützende Browser zusätzlich anweisen, vom aufrufenden Dokument erzeugtes Audio zu entfernen, bleibt aber ein capability-geprüfter Working-Draft-Zusatz mit sicherem Fallback.",
+    "55 Frontend-Tests decken Default-off-Migration, persistentes Opt-in, capability-geprüften restrictOwnAudio-Pfad, booleschen Fallback und das gezielte Entfernen nur des Screen-Audiotracks ab.",
+    "Zwei fokussierte echte Chromium-Läufe belegen video-only im vorhandenen Mehrpeer-Pfad sowie Opt-in-Audio, Live-Widerruf, weiterlaufenden Video-Track und null zusätzliche Capture-Aufrufe durch das Einstellungs-Opt-in.",
+    "Desktop- und Mobile-Renderings wurden bei 1440x1100 beziehungsweise 390x844 visuell auf verständliche Default-off-Steuerung, Echo-Warnung und Ist-Status geprüft.",
+    "npm run check besteht mit 55 Frontend- und 63 Node-/Browser-Tests sowie Produktionsbuild; der externe Keycloak-/TURN-Gate blieb mangels gesetzter Test-Credentials sichtbar übersprungen. Nur Commit, Push und Produktionsrollout stehen noch aus."
+  ]
+}

@@ -374,9 +374,15 @@
                   </select>
                 </label>
               </div>
+              <label class="screen-audio-consent">
+                <input id="screen-audio-enabled" type="checkbox" [ngModel]="videoPreferences.screenAudioEnabled()" (ngModelChange)="setScreenAudioEnabled($event)">
+                <span><strong>Bildschirmton bewusst mitfreigeben</strong><small>Standardmäßig aus. Nur für Medienwiedergabe aktivieren und möglichst Kopfhörer verwenden.</small></span>
+              </label>
+              <p id="screen-audio-warning" class="screen-audio-warning">Tab- oder Systemton kann den laufenden Gesprächston zurück in den Raum schicken und Echo erzeugen. Unterstützte Browser erhalten zusätzlich einen Eigentonfilter; dieser ist keine Garantie.</p>
               <p class="applied-setting"><span>Tatsächlich aktiv</span><strong id="screen-applied-settings">{{ videoPreferences.screenAppliedLabel() }}</strong></p>
+              <p class="applied-setting"><span>Bildschirmton aktuell</span><strong id="screen-audio-status">{{ screenAudioStatus() }}</strong></p>
             </section>
-            <p class="hint">Eine Änderung aktualisiert einen laufenden Track ohne neue Freigabe. Die Auswahl der Bildschirmquelle bleibt immer beim nächsten sichtbaren Klick auf „Bildschirm teilen“ im Browser.</p>
+            <p class="hint">Auflösung und FPS aktualisieren einen laufenden Track ohne neue Freigabe. Bildschirmton wird beim Ausschalten sofort entfernt; das Einschalten gilt erst beim nächsten sichtbaren Klick auf „Bildschirm teilen“. Die Auswahl der Bildschirmquelle bleibt immer beim Browser.</p>
           </section>
 
           <section class="surface settings-card">

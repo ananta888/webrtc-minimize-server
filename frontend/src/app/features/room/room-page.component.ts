@@ -254,6 +254,18 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     void this.media.setVideoFrameRate(source, frameRate);
   }
 
+  setScreenAudioEnabled(enabled: unknown): void {
+    this.media.setScreenAudioEnabled(enabled);
+  }
+
+  screenAudioStatus(): string {
+    if (this.media.screenAudioActive()) return "aktiv";
+    if (this.media.active("screen") && this.videoPreferences.screenAudioEnabled()) {
+      return "vom Browser nicht bereitgestellt";
+    }
+    return this.videoPreferences.screenAudioEnabled() ? "beim nächsten Teilen angefordert" : "aus";
+  }
+
   setRelayConsent(enabled: boolean): void {
     try {
       this.mesh.setRelayConsent(enabled);

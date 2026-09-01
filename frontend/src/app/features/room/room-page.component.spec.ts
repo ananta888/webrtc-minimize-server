@@ -45,10 +45,14 @@ describe("Room page information architecture", () => {
     expect(template).toContain('id="screen-frame-rate"');
     expect(template).toContain('id="camera-applied-settings"');
     expect(template).toContain('id="screen-applied-settings"');
+    expect(template).toContain('id="screen-audio-enabled"');
+    expect(template).toContain('id="screen-audio-status"');
+    expect(template).toContain('id="screen-audio-warning"');
     expect(template).toContain("setVideoResolution('camera', $event)");
     expect(template).toContain("setVideoFrameRate('screen', $event)");
     expect(component).toContain("this.media.setVideoResolution(source, resolutionId)");
     expect(component).toContain("this.media.setVideoFrameRate(source, frameRate)");
+    expect(component).toContain("this.media.setScreenAudioEnabled(enabled)");
     expect(component).not.toContain("getUserMedia");
     expect(component).not.toContain("getDisplayMedia");
   });

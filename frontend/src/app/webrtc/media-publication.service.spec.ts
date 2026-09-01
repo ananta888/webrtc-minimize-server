@@ -34,6 +34,36 @@ function fakeStream(kind: "audio" | "video") {
   };
 }
 
+function fakeScreenStream() {
+  let tracks: Array<Record<string, unknown>> = [];
+  const video = {
+    kind: "video",
+    id: "screen-video-track",
+    readyState: "live",
+    stop: vi.fn(function stop(this: { readyState: string }) { this.readyState = "ended"; }),
+    onended: null,
+    getSettings: vi.fn(() => ({ width: 1280, height: 720, frameRate: 15 })),
+    applyConstraints: vi.fn(),
+  };
+  const audio = {
+    kind: "audio",
+    id: "screen-audio-track",
+    readyState: "live",
+    stop: vi.fn(function stop(this: { readyState: string }) { this.readyState = "ended"; }),
+    onended: null,
+    getSettings: vi.fn(() => ({ restrictOwnAudio: true })),
+    applyConstraints: vi.fn(),
+  };
+  tracks = [video, audio];
+  const stream = {
+    getTracks: () => tracks,
+    getAudioTracks: () => tracks.filter((track) => track.kind === "audio"),
+    getVideoTracks: () => tracks.filter((track) => track.kind === "video"),
+    removeTrack: vi.fn((track: Record<string, unknown>) => { tracks = tracks.filter((item) => item !== track); }),
+  } as unknown as MediaStream;
+  return { video, audio, stream };
+}
+
 describe("MediaPublicationService", () => {
   beforeEach(() => localStorage.clear());
 
@@ -66,8 +96,71 @@ describe("MediaPublicationService", () => {
     await service.toggle("screen");
     expect(getDisplayMedia).toHaveBeenCalledWith({
       video: { frameRate: { ideal: 15, max: 30 } },
+      audio: false,
+    });
+    expect(service.screenAudioActive()).toBe(false);
+  });
+
+  it("requests opted-in screen audio with a supported own-audio guard and can stop only that track", async () => {
+    const screen = fakeScreenStream();
+    const getDisplayMedia = vi.fn().mockResolvedValue(screen.stream);
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn(),
+        getDisplayMedia,
+        getSupportedConstraints: () => ({ restrictOwnAudio: true }),
+      },
+    });
+    const mesh = {
+      attachPublication: vi.fn(),
+      detachPublication: vi.fn(),
+      detachPublicationTrack: vi.fn((_source: string, track: Record<string, unknown>) => screen.stream.removeTrack(track as never)),
+    };
+    const preferences = new VideoCapturePreferencesService();
+    preferences.setScreenAudioEnabled(true);
+    const service = new MediaPublicationService(mesh as never, preferences);
+
+    expect(getDisplayMedia).not.toHaveBeenCalled();
+    await service.toggle("screen");
+    expect(getDisplayMedia).toHaveBeenCalledWith({
+      video: { frameRate: { ideal: 15, max: 30 } },
+      audio: { restrictOwnAudio: true },
+    });
+    expect(service.screenAudioActive()).toBe(true);
+
+    service.setScreenAudioEnabled(false);
+    expect(getDisplayMedia).toHaveBeenCalledTimes(1);
+    expect(mesh.detachPublicationTrack).toHaveBeenCalledWith("screen", screen.audio);
+    expect(screen.audio.stop).toHaveBeenCalledTimes(1);
+    expect(screen.video.stop).not.toHaveBeenCalled();
+    expect(screen.stream.getAudioTracks()).toEqual([]);
+    expect(service.screenAudioActive()).toBe(false);
+    expect(service.active("screen")).toBe(true);
+  });
+
+  it("uses a portable boolean audio opt-in when own-audio restriction is unavailable", async () => {
+    const screen = fakeScreenStream();
+    const getDisplayMedia = vi.fn().mockResolvedValue(screen.stream);
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn(),
+        getDisplayMedia,
+        getSupportedConstraints: () => ({}),
+      },
+    });
+    const mesh = { attachPublication: vi.fn(), detachPublication: vi.fn() };
+    const preferences = new VideoCapturePreferencesService();
+    preferences.setScreenAudioEnabled(true);
+    const service = new MediaPublicationService(mesh as never, preferences);
+
+    await service.toggle("screen");
+    expect(getDisplayMedia).toHaveBeenCalledWith({
+      video: { frameRate: { ideal: 15, max: 30 } },
       audio: true,
     });
+    expect(service.screenAudioActive()).toBe(true);
   });
 
   it("applies changed camera ceilings to the active track without another capture", async () => {

@@ -24,6 +24,7 @@ interface StoredVideoCapturePreferences {
   readonly version: 1;
   readonly camera: VideoCapturePreference;
   readonly screen: VideoCapturePreference;
+  readonly screenAudioEnabled: boolean;
 }
 
 export const VIDEO_CAPTURE_STORAGE_KEY = "webrtc-video-capture-preferences-v1";
@@ -47,6 +48,7 @@ const DEFAULT_PREFERENCES: StoredVideoCapturePreferences = Object.freeze({
   version: 1,
   camera: Object.freeze({ resolutionId: "auto", frameRate: 30 }),
   screen: Object.freeze({ resolutionId: "auto", frameRate: 30 }),
+  screenAudioEnabled: false,
 });
 
 function validResolutionId(value: unknown): string {
@@ -77,6 +79,7 @@ export function parseVideoCapturePreferences(value: string | null): StoredVideoC
       version: 1,
       camera: normalizePreference(candidate.camera),
       screen: normalizePreference(candidate.screen),
+      screenAudioEnabled: candidate.screenAudioEnabled === true,
     });
   } catch {
     return DEFAULT_PREFERENCES;
@@ -137,6 +140,7 @@ export class VideoCapturePreferencesService {
   };
   readonly camera = computed(() => this.preferences().camera);
   readonly screen = computed(() => this.preferences().screen);
+  readonly screenAudioEnabled = computed(() => this.preferences().screenAudioEnabled);
   readonly cameraAppliedLabel = computed(() => appliedVideoSettingsLabel(this.applied.camera()));
   readonly screenAppliedLabel = computed(() => appliedVideoSettingsLabel(this.applied.screen()));
 
@@ -158,6 +162,13 @@ export class VideoCapturePreferencesService {
     });
   }
 
+  setScreenAudioEnabled(enabled: unknown): void {
+    this.store(Object.freeze({
+      ...this.preferences(),
+      screenAudioEnabled: enabled === true,
+    }));
+  }
+
   recordApplied(source: VideoCaptureSource, settings: MediaTrackSettings): void {
     this.applied[source].set(normalizeAppliedVideoSettings(settings));
   }
@@ -171,6 +182,10 @@ export class VideoCapturePreferencesService {
       ...this.preferences(),
       [source]: normalizePreference(preference),
     });
+    this.store(next);
+  }
+
+  private store(next: StoredVideoCapturePreferences): void {
     this.preferences.set(next);
     try {
       localStorage.setItem(VIDEO_CAPTURE_STORAGE_KEY, JSON.stringify(next));
