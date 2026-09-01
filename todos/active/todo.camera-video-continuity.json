@@ -1,0 +1,65 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "camera-video-continuity",
+  "purpose": "Kameravideo darf in kleinen Auto-/Ausgewogen-Sessions nicht durch eine selbstverstaerkende Senderdrosselung wie ein eingefrorenes Standbild wirken.",
+  "goal": "Bis zu fuenf Teilnehmer behalten eine bewegte Kamera-Vorschau mit belastbarem Senderbudget; eine niedrige WebRTC-Bandbreitenschaetzung allein loest keine kritische Doppel-Abstufung aus.",
+  "status": "in_progress",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "CVC-M01",
+      "title": "Kamera-Kontinuitaet korrigieren und ausrollen",
+      "task_ids": ["CVC-001"],
+      "status": "in_progress"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "CVC-001",
+      "title": "Adaptive Kamera-Drosselung gegen scheinbare Freezes absichern",
+      "status": "in_progress",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 75,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Bei hoechstens fuenf Teilnehmern verwenden Kamera-Thumbnails in Auto und Ausgewogen ein bewegungsgeeignetes Senderbudget; Prioritaetsregeln reduzieren den Default-Kamerapfad nicht wieder auf 3 FPS und rund 65 kbit/s.",
+        "availableOutgoingBitrate allein stuft einen Link hoechstens constrained ein; critical erfordert starke RTT-/Loss-Evidenz, damit eine anwendungseigene Bitratenkappe keine kritische Rueckkopplung festhaelt.",
+        "Deterministische Unit-Tests pruefen kleine Raeume, gleichzeitiges Screenshare, Prioritaetsfaktoren, reine Bitratenevidenz sowie echte kritische RTT-/Loss-Faelle.",
+        "Ein echter Zwei-Peer-Chromium-Langzeittest mit required SFrame, Kamera und Bildschirm belegt fortlaufend empfangene Kameraframes und lebende Capture-Tracks, ohne Capture ohne lokalen Klick zu starten.",
+        "npm run check besteht; der gezielt committed und gepushte Stand wird auf dem vorhandenen Mini-PC-Dienst ausgerollt und ueber HTTPS verifiziert, ohne Caddy, Keycloak, Coturn oder Secrets zu aendern."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["CVC-001"],
+  "tasks_status_summary": {
+    "total": 1,
+    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 0 },
+    "progress_percent_done": 0,
+    "by_priority": { "P0": 1, "P1": 0, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 0, "high": 1, "critical": 0 },
+    "critical_path": { "total": 1, "done": 0, "remaining": 1 },
+    "milestones": { "total": 1, "todo": 0, "in_progress": 1, "blocked": 0, "done": 0 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 0,
+    "in_progress": 1,
+    "partial": 0,
+    "blocked": 0,
+    "done": 0
+  },
+  "summary_notes": [
+    "Ein 90-Sekunden-Zwei-Peer-Nachweis mit required SFrame zeigte keinen Track-, Transport- oder Decoderabbruch; Kamera- und Bildschirmframes liefen fortlaufend weiter.",
+    "Mit Kamera plus Screenshare begrenzte die aktuelle Policy die Default-Kamera jedoch auf 64800 Bit/s und 3 FPS; Chromium meldete dazu qualityLimitationReason bandwidth. Das kann auf realem Kameramaterial wie ein eingefrorenes Standbild wirken.",
+    "Ein separater 50-Sekunden-Kamera-Nachweis blieb bei etwa 252000 bis 302000 Bit/s und 9 bis 15 FPS sichtbar in Bewegung; daraus folgt ein gezielter Budget- und Klassifikationsfix statt einer unbewiesenen SFrame-Reparatur.",
+    "Post-Fix-Langzeittest: Zwei echte Chromium-Seiten mit required SFrame, Kamera, Mikrofon und Screenshare blieben 90 Sekunden verbunden; jede Pruefung im Abstand von hoechstens fuenf Sekunden sah neue dargestellte Kameraframes, beide Video-Capture-Tracks waren am Ende live und enabled.",
+    "Der Regressionstest erzwingt nur 100000 Bit/s availableOutgoingBitrate bei 50 ms RTT: Die Linkklasse bleibt constrained und der Default-Kamerapfad erhaelt als kleines Thumbnail 288000 Bit/s, 12 FPS und vierfache Skalierung statt zuvor 64800 Bit/s und 3 FPS.",
+    "WebRTC-Senderwerte sind Obergrenzen und keine garantierte Mindestqualitaet; Browser-Congestion-Control darf weiterhin darunter bleiben.",
+    "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
+  ]
+}

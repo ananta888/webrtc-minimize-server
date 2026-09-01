@@ -38,9 +38,9 @@ Normale Räume verwenden weiterhin eine isolierte PeerConnection je Gegenüber, 
 
 - lokale Audioanalyse verteilt ausschließlich begrenzte Aktivitätswerte über einen eigenen Control-DataChannel;
 - Sprecher 1–2 erhalten Focus-, Sprecher 3–5 Balanced-Qualität;
-- inaktive Kameras werden abhängig von Raumgröße, Profil und Linkzustand reduziert; bei bis zu fünf Teilnehmern halten `Auto` und `Ausgewogen` mindestens ein aktives Thumbnail, während größere Räume und das explizite Datensparprofil weiterhin pausieren dürfen;
+- inaktive Kameras werden abhängig von Raumgröße, Profil und Linkzustand reduziert; bei bis zu fünf Teilnehmern halten `Auto` und `Ausgewogen` mindestens ein bewegtes Thumbnail (vor Prioritätsgewichtung 400 kbit/s, 12 FPS und vierfache Skalierung), während größere Räume und das explizite Datensparprofil weiterhin aggressiv reduzieren oder pausieren dürfen;
 - die gewählte Medienstrategie ordnet Mikrofon, Screenshare und Kamera relativ; Sprache behält unabhängig von der Reihenfolge ein eigenes Mindestbudget;
-- WebRTC-Stats können Qualität nur absenken; Recovery benötigt eine stabile Haltezeit;
+- WebRTC-Stats können Qualität nur absenken; eine niedrige Bandbreitenschätzung allein führt höchstens zu `constrained`, während `critical` starke RTT- oder Verlustwerte benötigt. Recovery benötigt eine stabile Haltezeit;
 - höchstens fünf Fokusvideos bleiben einzeln sichtbar, die übrigen Kameras werden in genau einem lokalen Canvas-Mosaik dargestellt;
 - `Auto`, `Ausgewogen` und `Datensparend` können ohne erneuten Capture-Aufruf gewechselt werden.
 

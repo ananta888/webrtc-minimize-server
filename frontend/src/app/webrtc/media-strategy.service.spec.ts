@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { QUALITY_SETTINGS } from "./media-optimization-policy";
+import { QUALITY_SETTINGS, selectVideoQuality } from "./media-optimization-policy";
 import {
   MEDIA_STRATEGY_STORAGE_KEY,
   MediaStrategyService,
@@ -112,5 +112,26 @@ describe("MediaStrategyService", () => {
     service.selectPreset("presentation");
     expect(service.prioritizeVideo("screen", QUALITY_SETTINGS.screen)).toEqual(QUALITY_SETTINGS.screen);
     expect(service.prioritizeVideo("camera", QUALITY_SETTINGS.paused)).toEqual(QUALITY_SETTINGS.paused);
+
+    const smallRoomThumbnail = selectVideoQuality({
+      source: "camera",
+      speakerRank: 0,
+      participantCount: 2,
+      mode: "auto",
+      linkClass: "critical",
+      screenActive: true,
+    });
+    expect(service.prioritizeVideo("camera", smallRoomThumbnail)).toEqual({
+      ...smallRoomThumbnail,
+      maxBitrate: 180_000,
+      maxFramerate: 8,
+    });
+
+    service.selectPreset("conversation");
+    expect(service.prioritizeVideo("camera", smallRoomThumbnail)).toEqual({
+      ...smallRoomThumbnail,
+      maxBitrate: 288_000,
+      maxFramerate: 12,
+    });
   });
 });

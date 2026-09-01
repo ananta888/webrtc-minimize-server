@@ -5,7 +5,12 @@ import { chromium, firefox } from "playwright";
 
 import { createAppServer } from "../src/server.js";
 
-test("two Chromium pages negotiate chat, camera, microphone and screen", { timeout: 30_000 }, async (context) => {
+const cameraContinuityWindowMs = Math.max(4_000, Math.min(
+  180_000,
+  Number.parseInt(process.env.CAMERA_CONTINUITY_WINDOW_MS || "4000", 10) || 4_000,
+));
+
+test("two Chromium pages negotiate chat, camera, microphone and screen", { timeout: cameraContinuityWindowMs + 35_000 }, async (context) => {
   try {
     await fs.access(chromium.executablePath());
   } catch {
@@ -50,8 +55,9 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
     window.__captureConstraints = [];
     window.__appliedTrackConstraints = [];
     window.__localTrackSources = {};
+    window.__localTracks = {};
     window.__senderParameterEvents = [];
-    window.__forceCriticalLink = false;
+    window.__forceLowBitrateLink = false;
     for (const method of ["getUserMedia", "getDisplayMedia"]) {
       const original = navigator.mediaDevices[method].bind(navigator.mediaDevices);
       navigator.mediaDevices[method] = async (...args) => {
@@ -63,7 +69,10 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
         const stream = await original(...args);
         const constraints = args[0] || {};
         const source = method === "getDisplayMedia" ? "screen" : constraints.video ? "camera" : "microphone";
-        for (const track of stream.getTracks()) window.__localTrackSources[track.id] = source;
+        for (const track of stream.getTracks()) {
+          window.__localTrackSources[track.id] = source;
+          window.__localTracks[track.id] = track;
+        }
         return stream;
       };
     }
@@ -79,11 +88,11 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
     const nativeGetStats = RTCPeerConnection.prototype.getStats;
     RTCPeerConnection.prototype.getStats = async function observedGetStats(...args) {
       const report = await nativeGetStats.apply(this, args);
-      if (!window.__forceCriticalLink) return report;
+      if (!window.__forceLowBitrateLink) return report;
       const forced = new Map();
       report.forEach((value, key) => {
         forced.set(key, value.type === "candidate-pair" && value.state === "succeeded"
-          ? { ...value, availableOutgoingBitrate: 100_000, currentRoundTripTime: 0.7 }
+          ? { ...value, availableOutgoingBitrate: 100_000, currentRoundTripTime: 0.05 }
           : value);
       });
       return forced;
@@ -211,6 +220,15 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   assert.ok(cameraApplied.settings.width <= 426);
   assert.ok(cameraApplied.settings.height <= 240);
   assert.ok(cameraApplied.settings.frameRate <= 2);
+  await ada.locator("#camera-resolution").selectOption("360p");
+  await ada.locator("#camera-frame-rate").selectOption({ label: "15 FPS" });
+  await ada.waitForFunction(() => {
+    const cameraTrackIds = new Set(Object.entries(window.__localTrackSources)
+      .filter(([, source]) => source === "camera").map(([trackId]) => trackId));
+    return window.__appliedTrackConstraints.some((event) => cameraTrackIds.has(event.trackId)
+      && event.constraints.frameRate?.max === 15
+      && event.constraints.width?.max === 640);
+  });
   await ada.locator(".nav-item", { hasText: "Live" }).click();
 
   await ada.locator("#toggle-microphone").click();
@@ -241,7 +259,7 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   assert.equal(await ada.locator("#media-strategy-preset").inputValue(), "custom");
   await ada.locator(".nav-item", { hasText: "Live" }).click();
 
-  await ada.evaluate(() => { window.__forceCriticalLink = true; });
+  await ada.evaluate(() => { window.__forceLowBitrateLink = true; });
   await ada.locator(".nav-item", { hasText: "Chat" }).click();
   await ada.locator(".persistent-media-dock").waitFor();
   await ada.locator("#toggle-screen").click();
@@ -275,13 +293,16 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   assert.ok(screenApplied.settings.width <= 640);
   assert.ok(screenApplied.settings.height <= 360);
   assert.ok(screenApplied.settings.frameRate <= 5);
-  await ada.locator("#link-quality", { hasText: "critical" }).waitFor({ timeout: 5_000 });
+  await ada.locator("#link-quality", { hasText: "constrained" }).waitFor({ timeout: 5_000 });
   await ada.waitForFunction(() => {
     const cameraTrackIds = new Set(Object.entries(window.__localTrackSources)
       .filter(([, source]) => source === "camera").map(([trackId]) => trackId));
     return window.__senderParameterEvents.some((event) => cameraTrackIds.has(event.trackId)
       && event.succeeded === true
-      && event.encodings.some((encoding) => encoding.active === true && encoding.maxBitrate === 64_800));
+      && event.encodings.some((encoding) => encoding.active === true
+        && encoding.maxBitrate === 288_000
+        && encoding.maxFramerate === 12
+        && encoding.scaleResolutionDownBy === 4));
   });
   assert.equal(await ada.evaluate(() => {
     const cameraTrackIds = new Set(Object.entries(window.__localTrackSources)
@@ -290,13 +311,27 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
       && event.encodings.some((encoding) => encoding.active === false));
   }), false);
   const remoteCamera = grace.locator(".remote-media", { hasText: "Ada · Kamera" }).locator("video");
-  const cameraFrames = await remoteCamera.evaluate((video) => video.getVideoPlaybackQuality().totalVideoFrames);
-  await grace.waitForFunction((initialFrames) => {
-    const card = [...document.querySelectorAll(".remote-media")]
-      .find((item) => item.textContent?.includes("Ada · Kamera"));
-    const video = card?.querySelector("video");
-    return video && video.getVideoPlaybackQuality().totalVideoFrames >= initialFrames + 2;
-  }, cameraFrames);
+  const continuityDeadline = Date.now() + cameraContinuityWindowMs;
+  let cameraFrames = await remoteCamera.evaluate((video) => video.getVideoPlaybackQuality().totalVideoFrames);
+  let continuitySamples = 0;
+  while (Date.now() < continuityDeadline) {
+    await grace.waitForTimeout(Math.min(5_000, Math.max(1_000, continuityDeadline - Date.now())));
+    const nextFrames = await remoteCamera.evaluate((video) => video.getVideoPlaybackQuality().totalVideoFrames);
+    assert.ok(nextFrames > cameraFrames, `remote camera stalled at ${cameraFrames} rendered frames`);
+    cameraFrames = nextFrames;
+    continuitySamples += 1;
+  }
+  assert.ok(continuitySamples >= 1);
+  assert.deepEqual(await ada.evaluate(() => Object.entries(window.__localTrackSources)
+    .filter(([, source]) => source === "camera" || source === "screen")
+    .map(([trackId, source]) => ({
+      source,
+      readyState: window.__localTracks[trackId]?.readyState,
+      enabled: window.__localTracks[trackId]?.enabled,
+    })).sort((left, right) => left.source.localeCompare(right.source))), [
+    { source: "camera", readyState: "live", enabled: true },
+    { source: "screen", readyState: "live", enabled: true },
+  ]);
   await ada.locator("#media-strategy-preset").selectOption("presentation");
   await ada.waitForFunction(() => {
     const sources = Object.entries(window.__localTrackSources);

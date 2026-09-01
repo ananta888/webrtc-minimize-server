@@ -28,6 +28,8 @@ describe("media optimization policy", () => {
   it("only degrades quality when link evidence worsens", () => {
     expect(classifyLinkStats({ availableOutgoingBitrate: 2_000_000, roundTripTime: 0.05, lossRatio: 0 })).toBe("good");
     expect(classifyLinkStats({ availableOutgoingBitrate: 700_000 })).toBe("constrained");
+    expect(classifyLinkStats({ availableOutgoingBitrate: 100_000 })).toBe("constrained");
+    expect(classifyLinkStats({ availableOutgoingBitrate: 100_000, roundTripTime: 0.61 })).toBe("critical");
     expect(classifyLinkStats({ lossRatio: 0.2 })).toBe("critical");
     expect(selectVideoQuality({ source: "camera", speakerRank: 0, participantCount: 6, mode: "auto", linkClass: "critical", screenActive: false }).tier).toBe("thumbnail");
   });
@@ -49,8 +51,14 @@ describe("media optimization policy", () => {
       linkClass: "critical",
       screenActive: true,
     });
-    expect(silentCamera).toEqual(expect.objectContaining({ tier: "thumbnail", active: true }));
-    expect(cameraBesideScreen).toEqual(expect.objectContaining({ tier: "thumbnail", active: true }));
+    expect(silentCamera).toEqual({
+      tier: "thumbnail",
+      active: true,
+      maxBitrate: 400_000,
+      maxFramerate: 12,
+      scaleResolutionDownBy: 4,
+    });
+    expect(cameraBesideScreen).toEqual(silentCamera);
   });
 
   it("retains explicit and large-room pause budgets", () => {
@@ -70,6 +78,20 @@ describe("media optimization policy", () => {
       linkClass: "constrained",
       screenActive: false,
     })).toEqual(expect.objectContaining({ tier: "paused", active: false }));
+    expect(selectVideoQuality({
+      source: "camera",
+      speakerRank: -1,
+      participantCount: 6,
+      mode: "balanced",
+      linkClass: "good",
+      screenActive: false,
+    })).toEqual({
+      tier: "thumbnail",
+      active: true,
+      maxBitrate: 90_000,
+      maxFramerate: 3,
+      scaleResolutionDownBy: 6,
+    });
   });
 
   it("degrades immediately but requires dwell before link recovery", () => {

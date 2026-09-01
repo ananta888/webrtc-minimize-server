@@ -25,6 +25,14 @@ export const QUALITY_SETTINGS: Readonly<Record<VideoTier, QualitySettings>> = Ob
   paused: Object.freeze({ tier: "paused", active: false, maxBitrate: 0, maxFramerate: 1, scaleResolutionDownBy: 8 }),
 });
 
+export const SMALL_ROOM_CAMERA_THUMBNAIL: QualitySettings = Object.freeze({
+  tier: "thumbnail",
+  active: true,
+  maxBitrate: 400_000,
+  maxFramerate: 12,
+  scaleResolutionDownBy: 4,
+});
+
 const VIDEO_TIERS: readonly VideoTier[] = ["screen", "focus", "balanced", "thumbnail", "paused"];
 const SMALL_ROOM_CAMERA_FLOOR_PARTICIPANTS = 5;
 
@@ -84,11 +92,12 @@ export function selectVideoQuality(input: Readonly<{
   if (input.source === "camera" && input.screenActive) tier = degrade(tier, 1);
   if (input.linkClass === "constrained") tier = degrade(tier, 1);
   if (input.linkClass === "critical") tier = degrade(tier, 2);
-  if (input.source === "camera"
+  const preservesSmallRoomCamera = input.source === "camera"
     && input.participantCount > 0
     && input.participantCount <= SMALL_ROOM_CAMERA_FLOOR_PARTICIPANTS
-    && input.mode !== "data-saver"
-    && tier === "paused") tier = "thumbnail";
+    && input.mode !== "data-saver";
+  if (preservesSmallRoomCamera && tier === "paused") tier = "thumbnail";
+  if (preservesSmallRoomCamera && tier === "thumbnail") return SMALL_ROOM_CAMERA_THUMBNAIL;
   return QUALITY_SETTINGS[tier];
 }
 
@@ -100,8 +109,7 @@ export function classifyLinkStats(input: Readonly<{
   const bitrate = input.availableOutgoingBitrate;
   const rtt = input.roundTripTime;
   const loss = input.lossRatio;
-  if ((bitrate !== undefined && bitrate < 250_000)
-    || (rtt !== undefined && rtt > 0.6)
+  if ((rtt !== undefined && rtt > 0.6)
     || (loss !== undefined && loss > 0.12)) return "critical";
   if ((bitrate !== undefined && bitrate < 900_000)
     || (rtt !== undefined && rtt > 0.3)
