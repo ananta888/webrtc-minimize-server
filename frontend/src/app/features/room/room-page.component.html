@@ -339,6 +339,46 @@
             }
           </section>
 
+          <section class="surface settings-card video-settings-card">
+            <div class="surface-heading"><span class="feature-icon amber" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="M17 10l4-2v8l-4-2M7 9h6M7 13h4"/></svg></span><div><p class="eyebrow">Capture-Grenzen</p><h2>Video &amp; Bandbreite</h2></div></div>
+            <p>Lege getrennte Obergrenzen fest. Weniger Pixel und Bilder pro Sekunde sparen Upload zu jeder Gegenstelle; das adaptive Mesh darf die Qualität bei Bedarf weiter reduzieren.</p>
+
+            <section class="capture-setting-group" aria-labelledby="camera-capture-heading">
+              <div class="capture-setting-heading"><div><p class="eyebrow">Kamera</p><h3 id="camera-capture-heading">Eigenes Kameravideo</h3></div><span [class.active]="media.active('camera')">{{ media.active('camera') ? 'Aktiv' : 'Bereit' }}</span></div>
+              <div class="capture-setting-fields">
+                <label>Max. Auflösung
+                  <select id="camera-resolution" [ngModel]="videoPreferences.camera().resolutionId" (ngModelChange)="setVideoResolution('camera', $event)">
+                    @for (option of videoPreferences.resolutionOptions; track option.id) { <option [value]="option.id">{{ option.label }}</option> }
+                  </select>
+                </label>
+                <label>FPS-Obergrenze
+                  <select id="camera-frame-rate" [ngModel]="videoPreferences.camera().frameRate" (ngModelChange)="setVideoFrameRate('camera', $event)">
+                    @for (fps of videoPreferences.frameRateOptions; track fps) { <option [ngValue]="fps">{{ fps }} FPS</option> }
+                  </select>
+                </label>
+              </div>
+              <p class="applied-setting"><span>Tatsächlich aktiv</span><strong id="camera-applied-settings">{{ videoPreferences.cameraAppliedLabel() }}</strong></p>
+            </section>
+
+            <section class="capture-setting-group" aria-labelledby="screen-capture-heading">
+              <div class="capture-setting-heading"><div><p class="eyebrow">Bildschirm</p><h3 id="screen-capture-heading">Geteilter Inhalt</h3></div><span [class.active]="media.active('screen')">{{ media.active('screen') ? 'Aktiv' : 'Bereit' }}</span></div>
+              <div class="capture-setting-fields">
+                <label>Max. Auflösung
+                  <select id="screen-resolution" [ngModel]="videoPreferences.screen().resolutionId" (ngModelChange)="setVideoResolution('screen', $event)">
+                    @for (option of videoPreferences.resolutionOptions; track option.id) { <option [value]="option.id">{{ option.label }}</option> }
+                  </select>
+                </label>
+                <label>FPS-Obergrenze
+                  <select id="screen-frame-rate" [ngModel]="videoPreferences.screen().frameRate" (ngModelChange)="setVideoFrameRate('screen', $event)">
+                    @for (fps of videoPreferences.frameRateOptions; track fps) { <option [ngValue]="fps">{{ fps }} FPS</option> }
+                  </select>
+                </label>
+              </div>
+              <p class="applied-setting"><span>Tatsächlich aktiv</span><strong id="screen-applied-settings">{{ videoPreferences.screenAppliedLabel() }}</strong></p>
+            </section>
+            <p class="hint">Eine Änderung aktualisiert einen laufenden Track ohne neue Freigabe. Die Auswahl der Bildschirmquelle bleibt immer beim nächsten sichtbaren Klick auf „Bildschirm teilen“ im Browser.</p>
+          </section>
+
           <section class="surface settings-card">
             <div class="surface-heading"><span class="feature-icon violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-5"/></svg></span><div><p class="eyebrow">Sicherheitsstatus</p><h2>Identität &amp; Transport</h2></div></div>
             <p>Keycloak-Tokens werden serverseitig über JWKS geprüft. Das WebSocket erhält nur ein kurzlebiges Einmal-Ticket. Im SFrame-Modus werden Medienframes zusätzlich vor dem WebRTC-Transport verschlüsselt.</p>

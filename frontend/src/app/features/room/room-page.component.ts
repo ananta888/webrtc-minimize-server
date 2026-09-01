@@ -17,6 +17,7 @@ import { MediaPublicationService } from "../../webrtc/media-publication.service"
 import { PeerMeshService } from "../../webrtc/peer-mesh.service";
 import { RoomMode, RoomSessionService } from "../../webrtc/room-session.service";
 import { SignalingService } from "../../webrtc/signaling.service";
+import { VideoCapturePreferencesService, VideoCaptureSource } from "../../webrtc/video-capture-preferences.service";
 import { PairWorkspacePanelComponent } from "../../workspace/pair-workspace-panel.component";
 import { PairWorkspaceService, WorkspaceSummary } from "../../workspace/pair-workspace.service";
 
@@ -86,6 +87,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     readonly session: RoomSessionService,
     readonly mesh: PeerMeshService,
     readonly media: MediaPublicationService,
+    readonly videoPreferences: VideoCapturePreferencesService,
     readonly directory: RoomDirectoryService,
     readonly workspaces: PairWorkspaceService,
   ) {}
@@ -242,6 +244,14 @@ export class RoomPageComponent implements OnInit, OnDestroy {
 
   setOptimizationMode(mode: OptimizationMode): void {
     this.mesh.setOptimizationMode(mode);
+  }
+
+  setVideoResolution(source: VideoCaptureSource, resolutionId: unknown): void {
+    void this.media.setVideoResolution(source, resolutionId);
+  }
+
+  setVideoFrameRate(source: VideoCaptureSource, frameRate: unknown): void {
+    void this.media.setVideoFrameRate(source, frameRate);
   }
 
   setRelayConsent(enabled: boolean): void {

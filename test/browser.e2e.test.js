@@ -47,6 +47,8 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   const browserContext = await browser.newContext({ permissions: ["camera", "microphone"] });
   await browserContext.addInitScript(() => {
     window.__captureCalls = [];
+    window.__captureConstraints = [];
+    window.__appliedTrackConstraints = [];
     window.__localTrackSources = {};
     window.__senderParameterEvents = [];
     window.__forceCriticalLink = false;
@@ -54,6 +56,10 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
       const original = navigator.mediaDevices[method].bind(navigator.mediaDevices);
       navigator.mediaDevices[method] = async (...args) => {
         window.__captureCalls.push(method);
+        window.__captureConstraints.push({
+          method,
+          constraints: JSON.parse(JSON.stringify(args[0] || {})),
+        });
         const stream = await original(...args);
         const constraints = args[0] || {};
         const source = method === "getDisplayMedia" ? "screen" : constraints.video ? "camera" : "microphone";
@@ -61,6 +67,15 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
         return stream;
       };
     }
+    const nativeApplyConstraints = MediaStreamTrack.prototype.applyConstraints;
+    MediaStreamTrack.prototype.applyConstraints = async function observedApplyConstraints(constraints) {
+      await nativeApplyConstraints.call(this, constraints);
+      window.__appliedTrackConstraints.push({
+        trackId: this.id,
+        constraints: JSON.parse(JSON.stringify(constraints || {})),
+        settings: JSON.parse(JSON.stringify(this.getSettings())),
+      });
+    };
     const nativeGetStats = RTCPeerConnection.prototype.getStats;
     RTCPeerConnection.prototype.getStats = async function observedGetStats(...args) {
       const report = await nativeGetStats.apply(this, args);
@@ -93,6 +108,15 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   for (const page of [ada, grace]) page.on("pageerror", (error) => pageErrors.push(error.message));
 
   await ada.goto(origin);
+  await ada.locator(".nav-item", { hasText: "Einstellungen" }).click();
+  await ada.locator("#camera-resolution").selectOption("360p");
+  await ada.locator("#camera-frame-rate").selectOption({ label: "5 FPS" });
+  await ada.locator("#screen-resolution").selectOption("480p");
+  await ada.locator("#screen-frame-rate").selectOption({ label: "10 FPS" });
+  assert.deepEqual(await ada.evaluate(() => window.__captureCalls), []);
+  assert.equal(await ada.locator("#camera-applied-settings").textContent(), "Nicht aktiv");
+  assert.equal(await ada.locator("#screen-applied-settings").textContent(), "Nicht aktiv");
+  await ada.locator(".nav-item", { hasText: "Räume" }).click();
   await ada.locator("#display-name").fill("Ada");
   await ada.locator("#create-room").click();
   await ada.waitForFunction(() => document.querySelector("#room-id").value.startsWith("room-"));
@@ -121,6 +145,42 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   await grace.waitForFunction(() => [...document.querySelectorAll("video:not([muted])")]
     .some((video) => video.readyState >= 2 && video.videoWidth > 0));
 
+  const cameraCapture = await ada.evaluate(() => window.__captureConstraints
+    .find((event) => event.method === "getUserMedia" && event.constraints.video));
+  assert.deepEqual(cameraCapture.constraints, {
+    video: {
+      frameRate: { ideal: 5, max: 5 },
+      width: { ideal: 640, max: 640 },
+      height: { ideal: 360, max: 360 },
+    },
+    audio: false,
+  });
+  await ada.locator(".nav-item", { hasText: "Einstellungen" }).click();
+  await ada.locator("#camera-applied-settings").waitFor({ state: "visible" });
+  assert.match(await ada.locator("#camera-applied-settings").textContent(), /^\d+(?:\.\d+)? × \d+(?:\.\d+)? · \d+(?:\.\d+)? FPS$/);
+  await ada.locator("#camera-resolution").selectOption("240p");
+  await ada.locator("#camera-frame-rate").selectOption({ label: "2 FPS" });
+  await ada.waitForFunction(() => {
+    const cameraTrackIds = new Set(Object.entries(window.__localTrackSources)
+      .filter(([, source]) => source === "camera").map(([trackId]) => trackId));
+    return window.__appliedTrackConstraints.filter((event) => cameraTrackIds.has(event.trackId)).length >= 2;
+  });
+  assert.deepEqual(await ada.evaluate(() => window.__captureCalls), ["getUserMedia"]);
+  const cameraApplied = await ada.evaluate(() => {
+    const cameraTrackIds = new Set(Object.entries(window.__localTrackSources)
+      .filter(([, source]) => source === "camera").map(([trackId]) => trackId));
+    return window.__appliedTrackConstraints.filter((event) => cameraTrackIds.has(event.trackId)).at(-1);
+  });
+  assert.deepEqual(cameraApplied.constraints, {
+    frameRate: { ideal: 2, max: 2 },
+    width: { ideal: 426, max: 426 },
+    height: { ideal: 240, max: 240 },
+  });
+  assert.ok(cameraApplied.settings.width <= 426);
+  assert.ok(cameraApplied.settings.height <= 240);
+  assert.ok(cameraApplied.settings.frameRate <= 2);
+  await ada.locator(".nav-item", { hasText: "Live" }).click();
+
   await ada.locator("#toggle-microphone").click();
   await ada.locator("#toggle-microphone", { hasText: "Mikrofon stoppen" }).waitFor();
   await grace.locator(".media-label").getByText("Ada · Mikrofon").waitFor();
@@ -132,6 +192,33 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   await ada.locator("#toggle-screen", { hasText: "Bildschirmfreigabe stoppen" }).waitFor();
   await grace.locator(".media-label").getByText("Ada · Bildschirm").first().waitFor();
   await ada.locator(".nav-item", { hasText: "Einstellungen" }).click();
+  const screenCapture = await ada.evaluate(() => window.__captureConstraints
+    .find((event) => event.method === "getDisplayMedia"));
+  assert.deepEqual(screenCapture.constraints, {
+    video: {
+      frameRate: { ideal: 10, max: 10 },
+      width: { ideal: 854, max: 854 },
+      height: { ideal: 480, max: 480 },
+    },
+    audio: true,
+  });
+  assert.match(await ada.locator("#screen-applied-settings").textContent(), /^\d+(?:\.\d+)? × \d+(?:\.\d+)? · \d+(?:\.\d+)? FPS$/);
+  await ada.locator("#screen-resolution").selectOption("360p");
+  await ada.locator("#screen-frame-rate").selectOption({ label: "5 FPS" });
+  await ada.waitForFunction(() => {
+    const screenTrackIds = new Set(Object.entries(window.__localTrackSources)
+      .filter(([, source]) => source === "screen").map(([trackId]) => trackId));
+    return window.__appliedTrackConstraints.filter((event) => screenTrackIds.has(event.trackId)).length >= 2;
+  });
+  assert.deepEqual(await ada.evaluate(() => window.__captureCalls), ["getUserMedia", "getUserMedia", "getDisplayMedia"]);
+  const screenApplied = await ada.evaluate(() => {
+    const screenTrackIds = new Set(Object.entries(window.__localTrackSources)
+      .filter(([, source]) => source === "screen").map(([trackId]) => trackId));
+    return window.__appliedTrackConstraints.filter((event) => screenTrackIds.has(event.trackId)).at(-1);
+  });
+  assert.ok(screenApplied.settings.width <= 640);
+  assert.ok(screenApplied.settings.height <= 360);
+  assert.ok(screenApplied.settings.frameRate <= 5);
   await ada.locator("#link-quality", { hasText: "critical" }).waitFor({ timeout: 5_000 });
   await ada.waitForFunction(() => {
     const cameraTrackIds = new Set(Object.entries(window.__localTrackSources)

@@ -37,4 +37,19 @@ describe("Room page information architecture", () => {
     expect(component.indexOf("if (this.session.joined()) this.media.stopAll();"))
       .toBeLessThan(component.indexOf("await this.session.join(room, name, mode);"));
   });
+
+  it("offers separate camera and screen ceilings without owning capture APIs", () => {
+    expect(template).toContain('id="camera-resolution"');
+    expect(template).toContain('id="camera-frame-rate"');
+    expect(template).toContain('id="screen-resolution"');
+    expect(template).toContain('id="screen-frame-rate"');
+    expect(template).toContain('id="camera-applied-settings"');
+    expect(template).toContain('id="screen-applied-settings"');
+    expect(template).toContain("setVideoResolution('camera', $event)");
+    expect(template).toContain("setVideoFrameRate('screen', $event)");
+    expect(component).toContain("this.media.setVideoResolution(source, resolutionId)");
+    expect(component).toContain("this.media.setVideoFrameRate(source, frameRate)");
+    expect(component).not.toContain("getUserMedia");
+    expect(component).not.toContain("getDisplayMedia");
+  });
 });

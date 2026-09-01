@@ -1,0 +1,84 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "video-capture-controls",
+  "purpose": "Nutzer koennen Kamera- und Bildschirmvideo mit klaren Aufloesungs- und FPS-Obergrenzen an Geraet, Netz und Bandbreitenbudget anpassen.",
+  "goal": "Viele uebliche Videoaufloesungen und FPS-Limits sind getrennt fuer Kamera und Bildschirm konfigurierbar, werden ohne automatische Capture-Anfrage gespeichert und koennen auf bereits laufende Tracks angewandt werden.",
+  "status": "in_progress",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "VCC-M01",
+      "title": "Video-Obergrenzen und Track-Lifecycle",
+      "task_ids": ["VCC-001"],
+      "status": "done"
+    },
+    {
+      "id": "VCC-M02",
+      "title": "Bedienoberflaeche, Browsernachweis und Rollout",
+      "task_ids": ["VCC-002"],
+      "status": "in_progress"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "VCC-001",
+      "title": "Persistente Kamera- und Screenshare-Constraints implementieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Kamera und Bildschirm besitzen getrennte validierte Praeferenzen fuer Automatik beziehungsweise gaengige Aufloesungen von 240p bis 2160p und FPS-Obergrenzen von 2 bis 60.",
+        "Neue Captures verwenden nur best-effort ideal/max-Constraints; die Browserauswahl des Display-Surface bleibt ausschliesslich beim sichtbaren getDisplayMedia-Nutzerklick.",
+        "Aenderungen an einem laufenden Video-Track verwenden applyConstraints ohne erneutes getUserMedia oder getDisplayMedia und zeigen danach die tatsaechlichen getSettings-Werte.",
+        "Ungueltige gespeicherte Werte werden fail-closed auf sichere Defaults zurueckgesetzt; Capture- und Track-Cleanup bleiben unveraendert deterministisch."
+      ]
+    },
+    {
+      "id": "VCC-002",
+      "title": "Responsive Videoeinstellungen verifizieren und ausrollen",
+      "status": "in_progress",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 95,
+      "depends_on": ["VCC-001"],
+      "acceptance_criteria": [
+        "Die Angular-Einstellungen bieten getrennte, verstaendliche Aufloesungs- und FPS-Auswahl fuer Kamera und Bildschirm sowie Soll-/Ist-Hinweise auf Desktop und Mobilgeraeten.",
+        "Die UI erklaert, dass die Auswahl eine Obergrenze ist, adaptive Qualitaet weiter reduzieren darf und geringere Pixelzahl beziehungsweise FPS Upload pro Gegenstelle sparen.",
+        "Unit- und echte Chromium-Tests belegen Constraints beim expliziten Start, live applyConstraints, Ist-Werte und null zusaetzliche Capture-Aufrufe beim Einstellungswechsel.",
+        "npm run check besteht; der Stand wird gepusht und auf dem bestehenden Mini-PC-Dienst ohne Aenderung an Caddy, Keycloak, Coturn oder Secrets ausgerollt."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["VCC-001", "VCC-002"],
+  "tasks_status_summary": {
+    "total": 2,
+    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 1 },
+    "progress_percent_done": 50,
+    "by_priority": { "P0": 1, "P1": 1, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 0, "high": 2, "critical": 0 },
+    "critical_path": { "total": 2, "done": 1, "remaining": 1 },
+    "milestones": { "total": 2, "todo": 0, "in_progress": 1, "blocked": 0, "done": 1 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 0,
+    "in_progress": 1,
+    "partial": 0,
+    "blocked": 0,
+    "done": 1
+  },
+  "summary_notes": [
+    "W3C Media Capture and Streams definiert width, height und frameRate als constrainable Videoeigenschaften, applyConstraints fuer laufende Tracks und getSettings fuer die tatsaechliche Browserwahl.",
+    "W3C Screen Capture laesst ideal/max-Obergrenzen zu, behaelt aber Auswahl und ausdrueckliche Freigabe der Display-Quelle beim Benutzer; diese Aenderung fuehrt keinen automatischen Capture-Pfad ein.",
+    "Aufloesungs- und FPS-Limits begrenzen bereits die Capture-Quelle. Die vorhandene per-Peer Adaptive-Mesh-Policy darf darunter weiter reduzieren, aber die gewaehlte Obergrenze nicht ueberschreiten.",
+    "53 Frontend-Tests und ein echter Zwei-Chromium-Lauf belegen Default-/Low-Bandwidth-Constraints, persistente Validierung, Ist-Werte, live applyConstraints fuer Kamera und Bildschirm sowie null zusaetzliche Capture-Aufrufe beim Einstellungswechsel.",
+    "Desktop- und Mobile-Renderings wurden bei 1440x1100 beziehungsweise 390x844 visuell auf lesbare zweispaltige und gestapelte Controls geprueft.",
+    "npm run check besteht mit 53 Frontend- und 62 Node-/Browser-Tests sowie Produktionsbuild; der explizite externe Keycloak-/TURN-Gate blieb mangels gesetzter Test-Credentials sichtbar uebersprungen. Nur Commit, Push und Produktionsrollout stehen noch aus."
+  ]
+}

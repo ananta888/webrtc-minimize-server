@@ -395,6 +395,18 @@ app-media-control-bar { display: block; }
 .settings-card { display: grid; align-content: start; gap: 1rem; padding: 1.15rem; }
 .settings-card > p { margin-bottom: 0; font-size: .82rem; }
 .identity-card { grid-column: 1 / -1; }
+.video-settings-card { gap: .85rem; }
+.capture-setting-group { display: grid; gap: .75rem; border: 1px solid var(--line); border-radius: .9rem; padding: .9rem; background: rgba(7, 10, 17, .3); }
+.capture-setting-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: .7rem; }
+.capture-setting-heading h3, .capture-setting-heading p { margin-bottom: 0; }
+.capture-setting-heading > span { border: 1px solid var(--line); border-radius: 999px; padding: .24rem .48rem; color: var(--muted); font-size: .64rem; font-weight: 750; }
+.capture-setting-heading > span.active { border-color: rgba(102, 224, 183, .28); color: #c9f7e8; background: rgba(102, 224, 183, .08); }
+.capture-setting-fields { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(8rem, .65fr); gap: .65rem; }
+.capture-setting-fields label { font-size: .72rem; }
+.capture-setting-fields select { padding-block: .68rem; font-size: .76rem; }
+.applied-setting { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin: 0; border-top: 1px solid var(--line); padding-top: .65rem; font-size: .69rem; }
+.applied-setting span { color: var(--muted); }
+.applied-setting strong { color: #d9e1ec; text-align: right; font-variant-numeric: tabular-nums; }
 .fact-list { margin: 0; }
 .fact-list div { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--line); padding-bottom: .52rem; }
 .fact-list dt { color: var(--muted); font-size: .74rem; }
@@ -449,6 +461,7 @@ app-media-control-bar { display: block; }
   .refresh-button { justify-self: start; }
   .action-grid, .settings-grid { grid-template-columns: 1fr; }
   .identity-card { grid-column: auto; }
+  .capture-setting-fields { grid-template-columns: 1fr; }
   .join-fields { grid-template-columns: 1fr; }
   .join-fields .mode-picker, .join-fields .wide { grid-column: auto; }
   .mode-picker { align-items: flex-start; flex-direction: column; }
