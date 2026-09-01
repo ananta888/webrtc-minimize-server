@@ -119,7 +119,7 @@
       "status": "in_progress",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 55,
+      "progress_percent": 65,
       "depends_on": ["BME-005"],
       "acceptance_criteria": [
         "Mindestens fuenf echte Browser plus zwei Agentprozesse belegen reduzierten Publisher-Fanout, SFrame-Wiedergabe, Agent-Lastteilung, Planned Leave, Crash-Failover und Mesh-Rueckfall.",
@@ -153,7 +153,9 @@
     "Ohne installierten und zugestimmten Agenten bleibt required-SFrame adaptive_mesh; ein Security-Downgrade auf Decode/Re-encode wird nicht automatisch aktiviert.",
     "Eine Portfreigabe ist fuer direkte Agent-Erreichbarkeit vorteilhaft; ein Agent als normaler ICE-Endpunkt kann alternativ TURN verwenden. Der vorhandene Edge-TURN-Agent allein reduziert keinen Medienfanout.",
     "Browser-Adapter, publikationsgebundene Gruppenkeys, Creator-Bonus, Uebernahmeanfrage, Auto-Takeover und ab sechs Teilnehmern eindeutiges Publisher-Sharding ueber bis zu drei Agenten sind lokal implementiert und durch geschlossene Contract-/Registry-/UI-Tests belegt.",
-    "Am 2026-09-01 bestanden 76 Frontend-Tests, die gezielten Node-Integrationsgates, Angular-Produktionsbuild, Go-Race-Test mit realen Pion-PeerConnections, Agent-Compose-Validierung und gehärteter Image-Build. Der reale Fuenf-Browser-/Zwei-Agent-/NAT-/Crash-Produktionsgate ist noch offen.",
+    "Am 2026-09-01 bestanden der vollstaendige npm-run-check-Gate mit 77 Frontend- und 77 Node-/Browser-/Integrationsfaellen, Chromium/Firefox, Angular-Produktionsbuild, Go-Race/Vet mit realen Pion-PeerConnections, Agent-Compose-Validierung, npm-Produktionsaudit und gehaerteter Image-Build.",
+    "Commit 6fd290e ist auf ananta888/main gepusht und auf dem Mini-PC aktiv. Der normale DNS-Pfad lieferte ueber 89.168.123.128 gueltiges TLS, HTTP 200 und das neue Angular-Bundle; laptop-edge authentisierte ausgehend ueber das oeffentliche WSS mit RestartCount 0. Das Secret liegt nur in zwei Dateien mit Modus 0600, das Mini-PC-Backup ausserhalb des Worktrees; keine Portfreigabe wurde behauptet oder geoeffnet.",
+    "Der reale Fuenf-Browser-/Zwei-Agent-/All-TURN-/NAT-/Crash-Produktionsgate und ein sichtbarer Consent-Medientest bleiben offen; BME-006 ist deshalb ausdruecklich nicht done.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
   ]
 }
