@@ -195,6 +195,12 @@ kommerziell code-signiert beziehungsweise notarisiert; macOS und Windows sind
 cross-kompiliert und checksum-geprüft, aber bis zu einem realen Gerätetest
 weiterhin `unverified`.
 
+Wenn der vorhandene Caddy ebenfalls als Container läuft, muss der WebRTC-
+Dienst beim Recreate wieder in dessen externem Netz landen. Das versionierte
+Override `infra/reverse-proxy/compose.caddy-network.yaml` verbindet ihn dort
+unter dem stabilen Alias `webrtc-room-server`; ohne dieses Override wäre eine
+manuelle Netzverbindung nur bis zum nächsten Compose-Recreate wirksam.
+
 `MEDIA_AGENT_SIGNAL_URL` ist eine ausgehende exakte
 `wss://…/media-agent`-Adresse. Die serverseitige Variable
 `MEDIA_EDGE_AGENTS_JSON` bindet dieselbe Agent-ID und dasselbe Secret an den

@@ -201,6 +201,25 @@ Consent ist in der Raumoberfläche standardmäßig aus und widerrufbar. Eine Üb
 
 Für das Ananta-Preset muss ein HTTPS-Reverse-Proxy `webrtc.ananta.de` auf Port 8080 weiterleiten und WebSocket-Upgrades für `/signal` sowie – nur bei konfigurierten nativen Agenten – `/media-agent` durchreichen. Für eine eigene Installation werden `PUBLIC_ORIGIN`, `KEYCLOAK_ORIGIN` und gegebenenfalls `KEYCLOAK_REALM` in `.env` ersetzt; dieselbe Origin muss in der erzeugten Keycloak-Clientdefinition registriert werden. Keycloak und Coturn benötigen produktive Datenbank, TLS, gesicherte Adminzugänge und Secret-Management. `TURN_EXTERNAL_IP` muss die von Clients erreichbare Adresse enthalten; für TURN/TLS werden `turns:` und ein gültiges Zertifikat benötigt. Der lokale Compose-Stack ist keine unveränderte Produktionsvorlage.
 
+Läuft Caddy selbst in Docker, verbindet das kleine Override beide Stacks über
+ein bereits bewusst angelegtes externes Netz. Caddy kann dann stabil
+`webrtc-room-server:8080` verwenden; der Alias überlebt auch ein Recreate des
+WebRTC-Containers:
+
+```bash
+docker network inspect webrtc-edge >/dev/null
+docker compose \
+  -f compose.yaml \
+  -f infra/reverse-proxy/compose.caddy-network.yaml \
+  up -d --build webrtc
+```
+
+Der Caddy-Container muss ebenfalls mit `webrtc-edge` verbunden sein. Für einen
+auf dem Host laufenden Reverse-Proxy bleibt das Override weg und der
+veröffentlichte Port 8080 wird verwendet. Ein abweichender externer Netzname
+kann ausschließlich beim Deploy über `WEBRTC_REVERSE_PROXY_NETWORK` gesetzt
+werden.
+
 ## API
 
 - `GET /`: Browser-App

@@ -1,0 +1,12 @@
+services:
+  webrtc:
+    networks:
+      default:
+      reverse-proxy:
+        aliases:
+          - webrtc-room-server
+
+networks:
+  reverse-proxy:
+    external: true
+    name: ${WEBRTC_REVERSE_PROXY_NETWORK:-webrtc-edge}
