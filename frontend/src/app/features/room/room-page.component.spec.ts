@@ -7,6 +7,14 @@ const component = readFileSync("frontend/src/app/features/room/room-page.compone
 const mediaControls = readFileSync("frontend/src/app/shared/media-control-bar.component.ts", "utf8");
 
 describe("Room page information architecture", () => {
+  it("links the top-right GitHub icon to this repository without reusing the app tab", () => {
+    expect(template).toContain('id="github-repository"');
+    expect(template).toContain('href="https://github.com/ananta888/webrtc-minimize-server"');
+    expect(template).toContain('target="_blank"');
+    expect(template).toContain('rel="noopener noreferrer"');
+    expect(template).toContain('aria-label="GitHub-Repository webrtc-minimize-server öffnen"');
+  });
+
   it("offers explicit navigation and separate public and owner room collections", () => {
     expect(template).toContain("Hauptmenü");
     expect(template).toContain("Öffentliche Räume");

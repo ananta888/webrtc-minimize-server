@@ -129,6 +129,10 @@ legend { color: #bac5d5; font-size: .78rem; font-weight: 700; }
 .button.wide { width: 100%; }
 .icon-button { display: grid; width: 2.35rem; height: 2.35rem; place-items: center; border: 1px solid var(--line); border-radius: .7rem; background: transparent; cursor: pointer; }
 .icon-button:hover { border-color: var(--line-strong); background: var(--surface-soft); }
+.github-link { flex: 0 0 auto; color: #d8e0eb; text-decoration: none; }
+.github-link svg { width: 1.22rem; height: 1.22rem; fill: currentColor; stroke: none; }
+.github-link:hover { color: var(--text); }
+.github-link:focus-visible { outline: 3px solid rgba(102, 224, 183, .34); outline-offset: 2px; }
 
 .app-body { display: grid; min-height: calc(100vh - 4.6rem); grid-template-columns: 14.5rem minmax(0, 1fr); }
 .side-menu {
@@ -503,6 +507,10 @@ app-media-control-bar { display: block; }
   .room-context { align-items: flex-start; flex-direction: column; }
   .room-context code { border-right: 0; }
   .media-control span:last-child { max-width: 4rem; }
+}
+
+@media (max-width: 380px) {
+  .brand > span:last-child { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
