@@ -2,7 +2,7 @@
   "$schema": "../todo.schema.json",
   "version": 1,
   "created": "2026-08-27",
-  "updated": "2026-08-31",
+  "updated": "2026-09-01",
   "project": "webrtc-minimize-server",
   "review_basis": {
     "reviewed_commit_range": "workspace snapshot of /home/krusty/ananta on 2026-08-27",
@@ -26,7 +26,7 @@
         { "id": "PROD-NET-001", "title": "Kurzlebige TURN-Credentials, Allowlist, Quotas und IP-Privacy integrieren", "status": "partial", "priority": "P0" },
         { "id": "PROD-NET-002", "title": "Ressourcenadaptive Mesh-Grenze mit Browser-Stats, Hysterese und Degradation ableiten", "status": "completed", "priority": "P1" },
         { "id": "PROD-NET-003", "title": "SFU-Fallback für größere Räume mit E2EE-, Admission- und Layer-Policy anbinden", "status": "open", "priority": "P1" },
-        { "id": "PROD-NET-004", "title": "Verschlüsselten publikationsbezogenen Peer-DAG nur hinter Machbarkeits- und Security-Gates erproben", "status": "open", "priority": "P2" }
+        { "id": "PROD-NET-004", "title": "Verschlüsselten publikationsbezogenen Peer-DAG nur hinter Machbarkeits- und Security-Gates erproben", "status": "partial", "priority": "P2" }
       ]
     },
     {
@@ -51,7 +51,7 @@
   ],
   "meta": {
     "total_items": 15,
-    "by_status": { "completed": 4, "partial": 6, "open": 5 },
+    "by_status": { "completed": 4, "partial": 7, "open": 4 },
     "notes": [
       "Diese Category-Todo ist Portfolio/Research, kein ausführbarer Task-Track.",
       "Neue Implementierung beginnt erst nach Promotion eines Items in todos/active/todo.<track>.json.",
@@ -60,7 +60,7 @@
       "PROD-SEC-004 bleibt partial: Frame-Replay-Fenster, Epoch-Rotation und Cleanup sind vorhanden; vom Signaling unabhängige Senderauthentizität, Gerätewiderruf und MLS-artige Gruppenschlüssel fehlen.",
       "PROD-NET-001 bleibt partial: kurzlebige Coturn-/Edge-REST-Credentials, Private-Network-Policy und Allocation-Quoten sind vorhanden; Edge-TURN/TLS, Secret-Rotation, umfassende IP-Privacy und Multi-Region-Failover fehlen.",
       "PROD-NET-002 ist abgeschlossen: Active-Speaker-Profile, Stats-Hysterese, per-Peer-Senderstufen, Mosaik, Churn-Fallback und Trusted-Relay-Fanout sind in Chromium/Firefox-Gates belegt.",
-      "PROD-NET-004 bleibt offen: SFrame ist implementiert und Edge-TURN relayed Pakete blind, aber ein portabler, nicht entschlüsselnder SFrame-/Ciphertext-Peer-DAG zwischen Browsern ist nicht implementiert.",
+      "PROD-NET-004 ist in todos/active/todo.blind-media-edge-agents.json promoviert: Browser-Cross-PeerConnection-Fanout bleibt standardseitig no-go; ein separater nativer SFrame-blinder Agent mit Creator-Praeferenz, Consent, Leases, Failover, Publisher-Sharding und TURN-Fallback ist lokal default-off implementiert, sein realer Produktionsgate bleibt offen.",
       "PROD-DATA-001/002 sind abgeschlossen: der browserseitige Overlay besitzt Traffic-Class-Caps, ECDH/AES-GCM, Digest, Replay-/TTL-/Hop-Grenzen, Chunk-ACK/Resume und expliziten Download.",
       "PROD-DATA-003 bleibt partial: Workspace, Presence und Cursor sind persistent; Threads, HA sowie Backup/Restore fehlen.",
       "SFU bleibt ein optionaler Skalierungs-Folgeschritt; required-SFrame arbeitet als adaptives Direct-/Edge-/Infrastruktur-TURN-Mesh, während der consentierte Decode/Re-encode-Trusted-Relay nur im expliziten disabled-Legacy-Modus aktiv ist."

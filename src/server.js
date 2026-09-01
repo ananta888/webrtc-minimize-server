@@ -7,6 +7,8 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import { loadConfig } from "./config.js";
 import { DeviceProofError, DeviceProofVerifier } from "./device-proof.js";
+import { parseBrowserMediaAgentMessage, parseMediaAgentMessage } from "./media-agent-protocol.js";
+import { MediaAgentRegistry } from "./media-agent-registry.js";
 import { buildRoomTopology } from "./media-topology.js";
 import { RelayHealthTracker } from "./relay-health.js";
 import {
@@ -115,6 +117,12 @@ function publicRuntimeConfig(config) {
     mediaE2ee: {
       mode: config.mediaE2eeMode,
       cipherSuite: "AES_128_GCM_SHA256_128",
+    },
+    mediaAgents: {
+      configured: config.mediaAgents.length > 0,
+      leaseMs: config.mediaAgentLeaseMs,
+      maxStandbys: config.mediaAgentMaxStandbys,
+      shardMinParticipants: config.mediaAgentShardMinParticipants,
     },
     optimization: {
       activeSpeakerLimit: config.activeSpeakerLimit,
@@ -487,19 +495,86 @@ function rejectUpgrade(socket, statusCode, message) {
   );
 }
 
-function configureSignaling(server, config, registry, ticketStore, directory) {
+function configureSignaling(server, config, registry, ticketStore, directory, mediaAgents) {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
+  const mediaAgentWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
   const roomEpochs = new Map();
+  const mediaAgentTracks = new Map();
+  const mediaAgentTrackRouteEpochs = new Map();
   const relayHealth = new RelayHealthTracker({
     windowMs: config.peerRelayHealthWindowMs,
     cooldownMs: config.peerRelayHealthCooldownMs,
   });
+
+  const iceServersForAgent = (agentId) => [
+    ...config.stunUrls.map((urls) => ({ urls })),
+    ...createEdgeTurnCredentials(config, `media-agent:${agentId}`),
+    ...config.turnServers,
+    ...createTurnCredentials(config, `media-agent:${agentId}`),
+  ];
+
+  const syncAgents = () => {
+    for (const agentId of mediaAgents.connectedAgentIds()) {
+      safeSend(mediaAgents.socketForAgent(agentId), {
+        version: 1,
+        type: "agent-sync",
+        leases: mediaAgents.roomLeases(
+          agentId,
+          (roomId) => registry.members(roomId),
+          iceServersForAgent,
+        ),
+      });
+    }
+  };
+
+  const sendMediaAgentAvailability = (member) => safeSend(member.socket, {
+    version: 1,
+    type: "media-agent-availability",
+    agents: mediaAgents.configuredForPrincipal(member.principal),
+  });
+
+  const broadcastPrincipalMediaAgentAvailability = (principal) => {
+    for (const roomId of roomEpochs.keys()) {
+      for (const member of registry.members(roomId)) {
+        if (member.principal === principal) sendMediaAgentAvailability(member);
+      }
+    }
+  };
+
+  const broadcastMediaAgentState = (roomId) => {
+    const members = registry.members(roomId);
+    if (members.length === 0) {
+      for (const key of mediaAgentTracks.keys()) {
+        if (key.startsWith(`${roomId}\0`)) mediaAgentTracks.delete(key);
+      }
+      mediaAgentTrackRouteEpochs.delete(roomId);
+      mediaAgents.removeRoom(roomId);
+      syncAgents();
+      return;
+    }
+    const membershipEpoch = roomEpochs.get(roomId)?.membership || 1;
+    const state = mediaAgents.reconcile(roomId, members, membershipEpoch);
+    if (mediaAgentTrackRouteEpochs.get(roomId) !== state.routeEpoch) {
+      for (const key of mediaAgentTracks.keys()) {
+        if (key.startsWith(`${roomId}\0`)) mediaAgentTracks.delete(key);
+      }
+      mediaAgentTrackRouteEpochs.set(roomId, state.routeEpoch);
+    }
+    for (const member of members) safeSend(member.socket, state);
+    const takeover = mediaAgents.takeoverRequest(roomId);
+    if (takeover) {
+      const recipient = members.find((member) => member.id === takeover.peerId);
+      if (recipient) safeSend(recipient.socket, { ...takeover, peerId: undefined });
+    }
+    syncAgents();
+  };
 
   const broadcastTopology = (roomId, membershipChanged = false) => {
     const members = registry.members(roomId);
     if (members.length === 0) {
       roomEpochs.delete(roomId);
       relayHealth.removeRoom(roomId);
+      broadcastMediaAgentState(roomId);
       return;
     }
     const epochs = roomEpochs.get(roomId) || { membership: 0, route: 0, topology: 0 };
@@ -516,10 +591,25 @@ function configureSignaling(server, config, registry, ticketStore, directory) {
       blockedRelayIds: relayHealth.blockedRelayIds(roomId),
     });
     for (const member of members) safeSend(member.socket, topology);
+    broadcastMediaAgentState(roomId);
   };
 
   server.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url, "http://localhost");
+    if (url.pathname === "/media-agent") {
+      if (!mediaAgents.configured) {
+        rejectUpgrade(socket, 403, "media_agents_disabled");
+        return;
+      }
+      if (request.headers.origin || url.search || url.hash) {
+        rejectUpgrade(socket, 403, "agent_origin_denied");
+        return;
+      }
+      mediaAgentWebSocketServer.handleUpgrade(request, socket, head, (webSocket) => {
+        mediaAgentWebSocketServer.emit("connection", webSocket, request);
+      });
+      return;
+    }
     if (url.pathname !== "/signal") {
       rejectUpgrade(socket, 400, "invalid_endpoint");
       return;
@@ -549,6 +639,7 @@ function configureSignaling(server, config, registry, ticketStore, directory) {
         mode: identity.mode,
         principal: identity.principal,
         deviceFingerprint: identity.deviceFingerprint,
+        creatorPrincipal: directory.ownerPrincipal(identity.roomId),
       });
     } catch (error) {
       const code = error instanceof RoomFullError || error instanceof RoomAdmissionError
@@ -571,6 +662,8 @@ function configureSignaling(server, config, registry, ticketStore, directory) {
       authenticated: identity.authenticated,
       workspaceId: identity.workspaceId || "",
       workspaceRole: identity.workspaceRole || "",
+      roomCreator: peer.creator,
+      mediaAgents: mediaAgents.configuredForPrincipal(peer.principal),
     });
     for (const recipient of registry.recipients(peer)) {
       safeSend(recipient.socket, { type: "peer-joined", peer: { id: peer.id, name: peer.name } });
@@ -584,7 +677,11 @@ function configureSignaling(server, config, registry, ticketStore, directory) {
         if (!registry.allowMessage(peer, Date.now(), { limit: config.signalRateLimit })) {
           throw new ProtocolError("rate_limited");
         }
-        const message = parseClientMessage(raw);
+        let message;
+        try { message = parseClientMessage(raw); } catch (error) {
+          if (!(error instanceof ProtocolError)) throw error;
+          message = parseBrowserMediaAgentMessage(raw);
+        }
         if (message.type === "signal") {
           const recipient = registry.recipient(peer, message.to);
           if (!recipient) throw new ProtocolError("recipient_unavailable");
@@ -593,6 +690,74 @@ function configureSignaling(server, config, registry, ticketStore, directory) {
             from: peer.id,
             fromName: peer.name,
             to: undefined,
+          });
+          return;
+        }
+        if (message.type === "media-state") {
+          registry.setMediaState(peer, message);
+        }
+        if (message.type === "media-agent-consent") {
+          mediaAgents.setConsent(
+            peer,
+            message,
+            directory.ownerPrincipal(peer.roomId) || registry.creatorPrincipal(peer.roomId),
+          );
+          broadcastMediaAgentState(peer.roomId);
+          return;
+        }
+        if (message.type === "media-agent-takeover-response") {
+          mediaAgents.respondToTakeover(peer, message);
+          broadcastMediaAgentState(peer.roomId);
+          return;
+        }
+        if (message.type === "media-agent-signal") {
+          if (message.roomId !== peer.roomId
+            || !mediaAgents.authorize(peer.roomId, message.agentId, message.routeEpoch, peer.id)) {
+            throw new ProtocolError("stale_agent_route");
+          }
+          const agentSocket = mediaAgents.socketForAgent(message.agentId);
+          if (!agentSocket) throw new ProtocolError("media_agent_unavailable");
+          safeSend(agentSocket, {
+            ...message,
+            version: 1,
+            type: "peer-signal",
+            peerId: peer.id,
+            agentId: undefined,
+          });
+          return;
+        }
+        if (message.type === "media-agent-peer-state") {
+          if (message.roomId !== peer.roomId) throw new ProtocolError("invalid_agent_room");
+          mediaAgents.setBrowserPeerState(
+            peer.roomId, message.agentId, message.routeEpoch, peer.id, message.connected,
+          );
+          broadcastMediaAgentState(peer.roomId);
+          return;
+        }
+        if (message.type === "media-agent-subscription-state") {
+          if (message.roomId !== peer.roomId || message.publisherPeerId === peer.id
+            || !mediaAgents.authorizePublisher(
+              peer.roomId,
+              message.agentId,
+              message.routeEpoch,
+              message.publisherPeerId,
+            )) {
+            throw new ProtocolError("stale_agent_route");
+          }
+          const publication = registry.publication(
+            message.publisherPeerId, message.publicationId, message.roomId,
+          );
+          if (!publication) throw new ProtocolError("agent_publication_unauthorized");
+          const publisher = registry.members(peer.roomId).find((member) => member.id === message.publisherPeerId);
+          if (!publisher) throw new ProtocolError("recipient_unavailable");
+          safeSend(publisher.socket, {
+            version: 1,
+            type: "media-agent-subscription-state",
+            agentId: message.agentId,
+            routeEpoch: message.routeEpoch,
+            publicationId: message.publicationId,
+            subscriberPeerId: peer.id,
+            ready: message.ready,
           });
           return;
         }
@@ -661,6 +826,7 @@ function configureSignaling(server, config, registry, ticketStore, directory) {
       if (left) return;
       left = true;
       relayHealth.leave(peer.roomId, peer.id);
+      mediaAgents.leavePeer(peer);
       for (const recipient of registry.leave(peer)) {
         safeSend(recipient.socket, { type: "peer-left", peerId: peer.id });
       }
@@ -671,8 +837,130 @@ function configureSignaling(server, config, registry, ticketStore, directory) {
     socket.on("error", leave);
   });
 
+  mediaAgentWebSocketServer.on("connection", (socket) => {
+    socket.isAlive = true;
+    let authenticated = false;
+    safeSend(socket, mediaAgents.issueChallenge(socket));
+    const authTimeout = setTimeout(() => {
+      if (!authenticated) socket.close(1008, "agent_authentication_timeout");
+    }, 31_000);
+    authTimeout.unref();
+    socket.on("pong", () => { socket.isAlive = true; });
+    socket.on("message", (raw, isBinary) => {
+      try {
+        if (isBinary) throw new ProtocolError("binary_agent_signaling_unsupported");
+        const message = parseMediaAgentMessage(raw);
+        if (!authenticated) {
+          if (message.type !== "authenticate") throw new ProtocolError("agent_authentication_required");
+          const result = mediaAgents.authenticate(socket, message);
+          authenticated = true;
+          clearTimeout(authTimeout);
+          result.replacedSocket?.close(1008, "agent_connection_replaced");
+          safeSend(socket, { version: 1, type: "agent-authenticated", agentId: result.id });
+          const connection = mediaAgents.connection(socket);
+          if (connection) broadcastPrincipalMediaAgentAvailability(connection.ownerPrincipal);
+          for (const roomId of mediaAgents.roomsAffectedByAgent(result.id)) broadcastMediaAgentState(roomId);
+          syncAgents();
+          return;
+        }
+        if (!mediaAgents.allowMessage(socket, Date.now(), { limit: config.mediaAgentRateLimit })) {
+          throw new ProtocolError("agent_rate_limited");
+        }
+        const connection = mediaAgents.connection(socket);
+        if (!connection) throw new ProtocolError("agent_not_authenticated");
+        if (message.type === "authenticate") throw new ProtocolError("agent_already_authenticated");
+        if (message.type === "capability") {
+          for (const roomId of mediaAgents.setCapability(socket, message)) broadcastMediaAgentState(roomId);
+          return;
+        }
+        if (message.type === "heartbeat") {
+          mediaAgents.heartbeat(socket, message.rooms);
+          return;
+        }
+        if (message.type === "draining") {
+          for (const roomId of mediaAgents.setDraining(socket, message.enabled)) broadcastMediaAgentState(roomId);
+          return;
+        }
+        if (message.type === "media-agent-signal") {
+          if (!mediaAgents.authorize(message.roomId, connection.id, message.routeEpoch, message.peerId)) {
+            throw new ProtocolError("stale_agent_route");
+          }
+          const recipient = registry.members(message.roomId).find((peer) => peer.id === message.peerId);
+          if (!recipient) throw new ProtocolError("recipient_unavailable");
+          safeSend(recipient.socket, {
+            ...message,
+            version: 1,
+            agentId: connection.id,
+            peerId: undefined,
+          });
+          return;
+        }
+        if (message.type === "peer-state") {
+          if (!registry.members(message.roomId).some((peer) => peer.id === message.peerId)) {
+            throw new ProtocolError("recipient_unavailable");
+          }
+          mediaAgents.setAgentPeerState(
+            socket, message.roomId, message.peerId, message.routeEpoch, message.connected,
+          );
+          broadcastMediaAgentState(message.roomId);
+          return;
+        }
+        if (message.type === "track-state") {
+          if (!mediaAgents.authorizePublisher(
+            message.roomId,
+            connection.id,
+            message.routeEpoch,
+            message.peerId,
+          )) {
+            throw new ProtocolError("stale_agent_route");
+          }
+          const trackKey = `${message.roomId}\0${connection.id}\0${message.peerId}\0${message.publicationId}`;
+          const publication = registry.publication(message.peerId, message.publicationId, message.roomId);
+          const source = publication?.source || mediaAgentTracks.get(trackKey);
+          if (message.active && !publication) {
+            throw new ProtocolError("agent_publication_unauthorized");
+          }
+          if (!source) throw new ProtocolError("agent_publication_unauthorized");
+          if (message.active) mediaAgentTracks.set(trackKey, source);
+          else mediaAgentTracks.delete(trackKey);
+          for (const recipient of registry.members(message.roomId)) {
+            safeSend(recipient.socket, {
+              version: 1,
+              type: "media-agent-track-state",
+              agentId: connection.id,
+              routeEpoch: message.routeEpoch,
+              peerId: message.peerId,
+              publicationId: message.publicationId,
+              source,
+              active: message.active,
+            });
+          }
+          return;
+        }
+        throw new ProtocolError("unknown_agent_message_type");
+      } catch (error) {
+        safeSend(socket, {
+          version: 1,
+          type: "agent-error",
+          code: error instanceof ProtocolError ? error.code : "invalid_agent_message",
+        });
+      }
+    });
+    let closed = false;
+    const disconnect = () => {
+      if (closed) return;
+      closed = true;
+      clearTimeout(authTimeout);
+      const connection = mediaAgents.connection(socket);
+      for (const roomId of mediaAgents.disconnect(socket)) broadcastMediaAgentState(roomId);
+      if (connection) broadcastPrincipalMediaAgentAvailability(connection.ownerPrincipal);
+    };
+    socket.on("close", disconnect);
+    socket.on("error", disconnect);
+  });
+
   const heartbeat = setInterval(() => {
-    for (const socket of webSocketServer.clients) {
+    for (const socket of [...webSocketServer.clients, ...mediaAgentWebSocketServer.clients]) {
       if (!socket.isAlive) {
         socket.terminate();
         continue;
@@ -689,11 +977,17 @@ function configureSignaling(server, config, registry, ticketStore, directory) {
     for (const roomId of roomEpochs.keys()) broadcastTopology(roomId);
   }, config.peerRouteRenewMs);
   leaseRenewal.unref();
+  const mediaAgentRenewal = setInterval(() => {
+    for (const roomId of roomEpochs.keys()) broadcastMediaAgentState(roomId);
+  }, config.mediaAgentRenewMs);
+  mediaAgentRenewal.unref();
   server.on("close", () => {
     clearInterval(heartbeat);
     clearInterval(leaseRenewal);
+    clearInterval(mediaAgentRenewal);
+    for (const socket of mediaAgentWebSocketServer.clients) socket.terminate();
   });
-  return webSocketServer;
+  return { webSocketServer, mediaAgentWebSocketServer };
 }
 
 export function createAppServer(options = {}) {
@@ -713,14 +1007,30 @@ export function createAppServer(options = {}) {
     maxAgeMs: config.deviceProofMaxAgeMs,
   });
   const ticketStore = options.ticketStore || new SessionTicketStore({ ttlMs: config.sessionTicketTtlMs });
+  const mediaAgents = options.mediaAgents || new MediaAgentRegistry({
+    definitions: config.mediaAgents,
+    leaseMs: config.mediaAgentLeaseMs,
+    maxStandbys: config.mediaAgentMaxStandbys,
+    shardMinParticipants: config.mediaAgentShardMinParticipants,
+    takeoverTtlMs: config.mediaAgentTakeoverTtlMs,
+  });
   const workspaceStore = options.workspaceStore || (config.pairWorkspaceEnabled
     ? new PairWorkspaceStore({ filename: config.pairWorkspaceDb }) : null);
   const publicDir = path.resolve(options.publicDir || DEFAULT_PUBLIC_DIR);
   const services = { oidcVerifier, deviceProofVerifier, ticketStore, workspaceStore, directory, publicDir };
   const server = http.createServer(createHttpHandler(config, registry, services));
   if (!options.workspaceStore && workspaceStore) server.on("close", () => workspaceStore.close());
-  const webSocketServer = configureSignaling(server, config, registry, ticketStore, directory);
-  return { server, webSocketServer, config, registry, directory, ticketStore, workspaceStore };
+  const signaling = configureSignaling(server, config, registry, ticketStore, directory, mediaAgents);
+  return {
+    server,
+    ...signaling,
+    config,
+    registry,
+    directory,
+    ticketStore,
+    workspaceStore,
+    mediaAgents,
+  };
 }
 
 export async function startServer(options = {}) {

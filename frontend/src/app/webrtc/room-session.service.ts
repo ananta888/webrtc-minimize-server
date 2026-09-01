@@ -28,6 +28,7 @@ export class RoomSessionService {
   readonly inviteUrl = signal("");
   readonly workspaceId = signal("");
   readonly workspaceRole = signal<"owner" | "editor" | "viewer" | "">("");
+  readonly roomCreator = signal(false);
   private workspaceInvite = "";
 
   constructor(
@@ -114,6 +115,7 @@ export class RoomSessionService {
     this.joined.set(false);
     this.workspaceId.set("");
     this.workspaceRole.set("");
+    this.roomCreator.set(false);
   }
 
   private handleMessage(message: ServerMessage, icePolicy: IceTierPolicy): void {
@@ -122,10 +124,15 @@ export class RoomSessionService {
       this.mesh.initialize(
         ownId,
         this.displayName(),
+        this.roomId(),
         icePolicy,
+        Array.isArray(message["mediaAgents"])
+          ? message["mediaAgents"] as Array<{ id: string; online: boolean }>
+          : [],
         this.config.value()?.optimization,
         this.config.value()?.mediaE2ee,
       );
+      this.roomCreator.set(message["roomCreator"] === true);
       const peers = Array.isArray(message["peers"]) ? message["peers"] as Array<{ id: string; name: string }> : [];
       for (const peer of peers) this.mesh.addPeer(peer.id, peer.name);
       this.joined.set(true);
@@ -153,6 +160,30 @@ export class RoomSessionService {
     }
     if (message.type === "topology-state") {
       this.mesh.applyTopology(message);
+      return;
+    }
+    if (message.type === "media-agent-state") {
+      this.mesh.applyMediaAgentState(message);
+      return;
+    }
+    if (message.type === "media-agent-availability") {
+      this.mesh.applyMediaAgentAvailability(message);
+      return;
+    }
+    if (message.type === "media-agent-takeover-request") {
+      this.mesh.applyMediaAgentTakeoverRequest(message);
+      return;
+    }
+    if (message.type === "media-agent-signal") {
+      void this.mesh.acceptMediaAgentSignal(message);
+      return;
+    }
+    if (message.type === "media-agent-track-state") {
+      this.mesh.applyMediaAgentTrackState(message);
+      return;
+    }
+    if (message.type === "media-agent-subscription-state") {
+      this.mesh.applyMediaAgentSubscriptionState(message);
       return;
     }
     if (message.type === "overlay-key") {

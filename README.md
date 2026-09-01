@@ -54,6 +54,8 @@ Das Canvas allein spart keine Netzwerkbytes. Die Ersparnis entsteht aus den glei
 
 Ab sechs Teilnehmern kann die Control Plane im expliziten Legacy-Modus `MEDIA_E2EE_MODE=disabled` einen zyklusfreien Video-Relay-Baum mit begrenzter Kinder- und Hopzahl ausstellen. Membership-, Route- und Topology-Epochen sind getrennt; jede Publikationsroute besitzt eine kurzlebige Lease, Primary und – soweit topologisch möglich – Backup. Relay-Auswahl berücksichtigt ausdrückliche Zustimmung, Sichtbarkeit, Energie-/Netzklasse, Eigenkapazität und beobachtete Lieferqualität. Dieser Browser-Relay dekodiert und re-encodiert fremde Medien und ist daher nicht blind. In den Modi `required` und `preferred` bleibt er deaktiviert; dort transportieren Direct-, Edge-TURN- und Infrastruktur-TURN-Pfade SFrame-Ciphertext.
 
+Optional kann dort ein getrennter nativer Blind-Media-Agent Publisher-Fanout reduzieren. Nach explizitem Consent wird bevorzugt der Agent des Raumerstellers gewählt; der Bonus ist begrenzt, sodass Gesundheit, Netz, Last oder Batterie einen besseren Freiwilligen vorziehen können. Beim Leave oder Ausfall fragt die Control Plane den nächsten geeigneten Besitzer zur Übernahme oder nutzt dessen separates Auto-Takeover-Opt-in. Kleine Räume verwenden einen Forwarder und höchstens zwei warme Standbys. Ab `MEDIA_AGENT_SHARD_MIN_PARTICIPANTS` verteilt die Control Plane Publisher eindeutig auf bis zu drei Agenten. Bis jede neue Route von Agent und Browsern bestätigt ist, bleibt das required-SFrame-Direkt-Mesh aktiv. Der Agent terminiert ICE/DTLS-SRTP, bekommt aber weder SFrame-Gruppenschlüssel noch einen Decrypt-Port; die reale Produktionsmatrix aus BME-006 ist noch kein abgeschlossener QoS-Nachweis.
+
 Pair-Sessions besitzen daneben einen eigenständigen Daten-Overlay-Kanal. Jeder Browser erzeugt pro Session einen nicht exportierbaren ECDH-P-256-Schlüssel und verschlüsselt Events oder bewusst ausgewählte Dateien mit AES-GCM für den Zielpeer. Zwischenbrowser sehen nur Ciphertext und begrenzte Routing-Metadaten. Digest, TTL, Membership-/Route-Epoch, schleifenfreier Pfad, Hopzahl, Replay-Fenster, Chunkzahl und per Traffic-Class begrenzte Queues werden geprüft. Fehlende Chunks werden verschlüsselt quittiert und gezielt erneut gesendet; ohne nutzbare Relay-Route wird direkt, aber weiterhin Ende-zu-Ende verschlüsselt übertragen. Ein Download startet ausschließlich durch einen weiteren Nutzerklick.
 
 ## Öffentliche Ananta-Voreinstellung
@@ -132,6 +134,10 @@ Die öffentliche Voreinstellung steht in `.env.example`, das getrennte localhost
 - `PEER_ROUTE_LEASE_MS`, `PEER_ROUTE_RENEW_MS`: Lease-Gültigkeit und frühere Erneuerung; Renewal muss kürzer sein.
 - `PEER_RELAY_HEALTH_WINDOW_MS`, `PEER_RELAY_HEALTH_COOLDOWN_MS`: Quorum-Beobachtungsfenster und Failover-Cooldown.
 - `PEER_DATA_OVERLAY_ENABLED`: schaltet nur den browserseitig E2EE-geschützten Daten-Overlay ab; Direct Chat/Control bleiben erhalten.
+- `MEDIA_EDGE_AGENTS_JSON`: ausschließlich serverseitige Liste nativer Blind-Media-Agenten mit exakt `id`, `ownerPrincipal` (`issuer|subject`) und individuellem `sharedSecret`; niemals an Browser ausgeben.
+- `MEDIA_AGENT_LEASE_MS`, `MEDIA_AGENT_RENEW_MS`, `MEDIA_AGENT_MAX_STANDBYS`, `MEDIA_AGENT_TAKEOVER_TTL_MS`: kurze Agent-Leases, Erneuerung, höchstens zwei Standbys und sichtbares Übernahmefenster.
+- `MEDIA_AGENT_SHARD_MIN_PARTICIPANTS`: Raumgröße, ab der die Control Plane Publisher über Primary und Standbys verteilt; Default 6.
+- `MEDIA_AGENT_RATE_LIMIT`: geschlossene Agent-Control-Nachrichten je zehn Sekunden.
 - `PAIR_WORKSPACE_ENABLED`, `PAIR_WORKSPACE_DB`: optionaler persistenter Pair-Workspace und Pfad seines SQLite-Volumes.
 
 Beispiel für einen externen Coturn-Dienst:
@@ -156,13 +162,32 @@ Beispiel für die ausschließlich serverseitige Registrierung eines Agenten:
 EDGE_TURN_SERVERS_JSON='[{"id":"edge-1","urls":["turn:edge.example.org:3478?transport=udp","turn:edge.example.org:3478?transport=tcp"],"sharedSecret":"aus-secret-management","realm":"webrtc.ananta.de"}]'
 ```
 
+### Freiwilliger blinder Media-Agent
+
+[`media-edge-agent/`](media-edge-agent/) enthält den davon unabhängigen Pion-Medienforwarder. Er verbindet sich ausgehend per WSS, erhält nur kurze raum-, Membership- und Route-gebundene Leases und besitzt für jeden Browser eine isolierte PeerConnection. Der Browser verschlüsselt Frames bereits vor dem Upload mit einem publikationsgebundenen SFrame-Gruppenschlüssel und verteilt diesen einzeln über den ECDH-/AES-GCM-Overlay an die anderen Raumteilnehmer – niemals an den Agenten.
+
+```bash
+cd media-edge-agent
+cp .env.example .env
+# ID und mindestens 32 zufällige Secret-Zeichen ausschließlich in .env setzen.
+docker compose up -d --build
+```
+
+Die Control Plane benötigt denselben Agenten ausschließlich in ihrer privaten Umgebung:
+
+```dotenv
+MEDIA_EDGE_AGENTS_JSON='[{"id":"laptop-edge","ownerPrincipal":"https://keycloak.example/realms/example|oidc-subject","sharedSecret":"aus-secret-management"}]'
+```
+
+Consent ist in der Raumoberfläche standardmäßig aus und widerrufbar. Eine Übernahme erklärt Upload-, CPU-, Batterie-, IP-/Metadaten- und TURN-Folgen. Ein fester Port ist nicht zwingend: `MEDIA_AGENT_UDP_PORT=0` nutzt normale ICE-Sockets und bei Bedarf TURN. Eine feste UDP-Weiterleitung, beispielsweise `44000/udp`, plus passendes `MEDIA_AGENT_PUBLIC_IP` verbessert direkte Erreichbarkeit. Betrieb, Trust-Grenzen, Creator-Wahl, Failover und Mehr-Agent-Sharding beschreibt [docs/blind-media-edge-agent.md](docs/blind-media-edge-agent.md).
+
 ### Kapazitätsgrenze
 
-20 ist die harte Membership-Grenze je Raum, keine garantierte Medienqualität. Im SFrame-Standardpfad hält jeder Teilnehmer weiterhin bis zu 19 `RTCPeerConnection`-Verbindungen; Kamera und Screenshare werden nach Active-Speaker-, Link- und Nutzerprofil gedrosselt. SFrame schützt Inhalte, reduziert aber weder Verbindungszahl noch Publisher-Fanout. Der freiwillige Edge-Agent verbessert Erreichbarkeit bei schwierigen NAT-/Firewall-Pfaden, nicht die Mesh-Skalierung; ein geeigneter nativer Host kann seine begrenzten Port-Leases optional per PCP selbst erneuern. Ein portabler, browserübergreifender Ciphertext-Medien-DAG und ein optionaler SFU-Fallback für garantierte Großraumqualität bleiben im Backlog. Nur der nicht blinde Legacy-Relay kann derzeit direkten Video-Fanout reduzieren.
+20 ist die harte Membership-Grenze je Raum, keine garantierte Medienqualität. Ohne bereit bestätigten Blind-Media-Agenten hält jeder Teilnehmer im SFrame-Standardpfad weiterhin bis zu 19 `RTCPeerConnection`-Verbindungen; Kamera und Screenshare werden nach Active-Speaker-, Link- und Nutzerprofil gedrosselt. SFrame allein reduziert weder Verbindungszahl noch Publisher-Fanout. Der TURN-Edge-Agent verbessert nur Erreichbarkeit. Der getrennte Blind-Media-Agent kann Publisher-Fanout nach Key-ACK und vollständiger Routenbereitschaft reduzieren; die Browser behalten dabei Verbindungen zu den aktiven Agent-Shards und das Direkt-Mesh als Failover. Ein portabler browserbasierter Ciphertext-Medien-DAG und ein zentral betriebener SFU für garantierte Großraumqualität bleiben getrennte Backlog-Fähigkeiten.
 
 ## Öffentliches Deployment
 
-Für das Ananta-Preset muss ein HTTPS-Reverse-Proxy `webrtc.ananta.de` auf Port 8080 weiterleiten und WebSocket-Upgrades für `/signal` durchreichen. Für eine eigene Installation werden `PUBLIC_ORIGIN`, `KEYCLOAK_ORIGIN` und gegebenenfalls `KEYCLOAK_REALM` in `.env` ersetzt; dieselbe Origin muss in der erzeugten Keycloak-Clientdefinition registriert werden. Keycloak und Coturn benötigen produktive Datenbank, TLS, gesicherte Adminzugänge und Secret-Management. `TURN_EXTERNAL_IP` muss die von Clients erreichbare Adresse enthalten; für TURN/TLS werden `turns:` und ein gültiges Zertifikat benötigt. Der lokale Compose-Stack ist keine unveränderte Produktionsvorlage.
+Für das Ananta-Preset muss ein HTTPS-Reverse-Proxy `webrtc.ananta.de` auf Port 8080 weiterleiten und WebSocket-Upgrades für `/signal` sowie – nur bei konfigurierten nativen Agenten – `/media-agent` durchreichen. Für eine eigene Installation werden `PUBLIC_ORIGIN`, `KEYCLOAK_ORIGIN` und gegebenenfalls `KEYCLOAK_REALM` in `.env` ersetzt; dieselbe Origin muss in der erzeugten Keycloak-Clientdefinition registriert werden. Keycloak und Coturn benötigen produktive Datenbank, TLS, gesicherte Adminzugänge und Secret-Management. `TURN_EXTERNAL_IP` muss die von Clients erreichbare Adresse enthalten; für TURN/TLS werden `turns:` und ein gültiges Zertifikat benötigt. Der lokale Compose-Stack ist keine unveränderte Produktionsvorlage.
 
 ## API
 
@@ -178,10 +203,11 @@ Für das Ananta-Preset muss ein HTTPS-Reverse-Proxy `webrtc.ananta.de` auf Port 
 - `PUT /api/workspaces/:id/cursor|presence`: monotonen Cursor beziehungsweise epochgebundene Presence-Lease setzen
 - `POST /api/workspaces/:id/roles`: Rolle mit erwarteter Membership-Revision ändern oder widerrufen
 - `GET /signal?ticket=…`: WebSocket-Signaling mit einmal verwendbarem Session-Ticket
+- `GET /media-agent`: originloser WSS-Control-Pfad für vorregistrierte native Agenten mit HMAC-Challenge; kein Browser- oder Medienendpunkt
 
 ## Sicherheitsstatus
 
-Im `required`- oder `optional`-Auth-Modus prüft der Server Access Tokens über JWKS auf Signatur, erlaubten Algorithmus, Issuer, Audience, Ablaufzeit und Subject. Join-Nachweise werden zusätzlich durch eine nicht exportierbare Browser-P-256-Identität signiert. WebRTC verschlüsselt jeden Direct-/TURN-Pfad mit DTLS-SRTP beziehungsweise DTLS/SCTP. Im standardmäßigen Media-Modus `required` schützt RFC-9605-SFrame Audio-, Kamera- und Bildschirmframes zusätzlich mit `AES_128_GCM_SHA256_128`; Key-Material wird pro Publikation, Zielpeer und Membership-Epoch erzeugt, ausschließlich im zielpeergebundenen ECDH-/AES-GCM-Overlay verteilt und erst nach ACK verwendet. Unbekannte KIDs, Authentifizierungsfehler und Replays werden verworfen. Fehlende Browser-Capability oder fehlende ACK ergibt fehlende Medien statt Klartext.
+Im `required`- oder `optional`-Auth-Modus prüft der Server Access Tokens über JWKS auf Signatur, erlaubten Algorithmus, Issuer, Audience, Ablaufzeit und Subject. Join-Nachweise werden zusätzlich durch eine nicht exportierbare Browser-P-256-Identität signiert. WebRTC verschlüsselt jeden Direct-/TURN-Pfad mit DTLS-SRTP beziehungsweise DTLS/SCTP. Im standardmäßigen Media-Modus `required` schützt RFC-9605-SFrame Audio-, Kamera- und Bildschirmframes zusätzlich mit `AES_128_GCM_SHA256_128`; im Direkt-Mesh entsteht Key-Material pro Publikation, Zielpeer und Membership-Epoch. Für eine Agent-Route erzeugt der Publisher stattdessen einen publikations-, Agent-, Membership- und Route-Epoch-gebundenen Gruppenschlüssel und verteilt ihn weiterhin einzeln im zielpeergebundenen ECDH-/AES-GCM-Overlay. Gesendet wird erst nach den erforderlichen ACKs. Der Agent erhält keinen Schlüssel. Unbekannte KIDs, Authentifizierungsfehler und Replays werden verworfen. Fehlende Browser-Capability oder fehlende ACK ergibt fehlende Medien statt Klartext.
 
 Die Peer-Public-Key-Zuordnung für diesen Overlay stammt weiterhin aus dem authentisierten Signaling-Pfad. Damit verbirgt SFrame Inhalte vor ehrlichen, aber neugierigen TURN-, Edge- und Control-Plane-Betreibern; es beweist keine Ende-zu-Ende-Identität gegen einen vollständig kompromittierten Signaling-Server. `MEDIA_E2EE_MODE=disabled` aktiviert bewusst den alten Decode/Re-encode-Relay und besitzt diese Frame-E2EE-Eigenschaft nicht. SQLite ist kein HA-/Backup-System; Betreiber müssen Volume-Sicherung, Dateirechte und Wiederherstellung selbst verantworten.
 
@@ -200,9 +226,12 @@ docker build --tag webrtc-room-server:local .
 (cd edge-agent && go test ./...)
 docker build --tag webrtc-edge-agent:local edge-agent
 (cd edge-agent && EDGE_AGENT_ENV_FILE=.env.example docker compose --env-file .env.example config --quiet)
+(cd media-edge-agent && go test -race ./...)
+docker build --tag webrtc-media-edge-agent:local media-edge-agent
+(cd media-edge-agent && MEDIA_AGENT_ENV_FILE=.env.example docker compose --env-file .env.example config --quiet)
 ```
 
-`npm run check` umfasst Todo-/Workflow-Schemas, Angular-Unit-Tests, Angular-Produktionbuild und Node-/Integrationstests. Die Browsermatrix prüft SFrame im `required`-Modus mit echten Chromium- und Firefox-Kontexten ohne automatische Capture-Anfrage. Der getrennte Sechs-Chromium-Gate prüft den expliziten Legacy-Relay-Baum einschließlich Sender-Fanout, Active Speaker, Datensparprofil, Mosaik und Churn-Fallback. Fehlende Browser werden ausschließlich mit sichtbarer Begründung übersprungen. Der Edge-Agent besitzt zusätzlich einen echten lokalen TURN-Allokationstest.
+`npm run check` umfasst Todo-/Workflow-Schemas, Angular-Unit-Tests, Angular-Produktionbuild und Node-/Integrationstests. Die Browsermatrix prüft SFrame im `required`-Modus mit echten Chromium- und Firefox-Kontexten ohne automatische Capture-Anfrage. Der getrennte Sechs-Chromium-Gate prüft den expliziten Legacy-Relay-Baum einschließlich Sender-Fanout, Active Speaker, Datensparprofil, Mosaik und Churn-Fallback. Fehlende Browser werden ausschließlich mit sichtbarer Begründung übersprungen. Der TURN-Edge-Agent besitzt zusätzlich einen echten lokalen Allokationstest. Der Blind-Media-Agent testet zwei reale Pion-Browser-PeerConnections, byte-identischen opaque RTP-Payload, Lease-/Publishergrenzen und Race-Freiheit; der geforderte reale Fünf-Browser-/Zwei-Agent-/NAT-Produktionsgate bleibt sichtbar BME-006.
 
 Der Live-Infrastruktur-Gate startet absichtlich nicht implizit. Mit laufendem Compose-Stack, einer eigens angelegten Testidentität und expliziten Variablen prüft er Keycloak Discovery, PKCE-Login, JWKS-Tokenprüfung, autorisierte Einmal-Tickets sowie eine echte Coturn-Relay-Allokation:
 

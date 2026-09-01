@@ -82,4 +82,19 @@ describe("Room page information architecture", () => {
     expect(component).not.toContain("applyConstraints");
     expect(component).not.toContain("setParameters");
   });
+
+  it("keeps native media-agent consent explicit and shows bounded takeover controls", () => {
+    expect(template).toContain('id="media-agent-consent"');
+    expect(template).toContain('id="media-agent-auto-takeover"');
+    expect(template).toContain('id="media-agent-takeover-request"');
+    expect(template).toContain('id="accept-media-agent-takeover"');
+    expect(template).toContain('id="decline-media-agent-takeover"');
+    expect(template).toContain("Standardmäßig aus und jederzeit widerrufbar");
+    expect(template).toContain("(!mediaAgents.selectedAgentOnline() && !mediaAgents.consentEnabled())");
+    expect(template).toContain("keinen Medienschlüssel");
+    expect(component).toContain("this.mediaAgents.setConsent(enabled)");
+    expect(component).toContain("this.mediaAgents.respondToTakeover(accepted)");
+    expect(component).not.toContain("getUserMedia");
+    expect(component).not.toContain("getDisplayMedia");
+  });
 });

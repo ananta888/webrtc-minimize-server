@@ -1,0 +1,138 @@
+# SFrame-blinder Media-Edge-Agent
+
+Stand: 2026-09-01. Dieses Dokument trennt den feature-gegateten Media-Agenten vom
+bereits vorhandenen TURN-Edge-Agenten und legt die Sicherheits- und
+Wahlregeln fest.
+
+## Warum kein blinder Browser-Relay
+
+WebRTC Encoded Transform erlaubt einem Transform nur Frames seiner eigenen
+Quelle in den zugeordneten Ausgabestrom zu schreiben. Die normative
+`writeEncodedData`-Pruefung verwirft ein Frame, wenn dessen Owner nicht zur
+`RTCRtpScriptTransformer`-Quelle gehoert. Die Spezifikation fasst die Folge
+ausdruecklich zusammen: Ein Prozessor kann weder Frames erzeugen noch Frames
+zwischen Streams verschieben.
+
+Die vorgeschlagene Erweiterung fuer das Weiterreichen empfangener Encoded
+Frames an Sender anderer `RTCPeerConnection`s ist weiterhin als
+[w3c/webrtc-encoded-transform#160](https://github.com/w3c/webrtc-encoded-transform/issues/160)
+offen. Deshalb darf die Anwendung einen portablen, nicht entschluesselnden
+Browser-DAG nicht als implementierbar oder vorhanden behandeln. Normative
+Referenz ist [WebRTC Encoded Transform](https://www.w3.org/TR/webrtc-encoded-transform/).
+
+## Vier unterschiedliche Pfade
+
+| Pfad | Medienverarbeitung | Fanout-Wirkung | Erreichbarkeit | Vertrauensgrenze |
+|---|---|---|---|---|
+| Browser Trusted Relay | Browser dekodiert und re-encodiert | reduziert Video-Fanout | normale Browser-ICE-Pfade | Relay sieht Klartext; nur expliziter Legacy-Modus |
+| TURN-/Edge-TURN | paketbasiertes DTLS-SRTP-Relay | keine; jede PeerConnection bleibt bestehen | verbessert NAT-/Firewall-Pfade | sieht Transportmetadaten, keine SFrame-Schluessel |
+| nativer Blind-Media-Agent | terminiert pro Browser DTLS-SRTP und leitet RTP mit unveraendertem SFrame-Payload weiter | Publisher sendet pro Route nur an den Agenten | Direct/STUN, optional feste UDP-Erreichbarkeit, sonst TURN | erhaelt keine SFrame-/Gruppenschluessel und besitzt keinen Decrypt-Port |
+| zentraler SFU | wie nativer Agent, aber zentral betrieben | reduziert Fanout verlaesslich | oeffentlich erreichbare Infrastruktur | zentraler Betriebs- und Metadatenpunkt; mit SFrame weiterhin inhaltsblind |
+
+Der native Agent ist ein separater Prozess. Der Node-Raumserver bleibt eine
+reine Control Plane und terminiert weder RTP noch RTCP oder Medienframes.
+
+## Sicherheitsvertrag des nativen Agenten
+
+- Jeder Browser besitzt eine isolierte `RTCPeerConnection` zum Agenten. Der
+  Agent terminiert deshalb ICE, DTLS und SRTP und kann IP-Adressen,
+  Paketgroessen, Timing, SSRCs, Codec-Metadaten und Datenraten beobachten.
+- Der RTP-Payload enthaelt bereits SFrame-Ciphertext. Der Agent bekommt weder
+  den publikationsgebundenen Basisschluessel noch einen API-, IPC- oder
+  Diagnosepfad zum Entschluesseln. Er dekodiert und re-encodiert nicht.
+- Der Agent kann Pakete verwerfen, verzoegern, duplizieren oder umordnen. Er
+  kann ohne Schluessel keine gueltigen neuen SFrame-Frames erzeugen. Browser
+  begrenzen Replay und verwerfen Authentifizierungsfehler fail-closed.
+- Gruppenschluessel werden vom Publisher fuer eine Publikation und
+  Membership-Epoche erzeugt und jedem autorisierten Empfaenger einzeln ueber
+  den vorhandenen zielpeergebundenen ECDH-/AES-GCM-Overlay zugestellt. Ein
+  Membershipwechsel rotiert den Schluessel.
+- `MEDIA_E2EE_MODE=required` darf bei Agent-Ausfall niemals in Klartext oder
+  Decode/Re-encode zurueckfallen. Bis eine neue Agentroute vollstaendig bereit
+  ist, bleibt das bestehende required-SFrame-Mesh autoritativ.
+
+## Creator-Praeferenz und Rollenwechsel
+
+Consent ist pro Nutzergeraet default-aus. Nach sichtbarer Zustimmung meldet
+ein nativer Agent seine operatorseitig konfigurierte Identitaet ausgehend per
+WSS an. Die Control Plane bindet ihn an den aktuellen OIDC-Principal und das
+zustimmende Raumgeraet. Der Ersteller des Raums erhaelt in der Wahl nur einen
+Bonus; Erreichbarkeit, frischer Heartbeat, freie Kapazitaet, Netzklasse,
+Batterie und beobachtete Lieferqualitaet koennen diesen Bonus ueberstimmen.
+
+Eine Raumroute besitzt einen Primary und hoechstens zwei warme Standbys. Die
+Lease ist kurz, an Membership- und Route-Epoche gebunden und darf nur durch die
+Control Plane erneuert werden:
+
+1. Bei geplantem Leave meldet der Primary `draining`. Die Control Plane fragt
+   den bestbewerteten Standby sichtbar zur Uebernahme an.
+2. Nach dessen Zustimmung wird eine hoehere Route-Epoche veroeffentlicht. Das
+   required-SFrame-Mesh bleibt parallel autoritativ, bis Agent und alle Browser
+   die neue Route sowie die neue publikationsgebundene Schluessel-Epoche als
+   bereit bestaetigt haben.
+3. Die alte Lease wird widerrufen; ein wiederkehrender alter Agent kann sie
+   nicht reaktivieren.
+4. Bei erkanntem Socket-Ausfall wird sofort neu gewaehlt; andernfalls begrenzen
+   Heartbeat und kurze Lease die Erkennung. Bis ein Ersatz bereit ist, bleibt
+   das vorhandene SFrame-Mesh aktiv.
+
+Unterhalb von `MEDIA_AGENT_SHARD_MIN_PARTICIPANTS` (Default 6) ist nur der
+Primary Forwarder; die Standbys halten kurze Browser-ICE-Verbindungen warm. Ab
+dem Schwellwert verteilt die Control Plane jeden Publisher deterministisch und
+eindeutig auf Primary und hoechstens zwei Standbys. Der Creator-Publisher bleibt
+beim Creator-Primary, soweit dieser gewaehlt wurde; die uebrigen Publisher
+werden balanciert. Jeder Agent erhaelt in seiner Lease fuer jeden Peer ein
+eigenes `publish`-Recht und verwirft Tracks nicht zugewiesener Publisher.
+
+Die implementierte Mehr-Agent-Route ist bewusst ein Shard-Modell ohne
+Agent-zu-Agent-Kaskade: Browser empfangen die jeweils zugewiesenen Publikationen
+direkt vom betreffenden Agenten. Dadurch gibt es keine Zyklen oder abgeleitete
+Kinderautoritaet. Ein spaeterer Agent-DAG waere eine neue, getrennt zu
+autorisierende Protokollfaehigkeit und darf aus SDP, ICE oder RTP niemals selbst
+abgeleitet werden.
+
+## Ports und Betrieb
+
+Der Media-Agent baut seine WSS-Control-Verbindung ausgehend auf. Seine
+WebRTC-ICE-Verbindungen koennen direkt, ueber STUN oder ueber autorisiertes TURN
+entstehen. Eine feste UDP-Portfreigabe beziehungsweise oeffentliche IPv6
+verbessert direkte Pfade und senkt TURN-Last, ist aber keine Protokollpflicht.
+Ohne direkten NAT-Pfad muss erreichbares TURN vorhanden sein; der bestehende
+TURN-Agent allein wird dadurch nicht zum Medien-SFU.
+
+Der erste produktive Rollout bleibt feature-gegated. Ohne konfigurierte,
+authentisierte und vom Nutzer zugestimmte Media-Agenten zeigt die UI nur das
+bestehende Mesh und behauptet keine Fanout-Reduktion.
+
+## Reproduzierbarer Rechnerbetrieb
+
+Der Agent wird getrennt von Control Plane und Browser-App gebaut. Auf einem
+freiwilligen Linux-Rechner:
+
+```bash
+cd media-edge-agent
+cp .env.example .env
+# MEDIA_AGENT_SHARED_SECRET nur in .env setzen; nicht committen.
+docker compose up -d --build
+```
+
+`MEDIA_AGENT_SIGNAL_URL` ist eine ausgehende exakte
+`wss://…/media-agent`-Adresse. Die serverseitige Variable
+`MEDIA_EDGE_AGENTS_JSON` bindet dieselbe Agent-ID und dasselbe Secret an den
+exakten `issuer|subject`-Principal des Besitzers. Erst dessen sichtbarer
+UI-Consent stellt eine Raumkandidatur her. `Automatische Uebernahme` ist ein
+separates Opt-in; ohne dieses erscheint bei einem Failover eine lokale Anfrage.
+
+Mit `MEDIA_AGENT_UDP_PORT=0` nutzt Pion normale dynamische ICE-Sockets und kann
+bei Bedarf das von der Control Plane autorisierte TURN verwenden. Fuer einen
+fest weitergeleiteten Port wird beispielsweise `MEDIA_AGENT_UDP_PORT=44000`
+gesetzt; hinter NAT muss `MEDIA_AGENT_PUBLIC_IP` zur tatsaechlich erreichbaren
+oeffentlichen IPv4-Adresse passen und exakt dieser UDP-Port in Router und
+Host-Firewall freigegeben sein. Die Portfreigabe verbessert Direct-ICE, ersetzt
+aber weder Consent noch Agent-Authentisierung oder TURN fuer problematische
+Netze.
+
+Vor einem Rollout sind mindestens `go test -race ./...`, ein Image-Build sowie
+der reale Mehr-Browser-/Mehr-Agent-/NAT-Gate aus BME-006 erforderlich. Solange
+dieser Produktionsnachweis fehlt, ist die Implementierung nicht als
+garantierter 20-Teilnehmer-QoS-Pfad zu beschreiben.

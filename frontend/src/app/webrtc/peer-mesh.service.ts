@@ -24,6 +24,19 @@ import {
 } from "./opaque-data-overlay";
 import { MediaE2eeController } from "./media-e2ee-controller";
 import {
+  AgentTrackInput,
+  AvailableMediaAgent,
+  BlindMediaAgentService,
+} from "./blind-media-agent.service";
+import {
+  createMediaAgentKeyAck,
+  createMediaAgentKeyMessage,
+  decodeMediaAgentBaseKey,
+  MediaAgentKeyMessage,
+  parseMediaAgentE2eeMessage,
+} from "./media-agent-e2ee-protocol";
+import { MediaAgentTrackState, validateMediaAgentSubscriptionState } from "./media-agent-contract";
+import {
   createMediaKeyAck,
   createMediaKeyMessage,
   decodeMediaBaseKey,
@@ -69,6 +82,18 @@ interface PendingMediaKey {
   readonly baseKey: Uint8Array;
   retries: number;
   timer: ReturnType<typeof setTimeout> | null;
+}
+
+interface AgentMediaKeyState {
+  readonly contextId: string;
+  readonly agentId: string;
+  readonly routeEpoch: number;
+  readonly message: MediaAgentKeyMessage;
+  readonly baseKey: Uint8Array;
+  readonly acknowledgedPeerIds: Set<string>;
+  retries: number;
+  timer: ReturnType<typeof setTimeout> | null;
+  active: boolean;
 }
 
 export interface MediaE2eeRuntimeConfig {
@@ -133,6 +158,9 @@ export class PeerMeshService {
   readonly topologyEpoch = signal(0);
   readonly membershipEpoch = signal(0);
   readonly routeEpoch = signal(0);
+  readonly mediaAgentStatus = this.mediaAgents.status;
+  readonly mediaAgentPrimaryId = this.mediaAgents.primaryAgentId;
+  readonly mediaAgentRouteEpoch = this.mediaAgents.routeEpoch;
   readonly optimizationMode = this.mediaStrategy.optimizationMode;
   readonly relayConsent = signal(false);
   readonly relayCapability = signal<"idle" | "available" | "unsupported">("idle");
@@ -179,7 +207,10 @@ export class PeerMeshService {
   private readonly pendingMediaKeys = new Map<string, PendingMediaKey>();
   private readonly activeSenderMediaContexts = new Set<string>();
   private readonly activeReceiverMediaContexts = new Set<string>();
+  private readonly agentMediaKeys = new Map<string, AgentMediaKeyState>();
+  private readonly agentSubscriptionReady = new Map<string, Set<string>>();
   private membershipStable = false;
+  private roomId = "";
   private optimization: OptimizationRuntimeConfig = {
     activeSpeakerLimit: 5,
     peerRelayEnabled: false,
@@ -203,18 +234,22 @@ export class PeerMeshService {
     private readonly signaling: SignalingService,
     private readonly activity: AudioActivityService,
     private readonly mediaStrategy: MediaStrategyService,
+    private readonly mediaAgents: BlindMediaAgentService,
   ) {}
 
   initialize(
     ownId: string,
     ownName: string,
+    roomId: string,
     icePolicy: IceTierPolicy,
+    availableAgents: readonly AvailableMediaAgent[],
     optimization?: OptimizationRuntimeConfig,
     mediaE2ee?: MediaE2eeRuntimeConfig,
   ): void {
     this.close();
     this.ownId = ownId;
     this.ownName = ownName;
+    this.roomId = roomId;
     this.icePolicy = icePolicy;
     if (optimization) this.optimization = optimization;
     if (mediaE2ee) this.mediaE2ee = mediaE2ee;
@@ -229,6 +264,30 @@ export class PeerMeshService {
       channel: (peer, channel) => this.attachChannel(peer as PeerState, channel),
       state: () => this.updateIceState(),
       negotiationError: (peer) => this.addChat("System", `Verhandlung mit ${peer.name} fehlgeschlagen`, true),
+    });
+    this.mediaAgents.initialize({
+      ownPeerId: ownId,
+      roomId,
+      membershipEpoch: 0,
+      icePolicy,
+      availableAgents,
+      callbacks: {
+        attachSender: (sender, contextId, keyId, baseKey) => {
+          if (!this.shouldProtectMedia()
+            || this.mediaE2eeController?.attachSender(sender, contextId) !== true
+            || this.mediaE2eeController.setSenderKey(contextId, keyId, baseKey) !== true) return false;
+          this.activeSenderMediaContexts.add(contextId);
+          return true;
+        },
+        acceptTrack: (input) => this.acceptAgentTrack(input),
+        trackState: (state) => this.acceptAgentTrackState(state),
+        routeChanged: () => {
+          if (this.membershipStable && this.shouldProtectMedia()) this.rotateMediaKeys();
+          else this.clearAllMediaKeys();
+          this.reconcileAllPublications();
+          this.provisionAgentMediaKeys();
+        },
+      },
     });
     this.activity.configure(this.optimization.activeSpeakerLimit);
     this.participantNames.set(ownId, ownName);
@@ -281,6 +340,7 @@ export class PeerMeshService {
       if (track.kind === "audio") this.activity.observe(this.ownId, track);
       this.signaling.send({ type: "media-state", source: trackSource, active: true, trackId: track.id });
       this.reconcilePublication(publication);
+      this.provisionAgentMediaKey(publication);
     }
     void this.applyQualityPolicies();
   }
@@ -362,6 +422,7 @@ export class PeerMeshService {
     this.topologyEpoch.set(state.topologyEpoch);
     this.membershipEpoch.set(state.membershipEpoch);
     this.routeEpoch.set(state.routeEpoch);
+    this.mediaAgents.updateMembershipEpoch(state.membershipEpoch);
     this.membershipStable = true;
     if (membershipChanged && this.optimization.dataOverlayEnabled) {
       this.rotateOverlayKey();
@@ -369,6 +430,45 @@ export class PeerMeshService {
     }
     this.topologyMode.set(this.topology.mode(this.ownId));
     this.reconcileAllPublications();
+    this.provisionAgentMediaKeys();
+  }
+
+  applyMediaAgentState(message: ServerMessage): void {
+    if (!this.mediaAgents.applyRoute(message, new Set([this.ownId, ...this.peers.keys()]))) return;
+    this.provisionAgentMediaKeys();
+    this.reconcileAllPublications();
+  }
+
+  applyMediaAgentAvailability(message: ServerMessage): void {
+    this.mediaAgents.applyAvailability(message);
+  }
+
+  applyMediaAgentTakeoverRequest(message: ServerMessage): void {
+    this.mediaAgents.applyTakeoverRequest(message);
+  }
+
+  async acceptMediaAgentSignal(message: ServerMessage): Promise<void> {
+    await this.mediaAgents.acceptSignal(message);
+  }
+
+  applyMediaAgentTrackState(message: ServerMessage): void {
+    this.mediaAgents.applyTrackState(message);
+  }
+
+  applyMediaAgentSubscriptionState(message: ServerMessage): void {
+    const state = validateMediaAgentSubscriptionState(message);
+    if (!state || state.agentId !== this.mediaAgents.assignedAgentId(this.ownId)
+      || state.routeEpoch !== this.mediaAgents.routeEpoch()
+      || !this.peers.has(state.subscriberPeerId) || !this.publications.get(state.publicationId)?.local) return;
+    const { publicationId, subscriberPeerId } = state;
+    let peers = this.agentSubscriptionReady.get(publicationId);
+    if (!peers) {
+      peers = new Set();
+      this.agentSubscriptionReady.set(publicationId, peers);
+    }
+    if (state.ready) peers.add(subscriberPeerId); else peers.delete(subscriberPeerId);
+    const publication = this.publications.get(publicationId);
+    if (publication) this.reconcilePublication(publication);
   }
 
   setOptimizationMode(mode: OptimizationMode): void {
@@ -481,6 +581,7 @@ export class PeerMeshService {
     document.removeEventListener("visibilitychange", this.visibilityHandler);
     this.topology.clear();
     this.clearAllMediaKeys();
+    this.mediaAgents.close();
     this.mediaE2eeController?.destroy();
     this.mediaE2eeController = null;
     for (const peerId of [...this.peers.keys()]) this.removePeer(peerId);
@@ -501,6 +602,7 @@ export class PeerMeshService {
     this.participantNames.clear();
     this.activity.close();
     this.ownId = "";
+    this.roomId = "";
     this.participantCount.set(0);
     this.iceState.set("idle");
     this.icePath.set("unknown");
@@ -551,6 +653,68 @@ export class PeerMeshService {
     } catch { /* signaling may already be closing */ }
   }
 
+  private acceptAgentTrack(input: AgentTrackInput): boolean {
+    const descriptor = this.descriptors.get(input.publicationId);
+    if (!descriptor || descriptor.rootPeerId !== input.publisherPeerId || input.publisherPeerId === this.ownId
+      || input.agentId !== this.mediaAgents.assignedAgentId(input.publisherPeerId)
+      || !this.peers.has(input.publisherPeerId) || !this.shouldProtectMedia()) return false;
+    const contextId = this.inboundMediaContext(input.publisherPeerId, input.publicationId);
+    if (this.mediaE2eeController?.attachReceiver(input.receiver, contextId) !== true) {
+      if (this.mediaE2ee.mode === "required") this.mediaE2eeState.set("unsupported");
+      return false;
+    }
+    const existing = this.publications.get(input.publicationId);
+    if (existing?.local) return false;
+    if (existing) this.discardInboundForReplacement(existing);
+    const publication: Publication = {
+      id: input.publicationId,
+      rootPeerId: input.publisherPeerId,
+      rootName: descriptor.rootName,
+      source: descriptor.source,
+      stream: new MediaStream([input.track]),
+      track: input.track,
+      local: false,
+      inboundPeerId: `agent:${input.agentId}`,
+    };
+    this.publications.set(publication.id, publication);
+    this.replaceRemoteView(publication);
+    if (input.track.kind === "audio") this.activity.observe(publication.rootPeerId, input.track);
+    input.track.onended = () => {
+      if (this.publications.get(publication.id)?.track === input.track) this.removePublication(publication.id);
+    };
+    this.refreshMediaE2eeState();
+    return true;
+  }
+
+  private acceptAgentTrackState(state: MediaAgentTrackState): void {
+    if (state.peerId === this.ownId) return;
+    if (state.active) {
+      const known = this.descriptors.get(state.publicationId);
+      if (!known) this.descriptors.set(state.publicationId, {
+        rootPeerId: state.peerId,
+        rootName: this.peerName(state.peerId),
+        source: state.source,
+      });
+      return;
+    }
+    const publication = this.publications.get(state.publicationId);
+    if (publication && !publication.local && publication.inboundPeerId === `agent:${state.agentId}`) {
+      this.removePublication(publication.id);
+    }
+  }
+
+  private discardInboundForReplacement(publication: Publication): void {
+    for (const peer of this.peers.values()) {
+      const sender = peer.senders.get(publication.id);
+      if (sender) peer.pc.removeTrack(sender);
+      peer.senders.delete(publication.id);
+      peer.appliedTiers.delete(publication.id);
+    }
+    this.publications.delete(publication.id);
+    this.remoteMedia.update((items) => items.filter((item) => item.key !== publication.id));
+    this.activity.remove(publication.track.id);
+  }
+
   private acceptRemoteTrack(peer: PeerState, track: MediaStreamTrack, receiver: RTCRtpReceiver): void {
     const directDescriptor = this.descriptors.get(track.id);
     const fallbackDescriptor = directDescriptor ? null : [...this.descriptors.entries()].find(([publicationId, value]) => (
@@ -558,6 +722,12 @@ export class PeerMeshService {
     ));
     const publicationId = directDescriptor ? track.id : fallbackDescriptor?.[0] || track.id;
     const descriptor = directDescriptor || fallbackDescriptor?.[1];
+    const current = this.publications.get(publicationId);
+    if (current && !current.local && current.inboundPeerId.startsWith("agent:")
+      && this.mediaAgents.assignedAgentId(current.rootPeerId)) {
+      track.enabled = false;
+      return;
+    }
     const publication: Publication = {
       id: publicationId,
       rootPeerId: descriptor?.rootPeerId || peer.id,
@@ -579,12 +749,13 @@ export class PeerMeshService {
         return;
       }
     }
-    const existing = this.publications.get(publication.id);
-    if (existing && !existing.local) this.removePublication(existing.id);
+    if (current && !current.local) this.discardInboundForReplacement(current);
     this.publications.set(publication.id, publication);
     this.replaceRemoteView(publication);
     if (track.kind === "audio") this.activity.observe(publication.rootPeerId, track);
-    track.onended = () => this.removePublication(publication.id);
+    track.onended = () => {
+      if (this.publications.get(publication.id)?.track === track) this.removePublication(publication.id);
+    };
     this.reconcilePublication(publication);
     if (track.kind === "video" && this.routeChildren(publication.rootPeerId, this.ownId).size > 0) {
       this.relayCapability.set("available");
@@ -607,6 +778,9 @@ export class PeerMeshService {
   private removePublication(publicationId: string): void {
     const publication = this.publications.get(publicationId);
     if (!publication) return;
+    if (publication.local) this.clearAgentPublicationKey(publication.id);
+    this.mediaAgents.deactivatePublication(publication.id);
+    this.agentSubscriptionReady.delete(publication.id);
     this.clearPublicationMediaKeys(publication);
     for (const peer of this.peers.values()) {
       const sender = peer.senders.get(publicationId);
@@ -625,7 +799,9 @@ export class PeerMeshService {
   }
 
   private shouldSend(publication: Publication, targetPeerId: string): boolean {
-    if (this.mediaE2ee.mode !== "disabled") return publication.local;
+    if (this.mediaE2ee.mode !== "disabled") {
+      return publication.local && !this.agentPublicationReady(publication.id);
+    }
     return this.relay.shouldSend({
       trackKind: publication.track.kind,
       publicationLocal: publication.local,
@@ -896,6 +1072,45 @@ export class PeerMeshService {
         if (publication.local && (ownQuality === "idle" || publication.source === "screen" || publication.source === "camera")) ownQuality = prioritizedQuality.tier;
       }
     }
+    for (const publication of this.publications.values()) {
+      if (!publication.local) continue;
+      const target = this.mediaAgents.qualityTarget(publication.id);
+      if (!target || !target.sender.track) continue;
+      if (target.sender.track.kind === "audio") {
+        const capability = await this.quality.applyAudio(
+          target.peer,
+          publication.id,
+          target.sender,
+          this.mediaStrategy.senderPolicy(publication.source),
+          force,
+        );
+        if (capability) this.qualityCapability.set(capability);
+        continue;
+      }
+      const ranked = activeIds.length > 0 ? activeIds : fallbackOrder;
+      const quality = selectVideoQuality({
+        source: publication.source,
+        speakerRank: ranked.indexOf(publication.rootPeerId),
+        participantCount: this.participantCount(),
+        mode: this.optimizationMode(),
+        linkClass: target.peer.linkClass,
+        screenActive,
+      });
+      const prioritizedQuality = this.mediaStrategy.prioritizeVideo(publication.source, quality);
+      const capability = await this.quality.applyVideo(
+        target.peer,
+        publication.id,
+        target.sender,
+        publication.source,
+        prioritizedQuality,
+        this.mediaStrategy.priority(publication.source),
+        force,
+      );
+      if (capability) this.qualityCapability.set(capability);
+      if (ownQuality === "idle" || publication.source === "screen" || publication.source === "camera") {
+        ownQuality = prioritizedQuality.tier;
+      }
+    }
     this.localQuality.set(ownQuality);
   }
 
@@ -916,6 +1131,16 @@ export class PeerMeshService {
     else this.icePath.set("unknown");
   }
 
+  private agentPublicationReady(publicationId: string): boolean {
+    const state = this.agentMediaKeys.get(publicationId);
+    const subscribed = this.agentSubscriptionReady.get(publicationId) || new Set<string>();
+    const members = new Set([this.ownId, ...this.peers.keys()]);
+    return Boolean(state?.active && state.agentId === this.mediaAgents.assignedAgentId(this.ownId)
+      && state.routeEpoch === this.mediaAgents.routeEpoch()
+      && this.mediaAgents.routeReady(state.agentId, members)
+      && [...this.peers.keys()].every((peerId) => subscribed.has(peerId)));
+  }
+
   private shouldProtectMedia(): boolean {
     return this.mediaE2ee.mode !== "disabled"
       && this.optimization.dataOverlayEnabled
@@ -928,6 +1153,89 @@ export class PeerMeshService {
 
   private inboundMediaContext(senderPeerId: string, publicationId: string): string {
     return `in:${senderPeerId}:${publicationId}`;
+  }
+
+  private agentOutboundMediaContext(publicationId: string, agentId: string, routeEpoch: number): string {
+    return `agent-out:${publicationId}:${agentId}:${routeEpoch}`;
+  }
+
+  private provisionAgentMediaKeys(): void {
+    for (const publication of this.publications.values()) this.provisionAgentMediaKey(publication);
+  }
+
+  private provisionAgentMediaKey(publication: Publication): void {
+    const agentId = this.mediaAgents.assignedAgentId(this.ownId);
+    const agentRouteEpoch = this.mediaAgents.routeEpoch();
+    if (!publication.local || !agentId || this.peers.size === 0 || !this.shouldProtectMedia()
+      || !this.membershipStable || this.membershipEpoch() < 1 || agentRouteEpoch < 1
+      || [...this.peers.keys()].some((peerId) => !this.overlay.hasPeerKey(peerId))) return;
+    const current = this.agentMediaKeys.get(publication.id);
+    if (current?.message.membershipEpoch === this.membershipEpoch()
+      && current.agentId === agentId && current.routeEpoch === agentRouteEpoch) return;
+    if (current) this.clearAgentPublicationKey(publication.id);
+    const generated = randomMediaKey();
+    const contextId = this.agentOutboundMediaContext(publication.id, agentId, agentRouteEpoch);
+    const state: AgentMediaKeyState = {
+      contextId,
+      agentId,
+      routeEpoch: agentRouteEpoch,
+      message: createMediaAgentKeyMessage({
+        publicationId: publication.id,
+        senderPeerId: this.ownId,
+        agentId,
+        membershipEpoch: this.membershipEpoch(),
+        routeEpoch: agentRouteEpoch,
+        keyId: generated.keyId,
+        baseKey: generated.baseKey,
+      }),
+      baseKey: generated.baseKey,
+      acknowledgedPeerIds: new Set(),
+      retries: 0,
+      timer: null,
+      active: false,
+    };
+    this.agentMediaKeys.set(publication.id, state);
+    this.mediaE2eeState.set("pending");
+    void this.sendAgentMediaKey(state);
+  }
+
+  private async sendAgentMediaKey(state: AgentMediaKeyState): Promise<void> {
+    if (this.agentMediaKeys.get(state.message.publicationId) !== state || state.active
+      || state.message.membershipEpoch !== this.membershipEpoch()
+      || state.routeEpoch !== this.mediaAgents.routeEpoch() || !this.membershipStable) return;
+    await Promise.all([...this.peers.keys()]
+      .filter((peerId) => !state.acknowledgedPeerIds.has(peerId))
+      .map((peerId) => this.sendOverlayData(
+        peerId,
+        new TextEncoder().encode(JSON.stringify(state.message)),
+        "rekey",
+      )));
+    state.retries += 1;
+    if (state.retries >= 60 || this.agentMediaKeys.get(state.message.publicationId) !== state) return;
+    state.timer = setTimeout(() => void this.sendAgentMediaKey(state), 1_000);
+  }
+
+  private activateAgentMediaKey(state: AgentMediaKeyState): void {
+    const publication = this.publications.get(state.message.publicationId);
+    if (!publication?.local || state.active || [...this.peers.keys()].some((peerId) => (
+      !state.acknowledgedPeerIds.has(peerId)
+    ))) return;
+    if (state.timer) clearTimeout(state.timer);
+    state.timer = null;
+    state.active = this.mediaAgents.activatePublication({
+      agentId: state.agentId,
+      publicationId: publication.id,
+      stream: publication.stream,
+      track: publication.track,
+      contextId: state.contextId,
+      keyId: state.message.keyId,
+      baseKey: state.baseKey,
+    });
+    if (state.active) {
+      this.activeSenderMediaContexts.add(state.contextId);
+      this.refreshMediaE2eeState();
+      void this.applyQualityPolicies(true);
+    }
   }
 
   private provisionMediaKeysForPeer(peerId: string): void {
@@ -982,6 +1290,11 @@ export class PeerMeshService {
   private async acceptMediaE2eeEnvelope(originPeerId: string, data: Uint8Array): Promise<void> {
     let raw: unknown;
     try { raw = JSON.parse(new TextDecoder().decode(data)); } catch { return; }
+    const agentMessage = parseMediaAgentE2eeMessage(raw);
+    if (agentMessage) {
+      await this.acceptAgentMediaE2eeEnvelope(originPeerId, agentMessage);
+      return;
+    }
     const message = parseMediaE2eeMessage(raw);
     if (!message || message.membershipEpoch !== this.membershipEpoch() || !this.membershipStable) return;
     if (message.type === "media-key") {
@@ -1023,6 +1336,42 @@ export class PeerMeshService {
     else this.mediaE2eeState.set("unsupported");
   }
 
+  private async acceptAgentMediaE2eeEnvelope(
+    originPeerId: string,
+    message: ReturnType<typeof parseMediaAgentE2eeMessage> & {},
+  ): Promise<void> {
+    if (message.membershipEpoch !== this.membershipEpoch() || !this.membershipStable
+      || message.routeEpoch !== this.mediaAgents.routeEpoch()
+      || message.agentId !== this.mediaAgents.assignedAgentId(message.senderPeerId)) return;
+    if (message.type === "media-agent-key") {
+      const descriptor = this.descriptors.get(message.publicationId);
+      if (message.senderPeerId !== originPeerId || !this.peers.has(originPeerId)
+        || descriptor?.rootPeerId !== originPeerId || !this.shouldProtectMedia()) return;
+      const key = decodeMediaAgentBaseKey(message);
+      const contextId = this.inboundMediaContext(originPeerId, message.publicationId);
+      const installed = this.mediaE2eeController?.setReceiverKey(contextId, message.keyId, key) === true;
+      key.fill(0);
+      if (!installed) {
+        if (this.mediaE2ee.mode === "required") this.mediaE2eeState.set("unsupported");
+        return;
+      }
+      this.activeReceiverMediaContexts.add(contextId);
+      await this.sendOverlayData(
+        originPeerId,
+        new TextEncoder().encode(JSON.stringify(createMediaAgentKeyAck(message))),
+        "rekey",
+      );
+      this.refreshMediaE2eeState();
+      return;
+    }
+    if (message.senderPeerId !== this.ownId || originPeerId === this.ownId) return;
+    const state = this.agentMediaKeys.get(message.publicationId);
+    if (!state || state.agentId !== message.agentId || state.routeEpoch !== message.routeEpoch
+      || state.message.keyId !== message.keyId || !this.peers.has(originPeerId)) return;
+    state.acknowledgedPeerIds.add(originPeerId);
+    this.activateAgentMediaKey(state);
+  }
+
   private rotateMediaKeys(): void {
     if (!this.shouldProtectMedia()) return;
     this.clearAllMediaKeys();
@@ -1049,6 +1398,7 @@ export class PeerMeshService {
   }
 
   private clearAllMediaKeys(): void {
+    this.clearAgentMediaKeys();
     for (const pending of this.pendingMediaKeys.values()) this.destroyPendingMediaKey(pending);
     this.pendingMediaKeys.clear();
     this.activeSenderMediaContexts.clear();
@@ -1059,12 +1409,31 @@ export class PeerMeshService {
     }
   }
 
+  private clearAgentMediaKeys(): void {
+    for (const publicationId of [...this.agentMediaKeys.keys()]) this.clearAgentPublicationKey(publicationId);
+    this.agentSubscriptionReady.clear();
+  }
+
+  private clearAgentPublicationKey(publicationId: string): void {
+    const state = this.agentMediaKeys.get(publicationId);
+    if (!state) return;
+    if (state.timer) clearTimeout(state.timer);
+    state.timer = null;
+    state.baseKey.fill(0);
+    this.mediaAgents.deactivatePublication(publicationId);
+    this.activeSenderMediaContexts.delete(state.contextId);
+    this.mediaE2eeController?.clearContext(state.contextId);
+    this.agentMediaKeys.delete(publicationId);
+    this.agentSubscriptionReady.delete(publicationId);
+  }
+
   private refreshMediaE2eeState(): void {
     if (this.mediaE2ee.mode === "disabled") {
       this.mediaE2eeState.set("disabled");
     } else if (!this.shouldProtectMedia()) {
       this.mediaE2eeState.set("unsupported");
-    } else if (this.pendingMediaKeys.size > 0) {
+    } else if (this.pendingMediaKeys.size > 0
+      || [...this.agentMediaKeys.values()].some((state) => !state.active)) {
       this.mediaE2eeState.set("pending");
     } else if (this.activeSenderMediaContexts.size > 0 || this.activeReceiverMediaContexts.size > 0) {
       this.mediaE2eeState.set("active");

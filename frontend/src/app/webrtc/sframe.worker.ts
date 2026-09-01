@@ -29,7 +29,7 @@ const CONTEXT_ID = /^[A-Za-z0-9:_={}\-]{1,196}$/;
 const KEY_ID = /^[a-f0-9]{16}$/;
 const encryptors = new Map<string, SFrameEncryptContext>();
 const decryptors = new Map<string, SFrameDecryptContext>();
-const decryptorKeyIds = new Map<string, string>();
+const decryptorKeyIds = new Map<string, Set<string>>();
 
 function destroyContext(contextId: string): void {
   encryptors.get(contextId)?.destroy();
@@ -66,12 +66,17 @@ addEventListener("message", ({ data }: MessageEvent<WorkerCommand>) => {
     encryptors.get(data.contextId)?.destroy();
     encryptors.set(data.contextId, new SFrameEncryptContext(kid, key));
   } else {
-    if (decryptorKeyIds.get(data.contextId) !== data.keyId) {
-      decryptors.get(data.contextId)?.destroy();
-      const context = new SFrameDecryptContext();
-      context.setKey(kid, key);
+    let context = decryptors.get(data.contextId);
+    let keyIds = decryptorKeyIds.get(data.contextId);
+    if (!context || !keyIds) {
+      context = new SFrameDecryptContext();
+      keyIds = new Set();
       decryptors.set(data.contextId, context);
-      decryptorKeyIds.set(data.contextId, data.keyId);
+      decryptorKeyIds.set(data.contextId, keyIds);
+    }
+    if (!keyIds.has(data.keyId)) {
+      context.setKey(kid, key);
+      keyIds.add(data.keyId);
     }
   }
   key.fill(0);

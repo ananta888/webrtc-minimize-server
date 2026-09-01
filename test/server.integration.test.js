@@ -5,6 +5,7 @@ import { WebSocket } from "ws";
 
 import { createAppServer } from "../src/server.js";
 import { deviceProofMessage } from "../src/device-proof.js";
+import { mediaAgentAuthProof } from "../src/media-agent-protocol.js";
 import { AuthenticationError } from "../src/oidc-verifier.js";
 
 async function startTestServer(overrides = {}, serverOptions = {}) {
@@ -141,6 +142,12 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
     mediaE2ee: {
       mode: "required",
       cipherSuite: "AES_128_GCM_SHA256_128",
+    },
+    mediaAgents: {
+      configured: false,
+      leaseMs: 30_000,
+      maxStandbys: 2,
+      shardMinParticipants: 6,
     },
     optimization: {
       activeSpeakerLimit: 5,
@@ -393,6 +400,139 @@ test("required OIDC mode denies missing tokens and binds verified identity to a 
   const allowed = await authorize(app, "room-auth", "Ada", { authorization: "Bearer valid-token" });
   assert.equal(allowed.response.status, 201);
   assert.deepEqual(allowed.body.identity, { authenticated: true, displayName: "Ada" });
+});
+
+test("operator-bound media agent uses challenge auth, creator preference and epoch-bound signaling", async (context) => {
+  const issuer = "https://identity.test/realms/webrtc";
+  const principal = `${issuer}|owner`;
+  const sharedSecret = "native-media-agent-secret-0123456789";
+  const oidcVerifier = {
+    async verify(token) {
+      if (token !== "owner") throw new AuthenticationError("invalid_access_token");
+      return { issuer, subject: "owner", displayName: "Owner" };
+    },
+  };
+  const app = await startTestServer({
+    authMode: "required",
+    oidcIssuer: issuer,
+    oidcJwksUrl: "https://identity.test/certs",
+    oidcAudience: "webrtc-room-server",
+    oidcClientId: "webrtc-browser",
+    mediaAgents: [{ id: "owner-edge", ownerPrincipal: principal, sharedSecret }],
+    mediaAgentLeaseMs: 30_000,
+    mediaAgentRenewMs: 10_000,
+  }, { oidcVerifier });
+  context.after(() => app.close());
+
+  const agent = connect(`${app.wsUrl}/media-agent`);
+  const challenge = await agent.next((message) => message.type === "agent-challenge");
+  assert.equal(challenge.version, 1);
+  const timestamp = Date.now();
+  agent.socket.send(JSON.stringify({
+    type: "authenticate",
+    agentId: "owner-edge",
+    timestamp,
+    proof: mediaAgentAuthProof(sharedSecret, "owner-edge", challenge.nonce, timestamp),
+  }));
+  assert.equal((await agent.next((message) => message.type === "agent-authenticated")).version, 1);
+  agent.socket.send(JSON.stringify({
+    type: "capability",
+    visible: true,
+    battery: "mains",
+    network: "fast",
+    capacity: 90,
+    load: 5,
+    maxRooms: 8,
+    maxPeers: 20,
+    maxTracks: 80,
+  }));
+
+  const create = await fetch(`${app.httpUrl}/api/rooms`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: app.httpUrl, authorization: "Bearer owner" },
+    body: JSON.stringify({ mode: "room", title: "Agent room", visibility: "private" }),
+  });
+  const room = await create.json();
+  const browser = await connectAuthorized(app, room.roomId, "ignored", { authorization: "Bearer owner" });
+  const welcome = await browser.next((message) => message.type === "welcome");
+  assert.equal(welcome.roomCreator, true);
+  assert.deepEqual(welcome.mediaAgents, [{ id: "owner-edge", online: true }]);
+
+  browser.socket.send(JSON.stringify({
+    type: "media-agent-consent",
+    enabled: true,
+    agentId: "owner-edge",
+    automaticTakeover: false,
+  }));
+  const route = await browser.next((message) => message.type === "media-agent-state" && message.primary?.id === "owner-edge");
+  assert.equal(route.version, 2);
+  assert.equal(route.primary.creatorPreferred, true);
+  assert.ok(route.leaseExpiresAt > Date.now());
+  const sync = await agent.next((message) => message.type === "agent-sync"
+    && message.leases.some((lease) => lease.roomId === room.roomId));
+  assert.equal(sync.version, 1);
+  assert.equal(sync.leases.find((lease) => lease.roomId === room.roomId).role, "primary");
+  assert.equal(sync.leases.find((lease) => lease.roomId === room.roomId).version, 2);
+  assert.equal(sync.leases.find((lease) => lease.roomId === room.roomId).peers[0].publish, true);
+
+  browser.socket.send(JSON.stringify({
+    type: "media-agent-signal",
+    agentId: "owner-edge",
+    roomId: room.roomId,
+    routeEpoch: route.routeEpoch,
+    description: { type: "offer", sdp: "v=0\r\n" },
+  }));
+  const peerSignal = await agent.next((message) => message.type === "peer-signal");
+  assert.equal(peerSignal.version, 1);
+  assert.equal(peerSignal.peerId, welcome.peerId);
+  assert.equal(JSON.stringify(peerSignal).includes("owner-edge"), false);
+
+  agent.socket.send(JSON.stringify({
+    type: "media-agent-signal",
+    peerId: welcome.peerId,
+    roomId: room.roomId,
+    routeEpoch: route.routeEpoch,
+    description: { type: "answer", sdp: "v=0\r\n" },
+  }));
+  const answer = await browser.next((message) => message.type === "media-agent-signal");
+  assert.equal(answer.version, 1);
+  assert.equal(answer.agentId, "owner-edge");
+  assert.equal(answer.routeEpoch, route.routeEpoch);
+
+  browser.socket.send(JSON.stringify({
+    type: "media-agent-peer-state",
+    agentId: "owner-edge",
+    roomId: room.roomId,
+    routeEpoch: route.routeEpoch,
+    connected: true,
+  }));
+  agent.socket.send(JSON.stringify({
+    type: "peer-state",
+    roomId: room.roomId,
+    peerId: welcome.peerId,
+    routeEpoch: route.routeEpoch,
+    connected: true,
+  }));
+  const ready = await browser.next((message) => message.type === "media-agent-state"
+    && message.readiness.some((entry) => entry.readyPeerIds.includes(welcome.peerId)));
+  assert.deepEqual(ready.readiness[0].readyPeerIds, [welcome.peerId]);
+
+  browser.socket.send(JSON.stringify({
+    type: "media-agent-signal",
+    agentId: "owner-edge",
+    roomId: room.roomId,
+    routeEpoch: route.routeEpoch - 1,
+    candidate: null,
+  }));
+  assert.equal((await browser.next((message) => message.type === "error")).code, "stale_agent_route");
+  agent.socket.close();
+  const availability = await browser.next((message) => message.type === "media-agent-availability");
+  assert.equal(availability.version, 1);
+  assert.deepEqual(availability.agents, [{ id: "owner-edge", online: false }]);
+  const fallback = await browser.next((message) => message.type === "media-agent-state"
+    && message.primary === null && message.routeEpoch > route.routeEpoch);
+  assert.ok(fallback.routeEpoch > route.routeEpoch);
+  browser.socket.close();
 });
 
 test("room directory separates public and owned rooms and enforces owner-only visibility changes", async (context) => {

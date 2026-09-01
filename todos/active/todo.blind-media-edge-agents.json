@@ -1,0 +1,159 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "blind-media-edge-agents",
+  "purpose": "Den offenen PROD-NET-004-Fanout als optionalen nativen, SFrame-blinden Medien-Agenten umsetzen, weil standardisierte Browser-Encoded-Transforms Frames nicht zwischen PeerConnections verschieben duerfen.",
+  "goal": "Ein zustimmender, bevorzugt dem Raumersteller zugeordneter nativer Agent reduziert den Publisher-Fanout, leitet ausschliesslich SFrame-Ciphertext weiter und wird bei Leave, Ausfall oder Last kontrolliert durch den naechsten geeigneten Agenten oder das bestehende Mesh ersetzt.",
+  "status": "in_progress",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "BME-M01",
+      "title": "Machbarkeit und Sicherheitsvertrag",
+      "task_ids": ["BME-001"],
+      "status": "done"
+    },
+    {
+      "id": "BME-M02",
+      "title": "Agent, Authentisierung und Control-Plane-Wahl",
+      "task_ids": ["BME-002", "BME-003"],
+      "status": "done"
+    },
+    {
+      "id": "BME-M03",
+      "title": "Browser-Medienadapter und SFrame-Gruppenschluessel",
+      "task_ids": ["BME-004"],
+      "status": "done"
+    },
+    {
+      "id": "BME-M04",
+      "title": "Failover, Mehr-Agent-Koordination und Nutzerconsent",
+      "task_ids": ["BME-005"],
+      "status": "done"
+    },
+    {
+      "id": "BME-M05",
+      "title": "Browser-, NAT-, Security- und Produktionsnachweis",
+      "task_ids": ["BME-006"],
+      "status": "in_progress"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "BME-001",
+      "title": "Portablen Browserpfad und Blind-Agent-Sicherheitsgrenze verbindlich entscheiden",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Die aktuelle W3C-Owner-Regel und die offene Cross-PeerConnection-Forwarding-Erweiterung belegen reproduzierbar, dass ein portabler blinder Browser-Relay nicht als vorhanden behauptet werden darf.",
+        "Browser-Trusted-Relay, TURN-Paketrelay, nativer SFrame-blinder RTP-Forwarder und zentraler SFU sind als vier getrennte Sicherheits- und Betriebsmodelle dokumentiert.",
+        "Der native Agent terminiert DTLS-SRTP, erhaelt aber weder SFrame-/Gruppenschluessel noch Klartextframes; Metadaten-, Drop-, Replay- und Traffic-Analysegrenzen sind sichtbar beschrieben."
+      ]
+    },
+    {
+      "id": "BME-002",
+      "title": "Kurzlebig authentisierte Agent-Registrierung und geschlossene Signaling-Vertraege implementieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["BME-001"],
+      "acceptance_criteria": [
+        "Ein Agent verbindet sich ausgehend per WSS, wird an Betreiberdefinition, Nutzeridentitaet und Agent-Geraet gebunden und erhaelt nur kurzlebige raum-, membership- und route-epochgebundene Leases.",
+        "Browser erhalten keine Agent-Shared-Secrets; OIDC-Tokens, SFrame-Keys, SDP, ICE und Kandidatenadressen erscheinen nicht in URLs oder Produktionslogs.",
+        "Unbekannte Agent-, Signal-, Capability-, Room-, Peer-, Epochen- und Oversize-Felder werden serverseitig fail-closed abgelehnt und rate-begrenzt."
+      ]
+    },
+    {
+      "id": "BME-003",
+      "title": "Separaten nativen SFrame-blinden RTP-/RTCP-Forwarder bauen",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["BME-002"],
+      "acceptance_criteria": [
+        "Der Agent besitzt fuer jeden autorisierten Browser eine isolierte WebRTC-Verbindung und leitet RTP-Payloads samt begrenztem RTCP-Keyframefeedback ohne Codec-Decode/Re-encode weiter.",
+        "Tests belegen byte-identischen SFrame-Ciphertext-Fanout, fehlenden Decrypt-Port, harte Room-/Peer-/Track-/Bitrate-/Queuegrenzen und Cleanup bei Lease-Ende.",
+        "Der Agent kann ICE direkt/STUN nutzen und bei fehlendem eingehendem NAT-Pfad ueber autorisiertes TURN arbeiten; feste Portfreigaben sind Optimierung, nicht unbewiesene Voraussetzung."
+      ]
+    },
+    {
+      "id": "BME-004",
+      "title": "Austauschbaren Browser-SFU-Adapter und publikationsgebundene SFrame-Gruppenschluessel integrieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["BME-002", "BME-003"],
+      "acceptance_criteria": [
+        "Audio, Kamera und Bildschirm bleiben getrennte explizite Publikationen; der Agent-Pfad startet keine Capture-API und faellt ohne Agent oder Capability auf das bestehende required-SFrame-Mesh zurueck.",
+        "Ein Publisher codiert und sendet eine SFrame-Publikation an den zugewiesenen Agenten; alle autorisierten Empfaenger erhalten den publikationsgebundenen Epochenschluessel einzeln ueber den ECDH-/AES-GCM-Overlay, der Agent niemals.",
+        "Subscription, Publication, Stats und Transport sind kleine Adapterports; UI-Komponenten besitzen weder Agent-Signaling noch Key- oder PeerConnection-Policy."
+      ]
+    },
+    {
+      "id": "BME-005",
+      "title": "Creator-Praeferenz, Consent, Standby, Failover und mehrere Agenten koordinieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["BME-002", "BME-003", "BME-004"],
+      "acceptance_criteria": [
+        "Ein vorhandener und zugestimmter Agent des Raumerstellers erhaelt nur einen Wahlbonus; Gesundheit, Erreichbarkeit, Last, Batterie und aktuelle Membership koennen ihn sicher ueberstimmen.",
+        "Primary und begrenzte Standbys besitzen kurze Leases, Hysterese und monotone Route-Epochen; geplantes Drain und ungeplanter Ausfall wechseln bounded auf Ersatz oder Mesh, ohne alte Routen parallel autorisiert zu lassen.",
+        "Mehrere Agenten teilen Publikationen oder bilden einen zyklusfreien, fanout- und hopbegrenzten Agent-DAG; kein Agent erschafft Membership, Kinder, Policies oder dauerhafte Berechtigungen.",
+        "Consent bleibt default-aus, sichtbar und widerrufbar; eine Uebernahmeanfrage erklaert Upload, CPU, Batterie, IP-/Metadaten- und TURN-Folgen."
+      ]
+    },
+    {
+      "id": "BME-006",
+      "title": "Reale Multi-Browser-, Agent-, NAT-, Churn-, Security- und Produktionsgates abschliessen",
+      "status": "in_progress",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 55,
+      "depends_on": ["BME-005"],
+      "acceptance_criteria": [
+        "Mindestens fuenf echte Browser plus zwei Agentprozesse belegen reduzierten Publisher-Fanout, SFrame-Wiedergabe, Agent-Lastteilung, Planned Leave, Crash-Failover und Mesh-Rueckfall.",
+        "Chromium und Firefox, Direct sowie All-TURN, falsche Keys, stale Leases, Cross-Room-Signale, Agent-Impersonation, Oversize, Rate-Limit und fehlender Nutzerconsent sind sichtbar bestanden oder begruendet geblockt.",
+        "npm run check und Go-Gates bestehen; Commit, Push, Mini-PC-Control-Plane-Deployment und ein freiwilliger Laptop-Agent werden ohne Secrets, Zertifikatschluessel oder ungepruefte Portoeffnungen verifiziert."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006"],
+  "tasks_status_summary": {
+    "total": 6,
+    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 5 },
+    "progress_percent_done": 83.33,
+    "by_priority": { "P0": 5, "P1": 1, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 0, "high": 2, "critical": 4 },
+    "critical_path": { "total": 6, "done": 5, "remaining": 1 },
+    "milestones": { "total": 5, "todo": 0, "in_progress": 1, "blocked": 0, "done": 4 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 0,
+    "in_progress": 1,
+    "partial": 0,
+    "blocked": 0,
+    "done": 5
+  },
+  "summary_notes": [
+    "PROD-NET-004 wird mit diesem Track aus dem Category-Backlog in ausfuehrbare Arbeit ueberfuehrt.",
+    "W3C Encoded Transform writeEncodedData prueft Frame-Owner und verwirft Cross-Stream-Frames; w3c/webrtc-encoded-transform#160 fuer Cross-PeerConnection-Fanout ist weiterhin offen.",
+    "Der lokale Ananta-Track dokumentiert denselben DG-01-no-go; Quellen sind Auditinput und keine erfundene Runtime-Evidence.",
+    "Ohne installierten und zugestimmten Agenten bleibt required-SFrame adaptive_mesh; ein Security-Downgrade auf Decode/Re-encode wird nicht automatisch aktiviert.",
+    "Eine Portfreigabe ist fuer direkte Agent-Erreichbarkeit vorteilhaft; ein Agent als normaler ICE-Endpunkt kann alternativ TURN verwenden. Der vorhandene Edge-TURN-Agent allein reduziert keinen Medienfanout.",
+    "Browser-Adapter, publikationsgebundene Gruppenkeys, Creator-Bonus, Uebernahmeanfrage, Auto-Takeover und ab sechs Teilnehmern eindeutiges Publisher-Sharding ueber bis zu drei Agenten sind lokal implementiert und durch geschlossene Contract-/Registry-/UI-Tests belegt.",
+    "Am 2026-09-01 bestanden 76 Frontend-Tests, die gezielten Node-Integrationsgates, Angular-Produktionsbuild, Go-Race-Test mit realen Pion-PeerConnections, Agent-Compose-Validierung und gehärteter Image-Build. Der reale Fuenf-Browser-/Zwei-Agent-/NAT-/Crash-Produktionsgate ist noch offen.",
+    "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
+  ]
+}

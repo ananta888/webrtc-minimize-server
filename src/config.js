@@ -41,12 +41,20 @@ const DEFAULTS = Object.freeze({
   pairWorkspaceEnabled: true,
   pairWorkspaceDb: "data/pair-workspaces.sqlite",
   activeSpeakerLimit: 5,
+  mediaAgents: [],
+  mediaAgentLeaseMs: 30_000,
+  mediaAgentRenewMs: 10_000,
+  mediaAgentMaxStandbys: 2,
+  mediaAgentShardMinParticipants: 6,
+  mediaAgentTakeoverTtlMs: 20_000,
+  mediaAgentRateLimit: 240,
 });
 
 const AUTH_MODES = new Set(["disabled", "optional", "required"]);
 const MEDIA_E2EE_MODES = new Set(["disabled", "preferred", "required"]);
 const OIDC_ALGORITHMS = Object.freeze(["RS256", "ES256", "RS384", "RS512"]);
 const EDGE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
+const PRINCIPAL_PATTERN = /^https?:\/\/[^\s|]+\|[^\s|]{1,255}$/;
 
 function boundedInteger(value, fallback, { minimum, maximum, name }) {
   if (value === undefined || value === "") return fallback;
@@ -133,6 +141,39 @@ function parseEdgeTurnServers(raw) {
       sharedSecret,
       realm,
     });
+  });
+}
+
+function parseMediaAgents(raw) {
+  if (!raw) return [];
+  let value;
+  try { value = JSON.parse(raw); } catch (error) {
+    throw new Error(`MEDIA_EDGE_AGENTS_JSON must contain valid JSON: ${error.message}`);
+  }
+  if (!Array.isArray(value) || value.length > 32) {
+    throw new Error("MEDIA_EDGE_AGENTS_JSON must be an array with at most 32 entries");
+  }
+  const ids = new Set();
+  return value.map((entry, index) => {
+    const fields = new Set(["id", "ownerPrincipal", "sharedSecret"]);
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)
+      || Object.keys(entry).length !== fields.size || Object.keys(entry).some((key) => !fields.has(key))) {
+      throw new Error(`MEDIA_EDGE_AGENTS_JSON[${index}] must contain exactly id, ownerPrincipal and sharedSecret`);
+    }
+    const id = String(entry.id || "");
+    const ownerPrincipal = String(entry.ownerPrincipal || "");
+    const sharedSecret = String(entry.sharedSecret || "");
+    if (!EDGE_ID_PATTERN.test(id) || ids.has(id)) {
+      throw new Error(`MEDIA_EDGE_AGENTS_JSON[${index}].id must be unique lowercase letters, digits or dashes`);
+    }
+    if (!PRINCIPAL_PATTERN.test(ownerPrincipal)) {
+      throw new Error(`MEDIA_EDGE_AGENTS_JSON[${index}].ownerPrincipal must be an exact issuer|subject principal`);
+    }
+    if (sharedSecret.length < 32 || sharedSecret.length > 512 || /[\u0000-\u001f\u007f]/.test(sharedSecret)) {
+      throw new Error(`MEDIA_EDGE_AGENTS_JSON[${index}].sharedSecret must contain 32-512 printable characters`);
+    }
+    ids.add(id);
+    return Object.freeze({ id, ownerPrincipal, sharedSecret });
   });
 }
 
@@ -234,6 +275,16 @@ export function loadConfig(env = process.env) {
   );
   if (mediaE2eeMode === "required" && !peerDataOverlayEnabled) {
     throw new Error("MEDIA_E2EE_MODE=required requires PEER_DATA_OVERLAY_ENABLED=true for key delivery");
+  }
+  const mediaAgents = parseMediaAgents(env.MEDIA_EDGE_AGENTS_JSON);
+  const mediaAgentLeaseMs = boundedInteger(env.MEDIA_AGENT_LEASE_MS, DEFAULTS.mediaAgentLeaseMs, {
+    minimum: 15_000, maximum: 120_000, name: "MEDIA_AGENT_LEASE_MS",
+  });
+  const mediaAgentRenewMs = boundedInteger(env.MEDIA_AGENT_RENEW_MS, DEFAULTS.mediaAgentRenewMs, {
+    minimum: 5_000, maximum: 60_000, name: "MEDIA_AGENT_RENEW_MS",
+  });
+  if (mediaAgentRenewMs >= mediaAgentLeaseMs) {
+    throw new Error("MEDIA_AGENT_RENEW_MS must be shorter than MEDIA_AGENT_LEASE_MS");
   }
   const peerRouteLeaseMs = boundedInteger(env.PEER_ROUTE_LEASE_MS, DEFAULTS.peerRouteLeaseMs, {
     minimum: 30_000, maximum: 300_000, name: "PEER_ROUTE_LEASE_MS",
@@ -337,5 +388,28 @@ export function loadConfig(env = process.env) {
     activeSpeakerLimit: boundedInteger(env.ACTIVE_SPEAKER_LIMIT, DEFAULTS.activeSpeakerLimit, {
       minimum: 2, maximum: 5, name: "ACTIVE_SPEAKER_LIMIT",
     }),
+    mediaAgents: Object.freeze(mediaAgents),
+    mediaAgentLeaseMs,
+    mediaAgentRenewMs,
+    mediaAgentMaxStandbys: boundedInteger(
+      env.MEDIA_AGENT_MAX_STANDBYS,
+      DEFAULTS.mediaAgentMaxStandbys,
+      { minimum: 0, maximum: 2, name: "MEDIA_AGENT_MAX_STANDBYS" },
+    ),
+    mediaAgentShardMinParticipants: boundedInteger(
+      env.MEDIA_AGENT_SHARD_MIN_PARTICIPANTS,
+      DEFAULTS.mediaAgentShardMinParticipants,
+      { minimum: 3, maximum: 20, name: "MEDIA_AGENT_SHARD_MIN_PARTICIPANTS" },
+    ),
+    mediaAgentTakeoverTtlMs: boundedInteger(
+      env.MEDIA_AGENT_TAKEOVER_TTL_MS,
+      DEFAULTS.mediaAgentTakeoverTtlMs,
+      { minimum: 10_000, maximum: 60_000, name: "MEDIA_AGENT_TAKEOVER_TTL_MS" },
+    ),
+    mediaAgentRateLimit: boundedInteger(
+      env.MEDIA_AGENT_RATE_LIMIT,
+      DEFAULTS.mediaAgentRateLimit,
+      { minimum: 60, maximum: 2_000, name: "MEDIA_AGENT_RATE_LIMIT" },
+    ),
   });
 }

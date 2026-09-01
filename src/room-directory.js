@@ -83,6 +83,10 @@ export class RoomDirectory {
     return this.#summary(entry, ownerPrincipal, () => 0);
   }
 
+  ownerPrincipal(roomId) {
+    return this.#entries.get(roomId)?.ownerPrincipal || "";
+  }
+
   list({ principal = "", participantCount = () => 0 } = {}) {
     const entries = [...this.#entries.values()].sort((left, right) => (
       right.updatedAt - left.updatedAt || left.roomId.localeCompare(right.roomId)

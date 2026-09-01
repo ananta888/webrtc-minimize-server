@@ -1,0 +1,24 @@
+services:
+  media-edge-agent:
+    build:
+      context: .
+    image: webrtc-media-edge-agent:local
+    env_file:
+      - ${MEDIA_AGENT_ENV_FILE:-.env}
+    network_mode: host
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    stop_grace_period: 15s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"

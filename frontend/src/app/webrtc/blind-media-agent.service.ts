@@ -1,0 +1,477 @@
+import { Injectable, computed, signal } from "@angular/core";
+
+import { cumulativeIceServers, IceTierPolicy } from "./ice-policy";
+import {
+  MediaAgentRouteState,
+  MediaAgentTakeoverRequest,
+  MediaAgentTrackState,
+  validateMediaAgentRouteState,
+  validateMediaAgentSignal,
+  validateMediaAgentTakeoverRequest,
+  validateMediaAgentTrackState,
+} from "./media-agent-contract";
+import { ServerMessage, SignalingService } from "./signaling.service";
+import { ManagedPeer } from "./peer-connection-manager";
+
+export interface AvailableMediaAgent {
+  readonly id: string;
+  readonly online: boolean;
+}
+
+export interface AgentPublicationInput {
+  readonly agentId: string;
+  readonly publicationId: string;
+  readonly stream: MediaStream;
+  readonly track: MediaStreamTrack;
+  readonly contextId: string;
+  readonly keyId: string;
+  readonly baseKey: Uint8Array;
+}
+
+export interface AgentTrackInput {
+  readonly agentId: string;
+  readonly publisherPeerId: string;
+  readonly publicationId: string;
+  readonly source: MediaAgentTrackState["source"] | "";
+  readonly track: MediaStreamTrack;
+  readonly receiver: RTCRtpReceiver;
+}
+
+interface MediaAgentCallbacks {
+  readonly attachSender: (sender: RTCRtpSender, contextId: string, keyId: string, baseKey: Uint8Array) => boolean;
+  readonly acceptTrack: (input: AgentTrackInput) => boolean;
+  readonly trackState: (state: MediaAgentTrackState) => void;
+  readonly routeChanged: () => void;
+}
+
+interface AgentConnection extends ManagedPeer {
+  readonly agentId: string;
+  readonly pendingCandidates: Array<RTCIceCandidateInit | null>;
+  connected: boolean;
+}
+
+const EMPTY_CALLBACKS: MediaAgentCallbacks = {
+  attachSender: () => false,
+  acceptTrack: () => false,
+  trackState: () => undefined,
+  routeChanged: () => undefined,
+};
+
+@Injectable({ providedIn: "root" })
+export class BlindMediaAgentService {
+  readonly availableAgents = signal<readonly AvailableMediaAgent[]>([]);
+  readonly selectedAgentId = signal("");
+  readonly selectedAgentOnline = computed(() => this.availableAgents().some((agent) => (
+    agent.id === this.selectedAgentId() && agent.online
+  )));
+  readonly consentEnabled = signal(false);
+  readonly automaticTakeover = signal(false);
+  readonly primaryAgentId = signal("");
+  readonly standbyAgentIds = signal<readonly string[]>([]);
+  readonly forwarderAgentIds = signal<readonly string[]>([]);
+  readonly routeEpoch = signal(0);
+  readonly status = signal<"unavailable" | "idle" | "connecting" | "connected" | "error">("unavailable");
+  readonly takeoverRequest = signal<MediaAgentTakeoverRequest | null>(null);
+  private readonly connections = new Map<string, AgentConnection>();
+  private readonly descriptors = new Map<string, MediaAgentTrackState>();
+  private ownPeerId = "";
+  private roomId = "";
+  private membershipEpoch = 0;
+  private lastRouteEpoch = 0;
+  private icePolicy: IceTierPolicy | null = null;
+  private route: MediaAgentRouteState | null = null;
+  private callbacks: MediaAgentCallbacks = EMPTY_CALLBACKS;
+  private expiryTimer: ReturnType<typeof setTimeout> | null = null;
+  private takeoverTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(private readonly signaling: SignalingService) {}
+
+  initialize(input: Readonly<{
+    ownPeerId: string;
+    roomId: string;
+    membershipEpoch: number;
+    icePolicy: IceTierPolicy;
+    availableAgents: readonly AvailableMediaAgent[];
+    callbacks: MediaAgentCallbacks;
+  }>): void {
+    this.close();
+    this.ownPeerId = input.ownPeerId;
+    this.roomId = input.roomId;
+    this.membershipEpoch = input.membershipEpoch;
+    this.icePolicy = input.icePolicy;
+    this.callbacks = input.callbacks;
+    this.setAvailability(input.availableAgents);
+    const agents = this.availableAgents();
+    this.status.set(agents.length > 0 ? "idle" : "unavailable");
+  }
+
+  applyAvailability(raw: unknown): boolean {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+    const value = raw as Record<string, unknown>;
+    if (Object.keys(value).length !== 3 || value["version"] !== 1 || value["type"] !== "media-agent-availability"
+      || !Array.isArray(value["agents"])) return false;
+    return this.setAvailability(value["agents"]);
+  }
+
+  updateMembershipEpoch(value: number): void {
+    if (!Number.isSafeInteger(value) || value < 1) return;
+    this.membershipEpoch = value;
+  }
+
+  setConsent(enabled: boolean, automaticTakeover = this.automaticTakeover()): void {
+    const agentId = this.selectedAgentId();
+    if (!agentId || !this.ownPeerId || (enabled && !this.selectedAgentOnline())) return;
+    this.signaling.send({ type: "media-agent-consent", enabled, agentId, automaticTakeover });
+    this.consentEnabled.set(enabled);
+    this.automaticTakeover.set(automaticTakeover);
+  }
+
+  setAutomaticTakeover(enabled: boolean): void {
+    this.automaticTakeover.set(enabled);
+    if (this.consentEnabled()) this.setConsent(true, enabled);
+  }
+
+  selectAgent(agentId: string): void {
+    if (this.consentEnabled() || !this.availableAgents().some((agent) => agent.id === agentId)) return;
+    this.selectedAgentId.set(agentId);
+  }
+
+  respondToTakeover(accepted: boolean): void {
+    const request = this.takeoverRequest();
+    if (!request) return;
+    this.signaling.send({ type: "media-agent-takeover-response", requestId: request.requestId, accepted });
+    if (this.takeoverTimer) clearTimeout(this.takeoverTimer);
+    this.takeoverTimer = null;
+    this.takeoverRequest.set(null);
+  }
+
+  applyTakeoverRequest(raw: unknown): void {
+    const request = validateMediaAgentTakeoverRequest(raw);
+    if (request && this.availableAgents().some((agent) => agent.id === request.agentId && agent.online)) {
+      if (this.takeoverTimer) clearTimeout(this.takeoverTimer);
+      this.takeoverRequest.set(request);
+      this.takeoverTimer = setTimeout(() => {
+        if (this.takeoverRequest()?.requestId === request.requestId) this.takeoverRequest.set(null);
+        this.takeoverTimer = null;
+      }, Math.max(0, request.expiresAt - Date.now()));
+    }
+  }
+
+  applyRoute(raw: unknown, memberPeerIds: ReadonlySet<string>): boolean {
+    const state = validateMediaAgentRouteState(
+      raw,
+      memberPeerIds,
+      this.membershipEpoch,
+      this.lastRouteEpoch,
+    );
+    if (!state) return false;
+    const routeChanged = state.routeEpoch !== this.lastRouteEpoch
+      || state.primary?.id !== this.route?.primary?.id;
+    if (routeChanged) {
+      for (const agentId of [...this.connections.keys()]) this.closeConnection(agentId, false);
+      this.descriptors.clear();
+    }
+    this.route = state;
+    this.lastRouteEpoch = state.routeEpoch;
+    this.primaryAgentId.set(state.primary?.id || "");
+    this.standbyAgentIds.set(state.standbys.map(({ id }) => id));
+    this.forwarderAgentIds.set(state.forwarderIds);
+    this.routeEpoch.set(state.routeEpoch);
+    this.scheduleExpiry(state);
+    this.syncConnections(state);
+    if (routeChanged) this.callbacks.routeChanged();
+    this.updateStatus();
+    return true;
+  }
+
+  async acceptSignal(message: ServerMessage): Promise<void> {
+    const signal = validateMediaAgentSignal(message);
+    if (!signal || signal.roomId !== this.roomId || signal.routeEpoch !== this.routeEpoch()) return;
+    const connection = this.connections.get(signal.agentId);
+    if (!connection) return;
+    try {
+      const description = "description" in signal ? signal.description : undefined;
+      if (description) {
+        if (!new Set(["offer", "answer"]).has(description.type) || typeof description.sdp !== "string") return;
+        const collision = description.type === "offer"
+          && (connection.makingOffer || connection.pc.signalingState !== "stable");
+        if (collision) await connection.pc.setLocalDescription({ type: "rollback" });
+        connection.settingRemoteAnswerPending = description.type === "answer";
+        await connection.pc.setRemoteDescription(description);
+        connection.settingRemoteAnswerPending = false;
+        for (const candidate of connection.pendingCandidates.splice(0)) {
+          await connection.pc.addIceCandidate(candidate);
+        }
+        if (description.type === "offer") {
+          await connection.pc.setLocalDescription();
+          this.sendSignal(signal.agentId, { description: connection.pc.localDescription });
+        }
+        return;
+      }
+      const candidate = "candidate" in signal ? signal.candidate : null;
+      if (!connection.pc.remoteDescription) {
+        if (connection.pendingCandidates.length >= 256) throw new Error("media_agent_candidate_queue_full");
+        connection.pendingCandidates.push(candidate);
+        return;
+      }
+      await connection.pc.addIceCandidate(candidate);
+    } catch {
+      connection.settingRemoteAnswerPending = false;
+      this.status.set("error");
+    }
+  }
+
+  applyTrackState(raw: unknown): void {
+    const state = validateMediaAgentTrackState(raw);
+    if (!state || state.routeEpoch !== this.routeEpoch()
+      || state.agentId !== this.assignedAgentId(state.peerId)) return;
+    if (state.active) this.descriptors.set(state.publicationId, state);
+    else this.descriptors.delete(state.publicationId);
+    this.callbacks.trackState(state);
+  }
+
+  activatePublication(input: AgentPublicationInput): boolean {
+    if (input.agentId !== this.assignedAgentId(this.ownPeerId)) return false;
+    const connection = this.connections.get(input.agentId);
+    if (!connection || connection.senders.has(input.publicationId) || input.track.readyState !== "live") return false;
+    try {
+      const sender = connection.pc.addTrack(input.track, input.stream);
+      if (!this.callbacks.attachSender(sender, input.contextId, input.keyId, input.baseKey)) {
+        connection.pc.removeTrack(sender);
+        return false;
+      }
+      connection.senders.set(input.publicationId, sender);
+      return true;
+    } catch { return false; }
+  }
+
+  deactivatePublication(publicationId: string): void {
+    for (const connection of this.connections.values()) {
+      const sender = connection.senders.get(publicationId);
+      if (!sender) continue;
+      try { connection.pc.removeTrack(sender); } catch { /* already closed */ }
+      connection.senders.delete(publicationId);
+    }
+  }
+
+  sender(publicationId: string): RTCRtpSender | null {
+    return this.connections.get(this.assignedAgentId(this.ownPeerId))?.senders.get(publicationId) || null;
+  }
+
+  qualityTarget(publicationId: string): Readonly<{ peer: ManagedPeer; sender: RTCRtpSender }> | null {
+    const connection = this.connections.get(this.assignedAgentId(this.ownPeerId));
+    const sender = connection?.senders.get(publicationId);
+    return connection && sender ? { peer: connection, sender } : null;
+  }
+
+  assignedAgentId(publisherPeerId: string): string {
+    return this.route?.publisherAssignments.find((entry) => entry.peerId === publisherPeerId)?.agentId || "";
+  }
+
+  routeReady(agentId: string, memberPeerIds: ReadonlySet<string>): boolean {
+    const connection = this.connections.get(agentId);
+    const ready = new Set(this.route?.readiness.find((entry) => entry.agentId === agentId)?.readyPeerIds || []);
+    return Boolean(connection?.connected) && [...memberPeerIds].every((peerId) => ready.has(peerId));
+  }
+
+  close(): void {
+    if (this.expiryTimer) clearTimeout(this.expiryTimer);
+    if (this.takeoverTimer) clearTimeout(this.takeoverTimer);
+    this.expiryTimer = null;
+    this.takeoverTimer = null;
+    for (const agentId of [...this.connections.keys()]) this.closeConnection(agentId, false);
+    this.connections.clear();
+    this.descriptors.clear();
+    this.availableAgents.set([]);
+    this.selectedAgentId.set("");
+    this.consentEnabled.set(false);
+    this.automaticTakeover.set(false);
+    this.primaryAgentId.set("");
+    this.standbyAgentIds.set([]);
+    this.forwarderAgentIds.set([]);
+    this.routeEpoch.set(0);
+    this.takeoverRequest.set(null);
+    this.status.set("unavailable");
+    this.ownPeerId = "";
+    this.roomId = "";
+    this.membershipEpoch = 0;
+    this.lastRouteEpoch = 0;
+    this.icePolicy = null;
+    this.route = null;
+    this.callbacks = EMPTY_CALLBACKS;
+  }
+
+  private syncConnections(state: MediaAgentRouteState): void {
+    const assigned = new Set([
+      ...(state.primary ? [state.primary.id] : []),
+      ...state.standbys.map(({ id }) => id),
+    ]);
+    for (const agentId of [...this.connections.keys()]) {
+      if (!assigned.has(agentId)) this.closeConnection(agentId, true);
+    }
+    for (const agentId of assigned) if (!this.connections.has(agentId)) this.createConnection(agentId);
+  }
+
+  private createConnection(agentId: string): void {
+    if (!this.icePolicy) return;
+    const pc = new RTCPeerConnection({ iceServers: [...cumulativeIceServers(this.icePolicy, 2)] });
+    const connection: AgentConnection = {
+      id: agentId,
+      name: `Media-Agent ${agentId}`,
+      agentId,
+      pc,
+      channels: new Map(),
+      senders: new Map(),
+      appliedTiers: new Map(),
+      makingOffer: false,
+      ignoreOffer: false,
+      settingRemoteAnswerPending: false,
+      polite: true,
+      linkClass: "unknown",
+      reportedLinkClass: "unknown",
+      lastControlSequence: -1,
+      healthSamples: 0,
+      linkCandidate: "unknown",
+      linkCandidateSince: Date.now(),
+      iceTier: 2,
+      icePath: "unknown",
+      iceStartedAt: Date.now(),
+      fallbackTimer: null,
+      lastIceRestartAt: 0,
+      connected: false,
+      pendingCandidates: [],
+    };
+    this.connections.set(agentId, connection);
+    pc.onicecandidate = ({ candidate }) => this.sendSignal(agentId, { candidate });
+    pc.ontrack = ({ track, receiver, streams }) => {
+      const descriptor = this.descriptors.get(track.id);
+      const publisherPeerId = descriptor?.peerId || streams[0]?.id || "";
+      const accepted = this.callbacks.acceptTrack({
+        agentId,
+        publisherPeerId,
+        publicationId: descriptor?.publicationId || track.id,
+        source: descriptor?.source || "",
+        track,
+        receiver,
+      });
+      if (accepted && publisherPeerId && publisherPeerId !== this.ownPeerId) {
+        this.sendSubscription(agentId, publisherPeerId, descriptor?.publicationId || track.id, true);
+        track.addEventListener("ended", () => {
+          this.sendSubscription(agentId, publisherPeerId, descriptor?.publicationId || track.id, false);
+        }, { once: true });
+      }
+    };
+    pc.onconnectionstatechange = () => {
+      const connected = pc.connectionState === "connected";
+      if (connection.connected !== connected) {
+        connection.connected = connected;
+        try {
+          this.signaling.send({
+            type: "media-agent-peer-state",
+            agentId,
+            roomId: this.roomId,
+            routeEpoch: this.routeEpoch(),
+            connected,
+          });
+        } catch { /* session is closing */ }
+      }
+      if (pc.connectionState === "failed") this.status.set("error");
+      else this.updateStatus();
+    };
+    pc.onnegotiationneeded = () => void this.negotiate(connection);
+    pc.createDataChannel("media-agent-control", { ordered: true });
+    this.updateStatus();
+  }
+
+  private async negotiate(connection: AgentConnection): Promise<void> {
+    try {
+      connection.makingOffer = true;
+      await connection.pc.setLocalDescription();
+      this.sendSignal(connection.agentId, { description: connection.pc.localDescription });
+    } catch { this.status.set("error"); } finally { connection.makingOffer = false; }
+  }
+
+  private sendSignal(agentId: string, payload: object): void {
+    try {
+      this.signaling.send({
+        type: "media-agent-signal",
+        agentId,
+        roomId: this.roomId,
+        routeEpoch: this.routeEpoch(),
+        ...payload,
+      });
+    } catch { /* session is closing */ }
+  }
+
+  private sendSubscription(agentId: string, publisherPeerId: string, publicationId: string, ready: boolean): void {
+    try {
+      this.signaling.send({
+        type: "media-agent-subscription-state",
+        agentId,
+        roomId: this.roomId,
+        routeEpoch: this.routeEpoch(),
+        publisherPeerId,
+        publicationId,
+        ready,
+      });
+    } catch { /* session is closing */ }
+  }
+
+  private closeConnection(agentId: string, announce: boolean): void {
+    const connection = this.connections.get(agentId);
+    if (!connection) return;
+    this.connections.delete(agentId);
+    if (announce && connection.connected) {
+      try {
+        this.signaling.send({
+          type: "media-agent-peer-state",
+          agentId,
+          roomId: this.roomId,
+          routeEpoch: this.routeEpoch(),
+          connected: false,
+        });
+      } catch { /* session is closing */ }
+    }
+    connection.pc.close();
+  }
+
+  private scheduleExpiry(state: MediaAgentRouteState): void {
+    if (this.expiryTimer) clearTimeout(this.expiryTimer);
+    this.expiryTimer = setTimeout(() => {
+      if (this.route?.leaseExpiresAt !== state.leaseExpiresAt) return;
+      for (const agentId of [...this.connections.keys()]) this.closeConnection(agentId, false);
+      this.primaryAgentId.set("");
+      this.standbyAgentIds.set([]);
+      this.forwarderAgentIds.set([]);
+      this.route = null;
+      this.status.set(this.availableAgents().length ? "idle" : "unavailable");
+      this.callbacks.routeChanged();
+    }, Math.max(0, state.leaseExpiresAt - Date.now()));
+  }
+
+  private updateStatus(): void {
+    const primary = this.connections.get(this.primaryAgentId());
+    if (!this.primaryAgentId()) this.status.set(this.availableAgents().length ? "idle" : "unavailable");
+    else this.status.set(primary?.connected ? "connected" : "connecting");
+  }
+
+  private setAvailability(raw: readonly unknown[]): boolean {
+    if (raw.length > 32) return false;
+    const agents: AvailableMediaAgent[] = [];
+    for (const candidate of raw) {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+      const value = candidate as Record<string, unknown>;
+      if (Object.keys(value).length !== 2 || !Object.hasOwn(value, "id") || !Object.hasOwn(value, "online")
+        || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(String(value["id"] || ""))
+        || typeof value["online"] !== "boolean") return false;
+      agents.push(Object.freeze({ id: String(value["id"]), online: value["online"] }));
+    }
+    if (new Set(agents.map(({ id }) => id)).size !== agents.length) return false;
+    agents.sort((left, right) => left.id.localeCompare(right.id));
+    const selected = this.selectedAgentId();
+    this.availableAgents.set(Object.freeze(agents));
+    if (!agents.some(({ id }) => id === selected)) this.selectedAgentId.set(agents[0]?.id || "");
+    this.updateStatus();
+    return true;
+  }
+}

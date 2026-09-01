@@ -60,6 +60,7 @@
           <div><dt>ICE-Pfad</dt><dd id="ice-status">{{ mesh.iceState() }} · {{ mesh.icePath() }}</dd></div>
           <div><dt>SFrame</dt><dd id="sframe-status">{{ mesh.mediaE2eeState() }}</dd></div>
           <div><dt>Topologie</dt><dd id="topology-status">{{ mesh.topologyMode() }} · E{{ mesh.topologyEpoch() }}</dd></div>
+          <div><dt>Media-Agent</dt><dd id="media-agent-status">{{ mediaAgents.status() }} @if (mediaAgents.primaryAgentId()) { · {{ mediaAgents.primaryAgentId() }} · E{{ mediaAgents.routeEpoch() }} }</dd></div>
         </dl>
       </div>
     </aside>
@@ -73,6 +74,20 @@
         <div class="toast success-toast" role="status">
           <span aria-hidden="true">✓</span><span>{{ notice() }}</span>
         </div>
+      }
+
+      @if (mediaAgents.takeoverRequest(); as request) {
+        <section id="media-agent-takeover-request" class="takeover-callout" role="alert" aria-labelledby="media-agent-takeover-heading">
+          <div>
+            <p class="eyebrow">Edge-Agent-Übergabe</p>
+            <h2 id="media-agent-takeover-heading">Soll dein Agent die Verteilung übernehmen?</h2>
+            <p>Die Control Plane schlägt <strong>{{ request.agentId }}</strong> als Ersatz vor – etwa nach Ausfall, geplantem Drain oder weil Gesundheit und Last besser passen. Er würde verschlüsselte SFrame-Medien für den Raum weiterleiten. Das beansprucht Upload, CPU und eventuell Akku oder TURN-Traffic.</p>
+          </div>
+          <div class="inline-actions">
+            <button id="decline-media-agent-takeover" class="button ghost" type="button" (click)="respondToMediaAgentTakeover(false)">Ablehnen</button>
+            <button id="accept-media-agent-takeover" class="button primary" type="button" (click)="respondToMediaAgentTakeover(true)">Übernehmen</button>
+          </div>
+        </section>
       }
 
       @if (activeSection() === 'rooms') {
@@ -383,7 +398,7 @@
               <label class="relay-consent"><input id="relay-consent" type="checkbox" [disabled]="!session.joined()" [ngModel]="mesh.relayConsent()" (ngModelChange)="setRelayConsent($event)"> Diesem Browser erlauben, Video für andere Raumteilnehmer weiterzuleiten</label>
               <p class="relay-warning">Trusted Relay kann Medien hopweise verarbeiten und neu encodieren. Es kann CPU, Akku sowie Upload beanspruchen.</p>
             } @else if (config.value()?.mediaE2ee?.mode !== 'disabled') {
-              <p class="relay-warning">Der entschlüsselnde Browser-Relay ist bei SFrame deaktiviert. Edge-Agenten leiten nur verschlüsselte TURN-Pakete weiter.</p>
+              <p class="relay-warning">Der entschlüsselnde Browser-Relay ist bei SFrame deaktiviert. TURN verbessert nur die Erreichbarkeit; ein separat gestarteter Blind-Media-Agent kann dagegen SFrame-Ciphertext fanout-reduzierend weiterleiten.</p>
             }
           </section>
 
@@ -433,6 +448,52 @@
             <p class="hint">Auflösung und FPS aktualisieren einen laufenden Track ohne neue Freigabe. Bildschirmton wird beim Ausschalten sofort entfernt; das Einschalten gilt erst beim nächsten sichtbaren Klick auf „Bildschirm teilen“. Die Auswahl der Bildschirmquelle bleibt immer beim Browser.</p>
           </section>
 
+          @if (config.value()?.mediaAgents?.configured) {
+            <section class="surface settings-card media-agent-card">
+              <div class="surface-heading"><span class="feature-icon mint" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M12 4v16M7 7l10 10M17 7L7 17"/><circle cx="12" cy="12" r="9"/></svg></span><div><p class="eyebrow">Optionaler Fanout-Pfad</p><h2>Blinder Media-Agent</h2></div></div>
+              <p>Ein dir von der Control Plane zugewiesener nativer Agent empfängt deinen bereits SFrame-verschlüsselten RTP-Strom einmal und verteilt ihn an verbundene Raumteilnehmer. Er erhält keinen Medienschlüssel und kann den Inhalt nicht entschlüsseln.</p>
+
+              @if (mediaAgents.availableAgents().length > 0) {
+                <label>Agent dieses Kontos
+                  <select id="media-agent-select" [disabled]="mediaAgents.consentEnabled()" [ngModel]="mediaAgents.selectedAgentId()" (ngModelChange)="selectMediaAgent($event)">
+                    @for (agent of mediaAgents.availableAgents(); track agent.id) {
+                      <option [value]="agent.id">{{ agent.id }} · {{ agent.online ? 'online' : 'offline' }}</option>
+                    }
+                  </select>
+                </label>
+                <label class="agent-consent">
+                  <input
+                    id="media-agent-consent"
+                    type="checkbox"
+                    [disabled]="!session.joined() || config.value()?.mediaE2ee?.mode === 'disabled' || !config.value()?.optimization?.dataOverlayEnabled || (!mediaAgents.selectedAgentOnline() && !mediaAgents.consentEnabled())"
+                    [ngModel]="mediaAgents.consentEnabled()"
+                    (ngModelChange)="setMediaAgentConsent($event)"
+                  >
+                  <span><strong>Registrierten Rechner freiwillig als Media-Agent anbieten</strong><small>Standardmäßig aus und jederzeit widerrufbar. Es wird keine Kamera-, Mikrofon- oder Bildschirmfreigabe ausgelöst.</small></span>
+                </label>
+                <label class="agent-consent secondary-consent">
+                  <input id="media-agent-auto-takeover" type="checkbox" [disabled]="!mediaAgents.consentEnabled()" [ngModel]="mediaAgents.automaticTakeover()" (ngModelChange)="setMediaAgentAutomaticTakeover($event)">
+                  <span><strong>Bei Ausfall automatisch übernehmen</strong><small>Ausgeschaltet erscheint zuerst eine sichtbare Übernahmeanfrage.</small></span>
+                </label>
+              } @else {
+                <p class="hint">Für dieses Keycloak-Konto ist kein nativer Agent registriert. Du kannst weiterhin das direkte SFrame-Mesh und einen von anderen freiwillig bereitgestellten Agenten nutzen.</p>
+              }
+
+              <dl class="fact-list">
+                <div><dt>Eigene Zustimmung</dt><dd id="media-agent-consent-status">{{ mediaAgents.consentEnabled() ? 'aktiv' : 'aus' }}</dd></div>
+                <div><dt>Primary</dt><dd id="media-agent-primary">{{ mediaAgents.primaryAgentId() || 'Mesh-Fallback' }}</dd></div>
+                <div><dt>Aktive Forwarder</dt><dd id="media-agent-forwarders">{{ mediaAgents.forwarderAgentIds().length ? mediaAgents.forwarderAgentIds().join(', ') : 'keine' }}</dd></div>
+                <div><dt>Standby-Pool</dt><dd id="media-agent-standbys">{{ mediaAgents.standbyAgentIds().length ? mediaAgents.standbyAgentIds().join(', ') : 'keine' }}</dd></div>
+                <div><dt>Route</dt><dd>{{ mediaAgents.status() }} · E{{ mediaAgents.routeEpoch() }}</dd></div>
+              </dl>
+              @if (session.roomCreator()) {
+                <p class="creator-agent-note">Du bist der Raumersteller. Dein gesunder, zugestimmter Agent wird bevorzugt; Gesundheit, Netz, Last und Batterie können diese Präferenz überstimmen.</p>
+              }
+              <p class="hint">Ab {{ config.value()?.mediaAgents?.shardMinParticipants }} Teilnehmern darf die Control Plane Publizierende auf Primary und höchstens {{ config.value()?.mediaAgents?.maxStandbys }} weitere zugestimmte Agenten verteilen. Jeder Publisher bleibt genau einem Agenten zugeordnet; kleine Räume verwenden nur den Primary.</p>
+              <p class="agent-risk">Ein zugewiesener Agent sieht Verbindungsmetadaten wie IP-Adressen, Timing, Codec und Datenrate und kann Pakete verwerfen. Er benötigt Upload, CPU und gegebenenfalls Akku oder TURN. Eine feste UDP-Portfreigabe ist optional und kann direkte ICE-Pfade verbessern.</p>
+            </section>
+          }
+
           <section class="surface settings-card">
             <div class="surface-heading"><span class="feature-icon violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-5"/></svg></span><div><p class="eyebrow">Sicherheitsstatus</p><h2>Identität &amp; Transport</h2></div></div>
             <p>Keycloak-Tokens werden serverseitig über JWKS geprüft. Das WebSocket erhält nur ein kurzlebiges Einmal-Ticket. Im SFrame-Modus werden Medienframes zusätzlich vor dem WebRTC-Transport verschlüsselt.</p>
@@ -440,6 +501,7 @@
               <div><dt>Auth</dt><dd>{{ config.value()?.auth?.mode }}</dd></div>
               <div><dt>TURN</dt><dd>{{ config.value()?.turnConfigured ? 'kurzlebige Credentials' : 'nicht konfiguriert' }}</dd></div>
               <div><dt>Edge-Relay</dt><dd>{{ config.value()?.edgeRelayConfigured ? 'freiwilliger zweiter Pfad' : 'nicht konfiguriert' }}</dd></div>
+              <div><dt>Media-Agent</dt><dd>{{ config.value()?.mediaAgents?.configured ? mediaAgents.status() : 'nicht konfiguriert' }}</dd></div>
               <div><dt>Media-E2EE</dt><dd>{{ config.value()?.mediaE2ee?.mode }} · {{ mesh.mediaE2eeState() }}</dd></div>
               <div><dt>Gerät</dt><dd>{{ device.fingerprint() ? 'P-256 gebunden' : 'beim ersten Join' }}</dd></div>
             </dl>

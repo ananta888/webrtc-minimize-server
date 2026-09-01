@@ -45,7 +45,13 @@ export class RoomRegistry {
     if (!new Set(["room", "pair"]).has(mode)) throw new RoomAdmissionError("invalid_room_mode");
     let room = this.#rooms.get(roomId);
     if (!room) {
-      room = { peers: new Map(), updatedAt: now, mode, capacity };
+      room = {
+        peers: new Map(),
+        updatedAt: now,
+        mode,
+        capacity,
+        creatorPrincipal: admission.creatorPrincipal || admission.principal || "anonymous",
+      };
       this.#rooms.set(roomId, room);
     }
     if (room.mode !== mode || room.capacity !== capacity) throw new RoomAdmissionError("room_mode_mismatch");
@@ -69,6 +75,8 @@ export class RoomRegistry {
       mode,
       principal: admission.principal || "anonymous",
       deviceFingerprint: admission.deviceFingerprint || "",
+      creator: (admission.principal || "anonymous") === room.creatorPrincipal,
+      publications: new Map(),
       relayConsent: false,
       relayCapability: {
         visible: true,
@@ -115,6 +123,30 @@ export class RoomRegistry {
     peer.relayConsent = enabled === true;
     room.updatedAt = now;
     return peer.relayConsent;
+  }
+
+  setMediaState(peer, media, now = Date.now()) {
+    const room = this.#rooms.get(peer.roomId);
+    if (!room || room.peers.get(peer.id) !== peer) throw new RoomAdmissionError("peer_not_joined");
+    for (const [publicationId, publication] of peer.publications) {
+      if (publication.source === media.source && (!media.active || publicationId !== media.trackId)) {
+        peer.publications.delete(publicationId);
+      }
+    }
+    if (media.active) peer.publications.set(media.trackId, Object.freeze({
+      publicationId: media.trackId,
+      source: media.source,
+    }));
+    room.updatedAt = now;
+  }
+
+  publication(peerId, publicationId, roomId) {
+    const peer = this.#rooms.get(roomId)?.peers.get(peerId);
+    return peer?.publications.get(publicationId) || null;
+  }
+
+  creatorPrincipal(roomId) {
+    return this.#rooms.get(roomId)?.creatorPrincipal || "";
   }
 
   setRelayCapability(peer, capability, now = Date.now()) {

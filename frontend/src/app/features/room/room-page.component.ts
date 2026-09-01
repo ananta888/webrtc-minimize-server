@@ -12,6 +12,7 @@ import {
 import { MediaControlBarComponent } from "../../shared/media-control-bar.component";
 import { MediaStreamDirective } from "../../shared/media-stream.directive";
 import { MediaMosaicComponent } from "../../shared/media-mosaic.component";
+import { BlindMediaAgentService } from "../../webrtc/blind-media-agent.service";
 import { OptimizationMode } from "../../webrtc/media-optimization-policy";
 import { MediaPublicationService } from "../../webrtc/media-publication.service";
 import { MediaStrategyService } from "../../webrtc/media-strategy.service";
@@ -87,6 +88,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     readonly signaling: SignalingService,
     readonly session: RoomSessionService,
     readonly mesh: PeerMeshService,
+    readonly mediaAgents: BlindMediaAgentService,
     readonly media: MediaPublicationService,
     readonly mediaStrategy: MediaStrategyService,
     readonly videoPreferences: VideoCapturePreferencesService,
@@ -285,6 +287,34 @@ export class RoomPageComponent implements OnInit, OnDestroy {
       this.mesh.setRelayConsent(enabled);
     } catch (error) {
       this.pageError.set(error instanceof Error ? error.message : "relay_consent_failed");
+    }
+  }
+
+  selectMediaAgent(agentId: unknown): void {
+    this.mediaAgents.selectAgent(String(agentId || ""));
+  }
+
+  setMediaAgentConsent(enabled: boolean): void {
+    try {
+      this.mediaAgents.setConsent(enabled);
+    } catch (error) {
+      this.pageError.set(error instanceof Error ? error.message : "media_agent_consent_failed");
+    }
+  }
+
+  setMediaAgentAutomaticTakeover(enabled: boolean): void {
+    try {
+      this.mediaAgents.setAutomaticTakeover(enabled);
+    } catch (error) {
+      this.pageError.set(error instanceof Error ? error.message : "media_agent_takeover_update_failed");
+    }
+  }
+
+  respondToMediaAgentTakeover(accepted: boolean): void {
+    try {
+      this.mediaAgents.respondToTakeover(accepted);
+    } catch (error) {
+      this.pageError.set(error instanceof Error ? error.message : "media_agent_takeover_response_failed");
     }
   }
 

@@ -21,6 +21,10 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.equal(config.peerDataOverlayEnabled, true);
   assert.equal(config.pairWorkspaceEnabled, true);
   assert.equal(config.activeSpeakerLimit, 5);
+  assert.deepEqual(config.mediaAgents, []);
+  assert.equal(config.mediaAgentLeaseMs, 30_000);
+  assert.equal(config.mediaAgentRenewMs, 10_000);
+  assert.equal(config.mediaAgentShardMinParticipants, 6);
 });
 
 test("loadConfig parses TURN configuration without preserving unknown fields", () => {
@@ -82,6 +86,36 @@ test("loadConfig accepts closed volunteer Edge-TURN definitions", () => {
       extra: true,
     }]),
   }), /invalid entry or field/);
+});
+
+test("loadConfig accepts only closed operator-bound blind media agents", () => {
+  const definition = {
+    id: "laptop-edge",
+    ownerPrincipal: "https://identity.example/realms/ananta|user-123",
+    sharedSecret: "0123456789abcdef0123456789abcdef",
+  };
+  const config = loadConfig({
+    MEDIA_EDGE_AGENTS_JSON: JSON.stringify([definition]),
+    MEDIA_AGENT_LEASE_MS: "45000",
+    MEDIA_AGENT_RENEW_MS: "15000",
+    MEDIA_AGENT_MAX_STANDBYS: "1",
+    MEDIA_AGENT_SHARD_MIN_PARTICIPANTS: "5",
+  });
+  assert.deepEqual(config.mediaAgents, [definition]);
+  assert.equal(config.mediaAgentLeaseMs, 45_000);
+  assert.equal(config.mediaAgentRenewMs, 15_000);
+  assert.equal(config.mediaAgentMaxStandbys, 1);
+  assert.equal(config.mediaAgentShardMinParticipants, 5);
+  assert.throws(() => loadConfig({
+    MEDIA_EDGE_AGENTS_JSON: JSON.stringify([{ ...definition, sharedSecret: "short" }]),
+  }), /32-512/);
+  assert.throws(() => loadConfig({
+    MEDIA_EDGE_AGENTS_JSON: JSON.stringify([{ ...definition, authority: "room-owner" }]),
+  }), /exactly/);
+  assert.throws(() => loadConfig({
+    MEDIA_AGENT_LEASE_MS: "15000", MEDIA_AGENT_RENEW_MS: "15000",
+  }), /shorter/);
+  assert.throws(() => loadConfig({ MEDIA_AGENT_SHARD_MIN_PARTICIPANTS: "2" }), /between 3 and 20/);
 });
 
 test("loadConfig accepts explicit OIDC and ephemeral TURN settings", () => {

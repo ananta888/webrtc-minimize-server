@@ -78,6 +78,19 @@ describe("RFC 9605 SFrame cipher suite 0x0004", () => {
     expect(replay.accept(201n)).toBe(true);
   });
 
+  it("accepts direct-mesh and agent-route KIDs in one inbound publication context", async () => {
+    const directKey = bytes("000102030405060708090a0b0c0d0e0f");
+    const agentKey = bytes("101112131415161718191a1b1c1d1e1f");
+    const receiver = new SFrameDecryptContext();
+    receiver.setKey(1n, directKey);
+    receiver.setKey(2n, agentKey);
+    const direct = await encryptSFrame(directKey, 1n, 3n, bytes("0102"));
+    const relayed = await encryptSFrame(agentKey, 2n, 4n, bytes("0304"));
+    expect(hex(await receiver.decrypt(direct))).toBe("0102");
+    expect(hex(await receiver.decrypt(relayed))).toBe("0304");
+    await expect(receiver.decrypt(direct)).rejects.toMatchObject({ code: "replay_rejected" });
+  });
+
   it("reserves distinct counters for concurrent encryption", async () => {
     const sender = new SFrameEncryptContext(3n, bytes("000102030405060708090a0b0c0d0e0f"));
     const encrypted = await Promise.all([
