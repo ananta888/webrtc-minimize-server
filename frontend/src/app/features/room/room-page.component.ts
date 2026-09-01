@@ -14,6 +14,7 @@ import { MediaStreamDirective } from "../../shared/media-stream.directive";
 import { MediaMosaicComponent } from "../../shared/media-mosaic.component";
 import { OptimizationMode } from "../../webrtc/media-optimization-policy";
 import { MediaPublicationService } from "../../webrtc/media-publication.service";
+import { MediaStrategyService } from "../../webrtc/media-strategy.service";
 import { PeerMeshService } from "../../webrtc/peer-mesh.service";
 import { RoomMode, RoomSessionService } from "../../webrtc/room-session.service";
 import { SignalingService } from "../../webrtc/signaling.service";
@@ -87,6 +88,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     readonly session: RoomSessionService,
     readonly mesh: PeerMeshService,
     readonly media: MediaPublicationService,
+    readonly mediaStrategy: MediaStrategyService,
     readonly videoPreferences: VideoCapturePreferencesService,
     readonly directory: RoomDirectoryService,
     readonly workspaces: PairWorkspaceService,
@@ -243,7 +245,19 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   }
 
   setOptimizationMode(mode: OptimizationMode): void {
-    this.mesh.setOptimizationMode(mode);
+    this.media.setOptimizationMode(mode);
+  }
+
+  setMediaStrategyPreset(preset: unknown): void {
+    void this.media.setMediaStrategyPreset(preset);
+  }
+
+  setAudioQualityProfile(profile: unknown): void {
+    void this.media.setAudioQualityProfile(profile);
+  }
+
+  setMediaPriorityAt(index: number, source: unknown): void {
+    this.media.setMediaPriorityAt(index, source);
   }
 
   setVideoResolution(source: VideoCaptureSource, resolutionId: unknown): void {

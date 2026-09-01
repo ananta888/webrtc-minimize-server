@@ -56,4 +56,22 @@ describe("Room page information architecture", () => {
     expect(component).not.toContain("getUserMedia");
     expect(component).not.toContain("getDisplayMedia");
   });
+
+  it("offers media presets, configurable audio quality and a unique priority order through services", () => {
+    expect(template).toContain('id="media-strategy-preset"');
+    expect(template).toContain('id="media-strategy-preset-live"');
+    expect(template).toContain('id="audio-quality-profile"');
+    expect(template).toContain('id="microphone-applied-settings"');
+    expect(template).toContain('id="media-priority-1"');
+    expect(template).toContain('id="media-priority-2"');
+    expect(template).toContain('id="media-priority-3"');
+    expect(template).toContain('id="adaptive-video-mode"');
+    expect(template).toContain('id="music-audio-warning"');
+    expect(template).toContain("setMediaPriorityAt(0, $event)");
+    expect(component).toContain("this.media.setMediaStrategyPreset(preset)");
+    expect(component).toContain("this.media.setAudioQualityProfile(profile)");
+    expect(component).toContain("this.media.setMediaPriorityAt(index, source)");
+    expect(component).not.toContain("applyConstraints");
+    expect(component).not.toContain("setParameters");
+  });
 });

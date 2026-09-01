@@ -1,6 +1,12 @@
 import { Injectable, signal } from "@angular/core";
 
 import { PeerMeshService } from "./peer-mesh.service";
+import {
+  AudioQualityProfile,
+  MediaPrioritySource,
+  MediaStrategyPreset,
+  MediaStrategyService,
+} from "./media-strategy.service";
 import { VideoCapturePreferencesService, VideoCaptureSource } from "./video-capture-preferences.service";
 
 interface ScreenAudioSupportedConstraints extends MediaTrackSupportedConstraints {
@@ -29,10 +35,12 @@ export class MediaPublicationService {
     camera: Promise.resolve(),
     screen: Promise.resolve(),
   };
+  private audioConstraintUpdate = Promise.resolve();
 
   constructor(
     private readonly mesh: PeerMeshService,
     private readonly videoPreferences: VideoCapturePreferencesService,
+    private readonly mediaStrategy: MediaStrategyService,
   ) {}
 
   async toggle(source: LocalMediaSource): Promise<void> {
@@ -52,7 +60,7 @@ export class MediaPublicationService {
       if (!navigator.mediaDevices) throw new Error("media_devices_unavailable");
       if (source === "microphone") {
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          audio: this.mediaStrategy.audioConstraints(),
           video: false,
         });
       } else if (source === "camera") {
@@ -75,7 +83,8 @@ export class MediaPublicationService {
           stream.removeTrack(track);
         }
       }
-      if (source !== "microphone") this.recordAppliedSettings(source, stream.getVideoTracks()[0]);
+      if (source === "microphone") this.mediaStrategy.recordAppliedAudio(stream.getAudioTracks()[0].getSettings());
+      else this.recordAppliedSettings(source, stream.getVideoTracks()[0]);
       if (source === "screen") this.screenAudioActive.set(stream.getAudioTracks().length > 0);
       this.streams.set(source, stream);
       this.mesh.attachPublication(source, stream);
@@ -113,7 +122,8 @@ export class MediaPublicationService {
     }
     this.streams.delete(source);
     this.publications.update((items) => items.filter((item) => item.source !== source));
-    if (source !== "microphone") this.videoPreferences.clearApplied(source);
+    if (source === "microphone") this.mediaStrategy.clearAppliedAudio();
+    else this.videoPreferences.clearApplied(source);
     if (source === "screen") this.screenAudioActive.set(false);
   }
 
@@ -138,6 +148,50 @@ export class MediaPublicationService {
   setScreenAudioEnabled(enabled: unknown): void {
     this.videoPreferences.setScreenAudioEnabled(enabled);
     if (enabled !== true) this.stopScreenAudio();
+  }
+
+  async setMediaStrategyPreset(preset: MediaStrategyPreset | unknown): Promise<void> {
+    this.mediaStrategy.selectPreset(preset);
+    await this.applyAudioPreferences();
+    this.mesh.refreshMediaStrategy();
+  }
+
+  async setAudioQualityProfile(profile: AudioQualityProfile | unknown): Promise<void> {
+    this.mediaStrategy.setAudioProfile(profile);
+    await this.applyAudioPreferences();
+    this.mesh.refreshMediaStrategy();
+  }
+
+  setMediaPriorityAt(index: number, source: MediaPrioritySource | unknown): void {
+    this.mediaStrategy.setPriorityAt(index, source);
+    this.mesh.refreshMediaStrategy();
+  }
+
+  setOptimizationMode(mode: unknown): void {
+    this.mediaStrategy.setOptimizationMode(mode);
+    this.mesh.refreshMediaStrategy();
+  }
+
+  private async applyAudioPreferences(): Promise<void> {
+    const update = this.audioConstraintUpdate.then(() => this.applyCurrentAudioPreferences());
+    this.audioConstraintUpdate = update;
+    await update;
+  }
+
+  private async applyCurrentAudioPreferences(): Promise<void> {
+    const track = this.streams.get("microphone")?.getAudioTracks()[0];
+    if (!track) return;
+    this.error.set("");
+    try {
+      await track.applyConstraints(this.mediaStrategy.audioConstraints());
+      this.mediaStrategy.recordAppliedAudio(track.getSettings());
+    } catch (error) {
+      this.mediaStrategy.recordAppliedAudio(track.getSettings());
+      const name = error instanceof DOMException ? error.name : "";
+      this.error.set(name === "OverconstrainedError"
+        ? "audio_constraints_unsupported"
+        : error instanceof Error ? error.message : "audio_constraints_failed");
+    }
   }
 
   private async applyVideoPreferences(source: VideoCaptureSource): Promise<void> {

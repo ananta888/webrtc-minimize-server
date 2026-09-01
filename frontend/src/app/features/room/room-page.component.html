@@ -287,7 +287,13 @@
 
             <section class="surface compact-panel optimization">
               <div class="surface-heading small"><span class="feature-icon mint" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 18V8M10 18V4M16 18v-7M22 18H2"/></svg></span><div><p class="eyebrow">Adaptive Mesh</p><h2>Qualität</h2></div></div>
-              <label>Profil<select id="optimization-mode" [ngModel]="mesh.optimizationMode()" (ngModelChange)="setOptimizationMode($event)"><option value="auto">Auto · Active Speaker</option><option value="balanced">Ausgewogen</option><option value="data-saver">Datensparend</option></select></label>
+              <label>Strategie
+                <select id="media-strategy-preset-live" [ngModel]="mediaStrategy.presetId()" (ngModelChange)="setMediaStrategyPreset($event)">
+                  @for (option of mediaStrategy.presetOptions; track option.id) { <option [value]="option.id">{{ option.label }}</option> }
+                </select>
+              </label>
+              <label>Adaptive Video-Regel<select id="optimization-mode" [ngModel]="mesh.optimizationMode()" (ngModelChange)="setOptimizationMode($event)"><option value="auto">Auto · Active Speaker</option><option value="balanced">Alle als Vorschau</option><option value="data-saver">Datensparend</option></select></label>
+              <p class="hint">Priorität: {{ mediaLabel(mediaStrategy.priorityOrder()[0]) }} → {{ mediaLabel(mediaStrategy.priorityOrder()[1]) }} → {{ mediaLabel(mediaStrategy.priorityOrder()[2]) }}</p>
               <p id="active-speakers" class="hint">Fokus: {{ mesh.activeSpeakerNames().length ? mesh.activeSpeakerNames().join(', ') : 'stabile Teilnehmerreihenfolge' }}</p>
               @if (config.value()?.optimization?.peerRelayEnabled && config.value()?.mediaE2ee?.mode === 'disabled') {
                 <label class="relay-consent"><input id="relay-consent" type="checkbox" [disabled]="!session.joined()" [ngModel]="mesh.relayConsent()" (ngModelChange)="setRelayConsent($event)"> Diesen Browser als Trusted Video Relay erlauben</label>
@@ -323,14 +329,45 @@
         </section>
         <section class="settings-grid">
           <section class="surface settings-card">
-            <div class="surface-heading"><span class="feature-icon mint" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 18V8M10 18V4M16 18v-7M22 18H2"/></svg></span><div><p class="eyebrow">Adaptive Mesh</p><h2>Bandbreite &amp; Fokus</h2></div></div>
-            <label>Qualitätsprofil<select id="optimization-mode" [ngModel]="mesh.optimizationMode()" (ngModelChange)="setOptimizationMode($event)"><option value="auto">Auto · Active Speaker</option><option value="balanced">Ausgewogen</option><option value="data-saver">Datensparend</option></select></label>
+            <div class="surface-heading"><span class="feature-icon mint" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 18V8M10 18V4M16 18v-7M22 18H2"/></svg></span><div><p class="eyebrow">Adaptive Mesh</p><h2>Medienstrategie</h2></div></div>
+            <label>Standardstrategie
+              <select id="media-strategy-preset" [ngModel]="mediaStrategy.presetId()" (ngModelChange)="setMediaStrategyPreset($event)">
+                @for (option of mediaStrategy.presetOptions; track option.id) { <option [value]="option.id">{{ option.label }}</option> }
+              </select>
+            </label>
+            <p id="media-strategy-description" class="hint">{{ mediaStrategy.presetDescription() }}</p>
+
+            <section class="strategy-setting-group" aria-labelledby="audio-quality-heading">
+              <div><p class="eyebrow">Audioqualität</p><h3 id="audio-quality-heading">Mikrofon und Audio-Sender</h3></div>
+              <label>Qualitätsprofil
+                <select id="audio-quality-profile" [ngModel]="mediaStrategy.audioProfile()" (ngModelChange)="setAudioQualityProfile($event)">
+                  @for (option of mediaStrategy.audioOptions; track option.id) { <option [value]="option.id">{{ option.label }}</option> }
+                </select>
+              </label>
+              <p class="hint">{{ mediaStrategy.audioDescription() }}</p>
+              @if (mediaStrategy.audioProfile() === 'music') {
+                <p id="music-audio-warning" class="screen-audio-warning">Musik deaktiviert Echo-, Rausch- und Pegelfilter. Verwende Kopfhörer, sonst kann Gesprächston erneut ins Mikrofon gelangen.</p>
+              }
+              <p class="applied-setting"><span>Tatsächlich aktiv</span><strong id="microphone-applied-settings">{{ mediaStrategy.appliedAudioLabel() }}</strong></p>
+            </section>
+
+            <section class="strategy-setting-group" aria-labelledby="media-priority-heading">
+              <div><p class="eyebrow">Reihenfolge bei Engpässen</p><h3 id="media-priority-heading">Relative Medienpriorität</h3></div>
+              <div class="priority-order-fields">
+                <label><span>1 · Hoch</span><select id="media-priority-1" [ngModel]="mediaStrategy.priorityOrder()[0]" (ngModelChange)="setMediaPriorityAt(0, $event)">@for (option of mediaStrategy.priorityOptions; track option.id) { <option [value]="option.id">{{ option.label }}</option> }</select></label>
+                <label><span>2 · Mittel</span><select id="media-priority-2" [ngModel]="mediaStrategy.priorityOrder()[1]" (ngModelChange)="setMediaPriorityAt(1, $event)">@for (option of mediaStrategy.priorityOptions; track option.id) { <option [value]="option.id">{{ option.label }}</option> }</select></label>
+                <label><span>3 · Niedrig</span><select id="media-priority-3" [ngModel]="mediaStrategy.priorityOrder()[2]" (ngModelChange)="setMediaPriorityAt(2, $event)">@for (option of mediaStrategy.priorityOptions; track option.id) { <option [value]="option.id">{{ option.label }}</option> }</select></label>
+              </div>
+              <p class="hint">Eine Auswahl tauscht die Positionen automatisch. „Niedrig“ schaltet keine Quelle ab: Sprache behält mindestens 20 kbit/s; Browser und Netz dürfen Prioritätsmarkierungen dennoch begrenzen.</p>
+            </section>
+
+            <label>Adaptive Video-Regel<select id="adaptive-video-mode" [ngModel]="mesh.optimizationMode()" (ngModelChange)="setOptimizationMode($event)"><option value="auto">Auto · Active Speaker</option><option value="balanced">Alle als Vorschau</option><option value="data-saver">Datensparend</option></select></label>
             <dl class="fact-list">
               <div><dt>Eigene Videoqualität</dt><dd id="local-quality">{{ mesh.localQuality() }}</dd></div>
               <div><dt>Linkklasse</dt><dd id="link-quality">{{ mesh.linkSummary() }}</dd></div>
               <div><dt>Sendersteuerung</dt><dd>{{ mesh.qualityCapability() }}</dd></div>
             </dl>
-            <p id="active-speakers" class="hint">Fokus: {{ mesh.activeSpeakerNames().length ? mesh.activeSpeakerNames().join(', ') : 'stabile Teilnehmerreihenfolge' }}. Audio und Control bleiben priorisiert.</p>
+            <p id="active-speakers" class="hint">Fokus: {{ mesh.activeSpeakerNames().length ? mesh.activeSpeakerNames().join(', ') : 'stabile Teilnehmerreihenfolge' }}. Die Strategie setzt Capture-Zielwerte, Senderlimits und relative RTP-Prioritäten; sie ist keine garantierte Netz-QoS.</p>
             @if (config.value()?.optimization?.peerRelayEnabled && config.value()?.mediaE2ee?.mode === 'disabled') {
               <label class="relay-consent"><input id="relay-consent" type="checkbox" [disabled]="!session.joined()" [ngModel]="mesh.relayConsent()" (ngModelChange)="setRelayConsent($event)"> Diesem Browser erlauben, Video für andere Raumteilnehmer weiterzuleiten</label>
               <p class="relay-warning">Trusted Relay kann Medien hopweise verarbeiten und neu encodieren. Es kann CPU, Akku sowie Upload beanspruchen.</p>

@@ -25,8 +25,8 @@ Stand: 2026-08-31. Zusätzlich commitgenau geprüft wurden `e6edf1c84`, `22126b8
 |---|---|---|
 | Hub/Control Plane besitzt Membership und Policy | flüchtige `RoomRegistry`, zielgebundenes Signaling, OIDC-geprüfte Einmal-Tickets | langlebige Grants und signierte Membership-Epochen |
 | Keine implizite Medienaufnahme | jede Quelle startet nur durch separaten Klick | zeitgebundene, signierte Publication-Consents |
-| Audio, Kamera und Bildschirm als getrennte Publikationen | getrennte Start-/Stop-Lifecycles; Bildschirmton wird verwendet, falls der Browser ihn liefert | Device-Wechsel, Mute, Limits, signed media contract |
-| Direkte Peer-Verbindung und Räume | Angular-Perfect-Negotiation-Mesh bis 20; Active-Speaker-Top-5, Stats-Hysterese, Focus/Balanced/Thumbnail/Paused und Screenshare-Priorität | ressourcenbasierte Join-Admission und optionaler SFU-Fallback |
+| Audio, Kamera und Bildschirm als getrennte Publikationen | getrennte Start-/Stop-Lifecycles; Bildschirmton nur nach separatem Opt-in und mit sofortigem Einzeltrack-Stopp | Device-Wechsel, Mute, signed media contract |
+| Direkte Peer-Verbindung und Räume | Angular-Perfect-Negotiation-Mesh bis 20; Active-Speaker-Top-5, Stats-Hysterese, Focus/Balanced/Thumbnail/Paused sowie konfigurierbare Audio-/Bildschirm-/Kamera-Prioritäten und Sendergrenzen | ressourcenbasierte Join-Admission und optionaler SFU-Fallback |
 | Austauschbares STUN/TURN | gestufte ICE-Policy: Direct/STUN, freiwillige Edge-TURN-Knoten und zuletzt Infrastruktur-TURN; alle dynamischen TURN-Zugänge erhalten kurzlebige HMAC-Credentials erst nach Session-Autorisierung | TURN/TLS im Edge-Agent, Secret-Rotation, IP-Privacy und Multi-Region-Failover |
 | Bounded DataChannel | Chat/Control plus browserseitiger ECDH-/AES-GCM-Overlay; Traffic-Class-Queues, Digest, Replay, TTL, Hop-/Path-Cap, Chunk-ACK und Resume | verbindlicher Delivery-SLO und große Artefakte außerhalb des Browser-Speichers |
 | Keycloak/OIDC | Authorization Code Flow mit PKCE im Angular-Client; JWKS-Prüfung von Signatur, Issuer, Audience, Ablaufzeit und Subject im Server | organisationsbezogene Rollen, Grants und produktiver Keycloak-HA-Betrieb |

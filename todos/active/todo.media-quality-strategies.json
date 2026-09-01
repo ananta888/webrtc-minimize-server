@@ -1,0 +1,97 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "media-quality-strategies",
+  "purpose": "Audioqualitaet und die relative Prioritaet von Mikrofon, Bildschirm und Kamera als validierte, persistente und zur Laufzeit wirksame Medienstrategie konfigurierbar machen.",
+  "goal": "Nutzer waehlen sinnvolle Standardstrategien oder eine eigene Reihenfolge; Capture-Constraints, RTP-Bitrate/FPS und relative Senderprioritaeten folgen dieser Wahl, ohne Capture ohne lokalen Klick zu starten.",
+  "status": "in_progress",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "MQS-M01",
+      "title": "Medienstrategie und Laufzeitwirkung",
+      "task_ids": ["MQS-001", "MQS-002"],
+      "status": "done"
+    },
+    {
+      "id": "MQS-M02",
+      "title": "Verifikation und Rollout",
+      "task_ids": ["MQS-003"],
+      "status": "in_progress"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "MQS-001",
+      "title": "Validierte Audio- und Prioritaetsstrategien implementieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Mehrere benannte Presets und eine benutzerdefinierte Strategie besitzen validierte Audioqualitaet, Video-Optimierungsmodus und eine eindeutige Reihenfolge aus Mikrofon, Bildschirm und Kamera.",
+        "Mikrofon-Capture nutzt profilorientierte Constraints und kann einen aktiven Track per applyConstraints aktualisieren, ohne erneut getUserMedia oder eine Berechtigungsabfrage auszulösen.",
+        "RTP-Sender erhalten pro Quelle relative priority/networkPriority sowie harte, quellengeeignete Audio-, Video- und FPS-Obergrenzen; Sprache behaelt auch bei niedriger Prioritaet ein Mindestbudget."
+      ]
+    },
+    {
+      "id": "MQS-002",
+      "title": "Medienstrategie in der Angular-Oberflaeche konfigurierbar und transparent machen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": ["MQS-001"],
+      "acceptance_criteria": [
+        "Die Raumoberflaeche bietet verstaendliche Presets, Audioqualitaet und eine konfliktfreie Prioritaetsreihenfolge mit erklaerten Auswirkungen.",
+        "Manuelle Aenderungen erzeugen eine persistente benutzerdefinierte Strategie und starten weder Mikrofon, Kamera noch Bildschirmfreigabe.",
+        "Die Oberflaeche zeigt die tatsaechlich vom aktiven Mikrofon gemeldete Abtastrate, Kanalzahl und Audioverarbeitung an und warnt beim Musikprofil vor Echo ohne Kopfhoerer."
+      ]
+    },
+    {
+      "id": "MQS-003",
+      "title": "Strategien automatisiert und in Produktion verifizieren",
+      "status": "in_progress",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 90,
+      "depends_on": ["MQS-001", "MQS-002"],
+      "acceptance_criteria": [
+        "Unit- und Browser-Tests belegen Persistenz, Validierung, Capture-Consent, aktive Track-Aktualisierung und tatsaechliche RTP-Parameter fuer Audio, Bildschirm und Kamera.",
+        "npm run check ist vollstaendig gruen; infrastrukturelle Live-Gates duerfen nur sichtbar und begruendet uebersprungen werden.",
+        "Der gezielt committed und gepushte Stand ist auf dem vorhandenen Mini-PC-Deployment ausgerollt; HTTPS-Healthz und ausgelieferter Browser-Build sind real geprueft."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["MQS-001", "MQS-002", "MQS-003"],
+  "tasks_status_summary": {
+    "total": 3,
+    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 2 },
+    "progress_percent_done": 66.67,
+    "by_priority": { "P0": 2, "P1": 1, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 2, "critical": 0 },
+    "critical_path": { "total": 3, "done": 2, "remaining": 1 },
+    "milestones": { "total": 2, "todo": 0, "in_progress": 1, "blocked": 0, "done": 1 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 0,
+    "in_progress": 1,
+    "partial": 0,
+    "blocked": 0,
+    "done": 2
+  },
+  "summary_notes": [
+    "WebRTC-Prioritaet ist eine relative Browser-/Netzwerksteuerung und keine QoS-Garantie; harte Senderobergrenzen machen die Presets zusaetzlich lokal wirksam.",
+    "Audio-Constraints sind best effort und koennen vom Browser oder Geraet abweichend angewendet werden; deshalb wird getSettings statt einer unbewiesenen Soll-Qualitaet angezeigt.",
+    "Das Musikprofil deaktiviert Sprach-DSP bewusst und muss deshalb Kopfhoerer-/Echo-Hinweise tragen; das sichere Gespraechsprofil bleibt Standard.",
+    "Verifiziert: 64 Angular-Unit-Tests und der Angular-Produktionsbuild sind gruen; sechs echte Browser-E2E-Szenarien mit Chromium und Firefox belegen Capture-Consent, aktive Audio-Constraints und erfolgreiche priorisierte RTP-Senderparameter.",
+    "Der vollstaendige npm-run-check-Gate ist gruen: Todo-/Workflow-Validierung, 64 Frontend-Tests, Produktionsbuild, 63 Node-/Browser-Tests; der credentialpflichtige Keycloak-/TURN-Live-Gate wurde sichtbar mangels expliziter Test-Credentials uebersprungen.",
+    "Ein visueller 1440-mal-1000-Browsercheck bestaetigt die strukturierte Strategie-, Audio-, Prioritaets- und Capture-Anordnung ohne Ueberlagerungen.",
+    "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
+  ]
+}

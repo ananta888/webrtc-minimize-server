@@ -90,16 +90,26 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
     };
     const nativeSetParameters = RTCRtpSender.prototype.setParameters;
     RTCRtpSender.prototype.setParameters = function observedSetParameters(parameters) {
-      window.__senderParameterEvents.push({
+      const event = {
         trackId: this.track?.id || "",
         encodings: parameters.encodings.map((encoding) => ({
           active: encoding.active,
           maxBitrate: encoding.maxBitrate,
           maxFramerate: encoding.maxFramerate,
           scaleResolutionDownBy: encoding.scaleResolutionDownBy,
+          priority: encoding.priority,
+          networkPriority: encoding.networkPriority,
         })),
+        succeeded: null,
+      };
+      window.__senderParameterEvents.push(event);
+      return nativeSetParameters.call(this, parameters).then((result) => {
+        event.succeeded = true;
+        return result;
+      }, (error) => {
+        event.succeeded = false;
+        throw error;
       });
-      return nativeSetParameters.call(this, parameters);
     };
   });
   const ada = await browserContext.newPage();
@@ -113,7 +123,29 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   await ada.locator("#camera-frame-rate").selectOption({ label: "5 FPS" });
   await ada.locator("#screen-resolution").selectOption("480p");
   await ada.locator("#screen-frame-rate").selectOption({ label: "10 FPS" });
+  assert.equal(await ada.locator("#media-strategy-preset").inputValue(), "conversation");
+  assert.equal(await ada.locator("#audio-quality-profile").inputValue(), "speech-clear");
+  assert.deepEqual(await Promise.all([1, 2, 3].map((rank) => ada.locator(`#media-priority-${rank}`).inputValue())), [
+    "microphone",
+    "camera",
+    "screen",
+  ]);
+  await ada.locator("#media-strategy-preset").selectOption("presentation");
+  assert.deepEqual(await Promise.all([1, 2, 3].map((rank) => ada.locator(`#media-priority-${rank}`).inputValue())), [
+    "screen",
+    "microphone",
+    "camera",
+  ]);
+  await ada.locator("#media-priority-1").selectOption("camera");
+  assert.equal(await ada.locator("#media-strategy-preset").inputValue(), "custom");
+  assert.deepEqual(await Promise.all([1, 2, 3].map((rank) => ada.locator(`#media-priority-${rank}`).inputValue())), [
+    "camera",
+    "microphone",
+    "screen",
+  ]);
+  await ada.locator("#media-strategy-preset").selectOption("conversation");
   assert.deepEqual(await ada.evaluate(() => window.__captureCalls), []);
+  assert.equal(await ada.locator("#microphone-applied-settings").textContent(), "Nicht aktiv");
   assert.equal(await ada.locator("#camera-applied-settings").textContent(), "Nicht aktiv");
   assert.equal(await ada.locator("#screen-applied-settings").textContent(), "Nicht aktiv");
   await ada.locator(".nav-item", { hasText: "Räume" }).click();
@@ -184,6 +216,30 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   await ada.locator("#toggle-microphone").click();
   await ada.locator("#toggle-microphone", { hasText: "Mikrofon stoppen" }).waitFor();
   await grace.locator(".media-label").getByText("Ada · Mikrofon").waitFor();
+  const microphoneCapture = await ada.evaluate(() => window.__captureConstraints
+    .find((event) => event.method === "getUserMedia" && event.constraints.audio && event.constraints.video === false));
+  assert.deepEqual(microphoneCapture.constraints, {
+    audio: {
+      sampleRate: { ideal: 48_000 },
+      channelCount: { ideal: 1 },
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+    video: false,
+  });
+  await ada.locator(".nav-item", { hasText: "Einstellungen" }).click();
+  assert.notEqual(await ada.locator("#microphone-applied-settings").textContent(), "Nicht aktiv");
+  await ada.locator("#audio-quality-profile").selectOption("speech-low");
+  await ada.waitForFunction(() => {
+    const microphoneTrackIds = new Set(Object.entries(window.__localTrackSources)
+      .filter(([, source]) => source === "microphone").map(([trackId]) => trackId));
+    return window.__appliedTrackConstraints.some((event) => microphoneTrackIds.has(event.trackId)
+      && event.constraints.sampleRate?.ideal === 24_000);
+  });
+  assert.deepEqual(await ada.evaluate(() => window.__captureCalls), ["getUserMedia", "getUserMedia"]);
+  assert.equal(await ada.locator("#media-strategy-preset").inputValue(), "custom");
+  await ada.locator(".nav-item", { hasText: "Live" }).click();
 
   await ada.evaluate(() => { window.__forceCriticalLink = true; });
   await ada.locator(".nav-item", { hasText: "Chat" }).click();
@@ -224,7 +280,8 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
     const cameraTrackIds = new Set(Object.entries(window.__localTrackSources)
       .filter(([, source]) => source === "camera").map(([trackId]) => trackId));
     return window.__senderParameterEvents.some((event) => cameraTrackIds.has(event.trackId)
-      && event.encodings.some((encoding) => encoding.active === true && encoding.maxBitrate === 90_000));
+      && event.succeeded === true
+      && event.encodings.some((encoding) => encoding.active === true && encoding.maxBitrate === 64_800));
   });
   assert.equal(await ada.evaluate(() => {
     const cameraTrackIds = new Set(Object.entries(window.__localTrackSources)
@@ -240,6 +297,18 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
     const video = card?.querySelector("video");
     return video && video.getVideoPlaybackQuality().totalVideoFrames >= initialFrames + 2;
   }, cameraFrames);
+  await ada.locator("#media-strategy-preset").selectOption("presentation");
+  await ada.waitForFunction(() => {
+    const sources = Object.entries(window.__localTrackSources);
+    const trackIds = (source) => new Set(sources.filter(([, value]) => value === source).map(([trackId]) => trackId));
+    const microphone = trackIds("microphone");
+    const camera = trackIds("camera");
+    const screen = trackIds("screen");
+    const succeededWith = (ids, priority) => window.__senderParameterEvents.some((event) => event.succeeded === true
+      && ids.has(event.trackId) && event.encodings.some((encoding) => encoding.priority === priority));
+    return succeededWith(screen, "high") && succeededWith(microphone, "medium") && succeededWith(camera, "low");
+  });
+  assert.deepEqual(await ada.evaluate(() => window.__captureCalls), ["getUserMedia", "getUserMedia", "getDisplayMedia"]);
   await ada.locator(".persistent-media-dock #toggle-screen", { hasText: "Bildschirmfreigabe stoppen" }).click();
   await ada.locator(".nav-item", { hasText: "Live" }).click();
 

@@ -1,12 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MediaPublicationService } from "./media-publication.service";
+import { MediaStrategyService } from "./media-strategy.service";
 import { VideoCapturePreferencesService } from "./video-capture-preferences.service";
 
 function fakeStream(kind: "audio" | "video") {
   let settings: MediaTrackSettings = kind === "video"
     ? { width: 1280, height: 720, frameRate: 24 }
-    : {};
+    : {
+      sampleRate: 48_000,
+      channelCount: 1,
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    };
   const track = {
     kind,
     id: `${kind}-track`,
@@ -17,10 +24,17 @@ function fakeStream(kind: "audio" | "video") {
       const width = typeof constraints.width === "object" ? constraints.width.max : undefined;
       const height = typeof constraints.height === "object" ? constraints.height.max : undefined;
       const frameRate = typeof constraints.frameRate === "object" ? constraints.frameRate.max : undefined;
+      const sampleRate = typeof constraints.sampleRate === "object" ? constraints.sampleRate.ideal : undefined;
+      const channelCount = typeof constraints.channelCount === "object" ? constraints.channelCount.ideal : undefined;
       settings = {
         width: typeof width === "number" ? width : settings.width,
         height: typeof height === "number" ? height : settings.height,
         frameRate: typeof frameRate === "number" ? frameRate : settings.frameRate,
+        sampleRate: typeof sampleRate === "number" ? sampleRate : settings.sampleRate,
+        channelCount: typeof channelCount === "number" ? channelCount : settings.channelCount,
+        echoCancellation: typeof constraints.echoCancellation === "boolean" ? constraints.echoCancellation : settings.echoCancellation,
+        noiseSuppression: typeof constraints.noiseSuppression === "boolean" ? constraints.noiseSuppression : settings.noiseSuppression,
+        autoGainControl: typeof constraints.autoGainControl === "boolean" ? constraints.autoGainControl : settings.autoGainControl,
       };
     }),
   };
@@ -65,7 +79,10 @@ function fakeScreenStream() {
 }
 
 describe("MediaPublicationService", () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
 
   it("does not request capture until the explicit source action", async () => {
     const audio = fakeStream("audio");
@@ -75,13 +92,56 @@ describe("MediaPublicationService", () => {
       value: { getUserMedia, getDisplayMedia: vi.fn() },
     });
     const mesh = { attachPublication: vi.fn(), detachPublication: vi.fn() };
-    const service = new MediaPublicationService(mesh as never, new VideoCapturePreferencesService());
+    const strategy = new MediaStrategyService();
+    const service = new MediaPublicationService(mesh as never, new VideoCapturePreferencesService(), strategy);
     expect(getUserMedia).not.toHaveBeenCalled();
     await service.toggle("microphone");
     expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: {
+        sampleRate: { ideal: 48_000 },
+        channelCount: { ideal: 1 },
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: false,
+    });
+    expect(strategy.appliedAudioLabel()).toContain("48 kHz · 1 Kanal · Echo an");
     expect(mesh.attachPublication).toHaveBeenCalledWith("microphone", audio.stream);
     service.stopAll();
     expect(audio.track.stop).toHaveBeenCalledTimes(1);
+    expect(strategy.appliedAudioLabel()).toBe("Nicht aktiv");
+  });
+
+  it("updates an active microphone profile without another capture request", async () => {
+    const audio = fakeStream("audio");
+    const getUserMedia = vi.fn().mockResolvedValue(audio.stream);
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia, getDisplayMedia: vi.fn() },
+    });
+    const mesh = {
+      attachPublication: vi.fn(),
+      detachPublication: vi.fn(),
+      refreshMediaStrategy: vi.fn(),
+    };
+    const strategy = new MediaStrategyService();
+    const service = new MediaPublicationService(mesh as never, new VideoCapturePreferencesService(), strategy);
+
+    await service.toggle("microphone");
+    await service.setAudioQualityProfile("speech-low");
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(audio.track.applyConstraints).toHaveBeenLastCalledWith({
+      sampleRate: { ideal: 24_000 },
+      channelCount: { ideal: 1 },
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    });
+    expect(strategy.presetId()).toBe("custom");
+    expect(strategy.appliedAudioLabel()).toContain("24 kHz");
+    expect(mesh.refreshMediaStrategy).toHaveBeenCalledTimes(1);
   });
 
   it("requests display capture separately and includes browser-provided audio", async () => {
@@ -92,7 +152,7 @@ describe("MediaPublicationService", () => {
       value: { getUserMedia: vi.fn(), getDisplayMedia },
     });
     const mesh = { attachPublication: vi.fn(), detachPublication: vi.fn() };
-    const service = new MediaPublicationService(mesh as never, new VideoCapturePreferencesService());
+    const service = new MediaPublicationService(mesh as never, new VideoCapturePreferencesService(), new MediaStrategyService());
     await service.toggle("screen");
     expect(getDisplayMedia).toHaveBeenCalledWith({
       video: { frameRate: { ideal: 15, max: 30 } },
@@ -119,7 +179,7 @@ describe("MediaPublicationService", () => {
     };
     const preferences = new VideoCapturePreferencesService();
     preferences.setScreenAudioEnabled(true);
-    const service = new MediaPublicationService(mesh as never, preferences);
+    const service = new MediaPublicationService(mesh as never, preferences, new MediaStrategyService());
 
     expect(getDisplayMedia).not.toHaveBeenCalled();
     await service.toggle("screen");
@@ -153,7 +213,7 @@ describe("MediaPublicationService", () => {
     const mesh = { attachPublication: vi.fn(), detachPublication: vi.fn() };
     const preferences = new VideoCapturePreferencesService();
     preferences.setScreenAudioEnabled(true);
-    const service = new MediaPublicationService(mesh as never, preferences);
+    const service = new MediaPublicationService(mesh as never, preferences, new MediaStrategyService());
 
     await service.toggle("screen");
     expect(getDisplayMedia).toHaveBeenCalledWith({
@@ -174,7 +234,7 @@ describe("MediaPublicationService", () => {
     const preferences = new VideoCapturePreferencesService();
     preferences.setResolution("camera", "360p");
     preferences.setFrameRate("camera", 5);
-    const service = new MediaPublicationService(mesh as never, preferences);
+    const service = new MediaPublicationService(mesh as never, preferences, new MediaStrategyService());
 
     expect(getUserMedia).not.toHaveBeenCalled();
     await service.toggle("camera");

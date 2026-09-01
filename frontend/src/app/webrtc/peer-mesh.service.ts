@@ -35,6 +35,7 @@ import { ManagedPeer, PeerConnectionManager } from "./peer-connection-manager";
 import { PeerTopologyController } from "./peer-topology-controller";
 import { TrustedRelayController } from "./trusted-relay-controller";
 import { PeerQualityController } from "./peer-quality-controller";
+import { MediaStrategyService } from "./media-strategy.service";
 
 interface PeerState extends ManagedPeer {
   readonly overlayQueue: BoundedOverlayQueue;
@@ -132,9 +133,7 @@ export class PeerMeshService {
   readonly topologyEpoch = signal(0);
   readonly membershipEpoch = signal(0);
   readonly routeEpoch = signal(0);
-  readonly optimizationMode = signal<OptimizationMode>(
-    (sessionStorage.getItem("webrtc-optimization-mode") as OptimizationMode) || "auto",
-  );
+  readonly optimizationMode = this.mediaStrategy.optimizationMode;
   readonly relayConsent = signal(false);
   readonly relayCapability = signal<"idle" | "available" | "unsupported">("idle");
   readonly qualityCapability = signal<"probing" | "available" | "degraded">("probing");
@@ -203,6 +202,7 @@ export class PeerMeshService {
   constructor(
     private readonly signaling: SignalingService,
     private readonly activity: AudioActivityService,
+    private readonly mediaStrategy: MediaStrategyService,
   ) {}
 
   initialize(
@@ -372,9 +372,11 @@ export class PeerMeshService {
   }
 
   setOptimizationMode(mode: OptimizationMode): void {
-    if (!new Set(["auto", "balanced", "data-saver"]).has(mode)) return;
-    this.optimizationMode.set(mode);
-    sessionStorage.setItem("webrtc-optimization-mode", mode);
+    this.mediaStrategy.setOptimizationMode(mode);
+    void this.applyQualityPolicies(true);
+  }
+
+  refreshMediaStrategy(): void {
     void this.applyQualityPolicies(true);
   }
 
@@ -861,7 +863,13 @@ export class PeerMeshService {
         const publication = this.publications.get(publicationId);
         if (!publication || !sender.track) continue;
         if (sender.track.kind === "audio") {
-          const capability = await this.quality.applyAudio(peer, publicationId, sender, this.optimizationMode(), force);
+          const capability = await this.quality.applyAudio(
+            peer,
+            publicationId,
+            sender,
+            this.mediaStrategy.senderPolicy(publication.source),
+            force,
+          );
           if (capability) this.qualityCapability.set(capability);
           continue;
         }
@@ -874,9 +882,18 @@ export class PeerMeshService {
           linkClass,
           screenActive,
         });
-        const capability = await this.quality.applyVideo(peer, publicationId, sender, quality, force);
+        const prioritizedQuality = this.mediaStrategy.prioritizeVideo(publication.source, quality);
+        const capability = await this.quality.applyVideo(
+          peer,
+          publicationId,
+          sender,
+          publication.source,
+          prioritizedQuality,
+          this.mediaStrategy.priority(publication.source),
+          force,
+        );
         if (capability) this.qualityCapability.set(capability);
-        if (publication.local && (ownQuality === "idle" || publication.source === "screen" || publication.source === "camera")) ownQuality = quality.tier;
+        if (publication.local && (ownQuality === "idle" || publication.source === "screen" || publication.source === "camera")) ownQuality = prioritizedQuality.tier;
       }
     }
     this.localQuality.set(ownQuality);

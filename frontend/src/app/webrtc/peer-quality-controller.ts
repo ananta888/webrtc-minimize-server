@@ -1,10 +1,16 @@
-import { OptimizationMode, QualitySettings, classifyLinkStats, stabilizeLinkClass } from "./media-optimization-policy";
+import { MediaSource, QualitySettings, classifyLinkStats, stabilizeLinkClass } from "./media-optimization-policy";
+import { RtpSenderMediaPolicy } from "./media-strategy.service";
 import { ManagedPeer } from "./peer-connection-manager";
 
 export interface PeerQualitySample {
   readonly availableOutgoingBitrate?: number;
   readonly roundTripTime?: number;
   readonly lossRatio?: number;
+}
+
+interface ParameterApplication {
+  readonly applied: boolean;
+  readonly capability: "available" | "degraded";
 }
 
 export class PeerQualityController {
@@ -42,46 +48,62 @@ export class PeerQualityController {
     peer: ManagedPeer,
     publicationId: string,
     sender: RTCRtpSender,
-    mode: OptimizationMode,
+    policy: RtpSenderMediaPolicy,
     force: boolean,
   ): Promise<"available" | "degraded" | null> {
-    const signature = `audio:${mode}`;
+    const signature = `audio:${policy.maxBitrate}:${policy.priority}`;
     if (!force && peer.appliedTiers.get(publicationId) === signature) return null;
-    const parameters = sender.getParameters();
-    if (parameters.encodings.length === 0) return "degraded";
-    parameters.encodings[0].active = true;
-    parameters.encodings[0].maxBitrate = mode === "data-saver" ? 20_000 : 32_000;
-    try {
-      await sender.setParameters(parameters);
-      peer.appliedTiers.set(publicationId, signature);
-      return "available";
-    } catch {
-      return "degraded";
-    }
+    const result = await this.applyParameters(sender, policy.priority, (parameters) => {
+      parameters.encodings[0].active = true;
+      parameters.encodings[0].maxBitrate = Math.max(20_000, policy.maxBitrate);
+    });
+    if (result.applied) peer.appliedTiers.set(publicationId, signature);
+    return result.capability;
   }
 
   async applyVideo(
     peer: ManagedPeer,
     publicationId: string,
     sender: RTCRtpSender,
+    source: MediaSource,
     quality: QualitySettings,
+    priority: RTCPriorityType,
     force: boolean,
   ): Promise<"available" | "degraded" | null> {
-    const signature = `${quality.tier}:${quality.maxBitrate}:${quality.maxFramerate}:${quality.scaleResolutionDownBy}`;
+    const signature = `${quality.tier}:${quality.maxBitrate}:${quality.maxFramerate}:${quality.scaleResolutionDownBy}:${priority}`;
     if (!force && peer.appliedTiers.get(publicationId) === signature) return null;
-    const parameters = sender.getParameters();
-    if (parameters.encodings.length === 0) return "degraded";
-    parameters.degradationPreference = quality.tier === "screen" ? "maintain-resolution" : "balanced";
-    parameters.encodings[0].active = quality.active;
-    parameters.encodings[0].maxBitrate = Math.max(1, quality.maxBitrate);
-    parameters.encodings[0].maxFramerate = quality.maxFramerate;
-    parameters.encodings[0].scaleResolutionDownBy = quality.scaleResolutionDownBy;
-    try {
-      await sender.setParameters(parameters);
-      peer.appliedTiers.set(publicationId, signature);
-      return "available";
-    } catch {
-      return "degraded";
+    const result = await this.applyParameters(sender, priority, (parameters) => {
+      parameters.degradationPreference = source === "screen" ? "maintain-resolution" : "balanced";
+      parameters.encodings[0].active = quality.active;
+      parameters.encodings[0].maxBitrate = Math.max(1, quality.maxBitrate);
+      parameters.encodings[0].maxFramerate = quality.maxFramerate;
+      parameters.encodings[0].scaleResolutionDownBy = quality.scaleResolutionDownBy;
+    });
+    if (result.applied) peer.appliedTiers.set(publicationId, signature);
+    return result.capability;
+  }
+
+  private async applyParameters(
+    sender: RTCRtpSender,
+    priority: RTCPriorityType,
+    configure: (parameters: RTCRtpSendParameters) => void,
+  ): Promise<ParameterApplication> {
+    for (const prioritySupport of ["network", "local", "none"] as const) {
+      const parameters = sender.getParameters();
+      if (parameters.encodings.length === 0) return { applied: false, capability: "degraded" };
+      configure(parameters);
+      if (prioritySupport !== "none") parameters.encodings[0].priority = priority;
+      if (prioritySupport === "network") parameters.encodings[0].networkPriority = priority;
+      try {
+        await sender.setParameters(parameters);
+        return {
+          applied: true,
+          capability: prioritySupport === "network" ? "available" : "degraded",
+        };
+      } catch {
+        // Some browsers implement sender ceilings but reject one or both priority extensions.
+      }
     }
+    return { applied: false, capability: "degraded" };
   }
 }
