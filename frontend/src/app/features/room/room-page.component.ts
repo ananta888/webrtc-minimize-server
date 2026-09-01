@@ -5,6 +5,10 @@ import { OidcAuthService } from "../../auth/oidc-auth.service";
 import { RuntimeConfigService } from "../../core/runtime-config.service";
 import { DeviceIdentityService } from "../../identity/device-identity.service";
 import {
+  MediaAgentOnboardingService,
+  MediaAgentPlatform,
+} from "../../media-agent/media-agent-onboarding.service";
+import {
   RoomDirectoryService,
   RoomSummary,
   RoomVisibility,
@@ -50,6 +54,8 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   readonly newRoomVisibility = signal<RoomVisibility>("private");
   readonly chatInput = signal("");
   readonly workspaceTitle = signal("Pair Dev Workspace");
+  readonly mediaAgentLabel = signal("Mein Rechner");
+  readonly mediaAgentTarget = signal("");
   readonly connectionLabel = computed(() => {
     if (this.session.joined()) return "Signaling verbunden";
     if (this.signaling.status() === "connecting") return "Verbindung wird aufgebaut";
@@ -59,6 +65,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   readonly authRequired = computed(() => this.config.value()?.auth.mode === "required");
   readonly canEnter = computed(() => this.ready() && (!this.authRequired() || this.auth.authenticated()));
   readonly canOwnRooms = computed(() => this.auth.authenticated());
+  readonly ownMediaAgentOnline = computed(() => this.mediaAgentOnboarding.agents().some((agent) => agent.online));
   readonly currentRoom = computed(() => {
     const roomId = this.session.joined() ? this.session.roomId() : this.roomInput();
     return [...this.directory.ownRooms(), ...this.directory.publicRooms()]
@@ -73,6 +80,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     || this.directory.error()
     || this.session.error()
     || this.media.error()
+    || this.mediaAgentOnboarding.error()
     || this.auth.error()
   ));
   private directoryRefreshHandle: ReturnType<typeof setInterval> | null = null;
@@ -85,6 +93,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     readonly config: RuntimeConfigService,
     readonly auth: OidcAuthService,
     readonly device: DeviceIdentityService,
+    readonly mediaAgentOnboarding: MediaAgentOnboardingService,
     readonly signaling: SignalingService,
     readonly session: RoomSessionService,
     readonly mesh: PeerMeshService,
@@ -99,21 +108,35 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   async ngOnInit(): Promise<void> {
     window.addEventListener("beforeunload", this.beforeUnload);
     const params = new URLSearchParams(location.search);
+    if (new Set<AppSection>(["rooms", "live", "chat", "settings"]).has(params.get("section") as AppSection)) {
+      this.activeSection.set(params.get("section") as AppSection);
+    }
     this.roomInput.set(params.get("room") || "");
     this.selectedMode.set(params.get("mode") === "pair" ? "pair" : "room");
     this.session.setWorkspaceInvite(params.get("workspaceInvite") || "");
     try {
-      this.auth.configure(await this.config.load());
+      const runtime = await this.config.load();
+      this.auth.configure(runtime);
       if (!this.nameInput().trim() && this.auth.username()) this.nameInput.set(this.auth.username());
+      if (runtime.mediaAgents.selfService) {
+        this.mediaAgentTarget.set(this.mediaAgentOnboarding.suggestedTarget(runtime.mediaAgents.targets));
+      }
       this.ready.set(true);
       await Promise.all([
         this.directory.load(),
+        this.auth.authenticated() && runtime.mediaAgents.selfService
+          ? this.mediaAgentOnboarding.load()
+          : Promise.resolve(),
         this.auth.authenticated() && this.config.value()?.pairWorkspaceEnabled
           ? this.workspaces.loadList()
           : Promise.resolve(),
       ]);
       this.directoryRefreshHandle = setInterval(() => {
-        if (document.visibilityState === "visible") void this.directory.load();
+        if (document.visibilityState !== "visible") return;
+        void this.directory.load();
+        if (this.auth.authenticated() && this.config.value()?.mediaAgents.selfService) {
+          void this.mediaAgentOnboarding.load();
+        }
       }, 15_000);
     } catch (error) {
       this.pageError.set(error instanceof Error ? error.message : "Konfiguration konnte nicht geladen werden");
@@ -207,6 +230,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     this.session.leave();
     this.activeSection.set("rooms");
     this.directory.clearOwnRooms();
+    this.mediaAgentOnboarding.clear();
     await this.auth.logout();
   }
 
@@ -312,6 +336,41 @@ export class RoomPageComponent implements OnInit, OnDestroy {
 
   setMediaAgentLayerLimit(value: unknown): void {
     if (this.mediaAgents.setLayerLimit(value)) this.mesh.refreshAgentSubscriptionIntents();
+  }
+
+  async downloadMediaAgentInstaller(): Promise<void> {
+    this.clearMessages();
+    const target = this.mediaAgentTarget();
+    const label = this.mediaAgentLabel().trim();
+    if (!target || !label) {
+      this.pageError.set("Bitte wähle ein System und gib dem Rechner einen Namen.");
+      return;
+    }
+    try {
+      const pending = await this.mediaAgentOnboarding.downloadInstaller(target, label);
+      this.notice.set(`Installationsdatei ${pending.filename} wurde erstellt. Führe sie innerhalb von zehn Minuten bewusst aus.`);
+    } catch (error) {
+      this.pageError.set(error instanceof Error ? error.message : "Installationsdatei konnte nicht erstellt werden");
+    }
+  }
+
+  async revokeMediaAgent(agentId: string): Promise<void> {
+    if (!window.confirm("Diesen Media-Agent wirklich widerrufen? Laufende Agent-Verbindungen werden sofort beendet.")) return;
+    this.clearMessages();
+    try {
+      await this.mediaAgentOnboarding.revoke(agentId);
+      this.notice.set("Media-Agent wurde widerrufen. Die lokale Anwendung kann jetzt entfernt werden.");
+    } catch (error) {
+      this.pageError.set(error instanceof Error ? error.message : "Media-Agent konnte nicht widerrufen werden");
+    }
+  }
+
+  mediaAgentPlatformLabel(platform: MediaAgentPlatform): string {
+    return ({ linux: "Linux", macos: "macOS", windows: "Windows" })[platform];
+  }
+
+  mediaAgentLastSeen(timestamp: number): string {
+    return timestamp ? new Date(timestamp).toLocaleString("de-DE") : "noch nie angemeldet";
   }
 
   respondToMediaAgentTakeover(accepted: boolean): void {

@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { WebSocket } from "ws";
 
 import { createAppServer } from "../src/server.js";
 import { deviceProofMessage } from "../src/device-proof.js";
-import { mediaAgentAuthProof } from "../src/media-agent-protocol.js";
+import {
+  mediaAgentAuthProof,
+  mediaAgentEnrollmentProofMessage,
+  mediaAgentSignatureMessage,
+} from "../src/media-agent-protocol.js";
 import { AuthenticationError } from "../src/oidc-verifier.js";
 
 async function startTestServer(overrides = {}, serverOptions = {}) {
@@ -145,6 +152,9 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
     },
     mediaAgents: {
       configured: false,
+      selfService: false,
+      targets: [],
+      unsignedArtifacts: false,
       leaseMs: 30_000,
       maxStandbys: 2,
       shardMinParticipants: 6,
@@ -533,6 +543,158 @@ test("operator-bound media agent uses challenge auth, creator preference and epo
     && message.primary === null && message.routeEpoch > route.routeEpoch);
   assert.ok(fallback.routeEpoch > route.routeEpoch);
   browser.socket.close();
+});
+
+test("OIDC owner downloads, enrolls, authenticates and revokes a self-service media agent", async (context) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "media-agent-self-service-"));
+  fs.writeFileSync(path.join(directory, "media-edge-agent-linux-amd64"), "verified agent artifact");
+  const issuer = "https://identity.test/realms/ananta";
+  const oidcVerifier = {
+    async verify(token) {
+      if (token === "owner-token") {
+        return { issuer, subject: "owner", displayName: "Owner" };
+      }
+      if (token === "other-token") {
+        return { issuer, subject: "other", displayName: "Other" };
+      }
+      throw new AuthenticationError("invalid_token");
+    },
+  };
+  const publicOrigin = "https://webrtc.example";
+  const app = await startTestServer({
+    publicOrigin,
+    authMode: "required",
+    oidcIssuer: issuer,
+    oidcAudience: "webrtc-room-server",
+    oidcClientId: "webrtc-browser",
+    mediaAgentSelfServiceEnabled: true,
+    mediaAgentRegistrationDb: path.join(directory, "registrations.sqlite"),
+    mediaAgentArtifactDir: directory,
+  }, { oidcVerifier });
+  context.after(async () => {
+    await app.close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  const runtime = await fetch(`${app.httpUrl}/config`).then((response) => response.json());
+  assert.equal(runtime.mediaAgents.selfService, true);
+  assert.deepEqual(runtime.mediaAgents.targets.map(({ id }) => id), ["linux-amd64"]);
+
+  const unauthenticated = await fetch(`${app.httpUrl}/api/media-agents`);
+  assert.equal(unauthenticated.status, 401);
+  const unknownField = await fetch(`${app.httpUrl}/api/media-agents/enrollments`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: publicOrigin,
+      authorization: "Bearer owner-token",
+    },
+    body: JSON.stringify({ label: "Arbeitszimmer", target: "linux-amd64", authority: "room-owner" }),
+  });
+  assert.equal(unknownField.status, 400);
+  assert.equal((await unknownField.json()).error, "unknown_request_field");
+  const enrollmentResponse = await fetch(`${app.httpUrl}/api/media-agents/enrollments`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: publicOrigin,
+      authorization: "Bearer owner-token",
+    },
+    body: JSON.stringify({ label: "Arbeitszimmer", target: "linux-amd64" }),
+  });
+  assert.equal(enrollmentResponse.status, 201);
+  const enrollment = await enrollmentResponse.json();
+  assert.match(enrollment.agentId, /^edge-[a-f0-9]{16}$/);
+  assert.match(enrollment.artifactSha256, /^[a-f0-9]{64}$/);
+  assert.equal(Object.hasOwn(enrollment, "enrollmentToken"), false);
+  assert.match(enrollment.installer, new RegExp(enrollment.agentId));
+  assert.doesNotMatch(enrollment.installer, /owner-token/);
+
+  const artifact = await fetch(`${app.httpUrl}/downloads/media-edge-agent/linux-amd64`);
+  assert.equal(artifact.status, 200);
+  assert.equal(artifact.headers.get("x-content-sha256"), enrollment.artifactSha256);
+  assert.equal(await artifact.text(), "verified agent artifact");
+
+  const tokenMatch = enrollment.installer.match(/enrollment_token='([A-Za-z0-9_-]{43})'/);
+  assert.ok(tokenMatch);
+  const enrollmentToken = tokenMatch[1];
+  const keyPair = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const publicKey = { ...keyPair.publicKey.export({ format: "jwk" }), ext: true };
+  const enrollingAgent = connect(`${app.wsUrl}/media-agent`);
+  const enrollmentChallenge = await enrollingAgent.next((message) => message.type === "agent-challenge");
+  const enrollmentTimestamp = Date.now();
+  const enrollmentProof = crypto.sign(
+    "sha256",
+    Buffer.from(mediaAgentEnrollmentProofMessage(
+      enrollment.agentId,
+      enrollmentChallenge.nonce,
+      enrollmentTimestamp,
+      enrollmentToken,
+      publicKey,
+    )),
+    { key: keyPair.privateKey, dsaEncoding: "ieee-p1363" },
+  ).toString("base64url");
+  enrollingAgent.socket.send(JSON.stringify({
+    version: 1,
+    type: "enroll",
+    agentId: enrollment.agentId,
+    enrollmentToken,
+    timestamp: enrollmentTimestamp,
+    publicKey,
+    proof: enrollmentProof,
+  }));
+  const enrolled = await enrollingAgent.next((message) => message.type === "agent-enrolled");
+  assert.equal(enrolled.agentId, enrollment.agentId);
+  assert.match(enrolled.keyFingerprint, /^[A-Za-z0-9_-]{43}$/);
+
+  const registeredAgent = connect(`${app.wsUrl}/media-agent`);
+  const authChallenge = await registeredAgent.next((message) => message.type === "agent-challenge");
+  const timestamp = Date.now();
+  const proof = crypto.sign(
+    "sha256",
+    Buffer.from(mediaAgentSignatureMessage(enrollment.agentId, authChallenge.nonce, timestamp)),
+    { key: keyPair.privateKey, dsaEncoding: "ieee-p1363" },
+  ).toString("base64url");
+  registeredAgent.socket.send(JSON.stringify({
+    version: 2,
+    type: "authenticate",
+    agentId: enrollment.agentId,
+    timestamp,
+    proof,
+  }));
+  const authenticated = await registeredAgent.next((message) => message.type === "agent-authenticated");
+  assert.equal(authenticated.agentId, enrollment.agentId);
+
+  const ownerList = await fetch(`${app.httpUrl}/api/media-agents`, {
+    headers: { authorization: "Bearer owner-token" },
+  }).then((response) => response.json());
+  assert.deepEqual(ownerList.agents.map(({ id, label, platform, online, revokedAt }) => ({
+    id, label, platform, online, revokedAt,
+  })), [{
+    id: enrollment.agentId,
+    label: "Arbeitszimmer",
+    platform: "linux",
+    online: true,
+    revokedAt: 0,
+  }]);
+
+  const forbiddenRevocation = await fetch(`${app.httpUrl}/api/media-agents/${enrollment.agentId}`, {
+    method: "DELETE",
+    headers: { origin: publicOrigin, authorization: "Bearer other-token" },
+  });
+  assert.equal(forbiddenRevocation.status, 404);
+  const closed = new Promise((resolve) => registeredAgent.socket.once("close", resolve));
+  const revocation = await fetch(`${app.httpUrl}/api/media-agents/${enrollment.agentId}`, {
+    method: "DELETE",
+    headers: { origin: publicOrigin, authorization: "Bearer owner-token" },
+  });
+  assert.equal(revocation.status, 200);
+  await closed;
+  const revokedList = await fetch(`${app.httpUrl}/api/media-agents`, {
+    headers: { authorization: "Bearer owner-token" },
+  }).then((response) => response.json());
+  assert.equal(revokedList.agents[0].revokedAt > 0, true);
+  assert.equal(revokedList.agents[0].online, false);
 });
 
 test("control plane brokers only authorized agent federation and cross-shard layer readiness", async (context) => {

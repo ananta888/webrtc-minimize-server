@@ -27,6 +27,9 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.equal(config.mediaAgentRenewMs, 10_000);
   assert.equal(config.mediaAgentShardMinParticipants, 6);
   assert.equal(config.mediaAgentRateLimit, 2_000);
+  assert.equal(config.mediaAgentSelfServiceEnabled, false);
+  assert.equal(config.mediaAgentEnrollmentTtlMs, 600_000);
+  assert.equal(config.mediaAgentMaxPerPrincipal, 3);
 });
 
 test("loadConfig parses TURN configuration without preserving unknown fields", () => {
@@ -55,6 +58,7 @@ test("loadConfig rejects unsafe bounds and malformed public origins", () => {
   assert.throws(() => loadConfig({ MEDIA_E2EE_MODE: "required", PEER_DATA_OVERLAY_ENABLED: "false" }), /requires/);
   assert.throws(() => loadConfig({ PEER_EDGE_FALLBACK_MS: "500" }), /between 1000 and 30000/);
   assert.throws(() => loadConfig({ MEDIA_AGENT_RATE_LIMIT: "2001" }), /between 60 and 2000/);
+  assert.throws(() => loadConfig({ MEDIA_AGENT_SELF_SERVICE_ENABLED: "true" }), /requires OIDC/);
   assert.throws(
     () => loadConfig({ PEER_EDGE_FALLBACK_MS: "9000", INFRASTRUCTURE_TURN_FALLBACK_MS: "9000" }),
     /longer/,
@@ -136,6 +140,32 @@ test("loadConfig accepts explicit OIDC and ephemeral TURN settings", () => {
   assert.deepEqual(config.turnUrls, [
     "turn:turn.example:3478?transport=udp", "turns:turn.example:5349",
   ]);
+});
+
+test("loadConfig enables bounded HTTPS media-agent self service explicitly", () => {
+  const config = loadConfig({
+    PUBLIC_ORIGIN: "https://webrtc.example",
+    AUTH_MODE: "required",
+    OIDC_ISSUER: "https://identity.example/realms/webrtc",
+    OIDC_AUDIENCE: "rooms",
+    OIDC_CLIENT_ID: "browser",
+    MEDIA_AGENT_SELF_SERVICE_ENABLED: "true",
+    MEDIA_AGENT_ENROLLMENT_TTL_MS: "300000",
+    MEDIA_AGENT_MAX_PER_PRINCIPAL: "2",
+    MEDIA_AGENT_ENROLLMENT_RATE_LIMIT: "4",
+  });
+  assert.equal(config.mediaAgentSelfServiceEnabled, true);
+  assert.equal(config.mediaAgentEnrollmentTtlMs, 300_000);
+  assert.equal(config.mediaAgentMaxPerPrincipal, 2);
+  assert.equal(config.mediaAgentEnrollmentRateLimit, 4);
+  assert.throws(() => loadConfig({
+    PUBLIC_ORIGIN: "http://webrtc.example",
+    AUTH_MODE: "required",
+    OIDC_ISSUER: "https://identity.example/realms/webrtc",
+    OIDC_AUDIENCE: "rooms",
+    OIDC_CLIENT_ID: "browser",
+    MEDIA_AGENT_SELF_SERVICE_ENABLED: "true",
+  }), /HTTPS PUBLIC_ORIGIN/);
 });
 
 test("loadConfig derives a replaceable issuer from Keycloak origin and realm", () => {

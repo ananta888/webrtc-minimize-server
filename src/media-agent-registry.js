@@ -1,6 +1,10 @@
 import crypto from "node:crypto";
 
-import { mediaAgentAuthProof } from "./media-agent-protocol.js";
+import {
+  mediaAgentAuthProof,
+  mediaAgentEnrollmentProofMessage,
+  mediaAgentSignatureMessage,
+} from "./media-agent-protocol.js";
 import { planMediaAgents } from "./media-agent-election.js";
 import { ProtocolError } from "./protocol.js";
 
@@ -50,6 +54,26 @@ function proofMatches(expected, actual) {
   const left = Buffer.from(expected);
   const right = Buffer.from(actual);
   return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function signatureMatches(publicKey, message, proof) {
+  try {
+    return crypto.verify(
+      "sha256",
+      Buffer.from(message),
+      { key: crypto.createPublicKey({ key: publicKey, format: "jwk" }), dsaEncoding: "ieee-p1363" },
+      Buffer.from(proof, "base64url"),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function normalizeDefinition(definition) {
+  return Object.freeze({
+    ...definition,
+    authType: definition.authType || "shared-secret",
+  });
 }
 
 function sorted(values) {
@@ -202,6 +226,7 @@ export class MediaAgentRegistry {
   #maxStandbys;
   #shardMinParticipants;
   #takeoverTtlMs;
+  #enrollmentStore;
 
   constructor({
     definitions = [],
@@ -209,21 +234,15 @@ export class MediaAgentRegistry {
     maxStandbys = 2,
     shardMinParticipants = 6,
     takeoverTtlMs = 20_000,
+    enrollmentStore = null,
   } = {}) {
     this.#leaseMs = leaseMs;
     this.#maxStandbys = maxStandbys;
     this.#shardMinParticipants = shardMinParticipants;
     this.#takeoverTtlMs = takeoverTtlMs;
+    this.#enrollmentStore = enrollmentStore;
     for (const definition of definitions) {
-      this.#agents.set(definition.id, {
-        definition,
-        socket: null,
-        authenticatedAt: 0,
-        lastSeen: 0,
-        messages: [],
-        capability: { ...DEFAULT_CAPABILITY },
-        draining: false,
-      });
+      this.registerDefinition(definition);
     }
   }
 
@@ -241,13 +260,19 @@ export class MediaAgentRegistry {
     if (!challenge || challenge.expiresAt < now || Math.abs(now - message.timestamp) > AUTH_WINDOW_MS || !agent) {
       throw new ProtocolError("agent_authentication_failed");
     }
-    const expected = mediaAgentAuthProof(
-      agent.definition.sharedSecret,
-      message.agentId,
-      challenge.nonce,
-      message.timestamp,
-    );
-    if (!proofMatches(expected, message.proof)) throw new ProtocolError("agent_authentication_failed");
+    const validProof = agent.definition.authType === "public-key"
+      ? message.version === 2 && signatureMatches(
+        agent.definition.publicKey,
+        mediaAgentSignatureMessage(message.agentId, challenge.nonce, message.timestamp),
+        message.proof,
+      )
+      : message.version === undefined && proofMatches(mediaAgentAuthProof(
+        agent.definition.sharedSecret,
+        message.agentId,
+        challenge.nonce,
+        message.timestamp,
+      ), message.proof);
+    if (!validProof) throw new ProtocolError("agent_authentication_failed");
     const replacedSocket = agent.socket && agent.socket !== socket ? agent.socket : null;
     if (replacedSocket) this.#bySocket.delete(replacedSocket);
     agent.socket = socket;
@@ -256,7 +281,89 @@ export class MediaAgentRegistry {
     agent.messages = [];
     agent.draining = false;
     this.#bySocket.set(socket, agent);
+    if (agent.definition.authType === "public-key") {
+      this.#enrollmentStore?.markAuthenticated(agent.definition.id, now);
+    }
     return Object.freeze({ id: agent.definition.id, replacedSocket });
+  }
+
+  enroll(socket, message, now = Date.now()) {
+    const challenge = this.#challenges.get(socket);
+    this.#challenges.delete(socket);
+    if (!this.#enrollmentStore || !challenge || challenge.expiresAt < now
+      || Math.abs(now - message.timestamp) > AUTH_WINDOW_MS || this.#agents.has(message.agentId)) {
+      throw new ProtocolError("agent_enrollment_failed");
+    }
+    try {
+      this.#enrollmentStore.pendingEnrollment(message.enrollmentToken, message.agentId, now);
+    } catch {
+      throw new ProtocolError("agent_enrollment_failed");
+    }
+    const validProof = signatureMatches(
+      message.publicKey,
+      mediaAgentEnrollmentProofMessage(
+        message.agentId,
+        challenge.nonce,
+        message.timestamp,
+        message.enrollmentToken,
+        message.publicKey,
+      ),
+      message.proof,
+    );
+    if (!validProof) throw new ProtocolError("agent_enrollment_failed");
+    let definition;
+    try {
+      definition = this.#enrollmentStore.completeEnrollment({
+        token: message.enrollmentToken,
+        agentId: message.agentId,
+        publicKey: message.publicKey,
+        now,
+      });
+    } catch {
+      throw new ProtocolError("agent_enrollment_failed");
+    }
+    this.registerDefinition(definition);
+    return Object.freeze({
+      id: definition.id,
+      ownerPrincipal: definition.ownerPrincipal,
+      keyFingerprint: definition.keyFingerprint,
+    });
+  }
+
+  registerDefinition(input) {
+    const definition = normalizeDefinition(input);
+    if (this.#agents.has(definition.id)) throw new ProtocolError("media_agent_id_conflict");
+    this.#agents.set(definition.id, {
+      definition,
+      socket: null,
+      authenticatedAt: 0,
+      lastSeen: 0,
+      messages: [],
+      capability: { ...DEFAULT_CAPABILITY },
+      draining: false,
+    });
+    return definition;
+  }
+
+  revoke(agentId) {
+    const agent = this.#agents.get(agentId);
+    if (!agent || agent.definition.authType !== "public-key") {
+      throw new ProtocolError("media_agent_not_found");
+    }
+    const affectedRoomIds = this.roomsAffectedByAgent(agentId);
+    for (const [roomId, consents] of this.#consents) {
+      for (const [peerId, consent] of consents) {
+        if (consent.agentId === agentId) consents.delete(peerId);
+      }
+      if (consents.size === 0) this.#consents.delete(roomId);
+    }
+    if (agent.socket) this.#bySocket.delete(agent.socket);
+    this.#agents.delete(agentId);
+    return Object.freeze({
+      affectedRoomIds: Object.freeze(affectedRoomIds),
+      ownerPrincipal: agent.definition.ownerPrincipal,
+      socket: agent.socket,
+    });
   }
 
   connection(socket) {
@@ -893,5 +1000,9 @@ export class MediaAgentRegistry {
 
   get configured() {
     return this.#agents.size > 0;
+  }
+
+  get enrollmentEnabled() {
+    return Boolean(this.#enrollmentStore);
   }
 }

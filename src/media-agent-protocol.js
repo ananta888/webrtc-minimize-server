@@ -5,6 +5,9 @@ import { PEER_ID_PATTERN, ProtocolError, TRACK_ID_PATTERN } from "./protocol.js"
 export const MEDIA_AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 export const MEDIA_AGENT_REQUEST_PATTERN = /^[a-f0-9]{32}$/;
 const AUTH_PROOF_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const SIGNATURE_PROOF_PATTERN = /^[A-Za-z0-9_-]{86}$/;
+const ENROLLMENT_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const JWK_COORDINATE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const ROOM_ID_PATTERN = /^[a-z0-9][a-z0-9-]{5,47}$/;
 const BATTERY_STATES = new Set(["critical", "limited", "mains", "unknown"]);
 const NETWORK_STATES = new Set(["constrained", "normal", "fast", "unknown"]);
@@ -33,6 +36,16 @@ function integer(value, name, minimum, maximum) {
     throw new ProtocolError(`invalid_agent_${name}`);
   }
   return value;
+}
+
+function agentPublicKey(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || !exact(value, new Set(["kty", "crv", "x", "y", "ext"]))
+    || value.kty !== "EC" || value.crv !== "P-256" || value.ext !== true
+    || !JWK_COORDINATE_PATTERN.test(value.x || "") || !JWK_COORDINATE_PATTERN.test(value.y || "")) {
+    throw new ProtocolError("invalid_agent_public_key");
+  }
+  return Object.freeze({ kty: "EC", crv: "P-256", x: value.x, y: value.y, ext: true });
 }
 
 function description(value) {
@@ -201,14 +214,39 @@ export function parseBrowserMediaAgentMessage(raw) {
 
 export function parseMediaAgentMessage(raw) {
   const value = parse(raw);
+  if (value.type === "enroll") {
+    if (!exact(value, new Set([
+      "version", "type", "agentId", "enrollmentToken", "timestamp", "publicKey", "proof",
+    ]))) throw new ProtocolError("unknown_agent_enrollment_field");
+    if (value.version !== 1 || !MEDIA_AGENT_ID_PATTERN.test(value.agentId || "")
+      || !ENROLLMENT_TOKEN_PATTERN.test(value.enrollmentToken || "")
+      || !SIGNATURE_PROOF_PATTERN.test(value.proof || "")) {
+      throw new ProtocolError("invalid_agent_enrollment");
+    }
+    return Object.freeze({
+      version: 1,
+      type: "enroll",
+      agentId: value.agentId,
+      enrollmentToken: value.enrollmentToken,
+      timestamp: integer(value.timestamp, "enrollment_timestamp", 0, Number.MAX_SAFE_INTEGER),
+      publicKey: agentPublicKey(value.publicKey),
+      proof: value.proof,
+    });
+  }
   if (value.type === "authenticate") {
-    if (!exact(value, new Set(["type", "agentId", "timestamp", "proof"]))) {
+    const publicKeyAuthentication = value.version === 2;
+    const fields = publicKeyAuthentication
+      ? new Set(["version", "type", "agentId", "timestamp", "proof"])
+      : new Set(["type", "agentId", "timestamp", "proof"]);
+    if (!exact(value, fields)) {
       throw new ProtocolError("unknown_agent_auth_field");
     }
-    if (!MEDIA_AGENT_ID_PATTERN.test(value.agentId || "") || !AUTH_PROOF_PATTERN.test(value.proof || "")) {
+    if (!MEDIA_AGENT_ID_PATTERN.test(value.agentId || "")
+      || !(publicKeyAuthentication ? SIGNATURE_PROOF_PATTERN : AUTH_PROOF_PATTERN).test(value.proof || "")) {
       throw new ProtocolError("invalid_agent_authentication");
     }
     return Object.freeze({
+      ...(publicKeyAuthentication ? { version: 2 } : {}),
       type: value.type,
       agentId: value.agentId,
       timestamp: integer(value.timestamp, "auth_timestamp", 0, Number.MAX_SAFE_INTEGER),
@@ -341,4 +379,12 @@ export function mediaAgentAuthProof(secret, agentId, nonce, timestamp) {
   return crypto.createHmac("sha256", secret)
     .update(`v1\n${agentId}\n${nonce}\n${timestamp}`)
     .digest("base64url");
+}
+
+export function mediaAgentSignatureMessage(agentId, nonce, timestamp) {
+  return `v2\n${agentId}\n${nonce}\n${timestamp}`;
+}
+
+export function mediaAgentEnrollmentProofMessage(agentId, nonce, timestamp, enrollmentToken, publicKey) {
+  return `v1\n${agentId}\n${nonce}\n${timestamp}\n${enrollmentToken}\n${publicKey.x}\n${publicKey.y}`;
 }

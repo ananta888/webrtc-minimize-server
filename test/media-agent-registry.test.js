@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import test from "node:test";
 
+import { MediaAgentEnrollmentStore } from "../src/media-agent-enrollment-store.js";
 import { MediaAgentRegistry } from "../src/media-agent-registry.js";
-import { mediaAgentAuthProof } from "../src/media-agent-protocol.js";
+import {
+  mediaAgentAuthProof,
+  mediaAgentEnrollmentProofMessage,
+  mediaAgentSignatureMessage,
+} from "../src/media-agent-protocol.js";
 
 const issuer = "https://identity.test/realms/ananta";
 const secret = "agent-secret-that-is-long-enough-123456";
@@ -24,6 +30,52 @@ function authenticateAgent(registry, socket, agentId, agentSecret, now = 10_000)
 function authenticate(registry, socket, now = 10_000) {
   return authenticateAgent(registry, socket, "creator-edge", secret, now);
 }
+
+test("self-service enrollment proves possession and later authenticates without a shared secret", () => {
+  const store = new MediaAgentEnrollmentStore();
+  const enrollment = store.createEnrollment({
+    principal: `${issuer}|owner`, label: "Arbeitszimmer", platform: "linux", now: 1_000,
+  });
+  const registry = new MediaAgentRegistry({ enrollmentStore: store });
+  const keys = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const publicKey = { ...keys.publicKey.export({ format: "jwk" }), ext: true };
+  const enrollmentSocket = {};
+  const challenge = registry.issueChallenge(enrollmentSocket, 1_001);
+  const enrollmentProof = crypto.sign(
+    "sha256",
+    Buffer.from(mediaAgentEnrollmentProofMessage(
+      enrollment.agentId, challenge.nonce, 1_002, enrollment.token, publicKey,
+    )),
+    { key: keys.privateKey, dsaEncoding: "ieee-p1363" },
+  ).toString("base64url");
+  const enrolled = registry.enroll(enrollmentSocket, {
+    version: 1,
+    type: "enroll",
+    agentId: enrollment.agentId,
+    enrollmentToken: enrollment.token,
+    timestamp: 1_002,
+    publicKey,
+    proof: enrollmentProof,
+  }, 1_002);
+  assert.equal(enrolled.ownerPrincipal, `${issuer}|owner`);
+  assert.throws(() => registry.enroll(enrollmentSocket, {
+    version: 1, type: "enroll", agentId: enrollment.agentId, enrollmentToken: enrollment.token,
+    timestamp: 1_002, publicKey, proof: enrollmentProof,
+  }, 1_002), /agent_enrollment_failed/);
+
+  const agentSocket = {};
+  const authChallenge = registry.issueChallenge(agentSocket, 1_003);
+  const proof = crypto.sign(
+    "sha256",
+    Buffer.from(mediaAgentSignatureMessage(enrollment.agentId, authChallenge.nonce, 1_004)),
+    { key: keys.privateKey, dsaEncoding: "ieee-p1363" },
+  ).toString("base64url");
+  assert.equal(registry.authenticate(agentSocket, {
+    version: 2, type: "authenticate", agentId: enrollment.agentId, timestamp: 1_004, proof,
+  }, 1_004).id, enrollment.agentId);
+  assert.equal(registry.configuredForPrincipal(enrolled.ownerPrincipal)[0].online, true);
+  store.close();
+});
 
 test("agent auth consumes one challenge, binds exact owner and never exposes the shared secret", () => {
   const registry = new MediaAgentRegistry({ definitions: [{

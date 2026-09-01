@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/media-agent/agent-enrollment.v1.schema.json",
+  "title": "One-time native media-agent enrollment v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "type", "agentId", "enrollmentToken", "timestamp", "publicKey", "proof"],
+  "properties": {
+    "version": { "const": 1 },
+    "type": { "const": "enroll" },
+    "agentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
+    "enrollmentToken": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+    "timestamp": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "publicKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kty", "crv", "x", "y", "ext"],
+      "properties": {
+        "kty": { "const": "EC" },
+        "crv": { "const": "P-256" },
+        "x": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+        "y": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+        "ext": { "const": true }
+      }
+    },
+    "proof": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$" }
+  }
+}

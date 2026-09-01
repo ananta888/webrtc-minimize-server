@@ -16,29 +16,31 @@ import (
 const maximumServerControlBytes = 32 * 1024 * 1024
 
 var (
-	peerIDPattern  = regexp.MustCompile(`^[a-f0-9]{16}$`)
-	roomIDPattern  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{5,47}$`)
-	trackIDPattern = regexp.MustCompile(`^[A-Za-z0-9_={}:-]{1,128}$`)
-	linkIDPattern  = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
-	noncePattern   = regexp.MustCompile(`^[A-Za-z0-9_-]{32}$`)
-	codePattern    = regexp.MustCompile(`^[a-z0-9_]{1,64}$`)
+	peerIDPattern          = regexp.MustCompile(`^[a-f0-9]{16}$`)
+	roomIDPattern          = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{5,47}$`)
+	trackIDPattern         = regexp.MustCompile(`^[A-Za-z0-9_={}:-]{1,128}$`)
+	linkIDPattern          = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
+	noncePattern           = regexp.MustCompile(`^[A-Za-z0-9_-]{32}$`)
+	enrollmentTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
+	codePattern            = regexp.MustCompile(`^[a-z0-9_]{1,64}$`)
 )
 
 type serverMessage struct {
-	Version     int                        `json:"version"`
-	Type        string                     `json:"type"`
-	Nonce       string                     `json:"nonce"`
-	ExpiresAt   int64                      `json:"expiresAt"`
-	AgentID     string                     `json:"agentId"`
-	Code        string                     `json:"code"`
-	Leases      []agentLease               `json:"leases"`
-	RoomID      string                     `json:"roomId"`
-	PeerID      string                     `json:"peerId"`
-	RouteEpoch  int64                      `json:"routeEpoch"`
-	LinkID      string                     `json:"linkId"`
-	FromAgentID string                     `json:"fromAgentId"`
-	Description *webrtc.SessionDescription `json:"description"`
-	Candidate   json.RawMessage            `json:"candidate"`
+	Version        int                        `json:"version"`
+	Type           string                     `json:"type"`
+	Nonce          string                     `json:"nonce"`
+	ExpiresAt      int64                      `json:"expiresAt"`
+	AgentID        string                     `json:"agentId"`
+	KeyFingerprint string                     `json:"keyFingerprint"`
+	Code           string                     `json:"code"`
+	Leases         []agentLease               `json:"leases"`
+	RoomID         string                     `json:"roomId"`
+	PeerID         string                     `json:"peerId"`
+	RouteEpoch     int64                      `json:"routeEpoch"`
+	LinkID         string                     `json:"linkId"`
+	FromAgentID    string                     `json:"fromAgentId"`
+	Description    *webrtc.SessionDescription `json:"description"`
+	Candidate      json.RawMessage            `json:"candidate"`
 }
 
 type agentLease struct {
@@ -152,6 +154,8 @@ func decodeServerMessage(raw []byte) (serverMessage, error) {
 		fields = []string{"version", "type", "nonce", "expiresAt"}
 	case "agent-authenticated":
 		fields = []string{"version", "type", "agentId"}
+	case "agent-enrolled":
+		fields = []string{"version", "type", "agentId", "keyFingerprint"}
 	case "agent-sync":
 		fields = []string{"version", "type", "leases"}
 	case "peer-signal":
@@ -203,8 +207,11 @@ func decodeServerMessage(raw []byte) (serverMessage, error) {
 	if message.Type == "agent-challenge" && !noncePattern.MatchString(message.Nonce) {
 		return serverMessage{}, fmt.Errorf("invalid authentication challenge")
 	}
-	if message.Type == "agent-authenticated" && !agentIDPattern.MatchString(message.AgentID) {
+	if (message.Type == "agent-authenticated" || message.Type == "agent-enrolled") && !agentIDPattern.MatchString(message.AgentID) {
 		return serverMessage{}, fmt.Errorf("invalid authenticated agent")
+	}
+	if message.Type == "agent-enrolled" && !enrollmentTokenPattern.MatchString(message.KeyFingerprint) {
+		return serverMessage{}, fmt.Errorf("invalid enrolled agent fingerprint")
 	}
 	if message.Type == "agent-error" && !codePattern.MatchString(message.Code) {
 		return serverMessage{}, fmt.Errorf("invalid agent error")

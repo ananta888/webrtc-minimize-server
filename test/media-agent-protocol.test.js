@@ -75,6 +75,29 @@ test("native agent contracts validate auth, capability, track and exact fields",
     type: "authenticate", agentId: "laptop-edge", timestamp: 1_000, proof,
   }))), { type: "authenticate", agentId: "laptop-edge", timestamp: 1_000, proof });
   assert.equal(parseMediaAgentMessage(Buffer.from(JSON.stringify({
+    version: 2, type: "authenticate", agentId: "laptop-edge", timestamp: 1_000,
+    proof: "A".repeat(86),
+  }))).version, 2);
+  assert.equal(parseMediaAgentMessage(Buffer.from(JSON.stringify({
+    version: 1,
+    type: "enroll",
+    agentId: "edge-0123456789abcdef",
+    enrollmentToken: "A".repeat(43),
+    timestamp: 1_000,
+    publicKey: { kty: "EC", crv: "P-256", x: "A".repeat(43), y: "B".repeat(43), ext: true },
+    proof: "C".repeat(86),
+  }))).type, "enroll");
+  assert.throws(() => parseMediaAgentMessage(Buffer.from(JSON.stringify({
+    version: 1,
+    type: "enroll",
+    agentId: "edge-0123456789abcdef",
+    enrollmentToken: "A".repeat(43),
+    timestamp: 1_000,
+    publicKey: { kty: "EC", crv: "P-256", x: "A".repeat(43), y: "B".repeat(43), ext: true },
+    proof: "C".repeat(86),
+    authority: "room-owner",
+  }))), /unknown_agent_enrollment_field/);
+  assert.equal(parseMediaAgentMessage(Buffer.from(JSON.stringify({
     type: "capability", visible: true, battery: "mains", network: "fast",
     capacity: 80, load: 5, maxRooms: 8, maxPeers: 20, maxTracks: 80,
   }))).maxRooms, 8);

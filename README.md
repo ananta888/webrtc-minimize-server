@@ -142,6 +142,10 @@ Die öffentliche Voreinstellung steht in `.env.example`, das getrennte localhost
 - `MEDIA_AGENT_LEASE_MS`, `MEDIA_AGENT_RENEW_MS`, `MEDIA_AGENT_MAX_STANDBYS`, `MEDIA_AGENT_TAKEOVER_TTL_MS`: kurze Agent-Leases, Erneuerung, höchstens zwei Standbys und sichtbares Übernahmefenster.
 - `MEDIA_AGENT_SHARD_MIN_PARTICIPANTS`: Raumgröße, ab der die Control Plane Publisher über Primary und Standbys verteilt; Default 6.
 - `MEDIA_AGENT_RATE_LIMIT`: geschlossene Agent-Control-Nachrichten je zehn Sekunden; Default und Maximum 2.000 für den begrenzten 20-Peer-/Vier-Publikations-Burst.
+- `MEDIA_AGENT_SELF_SERVICE_ENABLED`: aktiviert ausschließlich mit OIDC und einer HTTPS-`PUBLIC_ORIGIN` die kontogebundene Installation aus der Angular-App; im nackten Entwicklungsmodus ist sie aus.
+- `MEDIA_AGENT_REGISTRATION_DB`: persistenter SQLite-Pfad für öffentliche Agent-Schlüssel, Besitzerbindung und gehashte Einmaltickets; Default im Compose-Volume ist `/app/data/media-agent-registrations.sqlite`.
+- `MEDIA_AGENT_ARTIFACT_DIR`: Verzeichnis der reproduzierbar gebauten Linux-, macOS- und Windows-Binärdateien. Nur tatsächlich vorhandene Ziele erscheinen im Browser.
+- `MEDIA_AGENT_ENROLLMENT_TTL_MS`, `MEDIA_AGENT_MAX_PER_PRINCIPAL`, `MEDIA_AGENT_ENROLLMENT_RATE_LIMIT`: Ablaufzeit, aktive Gerätequote und stündliche Enrollment-Grenze.
 - `PAIR_WORKSPACE_ENABLED`, `PAIR_WORKSPACE_DB`: optionaler persistenter Pair-Workspace und Pfad seines SQLite-Volumes.
 
 Beispiel für einen externen Coturn-Dienst:
@@ -183,6 +187,10 @@ Die Control Plane benötigt denselben Agenten ausschließlich in ihrer privaten 
 MEDIA_EDGE_AGENTS_JSON='[{"id":"laptop-edge","ownerPrincipal":"https://keycloak.example/realms/example|oidc-subject","sharedSecret":"aus-secret-management"}]'
 ```
 
+Für neue freiwillige Rechner ist im öffentlichen Compose-Preset zusätzlich der Self-Service-Pfad aktiv. Ein angemeldeter Nutzer öffnet **Einstellungen → Dein Media-Agent**, wählt Betriebssystem und Architektur und erzeugt mit einem sichtbaren Klick eine Installationsdatei. Diese enthält nur ein maximal zehn Minuten gültiges Einmalticket. Der Installer lädt das exakte Artefakt per HTTPS, prüft den eingebetteten SHA-256-Wert, erzeugt lokal eine P-256-Identität und richtet einen Autostart im Benutzerkonto ein. Der private Schlüssel verlässt den Rechner nicht; die Control Plane speichert nur den öffentlichen Schlüssel. Das langlebige HMAC-Secret aus `MEDIA_EDGE_AGENTS_JSON` bleibt ausschließlich als kompatibler Betreiberpfad bestehen und wird nicht an den Browser gegeben.
+
+Download und Ausführung sind getrennte, explizite Nutzeraktionen. Seitenladen, Öffnen der Einstellungen oder ein Remotesignal startet weder Installation noch Capture, Portfreigabe oder Raum-Consent. Die Pakete sind derzeit nicht kommerziell code-signiert/notarisiert; UI und Installer weisen auf mögliche Betriebssystemwarnungen hin. Linux ist der reale Rolloutpfad dieses Projekts, macOS und Windows werden cross-kompiliert und vertraglich geprüft, bleiben bis zu einem echten Gerätetest aber ausdrücklich `unverified`.
+
 Consent ist in der Raumoberfläche standardmäßig aus und widerrufbar. Eine Übernahme erklärt Upload-, CPU-, Batterie-, IP-/Metadaten- und TURN-Folgen. Ein fester Port ist nicht zwingend: `MEDIA_AGENT_UDP_PORT=0` nutzt normale ICE-Sockets und bei Bedarf TURN. Eine feste UDP-Weiterleitung, beispielsweise `44000/udp`, plus passendes `MEDIA_AGENT_PUBLIC_IP` verbessert direkte Erreichbarkeit. Browser und direkte Agent-Agent-Links verwenden dieselben ICE-Grundsätze. Betrieb, Trust-Grenzen, Creator-Wahl, Failover, Simulcast und Föderation beschreibt [docs/blind-media-edge-agent.md](docs/blind-media-edge-agent.md).
 
 ### Kapazitätsgrenze
@@ -206,8 +214,12 @@ Für das Ananta-Preset muss ein HTTPS-Reverse-Proxy `webrtc.ananta.de` auf Port 
 - `GET|POST /api/workspaces/:id/events`: permission-aware Timeline fortsetzen oder idempotentes Event schreiben
 - `PUT /api/workspaces/:id/cursor|presence`: monotonen Cursor beziehungsweise epochgebundene Presence-Lease setzen
 - `POST /api/workspaces/:id/roles`: Rolle mit erwarteter Membership-Revision ändern oder widerrufen
+- `GET /api/media-agents`: ausschließlich die eigenen OIDC-gebundenen Agentregistrierungen und ihren Online-/Widerrufszustand lesen
+- `POST /api/media-agents/enrollments`: nach expliziter Nutzeraktion ein kurzlebiges Enrollment samt plattformspezifischem, checksum-gebundenem Installer erzeugen
+- `DELETE /api/media-agents/:id`: eine eigene dynamische Registrierung widerrufen und ihre aktive Verbindung sofort beenden
+- `GET /downloads/media-edge-agent/:target`: eines der exakt freigegebenen, im Runtime-Katalog veröffentlichten nativen Artefakte laden
 - `GET /signal?ticket=…`: WebSocket-Signaling mit einmal verwendbarem Session-Ticket
-- `GET /media-agent`: originloser WSS-Control-Pfad für vorregistrierte native Agenten mit HMAC-Challenge; kein Browser- oder Medienendpunkt
+- `GET /media-agent`: originloser WSS-Control-Pfad für native Agenten mit kompatibler HMAC- oder registrierter P-256-Challenge sowie einmaligem P-256-Enrollment; kein Browser- oder Medienendpunkt
 
 ## Sicherheitsstatus
 

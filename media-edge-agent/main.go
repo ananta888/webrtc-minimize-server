@@ -17,19 +17,42 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args[1:]); err != nil {
 		log.Printf("media edge agent stopped: %v", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(arguments []string) error {
 	cfg, err := loadConfig(os.Getenv)
 	if err != nil {
 		return err
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	if len(arguments) > 0 {
+		if len(arguments) != 1 || arguments[0] != "enroll" {
+			return fmt.Errorf("usage: media-edge-agent [enroll]")
+		}
+		if cfg.sharedSecret != "" || cfg.enrollmentToken == "" {
+			return fmt.Errorf("enrollment requires MEDIA_AGENT_IDENTITY_FILE and MEDIA_AGENT_ENROLLMENT_TOKEN")
+		}
+		identity, identityErr := loadOrCreateAgentIdentity(cfg.identityFile)
+		if identityErr != nil {
+			return identityErr
+		}
+		return enrollAgent(ctx, cfg, identity)
+	}
+	if cfg.enrollmentToken != "" {
+		return fmt.Errorf("MEDIA_AGENT_ENROLLMENT_TOKEN is accepted only by the enroll command")
+	}
+	var identity *agentIdentity
+	if cfg.identityFile != "" {
+		identity, err = loadAgentIdentity(cfg.identityFile)
+		if err != nil {
+			return err
+		}
+	}
 	api, closeTransport, err := createWebRTCAPI(cfg)
 	if err != nil {
 		return err
@@ -37,7 +60,7 @@ func run() error {
 	defer closeTransport()
 	agent := newMediaAgent(cfg, api)
 	defer agent.close()
-	client := newSignalingClient(cfg, agent)
+	client := newSignalingClient(cfg, agent, identity)
 	agent.setSignaling(client)
 	go agent.prune(ctx)
 	return client.run(ctx)

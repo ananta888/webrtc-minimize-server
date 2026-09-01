@@ -62,3 +62,26 @@ func TestConfigHasNoMediaKeyOrDecryptListener(t *testing.T) {
 		t.Fatal("agent config unexpectedly contains a media-key or decrypt endpoint")
 	}
 }
+
+func TestLoadConfigAcceptsLocalP256IdentityInsteadOfSharedSecret(t *testing.T) {
+	values := validEnvironment()
+	delete(values, "MEDIA_AGENT_SHARED_SECRET")
+	values["MEDIA_AGENT_IDENTITY_FILE"] = "/tmp/ananta-agent-identity.pem"
+	values["MEDIA_AGENT_ENROLLMENT_TOKEN"] = strings.Repeat("A", 43)
+	cfg, err := loadConfig(environment(values))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.identityFile != values["MEDIA_AGENT_IDENTITY_FILE"] || cfg.enrollmentToken != values["MEDIA_AGENT_ENROLLMENT_TOKEN"] {
+		t.Fatal("P-256 identity enrollment config was not retained")
+	}
+	values["MEDIA_AGENT_SHARED_SECRET"] = "0123456789abcdef0123456789abcdef"
+	if _, err = loadConfig(environment(values)); err == nil {
+		t.Fatal("ambiguous identity and shared-secret authentication was accepted")
+	}
+	delete(values, "MEDIA_AGENT_SHARED_SECRET")
+	delete(values, "MEDIA_AGENT_IDENTITY_FILE")
+	if _, err = loadConfig(environment(values)); err == nil {
+		t.Fatal("missing media-agent authentication was accepted")
+	}
+}

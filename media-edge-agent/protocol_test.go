@@ -61,6 +61,7 @@ func TestServerControlMessagesRequireVersionAndExactFields(t *testing.T) {
 	tests := []string{
 		`{"version":1,"type":"agent-challenge","nonce":"0123456789abcdef0123456789abcdef","expiresAt":20000}`,
 		`{"version":1,"type":"agent-authenticated","agentId":"laptop-edge"}`,
+		`{"version":1,"type":"agent-enrolled","agentId":"laptop-edge","keyFingerprint":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}`,
 		`{"version":1,"type":"agent-sync","leases":[]}`,
 		`{"version":1,"type":"peer-signal","roomId":"room-123456","peerId":"0123456789abcdef","routeEpoch":2,"description":{"type":"offer","sdp":"v=0\\r\\n"}}`,
 		`{"version":1,"type":"peer-signal","roomId":"room-123456","peerId":"0123456789abcdef","routeEpoch":2,"candidate":null}`,

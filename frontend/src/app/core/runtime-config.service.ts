@@ -14,6 +14,13 @@ export interface RuntimeConfig {
   }>;
   readonly mediaAgents: Readonly<{
     configured: boolean;
+    selfService: boolean;
+    targets: readonly Readonly<{
+      id: string;
+      platform: "linux" | "macos" | "windows";
+      label: string;
+    }>[];
+    unsignedArtifacts: boolean;
     leaseMs: number;
     maxStandbys: number;
     shardMinParticipants: number;
@@ -48,6 +55,14 @@ export class RuntimeConfigService {
       || config.mediaE2ee.cipherSuite !== "AES_128_GCM_SHA256_128"
       || typeof config.edgeRelayConfigured !== "boolean" || !config.mediaAgents
       || typeof config.mediaAgents.configured !== "boolean"
+      || typeof config.mediaAgents.selfService !== "boolean"
+      || !Array.isArray(config.mediaAgents.targets)
+      || config.mediaAgents.targets.length > 5
+      || config.mediaAgents.targets.some((target) => !target || typeof target !== "object"
+        || !/^(?:linux|macos|windows)-(?:amd64|arm64)$/.test(target.id)
+        || !new Set(["linux", "macos", "windows"]).has(target.platform)
+        || typeof target.label !== "string" || target.label.length < 1 || target.label.length > 64)
+      || typeof config.mediaAgents.unsignedArtifacts !== "boolean"
       || !Number.isSafeInteger(config.mediaAgents.leaseMs)
       || config.mediaAgents.leaseMs < 15_000 || config.mediaAgents.leaseMs > 120_000
       || !Number.isSafeInteger(config.mediaAgents.maxStandbys)

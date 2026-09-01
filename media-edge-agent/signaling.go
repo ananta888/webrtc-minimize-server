@@ -13,14 +13,15 @@ import (
 )
 
 type signalingClient struct {
-	cfg   config
-	agent *mediaAgent
-	mu    sync.Mutex
-	conn  *websocket.Conn
+	cfg      config
+	agent    *mediaAgent
+	identity *agentIdentity
+	mu       sync.Mutex
+	conn     *websocket.Conn
 }
 
-func newSignalingClient(cfg config, agent *mediaAgent) *signalingClient {
-	return &signalingClient{cfg: cfg, agent: agent}
+func newSignalingClient(cfg config, agent *mediaAgent, identity *agentIdentity) *signalingClient {
+	return &signalingClient{cfg: cfg, agent: agent, identity: identity}
 }
 
 func (c *signalingClient) run(ctx context.Context) error {
@@ -118,10 +119,20 @@ func (c *signalingClient) runConnection(ctx context.Context) error {
 				return fmt.Errorf("invalid authentication challenge")
 			}
 			timestamp := time.Now().UnixMilli()
-			if err = c.send(map[string]any{
+			authentication := map[string]any{
 				"type": "authenticate", "agentId": c.cfg.agentID, "timestamp": timestamp,
-				"proof": authProof(c.cfg.sharedSecret, c.cfg.agentID, message.Nonce, timestamp),
-			}); err != nil {
+			}
+			if c.identity != nil {
+				proof, signErr := c.identity.sign(signatureMessage(c.cfg.agentID, message.Nonce, timestamp))
+				if signErr != nil {
+					return signErr
+				}
+				authentication["version"] = 2
+				authentication["proof"] = proof
+			} else {
+				authentication["proof"] = authProof(c.cfg.sharedSecret, c.cfg.agentID, message.Nonce, timestamp)
+			}
+			if err = c.send(authentication); err != nil {
 				return err
 			}
 		case "agent-authenticated":

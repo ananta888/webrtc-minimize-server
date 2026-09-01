@@ -22,6 +22,11 @@ keine SFrame-Schlüssel.
   Control Plane autorisiertes SDP/ICE-Brokering und beidseitiger Linkzustand.
 - `federation-control.v1`: strikt begrenzte Agent-Agent-Acks und Statistiken;
   daraus entsteht keine Membership oder Policy-Autorität.
+- `agent-enrollment.v1`: kurzlebiges Einmalticket, öffentlicher P-256-JWK und
+  Proof-of-Possession; der private Schlüssel ist kein Contract-Feld.
+- `agent-authentication.v2`: Challenge- und Zeitstempel-gebundene P-256-Signatur
+  für dynamisch registrierte Agenten. Der kompatible Betreiber-HMAC-Pfad bleibt
+  separat in Protokollversion 1 und wird nicht an Browser ausgegeben.
 
 Alle unbekannten Felder werden durch `additionalProperties: false` abgelehnt.
 Leases sind zusätzlich an Membership-/Route-Epochen und Ablaufzeiten gebunden.

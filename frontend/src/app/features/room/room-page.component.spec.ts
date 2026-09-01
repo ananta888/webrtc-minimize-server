@@ -89,11 +89,27 @@ describe("Room page information architecture", () => {
     expect(template).toContain('id="media-agent-takeover-request"');
     expect(template).toContain('id="accept-media-agent-takeover"');
     expect(template).toContain('id="decline-media-agent-takeover"');
-    expect(template).toContain("Standardmäßig aus und jederzeit widerrufbar");
+    expect(template).toContain("Standardmäßig aus, raumgebunden und jederzeit widerrufbar");
     expect(template).toContain("(!mediaAgents.selectedAgentOnline() && !mediaAgents.consentEnabled())");
-    expect(template).toContain("keinen Medienschlüssel");
+    expect(template).toContain("Membership, Routen, Epochen und kurze Leases");
     expect(component).toContain("this.mediaAgents.setConsent(enabled)");
     expect(component).toContain("this.mediaAgents.respondToTakeover(accepted)");
+    expect(component).not.toContain("getUserMedia");
+    expect(component).not.toContain("getDisplayMedia");
+  });
+
+  it("offers explicit self-service installation without automatic download or capture", () => {
+    expect(template).toContain('id="media-agent-promo"');
+    expect(template).toContain("Media-Agent ansehen");
+    expect(template).toContain('id="media-agent-onboarding"');
+    expect(template).toContain('id="download-media-agent-installer"');
+    expect(template).toContain('(submit)="$event.preventDefault(); downloadMediaAgentInstaller()"');
+    expect(template).toContain("Keine Medienfreigabe und keine automatische Raumzustimmung");
+    expect(template).toContain("SHA-256");
+    expect(template).toContain("nicht mit einem kommerziellen Windows-/Apple-Code-Signing-Zertifikat signiert");
+    expect(component).toContain("this.mediaAgentOnboarding.downloadInstaller(target, label)");
+    expect(component).toContain("this.mediaAgentOnboarding.revoke(agentId)");
+    expect(component).toContain("this.mediaAgentOnboarding.clear()");
     expect(component).not.toContain("getUserMedia");
     expect(component).not.toContain("getDisplayMedia");
   });

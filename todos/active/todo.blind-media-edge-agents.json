@@ -63,6 +63,12 @@
       "title": "Simulcast-/Foederationsnachweis und Rollout",
       "task_ids": ["BME-011"],
       "status": "in_progress"
+    },
+    {
+      "id": "BME-M10",
+      "title": "Sicheres Self-Service-Onboarding freiwilliger Media-Agenten",
+      "task_ids": ["BME-012", "BME-013", "BME-014"],
+      "status": "in_progress"
     }
   ],
   "tasks": [
@@ -222,25 +228,67 @@
         "Chromium und Firefox, Single-Layer-Fallback, Direct und All-TURN, Join/Leave, Drain, Crash, Netzpartition, Layerwechsel, falsche Keys, stale Leases, Agent-Impersonation, Oversize und fehlender Consent sind sichtbar bestanden oder konkret geblockt.",
         "npm run check, JSON-Schema-Fixtures, Go-Race/Vet, Compose/Image-Gates und Secret-Scan bestehen; Commit, Push und Mini-PC-/Laptop-Rollout erfolgen ohne Tokens, Shared Secrets, Zertifikatschluessel oder unbewiesene Portoeffnung."
       ]
+    },
+    {
+      "id": "BME-012",
+      "title": "OIDC-gebundene Einmal-Einschreibung und widerrufbare P-256-Agentidentitaet implementieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["BME-010"],
+      "acceptance_criteria": [
+        "Ein authentisierter Nutzer kann nur fuer den eigenen exakten OIDC-Principal ein kurzlebiges, einmal verwendbares Enrollment erzeugen, eigene registrierte Agenten auflisten und widerrufen; Quoten, Ablauf, Rate-Limits und unbekannte Felder werden serverseitig fail-closed geprueft.",
+        "Der native Agent erzeugt lokal eine P-256-Identitaet, beweist beim Enrollment den Besitz des privaten Schluessels und authentisiert spaeter jede Challenge per Signatur; der private Schluessel verlaesst das Geraet nicht und Browser, URLs, Logs sowie der persistente Store enthalten kein langlebiges Shared Secret.",
+        "Registrierungen ueberleben einen Control-Plane-Neustart, Widerruf beendet aktive Autoritaet, One-Time-Tokens sind nur gehasht gespeichert und der bestehende operatorgebundene HMAC-Pfad bleibt kompatibel."
+      ]
+    },
+    {
+      "id": "BME-013",
+      "title": "Motivierendes Angular-Onboarding und gepruefte Plattforminstaller bereitstellen",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["BME-012"],
+      "acceptance_criteria": [
+        "Die Angular-App erklaert Nutzen, Grenzen, Upload-/CPU-/Batterie-/IP-Folgen und den weiterhin separaten Raum-Consent, zeigt eigene Agenten mit Online-/Widerrufszustand und fuehrt mit klarer Plattformwahl durch hoechstens wenige sichtbare Schritte.",
+        "Linux-, macOS- und Windows-Installer werden nur nach explizitem Klick erzeugt, laden das passende native Artefakt ueber HTTPS mit gebundener SHA-256-Pruefung, schreiben Identitaet und Konfiguration mit restriktiven Rechten und entfernen das verbrauchte Enrollment-Material soweit plattformseitig moeglich.",
+        "Kein Seitenladen, Paneloeffnen oder Remotesignal startet Download, Installation, Capture, Portfreigabe oder Agent-Consent; nicht codesignierte Plattformartefakte und erforderliche Betriebssystembestaetigungen werden ehrlich angezeigt."
+      ]
+    },
+    {
+      "id": "BME-014",
+      "title": "Self-Service-Enrollment, Installer und Produktionsrollout verifizieren",
+      "status": "in_progress",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 80,
+      "depends_on": ["BME-012", "BME-013"],
+      "acceptance_criteria": [
+        "Positive und negative Node-/Go-/Angular-Tests decken Enrollment, Proof-of-Possession, Replay, Ablauf, Cross-Principal-Zugriff, Widerruf, Restart-Persistenz, geschlossene Contracts sowie exakt nutzerinitiierte Downloads ab.",
+        "Cross-Compile-/Checksum-Gates bauen die deklarierten Plattformartefakte reproduzierbar; mindestens der reale Linux-Laptop-Installer registriert einen neuen Agenten, authentisiert ihn nach Neustart erneut und kann ihn aus der App widerrufen.",
+        "npm run check, Go-Race/Vet, Compose-/Image-/Secret-Gates, Commit, Push und Mini-PC-Rollout bestehen; nicht real ausgefuehrte macOS-/Windows-Installationen bleiben sichtbar unverified statt als bestanden behauptet."
+      ]
     }
   ],
-  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011"],
+  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011", "BME-012", "BME-013", "BME-014"],
   "tasks_status_summary": {
-    "total": 11,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 1, "blocked": 0, "done": 9 },
-    "progress_percent_done": 81.82,
-    "by_priority": { "P0": 8, "P1": 3, "P2": 0, "P3": 0 },
-    "by_risk": { "low": 0, "medium": 1, "high": 3, "critical": 7 },
-    "critical_path": { "total": 10, "done": 8, "remaining": 2 },
-    "milestones": { "total": 9, "todo": 0, "in_progress": 2, "blocked": 0, "done": 7 }
+    "total": 14,
+    "by_status": { "todo": 0, "in_progress": 2, "partial": 1, "blocked": 0, "done": 11 },
+    "progress_percent_done": 78.57,
+    "by_priority": { "P0": 10, "P1": 4, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 4, "critical": 9 },
+    "critical_path": { "total": 13, "done": 10, "remaining": 3 },
+    "milestones": { "total": 10, "todo": 0, "in_progress": 3, "blocked": 0, "done": 7 }
   },
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 1,
+    "in_progress": 2,
     "partial": 1,
     "blocked": 0,
-    "done": 9
+    "done": 11
   },
   "summary_notes": [
     "PROD-NET-004 wird mit diesem Track aus dem Category-Backlog in ausfuehrbare Arbeit ueberfuehrt.",
@@ -259,6 +307,9 @@
     "Der Abschlussgate am 2026-09-01 bestand mit 81 Frontend- und 81 Node-/Browser-/Integrationsfaellen, JSON-Schema-Fixtures, Angular-Produktionsbuild, Go-Race/Vet im reproduzierbaren Go-1.24-Container, beiden Compose-Validierungen, beiden Image-Builds und npm-Produktionsaudit ohne Findings. Agent-Full-Sync ist fail-closed auf 32 MiB begrenzt; der Browser-ACK ist an die exakt vom Egress angewendete monotone Subscription-Revision gebunden. Der credential-abhaengige Keycloak-/TURN-Live-Gate blieb als sichtbarer Skip offen.",
     "Feature-Commit 816b97e ist auf ananta888/main gepusht und am 2026-09-01 auf dem Mini-PC sowie als laptop-edge ausgerollt. Der oeffentliche HTTPS-Pfad lieferte Health 200, das neue Angular-Bundle, required OIDC/SFrame, TURN und konfigurierte Media-Agents; Server und Laptop-Agent blieben bei RestartCount 0, der Agent authentisierte nach dem kontrollierten Serverwechsel erneut. Das Browser-Signallimit wurde gezielt von 120 auf 300 migriert, das Agent-Limit 2.000 verifiziert und keine Secret-Datei offengelegt. Da aktuell nur ein freiwilliger Produktionsagent aktiv nachgewiesen ist, bleibt die direkte Foederation dort dormant; der reale Zwei-Agent-/Fuenf-Browser-Gate bleibt offen.",
     "Lokale Tests belegen drei opaque Layer mit unterschiedlicher Auswahl, byte-identischen SFrame-Payload, echte Pion-Browser-Agent-Verbindungen sowie einen direkten Zwei-Agenten-Medienpfad. Der reale Fuenf-Browser-/Zwei-Prozess-/Chromium-/Firefox-/All-TURN-/Crash-/Netzpartition-Rollout bleibt BME-011 partial und darf nicht als Produktions-QoS behauptet werden.",
+    "BME-012 bis BME-014 verfolgen den angeforderten Self-Service-Pfad: OIDC-gebundene Einmal-Einschreibung mit lokaler P-256-Identitaet, explizite Angular-Plattforminstaller und ehrliche reale Rollout-Evidence ohne langlebiges Browser- oder Server-Shared-Secret.",
+    "BME-012 und BME-013 sind lokal abgeschlossen: persistente OIDC-Owner-Bindung, gehashte Einmaltickets, lokale P-256-Proof-of-Possession-Identitaet, kompatible HMAC-Authentisierung, sofortiger Widerruf sowie explizites Angular-Onboarding mit kontoeigener Liste und checksum-gebundenen Linux-/macOS-/Windows-Installern sind durch Node-, Go-, Schema- und Angular-Tests belegt. Kein Seitenladen oder Paneloeffnen startet Download, Installation, Capture, Portfreigabe oder Raumconsent; die fehlende kommerzielle Codesignatur wird sichtbar ausgewiesen.",
+    "Der lokale BME-014-Gate ist am 2026-09-01 mit 86 Angular- und 90 Node-/Browser-/Integrationsfaellen einschliesslich Chromium und Firefox, Angular-Produktionsbuild, Go-Race/Vet, geschlossenen JSON-Schemas, beiden Compose-Validierungen, einem Produktionsimage mit allen fuenf Artefakten, HTTP-Artefakt-Smoke und npm-Produktionsaudit ohne Findings bestanden. Offen bleiben der reale OIDC-ausgeloeste Linux-Laptop-Installer samt Restart/Widerruf sowie echte macOS-/Windows-Geraetetests; diese Pfade werden nicht als verifiziert behauptet.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
   ]
 }

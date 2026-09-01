@@ -48,6 +48,12 @@ const DEFAULTS = Object.freeze({
   mediaAgentShardMinParticipants: 6,
   mediaAgentTakeoverTtlMs: 20_000,
   mediaAgentRateLimit: 2_000,
+  mediaAgentSelfServiceEnabled: false,
+  mediaAgentRegistrationDb: "data/media-agent-registrations.sqlite",
+  mediaAgentArtifactDir: "media-agent-downloads",
+  mediaAgentEnrollmentTtlMs: 10 * 60 * 1000,
+  mediaAgentMaxPerPrincipal: 3,
+  mediaAgentEnrollmentRateLimit: 5,
 });
 
 const AUTH_MODES = new Set(["disabled", "optional", "required"]);
@@ -286,6 +292,26 @@ export function loadConfig(env = process.env) {
   if (mediaAgentRenewMs >= mediaAgentLeaseMs) {
     throw new Error("MEDIA_AGENT_RENEW_MS must be shorter than MEDIA_AGENT_LEASE_MS");
   }
+  const mediaAgentSelfServiceEnabled = booleanValue(
+    env.MEDIA_AGENT_SELF_SERVICE_ENABLED,
+    DEFAULTS.mediaAgentSelfServiceEnabled,
+    "MEDIA_AGENT_SELF_SERVICE_ENABLED",
+  );
+  if (mediaAgentSelfServiceEnabled && authMode === "disabled") {
+    throw new Error("MEDIA_AGENT_SELF_SERVICE_ENABLED requires OIDC authentication");
+  }
+  if (mediaAgentSelfServiceEnabled && (!publicOrigin || new URL(publicOrigin).protocol !== "https:")) {
+    throw new Error("MEDIA_AGENT_SELF_SERVICE_ENABLED requires an HTTPS PUBLIC_ORIGIN");
+  }
+  const mediaAgentRegistrationDb = String(
+    env.MEDIA_AGENT_REGISTRATION_DB || DEFAULTS.mediaAgentRegistrationDb,
+  ).trim();
+  const mediaAgentArtifactDir = String(
+    env.MEDIA_AGENT_ARTIFACT_DIR || DEFAULTS.mediaAgentArtifactDir,
+  ).trim();
+  if (mediaAgentSelfServiceEnabled && (!mediaAgentRegistrationDb || !mediaAgentArtifactDir)) {
+    throw new Error("media-agent self service requires registration DB and artifact directory paths");
+  }
   const peerRouteLeaseMs = boundedInteger(env.PEER_ROUTE_LEASE_MS, DEFAULTS.peerRouteLeaseMs, {
     minimum: 30_000, maximum: 300_000, name: "PEER_ROUTE_LEASE_MS",
   });
@@ -410,6 +436,24 @@ export function loadConfig(env = process.env) {
       env.MEDIA_AGENT_RATE_LIMIT,
       DEFAULTS.mediaAgentRateLimit,
       { minimum: 60, maximum: 2_000, name: "MEDIA_AGENT_RATE_LIMIT" },
+    ),
+    mediaAgentSelfServiceEnabled,
+    mediaAgentRegistrationDb,
+    mediaAgentArtifactDir,
+    mediaAgentEnrollmentTtlMs: boundedInteger(
+      env.MEDIA_AGENT_ENROLLMENT_TTL_MS,
+      DEFAULTS.mediaAgentEnrollmentTtlMs,
+      { minimum: 60_000, maximum: 30 * 60_000, name: "MEDIA_AGENT_ENROLLMENT_TTL_MS" },
+    ),
+    mediaAgentMaxPerPrincipal: boundedInteger(
+      env.MEDIA_AGENT_MAX_PER_PRINCIPAL,
+      DEFAULTS.mediaAgentMaxPerPrincipal,
+      { minimum: 1, maximum: 5, name: "MEDIA_AGENT_MAX_PER_PRINCIPAL" },
+    ),
+    mediaAgentEnrollmentRateLimit: boundedInteger(
+      env.MEDIA_AGENT_ENROLLMENT_RATE_LIMIT,
+      DEFAULTS.mediaAgentEnrollmentRateLimit,
+      { minimum: 1, maximum: 20, name: "MEDIA_AGENT_ENROLLMENT_RATE_LIMIT" },
     ),
   });
 }

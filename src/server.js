@@ -7,6 +7,8 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import { loadConfig } from "./config.js";
 import { DeviceProofError, DeviceProofVerifier } from "./device-proof.js";
+import { MediaAgentEnrollmentError, MediaAgentEnrollmentStore } from "./media-agent-enrollment-store.js";
+import { MediaAgentInstallerError, MediaAgentInstallerService } from "./media-agent-installers.js";
 import { parseBrowserMediaAgentMessage, parseMediaAgentMessage } from "./media-agent-protocol.js";
 import { MediaAgentRegistry } from "./media-agent-registry.js";
 import { buildRoomTopology } from "./media-topology.js";
@@ -49,6 +51,7 @@ const EVENT_REQUEST_FIELDS = new Set(["eventId", "correlationId", "kind", "paylo
 const CURSOR_REQUEST_FIELDS = new Set(["sequence"]);
 const PRESENCE_REQUEST_FIELDS = new Set(["state", "documentId", "line", "column", "leaseId", "epoch", "ttlMs"]);
 const ROLE_REQUEST_FIELDS = new Set(["principal", "role", "expectedRevision"]);
+const MEDIA_AGENT_ENROLLMENT_FIELDS = new Set(["label", "target"]);
 
 function sendJson(response, statusCode, body, extraHeaders = {}) {
   const payload = Buffer.from(JSON.stringify(body));
@@ -105,7 +108,8 @@ function safeSend(socket, message, maximumBytes = Number.POSITIVE_INFINITY) {
   socket.send(encoded);
 }
 
-function publicRuntimeConfig(config) {
+function publicRuntimeConfig(config, services = {}) {
+  const targets = services.mediaAgentInstallerService?.availableTargets() || [];
   return {
     iceServers: [
       ...config.stunUrls.map((urls) => ({ urls })),
@@ -126,7 +130,10 @@ function publicRuntimeConfig(config) {
       cipherSuite: "AES_128_GCM_SHA256_128",
     },
     mediaAgents: {
-      configured: config.mediaAgents.length > 0,
+      configured: services.mediaAgents?.configured || config.mediaAgents.length > 0,
+      selfService: config.mediaAgentSelfServiceEnabled,
+      targets,
+      unsignedArtifacts: targets.length > 0,
       leaseMs: config.mediaAgentLeaseMs,
       maxStandbys: config.mediaAgentMaxStandbys,
       shardMinParticipants: config.mediaAgentShardMinParticipants,
@@ -249,13 +256,25 @@ function principalFor(identity) {
 function errorStatus(error) {
   if (error instanceof RoomDirectoryError) return error.status;
   if (error instanceof PairWorkspaceError) return error.status;
+  if (error instanceof MediaAgentEnrollmentError || error instanceof MediaAgentInstallerError) return error.status;
   if (error instanceof AuthenticationError) return 401;
   if (error instanceof ProtocolError || error instanceof DeviceProofError) return 400;
   return 500;
 }
 
 function createHttpHandler(config, registry, services) {
-  const { oidcVerifier, deviceProofVerifier, ticketStore, workspaceStore, directory, publicDir } = services;
+  const {
+    oidcVerifier,
+    deviceProofVerifier,
+    ticketStore,
+    workspaceStore,
+    directory,
+    publicDir,
+    mediaAgents,
+    mediaAgentEnrollmentStore,
+    mediaAgentInstallerService,
+    mediaAgentEvents,
+  } = services;
   return async (request, response) => {
     try {
       const url = new URL(request.url, "http://localhost");
@@ -268,7 +287,93 @@ function createHttpHandler(config, registry, services) {
         return;
       }
       if (request.method === "GET" && url.pathname === "/config") {
-        sendJson(response, 200, publicRuntimeConfig(config), securityHeaders(config));
+        sendJson(response, 200, publicRuntimeConfig(config, services), securityHeaders(config));
+        return;
+      }
+      const artifactMatch = url.pathname.match(/^\/downloads\/media-edge-agent\/([a-z0-9-]+)$/);
+      if (artifactMatch && request.method === "GET") {
+        if (!config.mediaAgentSelfServiceEnabled || !mediaAgentInstallerService) {
+          throw new MediaAgentInstallerError("media_agent_artifact_unavailable", 404);
+        }
+        const artifact = mediaAgentInstallerService.artifact(artifactMatch[1]);
+        const file = await fs.open(artifact.filename, "r");
+        const stat = await file.stat();
+        if (!stat.isFile() || stat.size !== artifact.size) {
+          await file.close();
+          throw new MediaAgentInstallerError("media_agent_artifact_unavailable", 503);
+        }
+        response.writeHead(200, {
+          "content-type": "application/octet-stream",
+          "content-length": artifact.size,
+          "content-disposition": `attachment; filename="${artifact.artifact}"`,
+          "cache-control": "public, max-age=300, immutable",
+          "x-content-sha256": artifact.sha256,
+          ...securityHeaders(config),
+        });
+        const stream = file.createReadStream();
+        stream.on("error", () => response.destroy());
+        stream.pipe(response);
+        return;
+      }
+      if (url.pathname === "/api/media-agents" && request.method === "GET") {
+        if (!config.mediaAgentSelfServiceEnabled || !mediaAgentEnrollmentStore) {
+          throw new MediaAgentEnrollmentError("media_agent_self_service_disabled", 404);
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        if (!identity) throw new AuthenticationError("authentication_required");
+        const principal = principalFor(identity);
+        sendJson(response, 200, {
+          agents: mediaAgentEnrollmentStore.list(principal).map((agent) => ({
+            ...agent,
+            online: !agent.revokedAt && Boolean(mediaAgents.socketForAgent(agent.id)),
+          })),
+        }, securityHeaders(config));
+        return;
+      }
+      if (url.pathname === "/api/media-agents/enrollments" && request.method === "POST") {
+        if (!config.mediaAgentSelfServiceEnabled || !mediaAgentEnrollmentStore || !mediaAgentInstallerService) {
+          throw new MediaAgentEnrollmentError("media_agent_self_service_disabled", 404);
+        }
+        if (!requestOriginAllowed(request, config)) throw new ProtocolError("origin_denied");
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        if (!identity) throw new AuthenticationError("authentication_required");
+        const input = await readJsonBody(request);
+        assertAllowedKeys(input, MEDIA_AGENT_ENROLLMENT_FIELDS);
+        const target = mediaAgentInstallerService.target(input.target);
+        const enrollment = mediaAgentEnrollmentStore.createEnrollment({
+          principal: principalFor(identity),
+          label: input.label,
+          platform: target.platform,
+        });
+        const installer = mediaAgentInstallerService.installer({
+          enrollment,
+          targetId: target.id,
+          publicOrigin: config.publicOrigin,
+        });
+        sendJson(response, 201, {
+          agentId: enrollment.agentId,
+          expiresAt: enrollment.expiresAt,
+          target: installer.target,
+          filename: installer.filename,
+          artifactSha256: installer.artifactSha256,
+          artifactBytes: installer.artifactBytes,
+          installer: installer.content,
+        }, securityHeaders(config));
+        return;
+      }
+      const mediaAgentMatch = url.pathname.match(/^\/api\/media-agents\/(edge-[a-f0-9]{16})$/);
+      if (mediaAgentMatch && request.method === "DELETE") {
+        if (!config.mediaAgentSelfServiceEnabled || !mediaAgentEnrollmentStore) {
+          throw new MediaAgentEnrollmentError("media_agent_self_service_disabled", 404);
+        }
+        if (!requestOriginAllowed(request, config)) throw new ProtocolError("origin_denied");
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        if (!identity) throw new AuthenticationError("authentication_required");
+        const revoked = mediaAgentEnrollmentStore.revoke(principalFor(identity), mediaAgentMatch[1]);
+        const removed = mediaAgents.revoke(revoked.agentId);
+        removed.socket?.close(1008, "agent_registration_revoked");
+        mediaAgentEvents.onRevoked(removed);
+        sendJson(response, 200, revoked, securityHeaders(config));
         return;
       }
       if (request.method === "GET" && url.pathname === "/api/rooms") {
@@ -502,7 +607,7 @@ function rejectUpgrade(socket, statusCode, message) {
   );
 }
 
-function configureSignaling(server, config, registry, ticketStore, directory, mediaAgents) {
+function configureSignaling(server, config, registry, ticketStore, directory, mediaAgents, mediaAgentEvents) {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
   const mediaAgentWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
   const roomEpochs = new Map();
@@ -590,6 +695,12 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
     syncAgents();
   };
 
+  mediaAgentEvents.onRevoked = ({ affectedRoomIds, ownerPrincipal }) => {
+    broadcastPrincipalMediaAgentAvailability(ownerPrincipal);
+    for (const roomId of affectedRoomIds) broadcastMediaAgentState(roomId);
+    syncAgents();
+  };
+
   const broadcastTopology = (roomId, membershipChanged = false) => {
     const members = registry.members(roomId);
     if (members.length === 0) {
@@ -618,7 +729,7 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
   server.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url, "http://localhost");
     if (url.pathname === "/media-agent") {
-      if (!mediaAgents.configured) {
+      if (!mediaAgents.configured && !mediaAgents.enrollmentEnabled) {
         rejectUpgrade(socket, 403, "media_agents_disabled");
         return;
       }
@@ -891,6 +1002,19 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
         if (isBinary) throw new ProtocolError("binary_agent_signaling_unsupported");
         const message = parseMediaAgentMessage(raw);
         if (!authenticated) {
+          if (message.type === "enroll") {
+            const result = mediaAgents.enroll(socket, message);
+            clearTimeout(authTimeout);
+            safeSend(socket, {
+              version: 1,
+              type: "agent-enrolled",
+              agentId: result.id,
+              keyFingerprint: result.keyFingerprint,
+            });
+            broadcastPrincipalMediaAgentAvailability(result.ownerPrincipal);
+            setImmediate(() => socket.close(1000, "agent_enrolled"));
+            return;
+          }
           if (message.type !== "authenticate") throw new ProtocolError("agent_authentication_required");
           const result = mediaAgents.authenticate(socket, message);
           authenticated = true;
@@ -908,7 +1032,9 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
         }
         const connection = mediaAgents.connection(socket);
         if (!connection) throw new ProtocolError("agent_not_authenticated");
-        if (message.type === "authenticate") throw new ProtocolError("agent_already_authenticated");
+        if (message.type === "authenticate" || message.type === "enroll") {
+          throw new ProtocolError("agent_already_authenticated");
+        }
         if (message.type === "capability") {
           for (const roomId of mediaAgents.setCapability(socket, message)) broadcastMediaAgentState(roomId);
           return;
@@ -1124,6 +1250,7 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
     registry.prune();
     directory.prune(Date.now(), (roomId) => registry.members(roomId).length > 0);
     ticketStore.prune();
+    mediaAgentEvents.prune();
   }, 30_000);
   heartbeat.unref();
   const leaseRenewal = setInterval(() => {
@@ -1160,20 +1287,51 @@ export function createAppServer(options = {}) {
     maxAgeMs: config.deviceProofMaxAgeMs,
   });
   const ticketStore = options.ticketStore || new SessionTicketStore({ ttlMs: config.sessionTicketTtlMs });
+  const mediaAgentEnrollmentStore = options.mediaAgentEnrollmentStore
+    || (config.mediaAgentSelfServiceEnabled ? new MediaAgentEnrollmentStore({
+      filename: config.mediaAgentRegistrationDb,
+      ttlMs: config.mediaAgentEnrollmentTtlMs,
+      maxAgentsPerPrincipal: config.mediaAgentMaxPerPrincipal,
+      maxEnrollmentsPerHour: config.mediaAgentEnrollmentRateLimit,
+    }) : null);
+  const mediaAgentInstallerService = options.mediaAgentInstallerService
+    || (config.mediaAgentSelfServiceEnabled
+      ? new MediaAgentInstallerService({ directory: config.mediaAgentArtifactDir }) : null);
   const mediaAgents = options.mediaAgents || new MediaAgentRegistry({
-    definitions: config.mediaAgents,
+    definitions: [...config.mediaAgents, ...(mediaAgentEnrollmentStore?.definitions() || [])],
     leaseMs: config.mediaAgentLeaseMs,
     maxStandbys: config.mediaAgentMaxStandbys,
     shardMinParticipants: config.mediaAgentShardMinParticipants,
     takeoverTtlMs: config.mediaAgentTakeoverTtlMs,
+    enrollmentStore: mediaAgentEnrollmentStore,
   });
   const workspaceStore = options.workspaceStore || (config.pairWorkspaceEnabled
     ? new PairWorkspaceStore({ filename: config.pairWorkspaceDb }) : null);
   const publicDir = path.resolve(options.publicDir || DEFAULT_PUBLIC_DIR);
-  const services = { oidcVerifier, deviceProofVerifier, ticketStore, workspaceStore, directory, publicDir };
+  const mediaAgentEvents = {
+    onRevoked: () => {},
+    prune: () => mediaAgentEnrollmentStore?.prune(),
+  };
+  const services = {
+    oidcVerifier,
+    deviceProofVerifier,
+    ticketStore,
+    workspaceStore,
+    directory,
+    publicDir,
+    mediaAgents,
+    mediaAgentEnrollmentStore,
+    mediaAgentInstallerService,
+    mediaAgentEvents,
+  };
   const server = http.createServer(createHttpHandler(config, registry, services));
   if (!options.workspaceStore && workspaceStore) server.on("close", () => workspaceStore.close());
-  const signaling = configureSignaling(server, config, registry, ticketStore, directory, mediaAgents);
+  if (!options.mediaAgentEnrollmentStore && mediaAgentEnrollmentStore) {
+    server.on("close", () => mediaAgentEnrollmentStore.close());
+  }
+  const signaling = configureSignaling(
+    server, config, registry, ticketStore, directory, mediaAgents, mediaAgentEvents,
+  );
   return {
     server,
     ...signaling,
@@ -1183,6 +1341,8 @@ export function createAppServer(options = {}) {
     ticketStore,
     workspaceStore,
     mediaAgents,
+    mediaAgentEnrollmentStore,
+    mediaAgentInstallerService,
   };
 }
 

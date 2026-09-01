@@ -103,6 +103,18 @@
           </button>
         </section>
 
+        @if (config.value()?.mediaAgents?.selfService) {
+          <section id="media-agent-promo" class="agent-promo" aria-labelledby="media-agent-promo-heading">
+            <span class="agent-orbit compact-orbit" aria-hidden="true"><span></span></span>
+            <div>
+              <p class="eyebrow">Gemeinsam stärker</p>
+              <h2 id="media-agent-promo-heading">Ein freiwilliger Rechner kann den Upload der Runde teilen</h2>
+              <p>{{ ownMediaAgentOnline() ? 'Dein Media-Agent ist online. Du entscheidest weiterhin in jedem Raum getrennt, ob er helfen darf.' : 'In wenigen sichtbaren Schritten wird ein geeigneter Desktop-Rechner zum optionalen Media-Agent – ohne automatische Medienfreigabe oder notwendige Portöffnung.' }}</p>
+            </div>
+            <button class="button ghost" type="button" (click)="show('settings')">Media-Agent ansehen</button>
+          </section>
+        }
+
         @if (!canEnter()) {
           <section class="signin-callout">
             <div class="callout-icon" aria-hidden="true">
@@ -448,10 +460,73 @@
             <p class="hint">Auflösung und FPS aktualisieren einen laufenden Track ohne neue Freigabe. Bildschirmton wird beim Ausschalten sofort entfernt; das Einschalten gilt erst beim nächsten sichtbaren Klick auf „Bildschirm teilen“. Die Auswahl der Bildschirmquelle bleibt immer beim Browser.</p>
           </section>
 
-          @if (config.value()?.mediaAgents?.configured) {
+          @if (config.value()?.mediaAgents?.configured || config.value()?.mediaAgents?.selfService) {
             <section class="surface settings-card media-agent-card">
-              <div class="surface-heading"><span class="feature-icon mint" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M12 4v16M7 7l10 10M17 7L7 17"/><circle cx="12" cy="12" r="9"/></svg></span><div><p class="eyebrow">Optionaler Fanout-Pfad</p><h2>Blinder Media-Agent</h2></div></div>
-              <p>Ein dir von der Control Plane zugewiesener nativer Agent empfängt deinen bereits SFrame-verschlüsselten RTP-Strom einmal und verteilt ihn an verbundene Raumteilnehmer. Er erhält keinen Medienschlüssel und kann den Inhalt nicht entschlüsseln.</p>
+              <div class="surface-heading"><span class="feature-icon mint" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M12 4v16M7 7l10 10M17 7L7 17"/><circle cx="12" cy="12" r="9"/></svg></span><div><p class="eyebrow">Freiwillige Infrastruktur</p><h2>Dein Media-Agent</h2></div></div>
+
+              @if (config.value()?.mediaAgents?.selfService) {
+                <section id="media-agent-onboarding" class="agent-onboarding" aria-labelledby="media-agent-onboarding-heading">
+                  <div class="agent-onboarding-hero">
+                    <span class="agent-orbit" aria-hidden="true"><span></span></span>
+                    <div><p class="eyebrow">Ein Rechner hilft der Runde</p><h3 id="media-agent-onboarding-heading">Upload teilen, Ausfälle abfedern</h3><p>Ein freiwilliger Rechner kann eine vom Sender kommende Kopie an mehrere Teilnehmer weiterreichen. Das entlastet Publizierende und schafft einen zusätzlichen, von der Control Plane begrenzten Pfad.</p></div>
+                  </div>
+                  <ul class="agent-benefits">
+                    <li><strong>Einfach:</strong> System wählen, Datei laden, einmal bewusst ausführen.</li>
+                    <li><strong>Kontrolliert:</strong> Keine Medienfreigabe und keine automatische Raumzustimmung.</li>
+                    <li><strong>Widerrufbar:</strong> Nur dein Keycloak-Konto kann den Rechner verwalten; ein Widerruf trennt ihn sofort.</li>
+                  </ul>
+
+                  @if (!auth.authenticated()) {
+                    <div class="agent-signin-callout"><p>Zum sicheren Registrieren wird der Agent an dein Keycloak-Konto gebunden.</p><button class="button primary" type="button" (click)="auth.login('/?section=settings')">Anmelden &amp; Agent installieren</button></div>
+                  } @else if (config.value()!.mediaAgents.targets.length === 0) {
+                    <p class="agent-risk">Die geprüften Installationspakete sind auf diesem Server momentan nicht verfügbar. Es wurde nichts heruntergeladen oder installiert.</p>
+                  } @else {
+                    <form class="agent-installer-form" (submit)="$event.preventDefault(); downloadMediaAgentInstaller()">
+                      <label>Dieser Rechner heißt
+                        <input id="media-agent-label" maxlength="48" [ngModel]="mediaAgentLabel()" (ngModelChange)="mediaAgentLabel.set($event)" name="mediaAgentLabel" placeholder="Mein Rechner">
+                      </label>
+                      <label>Betriebssystem
+                        <select id="media-agent-target" [ngModel]="mediaAgentTarget()" (ngModelChange)="mediaAgentTarget.set($event)" name="mediaAgentTarget">
+                          @for (target of config.value()!.mediaAgents.targets; track target.id) { <option [value]="target.id">{{ target.label }}</option> }
+                        </select>
+                      </label>
+                      <button id="download-media-agent-installer" class="button primary wide" type="submit" [disabled]="mediaAgentOnboarding.busy() || !mediaAgentTarget() || !mediaAgentLabel().trim()">Installationsdatei erstellen</button>
+                    </form>
+                    <p class="agent-risk">Die Binärdatei wird per HTTPS geladen und gegen den im Installer fest eingebauten SHA-256-Wert geprüft. Die Pakete sind derzeit nicht mit einem kommerziellen Windows-/Apple-Code-Signing-Zertifikat signiert; dein Betriebssystem kann deshalb sichtbar warnen.</p>
+
+                    @if (mediaAgentOnboarding.pending(); as pending) {
+                      <section id="media-agent-install-steps" class="agent-install-steps" aria-live="polite">
+                        <div><span>1</span><p><strong>{{ pending.filename }} speichern</strong><small>Das enthaltene Einmalticket läuft nach zehn Minuten ab; nach erfolgreicher Installation entfernt das Skript sich selbst.</small></p></div>
+                        <div><span>2</span><p><strong>Datei bewusst ausführen</strong>
+                          @if (pending.target.startsWith('windows-')) {
+                            <small>PowerShell öffnen und ausführen: <code>powershell -ExecutionPolicy Bypass -File "$HOME\Downloads\{{ pending.filename }}"</code></small>
+                          } @else {
+                            <small>Terminal öffnen und ausführen: <code>sh ~/Downloads/{{ pending.filename }}</code></small>
+                          }
+                        </p></div>
+                        <div><span>3</span><p><strong>Zur App zurückkehren</strong><small>Der Agent startet im Benutzerkonto automatisch. Die Freigabe für einen Raum bleibt aus, bis du sie unten einschaltest.</small></p></div>
+                      </section>
+                    }
+
+                    <div class="owned-agent-heading"><div><p class="eyebrow">An dein Konto gebunden</p><h3>Meine installierten Agenten</h3></div><button class="text-action" type="button" [disabled]="mediaAgentOnboarding.busy()" (click)="mediaAgentOnboarding.load()">Aktualisieren</button></div>
+                    <div class="owned-agent-list">
+                      @for (agent of mediaAgentOnboarding.agents(); track agent.id) {
+                        <article class="owned-agent" [class.revoked]="agent.revokedAt">
+                          <span class="agent-status-dot" [class.online]="agent.online" aria-hidden="true"></span>
+                          <div><strong>{{ agent.label }}</strong><small>{{ mediaAgentPlatformLabel(agent.platform) }} · {{ agent.online ? 'online' : (agent.revokedAt ? 'widerrufen' : 'offline') }}</small><code>{{ agent.id }}</code><small>Zuletzt: {{ mediaAgentLastSeen(agent.lastAuthenticatedAt) }}</small></div>
+                          @if (!agent.revokedAt) { <button class="button ghost compact" type="button" [disabled]="mediaAgentOnboarding.busy()" (click)="revokeMediaAgent(agent.id)">Widerrufen</button> }
+                        </article>
+                      } @empty {
+                        <p class="hint">Noch kein Agent fertig registriert. Nach dem Ausführen der Installationsdatei erscheint er hier automatisch.</p>
+                      }
+                    </div>
+                  }
+                </section>
+              }
+
+              <section class="agent-room-use" aria-labelledby="agent-room-use-heading">
+                <div><p class="eyebrow">Je Raum getrennt</p><h3 id="agent-room-use-heading">Im aktuellen Raum verwenden</h3></div>
+                <p>Ein online gemeldeter Agent wird erst nach deiner ausdrücklichen Raumzustimmung eingeplant. Membership, Routen, Epochen und kurze Leases bleiben ausschließlich bei der Control Plane.</p>
 
               @if (mediaAgents.availableAgents().length > 0) {
                 <label>Agent dieses Kontos
@@ -469,7 +544,7 @@
                     [ngModel]="mediaAgents.consentEnabled()"
                     (ngModelChange)="setMediaAgentConsent($event)"
                   >
-                  <span><strong>Registrierten Rechner freiwillig als Media-Agent anbieten</strong><small>Standardmäßig aus und jederzeit widerrufbar. Es wird keine Kamera-, Mikrofon- oder Bildschirmfreigabe ausgelöst.</small></span>
+                  <span><strong>Registrierten Rechner freiwillig für diesen Raum anbieten</strong><small>Standardmäßig aus, raumgebunden und jederzeit widerrufbar. Es wird keine Kamera-, Mikrofon- oder Bildschirmfreigabe ausgelöst.</small></span>
                 </label>
                 <label class="agent-consent secondary-consent">
                   <input id="media-agent-auto-takeover" type="checkbox" [disabled]="!mediaAgents.consentEnabled()" [ngModel]="mediaAgents.automaticTakeover()" (ngModelChange)="setMediaAgentAutomaticTakeover($event)">
@@ -484,7 +559,7 @@
                   </select>
                 </label>
               } @else {
-                <p class="hint">Für dieses Keycloak-Konto ist kein nativer Agent registriert. Du kannst weiterhin das direkte SFrame-Mesh und einen von anderen freiwillig bereitgestellten Agenten nutzen.</p>
+                <p class="hint">In der aktuellen Raumsitzung ist noch kein eigener Agent verfügbar. Installiere ihn oben oder aktualisiere nach dem Start; direkte Browserverbindungen bleiben der Fallback.</p>
               }
 
               <dl class="fact-list">
@@ -499,7 +574,8 @@
                 <p class="creator-agent-note">Du bist der Raumersteller. Dein gesunder, zugestimmter Agent wird bevorzugt; Gesundheit, Netz, Last und Batterie können diese Präferenz überstimmen.</p>
               }
               <p class="hint">Ab {{ config.value()?.mediaAgents?.shardMinParticipants }} Teilnehmern darf die Control Plane Publizierende auf Primary und höchstens {{ config.value()?.mediaAgents?.maxStandbys }} weitere zugestimmte Agenten verteilen. Jeder Publisher bleibt genau einem Agenten zugeordnet; kleine Räume verwenden nur den Primary.</p>
-              <p class="agent-risk">Ein zugewiesener Agent sieht Verbindungsmetadaten wie IP-Adressen, Timing, Codec und Datenrate und kann Pakete verwerfen. Er benötigt Upload, CPU und gegebenenfalls Akku oder TURN. Eine feste UDP-Portfreigabe ist optional und kann direkte ICE-Pfade verbessern.</p>
+              <p class="agent-risk">Ein zugewiesener Agent verarbeitet weiterzuleitende Medienpakete, sieht Verbindungsmetadaten wie IP-Adressen, Timing, Codec und Datenrate und kann Pakete verwerfen. Er benötigt Upload, CPU und gegebenenfalls Akku oder TURN. Ein fester UDP-Port ist nicht erforderlich; eine bewusst konfigurierte Portfreigabe kann direkte ICE-Pfade verbessern.</p>
+              </section>
             </section>
           }
 
@@ -510,7 +586,7 @@
               <div><dt>Auth</dt><dd>{{ config.value()?.auth?.mode }}</dd></div>
               <div><dt>TURN</dt><dd>{{ config.value()?.turnConfigured ? 'kurzlebige Credentials' : 'nicht konfiguriert' }}</dd></div>
               <div><dt>Edge-Relay</dt><dd>{{ config.value()?.edgeRelayConfigured ? 'freiwilliger zweiter Pfad' : 'nicht konfiguriert' }}</dd></div>
-              <div><dt>Media-Agent</dt><dd>{{ config.value()?.mediaAgents?.configured ? mediaAgents.status() : 'nicht konfiguriert' }}</dd></div>
+              <div><dt>Media-Agent</dt><dd>{{ config.value()?.mediaAgents?.configured ? mediaAgents.status() : (config.value()?.mediaAgents?.selfService ? 'installierbar' : 'nicht konfiguriert') }}</dd></div>
               <div><dt>Media-E2EE</dt><dd>{{ config.value()?.mediaE2ee?.mode }} · {{ mesh.mediaE2eeState() }}</dd></div>
               <div><dt>Gerät</dt><dd>{{ device.fingerprint() ? 'P-256 gebunden' : 'beim ersten Join' }}</dd></div>
             </dl>

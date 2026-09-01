@@ -22,6 +22,8 @@ test("canonical media-agent JSON Schemas are closed and validate cross-runtime e
     federationSignalSchema,
     federationStateSchema,
     routeStateSchema,
+    enrollmentSchema,
+    authenticationSchema,
   ] = await Promise.all([
     contract("subscription-intent.v1.schema.json"),
     contract("subscription-ack.v1.schema.json"),
@@ -33,6 +35,8 @@ test("canonical media-agent JSON Schemas are closed and validate cross-runtime e
     contract("federation-signal.v1.schema.json"),
     contract("federation-state.v1.schema.json"),
     contract("media-agent-route-state.v3.schema.json"),
+    contract("agent-enrollment.v1.schema.json"),
+    contract("agent-authentication.v2.schema.json"),
   ]);
   const validateIntent = ajv.compile(intentSchema);
   const validateAck = ajv.compile(ackSchema);
@@ -44,6 +48,33 @@ test("canonical media-agent JSON Schemas are closed and validate cross-runtime e
   const validateFederationSignal = ajv.compile(federationSignalSchema);
   const validateFederationState = ajv.compile(federationStateSchema);
   const validateRouteState = ajv.compile(routeStateSchema);
+  const validateEnrollment = ajv.compile(enrollmentSchema);
+  const validateAuthentication = ajv.compile(authenticationSchema);
+  const enrollment = {
+    version: 1,
+    type: "enroll",
+    agentId: "edge-0123456789abcdef",
+    enrollmentToken: "A".repeat(43),
+    timestamp: 1_800_000_000_000,
+    publicKey: { kty: "EC", crv: "P-256", x: "A".repeat(43), y: "B".repeat(43), ext: true },
+    proof: "C".repeat(86),
+  };
+  assert.equal(validateEnrollment(enrollment), true, JSON.stringify(validateEnrollment.errors));
+  assert.equal(validateEnrollment({ ...enrollment, ownerPrincipal: "forbidden" }), false);
+  assert.equal(validateAuthentication({
+    version: 2,
+    type: "authenticate",
+    agentId: enrollment.agentId,
+    timestamp: enrollment.timestamp,
+    proof: "D".repeat(86),
+  }), true, JSON.stringify(validateAuthentication.errors));
+  assert.equal(validateAuthentication({
+    version: 2,
+    type: "authenticate",
+    agentId: enrollment.agentId,
+    timestamp: enrollment.timestamp,
+    proof: "short",
+  }), false);
   const intent = {
     version: 1,
     type: "media-agent-subscription-intent",

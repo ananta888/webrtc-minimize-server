@@ -165,6 +165,36 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+### Self-Service aus der Angular-App
+
+Das öffentliche Deployment baut zusätzlich fünf native Artefakte für Linux
+amd64/arm64, macOS amd64/arm64 und Windows amd64. Die App zeigt nur Artefakte,
+die der Server beim Start wirklich gefunden und mit SHA-256 erfasst hat. Ein
+Download entsteht ausschließlich nach einem sichtbaren Klick unter
+`Einstellungen → Dein Media-Agent`; die Datei installiert nichts von selbst.
+
+Der Ablauf trennt kurzlebige Einschreibung und dauerhafte Geräteidentität:
+
+1. Die OIDC-authentisierte HTTP-Anfrage erzeugt eine zufällige Agent-ID und ein
+   höchstens zehn Minuten gültiges Einmalticket, das im SQLite-Store nur als
+   SHA-256-Hash liegt.
+2. Der bewusst ausgeführte Installer lädt das feste Zielartefakt über HTTPS,
+   vergleicht dessen eingebetteten SHA-256-Wert und startet genau einmal
+   `media-edge-agent enroll`.
+3. Der Agent erzeugt lokal einen P-256-Privatschlüssel mit restriktiven
+   Dateirechten und beweist dessen Besitz über die serverseitige WSS-Challenge.
+   Persistiert werden nur öffentlicher JWK und Fingerprint.
+4. Spätere Starts signieren jede neue Challenge mit diesem Schlüssel. Ein
+   Widerruf durch denselben exakten `issuer|subject`-Principal schließt eine
+   aktive Verbindung und entfernt ihre Routing-Autorität.
+
+Linux richtet nach Möglichkeit einen systemd-Benutzerdienst ein, macOS einen
+LaunchAgent und Windows einen Autostart im Benutzerprofil. Keiner dieser Pfade
+öffnet eine Firewall oder einen Routerport. Die Pakete sind derzeit nicht
+kommerziell code-signiert beziehungsweise notarisiert; macOS und Windows sind
+cross-kompiliert und checksum-geprüft, aber bis zu einem realen Gerätetest
+weiterhin `unverified`.
+
 `MEDIA_AGENT_SIGNAL_URL` ist eine ausgehende exakte
 `wss://…/media-agent`-Adresse. Die serverseitige Variable
 `MEDIA_EDGE_AGENTS_JSON` bindet dieselbe Agent-ID und dasselbe Secret an den

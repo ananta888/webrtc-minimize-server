@@ -16,26 +16,28 @@ import (
 var agentIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 
 type config struct {
-	signalURL      string
-	agentID        string
-	sharedSecret   string
-	caFile         string
-	listenIP       net.IP
-	publicIP       net.IP
-	udpPort        int
-	maxRooms       int
-	maxPeers       int
-	maxTracks      int
-	maxPacketBytes int
-	trackQueue     int
-	maxBitrate     int64
-	capacity       int
-	load           int
-	battery        string
-	network        string
-	heartbeat      time.Duration
-	reconnectMin   time.Duration
-	reconnectMax   time.Duration
+	signalURL       string
+	agentID         string
+	sharedSecret    string
+	identityFile    string
+	enrollmentToken string
+	caFile          string
+	listenIP        net.IP
+	publicIP        net.IP
+	udpPort         int
+	maxRooms        int
+	maxPeers        int
+	maxTracks       int
+	maxPacketBytes  int
+	trackQueue      int
+	maxBitrate      int64
+	capacity        int
+	load            int
+	battery         string
+	network         string
+	heartbeat       time.Duration
+	reconnectMin    time.Duration
+	reconnectMax    time.Duration
 }
 
 type envReader func(string) string
@@ -52,8 +54,19 @@ func loadConfig(getenv envReader) (config, error) {
 		return config{}, fmt.Errorf("MEDIA_AGENT_ID must contain lowercase letters, digits or dashes")
 	}
 	secret := getenv("MEDIA_AGENT_SHARED_SECRET")
-	if len(secret) < 32 || len(secret) > 512 || strings.ContainsAny(secret, "\x00\r\n") {
+	identityFile := strings.TrimSpace(getenv("MEDIA_AGENT_IDENTITY_FILE"))
+	if secret != "" && (len(secret) < 32 || len(secret) > 512 || strings.ContainsAny(secret, "\x00\r\n")) {
 		return config{}, fmt.Errorf("MEDIA_AGENT_SHARED_SECRET must contain 32-512 characters")
+	}
+	if identityFile != "" && (len(identityFile) > 4096 || strings.ContainsAny(identityFile, "\x00\r\n")) {
+		return config{}, fmt.Errorf("MEDIA_AGENT_IDENTITY_FILE is invalid")
+	}
+	if (secret == "") == (identityFile == "") {
+		return config{}, fmt.Errorf("configure exactly one of MEDIA_AGENT_SHARED_SECRET or MEDIA_AGENT_IDENTITY_FILE")
+	}
+	enrollmentToken := strings.TrimSpace(getenv("MEDIA_AGENT_ENROLLMENT_TOKEN"))
+	if enrollmentToken != "" && !enrollmentTokenPattern.MatchString(enrollmentToken) {
+		return config{}, fmt.Errorf("MEDIA_AGENT_ENROLLMENT_TOKEN is invalid")
 	}
 	listenIP := net.ParseIP(valueOr(getenv("MEDIA_AGENT_LISTEN_IP"), "0.0.0.0"))
 	if listenIP == nil || listenIP.To4() == nil {
@@ -115,26 +128,28 @@ func loadConfig(getenv envReader) (config, error) {
 		return config{}, err
 	}
 	return config{
-		signalURL:      rawURL,
-		agentID:        agentID,
-		sharedSecret:   secret,
-		caFile:         strings.TrimSpace(getenv("MEDIA_AGENT_TLS_CA_FILE")),
-		listenIP:       listenIP,
-		publicIP:       publicIP,
-		udpPort:        udpPort,
-		maxRooms:       maxRooms,
-		maxPeers:       maxPeers,
-		maxTracks:      maxTracks,
-		maxPacketBytes: maxPacketBytes,
-		trackQueue:     trackQueue,
-		maxBitrate:     int64(maxBitrate),
-		capacity:       capacity,
-		load:           load,
-		battery:        battery,
-		network:        network,
-		heartbeat:      time.Duration(heartbeatSeconds) * time.Second,
-		reconnectMin:   time.Second,
-		reconnectMax:   30 * time.Second,
+		signalURL:       rawURL,
+		agentID:         agentID,
+		sharedSecret:    secret,
+		identityFile:    identityFile,
+		enrollmentToken: enrollmentToken,
+		caFile:          strings.TrimSpace(getenv("MEDIA_AGENT_TLS_CA_FILE")),
+		listenIP:        listenIP,
+		publicIP:        publicIP,
+		udpPort:         udpPort,
+		maxRooms:        maxRooms,
+		maxPeers:        maxPeers,
+		maxTracks:       maxTracks,
+		maxPacketBytes:  maxPacketBytes,
+		trackQueue:      trackQueue,
+		maxBitrate:      int64(maxBitrate),
+		capacity:        capacity,
+		load:            load,
+		battery:         battery,
+		network:         network,
+		heartbeat:       time.Duration(heartbeatSeconds) * time.Second,
+		reconnectMin:    time.Second,
+		reconnectMax:    30 * time.Second,
 	}, nil
 }
 
