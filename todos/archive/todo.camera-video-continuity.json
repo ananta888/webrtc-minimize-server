@@ -5,7 +5,7 @@
   "track": "camera-video-continuity",
   "purpose": "Kameravideo darf in kleinen Auto-/Ausgewogen-Sessions nicht durch eine selbstverstaerkende Senderdrosselung wie ein eingefrorenes Standbild wirken.",
   "goal": "Bis zu fuenf Teilnehmer behalten eine bewegte Kamera-Vorschau mit belastbarem Senderbudget; eine niedrige WebRTC-Bandbreitenschaetzung allein loest keine kritische Doppel-Abstufung aus.",
-  "status": "in_progress",
+  "status": "done",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
   "risk_scale": ["low", "medium", "high", "critical"],
@@ -14,17 +14,17 @@
       "id": "CVC-M01",
       "title": "Kamera-Kontinuitaet korrigieren und ausrollen",
       "task_ids": ["CVC-001"],
-      "status": "in_progress"
+      "status": "done"
     }
   ],
   "tasks": [
     {
       "id": "CVC-001",
       "title": "Adaptive Kamera-Drosselung gegen scheinbare Freezes absichern",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 75,
+      "progress_percent": 100,
       "depends_on": [],
       "acceptance_criteria": [
         "Bei hoechstens fuenf Teilnehmern verwenden Kamera-Thumbnails in Auto und Ausgewogen ein bewegungsgeeignetes Senderbudget; Prioritaetsregeln reduzieren den Default-Kamerapfad nicht wieder auf 3 FPS und rund 65 kbit/s.",
@@ -38,20 +38,20 @@
   "critical_path_tasks": ["CVC-001"],
   "tasks_status_summary": {
     "total": 1,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 0 },
-    "progress_percent_done": 0,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 1 },
+    "progress_percent_done": 100,
     "by_priority": { "P0": 1, "P1": 0, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 1, "critical": 0 },
-    "critical_path": { "total": 1, "done": 0, "remaining": 1 },
-    "milestones": { "total": 1, "todo": 0, "in_progress": 1, "blocked": 0, "done": 0 }
+    "critical_path": { "total": 1, "done": 1, "remaining": 0 },
+    "milestones": { "total": 1, "todo": 0, "in_progress": 0, "blocked": 0, "done": 1 }
   },
   "progress_summary": {
-    "state": "in_progress",
+    "state": "done",
     "todo_remaining": 0,
-    "in_progress": 1,
+    "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 0
+    "done": 1
   },
   "summary_notes": [
     "Ein 90-Sekunden-Zwei-Peer-Nachweis mit required SFrame zeigte keinen Track-, Transport- oder Decoderabbruch; Kamera- und Bildschirmframes liefen fortlaufend weiter.",
@@ -60,6 +60,9 @@
     "Post-Fix-Langzeittest: Zwei echte Chromium-Seiten mit required SFrame, Kamera, Mikrofon und Screenshare blieben 90 Sekunden verbunden; jede Pruefung im Abstand von hoechstens fuenf Sekunden sah neue dargestellte Kameraframes, beide Video-Capture-Tracks waren am Ende live und enabled.",
     "Der Regressionstest erzwingt nur 100000 Bit/s availableOutgoingBitrate bei 50 ms RTT: Die Linkklasse bleibt constrained und der Default-Kamerapfad erhaelt als kleines Thumbnail 288000 Bit/s, 12 FPS und vierfache Skalierung statt zuvor 64800 Bit/s und 3 FPS.",
     "WebRTC-Senderwerte sind Obergrenzen und keine garantierte Mindestqualitaet; Browser-Congestion-Control darf weiterhin darunter bleiben.",
+    "Vollstaendiges Gate: npm run check bestand mit 65 Frontend- und 63 Node-/Browser-/Sicherheitstests sowie Produktionsbuild; das credentialpflichtige externe Keycloak-/TURN-Gate meldete ohne explizite Test-Credentials einen sichtbaren Skip.",
+    "Feature-Commit d53cf571dae539c8016e1fcb55b7051a4f98ea0f wurde als ananta888 auf origin/main gepusht und per sauberem Fast-forward mit dem bestehenden Compose-/Caddy-Pfad auf dem Mini-PC ausgerollt.",
+    "Produktionsnachweis: Der Container lief nach dem Rollout mit null Neustarts; interner und oeffentlicher Healthcheck antworteten HTTP 200 und https://webrtc.ananta.de lieferte main-JMERZWUE.js. Caddy, Keycloak, Coturn und Secrets blieben unveraendert.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
   ]
 }
