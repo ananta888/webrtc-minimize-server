@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/media-agent/federation-control.v1.schema.json",
+  "title": "Direct agent-to-agent federation control v1",
+  "oneOf": [
+    { "$ref": "#/$defs/hello" },
+    { "$ref": "#/$defs/ack" },
+    { "$ref": "#/$defs/stats" }
+  ],
+  "$defs": {
+    "baseProperties": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "type", "roomId", "routeEpoch", "linkId", "agentId"],
+      "properties": {
+        "version": { "const": 1 },
+        "type": { "type": "string" },
+        "roomId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{5,47}$" },
+        "routeEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "linkId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{22}$" },
+        "agentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" }
+      }
+    },
+    "hello": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "type", "roomId", "routeEpoch", "linkId", "agentId", "leaseExpiresAt"],
+      "properties": {
+        "version": { "const": 1 },
+        "type": { "const": "federation-hello" },
+        "roomId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{5,47}$" },
+        "routeEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "linkId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{22}$" },
+        "agentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
+        "leaseExpiresAt": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      }
+    },
+    "ack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "type", "roomId", "routeEpoch", "linkId", "agentId", "accepted"],
+      "properties": {
+        "version": { "const": 1 },
+        "type": { "const": "federation-ack" },
+        "roomId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{5,47}$" },
+        "routeEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "linkId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{22}$" },
+        "agentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
+        "accepted": { "type": "boolean" }
+      }
+    },
+    "stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version", "type", "roomId", "routeEpoch", "linkId", "agentId", "sequence",
+        "receivedPackets", "forwardedPackets", "droppedPackets"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "type": { "const": "federation-stats" },
+        "roomId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{5,47}$" },
+        "routeEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "linkId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{22}$" },
+        "agentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
+        "sequence": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "receivedPackets": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "forwardedPackets": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "droppedPackets": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+      }
+    }
+  }
+}

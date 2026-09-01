@@ -34,14 +34,38 @@ test("browser media-agent contracts are closed and epoch-bound", () => {
     candidate: null,
   }))), /invalid_agent_route_epoch/);
   assert.deepEqual(parseBrowserMediaAgentMessage(Buffer.from(JSON.stringify({
-    type: "media-agent-subscription-state",
+    version: 1,
+    type: "media-agent-subscription-intent",
     agentId: "laptop-edge",
     roomId: "room-123456",
     routeEpoch: 2,
     publisherPeerId: "0123456789abcdef",
     publicationId: "camera-track",
+    enabled: true,
+    preferredLayer: "medium",
+    maximumLayer: "high",
+  }))).preferredLayer, "medium");
+  assert.equal(parseBrowserMediaAgentMessage(Buffer.from(JSON.stringify({
+    version: 1,
+    type: "media-agent-subscription-ack",
+    agentId: "laptop-edge",
+    roomId: "room-123456",
+    routeEpoch: 2,
+    publisherPeerId: "0123456789abcdef",
+    publicationId: "camera-track",
+    revision: 4,
     ready: true,
   }))).ready, true);
+  assert.throws(() => parseBrowserMediaAgentMessage(Buffer.from(JSON.stringify({
+    type: "media-agent-subscription-ack",
+    agentId: "laptop-edge",
+    roomId: "room-123456",
+    routeEpoch: 2,
+    publisherPeerId: "0123456789abcdef",
+    publicationId: "camera-track",
+    revision: 4,
+    ready: true,
+  }))), /unknown_agent_subscription_ack_field/);
 });
 
 test("native agent contracts validate auth, capability, track and exact fields", () => {
@@ -59,13 +83,59 @@ test("native agent contracts validate auth, capability, track and exact fields",
     capacity: 80, load: 5, maxRooms: 0, maxPeers: 20, maxTracks: 80,
   }))), /invalid_agent_max_rooms/);
   assert.deepEqual(parseMediaAgentMessage(Buffer.from(JSON.stringify({
+    version: 2,
     type: "track-state",
     roomId: "room-123456",
     peerId: "0123456789abcdef",
     routeEpoch: 7,
     publicationId: "camera-track",
+    layer: "high",
+    rid: "f",
     active: true,
   }))).publicationId, "camera-track");
+  assert.equal(parseMediaAgentMessage(Buffer.from(JSON.stringify({
+    version: 2, type: "subscription-state", roomId: "room-123456", routeEpoch: 7,
+    publisherPeerId: "0123456789abcdef", publicationId: "camera-track",
+    subscriberPeerId: "fedcba9876543210", selectedLayer: "low", revision: 3, ready: true,
+  }))).selectedLayer, "low");
+  assert.equal(parseMediaAgentMessage(Buffer.from(JSON.stringify({
+    version: 1,
+    type: "federation-signal",
+    recipientAgentId: "remote-edge",
+    roomId: "room-123456",
+    routeEpoch: 7,
+    linkId: "abcdefghijklmnopqrstuv",
+    candidate: null,
+  }))).recipientAgentId, "remote-edge");
+  assert.equal(parseMediaAgentMessage(Buffer.from(JSON.stringify({
+    version: 1,
+    type: "federation-state",
+    roomId: "room-123456",
+    routeEpoch: 7,
+    linkId: "abcdefghijklmnopqrstuv",
+    remoteAgentId: "remote-edge",
+    connected: true,
+  }))).connected, true);
+  assert.throws(() => parseMediaAgentMessage(Buffer.from(JSON.stringify({
+    version: 1,
+    type: "federation-signal",
+    recipientAgentId: "remote-edge",
+    roomId: "room-123456",
+    routeEpoch: 7,
+    linkId: "abcdefghijklmnopqrstuv",
+    candidate: null,
+    authority: true,
+  }))), /unknown_federation_signal_field/);
+  assert.throws(() => parseMediaAgentMessage(Buffer.from(JSON.stringify({
+    type: "track-state",
+    roomId: "room-123456",
+    peerId: "0123456789abcdef",
+    routeEpoch: 7,
+    publicationId: "camera-track",
+    layer: "high",
+    rid: "f",
+    active: true,
+  }))), /unknown_agent_track_state_field/);
   assert.throws(() => parseMediaAgentMessage(Buffer.from(JSON.stringify({
     type: "draining", enabled: true, reason: "secret",
   }))), /unknown_agent_draining_field/);

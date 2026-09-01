@@ -77,19 +77,66 @@ Control Plane erneuert werden:
    das vorhandene SFrame-Mesh aktiv.
 
 Unterhalb von `MEDIA_AGENT_SHARD_MIN_PARTICIPANTS` (Default 6) ist nur der
-Primary Forwarder; die Standbys halten kurze Browser-ICE-Verbindungen warm. Ab
+Primary Forwarder; die Standbys besitzen keine Browser- oder Medienroute. Ab
 dem Schwellwert verteilt die Control Plane jeden Publisher deterministisch und
 eindeutig auf Primary und hoechstens zwei Standbys. Der Creator-Publisher bleibt
 beim Creator-Primary, soweit dieser gewaehlt wurde; die uebrigen Publisher
-werden balanciert. Jeder Agent erhaelt in seiner Lease fuer jeden Peer ein
-eigenes `publish`-Recht und verwirft Tracks nicht zugewiesener Publisher.
+werden balanciert. Dieselbe explizite Zuordnung legt derzeit den Egress eines
+Subscribers fest. Browser verbinden sich nur mit ihrem Ingress/Egress; jeder
+Agent erhaelt pro Peer getrennte `connect`, `publish` und `subscribe`-Rechte.
 
-Die implementierte Mehr-Agent-Route ist bewusst ein Shard-Modell ohne
-Agent-zu-Agent-Kaskade: Browser empfangen die jeweils zugewiesenen Publikationen
-direkt vom betreffenden Agenten. Dadurch gibt es keine Zyklen oder abgeleitete
-Kinderautoritaet. Ein spaeterer Agent-DAG waere eine neue, getrennt zu
-autorisierende Protokollfaehigkeit und darf aus SDP, ICE oder RTP niemals selbst
-abgeleitet werden.
+Kamera-Publisher handeln ueber `addTransceiver` drei Encodings aus: `q`/low,
+`h`/medium und `f`/high. Ein Subscriber sendet einen lokalen, nach oben
+begrenzten Layer-Wunsch. Die Control Plane prueft Quelle, Publikation,
+Membership, Egress und Route-Epoche; erst danach erhaelt der Egress einen
+Subscription-Plan. Audio, Bildschirmvideo und Bildschirmton bleiben getrennte
+Single-Layer-Publikationen. Der Ingress demultiplext RID/SSRC, dekodiert nichts
+und meldet die tatsaechlich vorhandenen Layer an die Control Plane. Diese
+waehlt fuer Agent-Links exakt den bevorzugten vorhandenen Layer, einen
+begrenzten niedrigeren Layer oder den portablen `single`-Fallback. Intent,
+Agent-Anwendung und Publisher-Readiness tragen eine monotone
+Subscription-Revision; ein verspaetetes Ergebnis einer alten Layerwahl kann
+den Direct-Fallback daher nicht abschalten. Der eine SFrame-
+Encrypt-Kontext des Publishers reserviert seinen Counter synchron vor jedem
+asynchronen Encrypt-Aufruf, sodass parallele Simulcast-Frames keinen AES-GCM-
+Nonce wiederverwenden.
+
+Bei mindestens zwei aktiven Forwardern erzeugt die Control Plane direkte
+Agent-Agent-Links als Stern um den Primary und pro Publisher einen gerichteten,
+zyklusfreien DAG mit hoechstens zwei Hops. Ein Publisher auf dem Primary geht
+direkt zu benoetigten Egress-Agenten; ein Publisher auf einem Standby geht bei
+Bedarf ueber den Primary zum anderen Standby. Aus aktiven Subscription-Plänen
+entstehen exakte `(Link, Richtung, Publisher, Publikation, Layer)`-Demands.
+Nicht angeforderte Layer werden auf diesem Link nicht als Sender angebunden.
+PLI-/FIR-Bursts mehrerer Downstreams werden pro Layer in einem begrenzten
+Zeitfenster zusammengefasst; pro Layer gelten eine harte Paketqueue und das
+raumweite Eingangsbitratebudget. Pions registrierte Standard-Interceptors
+stellen den ausgehandelten RTCP-/NACK-Pfad bereit, ohne daraus eine garantierte
+QoS abzuleiten.
+
+SDP und ICE der Agent-Agent-`RTCPeerConnection` werden nur ueber die bereits
+HMAC-authentisierte Control Plane vermittelt. Der darin ausgehandelte DTLS-
+Fingerprint bindet den Gegenueber; ein direkter, geschlossener DataChannel
+bestaetigt zusaetzlich Room, Route-Epoche, Link-ID, Agent-ID und frische Lease.
+Nur danach fliesst SFrame-Ciphertext direkt zwischen den Agenten. Hello, ACK
+und begrenzte Paketstatistiken koennen weder Membership noch neue Links oder
+Layerrechte erzeugen. Unbekannte Felder, Richtungen, Epochen, Links und
+Publikationen werden fail-closed verworfen. Die zugehoerigen geschlossenen
+JSON-Schemas liegen unter `contracts/media-agent/`; Medien selbst werden nie
+als JSON transportiert. Ein serverseitiger Full-Sync ist fuer maximal 32
+konfigurierte Agent-Raeume auf 32 MiB begrenzt; pro Raum gelten hoechstens
+1.520 Subscription-Plaene und 3.040 gerichtete Link-Demands. Nachrichten vom
+Agenten zur Control Plane bleiben separat auf 96 KiB und 2.000 Nachrichten je
+zehn Sekunden begrenzt. Layer- und Subscription-Aenderungen werden fuer 50 ms
+zu einem autoritativen Snapshot zusammengefasst, statt fuer jeden Intent einen
+neuen Full-Sync zu erzeugen.
+
+Der Publisher entfernt einen direkten SFrame-Sender erst, nachdem der Egress
+den Layer angewendet und der Zielbrowser den Receiver samt SFrame-Transform
+installiert und quittiert hat. Layerwechsel, Linkende, Lease-Ende oder Fehler
+aktivieren den vorhandenen Direct-Fallback wieder. Die native Foederation ist
+damit ein implementierter selektiver, SFrame-blinder SFU-Pfad, aber weder eine
+Bandbreitenreservierung noch eine 20-Teilnehmer-QoS-Garantie.
 
 ## Ports und Betrieb
 
@@ -100,9 +147,11 @@ verbessert direkte Pfade und senkt TURN-Last, ist aber keine Protokollpflicht.
 Ohne direkten NAT-Pfad muss erreichbares TURN vorhanden sein; der bestehende
 TURN-Agent allein wird dadurch nicht zum Medien-SFU.
 
-Der erste produktive Rollout bleibt feature-gegated. Ohne konfigurierte,
-authentisierte und vom Nutzer zugestimmte Media-Agenten zeigt die UI nur das
-bestehende Mesh und behauptet keine Fanout-Reduktion.
+Ohne konfigurierte, authentisierte und vom Nutzer zugestimmte Media-Agenten
+zeigt die UI nur das bestehende Mesh und behauptet keine Fanout-Reduktion. Ein
+einzelner Agent arbeitet ohne Foederationslink; weitere Agenten werden nur
+dann verbunden, wenn ihre jeweiligen Besitzer im selben Raum zugestimmt haben
+und die Control Plane sie fuer die aktuelle Route auswaehlt.
 
 ## Reproduzierbarer Rechnerbetrieb
 
@@ -133,6 +182,8 @@ aber weder Consent noch Agent-Authentisierung oder TURN fuer problematische
 Netze.
 
 Vor einem Rollout sind mindestens `go test -race ./...`, ein Image-Build sowie
-der reale Mehr-Browser-/Mehr-Agent-/NAT-Gate aus BME-006 erforderlich. Solange
-dieser Produktionsnachweis fehlt, ist die Implementierung nicht als
-garantierter 20-Teilnehmer-QoS-Pfad zu beschreiben.
+der reale Mehr-Browser-/Mehr-Agent-/NAT-Gate aus BME-006/BME-011 erforderlich.
+Der lokale Pion-Gate belegt individuelle Simulcast-Auswahl und einen direkten
+Zwei-Agenten-Pfad mit byte-identischem opaque Payload. Solange die echte
+Produktionsmatrix fehlt, ist die Implementierung nicht als garantierter
+20-Teilnehmer-QoS-Pfad zu beschreiben.

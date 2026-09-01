@@ -41,6 +41,7 @@ const MIME_TYPES = new Map([
   [".woff2", "font/woff2"],
 ]);
 const MAX_HTTP_BODY_BYTES = 16 * 1024;
+const MAX_MEDIA_AGENT_SYNC_BYTES = 32 * 1024 * 1024;
 const ROOM_REQUEST_FIELDS = new Set(["mode", "persistent", "title", "visibility"]);
 const ROOM_UPDATE_FIELDS = new Set(["title", "visibility"]);
 const SESSION_REQUEST_FIELDS = new Set(["roomId", "displayName", "mode", "deviceProof", "workspaceInvite"]);
@@ -94,8 +95,14 @@ function requestOriginAllowed(request, config) {
   }
 }
 
-function safeSend(socket, message) {
-  if (socket.readyState === WebSocket.OPEN) socket.send(encodeServerMessage(message));
+function safeSend(socket, message, maximumBytes = Number.POSITIVE_INFINITY) {
+  if (socket.readyState !== WebSocket.OPEN) return;
+  const encoded = encodeServerMessage(message);
+  if (Buffer.byteLength(encoded) > maximumBytes) {
+    socket.close(1009, "server control message too large");
+    return;
+  }
+  socket.send(encoded);
 }
 
 function publicRuntimeConfig(config) {
@@ -513,7 +520,8 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
     ...createTurnCredentials(config, `media-agent:${agentId}`),
   ];
 
-  const syncAgents = () => {
+  let agentSyncTimer = null;
+  const sendAgentSync = () => {
     for (const agentId of mediaAgents.connectedAgentIds()) {
       safeSend(mediaAgents.socketForAgent(agentId), {
         version: 1,
@@ -523,8 +531,21 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
           (roomId) => registry.members(roomId),
           iceServersForAgent,
         ),
-      });
+      }, MAX_MEDIA_AGENT_SYNC_BYTES);
     }
+  };
+  const syncAgents = () => {
+    if (agentSyncTimer) clearTimeout(agentSyncTimer);
+    agentSyncTimer = null;
+    sendAgentSync();
+  };
+  const scheduleAgentSync = () => {
+    if (agentSyncTimer) return;
+    agentSyncTimer = setTimeout(() => {
+      agentSyncTimer = null;
+      sendAgentSync();
+    }, 50);
+    agentSyncTimer.unref?.();
   };
 
   const sendMediaAgentAvailability = (member) => safeSend(member.socket, {
@@ -695,6 +716,9 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
         }
         if (message.type === "media-state") {
           registry.setMediaState(peer, message);
+          if (!message.active && mediaAgents.removePublisherSource(peer.roomId, peer.id, message.source)) {
+            syncAgents();
+          }
         }
         if (message.type === "media-agent-consent") {
           mediaAgents.setConsent(
@@ -712,7 +736,7 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
         }
         if (message.type === "media-agent-signal") {
           if (message.roomId !== peer.roomId
-            || !mediaAgents.authorize(peer.roomId, message.agentId, message.routeEpoch, peer.id)) {
+            || !mediaAgents.authorizePeerAgent(peer.roomId, message.agentId, message.routeEpoch, peer.id)) {
             throw new ProtocolError("stale_agent_route");
           }
           const agentSocket = mediaAgents.socketForAgent(message.agentId);
@@ -734,29 +758,45 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
           broadcastMediaAgentState(peer.roomId);
           return;
         }
-        if (message.type === "media-agent-subscription-state") {
-          if (message.roomId !== peer.roomId || message.publisherPeerId === peer.id
-            || !mediaAgents.authorizePublisher(
-              peer.roomId,
-              message.agentId,
-              message.routeEpoch,
-              message.publisherPeerId,
-            )) {
-            throw new ProtocolError("stale_agent_route");
-          }
+        if (message.type === "media-agent-subscription-intent") {
           const publication = registry.publication(
             message.publisherPeerId, message.publicationId, message.roomId,
           );
           if (!publication) throw new ProtocolError("agent_publication_unauthorized");
-          const publisher = registry.members(peer.roomId).find((member) => member.id === message.publisherPeerId);
+          const plan = mediaAgents.setSubscriptionIntent(peer, message, publication);
+          const publisher = registry.members(peer.roomId)
+            .find((member) => member.id === message.publisherPeerId);
           if (!publisher) throw new ProtocolError("recipient_unavailable");
-          safeSend(publisher.socket, {
-            version: 1,
+          const pendingState = {
+            version: 2,
             type: "media-agent-subscription-state",
             agentId: message.agentId,
             routeEpoch: message.routeEpoch,
             publicationId: message.publicationId,
             subscriberPeerId: peer.id,
+            selectedLayer: plan.preferredLayer,
+            revision: plan.revision,
+            ready: false,
+          };
+          safeSend(publisher.socket, pendingState);
+          safeSend(peer.socket, pendingState);
+          scheduleAgentSync();
+          return;
+        }
+        if (message.type === "media-agent-subscription-ack") {
+          const applied = mediaAgents.acknowledgeSubscription(peer, message);
+          const publisher = registry.members(peer.roomId)
+            .find((member) => member.id === message.publisherPeerId);
+          if (!publisher) throw new ProtocolError("recipient_unavailable");
+          safeSend(publisher.socket, {
+            version: 2,
+            type: "media-agent-subscription-state",
+            agentId: message.agentId,
+            routeEpoch: message.routeEpoch,
+            publicationId: message.publicationId,
+            subscriberPeerId: peer.id,
+            selectedLayer: applied.selectedLayer,
+            revision: applied.revision,
             ready: message.ready,
           });
           return;
@@ -882,7 +922,7 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
           return;
         }
         if (message.type === "media-agent-signal") {
-          if (!mediaAgents.authorize(message.roomId, connection.id, message.routeEpoch, message.peerId)) {
+          if (!mediaAgents.authorizePeerAgent(message.roomId, connection.id, message.routeEpoch, message.peerId)) {
             throw new ProtocolError("stale_agent_route");
           }
           const recipient = registry.members(message.roomId).find((peer) => peer.id === message.peerId);
@@ -893,6 +933,38 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
             agentId: connection.id,
             peerId: undefined,
           });
+          return;
+        }
+        if (message.type === "federation-signal") {
+          const link = mediaAgents.federationLink(
+            message.roomId,
+            message.routeEpoch,
+            message.linkId,
+            connection.id,
+            message.recipientAgentId,
+          );
+          if (!link) throw new ProtocolError("stale_federation_link");
+          const recipient = mediaAgents.socketForAgent(message.recipientAgentId);
+          if (!recipient) throw new ProtocolError("media_agent_unavailable");
+          safeSend(recipient, {
+            ...message,
+            version: 1,
+            type: "federation-peer-signal",
+            fromAgentId: connection.id,
+            recipientAgentId: undefined,
+          });
+          return;
+        }
+        if (message.type === "federation-state") {
+          mediaAgents.setFederationState(
+            socket,
+            message.roomId,
+            message.routeEpoch,
+            message.linkId,
+            message.remoteAgentId,
+            message.connected,
+          );
+          broadcastMediaAgentState(message.roomId);
           return;
         }
         if (message.type === "peer-state") {
@@ -914,25 +986,106 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
           )) {
             throw new ProtocolError("stale_agent_route");
           }
-          const trackKey = `${message.roomId}\0${connection.id}\0${message.peerId}\0${message.publicationId}`;
+          const trackKey = `${message.roomId}\0${connection.id}\0${message.peerId}\0${message.publicationId}\0${message.layer}`;
           const publication = registry.publication(message.peerId, message.publicationId, message.roomId);
           const source = publication?.source || mediaAgentTracks.get(trackKey);
           if (message.active && !publication) {
             throw new ProtocolError("agent_publication_unauthorized");
           }
           if (!source) throw new ProtocolError("agent_publication_unauthorized");
+          const validLayer = (source === "camera"
+            && new Set(["single", "low", "medium", "high"]).has(message.layer)
+            && ((message.layer === "single" && message.rid === "")
+              || ({ low: "q", medium: "h", high: "f" })[message.layer] === message.rid))
+            || (source === "screen" && message.layer === "single" && message.rid === "")
+            || (new Set(["microphone", "screen-audio"]).has(source)
+              && message.layer === "audio" && message.rid === "");
+          if (!validLayer) throw new ProtocolError("invalid_agent_publication_layer");
           if (message.active) mediaAgentTracks.set(trackKey, source);
           else mediaAgentTracks.delete(trackKey);
+          const layerChanged = mediaAgents.setPublicationLayerState(
+            message.roomId,
+            connection.id,
+            message.routeEpoch,
+            message.peerId,
+            message.publicationId,
+            source,
+            message.layer,
+            message.active,
+          );
           for (const recipient of registry.members(message.roomId)) {
             safeSend(recipient.socket, {
-              version: 1,
+              version: 2,
               type: "media-agent-track-state",
               agentId: connection.id,
               routeEpoch: message.routeEpoch,
               peerId: message.peerId,
               publicationId: message.publicationId,
               source,
+              layer: message.layer,
+              rid: message.rid,
               active: message.active,
+            });
+          }
+          if (layerChanged) scheduleAgentSync();
+          return;
+        }
+        if (message.type === "subscription-state") {
+          const plan = mediaAgents.subscriptionPlan(
+            message.roomId,
+            connection.id,
+            message.routeEpoch,
+            message.subscriberPeerId,
+            message.publisherPeerId,
+            message.publicationId,
+          );
+          const layerRank = { low: 0, medium: 1, high: 2 };
+          const selectedAllowed = plan && (plan.maximumLayer === "audio" || plan.maximumLayer === "single"
+            ? message.selectedLayer === plan.maximumLayer
+            : message.selectedLayer === "single" || Object.hasOwn(layerRank, message.selectedLayer)
+              && layerRank[message.selectedLayer] <= layerRank[plan.preferredLayer]
+              && layerRank[message.selectedLayer] <= layerRank[plan.maximumLayer]);
+          if (!plan || (message.ready && (!plan.enabled || !selectedAllowed))) {
+            throw new ProtocolError("stale_agent_subscription");
+          }
+          const applied = mediaAgents.setAgentSubscriptionState(
+            message.roomId,
+            connection.id,
+            message.routeEpoch,
+            message.subscriberPeerId,
+            message.publisherPeerId,
+            message.publicationId,
+            message.revision,
+            message.selectedLayer,
+            message.ready,
+          );
+          const members = registry.members(message.roomId);
+          const subscriber = members.find((member) => member.id === message.subscriberPeerId);
+          if (!subscriber) throw new ProtocolError("recipient_unavailable");
+          const publisher = members.find((member) => member.id === message.publisherPeerId);
+          if (!publisher) throw new ProtocolError("recipient_unavailable");
+          safeSend(subscriber.socket, {
+            version: 2,
+            type: "media-agent-subscription-state",
+            agentId: connection.id,
+            routeEpoch: message.routeEpoch,
+            publicationId: message.publicationId,
+            subscriberPeerId: message.subscriberPeerId,
+            selectedLayer: applied.selectedLayer,
+            revision: applied.revision,
+            ready: message.ready,
+          });
+          if (!message.ready) {
+            safeSend(publisher.socket, {
+              version: 2,
+              type: "media-agent-subscription-state",
+              agentId: connection.id,
+              routeEpoch: message.routeEpoch,
+              publicationId: message.publicationId,
+              subscriberPeerId: message.subscriberPeerId,
+              selectedLayer: applied.selectedLayer,
+              revision: applied.revision,
+              ready: false,
             });
           }
           return;

@@ -71,6 +71,35 @@ describe("PeerQualityController sender policies", () => {
     });
   });
 
+  it("keeps low and medium simulcast layers active for an individual balanced subscription ceiling", async () => {
+    const setParameters = vi.fn().mockResolvedValue(undefined);
+    const sender = {
+      track: { kind: "video" },
+      getParameters: vi.fn(() => ({
+        encodings: [{ rid: "q" }, { rid: "h" }, { rid: "f" }],
+      } as unknown as RTCRtpSendParameters)),
+      setParameters,
+    } as unknown as RTCRtpSender;
+    const result = await new PeerQualityController().applyVideo(
+      fakePeer(),
+      "camera:agent",
+      sender,
+      "camera",
+      QUALITY_SETTINGS.balanced,
+      "medium",
+      false,
+    );
+    expect(result).toBe("available");
+    const encodings = setParameters.mock.calls[0][0].encodings;
+    expect(encodings.map(({ rid, active, maxBitrate, maxFramerate, scaleResolutionDownBy }: RTCRtpEncodingParameters) => ({
+      rid, active, maxBitrate, maxFramerate, scaleResolutionDownBy,
+    }))).toEqual([
+      { rid: "q", active: true, maxBitrate: 120_000, maxFramerate: 6, scaleResolutionDownBy: 4 },
+      { rid: "h", active: true, maxBitrate: 420_000, maxFramerate: 15, scaleResolutionDownBy: 2 },
+      { rid: "f", active: false, maxBitrate: 420_000, maxFramerate: 15, scaleResolutionDownBy: 1 },
+    ]);
+  });
+
   it("falls back to local priority when network priority is rejected", async () => {
     const setParameters = vi.fn(async (parameters: RTCRtpSendParameters) => {
       if (parameters.encodings[0].networkPriority) throw new DOMException("unsupported", "InvalidModificationError");

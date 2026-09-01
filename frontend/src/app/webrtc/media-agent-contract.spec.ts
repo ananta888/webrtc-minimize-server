@@ -15,7 +15,7 @@ const now = 1_800_000_000_000;
 
 function route() {
   return {
-    version: 2,
+    version: 3,
     type: "media-agent-state",
     enabled: true,
     membershipEpoch: 4,
@@ -28,6 +28,27 @@ function route() {
       { peerId: ownerPeerId, agentId: "owner-edge" },
       { peerId: guestPeerId, agentId: "guest-edge" },
     ],
+    subscriberAssignments: [
+      { peerId: ownerPeerId, agentId: "owner-edge" },
+      { peerId: guestPeerId, agentId: "guest-edge" },
+    ],
+    federationLinks: [{
+      linkId: "abcdefghijklmnopqrstuv",
+      leftAgentId: "guest-edge",
+      rightAgentId: "owner-edge",
+      initiatorAgentId: "guest-edge",
+      readyAgentIds: [],
+    }],
+    federationRoutes: [{
+      publisherPeerId: ownerPeerId,
+      sourceAgentId: "owner-edge",
+      maximumHops: 2,
+      edges: [{
+        linkId: "abcdefghijklmnopqrstuv",
+        fromAgentId: "owner-edge",
+        toAgentId: "guest-edge",
+      }],
+    }],
     readiness: [
       { agentId: "owner-edge", readyPeerIds: [ownerPeerId] },
       { agentId: "guest-edge", readyPeerIds: [] },
@@ -48,6 +69,17 @@ describe("browser media-agent server contracts", () => {
       ...route(),
       primary: { id: "owner-edge", ownerPeerId: "aaaaaaaaaaaaaaaa", creatorPreferred: true },
     }, members, 4, 6, now)).toBeNull();
+    expect(validateMediaAgentRouteState({
+      ...route(),
+      federationRoutes: [{
+        ...route().federationRoutes[0],
+        edges: [{
+          linkId: "abcdefghijklmnopqrstuv",
+          fromAgentId: "owner-edge",
+          toAgentId: "unleased-edge",
+        }],
+      }],
+    }, members, 4, 6, now)).toBeNull();
   });
 
   it("rejects unknown takeover, track and subscription fields", () => {
@@ -63,25 +95,29 @@ describe("browser media-agent server contracts", () => {
     expect(validateMediaAgentTakeoverRequest({ ...takeover, roomAuthority: true }, now)).toBeNull();
 
     const track = {
-      version: 1,
+      version: 2,
       type: "media-agent-track-state",
       agentId: "owner-edge",
       routeEpoch: 7,
       peerId: ownerPeerId,
       publicationId: "camera-track",
       source: "camera",
+      layer: "high",
+      rid: "f",
       active: true,
     };
     expect(validateMediaAgentTrackState(track)).toEqual(track);
     expect(validateMediaAgentTrackState({ ...track, baseKey: "forbidden" })).toBeNull();
 
     const subscription = {
-      version: 1,
+      version: 2,
       type: "media-agent-subscription-state",
       agentId: "owner-edge",
       routeEpoch: 7,
       publicationId: "camera-track",
       subscriberPeerId: guestPeerId,
+      selectedLayer: "medium",
+      revision: 4,
       ready: true,
     };
     expect(validateMediaAgentSubscriptionState(subscription)).toEqual(subscription);

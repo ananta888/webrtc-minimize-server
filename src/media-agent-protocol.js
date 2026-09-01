@@ -8,6 +8,9 @@ const AUTH_PROOF_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const ROOM_ID_PATTERN = /^[a-z0-9][a-z0-9-]{5,47}$/;
 const BATTERY_STATES = new Set(["critical", "limited", "mains", "unknown"]);
 const NETWORK_STATES = new Set(["constrained", "normal", "fast", "unknown"]);
+const MEDIA_LAYERS = new Set(["audio", "single", "low", "medium", "high"]);
+const MEDIA_RIDS = new Set(["", "q", "h", "f"]);
+const FEDERATION_LINK_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 
 function exact(value, fields) {
   return Object.keys(value).length === fields.size
@@ -79,6 +82,31 @@ function signal(value, recipientField) {
   });
 }
 
+function federationSignal(value) {
+  const allowed = new Set([
+    "version", "type", "recipientAgentId", "roomId", "routeEpoch", "linkId", "description", "candidate",
+  ]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    throw new ProtocolError("unknown_federation_signal_field");
+  }
+  const hasDescription = Object.hasOwn(value, "description");
+  const hasCandidate = Object.hasOwn(value, "candidate");
+  if (value.version !== 1 || hasDescription === hasCandidate
+    || !MEDIA_AGENT_ID_PATTERN.test(value.recipientAgentId || "")
+    || !ROOM_ID_PATTERN.test(value.roomId || "") || !FEDERATION_LINK_PATTERN.test(value.linkId || "")) {
+    throw new ProtocolError("invalid_federation_signal");
+  }
+  return Object.freeze({
+    version: 1,
+    type: "federation-signal",
+    recipientAgentId: value.recipientAgentId,
+    roomId: value.roomId,
+    routeEpoch: integer(value.routeEpoch, "route_epoch", 1, Number.MAX_SAFE_INTEGER),
+    linkId: value.linkId,
+    ...(hasDescription ? { description: description(value.description) } : { candidate: candidate(value.candidate) }),
+  });
+}
+
 export function parseBrowserMediaAgentMessage(raw) {
   const value = parse(raw);
   if (value.type === "media-agent-consent") {
@@ -120,22 +148,51 @@ export function parseBrowserMediaAgentMessage(raw) {
       connected: value.connected,
     });
   }
-  if (value.type === "media-agent-subscription-state") {
+  if (value.type === "media-agent-subscription-intent") {
     if (!exact(value, new Set([
-      "type", "agentId", "roomId", "routeEpoch", "publisherPeerId", "publicationId", "ready",
-    ]))) throw new ProtocolError("unknown_agent_subscription_state_field");
-    if (!MEDIA_AGENT_ID_PATTERN.test(value.agentId || "") || !ROOM_ID_PATTERN.test(value.roomId || "")
+      "version", "type", "agentId", "roomId", "routeEpoch", "publisherPeerId", "publicationId",
+      "enabled", "preferredLayer", "maximumLayer",
+    ]))) throw new ProtocolError("unknown_agent_subscription_intent_field");
+    if (value.version !== 1 || !MEDIA_AGENT_ID_PATTERN.test(value.agentId || "")
+      || !ROOM_ID_PATTERN.test(value.roomId || "")
       || !PEER_ID_PATTERN.test(value.publisherPeerId || "")
-      || !TRACK_ID_PATTERN.test(value.publicationId || "") || typeof value.ready !== "boolean") {
-      throw new ProtocolError("invalid_agent_subscription_state");
+      || !TRACK_ID_PATTERN.test(value.publicationId || "") || typeof value.enabled !== "boolean"
+      || !MEDIA_LAYERS.has(value.preferredLayer) || !MEDIA_LAYERS.has(value.maximumLayer)) {
+      throw new ProtocolError("invalid_agent_subscription_intent");
     }
     return Object.freeze({
+      version: 1,
       type: value.type,
       agentId: value.agentId,
       roomId: value.roomId,
       routeEpoch: integer(value.routeEpoch, "route_epoch", 1, Number.MAX_SAFE_INTEGER),
       publisherPeerId: value.publisherPeerId,
       publicationId: value.publicationId,
+      enabled: value.enabled,
+      preferredLayer: value.preferredLayer,
+      maximumLayer: value.maximumLayer,
+    });
+  }
+  if (value.type === "media-agent-subscription-ack") {
+    if (!exact(value, new Set([
+      "version", "type", "agentId", "roomId", "routeEpoch", "publisherPeerId", "publicationId",
+      "revision", "ready",
+    ]))) throw new ProtocolError("unknown_agent_subscription_ack_field");
+    if (value.version !== 1 || !MEDIA_AGENT_ID_PATTERN.test(value.agentId || "")
+      || !ROOM_ID_PATTERN.test(value.roomId || "")
+      || !PEER_ID_PATTERN.test(value.publisherPeerId || "")
+      || !TRACK_ID_PATTERN.test(value.publicationId || "") || typeof value.ready !== "boolean") {
+      throw new ProtocolError("invalid_agent_subscription_ack");
+    }
+    return Object.freeze({
+      version: 1,
+      type: value.type,
+      agentId: value.agentId,
+      roomId: value.roomId,
+      routeEpoch: integer(value.routeEpoch, "route_epoch", 1, Number.MAX_SAFE_INTEGER),
+      publisherPeerId: value.publisherPeerId,
+      publicationId: value.publicationId,
+      revision: integer(value.revision, "subscription_revision", 1, Number.MAX_SAFE_INTEGER),
       ready: value.ready,
     });
   }
@@ -193,6 +250,26 @@ export function parseMediaAgentMessage(raw) {
     });
   }
   if (value.type === "media-agent-signal") return signal(value, "peerId");
+  if (value.type === "federation-signal") return federationSignal(value);
+  if (value.type === "federation-state") {
+    if (!exact(value, new Set([
+      "version", "type", "roomId", "routeEpoch", "linkId", "remoteAgentId", "connected",
+    ]))) throw new ProtocolError("unknown_federation_state_field");
+    if (value.version !== 1 || !ROOM_ID_PATTERN.test(value.roomId || "")
+      || !FEDERATION_LINK_PATTERN.test(value.linkId || "")
+      || !MEDIA_AGENT_ID_PATTERN.test(value.remoteAgentId || "") || typeof value.connected !== "boolean") {
+      throw new ProtocolError("invalid_federation_state");
+    }
+    return Object.freeze({
+      version: 1,
+      type: value.type,
+      roomId: value.roomId,
+      routeEpoch: integer(value.routeEpoch, "route_epoch", 1, Number.MAX_SAFE_INTEGER),
+      linkId: value.linkId,
+      remoteAgentId: value.remoteAgentId,
+      connected: value.connected,
+    });
+  }
   if (value.type === "peer-state") {
     if (!exact(value, new Set(["type", "roomId", "peerId", "routeEpoch", "connected"]))) {
       throw new ProtocolError("unknown_agent_peer_state_field");
@@ -209,19 +286,47 @@ export function parseMediaAgentMessage(raw) {
   }
   if (value.type === "track-state") {
     if (!exact(value, new Set([
-      "type", "roomId", "peerId", "routeEpoch", "publicationId", "active",
+      "version", "type", "roomId", "peerId", "routeEpoch", "publicationId", "layer", "rid", "active",
     ]))) throw new ProtocolError("unknown_agent_track_state_field");
-    if (!ROOM_ID_PATTERN.test(value.roomId || "") || !PEER_ID_PATTERN.test(value.peerId || "")
-      || !TRACK_ID_PATTERN.test(value.publicationId || "") || typeof value.active !== "boolean") {
+    if (value.version !== 2 || !ROOM_ID_PATTERN.test(value.roomId || "")
+      || !PEER_ID_PATTERN.test(value.peerId || "")
+      || !TRACK_ID_PATTERN.test(value.publicationId || "") || !MEDIA_LAYERS.has(value.layer)
+      || !MEDIA_RIDS.has(value.rid) || typeof value.active !== "boolean") {
       throw new ProtocolError("invalid_agent_track_state");
     }
     return Object.freeze({
+      version: 2,
       type: value.type,
       roomId: value.roomId,
       peerId: value.peerId,
       routeEpoch: integer(value.routeEpoch, "route_epoch", 1, Number.MAX_SAFE_INTEGER),
       publicationId: value.publicationId,
+      layer: value.layer,
+      rid: value.rid,
       active: value.active,
+    });
+  }
+  if (value.type === "subscription-state") {
+    if (!exact(value, new Set([
+      "version", "type", "roomId", "routeEpoch", "publisherPeerId", "publicationId",
+      "subscriberPeerId", "selectedLayer", "revision", "ready",
+    ]))) throw new ProtocolError("unknown_agent_subscription_state_field");
+    if (value.version !== 2 || !ROOM_ID_PATTERN.test(value.roomId || "")
+      || !PEER_ID_PATTERN.test(value.publisherPeerId || "")
+      || !PEER_ID_PATTERN.test(value.subscriberPeerId || "")
+      || !TRACK_ID_PATTERN.test(value.publicationId || "") || !MEDIA_LAYERS.has(value.selectedLayer)
+      || typeof value.ready !== "boolean") throw new ProtocolError("invalid_agent_subscription_state");
+    return Object.freeze({
+      version: 2,
+      type: value.type,
+      roomId: value.roomId,
+      routeEpoch: integer(value.routeEpoch, "route_epoch", 1, Number.MAX_SAFE_INTEGER),
+      publisherPeerId: value.publisherPeerId,
+      publicationId: value.publicationId,
+      subscriberPeerId: value.subscriberPeerId,
+      selectedLayer: value.selectedLayer,
+      revision: integer(value.revision, "subscription_revision", 1, Number.MAX_SAFE_INTEGER),
+      ready: value.ready,
     });
   }
   if (value.type === "draining") {

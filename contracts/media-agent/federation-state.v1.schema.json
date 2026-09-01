@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/media-agent/federation-state.v1.schema.json",
+  "title": "Native media-agent federation link state v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version", "type", "roomId", "routeEpoch", "linkId", "remoteAgentId", "connected"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "type": { "const": "federation-state" },
+    "roomId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{5,47}$" },
+    "routeEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "linkId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{22}$" },
+    "remoteAgentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
+    "connected": { "type": "boolean" }
+  }
+}

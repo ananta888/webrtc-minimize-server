@@ -11,14 +11,18 @@ function peer(id, principal, creator = false) {
   return { id, roomId: "room-123456", principal, creator };
 }
 
-function authenticate(registry, socket, now = 10_000) {
+function authenticateAgent(registry, socket, agentId, agentSecret, now = 10_000) {
   const challenge = registry.issueChallenge(socket, now);
   return registry.authenticate(socket, {
     type: "authenticate",
-    agentId: "creator-edge",
+    agentId,
     timestamp: now,
-    proof: mediaAgentAuthProof(secret, "creator-edge", challenge.nonce, now),
+    proof: mediaAgentAuthProof(agentSecret, agentId, challenge.nonce, now),
   }, now);
+}
+
+function authenticate(registry, socket, now = 10_000) {
+  return authenticateAgent(registry, socket, "creator-edge", secret, now);
 }
 
 test("agent auth consumes one challenge, binds exact owner and never exposes the shared secret", () => {
@@ -163,7 +167,7 @@ test("large rooms receive control-plane-owned publisher sharding across bounded 
     [false, false],
   );
   const state = registry.reconcile(members[0].roomId, members, 2, 11_000);
-  assert.equal(state.version, 2);
+  assert.equal(state.version, 3);
   assert.ok(state.routeEpoch > small.routeEpoch);
   assert.equal(state.primary.id, "creator-edge");
   assert.deepEqual(state.forwarderIds, ["creator-edge", "helper-edge"]);
@@ -176,15 +180,359 @@ test("large rooms receive control-plane-owned publisher sharding across bounded 
     .filter(({ agentId }) => agentId === "helper-edge").map(({ peerId }) => peerId);
   assert.ok(helperPublishers.length > 0);
   const [lease] = registry.roomLeases("helper-edge", () => members, () => []);
-  assert.equal(lease.version, 2);
+  assert.equal(lease.version, 3);
   assert.equal(lease.role, "standby");
   assert.deepEqual(lease.peers.filter(({ publish }) => publish).map(({ id }) => id), helperPublishers);
+  assert.deepEqual(lease.peers.filter(({ subscribe }) => subscribe).map(({ id }) => id), helperPublishers);
+  assert.deepEqual(lease.peers.filter(({ connect }) => connect).map(({ id }) => id), helperPublishers);
+  const helperPublisher = helperPublishers[0];
+  const subscriber = members.find(({ id }) => helperPublishers.includes(id) && id !== helperPublisher);
+  registry.setSubscriptionIntent(subscriber, {
+    type: "media-agent-subscription-intent",
+    agentId: "helper-edge",
+    roomId: members[0].roomId,
+    routeEpoch: state.routeEpoch,
+    publisherPeerId: helperPublisher,
+    publicationId: "camera-track",
+    enabled: true,
+    preferredLayer: "medium",
+    maximumLayer: "high",
+  }, { publicationId: "camera-track", source: "camera" }, 11_001);
+  const [subscriptionLease] = registry.roomLeases("helper-edge", () => members, () => []);
+  assert.deepEqual(subscriptionLease.subscriptions, [{
+    subscriberPeerId: subscriber.id,
+    publisherPeerId: helperPublisher,
+    publicationId: "camera-track",
+    source: "camera",
+    enabled: true,
+    preferredLayer: "medium",
+    maximumLayer: "high",
+    revision: 1,
+  }]);
+  assert.throws(() => registry.acknowledgeSubscription(subscriber, {
+    agentId: "helper-edge",
+    roomId: members[0].roomId,
+    routeEpoch: state.routeEpoch,
+    publisherPeerId: helperPublisher,
+    publicationId: "camera-track",
+    ready: true,
+  }, 11_001), /stale_agent_subscription/);
+  registry.setAgentSubscriptionState(
+    members[0].roomId,
+    "helper-edge",
+    state.routeEpoch,
+    subscriber.id,
+    helperPublisher,
+    "camera-track",
+    1,
+    "medium",
+    true,
+    11_001,
+  );
+  assert.equal(registry.acknowledgeSubscription(subscriber, {
+    agentId: "helper-edge",
+    roomId: members[0].roomId,
+    routeEpoch: state.routeEpoch,
+    publisherPeerId: helperPublisher,
+    publicationId: "camera-track",
+    revision: 1,
+    ready: true,
+  }, 11_001).selectedLayer, "medium");
+  registry.setSubscriptionIntent(subscriber, {
+    type: "media-agent-subscription-intent",
+    agentId: "helper-edge",
+    roomId: members[0].roomId,
+    routeEpoch: state.routeEpoch,
+    publisherPeerId: helperPublisher,
+    publicationId: "camera-track",
+    enabled: true,
+    preferredLayer: "low",
+    maximumLayer: "medium",
+  }, { publicationId: "camera-track", source: "camera" }, 11_002);
+  assert.throws(() => registry.setAgentSubscriptionState(
+    members[0].roomId,
+    "helper-edge",
+    state.routeEpoch,
+    subscriber.id,
+    helperPublisher,
+    "camera-track",
+    1,
+    "medium",
+    true,
+    11_002,
+  ), /stale_agent_subscription/);
+  assert.throws(() => registry.setAgentSubscriptionState(
+    members[0].roomId,
+    "helper-edge",
+    state.routeEpoch,
+    subscriber.id,
+    helperPublisher,
+    "camera-track",
+    2,
+    "medium",
+    true,
+    11_002,
+  ), /stale_agent_subscription/);
+  registry.setAgentSubscriptionState(
+    members[0].roomId,
+    "helper-edge",
+    state.routeEpoch,
+    subscriber.id,
+    helperPublisher,
+    "camera-track",
+    2,
+    "low",
+    true,
+    11_002,
+  );
+  assert.throws(() => registry.acknowledgeSubscription(subscriber, {
+    agentId: "helper-edge",
+    roomId: members[0].roomId,
+    routeEpoch: state.routeEpoch,
+    publisherPeerId: helperPublisher,
+    publicationId: "camera-track",
+    revision: 1,
+    ready: true,
+  }, 11_002), /stale_agent_subscription/);
+  assert.equal(registry.acknowledgeSubscription(subscriber, {
+    agentId: "helper-edge",
+    roomId: members[0].roomId,
+    routeEpoch: state.routeEpoch,
+    publisherPeerId: helperPublisher,
+    publicationId: "camera-track",
+    revision: 2,
+    ready: true,
+  }, 11_002).selectedLayer, "low");
+  assert.throws(() => registry.setSubscriptionIntent(subscriber, {
+    type: "media-agent-subscription-intent",
+    agentId: "helper-edge",
+    roomId: members[0].roomId,
+    routeEpoch: state.routeEpoch,
+    publisherPeerId: helperPublisher,
+    publicationId: "camera-track",
+    enabled: true,
+    preferredLayer: "audio",
+    maximumLayer: "audio",
+  }, { publicationId: "camera-track", source: "camera" }, 11_001), /invalid_agent_subscription_intent/);
   assert.equal(registry.authorizePublisher(
     members[0].roomId, "helper-edge", state.routeEpoch, helperPublishers[0], 11_001,
   ), true);
   assert.equal(registry.authorizePublisher(
     members[0].roomId, "creator-edge", state.routeEpoch, helperPublishers[0], 11_001,
   ), false);
+});
+
+test("three agents receive a bounded DAG and exact cross-shard layer demands", () => {
+  const relayASecret = "relay-a-secret-that-is-long-enough-123456";
+  const relayBSecret = "relay-b-secret-that-is-long-enough-123456";
+  const definitions = [
+    { id: "creator-edge", ownerPrincipal: `${issuer}|owner`, sharedSecret: secret },
+    { id: "relay-a", ownerPrincipal: `${issuer}|relay-a`, sharedSecret: relayASecret },
+    { id: "relay-b", ownerPrincipal: `${issuer}|relay-b`, sharedSecret: relayBSecret },
+  ];
+  const registry = new MediaAgentRegistry({ definitions, shardMinParticipants: 6, maxStandbys: 2 });
+  const sockets = new Map(definitions.map((definition) => [definition.id, {}]));
+  for (const definition of definitions) {
+    authenticateAgent(registry, sockets.get(definition.id), definition.id, definition.sharedSecret);
+  }
+  const members = [
+    peer("0000000000000000", `${issuer}|owner`, true),
+    peer("1111111111111111", `${issuer}|relay-a`),
+    peer("2222222222222222", `${issuer}|relay-b`),
+    peer("3333333333333333", `${issuer}|three`),
+    peer("4444444444444444", `${issuer}|four`),
+    peer("5555555555555555", `${issuer}|five`),
+  ];
+  for (const [index, definition] of definitions.entries()) {
+    registry.setConsent(members[index], {
+      enabled: true,
+      agentId: definition.id,
+      automaticTakeover: false,
+    }, members[0].principal, 10_000);
+  }
+  const state = registry.reconcile(members[0].roomId, members, 1, 10_000);
+  assert.deepEqual(state.forwarderIds, ["creator-edge", "relay-a", "relay-b"]);
+  assert.equal(state.publisherAssignments.length, members.length);
+  assert.equal(state.subscriberAssignments.length, members.length);
+  assert.equal(new Set(state.subscriberAssignments.map(({ peerId }) => peerId)).size, members.length);
+  assert.equal(state.federationLinks.length, 2);
+  for (const link of state.federationLinks) {
+    assert.ok(new Set([link.leftAgentId, link.rightAgentId]).has("creator-edge"));
+    assert.equal(link.readyAgentIds.length, 0);
+  }
+  const links = new Map(state.federationLinks.map((link) => [link.linkId, link]));
+  for (const route of state.federationRoutes) {
+    const visited = new Set([route.sourceAgentId]);
+    const depth = new Map([[route.sourceAgentId, 0]]);
+    for (const edge of route.edges) {
+      const link = links.get(edge.linkId);
+      assert.ok(link);
+      assert.ok(visited.has(edge.fromAgentId));
+      assert.equal(visited.has(edge.toAgentId), false);
+      assert.ok(new Set([link.leftAgentId, link.rightAgentId]).has(edge.fromAgentId));
+      assert.ok(new Set([link.leftAgentId, link.rightAgentId]).has(edge.toAgentId));
+      depth.set(edge.toAgentId, depth.get(edge.fromAgentId) + 1);
+      assert.ok(depth.get(edge.toAgentId) <= route.maximumHops);
+      visited.add(edge.toAgentId);
+    }
+  }
+
+  const publisher = members[1];
+  const subscriber = members[2];
+  assert.deepEqual(state.publisherAssignments.find(({ peerId }) => peerId === publisher.id), {
+    peerId: publisher.id,
+    agentId: "relay-a",
+  });
+  assert.deepEqual(state.subscriberAssignments.find(({ peerId }) => peerId === subscriber.id), {
+    peerId: subscriber.id,
+    agentId: "relay-b",
+  });
+  registry.setSubscriptionIntent(subscriber, {
+    type: "media-agent-subscription-intent",
+    agentId: "relay-b",
+    roomId: publisher.roomId,
+    routeEpoch: state.routeEpoch,
+    publisherPeerId: publisher.id,
+    publicationId: "camera-track",
+    enabled: true,
+    preferredLayer: "low",
+    maximumLayer: "high",
+  }, { publicationId: "camera-track", source: "camera" }, 10_001);
+  const leases = new Map(state.forwarderIds.map((agentId) => [
+    agentId,
+    registry.roomLeases(agentId, () => members, () => [])[0],
+  ]));
+  assert.equal(leases.get("relay-a").subscriptions.length, 0);
+  assert.equal(leases.get("creator-edge").subscriptions.length, 0);
+  assert.equal(leases.get("relay-b").subscriptions.length, 1);
+  assert.deepEqual(leases.get("relay-a").federationDemands.map(({ fromAgentId, toAgentId, layer }) => ({
+    fromAgentId, toAgentId, layer,
+  })), [{ fromAgentId: "relay-a", toAgentId: "creator-edge", layer: "low" }]);
+  assert.deepEqual(leases.get("creator-edge").federationDemands.map((demand) => (
+    `${demand.fromAgentId}>${demand.toAgentId}:${demand.layer}`
+  )).sort(), ["creator-edge>relay-b:low", "relay-a>creator-edge:low"]);
+  assert.deepEqual(leases.get("relay-b").federationDemands.map(({ fromAgentId, toAgentId, layer }) => ({
+    fromAgentId, toAgentId, layer,
+  })), [{ fromAgentId: "creator-edge", toAgentId: "relay-b", layer: "low" }]);
+
+  registry.setPublicationLayerState(
+    publisher.roomId, "relay-a", state.routeEpoch, publisher.id, "camera-track", "camera", "single", true, 10_002,
+  );
+  assert.deepEqual(
+    registry.roomLeases("creator-edge", () => members, () => [])[0]
+      .federationDemands.map(({ layer }) => layer),
+    ["single", "single"],
+  );
+  registry.setPublicationLayerState(
+    publisher.roomId, "relay-a", state.routeEpoch, publisher.id, "camera-track", "camera", "single", false, 10_003,
+  );
+  registry.setPublicationLayerState(
+    publisher.roomId, "relay-a", state.routeEpoch, publisher.id, "camera-track", "camera", "low", true, 10_003,
+  );
+  registry.setPublicationLayerState(
+    publisher.roomId, "relay-a", state.routeEpoch, publisher.id, "camera-track", "camera", "medium", true, 10_003,
+  );
+  registry.setSubscriptionIntent(subscriber, {
+    type: "media-agent-subscription-intent",
+    agentId: "relay-b",
+    roomId: publisher.roomId,
+    routeEpoch: state.routeEpoch,
+    publisherPeerId: publisher.id,
+    publicationId: "camera-track",
+    enabled: true,
+    preferredLayer: "high",
+    maximumLayer: "high",
+  }, { publicationId: "camera-track", source: "camera" }, 10_003);
+  assert.deepEqual(
+    registry.roomLeases("creator-edge", () => members, () => [])[0]
+      .federationDemands.map(({ layer }) => layer),
+    ["medium", "medium"],
+  );
+  registry.setPublicationLayerState(
+    publisher.roomId, "relay-a", state.routeEpoch, publisher.id, "camera-track", "camera", "high", true, 10_004,
+  );
+  assert.deepEqual(
+    registry.roomLeases("creator-edge", () => members, () => [])[0]
+      .federationDemands.map(({ layer }) => layer),
+    ["high", "high"],
+  );
+  for (const [agentId, lease] of leases) {
+    assert.ok(lease.federationLinks.every((link) => (
+      link.leftAgentId === agentId || link.rightAgentId === agentId
+    )));
+  }
+
+  const firstLink = state.federationLinks[0];
+  const firstRemote = firstLink.leftAgentId === "creator-edge" ? firstLink.rightAgentId : firstLink.leftAgentId;
+  assert.ok(registry.federationLink(
+    publisher.roomId, state.routeEpoch, firstLink.linkId, "creator-edge", firstRemote, 10_001,
+  ));
+  assert.equal(registry.federationLink(
+    publisher.roomId, state.routeEpoch - 1, firstLink.linkId, "creator-edge", firstRemote, 10_001,
+  ), null);
+  assert.equal(registry.federationLink(
+    publisher.roomId, state.routeEpoch, firstLink.linkId, "relay-a", "relay-b", 10_001,
+  ), null);
+  assert.equal(registry.setFederationState(
+    sockets.get("creator-edge"), publisher.roomId, state.routeEpoch,
+    firstLink.linkId, firstRemote, true, 10_001,
+  ), false);
+  assert.equal(registry.setFederationState(
+    sockets.get(firstRemote), publisher.roomId, state.routeEpoch,
+    firstLink.linkId, "creator-edge", true, 10_001,
+  ), true);
+  assert.deepEqual(
+    registry.snapshot(publisher.roomId, members).federationLinks
+      .find(({ linkId }) => linkId === firstLink.linkId).readyAgentIds,
+    ["creator-edge", firstRemote].sort(),
+  );
+});
+
+test("twenty peers retain four bounded publication plans beyond the former control-frame limit", () => {
+  const registry = new MediaAgentRegistry({ definitions: [{
+    id: "creator-edge", ownerPrincipal: `${issuer}|owner`, sharedSecret: secret,
+  }] });
+  const socket = {};
+  authenticate(registry, socket);
+  const members = Array.from({ length: 20 }, (_, index) => peer(
+    index.toString(16).padStart(16, "0"),
+    index === 0 ? `${issuer}|owner` : `${issuer}|member-${index}`,
+    index === 0,
+  ));
+  registry.setConsent(members[0], {
+    enabled: true, agentId: "creator-edge", automaticTakeover: false,
+  }, members[0].principal, 10_000);
+  const state = registry.reconcile(members[0].roomId, members, 1, 10_000);
+  const publications = [
+    { prefix: "mic", source: "microphone", layer: "audio" },
+    { prefix: "cam", source: "camera", layer: "medium" },
+    { prefix: "screen", source: "screen", layer: "single" },
+    { prefix: "screen-audio", source: "screen-audio", layer: "audio" },
+  ];
+  for (const subscriber of members) {
+    for (const publisher of members) {
+      if (publisher.id === subscriber.id) continue;
+      for (const publication of publications) {
+        const publicationId = `${publication.prefix}-${publisher.id}`;
+        registry.setSubscriptionIntent(subscriber, {
+          type: "media-agent-subscription-intent",
+          agentId: "creator-edge",
+          roomId: subscriber.roomId,
+          routeEpoch: state.routeEpoch,
+          publisherPeerId: publisher.id,
+          publicationId,
+          enabled: true,
+          preferredLayer: publication.layer,
+          maximumLayer: publication.layer === "medium" ? "high" : publication.layer,
+        }, { publicationId, source: publication.source }, 10_001);
+      }
+    }
+  }
+  const lease = registry.roomLeases("creator-edge", () => members, () => [])[0];
+  assert.equal(lease.subscriptions.length, 1_520);
+  const bytes = Buffer.byteLength(JSON.stringify({ version: 1, type: "agent-sync", leases: [lease] }));
+  assert.ok(bytes > 96 * 1024);
+  assert.ok(bytes < 32 * 1024 * 1024);
 });
 
 test("empty-room cleanup revokes every route and lease", () => {

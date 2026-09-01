@@ -7,6 +7,7 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   const config = loadConfig({});
   assert.equal(config.port, 8080);
   assert.equal(config.maxRoomParticipants, 20);
+  assert.equal(config.signalRateLimit, 300);
   assert.deepEqual(config.stunUrls, ["stun:stun.l.google.com:19302"]);
   assert.deepEqual(config.turnServers, []);
   assert.equal(config.authMode, "disabled");
@@ -25,6 +26,7 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.equal(config.mediaAgentLeaseMs, 30_000);
   assert.equal(config.mediaAgentRenewMs, 10_000);
   assert.equal(config.mediaAgentShardMinParticipants, 6);
+  assert.equal(config.mediaAgentRateLimit, 2_000);
 });
 
 test("loadConfig parses TURN configuration without preserving unknown fields", () => {
@@ -52,6 +54,7 @@ test("loadConfig rejects unsafe bounds and malformed public origins", () => {
   assert.throws(() => loadConfig({ ACTIVE_SPEAKER_LIMIT: "6" }), /between 2 and 5/);
   assert.throws(() => loadConfig({ MEDIA_E2EE_MODE: "required", PEER_DATA_OVERLAY_ENABLED: "false" }), /requires/);
   assert.throws(() => loadConfig({ PEER_EDGE_FALLBACK_MS: "500" }), /between 1000 and 30000/);
+  assert.throws(() => loadConfig({ MEDIA_AGENT_RATE_LIMIT: "2001" }), /between 60 and 2000/);
   assert.throws(
     () => loadConfig({ PEER_EDGE_FALLBACK_MS: "9000", INFRASTRUCTURE_TURN_FALLBACK_MS: "9000" }),
     /longer/,

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/media-agent/subscription-ack.v1.schema.json",
+  "title": "Browser-confirmed media-agent subscription acknowledgement v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version", "type", "agentId", "roomId", "routeEpoch", "publisherPeerId", "publicationId", "revision", "ready"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "type": { "const": "media-agent-subscription-ack" },
+    "agentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
+    "roomId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{5,47}$" },
+    "routeEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "publisherPeerId": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
+    "publicationId": { "type": "string", "pattern": "^[A-Za-z0-9_={}:-]{1,128}$" },
+    "revision": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "ready": { "type": "boolean" }
+  }
+}

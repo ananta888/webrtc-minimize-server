@@ -13,6 +13,15 @@ interface ParameterApplication {
   readonly capability: "available" | "degraded";
 }
 
+const SIMULCAST_LAYER_RANK: Readonly<Record<string, number>> = Object.freeze({ q: 0, h: 1, f: 2 });
+
+function videoTierRank(tier: QualitySettings["tier"]): number {
+  if (tier === "screen" || tier === "focus") return 2;
+  if (tier === "balanced") return 1;
+  if (tier === "thumbnail") return 0;
+  return -1;
+}
+
 export class PeerQualityController {
   async sample(peer: ManagedPeer, now = Date.now()): Promise<PeerQualitySample> {
     const reports = await peer.pc.getStats();
@@ -74,10 +83,29 @@ export class PeerQualityController {
     if (!force && peer.appliedTiers.get(publicationId) === signature) return null;
     const result = await this.applyParameters(sender, priority, (parameters) => {
       parameters.degradationPreference = source === "screen" ? "maintain-resolution" : "balanced";
-      parameters.encodings[0].active = quality.active;
-      parameters.encodings[0].maxBitrate = Math.max(1, quality.maxBitrate);
-      parameters.encodings[0].maxFramerate = quality.maxFramerate;
-      parameters.encodings[0].scaleResolutionDownBy = quality.scaleResolutionDownBy;
+      const simulcast = source === "camera" && parameters.encodings.length > 1
+        && parameters.encodings.every(({ rid }) => rid && Object.hasOwn(SIMULCAST_LAYER_RANK, rid));
+      if (simulcast) {
+        const targetRank = videoTierRank(quality.tier);
+        const layerPolicy = {
+          q: { maxBitrate: 120_000, maxFramerate: 6, scaleResolutionDownBy: 4 },
+          h: { maxBitrate: 420_000, maxFramerate: 15, scaleResolutionDownBy: 2 },
+          f: { maxBitrate: 1_200_000, maxFramerate: 24, scaleResolutionDownBy: 1 },
+        } as const;
+        for (const encoding of parameters.encodings) {
+          const rid = encoding.rid as keyof typeof layerPolicy;
+          const policy = layerPolicy[rid];
+          encoding.active = quality.active && SIMULCAST_LAYER_RANK[rid] <= targetRank;
+          encoding.maxBitrate = Math.max(1, Math.min(policy.maxBitrate, quality.maxBitrate));
+          encoding.maxFramerate = Math.max(1, Math.min(policy.maxFramerate, quality.maxFramerate));
+          encoding.scaleResolutionDownBy = policy.scaleResolutionDownBy;
+        }
+      } else {
+        parameters.encodings[0].active = quality.active;
+        parameters.encodings[0].maxBitrate = Math.max(1, quality.maxBitrate);
+        parameters.encodings[0].maxFramerate = quality.maxFramerate;
+        parameters.encodings[0].scaleResolutionDownBy = quality.scaleResolutionDownBy;
+      }
     });
     if (result.applied) peer.appliedTiers.set(publicationId, signature);
     return result.capability;
@@ -92,8 +120,10 @@ export class PeerQualityController {
       const parameters = sender.getParameters();
       if (parameters.encodings.length === 0) return { applied: false, capability: "degraded" };
       configure(parameters);
-      if (prioritySupport !== "none") parameters.encodings[0].priority = priority;
-      if (prioritySupport === "network") parameters.encodings[0].networkPriority = priority;
+      for (const encoding of parameters.encodings) {
+        if (prioritySupport !== "none") encoding.priority = priority;
+        if (prioritySupport === "network") encoding.networkPriority = priority;
+      }
       try {
         await sender.setParameters(parameters);
         return {

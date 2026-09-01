@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/media-agent/publication-layer-state.v2.schema.json",
+  "title": "Native media-agent publication layer state v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "type", "roomId", "peerId", "routeEpoch", "publicationId", "layer", "rid", "active"],
+  "properties": {
+    "version": { "const": 2 },
+    "type": { "const": "track-state" },
+    "roomId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{5,47}$" },
+    "peerId": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
+    "routeEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "publicationId": { "type": "string", "pattern": "^[A-Za-z0-9_={}:-]{1,128}$" },
+    "layer": { "enum": ["audio", "single", "low", "medium", "high"] },
+    "rid": { "enum": ["", "q", "h", "f"] },
+    "active": { "type": "boolean" }
+  }
+}

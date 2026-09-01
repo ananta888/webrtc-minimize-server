@@ -3,6 +3,8 @@ import { Injectable, computed, signal } from "@angular/core";
 import { cumulativeIceServers, IceTierPolicy } from "./ice-policy";
 import {
   MediaAgentRouteState,
+  MediaAgentLayer,
+  MediaAgentSubscriptionState,
   MediaAgentTakeoverRequest,
   MediaAgentTrackState,
   validateMediaAgentRouteState,
@@ -18,11 +20,14 @@ export interface AvailableMediaAgent {
   readonly online: boolean;
 }
 
+export type MediaAgentLayerLimit = "auto" | "low" | "medium" | "high";
+
 export interface AgentPublicationInput {
   readonly agentId: string;
   readonly publicationId: string;
   readonly stream: MediaStream;
   readonly track: MediaStreamTrack;
+  readonly source: MediaAgentTrackState["source"];
   readonly contextId: string;
   readonly keyId: string;
   readonly baseKey: Uint8Array;
@@ -57,6 +62,12 @@ const EMPTY_CALLBACKS: MediaAgentCallbacks = {
   routeChanged: () => undefined,
 };
 
+const CAMERA_SIMULCAST_ENCODINGS: readonly RTCRtpEncodingParameters[] = Object.freeze([
+  Object.freeze({ rid: "q", active: true, scaleResolutionDownBy: 4, maxBitrate: 120_000, maxFramerate: 6 }),
+  Object.freeze({ rid: "h", active: true, scaleResolutionDownBy: 2, maxBitrate: 420_000, maxFramerate: 15 }),
+  Object.freeze({ rid: "f", active: true, scaleResolutionDownBy: 1, maxBitrate: 1_200_000, maxFramerate: 24 }),
+]);
+
 @Injectable({ providedIn: "root" })
 export class BlindMediaAgentService {
   readonly availableAgents = signal<readonly AvailableMediaAgent[]>([]);
@@ -71,9 +82,15 @@ export class BlindMediaAgentService {
   readonly forwarderAgentIds = signal<readonly string[]>([]);
   readonly routeEpoch = signal(0);
   readonly status = signal<"unavailable" | "idle" | "connecting" | "connected" | "error">("unavailable");
+  readonly simulcastCapability = signal<"probing" | "available" | "fallback">("probing");
+  readonly layerLimit = signal<MediaAgentLayerLimit>(this.loadLayerLimit());
   readonly takeoverRequest = signal<MediaAgentTakeoverRequest | null>(null);
   private readonly connections = new Map<string, AgentConnection>();
   private readonly descriptors = new Map<string, MediaAgentTrackState>();
+  private readonly availableLayers = new Map<string, Set<MediaAgentLayer>>();
+  private readonly subscriptionSignatures = new Map<string, string>();
+  private readonly subscriptionStates = new Map<string, MediaAgentSubscriptionState>();
+  private readonly subscriptionTracks = new Map<string, MediaStreamTrack>();
   private ownPeerId = "";
   private roomId = "";
   private membershipEpoch = 0;
@@ -170,6 +187,10 @@ export class BlindMediaAgentService {
     if (routeChanged) {
       for (const agentId of [...this.connections.keys()]) this.closeConnection(agentId, false);
       this.descriptors.clear();
+      this.availableLayers.clear();
+      this.subscriptionSignatures.clear();
+      this.subscriptionStates.clear();
+      this.subscriptionTracks.clear();
     }
     this.route = state;
     this.lastRouteEpoch = state.routeEpoch;
@@ -225,9 +246,23 @@ export class BlindMediaAgentService {
     const state = validateMediaAgentTrackState(raw);
     if (!state || state.routeEpoch !== this.routeEpoch()
       || state.agentId !== this.assignedAgentId(state.peerId)) return;
-    if (state.active) this.descriptors.set(state.publicationId, state);
-    else this.descriptors.delete(state.publicationId);
-    this.callbacks.trackState(state);
+    const key = this.publicationKey(state.peerId, state.publicationId);
+    let layers = this.availableLayers.get(key);
+    if (!layers) {
+      layers = new Set();
+      this.availableLayers.set(key, layers);
+    }
+    if (state.active) {
+      layers.add(state.layer);
+      this.descriptors.set(key, state);
+    } else {
+      layers.delete(state.layer);
+      if (layers.size === 0) {
+        this.availableLayers.delete(key);
+        this.descriptors.delete(key);
+      }
+    }
+    if (state.active || layers.size === 0) this.callbacks.trackState(state);
   }
 
   activatePublication(input: AgentPublicationInput): boolean {
@@ -235,7 +270,22 @@ export class BlindMediaAgentService {
     const connection = this.connections.get(input.agentId);
     if (!connection || connection.senders.has(input.publicationId) || input.track.readyState !== "live") return false;
     try {
-      const sender = connection.pc.addTrack(input.track, input.stream);
+      let sender: RTCRtpSender;
+      if (input.source === "camera" && input.track.kind === "video") {
+        try {
+          sender = connection.pc.addTransceiver(input.track, {
+            direction: "sendonly",
+            streams: [input.stream],
+            sendEncodings: CAMERA_SIMULCAST_ENCODINGS.map((encoding) => ({ ...encoding })),
+          }).sender;
+          this.simulcastCapability.set("available");
+        } catch {
+          sender = connection.pc.addTrack(input.track, input.stream);
+          this.simulcastCapability.set("fallback");
+        }
+      } else {
+        sender = connection.pc.addTrack(input.track, input.stream);
+      }
       if (!this.callbacks.attachSender(sender, input.contextId, input.keyId, input.baseKey)) {
         connection.pc.removeTrack(sender);
         return false;
@@ -268,6 +318,73 @@ export class BlindMediaAgentService {
     return this.route?.publisherAssignments.find((entry) => entry.peerId === publisherPeerId)?.agentId || "";
   }
 
+  assignedSubscriberAgentId(subscriberPeerId: string): string {
+    return this.route?.subscriberAssignments.find((entry) => entry.peerId === subscriberPeerId)?.agentId || "";
+  }
+
+  setSubscriptionIntent(input: Readonly<{
+    publisherPeerId: string;
+    publicationId: string;
+    source: MediaAgentTrackState["source"];
+    enabled: boolean;
+    preferredLayer: MediaAgentLayer;
+    maximumLayer: MediaAgentLayer;
+  }>): boolean {
+    const agentId = this.assignedSubscriberAgentId(this.ownPeerId);
+    const routeEpoch = this.routeEpoch();
+    if (!agentId || routeEpoch < 1 || input.publisherPeerId === this.ownPeerId) return false;
+    const key = `${input.publisherPeerId}\0${input.publicationId}`;
+    const signature = [
+      agentId, routeEpoch, input.enabled, input.preferredLayer, input.maximumLayer,
+    ].join(":");
+    if (this.subscriptionSignatures.get(key) === signature) return true;
+    try {
+      this.signaling.send({
+        version: 1,
+        type: "media-agent-subscription-intent",
+        agentId,
+        roomId: this.roomId,
+        routeEpoch,
+        publisherPeerId: input.publisherPeerId,
+        publicationId: input.publicationId,
+        enabled: input.enabled,
+        preferredLayer: input.preferredLayer,
+        maximumLayer: input.maximumLayer,
+      });
+      this.subscriptionSignatures.set(key, signature);
+      this.subscriptionStates.delete(key);
+      return true;
+    } catch { return false; }
+  }
+
+  clearSubscriptionIntent(publisherPeerId: string, publicationId: string): void {
+    const key = `${publisherPeerId}\0${publicationId}`;
+    this.subscriptionSignatures.delete(key);
+    this.subscriptionStates.delete(key);
+    this.subscriptionTracks.delete(key);
+  }
+
+  applySubscriptionState(publisherPeerId: string, state: MediaAgentSubscriptionState): boolean {
+    const key = this.publicationKey(publisherPeerId, state.publicationId);
+    const previous = this.subscriptionStates.get(key);
+    if (state.subscriberPeerId !== this.ownPeerId
+      || state.agentId !== this.assignedSubscriberAgentId(this.ownPeerId)
+      || state.routeEpoch !== this.routeEpoch()
+      || !this.subscriptionSignatures.has(key)
+      || (previous && state.revision < previous.revision)) return false;
+    this.subscriptionStates.set(key, state);
+    if (state.ready) this.acknowledgeSubscriptionTrack(key, publisherPeerId);
+    return true;
+  }
+
+  setLayerLimit(value: unknown): boolean {
+    if (value !== "auto" && value !== "low" && value !== "medium" && value !== "high") return false;
+    this.layerLimit.set(value);
+    try { localStorage.setItem("webrtc-media-agent-layer-limit-v1", value); } catch { /* optional storage */ }
+    this.subscriptionSignatures.clear();
+    return true;
+  }
+
   routeReady(agentId: string, memberPeerIds: ReadonlySet<string>): boolean {
     const connection = this.connections.get(agentId);
     const ready = new Set(this.route?.readiness.find((entry) => entry.agentId === agentId)?.readyPeerIds || []);
@@ -282,6 +399,10 @@ export class BlindMediaAgentService {
     for (const agentId of [...this.connections.keys()]) this.closeConnection(agentId, false);
     this.connections.clear();
     this.descriptors.clear();
+    this.availableLayers.clear();
+    this.subscriptionSignatures.clear();
+    this.subscriptionStates.clear();
+    this.subscriptionTracks.clear();
     this.availableAgents.set([]);
     this.selectedAgentId.set("");
     this.consentEnabled.set(false);
@@ -292,6 +413,7 @@ export class BlindMediaAgentService {
     this.routeEpoch.set(0);
     this.takeoverRequest.set(null);
     this.status.set("unavailable");
+    this.simulcastCapability.set("probing");
     this.ownPeerId = "";
     this.roomId = "";
     this.membershipEpoch = 0;
@@ -303,9 +425,9 @@ export class BlindMediaAgentService {
 
   private syncConnections(state: MediaAgentRouteState): void {
     const assigned = new Set([
-      ...(state.primary ? [state.primary.id] : []),
-      ...state.standbys.map(({ id }) => id),
-    ]);
+      this.assignedAgentId(this.ownPeerId),
+      this.assignedSubscriberAgentId(this.ownPeerId),
+    ].filter(Boolean));
     for (const agentId of [...this.connections.keys()]) {
       if (!assigned.has(agentId)) this.closeConnection(agentId, true);
     }
@@ -344,8 +466,9 @@ export class BlindMediaAgentService {
     this.connections.set(agentId, connection);
     pc.onicecandidate = ({ candidate }) => this.sendSignal(agentId, { candidate });
     pc.ontrack = ({ track, receiver, streams }) => {
-      const descriptor = this.descriptors.get(track.id);
-      const publisherPeerId = descriptor?.peerId || streams[0]?.id || "";
+      const streamPublisherPeerId = streams[0]?.id || "";
+      const descriptor = this.descriptors.get(this.publicationKey(streamPublisherPeerId, track.id));
+      const publisherPeerId = descriptor?.peerId || streamPublisherPeerId;
       const accepted = this.callbacks.acceptTrack({
         agentId,
         publisherPeerId,
@@ -354,10 +477,20 @@ export class BlindMediaAgentService {
         track,
         receiver,
       });
-      if (accepted && publisherPeerId && publisherPeerId !== this.ownPeerId) {
-        this.sendSubscription(agentId, publisherPeerId, descriptor?.publicationId || track.id, true);
+      if (!accepted) {
+        track.enabled = false;
+      } else if (publisherPeerId && publisherPeerId !== this.ownPeerId) {
+        const publicationId = descriptor?.publicationId || track.id;
+        const subscriptionKey = this.publicationKey(publisherPeerId, publicationId);
+        this.subscriptionTracks.set(subscriptionKey, track);
+        this.acknowledgeSubscriptionTrack(subscriptionKey, publisherPeerId);
         track.addEventListener("ended", () => {
-          this.sendSubscription(agentId, publisherPeerId, descriptor?.publicationId || track.id, false);
+          if (this.subscriptionTracks.get(subscriptionKey) !== track) return;
+          this.subscriptionTracks.delete(subscriptionKey);
+          const state = this.subscriptionStates.get(subscriptionKey);
+          if (state) this.sendSubscriptionAck(
+            agentId, publisherPeerId, publicationId, state.revision, false,
+          );
         }, { once: true });
       }
     };
@@ -403,20 +536,6 @@ export class BlindMediaAgentService {
     } catch { /* session is closing */ }
   }
 
-  private sendSubscription(agentId: string, publisherPeerId: string, publicationId: string, ready: boolean): void {
-    try {
-      this.signaling.send({
-        type: "media-agent-subscription-state",
-        agentId,
-        roomId: this.roomId,
-        routeEpoch: this.routeEpoch(),
-        publisherPeerId,
-        publicationId,
-        ready,
-      });
-    } catch { /* session is closing */ }
-  }
-
   private closeConnection(agentId: string, announce: boolean): void {
     const connection = this.connections.get(agentId);
     if (!connection) return;
@@ -433,6 +552,36 @@ export class BlindMediaAgentService {
       } catch { /* session is closing */ }
     }
     connection.pc.close();
+  }
+
+  private sendSubscriptionAck(
+    agentId: string,
+    publisherPeerId: string,
+    publicationId: string,
+    revision: number,
+    ready: boolean,
+  ): void {
+    try {
+      this.signaling.send({
+        version: 1,
+        type: "media-agent-subscription-ack",
+        agentId,
+        roomId: this.roomId,
+        routeEpoch: this.routeEpoch(),
+        publisherPeerId,
+        publicationId,
+        revision,
+        ready,
+      });
+    } catch { /* session is closing */ }
+  }
+
+  private acknowledgeSubscriptionTrack(key: string, publisherPeerId: string): void {
+    const state = this.subscriptionStates.get(key);
+    if (!state?.ready || !this.subscriptionTracks.has(key)) return;
+    this.sendSubscriptionAck(
+      state.agentId, publisherPeerId, state.publicationId, state.revision, true,
+    );
   }
 
   private scheduleExpiry(state: MediaAgentRouteState): void {
@@ -473,5 +622,16 @@ export class BlindMediaAgentService {
     if (!agents.some(({ id }) => id === selected)) this.selectedAgentId.set(agents[0]?.id || "");
     this.updateStatus();
     return true;
+  }
+
+  private loadLayerLimit(): MediaAgentLayerLimit {
+    try {
+      const value = localStorage.getItem("webrtc-media-agent-layer-limit-v1");
+      return value === "low" || value === "medium" || value === "high" ? value : "auto";
+    } catch { return "auto"; }
+  }
+
+  private publicationKey(publisherPeerId: string, publicationId: string): string {
+    return `${publisherPeerId}\0${publicationId}`;
   }
 }

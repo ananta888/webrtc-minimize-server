@@ -12,7 +12,7 @@ const DEFAULTS = Object.freeze({
   turnServers: [],
   maxRoomParticipants: DEFAULT_ROOM_PARTICIPANTS,
   roomIdleTtlMs: 60 * 60 * 1000,
-  signalRateLimit: 120,
+  signalRateLimit: 300,
   authMode: "disabled",
   oidcIssuer: "",
   oidcAudience: "webrtc-room-server",
@@ -47,7 +47,7 @@ const DEFAULTS = Object.freeze({
   mediaAgentMaxStandbys: 2,
   mediaAgentShardMinParticipants: 6,
   mediaAgentTakeoverTtlMs: 20_000,
-  mediaAgentRateLimit: 240,
+  mediaAgentRateLimit: 2_000,
 });
 
 const AUTH_MODES = new Set(["disabled", "optional", "required"]);

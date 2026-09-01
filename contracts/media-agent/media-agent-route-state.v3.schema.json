@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/media-agent/media-agent-route-state.v3.schema.json",
+  "title": "Browser media-agent route state v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version", "type", "enabled", "membershipEpoch", "routeEpoch", "leaseExpiresAt",
+    "primary", "standbys", "forwarderIds", "publisherAssignments", "subscriberAssignments",
+    "federationLinks", "federationRoutes", "readiness"
+  ],
+  "properties": {
+    "version": { "const": 3 },
+    "type": { "const": "media-agent-state" },
+    "enabled": { "type": "boolean" },
+    "membershipEpoch": { "$ref": "#/$defs/epoch" },
+    "routeEpoch": { "$ref": "#/$defs/epoch" },
+    "leaseExpiresAt": { "$ref": "#/$defs/epoch" },
+    "primary": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/candidate" }] },
+    "standbys": {
+      "type": "array", "maxItems": 2, "uniqueItems": true,
+      "items": { "$ref": "#/$defs/candidate" }
+    },
+    "forwarderIds": {
+      "type": "array", "maxItems": 3, "uniqueItems": true,
+      "items": { "$ref": "#/$defs/agentId" }
+    },
+    "publisherAssignments": {
+      "type": "array", "maxItems": 20, "uniqueItems": true,
+      "items": { "$ref": "#/$defs/assignment" }
+    },
+    "subscriberAssignments": {
+      "type": "array", "maxItems": 20, "uniqueItems": true,
+      "items": { "$ref": "#/$defs/assignment" }
+    },
+    "federationLinks": {
+      "type": "array", "maxItems": 2, "uniqueItems": true,
+      "items": { "$ref": "#/$defs/linkState" }
+    },
+    "federationRoutes": {
+      "type": "array", "maxItems": 20, "uniqueItems": true,
+      "items": { "$ref": "#/$defs/route" }
+    },
+    "readiness": {
+      "type": "array", "maxItems": 3, "uniqueItems": true,
+      "items": { "$ref": "#/$defs/readiness" }
+    }
+  },
+  "$defs": {
+    "agentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
+    "peerId": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
+    "epoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "candidate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "ownerPeerId", "creatorPreferred"],
+      "properties": {
+        "id": { "$ref": "#/$defs/agentId" },
+        "ownerPeerId": { "$ref": "#/$defs/peerId" },
+        "creatorPreferred": { "type": "boolean" }
+      }
+    },
+    "assignment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["peerId", "agentId"],
+      "properties": {
+        "peerId": { "$ref": "#/$defs/peerId" },
+        "agentId": { "$ref": "#/$defs/agentId" }
+      }
+    },
+    "linkState": {
+      "type": "object", "additionalProperties": false,
+      "required": ["linkId", "leftAgentId", "rightAgentId", "initiatorAgentId", "readyAgentIds"],
+      "properties": {
+        "linkId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{22}$" },
+        "leftAgentId": { "$ref": "#/$defs/agentId" },
+        "rightAgentId": { "$ref": "#/$defs/agentId" },
+        "initiatorAgentId": { "$ref": "#/$defs/agentId" },
+        "readyAgentIds": {
+          "type": "array", "maxItems": 2, "uniqueItems": true,
+          "items": { "$ref": "#/$defs/agentId" }
+        }
+      }
+    },
+    "edge": {
+      "type": "object", "additionalProperties": false,
+      "required": ["linkId", "fromAgentId", "toAgentId"],
+      "properties": {
+        "linkId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{22}$" },
+        "fromAgentId": { "$ref": "#/$defs/agentId" },
+        "toAgentId": { "$ref": "#/$defs/agentId" }
+      }
+    },
+    "route": {
+      "type": "object", "additionalProperties": false,
+      "required": ["publisherPeerId", "sourceAgentId", "maximumHops", "edges"],
+      "properties": {
+        "publisherPeerId": { "$ref": "#/$defs/peerId" },
+        "sourceAgentId": { "$ref": "#/$defs/agentId" },
+        "maximumHops": { "type": "integer", "minimum": 1, "maximum": 2 },
+        "edges": {
+          "type": "array", "maxItems": 2, "uniqueItems": true,
+          "items": { "$ref": "#/$defs/edge" }
+        }
+      }
+    },
+    "readiness": {
+      "type": "object", "additionalProperties": false,
+      "required": ["agentId", "readyPeerIds"],
+      "properties": {
+        "agentId": { "$ref": "#/$defs/agentId" },
+        "readyPeerIds": {
+          "type": "array", "maxItems": 20, "uniqueItems": true,
+          "items": { "$ref": "#/$defs/peerId" }
+        }
+      }
+    }
+  }
+}

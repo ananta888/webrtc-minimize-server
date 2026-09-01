@@ -3,8 +3,8 @@
   "version": 1,
   "owner": "webrtc-minimize-server",
   "track": "blind-media-edge-agents",
-  "purpose": "Den offenen PROD-NET-004-Fanout als optionalen nativen, SFrame-blinden Medien-Agenten umsetzen, weil standardisierte Browser-Encoded-Transforms Frames nicht zwischen PeerConnections verschieben duerfen.",
-  "goal": "Ein zustimmender, bevorzugt dem Raumersteller zugeordneter nativer Agent reduziert den Publisher-Fanout, leitet ausschliesslich SFrame-Ciphertext weiter und wird bei Leave, Ausfall oder Last kontrolliert durch den naechsten geeigneten Agenten oder das bestehende Mesh ersetzt.",
+  "purpose": "Den offenen PROD-NET-004-Fanout als optionalen nativen, SFrame-blinden Medien-Agenten bis zu selektivem Simulcast-SFU und control-plane-autorisierter Agent-Foederation umsetzen, weil standardisierte Browser-Encoded-Transforms Frames nicht zwischen PeerConnections verschieben duerfen.",
+  "goal": "Zustimmende native Agenten reduzieren den Publisher-Fanout, waehlen pro Empfaenger eine autorisierte Simulcast-Schicht, foederieren SFrame-Ciphertext ueber begrenzte Agent-Routen und wechseln bei Leave, Ausfall oder Last kontrolliert auf Ersatz oder das bestehende Mesh.",
   "status": "in_progress",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
@@ -38,6 +38,30 @@
       "id": "BME-M05",
       "title": "Browser-, NAT-, Security- und Produktionsnachweis",
       "task_ids": ["BME-006"],
+      "status": "in_progress"
+    },
+    {
+      "id": "BME-M06",
+      "title": "Aktuelle Architektur- und Bandbreitendokumentation",
+      "task_ids": ["BME-007"],
+      "status": "done"
+    },
+    {
+      "id": "BME-M07",
+      "title": "Selektiver Simulcast-SFU im vorhandenen Publisher-Sharding",
+      "task_ids": ["BME-008", "BME-009"],
+      "status": "done"
+    },
+    {
+      "id": "BME-M08",
+      "title": "Direkte Agent-Agent-Foederation",
+      "task_ids": ["BME-010"],
+      "status": "done"
+    },
+    {
+      "id": "BME-M09",
+      "title": "Simulcast-/Foederationsnachweis und Rollout",
+      "task_ids": ["BME-011"],
       "status": "in_progress"
     }
   ],
@@ -126,25 +150,97 @@
         "Chromium und Firefox, Direct sowie All-TURN, falsche Keys, stale Leases, Cross-Room-Signale, Agent-Impersonation, Oversize, Rate-Limit und fehlender Nutzerconsent sind sichtbar bestanden oder begruendet geblockt.",
         "npm run check und Go-Gates bestehen; Commit, Push, Mini-PC-Control-Plane-Deployment und ein freiwilliger Laptop-Agent werden ohne Secrets, Zertifikatschluessel oder ungepruefte Portoeffnungen verifiziert."
       ]
+    },
+    {
+      "id": "BME-007",
+      "title": "Aktuelle Control-/Data-Plane-, Direct-, TURN- und Media-Agent-Pfade als UML dokumentieren",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": ["BME-005"],
+      "acceptance_criteria": [
+        "Renderbare Mermaid-Diagramme zeigen Komponenten, Identitaet und Raumbeitritt, required-SFrame-Direct-Mesh, einzelnen Blind-Media-Agenten, Mehr-Agent-Sharding sowie Consent-, Wahl- und Failoverzustaende.",
+        "TURN-Edge, Browser-Trusted-Relay und nativer Blind-Media-Agent werden als getrennte Pfade mit ehrlichen Verschluesselungs-, Membership- und Fanoutgrenzen beschrieben.",
+        "Formeln und mindestens ein konkretes Mehrteilnehmerbeispiel zeigen pro Browser und Agent, wer welche Audio-, Kamera- und Bildschirmdaten sendet und empfaengt; Uebergangs- und TURN-Overhead bleiben als solche sichtbar."
+      ]
+    },
+    {
+      "id": "BME-008",
+      "title": "Geschlossene Layer-, Subscription-, Statistik- und Foederationscontracts definieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["BME-005", "BME-007"],
+      "acceptance_criteria": [
+        "Versionierte JSON-Schemas definieren Subscription-Intent/-ACK/-Plan, Publication-Layer, revisionsgebundene Agent-/Browser-Subscription-State, Agent-Route-Lease, Browser-Route-State, Foederationssignal/-zustand sowie direkte Hello-/ACK-/Stats-Nachrichten mit additionalProperties false und harten Groessen-/Anzahlgrenzen.",
+        "Membership-, Route-, Layer- und Lease-Autoritaet bleibt ausschliesslich serverseitig; Agenten koennen aus JSON, SDP, ICE, RTP oder RTCP weder fremde Teilnehmer noch Layer, Agentenlinks oder Dauerrechte ableiten.",
+        "Browser-, Node- und Go-Parser teilen gueltige/ungueltige Contract-Fixtures; unbekannte Versionen, stale Epochen, Cross-Room-/Cross-Agent-Felder, Replay, Oversize und unautorisierte Layer werden fail-closed abgelehnt."
+      ]
+    },
+    {
+      "id": "BME-009",
+      "title": "Simulcast und individuelle Layerwahl im vorhandenen Publisher-Sharding implementieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["BME-008"],
+      "acceptance_criteria": [
+        "Der Browser handelt fuer Kamera portable low/mid/high-Simulcast-Encodings ueber addTransceiver aus, behaelt Audio, Bildschirm und Bildschirmton als getrennte Publikationen und faellt bei fehlender Capability ohne E2EE-Downgrade auf einen einzelnen Agent-Layer oder Direct Mesh zurueck.",
+        "Der publikations- und routengebundene SFrame-Kontext reserviert ueber alle Encodings einen eindeutigen Counter; der Agent demultiplext RID/SSRC, erhaelt keine Keys und leitet pro Subscriber nur die autorisierte Schicht weiter.",
+        "Viewport-/Sichtbarkeitswunsch, lokale Qualitaetsstrategie und RTCP-/Linkstats werden als begrenzter Intent behandelt; Agent-Scheduler, Keyframewechsel, Feedback-Aggregation, Queue/Pacing und Retransmission respektieren Control-Plane-Maxima und harte Ressourcenlimits.",
+        "Ein Publisher bleibt genau einem vorhandenen Shard-Agenten zugeordnet; Direct-SFrame bleibt bis zu Layer-Key-ACK, Agent-/Browser-Readiness und Subscription-ACK aktiv und kehrt bei Fehler oder Lease-Ende sofort zurueck."
+      ]
+    },
+    {
+      "id": "BME-010",
+      "title": "Control-plane-autorisierte direkte Agent-Agent-Foederation implementieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["BME-009"],
+      "acceptance_criteria": [
+        "Die Control Plane weist pro Publisher genau einen Ingress und pro Subscriber hoechstens einen Egress zu und erzeugt einen epochgebundenen, zyklen-, hop- und fanoutbegrenzten Agent-DAG; Agenten verhandeln keine Policy oder Membership untereinander.",
+        "Agent-Agent-Medienpfade werden gegenseitig authentisiert, transportieren nur fuer den Downstream benoetigte SFrame-Ciphertext-Layer und besitzen getrennte PeerConnections, Queue-/Bitrategrenzen, RTCP-Feedbackaggregation und keine Decrypt-Schnittstelle.",
+        "Subscription-Demand wird entlang autorisierter Links aggregiert; Layer-Abwahl stoppt unnoetigen Inter-Agent-Traffic, waehrend stale Links, unbekannte Agenten, falsche Routen und Cross-Room-Signale fail-closed bleiben.",
+        "Planned Drain, ungeplanter Agent-Crash und Netzpartition erhoehen die Route-Epoche, widerrufen alte Links und wechseln bounded auf neuen Ingress/Egress oder Direct-SFrame-Mesh ohne parallele alte Autoritaet."
+      ]
+    },
+    {
+      "id": "BME-011",
+      "title": "Selektiven SFU, Foederation, Browsermatrix und Produktionsrollout verifizieren",
+      "status": "partial",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 75,
+      "depends_on": ["BME-006", "BME-010"],
+      "acceptance_criteria": [
+        "Mindestens fuenf echte Browser und zwei Agentprozesse belegen drei Kamera-Layer, individuelle Subscriber-Auswahl, reduzierten Publisher-/Inter-Agent-Fanout, byte-identischen SFrame-Ciphertext, Audio und Bildschirm sowie sichtbare Bandbreiten-/Layerstats.",
+        "Chromium und Firefox, Single-Layer-Fallback, Direct und All-TURN, Join/Leave, Drain, Crash, Netzpartition, Layerwechsel, falsche Keys, stale Leases, Agent-Impersonation, Oversize und fehlender Consent sind sichtbar bestanden oder konkret geblockt.",
+        "npm run check, JSON-Schema-Fixtures, Go-Race/Vet, Compose/Image-Gates und Secret-Scan bestehen; Commit, Push und Mini-PC-/Laptop-Rollout erfolgen ohne Tokens, Shared Secrets, Zertifikatschluessel oder unbewiesene Portoeffnung."
+      ]
     }
   ],
-  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006"],
+  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011"],
   "tasks_status_summary": {
-    "total": 6,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 5 },
-    "progress_percent_done": 83.33,
-    "by_priority": { "P0": 5, "P1": 1, "P2": 0, "P3": 0 },
-    "by_risk": { "low": 0, "medium": 0, "high": 2, "critical": 4 },
-    "critical_path": { "total": 6, "done": 5, "remaining": 1 },
-    "milestones": { "total": 5, "todo": 0, "in_progress": 1, "blocked": 0, "done": 4 }
+    "total": 11,
+    "by_status": { "todo": 0, "in_progress": 1, "partial": 1, "blocked": 0, "done": 9 },
+    "progress_percent_done": 81.82,
+    "by_priority": { "P0": 8, "P1": 3, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 3, "critical": 7 },
+    "critical_path": { "total": 10, "done": 8, "remaining": 2 },
+    "milestones": { "total": 9, "todo": 0, "in_progress": 2, "blocked": 0, "done": 7 }
   },
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
     "in_progress": 1,
-    "partial": 0,
+    "partial": 1,
     "blocked": 0,
-    "done": 5
+    "done": 9
   },
   "summary_notes": [
     "PROD-NET-004 wird mit diesem Track aus dem Category-Backlog in ausfuehrbare Arbeit ueberfuehrt.",
@@ -156,6 +252,12 @@
     "Am 2026-09-01 bestanden der vollstaendige npm-run-check-Gate mit 77 Frontend- und 77 Node-/Browser-/Integrationsfaellen, Chromium/Firefox, Angular-Produktionsbuild, Go-Race/Vet mit realen Pion-PeerConnections, Agent-Compose-Validierung, npm-Produktionsaudit und gehaerteter Image-Build.",
     "Commit 6fd290e ist auf ananta888/main gepusht und auf dem Mini-PC aktiv. Der normale DNS-Pfad lieferte ueber 89.168.123.128 gueltiges TLS, HTTP 200 und das neue Angular-Bundle; laptop-edge authentisierte ausgehend ueber das oeffentliche WSS mit RestartCount 0. Das Secret liegt nur in zwei Dateien mit Modus 0600, das Mini-PC-Backup ausserhalb des Worktrees; keine Portfreigabe wurde behauptet oder geoeffnet.",
     "Der reale Fuenf-Browser-/Zwei-Agent-/All-TURN-/NAT-/Crash-Produktionsgate und ein sichtbarer Consent-Medientest bleiben offen; BME-006 ist deshalb ausdruecklich nicht done.",
+    "BME-007 verfolgt die vom Nutzer angeforderte, codegebundene UML- und Bandbreitendarstellung aller aktuellen Direct-, TURN-, Trusted-Relay- und Blind-Media-Agent-Pfade.",
+    "BME-007 ist abgeschlossen: docs/current-architecture-uml.md enthaelt elf lokal mit Mermaid CLI gerenderte Diagramme sowie gegengepruefte 5-, 8- und 20-Teilnehmer-Rechnungen; npm run check bestand mit sichtbarem lokalem Live-Infrastruktur-Skip.",
+    "BME-008 bis BME-011 verfolgen den angeforderten sequentiellen Ausbau: zuerst geschlossene Contracts und selektives Simulcast innerhalb des vorhandenen Publisher-Shardings, unmittelbar danach eine control-plane-autorisierte Agent-Foederation und der reale Rolloutnachweis.",
+    "BME-008 bis BME-010 sind implementiert: q/h/f-Simulcast mit unmittelbarer lokaler Maximalstufe, pro Subscriber selektiver Layerwahl, monotoner Subscription-Revision, exakt aus vorhandenen Ingress-Layern abgeleiteten Cross-Shard-Demands und einem direkten maximal zweistufigen Pion-Agent-DAG mit geschlossenem Hello-/ACK-/Stats-DataChannel.",
+    "Der Abschlussgate am 2026-09-01 bestand mit 81 Frontend- und 81 Node-/Browser-/Integrationsfaellen, JSON-Schema-Fixtures, Angular-Produktionsbuild, Go-Race/Vet im reproduzierbaren Go-1.24-Container, beiden Compose-Validierungen, beiden Image-Builds und npm-Produktionsaudit ohne Findings. Agent-Full-Sync ist fail-closed auf 32 MiB begrenzt; der Browser-ACK ist an die exakt vom Egress angewendete monotone Subscription-Revision gebunden. Der credential-abhaengige Keycloak-/TURN-Live-Gate blieb als sichtbarer Skip offen.",
+    "Lokale Tests belegen drei opaque Layer mit unterschiedlicher Auswahl, byte-identischen SFrame-Payload, echte Pion-Browser-Agent-Verbindungen sowie einen direkten Zwei-Agenten-Medienpfad. Der reale Fuenf-Browser-/Zwei-Prozess-/Chromium-/Firefox-/All-TURN-/Crash-/Netzpartition-Rollout bleibt BME-011 partial und darf nicht als Produktions-QoS behauptet werden.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
   ]
 }

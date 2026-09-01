@@ -4,6 +4,8 @@
 
 Ein eigenständiger, Keycloak-fähiger Raumserver mit Angular-Oberfläche für Audio, Video, Bildschirmfreigabe und Peer-Chat. Der Node-Server autorisiert Membership, Topologie und SDP/ICE, terminiert aber keine Medien. Jede PeerConnection versucht zuerst einen direkten Pfad, danach freiwillige Edge-TURN-Knoten und erst zuletzt Infrastruktur-TURN. Audio-, Kamera- und Bildschirmframes sind im Standardmodus zusätzlich mit RFC-9605-SFrame Ende-zu-Ende verschlüsselt.
 
+Die [aktuelle Architektur als UML-/Datenflussmodell](docs/current-architecture-uml.md) zeigt den vollständigen Direct-, TURN-, Single-/Multi-Media-Agent-, Consent-, Failover- und Bandbreitenpfad mit konkreten Teilnehmerbeispielen.
+
 ## Lokal starten
 
 Voraussetzung: Node.js 22.5 oder neuer (für den eingebauten SQLite-Workspace-Store). Der anonyme Entwicklungsmodus benötigt keine externe Infrastruktur:
@@ -54,7 +56,9 @@ Das Canvas allein spart keine Netzwerkbytes. Die Ersparnis entsteht aus den glei
 
 Ab sechs Teilnehmern kann die Control Plane im expliziten Legacy-Modus `MEDIA_E2EE_MODE=disabled` einen zyklusfreien Video-Relay-Baum mit begrenzter Kinder- und Hopzahl ausstellen. Membership-, Route- und Topology-Epochen sind getrennt; jede Publikationsroute besitzt eine kurzlebige Lease, Primary und – soweit topologisch möglich – Backup. Relay-Auswahl berücksichtigt ausdrückliche Zustimmung, Sichtbarkeit, Energie-/Netzklasse, Eigenkapazität und beobachtete Lieferqualität. Dieser Browser-Relay dekodiert und re-encodiert fremde Medien und ist daher nicht blind. In den Modi `required` und `preferred` bleibt er deaktiviert; dort transportieren Direct-, Edge-TURN- und Infrastruktur-TURN-Pfade SFrame-Ciphertext.
 
-Optional kann dort ein getrennter nativer Blind-Media-Agent Publisher-Fanout reduzieren. Nach explizitem Consent wird bevorzugt der Agent des Raumerstellers gewählt; der Bonus ist begrenzt, sodass Gesundheit, Netz, Last oder Batterie einen besseren Freiwilligen vorziehen können. Beim Leave oder Ausfall fragt die Control Plane den nächsten geeigneten Besitzer zur Übernahme oder nutzt dessen separates Auto-Takeover-Opt-in. Kleine Räume verwenden einen Forwarder und höchstens zwei warme Standbys. Ab `MEDIA_AGENT_SHARD_MIN_PARTICIPANTS` verteilt die Control Plane Publisher eindeutig auf bis zu drei Agenten. Bis jede neue Route von Agent und Browsern bestätigt ist, bleibt das required-SFrame-Direkt-Mesh aktiv. Der Agent terminiert ICE/DTLS-SRTP, bekommt aber weder SFrame-Gruppenschlüssel noch einen Decrypt-Port; die reale Produktionsmatrix aus BME-006 ist noch kein abgeschlossener QoS-Nachweis.
+Optional kann dort ein getrennter nativer Blind-Media-Agent Publisher-Fanout reduzieren. Nach explizitem Consent wird bevorzugt der Agent des Raumerstellers gewählt; der Bonus ist begrenzt, sodass Gesundheit, Netz, Last oder Batterie einen besseren Freiwilligen vorziehen können. Beim Leave oder Ausfall fragt die Control Plane den nächsten geeigneten Besitzer zur Übernahme oder nutzt dessen separates Auto-Takeover-Opt-in. Kamera-Publisher handeln `q`/`h`/`f`-Simulcast aus; jeder Subscriber fordert innerhalb einer lokalen Obergrenze genau `low`, `medium` oder `high` an. Audio, Bildschirm und Bildschirmton bleiben eigene Single-Layer-Publikationen.
+
+Kleine Räume verwenden einen Forwarder und höchstens zwei warme Standbys. Ab `MEDIA_AGENT_SHARD_MIN_PARTICIPANTS` weist die Control Plane jedem Publisher einen Ingress und jedem Subscriber einen Egress zu. Bei mehreren aktiven Agenten erzeugt sie einen epochgebundenen, zyklenfreien DAG mit höchstens zwei Hops. Die Agenten bauen die autorisierten Links direkt per WebRTC auf und transportieren ausschließlich die angeforderten SFrame-Ciphertext-Layer; SDP/ICE läuft über die Control Plane, Medien nicht. Bis E2EE-Key-ACK, Agent-/Browser-Verbindung, angewendeter Layer und Receiver-ACK vollständig bestätigt sind, bleibt das required-SFrame-Direkt-Mesh aktiv. Kein Agent erhält SFrame-Schlüssel, Decrypt-Port, Membership- oder Policy-Autorität. Die reale Produktionsmatrix aus BME-006 bleibt trotzdem ausdrücklich kein garantierter QoS-Nachweis.
 
 Pair-Sessions besitzen daneben einen eigenständigen Daten-Overlay-Kanal. Jeder Browser erzeugt pro Session einen nicht exportierbaren ECDH-P-256-Schlüssel und verschlüsselt Events oder bewusst ausgewählte Dateien mit AES-GCM für den Zielpeer. Zwischenbrowser sehen nur Ciphertext und begrenzte Routing-Metadaten. Digest, TTL, Membership-/Route-Epoch, schleifenfreier Pfad, Hopzahl, Replay-Fenster, Chunkzahl und per Traffic-Class begrenzte Queues werden geprüft. Fehlende Chunks werden verschlüsselt quittiert und gezielt erneut gesendet; ohne nutzbare Relay-Route wird direkt, aber weiterhin Ende-zu-Ende verschlüsselt übertragen. Ein Download startet ausschließlich durch einen weiteren Nutzerklick.
 
@@ -126,7 +130,7 @@ Die öffentliche Voreinstellung steht in `.env.example`, das getrennte localhost
 - `MEDIA_E2EE_MODE`: `required` (Default, kein Klartext-Fallback), `preferred` (sichtbarer Fallback nur ohne Encoded-Transform-Capability) oder `disabled` (Legacy-Relay, keine Frame-E2EE).
 - `MAX_ROOM_PARTICIPANTS`: Betreiberlimit von 2 bis höchstens 20; Default ist 20.
 - `ROOM_IDLE_TTL_MS`: Obergrenze für inaktive Room-Metadaten.
-- `SIGNAL_RATE_LIMIT`: Nachrichten je Peer und 10 Sekunden.
+- `SIGNAL_RATE_LIMIT`: Nachrichten je Peer und 10 Sekunden; Default 300 für Direct-ICE plus höchstens 76 Layer-Intents bei 20 Peers und vier Publikationen.
 - `ACTIVE_SPEAKER_LIMIT`: Zahl einzeln fokussierter Sprecher, begrenzt auf 2 bis 5.
 - `PEER_MEDIA_RELAY_ENABLED`: Betreiberfreigabe für Trusted Peer Relay; Nutzerzustimmung bleibt trotzdem standardmäßig aus.
 - `PEER_MEDIA_RELAY_MIN_PARTICIPANTS`: kleinste Raumgröße für einen Relay-Baum, Default 6.
@@ -137,7 +141,7 @@ Die öffentliche Voreinstellung steht in `.env.example`, das getrennte localhost
 - `MEDIA_EDGE_AGENTS_JSON`: ausschließlich serverseitige Liste nativer Blind-Media-Agenten mit exakt `id`, `ownerPrincipal` (`issuer|subject`) und individuellem `sharedSecret`; niemals an Browser ausgeben.
 - `MEDIA_AGENT_LEASE_MS`, `MEDIA_AGENT_RENEW_MS`, `MEDIA_AGENT_MAX_STANDBYS`, `MEDIA_AGENT_TAKEOVER_TTL_MS`: kurze Agent-Leases, Erneuerung, höchstens zwei Standbys und sichtbares Übernahmefenster.
 - `MEDIA_AGENT_SHARD_MIN_PARTICIPANTS`: Raumgröße, ab der die Control Plane Publisher über Primary und Standbys verteilt; Default 6.
-- `MEDIA_AGENT_RATE_LIMIT`: geschlossene Agent-Control-Nachrichten je zehn Sekunden.
+- `MEDIA_AGENT_RATE_LIMIT`: geschlossene Agent-Control-Nachrichten je zehn Sekunden; Default und Maximum 2.000 für den begrenzten 20-Peer-/Vier-Publikations-Burst.
 - `PAIR_WORKSPACE_ENABLED`, `PAIR_WORKSPACE_DB`: optionaler persistenter Pair-Workspace und Pfad seines SQLite-Volumes.
 
 Beispiel für einen externen Coturn-Dienst:
@@ -164,7 +168,7 @@ EDGE_TURN_SERVERS_JSON='[{"id":"edge-1","urls":["turn:edge.example.org:3478?tran
 
 ### Freiwilliger blinder Media-Agent
 
-[`media-edge-agent/`](media-edge-agent/) enthält den davon unabhängigen Pion-Medienforwarder. Er verbindet sich ausgehend per WSS, erhält nur kurze raum-, Membership- und Route-gebundene Leases und besitzt für jeden Browser eine isolierte PeerConnection. Der Browser verschlüsselt Frames bereits vor dem Upload mit einem publikationsgebundenen SFrame-Gruppenschlüssel und verteilt diesen einzeln über den ECDH-/AES-GCM-Overlay an die anderen Raumteilnehmer – niemals an den Agenten.
+[`media-edge-agent/`](media-edge-agent/) enthält den davon unabhängigen, selektiven Pion-Medienforwarder. Er verbindet sich ausgehend per WSS, erhält nur kurze raum-, Membership- und Route-gebundene Leases und besitzt isolierte PeerConnections zu den ihm zugewiesenen Browsern sowie zu ausdrücklich serverautorisierten Nachbaragenten. Der Browser verschlüsselt Frames bereits vor dem Upload mit einem publikationsgebundenen SFrame-Gruppenschlüssel und verteilt diesen einzeln über den ECDH-/AES-GCM-Overlay an die anderen Raumteilnehmer – niemals an einen Agenten. Kamera-Simulcast wird pro Subscriber ohne Decode/Re-encode auf genau einen erlaubten, aktuell verfügbaren Layer reduziert; revisionsgebundene Readiness verhindert, dass ein verspäteter alter Layerwechsel den Direct-Fallback abschaltet. Agentenübergreifend werden nur aktuell nachgefragte Layer weitergereicht.
 
 ```bash
 cd media-edge-agent
@@ -179,11 +183,11 @@ Die Control Plane benötigt denselben Agenten ausschließlich in ihrer privaten 
 MEDIA_EDGE_AGENTS_JSON='[{"id":"laptop-edge","ownerPrincipal":"https://keycloak.example/realms/example|oidc-subject","sharedSecret":"aus-secret-management"}]'
 ```
 
-Consent ist in der Raumoberfläche standardmäßig aus und widerrufbar. Eine Übernahme erklärt Upload-, CPU-, Batterie-, IP-/Metadaten- und TURN-Folgen. Ein fester Port ist nicht zwingend: `MEDIA_AGENT_UDP_PORT=0` nutzt normale ICE-Sockets und bei Bedarf TURN. Eine feste UDP-Weiterleitung, beispielsweise `44000/udp`, plus passendes `MEDIA_AGENT_PUBLIC_IP` verbessert direkte Erreichbarkeit. Betrieb, Trust-Grenzen, Creator-Wahl, Failover und Mehr-Agent-Sharding beschreibt [docs/blind-media-edge-agent.md](docs/blind-media-edge-agent.md).
+Consent ist in der Raumoberfläche standardmäßig aus und widerrufbar. Eine Übernahme erklärt Upload-, CPU-, Batterie-, IP-/Metadaten- und TURN-Folgen. Ein fester Port ist nicht zwingend: `MEDIA_AGENT_UDP_PORT=0` nutzt normale ICE-Sockets und bei Bedarf TURN. Eine feste UDP-Weiterleitung, beispielsweise `44000/udp`, plus passendes `MEDIA_AGENT_PUBLIC_IP` verbessert direkte Erreichbarkeit. Browser und direkte Agent-Agent-Links verwenden dieselben ICE-Grundsätze. Betrieb, Trust-Grenzen, Creator-Wahl, Failover, Simulcast und Föderation beschreibt [docs/blind-media-edge-agent.md](docs/blind-media-edge-agent.md).
 
 ### Kapazitätsgrenze
 
-20 ist die harte Membership-Grenze je Raum, keine garantierte Medienqualität. Ohne bereit bestätigten Blind-Media-Agenten hält jeder Teilnehmer im SFrame-Standardpfad weiterhin bis zu 19 `RTCPeerConnection`-Verbindungen; Kamera und Screenshare werden nach Active-Speaker-, Link- und Nutzerprofil gedrosselt. SFrame allein reduziert weder Verbindungszahl noch Publisher-Fanout. Der TURN-Edge-Agent verbessert nur Erreichbarkeit. Der getrennte Blind-Media-Agent kann Publisher-Fanout nach Key-ACK und vollständiger Routenbereitschaft reduzieren; die Browser behalten dabei Verbindungen zu den aktiven Agent-Shards und das Direkt-Mesh als Failover. Ein portabler browserbasierter Ciphertext-Medien-DAG und ein zentral betriebener SFU für garantierte Großraumqualität bleiben getrennte Backlog-Fähigkeiten.
+20 ist die harte Membership-Grenze je Raum, keine garantierte Medienqualität. Ohne bereit bestätigten Blind-Media-Agenten hält jeder Teilnehmer im SFrame-Standardpfad weiterhin bis zu 19 `RTCPeerConnection`-Verbindungen; Kamera und Screenshare werden nach Active-Speaker-, Link- und Nutzerprofil gedrosselt. SFrame allein reduziert weder Verbindungszahl noch Publisher-Fanout. Der TURN-Edge-Agent verbessert nur Erreichbarkeit. Der getrennte Blind-Media-Agent reduziert nach vollständiger Readiness den Publisher-Upload auf eine Simulcast-Publikation zum eigenen Ingress; der selektive Egress sendet pro Subscriber nur einen Kamera-Layer. Bei mehreren Agenten übernimmt der direkte, höchstens zweistufige Agent-DAG den Cross-Shard-Transport. Browser behalten das Direct-Mesh als sofortigen Failover. Ein portabler browserbasierter Ciphertext-DAG und ein zentral betriebener SFU mit garantierter Großraum-QoS bleiben getrennte, nicht behauptete Fähigkeiten.
 
 ## Öffentliches Deployment
 
@@ -231,7 +235,7 @@ docker build --tag webrtc-media-edge-agent:local media-edge-agent
 (cd media-edge-agent && MEDIA_AGENT_ENV_FILE=.env.example docker compose --env-file .env.example config --quiet)
 ```
 
-`npm run check` umfasst Todo-/Workflow-Schemas, Angular-Unit-Tests, Angular-Produktionbuild und Node-/Integrationstests. Die Browsermatrix prüft SFrame im `required`-Modus mit echten Chromium- und Firefox-Kontexten ohne automatische Capture-Anfrage. Der getrennte Sechs-Chromium-Gate prüft den expliziten Legacy-Relay-Baum einschließlich Sender-Fanout, Active Speaker, Datensparprofil, Mosaik und Churn-Fallback. Fehlende Browser werden ausschließlich mit sichtbarer Begründung übersprungen. Der TURN-Edge-Agent besitzt zusätzlich einen echten lokalen Allokationstest. Der Blind-Media-Agent testet zwei reale Pion-Browser-PeerConnections, byte-identischen opaque RTP-Payload, Lease-/Publishergrenzen und Race-Freiheit; der geforderte reale Fünf-Browser-/Zwei-Agent-/NAT-Produktionsgate bleibt sichtbar BME-006.
+`npm run check` umfasst Todo-/Workflow-Schemas, Angular-Unit-Tests, Angular-Produktionbuild und Node-/Integrationstests. Die Browsermatrix prüft SFrame im `required`-Modus mit echten Chromium- und Firefox-Kontexten ohne automatische Capture-Anfrage. Der getrennte Sechs-Chromium-Gate prüft den expliziten Legacy-Relay-Baum einschließlich Sender-Fanout, Active Speaker, Datensparprofil, Mosaik und Churn-Fallback. Fehlende Browser werden ausschließlich mit sichtbarer Begründung übersprungen. Der TURN-Edge-Agent besitzt zusätzlich einen echten lokalen Allokationstest. Der Blind-Media-Agent testet echte Pion-PeerConnections für individuelle `low`/`high`-Auswahl sowie einen direkten Zwei-Agenten-Pfad, auf dem ausschließlich der angeforderte Simulcast-Layer mit byte-identischem opaque SFrame-Payload ankommt. JSON-Schema-, DAG-, stale-Epoch- und Cross-Agent-Negativtests sichern die Control Plane. Der geforderte reale Fünf-Browser-/Zwei-Prozess-/NAT-Produktionsgate bleibt sichtbar in BME-006/BME-011.
 
 Der Live-Infrastruktur-Gate startet absichtlich nicht implizit. Mit laufendem Compose-Stack, einer eigens angelegten Testidentität und expliziten Variablen prüft er Keycloak Discovery, PKCE-Login, JWKS-Tokenprüfung, autorisierte Einmal-Tickets sowie eine echte Coturn-Relay-Allokation:
 

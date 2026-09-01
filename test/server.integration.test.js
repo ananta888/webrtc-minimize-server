@@ -465,14 +465,14 @@ test("operator-bound media agent uses challenge auth, creator preference and epo
     automaticTakeover: false,
   }));
   const route = await browser.next((message) => message.type === "media-agent-state" && message.primary?.id === "owner-edge");
-  assert.equal(route.version, 2);
+  assert.equal(route.version, 3);
   assert.equal(route.primary.creatorPreferred, true);
   assert.ok(route.leaseExpiresAt > Date.now());
   const sync = await agent.next((message) => message.type === "agent-sync"
     && message.leases.some((lease) => lease.roomId === room.roomId));
   assert.equal(sync.version, 1);
   assert.equal(sync.leases.find((lease) => lease.roomId === room.roomId).role, "primary");
-  assert.equal(sync.leases.find((lease) => lease.roomId === room.roomId).version, 2);
+  assert.equal(sync.leases.find((lease) => lease.roomId === room.roomId).version, 3);
   assert.equal(sync.leases.find((lease) => lease.roomId === room.roomId).peers[0].publish, true);
 
   browser.socket.send(JSON.stringify({
@@ -533,6 +533,268 @@ test("operator-bound media agent uses challenge auth, creator preference and epo
     && message.primary === null && message.routeEpoch > route.routeEpoch);
   assert.ok(fallback.routeEpoch > route.routeEpoch);
   browser.socket.close();
+});
+
+test("control plane brokers only authorized agent federation and cross-shard layer readiness", async (context) => {
+  const issuer = "https://identity.test/realms/webrtc";
+  const identities = Object.fromEntries(["owner", "helper", "two", "three", "four", "five"].map((subject) => [
+    subject,
+    { issuer, subject, displayName: subject },
+  ]));
+  const oidcVerifier = {
+    async verify(token) {
+      const identity = identities[token];
+      if (!identity) throw new AuthenticationError("invalid_access_token");
+      return identity;
+    },
+  };
+  const agentDefinitions = [
+    {
+      id: "owner-edge",
+      ownerPrincipal: `${issuer}|owner`,
+      sharedSecret: "owner-edge-federation-secret-0123456789",
+    },
+    {
+      id: "helper-edge",
+      ownerPrincipal: `${issuer}|helper`,
+      sharedSecret: "helper-edge-federation-secret-01234567",
+    },
+  ];
+  const app = await startTestServer({
+    authMode: "required",
+    oidcIssuer: issuer,
+    oidcJwksUrl: "https://identity.test/certs",
+    oidcAudience: "webrtc-room-server",
+    oidcClientId: "webrtc-browser",
+    mediaAgents: agentDefinitions,
+    mediaAgentLeaseMs: 30_000,
+    mediaAgentRenewMs: 10_000,
+    mediaAgentShardMinParticipants: 6,
+  }, { oidcVerifier });
+  context.after(() => app.close());
+
+  const agents = new Map();
+  for (const definition of agentDefinitions) {
+    const client = connect(`${app.wsUrl}/media-agent`);
+    agents.set(definition.id, client);
+    const challenge = await client.next((message) => message.type === "agent-challenge");
+    const timestamp = Date.now();
+    client.socket.send(JSON.stringify({
+      type: "authenticate",
+      agentId: definition.id,
+      timestamp,
+      proof: mediaAgentAuthProof(definition.sharedSecret, definition.id, challenge.nonce, timestamp),
+    }));
+    await client.next((message) => message.type === "agent-authenticated");
+    client.socket.send(JSON.stringify({
+      type: "capability",
+      visible: true,
+      battery: "mains",
+      network: "fast",
+      capacity: 90,
+      load: 5,
+      maxRooms: 8,
+      maxPeers: 20,
+      maxTracks: 80,
+    }));
+  }
+
+  const create = await fetch(`${app.httpUrl}/api/rooms`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: app.httpUrl, authorization: "Bearer owner" },
+    body: JSON.stringify({ mode: "room", title: "Federated room", visibility: "private" }),
+  });
+  const room = await create.json();
+  const browsers = [];
+  for (const subject of Object.keys(identities)) {
+    const client = await connectAuthorized(app, room.roomId, subject, { authorization: `Bearer ${subject}` });
+    const welcome = await client.next((message) => message.type === "welcome");
+    browsers.push({ subject, client, peerId: welcome.peerId });
+  }
+  const owner = browsers.find(({ subject }) => subject === "owner");
+  const helper = browsers.find(({ subject }) => subject === "helper");
+  owner.client.socket.send(JSON.stringify({
+    type: "media-agent-consent",
+    enabled: true,
+    agentId: "owner-edge",
+    automaticTakeover: false,
+  }));
+  helper.client.socket.send(JSON.stringify({
+    type: "media-agent-consent",
+    enabled: true,
+    agentId: "helper-edge",
+    automaticTakeover: false,
+  }));
+  const route = await owner.client.next((message) => (
+    message.type === "media-agent-state" && message.forwarderIds?.length === 2
+      && message.federationLinks?.length === 1
+  ), 5_000);
+  assert.equal(route.version, 3);
+  const link = route.federationLinks[0];
+  const senderAgentId = link.leftAgentId;
+  const recipientAgentId = link.rightAgentId;
+  const senderAgent = agents.get(senderAgentId);
+  const recipientAgent = agents.get(recipientAgentId);
+  await Promise.all([...agents.values()].map((client) => client.next((message) => (
+    message.type === "agent-sync" && message.leases.some((lease) => (
+      lease.roomId === room.roomId && lease.routeEpoch === route.routeEpoch
+        && lease.federationLinks.some(({ linkId }) => linkId === link.linkId)
+    ))
+  ), 5_000)));
+
+  senderAgent.socket.send(JSON.stringify({
+    version: 1,
+    type: "federation-signal",
+    recipientAgentId,
+    roomId: room.roomId,
+    routeEpoch: route.routeEpoch,
+    linkId: link.linkId,
+    candidate: null,
+  }));
+  const brokered = await recipientAgent.next((message) => message.type === "federation-peer-signal");
+  assert.equal(brokered.fromAgentId, senderAgentId);
+  assert.equal(brokered.recipientAgentId, undefined);
+  assert.equal(brokered.linkId, link.linkId);
+  senderAgent.socket.send(JSON.stringify({
+    version: 1,
+    type: "federation-signal",
+    recipientAgentId,
+    roomId: room.roomId,
+    routeEpoch: route.routeEpoch - 1,
+    linkId: link.linkId,
+    candidate: null,
+  }));
+  assert.equal((await senderAgent.next((message) => message.type === "agent-error")).code, "stale_federation_link");
+
+  for (const [agentId, remoteAgentId] of [
+    [senderAgentId, recipientAgentId],
+    [recipientAgentId, senderAgentId],
+  ]) {
+    agents.get(agentId).socket.send(JSON.stringify({
+      version: 1,
+      type: "federation-state",
+      roomId: room.roomId,
+      routeEpoch: route.routeEpoch,
+      linkId: link.linkId,
+      remoteAgentId,
+      connected: true,
+    }));
+  }
+  const federated = await owner.client.next((message) => (
+    message.type === "media-agent-state"
+      && message.routeEpoch === route.routeEpoch
+      && message.federationLinks?.some((candidate) => (
+        candidate.linkId === link.linkId && candidate.readyAgentIds.length === 2
+      ))
+  ), 5_000);
+  assert.deepEqual(
+    federated.federationLinks.find(({ linkId }) => linkId === link.linkId).readyAgentIds,
+    [senderAgentId, recipientAgentId].sort(),
+  );
+
+  const publisherAssignment = route.publisherAssignments.find(({ agentId }) => agentId === "owner-edge");
+  const subscriberAssignment = route.subscriberAssignments.find(({ agentId, peerId }) => (
+    agentId === "helper-edge" && publisherAssignment.peerId !== peerId
+  ));
+  const publisher = browsers.find(({ peerId }) => peerId === publisherAssignment.peerId);
+  const subscriber = browsers.find(({ peerId }) => peerId === subscriberAssignment.peerId);
+  publisher.client.socket.send(JSON.stringify({
+    type: "media-state",
+    source: "camera",
+    active: true,
+    trackId: "camera-track",
+  }));
+  await subscriber.client.next((message) => (
+    message.type === "media-state" && message.from === publisher.peerId
+      && message.trackId === "camera-track"
+  ));
+  agents.get("owner-edge").socket.send(JSON.stringify({
+    version: 2,
+    type: "track-state",
+    roomId: room.roomId,
+    peerId: publisher.peerId,
+    routeEpoch: route.routeEpoch,
+    publicationId: "camera-track",
+    layer: "high",
+    rid: "f",
+    active: true,
+  }));
+  await subscriber.client.next((message) => (
+    message.type === "media-agent-track-state"
+      && message.peerId === publisher.peerId
+      && message.publicationId === "camera-track"
+      && message.layer === "high"
+  ));
+  subscriber.client.socket.send(JSON.stringify({
+    version: 1,
+    type: "media-agent-subscription-intent",
+    agentId: "helper-edge",
+    roomId: room.roomId,
+    routeEpoch: route.routeEpoch,
+    publisherPeerId: publisher.peerId,
+    publicationId: "camera-track",
+    enabled: true,
+    preferredLayer: "high",
+    maximumLayer: "high",
+  }));
+  const pending = await publisher.client.next((message) => (
+    message.type === "media-agent-subscription-state"
+      && message.publicationId === "camera-track"
+      && message.subscriberPeerId === subscriber.peerId
+      && message.ready === false
+  ));
+  assert.equal(pending.selectedLayer, "high");
+  assert.equal(pending.revision, 1);
+  const helperSync = await agents.get("helper-edge").next((message) => (
+    message.type === "agent-sync" && message.leases.some((lease) => (
+      lease.roomId === room.roomId
+        && lease.subscriptions.some(({ publicationId }) => publicationId === "camera-track")
+        && lease.federationDemands.some(({ publicationId }) => publicationId === "camera-track")
+    ))
+  ), 5_000);
+  const helperLease = helperSync.leases.find((lease) => lease.roomId === room.roomId);
+  assert.equal(helperLease.subscriptions[0].subscriberPeerId, subscriber.peerId);
+  assert.equal(helperLease.federationDemands[0].layer, "high");
+  agents.get("helper-edge").socket.send(JSON.stringify({
+    version: 2,
+    type: "subscription-state",
+    roomId: room.roomId,
+    routeEpoch: route.routeEpoch,
+    publisherPeerId: publisher.peerId,
+    publicationId: "camera-track",
+    subscriberPeerId: subscriber.peerId,
+    selectedLayer: "high",
+    revision: helperLease.subscriptions[0].revision,
+    ready: true,
+  }));
+  const subscriberReady = await subscriber.client.next((message) => (
+    message.type === "media-agent-subscription-state"
+      && message.publicationId === "camera-track"
+      && message.subscriberPeerId === subscriber.peerId
+      && message.revision === helperLease.subscriptions[0].revision
+      && message.ready === true
+  ));
+  subscriber.client.socket.send(JSON.stringify({
+    version: 1,
+    type: "media-agent-subscription-ack",
+    agentId: "helper-edge",
+    roomId: room.roomId,
+    routeEpoch: route.routeEpoch,
+    publisherPeerId: publisher.peerId,
+    publicationId: "camera-track",
+    revision: subscriberReady.revision,
+    ready: true,
+  }));
+  const ready = await publisher.client.next((message) => (
+    message.type === "media-agent-subscription-state"
+      && message.publicationId === "camera-track" && message.ready === true
+  ));
+  assert.equal(ready.agentId, "helper-edge");
+  assert.equal(ready.subscriberPeerId, subscriber.peerId);
+  assert.equal(ready.revision, helperLease.subscriptions[0].revision);
+
+  for (const { client } of browsers) client.socket.close();
+  for (const client of agents.values()) client.socket.close();
 });
 
 test("room directory separates public and owned rooms and enforces owner-only visibility changes", async (context) => {

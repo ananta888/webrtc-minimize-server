@@ -310,6 +310,10 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     }
   }
 
+  setMediaAgentLayerLimit(value: unknown): void {
+    if (this.mediaAgents.setLayerLimit(value)) this.mesh.refreshAgentSubscriptionIntents();
+  }
+
   respondToMediaAgentTakeover(accepted: boolean): void {
     try {
       this.mediaAgents.respondToTakeover(accepted);

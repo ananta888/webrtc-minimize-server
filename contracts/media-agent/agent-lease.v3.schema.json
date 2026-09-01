@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/media-agent/agent-lease.v3.schema.json",
+  "title": "Control-plane media-agent lease v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "type",
+    "roomId",
+    "role",
+    "membershipEpoch",
+    "routeEpoch",
+    "leaseExpiresAt",
+    "peers",
+    "subscriptions",
+    "federationLinks",
+    "federationRoutes",
+    "federationDemands",
+    "iceServers"
+  ],
+  "properties": {
+    "version": { "const": 3 },
+    "type": { "const": "agent-lease" },
+    "roomId": { "$ref": "#/$defs/roomId" },
+    "role": { "enum": ["primary", "standby"] },
+    "membershipEpoch": { "$ref": "#/$defs/epoch" },
+    "routeEpoch": { "$ref": "#/$defs/epoch" },
+    "leaseExpiresAt": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "peers": {
+      "type": "array",
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "connect", "publish", "subscribe"],
+        "properties": {
+          "id": { "$ref": "#/$defs/peerId" },
+          "connect": { "type": "boolean" },
+          "publish": { "type": "boolean" },
+          "subscribe": { "type": "boolean" }
+        }
+      }
+    },
+    "subscriptions": {
+      "type": "array",
+      "maxItems": 1520,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/subscriptionPlan" }
+    },
+    "federationLinks": {
+      "type": "array",
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/federationLink" }
+    },
+    "federationRoutes": {
+      "type": "array",
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/federationRoute" }
+    },
+    "federationDemands": {
+      "type": "array",
+      "maxItems": 3040,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/federationDemand" }
+    },
+    "iceServers": {
+      "type": "array",
+      "maxItems": 24,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["urls"],
+        "properties": {
+          "urls": {
+            "oneOf": [
+              { "type": "string", "minLength": 1, "maxLength": 2048 },
+              {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 8,
+                "items": { "type": "string", "minLength": 1, "maxLength": 2048 }
+              }
+            ]
+          },
+          "username": { "type": "string", "maxLength": 512 },
+          "credential": { "type": "string", "maxLength": 1024 },
+          "credentialType": { "enum": ["password", "oauth"] }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "agentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
+    "peerId": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
+    "roomId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{5,47}$" },
+    "publicationId": { "type": "string", "pattern": "^[A-Za-z0-9_={}:-]{1,128}$" },
+    "epoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "layer": { "enum": ["audio", "single", "low", "medium", "high"] },
+    "source": { "enum": ["microphone", "camera", "screen", "screen-audio"] },
+    "subscriptionPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subscriberPeerId",
+        "publisherPeerId",
+        "publicationId",
+        "source",
+        "enabled",
+        "preferredLayer",
+        "maximumLayer",
+        "revision"
+      ],
+      "properties": {
+        "subscriberPeerId": { "$ref": "#/$defs/peerId" },
+        "publisherPeerId": { "$ref": "#/$defs/peerId" },
+        "publicationId": { "$ref": "#/$defs/publicationId" },
+        "source": { "$ref": "#/$defs/source" },
+        "enabled": { "type": "boolean" },
+        "preferredLayer": { "$ref": "#/$defs/layer" },
+        "maximumLayer": { "$ref": "#/$defs/layer" },
+        "revision": { "$ref": "#/$defs/epoch" }
+      }
+    },
+    "federationLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["linkId", "leftAgentId", "rightAgentId", "initiatorAgentId"],
+      "properties": {
+        "linkId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{22}$" },
+        "leftAgentId": { "$ref": "#/$defs/agentId" },
+        "rightAgentId": { "$ref": "#/$defs/agentId" },
+        "initiatorAgentId": { "$ref": "#/$defs/agentId" }
+      }
+    },
+    "federationEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["linkId", "fromAgentId", "toAgentId"],
+      "properties": {
+        "linkId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{22}$" },
+        "fromAgentId": { "$ref": "#/$defs/agentId" },
+        "toAgentId": { "$ref": "#/$defs/agentId" }
+      }
+    },
+    "federationRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["publisherPeerId", "sourceAgentId", "maximumHops", "edges"],
+      "properties": {
+        "publisherPeerId": { "$ref": "#/$defs/peerId" },
+        "sourceAgentId": { "$ref": "#/$defs/agentId" },
+        "maximumHops": { "type": "integer", "minimum": 1, "maximum": 2 },
+        "edges": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/federationEdge" }
+        }
+      }
+    },
+    "federationDemand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "linkId", "fromAgentId", "toAgentId", "publisherPeerId", "publicationId", "layer"
+      ],
+      "properties": {
+        "linkId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{22}$" },
+        "fromAgentId": { "$ref": "#/$defs/agentId" },
+        "toAgentId": { "$ref": "#/$defs/agentId" },
+        "publisherPeerId": { "$ref": "#/$defs/peerId" },
+        "publicationId": { "$ref": "#/$defs/publicationId" },
+        "layer": { "$ref": "#/$defs/layer" }
+      }
+    }
+  }
+}

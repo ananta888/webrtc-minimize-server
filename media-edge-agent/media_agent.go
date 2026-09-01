@@ -34,9 +34,15 @@ type mediaRoom struct {
 	expiresAt         time.Time
 	iceServers        []webrtc.ICEServer
 	allowedPeers      map[string]bool
+	knownPeers        map[string]bool
 	allowedPublishers map[string]bool
 	peers             map[string]*mediaPeer
-	tracks            map[string]*forwardTrack
+	tracks            map[string]*forwardPublication
+	trackCount        int
+	subscriptions     map[string]subscriptionPlan
+	federationLinks   map[string]*federationPeer
+	federationRoutes  map[string]federationRoute
+	federationDemands map[string]federationDemand
 	budget            bitrateBudget
 	closed            bool
 }
@@ -51,17 +57,39 @@ type mediaPeer struct {
 	closed            bool
 }
 
-type forwardTrack struct {
+type forwardPublication struct {
 	room          *mediaRoom
 	publisherID   string
 	publicationID string
-	remote        *webrtc.TrackRemote
-	local         *webrtc.TrackLocalStaticRTP
-	queue         chan *rtp.Packet
-	done          chan struct{}
 	mu            sync.Mutex
-	senders       map[string]*webrtc.RTPSender
+	layers        map[string]*forwardLayer
+	subscribers   map[string]*subscriberForward
+	lastLayerAt   time.Time
 	closed        bool
+}
+
+type forwardLayer struct {
+	publication     *forwardPublication
+	name            string
+	rid             string
+	remote          *webrtc.TrackRemote
+	local           *webrtc.TrackLocalStaticRTP
+	federationLocal *webrtc.TrackLocalStaticRTP
+	feedbackPC      *webrtc.PeerConnection
+	inputFederation *federationPeer
+	federationPeers map[string]*federationPeer
+	queue           chan *rtp.Packet
+	done            chan struct{}
+	closeOnce       sync.Once
+	feedbackMu      sync.Mutex
+	lastKeyframeAt  time.Time
+	reported        bool
+}
+
+type subscriberForward struct {
+	layer    string
+	revision int64
+	sender   *webrtc.RTPSender
 }
 
 type bitrateBudget struct {
@@ -112,9 +140,14 @@ func (a *mediaAgent) applySync(leases []agentLease, now time.Time) error {
 				expiresAt:         time.UnixMilli(lease.LeaseExpiresAt),
 				iceServers:        append([]webrtc.ICEServer(nil), lease.ICEServers...),
 				allowedPeers:      map[string]bool{},
+				knownPeers:        map[string]bool{},
 				allowedPublishers: map[string]bool{},
 				peers:             map[string]*mediaPeer{},
-				tracks:            map[string]*forwardTrack{},
+				tracks:            map[string]*forwardPublication{},
+				subscriptions:     map[string]subscriptionPlan{},
+				federationLinks:   map[string]*federationPeer{},
+				federationRoutes:  map[string]federationRoute{},
+				federationDemands: map[string]federationDemand{},
 				budget:            bitrateBudget{limit: a.cfg.maxBitrate / 8},
 			}
 			a.rooms[roomID] = room
@@ -161,7 +194,7 @@ func (a *mediaAgent) loadPercent() int {
 	for _, room := range a.rooms {
 		room.mu.RLock()
 		load = max(load, percent(len(room.peers), a.cfg.maxPeers))
-		load = max(load, percent(len(room.tracks), a.cfg.maxTracks))
+		load = max(load, percent(room.trackCount, a.cfg.maxTracks))
 		room.mu.RUnlock()
 	}
 	return min(100, load)
@@ -208,19 +241,27 @@ func (a *mediaAgent) close() {
 
 func (r *mediaRoom) updateLease(lease agentLease) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.closed {
+		r.mu.Unlock()
 		return
 	}
 	r.role = lease.Role
 	r.expiresAt = time.UnixMilli(lease.LeaseExpiresAt)
 	r.iceServers = append(r.iceServers[:0], lease.ICEServers...)
 	allowed := make(map[string]bool, len(lease.Peers))
+	known := make(map[string]bool, len(lease.Peers))
 	publishers := make(map[string]bool, len(lease.Peers))
+	subscribers := make(map[string]bool, len(lease.Peers))
 	for _, peer := range lease.Peers {
-		allowed[peer.ID] = true
+		known[peer.ID] = true
+		if lease.Version < 3 || peer.Connect {
+			allowed[peer.ID] = true
+		}
 		if peer.Publish || (lease.Version == 1 && lease.Role == "primary") {
 			publishers[peer.ID] = true
+		}
+		if lease.Version < 3 || peer.Subscribe {
+			subscribers[peer.ID] = true
 		}
 	}
 	for peerID, peer := range r.peers {
@@ -231,6 +272,38 @@ func (r *mediaRoom) updateLease(lease agentLease) {
 	}
 	r.allowedPeers = allowed
 	r.allowedPublishers = publishers
+	plans := make(map[string]subscriptionPlan, len(lease.Subscriptions))
+	for _, plan := range lease.Subscriptions {
+		if subscribers[plan.SubscriberPeerID] && known[plan.PublisherPeerID] {
+			plans[subscriptionKey(plan.SubscriberPeerID, plan.PublisherPeerID, plan.PublicationID)] = plan
+		}
+	}
+	r.subscriptions = plans
+	r.knownPeers = known
+	routes := make(map[string]federationRoute, len(lease.FederationRoutes))
+	for _, route := range lease.FederationRoutes {
+		routes[route.PublisherPeerID] = route
+	}
+	demands := make(map[string]federationDemand, len(lease.FederationDemands))
+	for _, demand := range lease.FederationDemands {
+		demands[federationDemandKey(demand)] = demand
+	}
+	r.federationRoutes = routes
+	r.federationDemands = demands
+	publications := make([]*forwardPublication, 0, len(r.tracks))
+	for _, publication := range r.tracks {
+		publications = append(publications, publication)
+	}
+	r.mu.Unlock()
+	r.syncFederation(lease.FederationLinks)
+	for _, publication := range publications {
+		publication.reconcileAll()
+		publication.reconcileFederation()
+	}
+}
+
+func subscriptionKey(subscriberPeerID, publisherPeerID, publicationID string) string {
+	return subscriberPeerID + "\x00" + publisherPeerID + "\x00" + publicationID
 }
 
 func (r *mediaRoom) handleSignal(message serverMessage) error {
@@ -383,77 +456,229 @@ func (r *mediaRoom) acceptTrack(peer *mediaPeer, remote *webrtc.TrackRemote) {
 	if !trackIDPattern.MatchString(remote.ID()) {
 		return
 	}
+	layerName, rid, valid := mediaLayer(remote)
+	if !valid {
+		return
+	}
 	r.mu.Lock()
-	if r.closed || len(r.tracks) >= r.agent.cfg.maxTracks || !r.allowedPeers[peer.id] || !r.allowedPublishers[peer.id] {
+	if r.closed || r.trackCount >= r.agent.cfg.maxTracks || !r.allowedPeers[peer.id] || !r.allowedPublishers[peer.id] {
 		r.mu.Unlock()
 		return
 	}
 	key := peer.id + "\x00" + remote.ID()
-	if _, exists := r.tracks[key]; exists {
-		r.mu.Unlock()
-		return
+	publication := r.tracks[key]
+	created := false
+	if publication == nil {
+		publication = &forwardPublication{
+			room: r, publisherID: peer.id, publicationID: remote.ID(),
+			layers: map[string]*forwardLayer{}, subscribers: map[string]*subscriberForward{},
+		}
+		r.tracks[key] = publication
+		created = true
 	}
 	local, err := webrtc.NewTrackLocalStaticRTP(remote.Codec().RTPCodecCapability, remote.ID(), peer.id)
 	if err != nil {
+		if created {
+			delete(r.tracks, key)
+		}
 		r.mu.Unlock()
 		return
 	}
-	forward := &forwardTrack{
-		room: r, publisherID: peer.id, publicationID: remote.ID(), remote: remote, local: local,
-		queue: make(chan *rtp.Packet, r.agent.cfg.trackQueue), done: make(chan struct{}),
-		senders: map[string]*webrtc.RTPSender{},
-	}
-	r.tracks[key] = forward
-	peers := make([]*mediaPeer, 0, len(r.peers))
-	for _, target := range r.peers {
-		if target.id != peer.id {
-			peers = append(peers, target)
+	federationLocal, err := webrtc.NewTrackLocalStaticRTP(
+		remote.Codec().RTPCodecCapability,
+		remote.ID(),
+		federationStreamID(peer.id, layerName),
+	)
+	if err != nil {
+		if created {
+			delete(r.tracks, key)
 		}
+		r.mu.Unlock()
+		return
 	}
+	publication.mu.Lock()
+	if publication.closed || publication.layers[layerName] != nil {
+		publication.mu.Unlock()
+		r.mu.Unlock()
+		return
+	}
+	layer := &forwardLayer{
+		publication: publication, name: layerName, rid: rid, remote: remote, local: local,
+		federationLocal: federationLocal, feedbackPC: peer.pc,
+		federationPeers: map[string]*federationPeer{}, reported: true,
+		queue: make(chan *rtp.Packet, r.agent.cfg.trackQueue), done: make(chan struct{}),
+	}
+	publication.layers[layerName] = layer
+	publication.lastLayerAt = time.Now()
+	publication.mu.Unlock()
+	r.trackCount++
 	r.mu.Unlock()
-	for _, target := range peers {
-		forward.attach(target)
-	}
 	_ = r.agent.signal.send(map[string]any{
-		"type": "track-state", "roomId": r.id, "peerId": peer.id,
-		"routeEpoch": r.routeEpoch, "publicationId": remote.ID(), "active": true,
+		"version": 2, "type": "track-state", "roomId": r.id, "peerId": peer.id,
+		"routeEpoch": r.routeEpoch, "publicationId": remote.ID(),
+		"layer": layerName, "rid": rid, "active": true,
 	})
-	go forward.writeLoop()
-	go forward.readLoop()
+	publication.reconcileAll()
+	publication.reconcileFederation()
+	time.AfterFunc(300*time.Millisecond, publication.reconcileAll)
+	go layer.writeLoop()
+	go layer.readLoop()
 }
 
 func (r *mediaRoom) attachExistingTracks(peer *mediaPeer) {
 	r.mu.RLock()
-	tracks := make([]*forwardTrack, 0, len(r.tracks))
-	for _, track := range r.tracks {
-		if track.publisherID != peer.id {
-			tracks = append(tracks, track)
+	publications := make([]*forwardPublication, 0, len(r.tracks))
+	for _, publication := range r.tracks {
+		if publication.publisherID != peer.id {
+			publications = append(publications, publication)
 		}
 	}
 	r.mu.RUnlock()
-	for _, track := range tracks {
-		track.attach(peer)
+	for _, publication := range publications {
+		publication.reconcileSubscriber(peer.id)
 	}
 }
 
-func (f *forwardTrack) attach(peer *mediaPeer) {
-	f.mu.Lock()
-	if f.closed || f.senders[peer.id] != nil {
-		f.mu.Unlock()
+func mediaLayer(remote *webrtc.TrackRemote) (string, string, bool) {
+	if remote.Kind() == webrtc.RTPCodecTypeAudio {
+		return "audio", "", remote.RID() == ""
+	}
+	rid := remote.RID()
+	switch rid {
+	case "q":
+		return "low", rid, true
+	case "h":
+		return "medium", rid, true
+	case "f":
+		return "high", rid, true
+	case "":
+		return "single", rid, true
+	default:
+		return "", "", false
+	}
+}
+
+func (p *forwardPublication) reconcileAll() {
+	p.room.mu.RLock()
+	peerIDs := make(map[string]bool)
+	for key, plan := range p.room.subscriptions {
+		_ = key
+		if plan.PublisherPeerID == p.publisherID && plan.PublicationID == p.publicationID {
+			peerIDs[plan.SubscriberPeerID] = true
+		}
+	}
+	p.room.mu.RUnlock()
+	p.mu.Lock()
+	for peerID := range p.subscribers {
+		peerIDs[peerID] = true
+	}
+	p.mu.Unlock()
+	for peerID := range peerIDs {
+		p.reconcileSubscriber(peerID)
+	}
+}
+
+func (p *forwardPublication) reconcileSubscriber(peerID string) {
+	p.room.mu.RLock()
+	peer := p.room.peers[peerID]
+	plan, planned := p.room.subscriptions[subscriptionKey(peerID, p.publisherID, p.publicationID)]
+	allowed := p.room.allowedPeers[peerID]
+	p.room.mu.RUnlock()
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
 		return
 	}
-	sender, err := peer.pc.AddTrack(f.local)
+	target := ""
+	if peer != nil && allowed && planned && plan.Enabled {
+		target = p.selectLayer(plan)
+	}
+	current := p.subscribers[peerID]
+	if current != nil && current.layer == target {
+		if current.revision == plan.Revision {
+			p.mu.Unlock()
+			return
+		}
+		current.revision = plan.Revision
+		p.mu.Unlock()
+		p.reportSubscription(peerID, target, plan.Revision, true)
+		return
+	}
+	if current != nil {
+		delete(p.subscribers, peerID)
+		if peer != nil {
+			_ = peer.pc.RemoveTrack(current.sender)
+		}
+	}
+	if target == "" || peer == nil {
+		p.mu.Unlock()
+		if current != nil {
+			p.reportSubscription(peerID, current.layer, current.revision, false)
+			if peer != nil {
+				go peer.negotiate()
+			}
+		}
+		return
+	}
+	layer := p.layers[target]
+	if layer == nil {
+		p.mu.Unlock()
+		return
+	}
+	sender, err := peer.pc.AddTrack(layer.local)
 	if err != nil {
-		f.mu.Unlock()
+		p.mu.Unlock()
+		if current != nil {
+			p.reportSubscription(peerID, current.layer, current.revision, false)
+		}
 		return
 	}
-	f.senders[peer.id] = sender
-	f.mu.Unlock()
-	go f.readFeedback(peer, sender)
+	p.subscribers[peerID] = &subscriberForward{layer: target, revision: plan.Revision, sender: sender}
+	p.mu.Unlock()
+	if current != nil {
+		p.reportSubscription(peerID, current.layer, current.revision, false)
+	}
+	p.reportSubscription(peerID, target, plan.Revision, true)
+	go layer.readFeedback(sender)
 	go peer.negotiate()
 }
 
-func (f *forwardTrack) readFeedback(_ *mediaPeer, sender *webrtc.RTPSender) {
+func (p *forwardPublication) selectLayer(plan subscriptionPlan) string {
+	if plan.PreferredLayer == "audio" || plan.PreferredLayer == "single" {
+		if p.layers[plan.PreferredLayer] != nil {
+			return plan.PreferredLayer
+		}
+		return ""
+	}
+	if p.layers["single"] != nil {
+		return "single"
+	}
+	rank := map[string]int{"low": 0, "medium": 1, "high": 2}
+	preferred := rank[plan.PreferredLayer]
+	maximum := rank[plan.MaximumLayer]
+	if preferred <= maximum && p.layers[plan.PreferredLayer] != nil {
+		return plan.PreferredLayer
+	}
+	if time.Since(p.lastLayerAt) < 250*time.Millisecond {
+		return ""
+	}
+	for _, layer := range []string{"high", "medium", "low"} {
+		if rank[layer] <= preferred && rank[layer] <= maximum && p.layers[layer] != nil {
+			return layer
+		}
+	}
+	return ""
+}
+
+func (p *forwardPublication) reportSubscription(peerID, layer string, revision int64, ready bool) {
+	_ = p.room.agent.signal.send(map[string]any{
+		"version": 2, "type": "subscription-state", "roomId": p.room.id, "routeEpoch": p.room.routeEpoch,
+		"publisherPeerId": p.publisherID, "publicationId": p.publicationID,
+		"subscriberPeerId": peerID, "selectedLayer": layer, "revision": revision, "ready": ready,
+	})
+}
+
+func (l *forwardLayer) readFeedback(sender *webrtc.RTPSender) {
 	for {
 		packets, _, err := sender.ReadRTCP()
 		if err != nil {
@@ -467,97 +692,181 @@ func (f *forwardTrack) readFeedback(_ *mediaPeer, sender *webrtc.RTPSender) {
 			}
 		}
 		if requestKeyframe {
-			f.room.mu.RLock()
-			publisher := f.room.peers[f.publisherID]
-			f.room.mu.RUnlock()
-			if publisher != nil {
-				_ = publisher.pc.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(f.remote.SSRC())}})
-			}
+			l.requestKeyframe()
 		}
 	}
 }
 
-func (f *forwardTrack) readLoop() {
-	defer f.close()
+func (l *forwardLayer) readLoop() {
+	defer l.close()
 	for {
-		packet, _, err := f.remote.ReadRTP()
+		packet, _, err := l.remote.ReadRTP()
 		if err != nil {
 			return
 		}
-		cloned, err := cloneRTPPacket(packet, f.room.agent.cfg.maxPacketBytes)
-		if err != nil || !f.room.budget.allow(len(cloned.Payload), time.Now()) {
+		if l.inputFederation != nil {
+			l.inputFederation.receivedPackets.Add(1)
+		}
+		cloned, err := cloneRTPPacket(packet, l.publication.room.agent.cfg.maxPacketBytes)
+		if err != nil || !l.publication.room.budget.allow(len(cloned.Payload), time.Now()) {
+			if l.inputFederation != nil {
+				l.inputFederation.droppedPackets.Add(1)
+			}
 			continue
 		}
 		select {
-		case f.queue <- cloned:
+		case l.queue <- cloned:
 		default:
+			if l.inputFederation != nil {
+				l.inputFederation.droppedPackets.Add(1)
+			}
 			select {
-			case <-f.queue:
+			case <-l.queue:
 			default:
 			}
 			select {
-			case f.queue <- cloned:
+			case l.queue <- cloned:
 			default:
 			}
 		}
 	}
 }
 
-func (f *forwardTrack) writeLoop() {
+func (l *forwardLayer) writeLoop() {
 	keyframe := time.NewTicker(3 * time.Second)
 	defer keyframe.Stop()
 	for {
 		select {
-		case <-f.done:
+		case <-l.done:
 			return
-		case packet := <-f.queue:
+		case packet := <-l.queue:
 			if packet != nil {
-				_ = f.local.WriteRTP(packet)
+				_ = l.local.WriteRTP(packet)
+				_ = l.federationLocal.WriteRTP(packet)
+				l.publication.mu.Lock()
+				federations := make([]*federationPeer, 0, len(l.federationPeers))
+				for _, federation := range l.federationPeers {
+					federations = append(federations, federation)
+				}
+				l.publication.mu.Unlock()
+				for _, federation := range federations {
+					federation.forwardedPackets.Add(1)
+				}
 			}
 		case <-keyframe.C:
-			if f.remote.Kind() == webrtc.RTPCodecTypeVideo {
-				f.room.mu.RLock()
-				publisher := f.room.peers[f.publisherID]
-				f.room.mu.RUnlock()
-				if publisher != nil {
-					_ = publisher.pc.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(f.remote.SSRC())}})
-				}
+			if l.remote.Kind() == webrtc.RTPCodecTypeVideo {
+				l.requestKeyframe()
 			}
 		}
 	}
 }
 
-func (f *forwardTrack) close() {
-	f.mu.Lock()
-	if f.closed {
-		f.mu.Unlock()
+func (l *forwardLayer) requestKeyframe() {
+	if l.feedbackPC != nil && l.allowKeyframeRequest(time.Now()) {
+		_ = l.feedbackPC.WriteRTCP([]rtcp.Packet{
+			&rtcp.PictureLossIndication{MediaSSRC: uint32(l.remote.SSRC())},
+		})
+	}
+}
+
+func (l *forwardLayer) allowKeyframeRequest(now time.Time) bool {
+	l.feedbackMu.Lock()
+	defer l.feedbackMu.Unlock()
+	if !l.lastKeyframeAt.IsZero() && now.Sub(l.lastKeyframeAt) < 250*time.Millisecond {
+		return false
+	}
+	l.lastKeyframeAt = now
+	return true
+}
+
+func (l *forwardLayer) close() {
+	l.closeOnce.Do(func() {
+		close(l.done)
+		l.publication.removeLayer(l)
+	})
+}
+
+func (p *forwardPublication) removeLayer(layer *forwardLayer) {
+	p.mu.Lock()
+	if p.closed || p.layers[layer.name] != layer {
+		p.mu.Unlock()
 		return
 	}
-	f.closed = true
-	close(f.done)
-	senders := make(map[string]*webrtc.RTPSender, len(f.senders))
-	for id, sender := range f.senders {
-		senders[id] = sender
-	}
-	f.senders = map[string]*webrtc.RTPSender{}
-	f.mu.Unlock()
-	f.room.mu.Lock()
-	delete(f.room.tracks, f.publisherID+"\x00"+f.publicationID)
-	peers := make(map[string]*mediaPeer, len(f.room.peers))
-	for id, peer := range f.room.peers {
-		peers[id] = peer
-	}
-	f.room.mu.Unlock()
-	for peerID, sender := range senders {
-		if peer := peers[peerID]; peer != nil {
-			_ = peer.pc.RemoveTrack(sender)
-			go peer.negotiate()
+	delete(p.layers, layer.name)
+	affected := make(map[string]*subscriberForward)
+	for peerID, forward := range p.subscribers {
+		if forward.layer == layer.name {
+			affected[peerID] = forward
+			delete(p.subscribers, peerID)
 		}
 	}
-	_ = f.room.agent.signal.send(map[string]any{
-		"type": "track-state", "roomId": f.room.id, "peerId": f.publisherID,
-		"routeEpoch": f.room.routeEpoch, "publicationId": f.publicationID, "active": false,
-	})
+	empty := len(p.layers) == 0
+	p.mu.Unlock()
+	p.room.mu.Lock()
+	p.room.trackCount = max(0, p.room.trackCount-1)
+	peers := make(map[string]*mediaPeer, len(affected))
+	for peerID := range affected {
+		peers[peerID] = p.room.peers[peerID]
+	}
+	if empty {
+		delete(p.room.tracks, p.publisherID+"\x00"+p.publicationID)
+	}
+	p.room.mu.Unlock()
+	for peerID, forward := range affected {
+		if peer := peers[peerID]; peer != nil {
+			_ = peer.pc.RemoveTrack(forward.sender)
+			go peer.negotiate()
+		}
+		p.reportSubscription(peerID, layer.name, forward.revision, false)
+	}
+	if layer.reported {
+		_ = p.room.agent.signal.send(map[string]any{
+			"version": 2, "type": "track-state", "roomId": p.room.id, "peerId": p.publisherID,
+			"routeEpoch": p.room.routeEpoch, "publicationId": p.publicationID,
+			"layer": layer.name, "rid": layer.rid, "active": false,
+		})
+	}
+	if !empty {
+		p.reconcileAll()
+	}
+	// Always detach the corresponding agent-agent sender. In particular, the
+	// final layer of a publication must not leave a stale sender that could be
+	// mistaken for a later publication reusing the same track id.
+	p.reconcileFederation()
+}
+
+func (p *forwardPublication) close() {
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return
+	}
+	p.closed = true
+	layers := make([]*forwardLayer, 0, len(p.layers))
+	for _, layer := range p.layers {
+		layers = append(layers, layer)
+	}
+	subscribers := make(map[string]*subscriberForward, len(p.subscribers))
+	for peerID, forward := range p.subscribers {
+		subscribers[peerID] = forward
+	}
+	p.layers = map[string]*forwardLayer{}
+	p.subscribers = map[string]*subscriberForward{}
+	p.mu.Unlock()
+	for _, layer := range layers {
+		layer.closeOnce.Do(func() { close(layer.done) })
+	}
+	p.room.mu.RLock()
+	peers := make(map[string]*mediaPeer, len(subscribers))
+	for peerID := range subscribers {
+		peers[peerID] = p.room.peers[peerID]
+	}
+	p.room.mu.RUnlock()
+	for peerID, forward := range subscribers {
+		if peer := peers[peerID]; peer != nil {
+			_ = peer.pc.RemoveTrack(forward.sender)
+		}
+	}
 }
 
 func (r *mediaRoom) close() {
@@ -567,7 +876,7 @@ func (r *mediaRoom) close() {
 		return
 	}
 	r.closed = true
-	tracks := make([]*forwardTrack, 0, len(r.tracks))
+	tracks := make([]*forwardPublication, 0, len(r.tracks))
 	for _, track := range r.tracks {
 		tracks = append(tracks, track)
 	}
@@ -575,16 +884,29 @@ func (r *mediaRoom) close() {
 	for _, peer := range r.peers {
 		peers = append(peers, peer)
 	}
-	r.tracks = map[string]*forwardTrack{}
+	federations := make([]*federationPeer, 0, len(r.federationLinks))
+	for _, federation := range r.federationLinks {
+		federations = append(federations, federation)
+	}
+	r.tracks = map[string]*forwardPublication{}
+	r.trackCount = 0
 	r.peers = map[string]*mediaPeer{}
 	r.allowedPeers = map[string]bool{}
+	r.knownPeers = map[string]bool{}
 	r.allowedPublishers = map[string]bool{}
+	r.subscriptions = map[string]subscriptionPlan{}
+	r.federationRoutes = map[string]federationRoute{}
+	r.federationDemands = map[string]federationDemand{}
+	r.federationLinks = map[string]*federationPeer{}
 	r.mu.Unlock()
 	for _, track := range tracks {
 		track.close()
 	}
 	for _, peer := range peers {
 		peer.close()
+	}
+	for _, federation := range federations {
+		federation.close(false)
 	}
 }
 

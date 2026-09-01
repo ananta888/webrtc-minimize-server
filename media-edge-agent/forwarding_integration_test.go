@@ -68,7 +68,7 @@ func gatheredLocalDescription(t *testing.T, pc *webrtc.PeerConnection) webrtc.Se
 	return *pc.LocalDescription()
 }
 
-func TestNativeAgentForwardsOpaqueRTPPayloadBetweenIsolatedPeerConnections(t *testing.T) {
+func TestNativeAgentSelectsOpaqueSimulcastLayerPerSubscriber(t *testing.T) {
 	cfg, err := loadConfig(environment(validEnvironment()))
 	if err != nil {
 		t.Fatal(err)
@@ -84,35 +84,93 @@ func TestNativeAgentForwardsOpaqueRTPPayloadBetweenIsolatedPeerConnections(t *te
 	defer agent.close()
 	now := time.Now()
 	const (
-		roomID       = "room-123456"
-		publisherID  = "0123456789abcdef"
-		subscriberID = "fedcba9876543210"
+		roomID           = "room-123456"
+		publisherID      = "0123456789abcdef"
+		lowSubscriberID  = "1111111111111111"
+		highSubscriberID = "fedcba9876543210"
 	)
 	if err = agent.applySync([]agentLease{{
-		Version: 2, Type: "agent-lease", RoomID: roomID, Role: "primary",
+		Version: 3, Type: "agent-lease", RoomID: roomID, Role: "primary",
 		MembershipEpoch: 1, RouteEpoch: 1, LeaseExpiresAt: now.Add(30 * time.Second).UnixMilli(),
-		Peers: []leasePeer{{ID: publisherID, Publish: true}, {ID: subscriberID, Publish: false}},
+		Peers: []leasePeer{
+			{ID: publisherID, Connect: true, Publish: true, Subscribe: true},
+			{ID: lowSubscriberID, Connect: true, Publish: false, Subscribe: true},
+			{ID: highSubscriberID, Connect: true, Publish: false, Subscribe: true},
+		},
+		Subscriptions: []subscriptionPlan{
+			{
+				SubscriberPeerID: lowSubscriberID, PublisherPeerID: publisherID,
+				PublicationID: "camera-track", Source: "camera", Enabled: true,
+				PreferredLayer: "low", MaximumLayer: "low", Revision: 1,
+			},
+			{
+				SubscriberPeerID: highSubscriberID, PublisherPeerID: publisherID,
+				PublicationID: "camera-track", Source: "camera", Enabled: true,
+				PreferredLayer: "high", MaximumLayer: "high", Revision: 2,
+			},
+		},
+		FederationLinks:   []federationLink{},
+		FederationRoutes:  []federationRoute{},
+		FederationDemands: []federationDemand{},
+		ICEServers:        []webrtc.ICEServer{},
 	}}, now); err != nil {
 		t.Fatal(err)
 	}
 
 	publisher := newBrowserPeer(t, publisherID)
-	subscriber := newBrowserPeer(t, subscriberID)
-	publication, err := webrtc.NewTrackLocalStaticRTP(
+	lowSubscriber := newBrowserPeer(t, lowSubscriberID)
+	highSubscriber := newBrowserPeer(t, highSubscriberID)
+	lowPublication, err := webrtc.NewTrackLocalStaticRTP(
 		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90000},
-		"camera-track", "publisher-stream",
+		"camera-track", "publisher-stream", webrtc.WithRTPStreamID("q"),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = publisher.AddTrack(publication); err != nil {
+	mediumPublication, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90000},
+		"camera-track", "publisher-stream", webrtc.WithRTPStreamID("h"),
+	)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = subscriber.CreateDataChannel("bootstrap", nil); err != nil {
+	highPublication, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90000},
+		"camera-track", "publisher-stream", webrtc.WithRTPStreamID("f"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sender, err := publisher.AddTrack(lowPublication)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = sender.AddEncoding(mediumPublication); err != nil {
+		t.Fatal(err)
+	}
+	if err = sender.AddEncoding(highPublication); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = lowSubscriber.CreateDataChannel("bootstrap", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = highSubscriber.CreateDataChannel("bootstrap", nil); err != nil {
 		t.Fatal(err)
 	}
 
-	clients := map[string]*webrtc.PeerConnection{publisherID: publisher, subscriberID: subscriber}
+	receivedTracks := map[string]chan *webrtc.TrackRemote{
+		lowSubscriberID:  make(chan *webrtc.TrackRemote, 1),
+		highSubscriberID: make(chan *webrtc.TrackRemote, 1),
+	}
+	lowSubscriber.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		receivedTracks[lowSubscriberID] <- track
+	})
+	highSubscriber.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		receivedTracks[highSubscriberID] <- track
+	})
+	clients := map[string]*webrtc.PeerConnection{
+		publisherID: publisher, lowSubscriberID: lowSubscriber, highSubscriberID: highSubscriber,
+	}
 	var clientsMu sync.Mutex
 	for peerID, pc := range clients {
 		description := gatheredLocalDescription(t, pc)
@@ -124,13 +182,6 @@ func TestNativeAgentForwardsOpaqueRTPPayloadBetweenIsolatedPeerConnections(t *te
 		}
 	}
 
-	receivedTrack := make(chan *webrtc.TrackRemote, 1)
-	subscriber.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
-		select {
-		case receivedTrack <- track:
-		default:
-		}
-	})
 	stop := make(chan struct{})
 	defer close(stop)
 	go func() {
@@ -169,9 +220,25 @@ func TestNativeAgentForwardsOpaqueRTPPayloadBetweenIsolatedPeerConnections(t *te
 		}
 	}()
 
-	ciphertext := []byte{0x88, 0x08, 0x42, 0x73, 0x46, 0x72, 0x61, 0x6d, 0x65, 0xde, 0xad, 0xbe, 0xef}
+	lowCiphertext := []byte{0x88, 0x08, 0x6c, 0x6f, 0x77, 0xde, 0xad, 0xbe, 0xef}
+	mediumCiphertext := []byte{0x88, 0x08, 0x6d, 0x69, 0x64, 0xde, 0xad, 0xbe, 0xef}
+	highCiphertext := []byte{0x88, 0x08, 0x68, 0x69, 0x67, 0x68, 0xde, 0xad, 0xbe, 0xef}
 	stopWriter := make(chan struct{})
 	defer close(stopWriter)
+	parameters := sender.GetParameters()
+	var midExtensionID, ridExtensionID uint8
+	for _, extension := range parameters.HeaderExtensions {
+		switch extension.URI {
+		case "urn:ietf:params:rtp-hdrext:sdes:mid":
+			midExtensionID = uint8(extension.ID)
+		case "urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id":
+			ridExtensionID = uint8(extension.ID)
+		}
+	}
+	if midExtensionID == 0 || ridExtensionID == 0 || len(publisher.GetTransceivers()) == 0 {
+		t.Fatal("simulcast MID/RID header extensions were not negotiated")
+	}
+	mid := publisher.GetTransceivers()[0].Mid()
 	go func() {
 		ticker := time.NewTicker(20 * time.Millisecond)
 		defer ticker.Stop()
@@ -182,33 +249,46 @@ func TestNativeAgentForwardsOpaqueRTPPayloadBetweenIsolatedPeerConnections(t *te
 				return
 			case <-ticker.C:
 				sequence++
-				_ = publication.WriteRTP(&rtp.Packet{
-					Header: rtp.Header{Version: 2, PayloadType: 96, SequenceNumber: sequence,
-						Timestamp: uint32(sequence) * 3000, SSRC: 77},
-					Payload: ciphertext,
-				})
+				for index, publication := range []*webrtc.TrackLocalStaticRTP{
+					lowPublication, mediumPublication, highPublication,
+				} {
+					payload := [][]byte{lowCiphertext, mediumCiphertext, highCiphertext}[index]
+					packet := &rtp.Packet{
+						Header: rtp.Header{Version: 2, PayloadType: 96, SequenceNumber: sequence,
+							Timestamp: uint32(sequence) * 3000, SSRC: uint32(77 + index)},
+						Payload: payload,
+					}
+					_ = packet.Header.SetExtension(midExtensionID, []byte(mid))
+					_ = packet.Header.SetExtension(ridExtensionID, []byte(publication.RID()))
+					_ = publication.WriteRTP(packet)
+				}
 			}
 		}
 	}()
-	var remote *webrtc.TrackRemote
-	select {
-	case remote = <-receivedTrack:
-	case <-time.After(10 * time.Second):
-		t.Fatal("subscriber did not receive relayed track")
-	}
-	packetRead := make(chan *rtp.Packet, 1)
-	go func() {
-		packet, _, readErr := remote.ReadRTP()
-		if readErr == nil {
-			packetRead <- packet
+	for subscriberID, expected := range map[string][]byte{
+		lowSubscriberID:  lowCiphertext,
+		highSubscriberID: highCiphertext,
+	} {
+		var remote *webrtc.TrackRemote
+		select {
+		case remote = <-receivedTracks[subscriberID]:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("subscriber %s did not receive relayed track", subscriberID)
 		}
-	}()
-	select {
-	case packet := <-packetRead:
-		if !bytes.Equal(packet.Payload, ciphertext) {
-			t.Fatal("SFrame ciphertext changed in native fanout")
+		packetRead := make(chan *rtp.Packet, 1)
+		go func() {
+			packet, _, readErr := remote.ReadRTP()
+			if readErr == nil {
+				packetRead <- packet
+			}
+		}()
+		select {
+		case packet := <-packetRead:
+			if !bytes.Equal(packet.Payload, expected) {
+				t.Fatalf("subscriber %s received the wrong layer or modified SFrame ciphertext", subscriberID)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timed out reading relayed RTP for %s", subscriberID)
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out reading relayed RTP")
 	}
 }

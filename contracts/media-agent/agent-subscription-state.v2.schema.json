@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/media-agent/agent-subscription-state.v2.schema.json",
+  "title": "Native media-agent subscription state v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version", "type", "roomId", "routeEpoch", "publisherPeerId", "publicationId",
+    "subscriberPeerId", "selectedLayer", "revision", "ready"
+  ],
+  "properties": {
+    "version": { "const": 2 },
+    "type": { "const": "subscription-state" },
+    "roomId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{5,47}$" },
+    "routeEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "publisherPeerId": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
+    "publicationId": { "type": "string", "pattern": "^[A-Za-z0-9_={}:-]{1,128}$" },
+    "subscriberPeerId": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
+    "selectedLayer": { "enum": ["audio", "single", "low", "medium", "high"] },
+    "revision": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "ready": { "type": "boolean" }
+  }
+}

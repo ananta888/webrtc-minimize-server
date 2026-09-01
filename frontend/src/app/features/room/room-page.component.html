@@ -475,6 +475,14 @@
                   <input id="media-agent-auto-takeover" type="checkbox" [disabled]="!mediaAgents.consentEnabled()" [ngModel]="mediaAgents.automaticTakeover()" (ngModelChange)="setMediaAgentAutomaticTakeover($event)">
                   <span><strong>Bei Ausfall automatisch übernehmen</strong><small>Ausgeschaltet erscheint zuerst eine sichtbare Übernahmeanfrage.</small></span>
                 </label>
+                <label>Maximale empfangene Kamera-Schicht
+                  <select id="media-agent-layer-limit" [ngModel]="mediaAgents.layerLimit()" (ngModelChange)="setMediaAgentLayerLimit($event)">
+                    <option value="auto">Automatisch · bis hoch</option>
+                    <option value="low">Niedrig · Vorschau</option>
+                    <option value="medium">Mittel · ausgewogen</option>
+                    <option value="high">Hoch · Fokus</option>
+                  </select>
+                </label>
               } @else {
                 <p class="hint">Für dieses Keycloak-Konto ist kein nativer Agent registriert. Du kannst weiterhin das direkte SFrame-Mesh und einen von anderen freiwillig bereitgestellten Agenten nutzen.</p>
               }
@@ -485,6 +493,7 @@
                 <div><dt>Aktive Forwarder</dt><dd id="media-agent-forwarders">{{ mediaAgents.forwarderAgentIds().length ? mediaAgents.forwarderAgentIds().join(', ') : 'keine' }}</dd></div>
                 <div><dt>Standby-Pool</dt><dd id="media-agent-standbys">{{ mediaAgents.standbyAgentIds().length ? mediaAgents.standbyAgentIds().join(', ') : 'keine' }}</dd></div>
                 <div><dt>Route</dt><dd>{{ mediaAgents.status() }} · E{{ mediaAgents.routeEpoch() }}</dd></div>
+                <div><dt>Simulcast</dt><dd id="media-agent-simulcast">{{ mediaAgents.simulcastCapability() }}</dd></div>
               </dl>
               @if (session.roomCreator()) {
                 <p class="creator-agent-note">Du bist der Raumersteller. Dein gesunder, zugestimmter Agent wird bevorzugt; Gesundheit, Netz, Last und Batterie können diese Präferenz überstimmen.</p>

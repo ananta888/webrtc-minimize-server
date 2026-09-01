@@ -15,11 +15,11 @@ func TestAgentLoadUsesBoundedRoomPeerAndTrackUtilization(t *testing.T) {
 	for index := 0; index < 10; index++ {
 		peers[fmt.Sprintf("peer-%d", index)] = nil
 	}
-	tracks := make(map[string]*forwardTrack, 40)
+	tracks := make(map[string]*forwardPublication, 40)
 	for index := 0; index < 40; index++ {
 		tracks[fmt.Sprintf("track-%d", index)] = nil
 	}
-	agent.rooms["room-123456"] = &mediaRoom{peers: peers, tracks: tracks}
+	agent.rooms["room-123456"] = &mediaRoom{peers: peers, tracks: tracks, trackCount: 40}
 	if load := agent.loadPercent(); load != 50 {
 		t.Fatalf("expected 50 percent load, got %d", load)
 	}
@@ -59,5 +59,39 @@ func TestBitrateBudgetDropsBeyondBoundAndRenewsPerWindow(t *testing.T) {
 	}
 	if !budget.allow(100, now.Add(time.Second)) {
 		t.Fatal("byte budget did not renew")
+	}
+}
+
+func TestPublicationSelectsOneBoundedLayerPerSubscriber(t *testing.T) {
+	publication := &forwardPublication{layers: map[string]*forwardLayer{
+		"low": {}, "medium": {}, "high": {},
+	}}
+	if selected := publication.selectLayer(subscriptionPlan{
+		PreferredLayer: "medium", MaximumLayer: "high",
+	}); selected != "medium" {
+		t.Fatalf("expected individual medium layer, got %q", selected)
+	}
+	delete(publication.layers, "medium")
+	if selected := publication.selectLayer(subscriptionPlan{
+		PreferredLayer: "medium", MaximumLayer: "high",
+	}); selected != "low" {
+		t.Fatalf("expected bounded lower fallback, got %q", selected)
+	}
+	publication.layers = map[string]*forwardLayer{"single": {}}
+	if selected := publication.selectLayer(subscriptionPlan{
+		PreferredLayer: "high", MaximumLayer: "high",
+	}); selected != "single" {
+		t.Fatalf("expected portable non-simulcast fallback, got %q", selected)
+	}
+}
+
+func TestLayerAggregatesBurstKeyframeFeedback(t *testing.T) {
+	layer := &forwardLayer{}
+	now := time.Unix(100, 0)
+	if !layer.allowKeyframeRequest(now) || layer.allowKeyframeRequest(now.Add(249*time.Millisecond)) {
+		t.Fatal("keyframe feedback burst was not aggregated")
+	}
+	if !layer.allowKeyframeRequest(now.Add(250 * time.Millisecond)) {
+		t.Fatal("bounded keyframe feedback window did not reopen")
 	}
 }

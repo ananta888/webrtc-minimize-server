@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/media-agent/federation-signal.v1.schema.json",
+  "title": "Control-plane-brokered federation signaling v1",
+  "oneOf": [
+    { "$ref": "#/$defs/agentRequest" },
+    { "$ref": "#/$defs/serverDelivery" }
+  ],
+  "$defs": {
+    "description": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "sdp"],
+      "properties": {
+        "type": { "enum": ["offer", "answer"] },
+        "sdp": { "type": "string", "maxLength": 80000 }
+      }
+    },
+    "candidate": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["candidate"],
+          "properties": {
+            "candidate": { "type": "string", "maxLength": 4096 },
+            "sdpMid": { "type": ["string", "null"], "maxLength": 64 },
+            "sdpMLineIndex": { "type": ["integer", "null"], "minimum": 0 },
+            "usernameFragment": { "type": ["string", "null"], "maxLength": 256 }
+          }
+        }
+      ]
+    },
+    "agentRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "type", "recipientAgentId", "roomId", "routeEpoch", "linkId"],
+      "properties": {
+        "version": { "const": 1 },
+        "type": { "const": "federation-signal" },
+        "recipientAgentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
+        "roomId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{5,47}$" },
+        "routeEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "linkId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{22}$" },
+        "description": { "$ref": "#/$defs/description" },
+        "candidate": { "$ref": "#/$defs/candidate" }
+      },
+      "oneOf": [
+        {
+          "required": ["description"],
+          "properties": { "description": {}, "candidate": false }
+        },
+        {
+          "required": ["candidate"],
+          "properties": { "candidate": {}, "description": false }
+        }
+      ]
+    },
+    "serverDelivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "type", "fromAgentId", "roomId", "routeEpoch", "linkId"],
+      "properties": {
+        "version": { "const": 1 },
+        "type": { "const": "federation-peer-signal" },
+        "fromAgentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
+        "roomId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{5,47}$" },
+        "routeEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "linkId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{22}$" },
+        "description": { "$ref": "#/$defs/description" },
+        "candidate": { "$ref": "#/$defs/candidate" }
+      },
+      "oneOf": [
+        {
+          "required": ["description"],
+          "properties": { "description": {}, "candidate": false }
+        },
+        {
+          "required": ["candidate"],
+          "properties": { "candidate": {}, "description": false }
+        }
+      ]
+    }
+  }
+}

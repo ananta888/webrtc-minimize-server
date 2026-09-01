@@ -66,7 +66,7 @@ func (c *signalingClient) runConnection(ctx context.Context) error {
 		return fmt.Errorf("connect control websocket: %w", err)
 	}
 	defer conn.Close()
-	conn.SetReadLimit(96 * 1024)
+	conn.SetReadLimit(maximumServerControlBytes)
 	c.mu.Lock()
 	c.conn = conn
 	c.mu.Unlock()
@@ -149,6 +149,17 @@ func (c *signalingClient) runConnection(ctx context.Context) error {
 			if err = c.agent.handleSignal(message); err != nil {
 				_ = c.send(map[string]any{"type": "peer-state", "roomId": message.RoomID,
 					"peerId": message.PeerID, "routeEpoch": message.RouteEpoch, "connected": false})
+			}
+		case "federation-peer-signal":
+			if !authenticated {
+				return fmt.Errorf("federation signal before authentication")
+			}
+			if err = c.agent.handleFederationSignal(message); err != nil {
+				_ = c.send(map[string]any{
+					"version": 1, "type": "federation-state", "roomId": message.RoomID,
+					"routeEpoch": message.RouteEpoch, "linkId": message.LinkID,
+					"remoteAgentId": message.FromAgentID, "connected": false,
+				})
 			}
 		case "agent-error":
 			if message.Code == "agent_rate_limited" || message.Code == "agent_authentication_failed" {

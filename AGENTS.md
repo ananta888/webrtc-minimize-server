@@ -20,6 +20,7 @@ Der Node-Server ist allein verantwortlich für:
 - Prüfung und begrenzte Weiterleitung von SDP-/ICE-Signalen,
 - Ausgabe absoluter, epochgebundener und zyklusfreier Trusted-Relay-Topologien aus aktueller Membership und Consent,
 - getrennte Membership-/Route-/Topology-Epochen, kurzlebige Route-Leases und quorum-basiertes Relay-Health,
+- eindeutige Media-Agent-Ingress-/Egress-Zuordnung, individuelle Layer-Pläne und höchstens zweistufige, zyklenfreie Agent-Föderations-DAGs aus aktueller Membership und Consent,
 - kryptografische OIDC-Tokenprüfung und Ausgabe kurzlebiger Einmal-Tickets,
 - Prüfung frischer, raumgebundener P-256-Gerätenachweise,
 - Ausgabe kurzlebiger Coturn-REST-Credentials nach Session-Autorisierung,
@@ -40,6 +41,7 @@ Browser sind verantwortlich für:
 - OIDC Authorization Code Flow mit PKCE und sitzungsgebundene Tokens,
 - eine nicht exportierbare P-256-Geräteidentität im Browserprofil,
 - lokale VAD-/Active-Speaker-Auswahl, per Peer begrenzte Senderqualität und ein lokales Inaktiv-Mosaik,
+- Kamera-Simulcast mit `q`/`h`/`f`, lokaler maximaler Layerwahl und Receiver-ACK vor Abschalten des Direct-Fallbacks,
 - Ausführung ausschließlich serverautorisierter Trusted-Relay-Kanten nach separatem Nutzerconsent,
 - zielpeergebundene ECDH-/AES-GCM-Verschlüsselung für opaque Data-Overlay-Pakete einschließlich Replay-, TTL-, Hop-, Queue- und Chunk-Resume-Grenzen,
 - RFC-9605-SFrame mit `AES_128_GCM_SHA256_128` über WebRTC Encoded Transform für Audio-, Kamera- und Bildschirmframes sowie
@@ -58,7 +60,7 @@ Peers dürfen aus Signalen keine Room-Membership oder zusätzliche Autorität ab
 - WebRTC bietet hopweise Transportverschlüsselung. Zusätzlich ist RFC-9605-SFrame für Browser mit WebRTC Encoded Transform implementiert; `required` muss bei fehlender Capability oder fehlendem quittiertem Schlüssel ohne Klartext-Fallback abbrechen.
 - STUN/TURN sind konfigurierbare Infrastrukturhilfen, keine Policy-Autorität. TURN-Credentials werden kurzlebig und erst nach Session-Autorisierung erzeugt.
 - Ein decode/re-encode-fähiger Trusted-Video-Relay-Baum bleibt nur im expliziten Legacy-Modus `MEDIA_E2EE_MODE=disabled` vorhanden und darf nicht als blind bezeichnet werden. In `required`/`preferred` ist dieser Medienfanout deaktiviert; direkte ICE-Pfade, freiwillige Edge-TURN-Knoten und Infrastruktur-TURN transportieren SFrame-Ciphertext.
-- SFrame reduziert den Peer-Fanout nicht. Ein portabler, nicht entschlüsselnder SFrame-/Ciphertext-Medien-DAG zwischen Browsern, SFU, Workspace-HA/Backup und MLS-artige Gruppenschlüsselverwaltung bleiben Backlog-Fähigkeiten und dürfen nicht als vorhanden dargestellt werden.
+- SFrame allein reduziert den Peer-Fanout nicht. Ein portabler Ciphertext-Medien-DAG zwischen Browsern bleibt Backlog. Der optionale native Blind-Media-Agent implementiert dagegen einen selektiven SFrame-blinden SFU-Pfad mit Simulcast und direkter, ausschließlich serverautorisierter Agent-Föderation; er ist keine QoS-Garantie und erhält weder Frame-Schlüssel noch Membership-/Policy-Autorität. Ein zentral betriebener SFU, Workspace-HA/Backup und MLS-artige Gruppenschlüsselverwaltung bleiben Backlog-Fähigkeiten.
 - Die SFrame-Peer-Key-Zuordnung stammt derzeit aus dem authentisierten Signaling-Pfad. Sie schützt Inhalte vor ehrlichen, aber neugierigen TURN-/Edge-/Control-Plane-Betreibern, beweist jedoch keine Ende-zu-Ende-Identität gegen einen vollständig kompromittierten Signaling-Server.
 
 ## Todo-gesteuerte Entwicklung
@@ -101,7 +103,8 @@ Ein Track kommt nur ins Archiv, wenn alle Tasks und Milestones `done` sind und d
 - `AUTH_MODE=disabled`, Keycloak `start-dev`, lokale Beispielpasswörter und unverschlüsseltes TURN sind ausschließlich Entwicklungsprofile und dürfen nicht als produktionssicher dokumentiert werden.
 - Kein E2EE-, Anonymitäts- oder Identitätsversprechen machen, das der implementierte Pfad nicht beweist.
 - Im `required`-SFrame-Modus dürfen fehlende Capability, ausstehende ACKs, unbekannte KIDs, Authentifizierungsfehler oder Replays niemals einen Klartext-Fallback auslösen.
-- Freiwillige Edge-Agenten besitzen keine Membership- oder Policy-Autorität, verwenden ausschließlich kurzlebige serverseitig ausgestellte Credentials und benötigen explizit erreichbare TURN- sowie Relay-Ports.
+- Freiwillige TURN-Edge-Agenten besitzen keine Membership- oder Policy-Autorität, verwenden ausschließlich kurzlebige serverseitig ausgestellte Credentials und benötigen explizit erreichbare TURN- sowie Relay-Ports.
+- Blind-Media-Agenten bleiben pro Raum/Owner default-aus und widerrufbar, besitzen keinen Decrypt-Port und dürfen nur die im aktuellen Lease genannten Browser, Links, Publikationen und Layer transportieren. Direkte Agent-Agent-Control-Nachrichten erweitern niemals die Serverautorität.
 - Trusted Peer Relay bleibt operatorseitig begrenzt, nutzerseitig default-aus und widerrufbar; die UI muss die Medienverarbeitung, Upload-, CPU- und Batteriefolgen erklären.
 - Overlay-Relays dürfen keinen Decrypt-Port besitzen; private ECDH-Schlüssel müssen nicht exportierbar sein und bei Leave/Destroy aus dem erreichbaren Browser-State verschwinden.
 - Workspace-Rollen, Tenant, Membership-Revision, Event-Idempotency, Cursor und Presence-Leases werden für jede Operation serverseitig geprüft. Workspace-Rechte erweitern weder Room-Kapazität noch Medienrechte.
@@ -113,7 +116,7 @@ SOLID gilt bei allen Änderungen:
 
 - **SRP:** Konfiguration, Protokollvalidierung, Room-State, HTTP/WS-Infrastruktur und Browser-Medienlifecycle getrennt halten.
 - **OCP:** Neue Transport- oder Topologieadapter ergänzen, statt zentrale Contracts fallweise zu patchen.
-- **LSP:** Mock-, P2P-, TURN- und spätere SFU-Adapter müssen ihre deklarierten Capabilities ehrlich und austauschbar erfüllen.
+- **LSP:** Mock-, P2P-, TURN-, Blind-SFU- und spätere zentrale SFU-Adapter müssen ihre deklarierten Capabilities ehrlich und austauschbar erfüllen.
 - **ISP:** Kleine Ports für Membership, Signaling, Publication, Subscription, Stats und DataChannel-Traffic bevorzugen.
 - **DIP:** Domain- und Contract-Code darf nicht von konkreten SFU-/Identity-Vendor-SDKs abhängen.
 - **ISP:** Angular-Services für Runtime-Konfiguration, OIDC, Geräteidentität, Signaling, Peer-Mesh und Capture bleiben getrennt; UI-Komponenten besitzen keine Token- oder PeerConnection-Policy.
