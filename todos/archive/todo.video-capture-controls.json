@@ -5,7 +5,7 @@
   "track": "video-capture-controls",
   "purpose": "Nutzer koennen Kamera- und Bildschirmvideo mit klaren Aufloesungs- und FPS-Obergrenzen an Geraet, Netz und Bandbreitenbudget anpassen.",
   "goal": "Viele uebliche Videoaufloesungen und FPS-Limits sind getrennt fuer Kamera und Bildschirm konfigurierbar, werden ohne automatische Capture-Anfrage gespeichert und koennen auf bereits laufende Tracks angewandt werden.",
-  "status": "in_progress",
+  "status": "completed",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
   "risk_scale": ["low", "medium", "high", "critical"],
@@ -20,7 +20,7 @@
       "id": "VCC-M02",
       "title": "Bedienoberflaeche, Browsernachweis und Rollout",
       "task_ids": ["VCC-002"],
-      "status": "in_progress"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -42,10 +42,10 @@
     {
       "id": "VCC-002",
       "title": "Responsive Videoeinstellungen verifizieren und ausrollen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 95,
+      "progress_percent": 100,
       "depends_on": ["VCC-001"],
       "acceptance_criteria": [
         "Die Angular-Einstellungen bieten getrennte, verstaendliche Aufloesungs- und FPS-Auswahl fuer Kamera und Bildschirm sowie Soll-/Ist-Hinweise auf Desktop und Mobilgeraeten.",
@@ -58,20 +58,20 @@
   "critical_path_tasks": ["VCC-001", "VCC-002"],
   "tasks_status_summary": {
     "total": 2,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 1 },
-    "progress_percent_done": 50,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 2 },
+    "progress_percent_done": 100,
     "by_priority": { "P0": 1, "P1": 1, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 2, "critical": 0 },
-    "critical_path": { "total": 2, "done": 1, "remaining": 1 },
-    "milestones": { "total": 2, "todo": 0, "in_progress": 1, "blocked": 0, "done": 1 }
+    "critical_path": { "total": 2, "done": 2, "remaining": 0 },
+    "milestones": { "total": 2, "todo": 0, "in_progress": 0, "blocked": 0, "done": 2 }
   },
   "progress_summary": {
-    "state": "in_progress",
+    "state": "completed",
     "todo_remaining": 0,
-    "in_progress": 1,
+    "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 1
+    "done": 2
   },
   "summary_notes": [
     "W3C Media Capture and Streams definiert width, height und frameRate als constrainable Videoeigenschaften, applyConstraints fuer laufende Tracks und getSettings fuer die tatsaechliche Browserwahl.",
@@ -79,6 +79,8 @@
     "Aufloesungs- und FPS-Limits begrenzen bereits die Capture-Quelle. Die vorhandene per-Peer Adaptive-Mesh-Policy darf darunter weiter reduzieren, aber die gewaehlte Obergrenze nicht ueberschreiten.",
     "53 Frontend-Tests und ein echter Zwei-Chromium-Lauf belegen Default-/Low-Bandwidth-Constraints, persistente Validierung, Ist-Werte, live applyConstraints fuer Kamera und Bildschirm sowie null zusaetzliche Capture-Aufrufe beim Einstellungswechsel.",
     "Desktop- und Mobile-Renderings wurden bei 1440x1100 beziehungsweise 390x844 visuell auf lesbare zweispaltige und gestapelte Controls geprueft.",
-    "npm run check besteht mit 53 Frontend- und 62 Node-/Browser-Tests sowie Produktionsbuild; der explizite externe Keycloak-/TURN-Gate blieb mangels gesetzter Test-Credentials sichtbar uebersprungen. Nur Commit, Push und Produktionsrollout stehen noch aus."
+    "npm run check besteht mit 53 Frontend- und 62 Node-/Browser-Tests sowie Produktionsbuild; der explizite externe Keycloak-/TURN-Gate blieb mangels gesetzter Test-Credentials sichtbar uebersprungen.",
+    "Rollout-Nachweis: Commit 4769f0a wurde auf origin/main gepusht und mit dem bestehenden Compose-Override auf dem Mini-PC gebaut; der neue Container lief mit null Neustarts. Caddy, Keycloak, Coturn und Secrets blieben unveraendert.",
+    "Oeffentlicher Nachweis: https://webrtc.ananta.de/healthz antwortete gesund und lieferte main-KZYLCREA.js. Ein frischer Produktions-Chromium-Kontext fand 10 Aufloesungs- und 8 FPS-Optionen, speicherte 360p/5 FPS und registrierte dabei null Capture-Aufrufe oder Seitenfehler."
   ]
 }
