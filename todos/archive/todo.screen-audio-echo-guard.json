@@ -5,7 +5,7 @@
   "track": "screen-audio-echo-guard",
   "purpose": "Bildschirmfreigabe darf den laufenden Gespraechston nicht unbemerkt als System- oder Tab-Audio in den Raum zurueckfuehren und dadurch Echo erzeugen.",
   "goal": "Bildschirmvideo bleibt jederzeit per Nutzerklick verfuegbar, waehrend Bildschirmton standardmaessig aus ist, nur nach separatem lokalem Opt-in angefordert wird und bei Echo ohne Ende der Bildfreigabe gestoppt werden kann.",
-  "status": "in_progress",
+  "status": "completed",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
   "risk_scale": ["low", "medium", "high", "critical"],
@@ -20,7 +20,7 @@
       "id": "SAE-M02",
       "title": "Bedienoberfläche, Browsernachweis und Rollout",
       "task_ids": ["SAE-002"],
-      "status": "in_progress"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -42,10 +42,10 @@
     {
       "id": "SAE-002",
       "title": "Echo-Warnung, Regressionstests und Produktionsrollout abschließen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 95,
+      "progress_percent": 100,
       "depends_on": ["SAE-001"],
       "acceptance_criteria": [
         "Die Screen-Einstellungen erklären das Default-off-Opt-in, Kopfhörerempfehlung, Echo-Risiko und den tatsächlichen Status des Bildschirmtons verständlich auf Desktop und Mobilgeräten.",
@@ -58,20 +58,20 @@
   "critical_path_tasks": ["SAE-001", "SAE-002"],
   "tasks_status_summary": {
     "total": 2,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 1 },
-    "progress_percent_done": 50,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 2 },
+    "progress_percent_done": 100,
     "by_priority": { "P0": 1, "P1": 1, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 2, "critical": 0 },
-    "critical_path": { "total": 2, "done": 1, "remaining": 1 },
-    "milestones": { "total": 2, "todo": 0, "in_progress": 1, "blocked": 0, "done": 1 }
+    "critical_path": { "total": 2, "done": 2, "remaining": 0 },
+    "milestones": { "total": 2, "todo": 0, "in_progress": 0, "blocked": 0, "done": 2 }
   },
   "progress_summary": {
-    "state": "in_progress",
+    "state": "completed",
     "todo_remaining": 0,
-    "in_progress": 1,
+    "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 1
+    "done": 2
   },
   "summary_notes": [
     "Der Nutzer bestätigte das Echo reproduzierbar speziell während der Bildschirmfreigabe.",
@@ -82,6 +82,8 @@
     "55 Frontend-Tests decken Default-off-Migration, persistentes Opt-in, capability-geprüften restrictOwnAudio-Pfad, booleschen Fallback und das gezielte Entfernen nur des Screen-Audiotracks ab.",
     "Zwei fokussierte echte Chromium-Läufe belegen video-only im vorhandenen Mehrpeer-Pfad sowie Opt-in-Audio, Live-Widerruf, weiterlaufenden Video-Track und null zusätzliche Capture-Aufrufe durch das Einstellungs-Opt-in.",
     "Desktop- und Mobile-Renderings wurden bei 1440x1100 beziehungsweise 390x844 visuell auf verständliche Default-off-Steuerung, Echo-Warnung und Ist-Status geprüft.",
-    "npm run check besteht mit 55 Frontend- und 63 Node-/Browser-Tests sowie Produktionsbuild; der externe Keycloak-/TURN-Gate blieb mangels gesetzter Test-Credentials sichtbar übersprungen. Nur Commit, Push und Produktionsrollout stehen noch aus."
+    "npm run check besteht mit 55 Frontend- und 63 Node-/Browser-Tests sowie Produktionsbuild; der externe Keycloak-/TURN-Gate blieb mangels gesetzter Test-Credentials sichtbar übersprungen.",
+    "Rollout-Nachweis: Commit f6714f3 wurde auf origin/main gepusht und mit dem bestehenden Compose-Override auf dem Mini-PC gebaut; der neue Container lief mit null Neustarts. Caddy, Keycloak, Coturn und Secrets blieben unverändert.",
+    "Oeffentlicher Nachweis: https://webrtc.ananta.de/healthz antwortete gesund und lieferte main-EPCJGV4T.js. Ein frischer Produktions-Chromium-Kontext sah Bildschirmton aus, konnte das Opt-in setzen und registrierte dabei null Capture-Aufrufe oder Seitenfehler."
   ]
 }
