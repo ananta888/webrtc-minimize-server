@@ -5,7 +5,7 @@
   "track": "small-room-camera-floor",
   "purpose": "Kamera-Video darf in kleinen Room- und Pair-Sessions durch adaptive Link- und Sprecherbewertung nicht wie ein Wiedergabefehler vollstaendig stillgelegt werden.",
   "goal": "Auto und Ausgewogen halten Kamera bei bis zu fuenf Teilnehmern mindestens als aktives Thumbnail, waehrend grosse Raeume und das explizite Datensparprofil ihre bisherigen Pausenbudgets behalten.",
-  "status": "in_progress",
+  "status": "completed",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
   "risk_scale": ["low", "medium", "high", "critical"],
@@ -14,17 +14,17 @@
       "id": "SCF-M01",
       "title": "Kamera-Untergrenze implementieren und ausrollen",
       "task_ids": ["SCF-001"],
-      "status": "in_progress"
+      "status": "done"
     }
   ],
   "tasks": [
     {
       "id": "SCF-001",
       "title": "Aktives Kamera-Thumbnail fuer kleine Sessions garantieren",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 95,
+      "progress_percent": 100,
       "depends_on": [],
       "acceptance_criteria": [
         "Bei hoechstens fuenf Teilnehmern liefern Auto und Ausgewogen fuer Kamera nach Sprecher-, Screenshare- und Link-Degradation niemals paused, sondern mindestens ein aktives Thumbnail.",
@@ -38,25 +38,27 @@
   "critical_path_tasks": ["SCF-001"],
   "tasks_status_summary": {
     "total": 1,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 0 },
-    "progress_percent_done": 0,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 1 },
+    "progress_percent_done": 100,
     "by_priority": { "P0": 1, "P1": 0, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 1, "critical": 0 },
-    "critical_path": { "total": 1, "done": 0, "remaining": 1 },
-    "milestones": { "total": 1, "todo": 0, "in_progress": 1, "blocked": 0, "done": 0 }
+    "critical_path": { "total": 1, "done": 1, "remaining": 0 },
+    "milestones": { "total": 1, "todo": 0, "in_progress": 0, "blocked": 0, "done": 1 }
   },
   "progress_summary": {
-    "state": "in_progress",
+    "state": "completed",
     "todo_remaining": 0,
-    "in_progress": 1,
+    "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 0
+    "done": 1
   },
   "summary_notes": [
     "Die Diagnose reproduzierte die bisherige Policy-Ausgabe paused/active=false fuer zwei Teilnehmer bei stiller Kamera plus constrained sowie Fokus-Kamera plus Screenshare und critical.",
     "Ein 75-Sekunden-Zwei-Peer-Gegentest ohne erzwungene Link-Degradation lieferte pro Richtung mehr als 1270 dekodierte Frames und null Browser-Freezes; Server-, Timer- und allgemeiner SFrame-Abbruch wurden dabei nicht reproduziert.",
     "Gezielter Chromium-Nachweis: Bei erzwungenem critical, aktiver Kamera, Mikrofon und Screenshare blieb der reale Kamera-Sender auf active=true mit 90000 Bit/s; die Gegenstelle dekodierte weitere Kameraframes.",
-    "Vollstaendiges Vorab-Gate: npm run check bestand mit 47 Frontend- und 62 Node-/Integrationstests samt Chromium-/Firefox-Matrix; das optionale externe Infrastruktur-Gate meldete ohne Test-Credentials einen sichtbaren Skip."
+    "Vollstaendiges Vorab-Gate: npm run check bestand mit 47 Frontend- und 62 Node-/Integrationstests samt Chromium-/Firefox-Matrix; das optionale externe Infrastruktur-Gate meldete ohne Test-Credentials einen sichtbaren Skip.",
+    "Rollout-Nachweis: Commit 21b3b37 wurde auf origin/main gepusht und mit dem bestehenden Compose-Override auf dem Mini-PC gebaut; der Container lief mit null Neustarts und internem HTTP-200-Healthcheck.",
+    "Oeffentlicher Nachweis: https://webrtc.ananta.de/healthz war gesund und die Startseite lieferte das neue Bundle main-PAHVRUXY.js. Caddy, Keycloak, Coturn und Secrets blieben unveraendert."
   ]
 }
