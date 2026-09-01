@@ -32,6 +32,46 @@ describe("media optimization policy", () => {
     expect(selectVideoQuality({ source: "camera", speakerRank: 0, participantCount: 6, mode: "auto", linkClass: "critical", screenActive: false }).tier).toBe("thumbnail");
   });
 
+  it("keeps camera active at thumbnail in small auto and balanced sessions", () => {
+    const silentCamera = selectVideoQuality({
+      source: "camera",
+      speakerRank: -1,
+      participantCount: 2,
+      mode: "auto",
+      linkClass: "constrained",
+      screenActive: false,
+    });
+    const cameraBesideScreen = selectVideoQuality({
+      source: "camera",
+      speakerRank: 0,
+      participantCount: 5,
+      mode: "balanced",
+      linkClass: "critical",
+      screenActive: true,
+    });
+    expect(silentCamera).toEqual(expect.objectContaining({ tier: "thumbnail", active: true }));
+    expect(cameraBesideScreen).toEqual(expect.objectContaining({ tier: "thumbnail", active: true }));
+  });
+
+  it("retains explicit and large-room pause budgets", () => {
+    expect(selectVideoQuality({
+      source: "camera",
+      speakerRank: -1,
+      participantCount: 2,
+      mode: "data-saver",
+      linkClass: "constrained",
+      screenActive: false,
+    })).toEqual(expect.objectContaining({ tier: "paused", active: false }));
+    expect(selectVideoQuality({
+      source: "camera",
+      speakerRank: -1,
+      participantCount: 6,
+      mode: "auto",
+      linkClass: "constrained",
+      screenActive: false,
+    })).toEqual(expect.objectContaining({ tier: "paused", active: false }));
+  });
+
   it("degrades immediately but requires dwell before link recovery", () => {
     expect(stabilizeLinkClass({ current: "good", candidate: "critical", candidateSince: 1_000, now: 1_100 }).value).toBe("critical");
     expect(stabilizeLinkClass({ current: "critical", candidate: "good", candidateSince: 1_000, now: 6_999 }).value).toBe("critical");

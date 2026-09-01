@@ -47,13 +47,45 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   const browserContext = await browser.newContext({ permissions: ["camera", "microphone"] });
   await browserContext.addInitScript(() => {
     window.__captureCalls = [];
+    window.__localTrackSources = {};
+    window.__senderParameterEvents = [];
+    window.__forceCriticalLink = false;
     for (const method of ["getUserMedia", "getDisplayMedia"]) {
       const original = navigator.mediaDevices[method].bind(navigator.mediaDevices);
-      navigator.mediaDevices[method] = (...args) => {
+      navigator.mediaDevices[method] = async (...args) => {
         window.__captureCalls.push(method);
-        return original(...args);
+        const stream = await original(...args);
+        const constraints = args[0] || {};
+        const source = method === "getDisplayMedia" ? "screen" : constraints.video ? "camera" : "microphone";
+        for (const track of stream.getTracks()) window.__localTrackSources[track.id] = source;
+        return stream;
       };
     }
+    const nativeGetStats = RTCPeerConnection.prototype.getStats;
+    RTCPeerConnection.prototype.getStats = async function observedGetStats(...args) {
+      const report = await nativeGetStats.apply(this, args);
+      if (!window.__forceCriticalLink) return report;
+      const forced = new Map();
+      report.forEach((value, key) => {
+        forced.set(key, value.type === "candidate-pair" && value.state === "succeeded"
+          ? { ...value, availableOutgoingBitrate: 100_000, currentRoundTripTime: 0.7 }
+          : value);
+      });
+      return forced;
+    };
+    const nativeSetParameters = RTCRtpSender.prototype.setParameters;
+    RTCRtpSender.prototype.setParameters = function observedSetParameters(parameters) {
+      window.__senderParameterEvents.push({
+        trackId: this.track?.id || "",
+        encodings: parameters.encodings.map((encoding) => ({
+          active: encoding.active,
+          maxBitrate: encoding.maxBitrate,
+          maxFramerate: encoding.maxFramerate,
+          scaleResolutionDownBy: encoding.scaleResolutionDownBy,
+        })),
+      });
+      return nativeSetParameters.call(this, parameters);
+    };
   });
   const ada = await browserContext.newPage();
   const grace = await browserContext.newPage();
@@ -93,12 +125,34 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   await ada.locator("#toggle-microphone", { hasText: "Mikrofon stoppen" }).waitFor();
   await grace.locator(".media-label").getByText("Ada · Mikrofon").waitFor();
 
+  await ada.evaluate(() => { window.__forceCriticalLink = true; });
   await ada.locator(".nav-item", { hasText: "Chat" }).click();
   await ada.locator(".persistent-media-dock").waitFor();
   await ada.locator("#toggle-screen").click();
   await ada.locator("#toggle-screen", { hasText: "Bildschirmfreigabe stoppen" }).waitFor();
   await grace.locator(".media-label").getByText("Ada · Bildschirm").first().waitFor();
   await ada.locator(".nav-item", { hasText: "Einstellungen" }).click();
+  await ada.locator("#link-quality", { hasText: "critical" }).waitFor({ timeout: 5_000 });
+  await ada.waitForFunction(() => {
+    const cameraTrackIds = new Set(Object.entries(window.__localTrackSources)
+      .filter(([, source]) => source === "camera").map(([trackId]) => trackId));
+    return window.__senderParameterEvents.some((event) => cameraTrackIds.has(event.trackId)
+      && event.encodings.some((encoding) => encoding.active === true && encoding.maxBitrate === 90_000));
+  });
+  assert.equal(await ada.evaluate(() => {
+    const cameraTrackIds = new Set(Object.entries(window.__localTrackSources)
+      .filter(([, source]) => source === "camera").map(([trackId]) => trackId));
+    return window.__senderParameterEvents.some((event) => cameraTrackIds.has(event.trackId)
+      && event.encodings.some((encoding) => encoding.active === false));
+  }), false);
+  const remoteCamera = grace.locator(".remote-media", { hasText: "Ada · Kamera" }).locator("video");
+  const cameraFrames = await remoteCamera.evaluate((video) => video.getVideoPlaybackQuality().totalVideoFrames);
+  await grace.waitForFunction((initialFrames) => {
+    const card = [...document.querySelectorAll(".remote-media")]
+      .find((item) => item.textContent?.includes("Ada · Kamera"));
+    const video = card?.querySelector("video");
+    return video && video.getVideoPlaybackQuality().totalVideoFrames >= initialFrames + 2;
+  }, cameraFrames);
   await ada.locator(".persistent-media-dock #toggle-screen", { hasText: "Bildschirmfreigabe stoppen" }).click();
   await ada.locator(".nav-item", { hasText: "Live" }).click();
 

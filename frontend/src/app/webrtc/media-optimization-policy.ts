@@ -26,6 +26,7 @@ export const QUALITY_SETTINGS: Readonly<Record<VideoTier, QualitySettings>> = Ob
 });
 
 const VIDEO_TIERS: readonly VideoTier[] = ["screen", "focus", "balanced", "thumbnail", "paused"];
+const SMALL_ROOM_CAMERA_FLOOR_PARTICIPANTS = 5;
 
 export function selectActiveSpeakers(
   observations: readonly ActivityObservation[],
@@ -83,6 +84,11 @@ export function selectVideoQuality(input: Readonly<{
   if (input.source === "camera" && input.screenActive) tier = degrade(tier, 1);
   if (input.linkClass === "constrained") tier = degrade(tier, 1);
   if (input.linkClass === "critical") tier = degrade(tier, 2);
+  if (input.source === "camera"
+    && input.participantCount > 0
+    && input.participantCount <= SMALL_ROOM_CAMERA_FLOOR_PARTICIPANTS
+    && input.mode !== "data-saver"
+    && tier === "paused") tier = "thumbnail";
   return QUALITY_SETTINGS[tier];
 }
 
