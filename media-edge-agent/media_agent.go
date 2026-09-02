@@ -49,15 +49,17 @@ type mediaRoom struct {
 }
 
 type mediaPeer struct {
-	room              *mediaRoom
-	id                string
-	pc                *webrtc.PeerConnection
-	mu                sync.Mutex
-	pendingCandidates []webrtc.ICECandidateInit
-	makingOffer       bool
-	ignoreOffer       bool
-	needsNegotiation  bool
-	closed            bool
+	room                *mediaRoom
+	id                  string
+	pc                  *webrtc.PeerConnection
+	mu                  sync.Mutex
+	pendingCandidates   []webrtc.ICECandidateInit
+	pendingOfferSenders map[*webrtc.RTPSender]struct{}
+	senderNegotiated    map[*webrtc.RTPSender]bool
+	makingOffer         bool
+	ignoreOffer         bool
+	needsNegotiation    bool
+	closed              bool
 }
 
 type forwardPublication struct {
@@ -77,7 +79,6 @@ type forwardLayer struct {
 	rid             string
 	remote          *webrtc.TrackRemote
 	local           *webrtc.TrackLocalStaticRTP
-	federationLocal *webrtc.TrackLocalStaticRTP
 	feedbackPC      *webrtc.PeerConnection
 	inputFederation *federationPeer
 	federationPeers map[string]*federationPeer
@@ -93,6 +94,7 @@ type subscriberForward struct {
 	layer         string
 	revision      int64
 	readyRevision int64
+	peer          *mediaPeer
 	sender        *webrtc.RTPSender
 	local         *webrtc.TrackLocalStaticRTP
 	rewriter      rtpContinuityRewriter
@@ -338,7 +340,10 @@ func (r *mediaRoom) newPeer(peerID string) (*mediaPeer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create peer connection: %w", err)
 	}
-	peer := &mediaPeer{room: r, id: peerID, pc: pc}
+	peer := &mediaPeer{
+		room: r, id: peerID, pc: pc,
+		senderNegotiated: make(map[*webrtc.RTPSender]bool),
+	}
 	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		var value any = nil
 		if candidate != nil {
@@ -402,6 +407,14 @@ func (p *mediaPeer) acceptSignal(message serverMessage) error {
 	if err := p.pc.SetRemoteDescription(description); err != nil {
 		return fmt.Errorf("set remote description: %w", err)
 	}
+	if description.Type == webrtc.SDPTypeAnswer {
+		for sender := range p.pendingOfferSenders {
+			if _, present := p.senderNegotiated[sender]; present && sender.Track() != nil {
+				p.senderNegotiated[sender] = true
+			}
+		}
+		p.pendingOfferSenders = nil
+	}
 	for _, candidate := range p.pendingCandidates {
 		if err := p.pc.AddICECandidate(candidate); err != nil {
 			return fmt.Errorf("apply queued candidate: %w", err)
@@ -456,6 +469,12 @@ func (p *mediaPeer) negotiate() {
 		p.mu.Unlock()
 		return
 	}
+	p.pendingOfferSenders = make(map[*webrtc.RTPSender]struct{})
+	for sender, negotiated := range p.senderNegotiated {
+		if !negotiated && sender.Track() != nil {
+			p.pendingOfferSenders[sender] = struct{}{}
+		}
+	}
 	err = p.room.agent.signal.send(map[string]any{
 		"type": "media-agent-signal", "roomId": p.room.id, "peerId": p.id,
 		"routeEpoch": p.room.routeEpoch, "description": offer,
@@ -475,6 +494,10 @@ func (p *mediaPeer) addForwardTrack(track webrtc.TrackLocal) (*webrtc.RTPSender,
 	}
 	sender, err := p.pc.AddTrack(track)
 	if err == nil {
+		if p.senderNegotiated == nil {
+			p.senderNegotiated = make(map[*webrtc.RTPSender]bool)
+		}
+		p.senderNegotiated[sender] = false
 		p.needsNegotiation = true
 	}
 	p.mu.Unlock()
@@ -492,6 +515,8 @@ func (p *mediaPeer) removeForwardTrack(sender *webrtc.RTPSender) error {
 	}
 	err := p.pc.RemoveTrack(sender)
 	if err == nil {
+		delete(p.senderNegotiated, sender)
+		delete(p.pendingOfferSenders, sender)
 		p.needsNegotiation = true
 	}
 	p.mu.Unlock()
@@ -499,6 +524,12 @@ func (p *mediaPeer) removeForwardTrack(sender *webrtc.RTPSender) error {
 		go p.negotiate()
 	}
 	return err
+}
+
+func (p *mediaPeer) senderReady(sender *webrtc.RTPSender) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return !p.closed && p.senderNegotiated[sender] && sender.Track() != nil
 }
 
 func (p *mediaPeer) close() {
@@ -509,6 +540,8 @@ func (p *mediaPeer) close() {
 	}
 	p.closed = true
 	p.pendingCandidates = nil
+	p.pendingOfferSenders = nil
+	p.senderNegotiated = nil
 	p.mu.Unlock()
 	_ = p.pc.Close()
 }
@@ -545,18 +578,6 @@ func (r *mediaRoom) acceptTrack(peer *mediaPeer, remote *webrtc.TrackRemote) {
 		r.mu.Unlock()
 		return
 	}
-	federationLocal, err := webrtc.NewTrackLocalStaticRTP(
-		remote.Codec().RTPCodecCapability,
-		remote.ID(),
-		federationStreamID(peer.id, layerName),
-	)
-	if err != nil {
-		if created {
-			delete(r.tracks, key)
-		}
-		r.mu.Unlock()
-		return
-	}
 	publication.mu.Lock()
 	if publication.closed || publication.layers[layerName] != nil {
 		publication.mu.Unlock()
@@ -565,8 +586,7 @@ func (r *mediaRoom) acceptTrack(peer *mediaPeer, remote *webrtc.TrackRemote) {
 	}
 	layer := &forwardLayer{
 		publication: publication, name: layerName, rid: rid, remote: remote, local: local,
-		federationLocal: federationLocal, feedbackPC: peer.pc,
-		federationPeers: map[string]*federationPeer{}, reported: true,
+		feedbackPC: peer.pc, federationPeers: map[string]*federationPeer{}, reported: true,
 		queue: make(chan *rtp.Packet, r.agent.cfg.trackQueue), done: make(chan struct{}),
 	}
 	publication.layers[layerName] = layer
@@ -715,7 +735,7 @@ func (p *forwardPublication) reconcileSubscriber(peerID string) {
 		return
 	}
 	p.subscribers[peerID] = &subscriberForward{
-		layer: target, revision: plan.Revision, sender: sender, local: local,
+		layer: target, revision: plan.Revision, peer: peer, sender: sender, local: local,
 	}
 	p.mu.Unlock()
 	layer.requestKeyframe()
@@ -736,7 +756,7 @@ func (p *forwardPublication) writeSubscribers(layerName string, packet *rtp.Pack
 	reports := make([]readyReport, 0)
 	p.mu.Lock()
 	for peerID, forward := range p.subscribers {
-		if forward.layer != layerName {
+		if forward.layer != layerName || forward.peer == nil || !forward.peer.senderReady(forward.sender) {
 			continue
 		}
 		rewritten := forward.rewriter.rewrite(layerName, packet)
@@ -860,7 +880,6 @@ func (l *forwardLayer) writeLoop() {
 		case packet := <-l.queue:
 			if packet != nil {
 				l.publication.writeSubscribers(l.name, packet)
-				_ = l.federationLocal.WriteRTP(packet)
 				l.publication.mu.Lock()
 				federations := make([]*federationPeer, 0, len(l.federationPeers))
 				for _, federation := range l.federationPeers {
@@ -868,7 +887,7 @@ func (l *forwardLayer) writeLoop() {
 				}
 				l.publication.mu.Unlock()
 				for _, federation := range federations {
-					federation.forwardedPackets.Add(1)
+					federation.writeForward(l, packet)
 				}
 			}
 		case <-keyframe.C:

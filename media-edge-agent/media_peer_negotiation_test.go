@@ -125,14 +125,17 @@ func TestMediaPeerCoalescesThreeForwardTracksBehindOutstandingOffer(t *testing.T
 		{codec: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000}, id: "camera-track"},
 		{codec: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000}, id: "screen-track"},
 	}
+	senders := make([]*webrtc.RTPSender, 0, len(tracks))
 	for _, definition := range tracks {
 		track, trackErr := webrtc.NewTrackLocalStaticRTP(definition.codec, definition.id, "fedcba9876543210")
 		if trackErr != nil {
 			t.Fatal(trackErr)
 		}
-		if _, trackErr = peer.addForwardTrack(track); trackErr != nil {
+		sender, trackErr := peer.addForwardTrack(track)
+		if trackErr != nil {
 			t.Fatal(trackErr)
 		}
+		senders = append(senders, sender)
 	}
 
 	browser := newBrowserPeer(t, peer.id)
@@ -158,6 +161,32 @@ func TestMediaPeerCoalescesThreeForwardTracksBehindOutstandingOffer(t *testing.T
 	videoSections := strings.Count(secondOffer.SDP, "m=video")
 	if audioSections != 1 || videoSections != 2 {
 		t.Fatalf("coalesced offer media-section mismatch: audio=%d video=%d", audioSections, videoSections)
+	}
+	for _, sender := range senders {
+		if peer.senderReady(sender) {
+			t.Fatal("forward sender became writable before its offer was answered")
+		}
+	}
+	if err = browser.SetRemoteDescription(secondOffer); err != nil {
+		t.Fatal(err)
+	}
+	secondAnswer, err := browser.CreateAnswer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = browser.SetLocalDescription(secondAnswer); err != nil {
+		t.Fatal(err)
+	}
+	if err = peer.acceptSignal(serverMessage{
+		Type: "peer-signal", RoomID: room.id, PeerID: peer.id, RouteEpoch: room.routeEpoch,
+		Description: &secondAnswer,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, sender := range senders {
+		if !peer.senderReady(sender) {
+			t.Fatal("answered offer did not make its exact forward sender writable")
+		}
 	}
 }
 
@@ -294,7 +323,7 @@ func TestFederationForwardQueuesNegotiationDuringOutstandingOffer(t *testing.T) 
 		layers: map[string]*forwardLayer{}, subscribers: map[string]*subscriberForward{},
 	}
 	layer := &forwardLayer{
-		publication: publication, name: "low", local: video, federationLocal: video,
+		publication: publication, name: "low", local: video,
 		federationPeers: map[string]*federationPeer{},
 	}
 	publication.layers["low"] = layer
@@ -306,7 +335,7 @@ func TestFederationForwardQueuesNegotiationDuringOutstandingOffer(t *testing.T) 
 		t.Fatal(err)
 	}
 	publication.layers["medium"] = &forwardLayer{
-		publication: publication, name: "medium", local: transient, federationLocal: transient,
+		publication: publication, name: "medium", local: transient,
 		federationPeers: map[string]*federationPeer{},
 	}
 	peer.setForward(publication, "medium", true)
@@ -347,7 +376,8 @@ func TestFederationForwardQueuesNegotiationDuringOutstandingOffer(t *testing.T) 
 	}
 	key := federationTrackKey(publication.publisherID, publication.publicationID, "low")
 	forward := peer.senders[key]
-	if forward == nil || !forward.active || forward.negotiated || forward.sender.Track() != video {
+	if forward == nil || !forward.active || forward.negotiated || forward.local == video ||
+		forward.sender.Track() != forward.local {
 		t.Fatal("federation forward did not retain its active sender")
 	}
 	if err = browser.SetRemoteDescription(secondOffer); err != nil {
@@ -375,7 +405,7 @@ func TestFederationForwardQueuesNegotiationDuringOutstandingOffer(t *testing.T) 
 		t.Fatal("repeated federation deselection removed the reusable sender")
 	}
 	peer.setForward(publication, "low", true)
-	if peer.senders[key] != forward || !forward.active || forward.sender.Track() != video {
+	if peer.senders[key] != forward || !forward.active || forward.sender.Track() != forward.local {
 		t.Fatal("federation reselection did not resume the retained sender")
 	}
 }

@@ -48,6 +48,7 @@ type federationPeer struct {
 
 type federationForward struct {
 	sender     *webrtc.RTPSender
+	local      *webrtc.TrackLocalStaticRTP
 	layer      *forwardLayer
 	active     bool
 	negotiated bool
@@ -246,6 +247,7 @@ func (f *federationPeer) acceptSignal(message serverMessage) error {
 		for key, pending := range f.pendingOfferSenders {
 			if f.senders[key] == pending && pending.active && pending.sender.Track() != nil {
 				pending.negotiated = true
+				go pending.layer.requestKeyframe()
 			}
 		}
 		f.pendingOfferSenders = nil
@@ -611,18 +613,6 @@ func (r *mediaRoom) acceptFederatedLayer(
 		r.mu.Unlock()
 		return
 	}
-	federationLocal, err := webrtc.NewTrackLocalStaticRTP(
-		remote.Codec().RTPCodecCapability,
-		remote.ID(),
-		federationStreamID(publisherPeerID, layerName),
-	)
-	if err != nil {
-		if created {
-			delete(r.tracks, key)
-		}
-		r.mu.Unlock()
-		return
-	}
 	publication.mu.Lock()
 	if publication.closed || publication.layers[layerName] != nil {
 		publication.mu.Unlock()
@@ -631,7 +621,7 @@ func (r *mediaRoom) acceptFederatedLayer(
 	}
 	layer := &forwardLayer{
 		publication: publication, name: layerName, rid: ridForLayer(layerName), remote: remote,
-		local: local, federationLocal: federationLocal, feedbackPC: input.pc, inputFederation: input,
+		local: local, feedbackPC: input.pc, inputFederation: input,
 		federationPeers: map[string]*federationPeer{}, reported: false,
 		queue: make(chan *rtp.Packet, r.agent.cfg.trackQueue), done: make(chan struct{}),
 	}
@@ -687,12 +677,16 @@ func (f *federationPeer) setForward(publication *forwardPublication, layerName s
 	current := f.senders[key]
 	active := !f.closed && f.ready && needed && layer != nil
 	if current != nil && active && current.layer == layer {
-		if !current.active && current.sender.ReplaceTrack(layer.federationLocal) == nil {
+		if !current.active && current.sender.ReplaceTrack(current.local) == nil {
 			current.active = true
+			negotiated := current.negotiated
 			f.mu.Unlock()
 			publication.mu.Lock()
 			layer.federationPeers[f.link.LinkID] = f
 			publication.mu.Unlock()
+			if !negotiated {
+				go f.negotiate()
+			}
 			return
 		}
 		if !current.active {
@@ -703,7 +697,11 @@ func (f *federationPeer) setForward(publication *forwardPublication, layerName s
 			f.setForward(publication, layerName, needed)
 			return
 		}
+		negotiated := current.negotiated
 		f.mu.Unlock()
+		if !negotiated {
+			go f.negotiate()
+		}
 		return
 	}
 	if current != nil && !active && !current.negotiated {
@@ -742,7 +740,11 @@ func (f *federationPeer) setForward(publication *forwardPublication, layerName s
 		}
 		return
 	}
-	sender, err := f.pc.AddTrack(layer.federationLocal)
+	local, err := webrtc.NewTrackLocalStaticRTP(
+		layer.local.Codec(),
+		publication.publicationID,
+		federationStreamID(publication.publisherID, layerName),
+	)
 	if err != nil {
 		f.mu.Unlock()
 		if current != nil {
@@ -750,7 +752,15 @@ func (f *federationPeer) setForward(publication *forwardPublication, layerName s
 		}
 		return
 	}
-	f.senders[key] = &federationForward{sender: sender, layer: layer, active: true}
+	sender, err := f.pc.AddTrack(local)
+	if err != nil {
+		f.mu.Unlock()
+		if current != nil {
+			go f.negotiate()
+		}
+		return
+	}
+	f.senders[key] = &federationForward{sender: sender, local: local, layer: layer, active: true}
 	f.mu.Unlock()
 	publication.mu.Lock()
 	layer.federationPeers[f.link.LinkID] = f
@@ -760,6 +770,22 @@ func (f *federationPeer) setForward(publication *forwardPublication, layerName s
 	// Calling negotiate explicitly records that exact later mutation through
 	// needsNegotiation and retries it after the current answer.
 	go f.negotiate()
+}
+
+func (f *federationPeer) writeForward(layer *forwardLayer, packet *rtp.Packet) {
+	key := federationTrackKey(layer.publication.publisherID, layer.publication.publicationID, layer.name)
+	f.mu.Lock()
+	forward := f.senders[key]
+	if f.closed || forward == nil || forward.layer != layer || !forward.active || !forward.negotiated ||
+		forward.local == nil || forward.sender.Track() != forward.local {
+		f.mu.Unlock()
+		return
+	}
+	local := forward.local
+	f.mu.Unlock()
+	if err := local.WriteRTP(packet); err == nil {
+		f.forwardedPackets.Add(1)
+	}
 }
 
 func (f *federationPeer) readForwardFeedback(key string, sender *webrtc.RTPSender) {
