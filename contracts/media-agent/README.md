@@ -20,8 +20,10 @@ keine SFrame-Schlüssel.
   den Publisher weitergereichte, revisionsgebundene Ergebnis.
 - `federation-signal.v1` und `federation-state.v1`: ausschließlich von der
   Control Plane autorisiertes SDP/ICE-Brokering und beidseitiger Linkzustand.
-- `federation-control.v1`: strikt begrenzte Agent-Agent-Acks und Statistiken;
-  daraus entsteht keine Membership oder Policy-Autorität.
+- `federation-control.v1`: strikt begrenzte Agent-Agent-Acks, monotone
+  Renegotiation-Requests/-Grants und Statistiken; der vom Server bestimmte
+  Link-Initiator serialisiert damit SDP-Angebote, ohne dass daraus Membership
+  oder Policy-Autorität entsteht.
 - `agent-enrollment.v1`: kurzlebiges Einmalticket, öffentlicher P-256-JWK und
   Proof-of-Possession; der private Schlüssel ist kein Contract-Feld.
 - `agent-authentication.v2`: Challenge- und Zeitstempel-gebundene P-256-Signatur

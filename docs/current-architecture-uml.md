@@ -540,7 +540,10 @@ sequenceDiagram
 ```
 
 Die direkte Agent-Control-Verbindung tauscht nur geschlossene
-`federation-hello`, `federation-ack` und begrenzte `federation-stats` aus.
+`federation-hello`, `federation-ack`, monotone
+`federation-negotiation-request`-/`grant`-Turns und begrenzte
+`federation-stats` aus. Der serverbestimmte Link-Initiator serialisiert die
+bidirektionalen Offer-Turns, weil Pion kein SDP-Rollback implementiert.
 SDP/ICE wird von der Control Plane fuer den exakten Link vermittelt. Diese
 JSON-Daten sind keine Policy-Verhandlung. Die Zuordnung ist deterministisch
 nach Publisher-Anzahl, noch nicht nach gemessener Publikationsbitrate;

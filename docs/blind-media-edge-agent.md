@@ -167,9 +167,14 @@ SDP und ICE der Agent-Agent-`RTCPeerConnection` werden nur ueber die bereits
 HMAC-authentisierte Control Plane vermittelt. Der darin ausgehandelte DTLS-
 Fingerprint bindet den Gegenueber; ein direkter, geschlossener DataChannel
 bestaetigt zusaetzlich Room, Route-Epoche, Link-ID, Agent-ID und frische Lease.
-Nur danach fliesst SFrame-Ciphertext direkt zwischen den Agenten. Hello, ACK
-und begrenzte Paketstatistiken koennen weder Membership noch neue Links oder
-Layerrechte erzeugen. Unbekannte Felder, Richtungen, Epochen, Links und
+Nur danach fliesst SFrame-Ciphertext direkt zwischen den Agenten. Weil Pion
+kein SDP-Rollback implementiert, serialisiert der serverbestimmte
+Link-Initiator spätere bidirektionale Offers mit monotonen, geschlossenen
+`federation-negotiation-request`-/`grant`-Nachrichten. Ein Grant erlaubt
+genau den nächsten Offer-Turn; er ändert keine Route oder Medienberechtigung.
+Hello, ACK, Negotiation-Turns und begrenzte Paketstatistiken koennen weder
+Membership noch neue Links oder Layerrechte erzeugen. Unbekannte Felder,
+Richtungen, Epochen, Links und
 Publikationen werden fail-closed verworfen. Die zugehoerigen geschlossenen
 JSON-Schemas liegen unter `contracts/media-agent/`; Medien selbst werden nie
 als JSON transportiert. Ein serverseitiger Full-Sync ist fuer maximal 32

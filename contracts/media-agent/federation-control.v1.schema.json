@@ -5,6 +5,8 @@
   "oneOf": [
     { "$ref": "#/$defs/hello" },
     { "$ref": "#/$defs/ack" },
+    { "$ref": "#/$defs/negotiationRequest" },
+    { "$ref": "#/$defs/negotiationGrant" },
     { "$ref": "#/$defs/stats" }
   ],
   "$defs": {
@@ -47,6 +49,34 @@
         "linkId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{22}$" },
         "agentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
         "accepted": { "type": "boolean" }
+      }
+    },
+    "negotiationRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "type", "roomId", "routeEpoch", "linkId", "agentId", "sequence"],
+      "properties": {
+        "version": { "const": 1 },
+        "type": { "const": "federation-negotiation-request" },
+        "roomId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{5,47}$" },
+        "routeEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "linkId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{22}$" },
+        "agentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
+        "sequence": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      }
+    },
+    "negotiationGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "type", "roomId", "routeEpoch", "linkId", "agentId", "sequence"],
+      "properties": {
+        "version": { "const": 1 },
+        "type": { "const": "federation-negotiation-grant" },
+        "roomId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{5,47}$" },
+        "routeEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "linkId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{22}$" },
+        "agentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
+        "sequence": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
       }
     },
     "stats": {

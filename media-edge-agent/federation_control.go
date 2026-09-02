@@ -40,6 +40,8 @@ func decodeFederationControl(raw []byte) (federationControlMessage, error) {
 		fields = []string{"version", "type", "roomId", "routeEpoch", "linkId", "agentId", "leaseExpiresAt"}
 	case "federation-ack":
 		fields = []string{"version", "type", "roomId", "routeEpoch", "linkId", "agentId", "accepted"}
+	case "federation-negotiation-request", "federation-negotiation-grant":
+		fields = []string{"version", "type", "roomId", "routeEpoch", "linkId", "agentId", "sequence"}
 	case "federation-stats":
 		fields = []string{
 			"version", "type", "roomId", "routeEpoch", "linkId", "agentId", "sequence",
@@ -63,6 +65,10 @@ func decodeFederationControl(raw []byte) (federationControlMessage, error) {
 	}
 	if message.Type == "federation-hello" && message.LeaseExpiresAt < 1 {
 		return federationControlMessage{}, fmt.Errorf("invalid federation hello")
+	}
+	if (message.Type == "federation-negotiation-request" || message.Type == "federation-negotiation-grant") &&
+		message.Sequence < 1 {
+		return federationControlMessage{}, fmt.Errorf("invalid federation negotiation sequence")
 	}
 	if message.Sequence < 0 || message.ReceivedPackets < 0 || message.ForwardedPackets < 0 ||
 		message.DroppedPackets < 0 {

@@ -186,7 +186,7 @@ func federationPeerReady(agent *mediaAgent, roomID, linkID string) bool {
 	return peer.ready && !peer.closed
 }
 
-func TestNativeAgentsFederateOnlyDemandedOpaqueFallbackLayer(t *testing.T) {
+func TestNativeAgentsFederateBidirectionalDemandedOpaqueLayersWithoutOfferGlare(t *testing.T) {
 	valuesA := validEnvironment()
 	valuesA["MEDIA_AGENT_ID"] = "agent-a"
 	cfgA, err := loadConfig(environment(valuesA))
@@ -223,7 +223,7 @@ func TestNativeAgentsFederateOnlyDemandedOpaqueFallbackLayer(t *testing.T) {
 		subscriberID = "fedcba9876543210"
 		linkID       = "abcdefghijklmnopqrstuv"
 	)
-	route := federationRoute{
+	cameraRoute := federationRoute{
 		PublisherPeerID: publisherID, SourceAgentID: cfgA.agentID, MaximumHops: 2,
 		Edges: []federationEdge{{
 			LinkID: linkID, FromAgentID: cfgA.agentID, ToAgentID: cfgB.agentID,
@@ -233,9 +233,19 @@ func TestNativeAgentsFederateOnlyDemandedOpaqueFallbackLayer(t *testing.T) {
 		LinkID: linkID, LeftAgentID: cfgA.agentID, RightAgentID: cfgB.agentID,
 		InitiatorAgentID: cfgA.agentID,
 	}
-	demand := federationDemand{
+	cameraDemand := federationDemand{
 		LinkID: linkID, FromAgentID: cfgA.agentID, ToAgentID: cfgB.agentID,
 		PublisherPeerID: publisherID, PublicationID: "camera-track", Layer: "medium",
+	}
+	audioRoute := federationRoute{
+		PublisherPeerID: subscriberID, SourceAgentID: cfgB.agentID, MaximumHops: 2,
+		Edges: []federationEdge{{
+			LinkID: linkID, FromAgentID: cfgB.agentID, ToAgentID: cfgA.agentID,
+		}},
+	}
+	audioDemand := federationDemand{
+		LinkID: linkID, FromAgentID: cfgB.agentID, ToAgentID: cfgA.agentID,
+		PublisherPeerID: subscriberID, PublicationID: "microphone-track", Layer: "audio",
 	}
 	now := time.Now()
 	expiresAt := now.Add(45 * time.Second).UnixMilli()
@@ -246,9 +256,14 @@ func TestNativeAgentsFederateOnlyDemandedOpaqueFallbackLayer(t *testing.T) {
 			{ID: publisherID, Connect: true, Publish: true, Subscribe: true},
 			{ID: subscriberID},
 		},
-		Subscriptions: []subscriptionPlan{}, FederationLinks: []federationLink{link},
-		FederationRoutes: []federationRoute{route}, FederationDemands: []federationDemand{demand},
-		ICEServers: []webrtc.ICEServer{},
+		Subscriptions: []subscriptionPlan{{
+			SubscriberPeerID: publisherID, PublisherPeerID: subscriberID,
+			PublicationID: "microphone-track", Source: "microphone", Enabled: true,
+			PreferredLayer: "audio", MaximumLayer: "audio", Revision: 1,
+		}}, FederationLinks: []federationLink{link},
+		FederationRoutes:  []federationRoute{cameraRoute, audioRoute},
+		FederationDemands: []federationDemand{cameraDemand, audioDemand},
+		ICEServers:        []webrtc.ICEServer{},
 	}
 	leaseB := agentLease{
 		Version: 3, Type: "agent-lease", RoomID: roomID, Role: "standby",
@@ -262,8 +277,9 @@ func TestNativeAgentsFederateOnlyDemandedOpaqueFallbackLayer(t *testing.T) {
 			PublicationID: "camera-track", Source: "camera", Enabled: true,
 			PreferredLayer: "high", MaximumLayer: "high", Revision: 1,
 		}},
-		FederationLinks: []federationLink{link}, FederationRoutes: []federationRoute{route},
-		FederationDemands: []federationDemand{demand}, ICEServers: []webrtc.ICEServer{},
+		FederationLinks:   []federationLink{link},
+		FederationRoutes:  []federationRoute{cameraRoute, audioRoute},
+		FederationDemands: []federationDemand{cameraDemand, audioDemand}, ICEServers: []webrtc.ICEServer{},
 	}
 
 	publisher := newBrowserPeer(t, publisherID)
@@ -299,11 +315,22 @@ func TestNativeAgentsFederateOnlyDemandedOpaqueFallbackLayer(t *testing.T) {
 	if err = sender.AddEncoding(highTrack); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = subscriber.CreateDataChannel("bootstrap", nil); err != nil {
+	audioTrack, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeOpus, ClockRate: 48_000, Channels: 2,
+		},
+		"microphone-track", "subscriber-stream",
+	)
+	if err != nil {
 		t.Fatal(err)
 	}
-	received := make(chan *webrtc.TrackRemote, 1)
-	subscriber.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) { received <- track })
+	if _, err = subscriber.AddTrack(audioTrack); err != nil {
+		t.Fatal(err)
+	}
+	receivedCamera := make(chan *webrtc.TrackRemote, 1)
+	receivedAudio := make(chan *webrtc.TrackRemote, 1)
+	subscriber.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) { receivedCamera <- track })
+	publisher.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) { receivedAudio <- track })
 	browsers := map[string]*federationBrowserEndpoint{
 		publisherID: {
 			pc: publisher, agent: agentA, roomID: roomID, peerID: publisherID, routeEpoch: 1,
@@ -374,6 +401,7 @@ func TestNativeAgentsFederateOnlyDemandedOpaqueFallbackLayer(t *testing.T) {
 	lowCiphertext := []byte{0x88, 0x08, 0x6c, 0x6f, 0x77, 0xde, 0xad, 0xbe, 0xef}
 	mediumCiphertext := []byte{0x88, 0x08, 0x6d, 0x69, 0x64, 0xde, 0xad, 0xbe, 0xef}
 	highCiphertext := []byte{0x88, 0x08, 0x68, 0x69, 0x67, 0x68, 0xde, 0xad, 0xbe, 0xef}
+	audioCiphertext := []byte{0xf8, 0xff, 0xfe, 0x11, 0x22, 0x33}
 	writerStop := make(chan struct{})
 	defer close(writerStop)
 	go func() {
@@ -396,27 +424,42 @@ func TestNativeAgentsFederateOnlyDemandedOpaqueFallbackLayer(t *testing.T) {
 					_ = packet.Header.SetExtension(ridExtensionID, []byte(track.RID()))
 					_ = track.WriteRTP(packet)
 				}
+				_ = audioTrack.WriteRTP(&rtp.Packet{
+					Header: rtp.Header{
+						Version: 2, PayloadType: 111, SequenceNumber: sequence,
+						Timestamp: uint32(sequence) * 960, SSRC: 277,
+					},
+					Payload: audioCiphertext,
+				})
 			}
 		}
 	}()
 
-	var remote *webrtc.TrackRemote
+	var remoteCamera *webrtc.TrackRemote
 	select {
-	case remote = <-received:
+	case remoteCamera = <-receivedCamera:
 	case brokerErr := <-brokerErrors:
 		t.Fatalf("agent broker failed: %v", brokerErr)
 	case <-time.After(15 * time.Second):
-		t.Fatal("subscriber did not receive the federated layer")
+		t.Fatal("subscriber did not receive the federated camera layer")
 	}
-	packetRead := make(chan *rtp.Packet, 1)
+	var remoteAudio *webrtc.TrackRemote
+	select {
+	case remoteAudio = <-receivedAudio:
+	case brokerErr := <-brokerErrors:
+		t.Fatalf("agent broker failed: %v", brokerErr)
+	case <-time.After(15 * time.Second):
+		t.Fatal("publisher did not receive the reverse federated audio layer")
+	}
+	cameraPacketRead := make(chan *rtp.Packet, 1)
 	go func() {
-		packet, _, readErr := remote.ReadRTP()
+		packet, _, readErr := remoteCamera.ReadRTP()
 		if readErr == nil {
-			packetRead <- packet
+			cameraPacketRead <- packet
 		}
 	}()
 	select {
-	case packet := <-packetRead:
+	case packet := <-cameraPacketRead:
 		if !bytes.Equal(packet.Payload, mediumCiphertext) {
 			t.Fatalf("federation selected the wrong layer or modified opaque ciphertext: %x", packet.Payload)
 		}
@@ -424,5 +467,22 @@ func TestNativeAgentsFederateOnlyDemandedOpaqueFallbackLayer(t *testing.T) {
 		t.Fatalf("agent broker failed: %v", brokerErr)
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out reading federated RTP")
+	}
+	audioPacketRead := make(chan *rtp.Packet, 1)
+	go func() {
+		packet, _, readErr := remoteAudio.ReadRTP()
+		if readErr == nil {
+			audioPacketRead <- packet
+		}
+	}()
+	select {
+	case packet := <-audioPacketRead:
+		if !bytes.Equal(packet.Payload, audioCiphertext) {
+			t.Fatalf("federation modified reverse opaque audio: %x", packet.Payload)
+		}
+	case brokerErr := <-brokerErrors:
+		t.Fatalf("agent broker failed: %v", brokerErr)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out reading reverse federated RTP")
 	}
 }

@@ -166,6 +166,7 @@ func TestFederationForwardQueuesNegotiationDuringOutstandingOffer(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	cfg.agentID = "edge-0000000000000001"
 	api, closeTransport, err := createWebRTCAPI(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -192,7 +193,7 @@ func TestFederationForwardQueuesNegotiationDuringOutstandingOffer(t *testing.T) 
 		senders: map[string]*federationForward{}, done: make(chan struct{}),
 	}
 	room.federationLinks[peer.link.LinkID] = peer
-	t.Cleanup(func() { peer.close(false) })
+	t.Cleanup(func() { peer.close(false, "test-cleanup") })
 	if _, err = pc.CreateDataChannel("federation-control", nil); err != nil {
 		t.Fatal(err)
 	}

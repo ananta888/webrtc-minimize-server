@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,28 +16,33 @@ import (
 )
 
 type federationPeer struct {
-	room              *mediaRoom
-	link              federationLink
-	remoteAgentID     string
-	pc                *webrtc.PeerConnection
-	mu                sync.Mutex
-	pendingCandidates []webrtc.ICECandidateInit
-	senders           map[string]*federationForward
-	control           *webrtc.DataChannel
-	makingOffer       bool
-	ignoreOffer       bool
-	needsNegotiation  bool
-	remoteHello       bool
-	remoteAck         bool
-	ready             bool
-	closed            bool
-	done              chan struct{}
-	closeOnce         sync.Once
-	lastStatsSequence int64
-	statsSequence     atomic.Int64
-	receivedPackets   atomic.Int64
-	forwardedPackets  atomic.Int64
-	droppedPackets    atomic.Int64
+	room                         *mediaRoom
+	link                         federationLink
+	remoteAgentID                string
+	pc                           *webrtc.PeerConnection
+	mu                           sync.Mutex
+	pendingCandidates            []webrtc.ICECandidateInit
+	senders                      map[string]*federationForward
+	control                      *webrtc.DataChannel
+	makingOffer                  bool
+	needsNegotiation             bool
+	nextNegotiationSequence      int64
+	localNegotiationRequest      int64
+	localNegotiationGrant        int64
+	lastRemoteNegotiationRequest int64
+	remoteNegotiationRequest     int64
+	remoteNegotiationGrant       int64
+	remoteHello                  bool
+	remoteAck                    bool
+	ready                        bool
+	closed                       bool
+	done                         chan struct{}
+	closeOnce                    sync.Once
+	lastStatsSequence            int64
+	statsSequence                atomic.Int64
+	receivedPackets              atomic.Int64
+	forwardedPackets             atomic.Int64
+	droppedPackets               atomic.Int64
 }
 
 type federationForward struct {
@@ -89,7 +95,7 @@ func (r *mediaRoom) syncFederation(links []federationLink) {
 	}
 	r.mu.Unlock()
 	for _, peer := range stale {
-		peer.close(true)
+		peer.close(true, "lease-replaced")
 	}
 	for _, link := range missing {
 		peer, err := r.newFederationPeer(link)
@@ -99,7 +105,7 @@ func (r *mediaRoom) syncFederation(links []federationLink) {
 		r.mu.Lock()
 		if r.closed || r.federationLinks[link.LinkID] != nil {
 			r.mu.Unlock()
-			peer.close(false)
+			peer.close(false, "duplicate-link")
 			continue
 		}
 		r.federationLinks[link.LinkID] = peer
@@ -139,7 +145,7 @@ func (r *mediaRoom) newFederationPeer(link federationLink) (*federationPeer, err
 	})
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
-			peer.close(true)
+			peer.close(true, "peer-connection-closed")
 		}
 	})
 	pc.OnDataChannel(func(channel *webrtc.DataChannel) {
@@ -195,7 +201,7 @@ func (f *federationPeer) acceptSignal(message serverMessage) error {
 		return fmt.Errorf("federation peer closed")
 	}
 	if len(message.Candidate) > 0 {
-		if f.ignoreOffer || bytes.Equal(bytes.TrimSpace(message.Candidate), []byte("null")) {
+		if bytes.Equal(bytes.TrimSpace(message.Candidate), []byte("null")) {
 			return nil
 		}
 		var candidate webrtc.ICECandidateInit
@@ -212,16 +218,17 @@ func (f *federationPeer) acceptSignal(message serverMessage) error {
 		return f.pc.AddICECandidate(candidate)
 	}
 	description := *message.Description
-	offerCollision := description.Type == webrtc.SDPTypeOffer &&
-		(f.makingOffer || f.pc.SignalingState() != webrtc.SignalingStateStable)
-	polite := f.room.agent.cfg.agentID > f.remoteAgentID
-	f.ignoreOffer = !polite && offerCollision
-	if f.ignoreOffer {
-		return nil
-	}
-	if offerCollision {
-		if err := f.pc.SetLocalDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeRollback}); err != nil {
-			return fmt.Errorf("rollback federation offer: %w", err)
+	if description.Type == webrtc.SDPTypeOffer {
+		if f.makingOffer || f.pc.SignalingState() != webrtc.SignalingStateStable {
+			return fmt.Errorf("unscheduled federation offer")
+		}
+		if f.isInitiator() {
+			if f.remoteNegotiationGrant == 0 {
+				return fmt.Errorf("ungranted federation offer")
+			}
+			f.remoteNegotiationGrant = 0
+		} else if f.localNegotiationGrant != 0 {
+			return fmt.Errorf("federation offer crossed a granted local turn")
 		}
 	}
 	if err := f.pc.SetRemoteDescription(description); err != nil {
@@ -241,32 +248,100 @@ func (f *federationPeer) acceptSignal(message serverMessage) error {
 		if err = f.pc.SetLocalDescription(answer); err != nil {
 			return err
 		}
-		return f.sendSignal(map[string]any{"description": answer})
+		if err = f.sendSignal(map[string]any{"description": answer}); err != nil {
+			return err
+		}
 	}
-	if f.needsNegotiation {
-		f.needsNegotiation = false
-		go f.negotiate()
-	}
+	go f.continueNegotiation()
 	return nil
 }
 
 func (f *federationPeer) negotiate() {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	if f.closed {
+		f.mu.Unlock()
 		return
 	}
-	if f.makingOffer || f.pc.SignalingState() != webrtc.SignalingStateStable {
-		f.needsNegotiation = true
+	f.needsNegotiation = true
+	if f.makingOffer || f.pc.SignalingState() != webrtc.SignalingStateStable ||
+		(f.isInitiator() && f.remoteNegotiationGrant != 0) {
+		f.mu.Unlock()
 		return
+	}
+	if !f.isInitiator() {
+		if !f.ready {
+			f.mu.Unlock()
+			return
+		}
+		if f.localNegotiationGrant == 0 {
+			if f.localNegotiationRequest != 0 {
+				f.mu.Unlock()
+				return
+			}
+			f.nextNegotiationSequence++
+			sequence := f.nextNegotiationSequence
+			f.localNegotiationRequest = sequence
+			f.mu.Unlock()
+			if err := f.sendNegotiationControl("federation-negotiation-request", sequence); err != nil {
+				f.close(true, "negotiation-request-failed")
+			}
+			return
+		}
 	}
 	f.makingOffer = true
-	defer func() { f.makingOffer = false }()
 	offer, err := f.pc.CreateOffer(nil)
 	if err != nil || f.pc.SetLocalDescription(offer) != nil {
+		f.makingOffer = false
+		f.mu.Unlock()
 		return
 	}
-	_ = f.sendSignal(map[string]any{"description": offer})
+	f.needsNegotiation = false
+	f.localNegotiationGrant = 0
+	f.makingOffer = false
+	f.mu.Unlock()
+	if err = f.sendSignal(map[string]any{"description": offer}); err != nil {
+		f.close(true, "negotiation-signal-failed")
+	}
+}
+
+func (f *federationPeer) isInitiator() bool {
+	return f.link.InitiatorAgentID == f.room.agent.cfg.agentID
+}
+
+func (f *federationPeer) sendNegotiationControl(messageType string, sequence int64) error {
+	return f.sendControl(map[string]any{
+		"version": 1, "type": messageType, "roomId": f.room.id,
+		"routeEpoch": f.room.routeEpoch, "linkId": f.link.LinkID,
+		"agentId": f.room.agent.cfg.agentID, "sequence": sequence,
+	})
+}
+
+func (f *federationPeer) continueNegotiation() {
+	f.mu.Lock()
+	grant := f.takeRemoteNegotiationGrantLocked()
+	needsNegotiation := f.needsNegotiation
+	f.mu.Unlock()
+	if grant != 0 {
+		if err := f.sendNegotiationControl("federation-negotiation-grant", grant); err != nil {
+			f.close(true, "negotiation-grant-failed")
+		}
+		return
+	}
+	if needsNegotiation {
+		f.negotiate()
+	}
+}
+
+func (f *federationPeer) takeRemoteNegotiationGrantLocked() int64 {
+	if !f.isInitiator() || !f.ready || f.remoteNegotiationRequest == 0 ||
+		f.remoteNegotiationGrant != 0 || f.makingOffer ||
+		f.pc.SignalingState() != webrtc.SignalingStateStable {
+		return 0
+	}
+	sequence := f.remoteNegotiationRequest
+	f.remoteNegotiationRequest = 0
+	f.remoteNegotiationGrant = sequence
+	return sequence
 }
 
 func (f *federationPeer) sendSignal(payload map[string]any) error {
@@ -295,12 +370,12 @@ func (f *federationPeer) attachControl(channel *webrtc.DataChannel) {
 	})
 	channel.OnMessage(func(message webrtc.DataChannelMessage) {
 		if !message.IsString {
-			f.close(true)
+			f.close(true, "non-text-control")
 			return
 		}
 		f.acceptControl(message.Data)
 	})
-	channel.OnClose(func() { f.close(true) })
+	channel.OnClose(func() { f.close(true, "control-channel-closed") })
 }
 
 func (f *federationPeer) sendHello() {
@@ -318,7 +393,7 @@ func (f *federationPeer) acceptControl(raw []byte) {
 	message, err := decodeFederationControl(raw)
 	if err != nil || message.RoomID != f.room.id || message.RouteEpoch != f.room.routeEpoch ||
 		message.LinkID != f.link.LinkID || message.AgentID != f.remoteAgentID {
-		f.close(true)
+		f.close(true, "invalid-control-envelope")
 		return
 	}
 	f.mu.Lock()
@@ -335,7 +410,7 @@ func (f *federationPeer) acceptControl(raw []byte) {
 			message.LeaseExpiresAt <= time.Now().Add(120*time.Second).UnixMilli()
 		if !localLeaseActive || !validRemoteLease {
 			f.mu.Unlock()
-			f.close(true)
+			f.close(true, "invalid-lease-proof")
 			return
 		}
 		f.remoteHello = true
@@ -350,14 +425,41 @@ func (f *federationPeer) acceptControl(raw []byte) {
 	case "federation-ack":
 		if !message.Accepted {
 			f.mu.Unlock()
-			f.close(true)
+			f.close(true, "rejected-ack")
 			return
 		}
 		f.remoteAck = true
+	case "federation-negotiation-request":
+		if !f.isInitiator() || message.Sequence <= f.lastRemoteNegotiationRequest {
+			f.mu.Unlock()
+			f.close(true, "invalid-negotiation-request")
+			return
+		}
+		f.lastRemoteNegotiationRequest = message.Sequence
+		f.remoteNegotiationRequest = message.Sequence
+		grant := f.takeRemoteNegotiationGrantLocked()
+		f.mu.Unlock()
+		if grant != 0 {
+			if err := f.sendNegotiationControl("federation-negotiation-grant", grant); err != nil {
+				f.close(true, "negotiation-grant-failed")
+			}
+		}
+		return
+	case "federation-negotiation-grant":
+		if f.isInitiator() || message.Sequence != f.localNegotiationRequest {
+			f.mu.Unlock()
+			f.close(true, "invalid-negotiation-grant")
+			return
+		}
+		f.localNegotiationRequest = 0
+		f.localNegotiationGrant = message.Sequence
+		f.mu.Unlock()
+		go f.negotiate()
+		return
 	case "federation-stats":
 		if message.Sequence <= f.lastStatsSequence {
 			f.mu.Unlock()
-			f.close(true)
+			f.close(true, "non-monotone-stats")
 			return
 		}
 		f.lastStatsSequence = message.Sequence
@@ -389,6 +491,7 @@ func (f *federationPeer) markReady() {
 	for _, publication := range publications {
 		publication.reconcileFederation()
 	}
+	go f.continueNegotiation()
 }
 
 func (f *federationPeer) sendControl(value any) error {
@@ -662,8 +765,11 @@ func (f *federationPeer) readForwardFeedback(key string, sender *webrtc.RTPSende
 	}
 }
 
-func (f *federationPeer) close(announce bool) {
+func (f *federationPeer) close(announce bool, reason string) {
 	f.closeOnce.Do(func() {
+		if announce {
+			log.Printf("media agent federation closed: %s", reason)
+		}
 		f.mu.Lock()
 		f.closed = true
 		wasReady := f.ready

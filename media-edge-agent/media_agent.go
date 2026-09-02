@@ -948,7 +948,7 @@ func (r *mediaRoom) close() {
 		peer.close()
 	}
 	for _, federation := range federations {
-		federation.close(false)
+		federation.close(false, "room-closed")
 	}
 }
 

@@ -92,6 +92,8 @@ func TestFederationControlRequiresClosedEpochBoundMessages(t *testing.T) {
 	valid := []string{
 		`{"version":1,"type":"federation-hello","roomId":"room-123456","routeEpoch":7,"linkId":"abcdefghijklmnopqrstuv","agentId":"remote-edge","leaseExpiresAt":20000}`,
 		`{"version":1,"type":"federation-ack","roomId":"room-123456","routeEpoch":7,"linkId":"abcdefghijklmnopqrstuv","agentId":"remote-edge","accepted":true}`,
+		`{"version":1,"type":"federation-negotiation-request","roomId":"room-123456","routeEpoch":7,"linkId":"abcdefghijklmnopqrstuv","agentId":"remote-edge","sequence":1}`,
+		`{"version":1,"type":"federation-negotiation-grant","roomId":"room-123456","routeEpoch":7,"linkId":"abcdefghijklmnopqrstuv","agentId":"remote-edge","sequence":1}`,
 		`{"version":1,"type":"federation-stats","roomId":"room-123456","routeEpoch":7,"linkId":"abcdefghijklmnopqrstuv","agentId":"remote-edge","sequence":1,"receivedPackets":2,"forwardedPackets":3,"droppedPackets":0}`,
 	}
 	for index, raw := range valid {
@@ -102,6 +104,8 @@ func TestFederationControlRequiresClosedEpochBoundMessages(t *testing.T) {
 	invalid := []string{
 		`{"version":1,"type":"federation-hello","roomId":"room-123456","routeEpoch":0,"linkId":"abcdefghijklmnopqrstuv","agentId":"remote-edge","leaseExpiresAt":20000}`,
 		`{"version":1,"type":"federation-ack","roomId":"room-123456","routeEpoch":7,"linkId":"abcdefghijklmnopqrstuv","agentId":"remote-edge","accepted":true,"authority":"forbidden"}`,
+		`{"version":1,"type":"federation-negotiation-request","roomId":"room-123456","routeEpoch":7,"linkId":"abcdefghijklmnopqrstuv","agentId":"remote-edge","sequence":0}`,
+		`{"version":1,"type":"federation-negotiation-grant","roomId":"room-123456","routeEpoch":7,"linkId":"abcdefghijklmnopqrstuv","agentId":"remote-edge","sequence":1,"authority":"forbidden"}`,
 		`{"version":1,"type":"federation-stats","roomId":"room-123456","routeEpoch":7,"linkId":"abcdefghijklmnopqrstuv","agentId":"remote-edge","sequence":1,"receivedPackets":2,"forwardedPackets":3,"droppedPackets":-1}`,
 	}
 	for index, raw := range invalid {

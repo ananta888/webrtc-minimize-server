@@ -172,6 +172,26 @@ test("canonical media-agent JSON Schemas are closed and validate cross-runtime e
     agentId: "owner-edge",
     leaseExpiresAt: 1_800_000_030_000,
   }), true, JSON.stringify(validateFederation.errors));
+  for (const type of ["federation-negotiation-request", "federation-negotiation-grant"]) {
+    assert.equal(validateFederation({
+      version: 1,
+      type,
+      roomId: "room-123456",
+      routeEpoch: 7,
+      linkId: "abcdefghijklmnopqrstuv",
+      agentId: "owner-edge",
+      sequence: 1,
+    }), true, JSON.stringify(validateFederation.errors));
+  }
+  assert.equal(validateFederation({
+    version: 1,
+    type: "federation-negotiation-request",
+    roomId: "room-123456",
+    routeEpoch: 7,
+    linkId: "abcdefghijklmnopqrstuv",
+    agentId: "owner-edge",
+    sequence: 0,
+  }), false);
   assert.equal(validateFederationSignal({
     version: 1,
     type: "federation-signal",
