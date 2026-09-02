@@ -17,7 +17,10 @@
             "browser": "frontend/src/main.ts",
             "polyfills": ["zone.js"],
             "tsConfig": "frontend/tsconfig.app.json",
-            "styles": ["frontend/src/styles.css"],
+            "styles": [
+              "frontend/src/styles.css",
+              "frontend/src/app/mesh-analysis/mesh-analysis.component.css"
+            ],
             "assets": []
           },
           "configurations": {

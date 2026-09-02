@@ -19,6 +19,46 @@ function fakeSender(setParameters = vi.fn().mockResolvedValue(undefined)) {
 }
 
 describe("PeerQualityController sender policies", () => {
+  it("samples total, audio, camera, screen and data counters without exposing candidate details", async () => {
+    const reports = new Map<string, Record<string, unknown>>([
+      ["pair", { id: "pair", type: "candidate-pair", state: "succeeded", selected: true, bytesSent: 12_000, bytesReceived: 9_000, availableOutgoingBitrate: 2_000_000 }],
+      ["audio-out", { id: "audio-out", type: "outbound-rtp", kind: "audio", trackIdentifier: "mic", bytesSent: 1_000 }],
+      ["video-out", { id: "video-out", type: "outbound-rtp", kind: "video", trackIdentifier: "cam", bytesSent: 4_000 }],
+      ["screen-out", { id: "screen-out", type: "outbound-rtp", kind: "video", trackIdentifier: "share", bytesSent: 6_000 }],
+      ["audio-in", { id: "audio-in", type: "inbound-rtp", mediaType: "audio", trackIdentifier: "remote-mic", bytesReceived: 800 }],
+      ["screen-in", { id: "screen-in", type: "inbound-rtp", mediaType: "video", trackIdentifier: "remote-share", bytesReceived: 7_000 }],
+      ["data", { id: "data", type: "data-channel", bytesSent: 100, bytesReceived: 200 }],
+    ]);
+    const peer = {
+      pc: { getStats: vi.fn(async () => reports as unknown as RTCStatsReport) },
+      linkClass: "unknown",
+      linkCandidate: "unknown",
+      linkCandidateSince: 0,
+    } as unknown as ManagedPeer;
+
+    const sample = await new PeerQualityController().sample(peer, 2_000, new Map([
+      ["mic", "microphone"],
+      ["cam", "camera"],
+      ["share", "screen"],
+      ["remote-mic", "microphone"],
+      ["remote-share", "screen"],
+    ]));
+
+    expect(sample.trafficCounters).toEqual({
+      sampledAt: 2_000,
+      outgoingBytes: 12_000,
+      incomingBytes: 9_000,
+      audioOutgoingBytes: 1_000,
+      audioIncomingBytes: 800,
+      videoOutgoingBytes: 4_000,
+      videoIncomingBytes: 0,
+      screenOutgoingBytes: 6_000,
+      screenIncomingBytes: 7_000,
+      dataOutgoingBytes: 100,
+      dataIncomingBytes: 200,
+    });
+  });
+
   it("applies an audio minimum, sender ceiling and both relative priorities", async () => {
     const peer = fakePeer();
     const sender = fakeSender();

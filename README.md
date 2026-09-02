@@ -6,6 +6,8 @@ Ein eigenständiger, Keycloak-fähiger Raumserver mit Angular-Oberfläche für A
 
 Die [aktuelle Architektur als UML-/Datenflussmodell](docs/current-architecture-uml.md) zeigt den vollständigen Direct-, TURN-, Single-/Multi-Media-Agent-, Consent-, Failover- und Bandbreitenpfad mit konkreten Teilnehmerbeispielen.
 
+Die Hauptnavigation enthält außerdem eine [raumgebundene Mesh-Analyse](docs/mesh-analysis.md). Ihr interaktiver SVG-Graph zeigt Browser, Trusted Relays und native Media-Agenten sowie lokal gemessene beziehungsweise klar als Peer-Angabe markierte Kantenraten. Ein ausgewählter Knoten schlüsselt Upload und Download nach Audio, Kamera/Video, Bildschirmfreigabe und DataChannel auf. Die Telemetrie ist flüchtig, nur bei sichtbar geöffneter Analyse angefordert und niemals Membership- oder Routing-Autorität.
+
 ## Lokal starten
 
 Voraussetzung: Node.js 22.5 oder neuer (für den eingebauten SQLite-Workspace-Store). Der anonyme Entwicklungsmodus benötigt keine externe Infrastruktur:

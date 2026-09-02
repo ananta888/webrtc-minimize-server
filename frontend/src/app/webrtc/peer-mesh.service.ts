@@ -13,6 +13,7 @@ import {
 import {
   CHAT_BUFFER_LIMIT,
   CONTROL_BUFFER_LIMIT,
+  MAX_CONTROL_BYTES,
   parsePeerChat,
   parsePeerControl,
 } from "./peer-control-protocol";
@@ -53,6 +54,10 @@ import { ManagedPeer, PeerConnectionManager } from "./peer-connection-manager";
 import { PeerTopologyController } from "./peer-topology-controller";
 import { TrustedRelayController } from "./trusted-relay-controller";
 import { PeerQualityController } from "./peer-quality-controller";
+import {
+  MESH_TELEMETRY_INTERVAL_MS,
+  MeshAnalysisService,
+} from "./mesh-analysis.service";
 import { MediaStrategyService } from "./media-strategy.service";
 import {
   ReceiveQualityProfile,
@@ -253,6 +258,9 @@ export class PeerMeshService {
   private controlSequence = 0;
   private activityTimer: ReturnType<typeof setInterval> | null = null;
   private qualityTimer: ReturnType<typeof setInterval> | null = null;
+  private lastMeshTelemetrySentAt = 0;
+  private lastAnnouncedAnalysisInterest = false;
+  private readonly remoteAnalysisViewers = new Set<string>();
   private readonly visibilityHandler = () => this.publishRelayCapability();
 
   private get peers(): ReadonlyMap<string, PeerState> {
@@ -265,6 +273,7 @@ export class PeerMeshService {
     private readonly mediaStrategy: MediaStrategyService,
     private readonly mediaAgents: BlindMediaAgentService,
     private readonly receiveQuality: ReceiveQualityPreferenceService,
+    private readonly meshAnalysis: MeshAnalysisService,
   ) {}
 
   initialize(
@@ -280,6 +289,7 @@ export class PeerMeshService {
     this.ownId = ownId;
     this.ownName = ownName;
     this.roomId = roomId;
+    this.meshAnalysis.initialize(roomId, ownId);
     this.icePolicy = icePolicy;
     if (optimization) this.optimization = optimization;
     if (mediaE2ee) this.mediaE2ee = mediaE2ee;
@@ -317,12 +327,15 @@ export class PeerMeshService {
           else this.clearAllMediaKeys();
           this.reconcileAllPublications();
           this.provisionAgentMediaKeys();
+          this.refreshAnalysisContext();
         },
+        connectionChanged: () => this.refreshAnalysisContext(),
       },
     });
     this.activity.configure(this.optimization.activeSpeakerLimit);
     this.participantNames.set(ownId, ownName);
     this.participantCount.set(1);
+    this.refreshAnalysisContext();
     this.startTimers();
     document.addEventListener("visibilitychange", this.visibilityHandler);
     this.publishRelayCapability();
@@ -340,6 +353,7 @@ export class PeerMeshService {
     this.participantCount.set(this.peers.size + 1);
     this.peerChoices.set([...this.peers.values()].map(({ id, name }) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)));
     this.reconcileAllPublications();
+    this.refreshAnalysisContext();
   }
 
   async acceptSignal(message: ServerMessage): Promise<void> {
@@ -375,6 +389,7 @@ export class PeerMeshService {
       this.provisionAgentMediaKey(publication);
     }
     void this.applyQualityPolicies();
+    this.refreshAnalysisContext();
   }
 
   detachPublication(source: MediaSource): void {
@@ -388,6 +403,7 @@ export class PeerMeshService {
     }
     this.localStreams.delete(source);
     void this.applyQualityPolicies();
+    this.refreshAnalysisContext();
   }
 
   detachPublicationTrack(source: MediaSource, track: MediaStreamTrack): void {
@@ -400,6 +416,7 @@ export class PeerMeshService {
     stream.removeTrack(track);
     if (stream.getTracks().length === 0) this.localStreams.delete(source);
     void this.applyQualityPolicies();
+    this.refreshAnalysisContext();
   }
 
   announcePublications(): void {
@@ -432,6 +449,7 @@ export class PeerMeshService {
         this.reconcilePublication(publication);
       }
       this.refreshAgentSubscriptionIntents();
+      this.refreshAnalysisContext();
       return;
     }
     for (const publication of [...this.publications.values()]) {
@@ -446,6 +464,7 @@ export class PeerMeshService {
       }
     }
     this.refreshAgentSubscriptionIntents();
+    this.refreshAnalysisContext();
   }
 
   applyTopology(message: ServerMessage): void {
@@ -472,6 +491,7 @@ export class PeerMeshService {
     this.applyReceivePlaybackPreference();
     this.reconcileAllPublications();
     this.provisionAgentMediaKeys();
+    this.refreshAnalysisContext();
   }
 
   applyMediaAgentState(message: ServerMessage): void {
@@ -479,6 +499,7 @@ export class PeerMeshService {
     this.provisionAgentMediaKeys();
     this.reconcileAllPublications();
     this.refreshAgentSubscriptionIntents();
+    this.refreshAnalysisContext();
   }
 
   applyMediaAgentAvailability(message: ServerMessage): void {
@@ -495,6 +516,7 @@ export class PeerMeshService {
 
   applyMediaAgentTrackState(message: ServerMessage): void {
     this.mediaAgents.applyTrackState(message);
+    this.refreshAnalysisContext();
   }
 
   applyMediaAgentSubscriptionState(message: ServerMessage): void {
@@ -672,6 +694,9 @@ export class PeerMeshService {
     this.participantCount.set(this.peers.size + (this.ownId ? 1 : 0));
     this.peerChoices.set([...this.peers.values()].map(({ id, name }) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)));
     this.updateIceState();
+    this.meshAnalysis.removeTarget("peer", peerId);
+    this.remoteAnalysisViewers.delete(peerId);
+    this.refreshAnalysisContext();
   }
 
   sendChat(text: string): void {
@@ -726,6 +751,10 @@ export class PeerMeshService {
     this.relayConsent.set(false);
     this.localQuality.set("idle");
     this.linkSummary.set("unknown");
+    this.lastMeshTelemetrySentAt = 0;
+    this.lastAnnouncedAnalysisInterest = false;
+    this.remoteAnalysisViewers.clear();
+    this.meshAnalysis.reset();
   }
 
   private focusPeerIds(): readonly string[] {
@@ -795,6 +824,7 @@ export class PeerMeshService {
       if (this.publications.get(publication.id)?.track === input.track) this.removePublication(publication.id);
     };
     this.refreshMediaE2eeState();
+    this.refreshAnalysisContext();
     return true;
   }
 
@@ -808,6 +838,7 @@ export class PeerMeshService {
         source: state.source,
       });
       this.refreshAgentSubscriptionIntents();
+      this.refreshAnalysisContext();
       return;
     }
     this.descriptors.delete(state.publicationId);
@@ -816,6 +847,7 @@ export class PeerMeshService {
     if (publication && !publication.local && publication.inboundPeerId === `agent:${state.agentId}`) {
       this.removePublication(publication.id);
     }
+    this.refreshAnalysisContext();
   }
 
   private discardInboundForReplacement(publication: Publication): void {
@@ -876,6 +908,7 @@ export class PeerMeshService {
     if (track.kind === "video" && this.routeChildren(publication.rootPeerId, this.ownId).size > 0) {
       this.relayCapability.set("available");
     }
+    this.refreshAnalysisContext();
   }
 
   private replaceRemoteView(publication: Publication): void {
@@ -913,6 +946,7 @@ export class PeerMeshService {
     }
     this.remoteMedia.update((items) => items.filter((item) => item.key !== publicationId));
     this.activity.remove(publication.track.id);
+    this.refreshAnalysisContext();
   }
 
   private routeChildren(rootPeerId: string, parentPeerId: string): ReadonlySet<string> {
@@ -1060,6 +1094,7 @@ export class PeerMeshService {
       else if (kind === "control") {
         this.sendActivityTo(peer);
         this.sendReceiveQualityTo(peer, true);
+        this.sendAnalysisInterestTo(peer);
       }
       else {
         this.flushOverlayQueue(peer);
@@ -1082,7 +1117,12 @@ export class PeerMeshService {
       peer.lastControlSequence = message.sequence;
       if (message.type === "activity") this.activity.acceptPeerLevel(peer.id, message.level);
       else if (message.type === "quality") peer.reportedLinkClass = message.linkClass;
-      else if (this.requestedReceiveProfiles.get(peer.id) !== message.profile) {
+      else if (message.type === "mesh-telemetry") {
+        this.meshAnalysis.acceptPeerTelemetry(peer.id, message);
+      } else if (message.type === "mesh-analysis-interest") {
+        if (message.active) this.remoteAnalysisViewers.add(peer.id);
+        else this.remoteAnalysisViewers.delete(peer.id);
+      } else if (this.requestedReceiveProfiles.get(peer.id) !== message.profile) {
         // The bounded 500 ms policy cycle coalesces rapid peer changes and applies only the
         // latest per-target ceiling instead of letting control traffic trigger encoder work.
         this.requestedReceiveProfiles.set(peer.id, message.profile);
@@ -1140,10 +1180,18 @@ export class PeerMeshService {
   }
 
   private async sampleQuality(): Promise<void> {
+    const now = Date.now();
+    this.announceAnalysisInterest();
+    const trackSources = this.trafficTrackSources();
     for (const peer of this.peers.values()) {
       this.sendReceiveQualityTo(peer);
       try {
-        const { availableOutgoingBitrate, roundTripTime, lossRatio } = await this.quality.sample(peer);
+        const { availableOutgoingBitrate, roundTripTime, lossRatio, trafficCounters } = await this.quality.sample(
+          peer,
+          now,
+          trackSources,
+        );
+        this.meshAnalysis.sampleLocal("peer", peer.id, trafficCounters, now);
         peer.healthSamples = Math.min(10_000, peer.healthSamples + 1);
         const receivesRelayedPublication = [...this.publications.values()].some((publication) => (
           !publication.local && publication.inboundPeerId === peer.id && publication.rootPeerId !== peer.id
@@ -1169,9 +1217,121 @@ export class PeerMeshService {
         peer.linkClass = "unknown";
       }
     }
+    for (const { agentId, peer } of this.mediaAgents.analysisTargets()) {
+      if (!this.meshAnalysis.viewing() && this.remoteAnalysisViewers.size === 0) break;
+      try {
+        const { trafficCounters } = await this.quality.sample(peer, now, trackSources);
+        this.meshAnalysis.sampleLocal("media-agent", agentId, trafficCounters, now);
+      } catch {
+        peer.linkClass = "unknown";
+      }
+    }
+    this.meshAnalysis.expire(now);
+    if (this.remoteAnalysisViewers.size > 0
+      && now - this.lastMeshTelemetrySentAt >= MESH_TELEMETRY_INTERVAL_MS) {
+      this.broadcastMeshTelemetry(now);
+      this.lastMeshTelemetrySentAt = now;
+    }
     const classes = [...this.peers.values()].map((peer) => worseLink(peer.linkClass, peer.reportedLinkClass));
     this.linkSummary.set(classes.reduce(worseLink, "unknown"));
+    this.refreshAnalysisContext(now);
     await this.applyQualityPolicies();
+  }
+
+  private broadcastMeshTelemetry(now: number): void {
+    const links = this.meshAnalysis.localTelemetryLinks(now);
+    for (const peer of this.peers.values()) {
+      if (!this.remoteAnalysisViewers.has(peer.id)) continue;
+      const channel = peer.channels.get("control");
+      if (channel?.readyState !== "open" || channel.bufferedAmount >= CONTROL_BUFFER_LIMIT) continue;
+      const payload = JSON.stringify({
+        version: 1,
+        type: "mesh-telemetry",
+        sequence: ++this.controlSequence,
+        links,
+      });
+      if (new TextEncoder().encode(payload).byteLength <= MAX_CONTROL_BYTES) channel.send(payload);
+    }
+  }
+
+  private announceAnalysisInterest(): void {
+    const active = this.meshAnalysis.viewing();
+    if (active === this.lastAnnouncedAnalysisInterest) return;
+    let announced = true;
+    for (const peer of this.peers.values()) if (!this.sendAnalysisInterestTo(peer)) announced = false;
+    if (announced) this.lastAnnouncedAnalysisInterest = active;
+  }
+
+  private sendAnalysisInterestTo(peer: PeerState): boolean {
+    const channel = peer.channels.get("control");
+    if (channel?.readyState !== "open") return true;
+    if (channel.bufferedAmount >= CONTROL_BUFFER_LIMIT) return false;
+    try {
+      channel.send(JSON.stringify({
+        version: 1,
+        type: "mesh-analysis-interest",
+        sequence: ++this.controlSequence,
+        active: this.meshAnalysis.viewing(),
+      }));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private trafficTrackSources(): ReadonlyMap<string, MediaSource> {
+    const sources = new Map<string, MediaSource>();
+    for (const [publicationId, descriptor] of this.descriptors) sources.set(publicationId, descriptor.source);
+    for (const publication of this.publications.values()) {
+      sources.set(publication.id, publication.source);
+      sources.set(publication.track.id, publication.source);
+    }
+    return sources;
+  }
+
+  private refreshAnalysisContext(now = Date.now()): void {
+    if (!this.ownId || !this.roomId) return;
+    const publicationSources = new Map<string, Set<MediaSource>>();
+    for (const descriptor of this.descriptors.values()) {
+      const sources = publicationSources.get(descriptor.rootPeerId) || new Set<MediaSource>();
+      sources.add(descriptor.source);
+      publicationSources.set(descriptor.rootPeerId, sources);
+    }
+    const trustedRelayEdges = this.topology.analysisEdges();
+    const agent = this.mediaAgents.analysisSnapshot();
+    this.meshAnalysis.updateContext({
+      roomId: this.roomId,
+      topologyMode: trustedRelayEdges.length > 0 ? "trusted_peer_relay" : "adaptive_mesh",
+      membershipEpoch: this.membershipEpoch(),
+      routeEpoch: this.routeEpoch(),
+      mediaAgentRouteEpoch: this.mediaAgents.routeEpoch(),
+      topologyEpoch: this.topologyEpoch(),
+      participants: [
+        {
+          id: this.ownId,
+          name: this.ownName,
+          own: true,
+          connectionState: "local",
+          icePath: this.icePath(),
+          linkClass: this.linkSummary(),
+          publications: [...(publicationSources.get(this.ownId) || [])].sort(),
+        },
+        ...[...this.peers.values()].map((peer) => ({
+          id: peer.id,
+          name: peer.name,
+          own: false,
+          connectionState: peer.pc.connectionState,
+          icePath: peer.icePath,
+          linkClass: worseLink(peer.linkClass, peer.reportedLinkClass),
+          publications: [...(publicationSources.get(peer.id) || [])].sort(),
+        })),
+      ],
+      trustedRelayEdges,
+      agents: agent.agents,
+      publisherAssignments: agent.publisherAssignments,
+      subscriberAssignments: agent.subscriberAssignments,
+      federationLinks: agent.federationLinks,
+    }, now);
   }
 
   private async applyQualityPolicies(force = false): Promise<void> {
@@ -1301,6 +1461,7 @@ export class PeerMeshService {
     else if (paths.includes("peer-edge")) this.icePath.set("peer-edge");
     else if (paths.includes("direct")) this.icePath.set("direct");
     else this.icePath.set("unknown");
+    this.refreshAnalysisContext();
   }
 
   private agentSubscriptionReadyFor(publicationId: string, targetPeerId: string): boolean {

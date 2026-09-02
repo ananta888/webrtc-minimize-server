@@ -36,6 +36,7 @@ function createService(initialProfile: ReceiveQualityProfile = "auto") {
     mediaStrategy as never,
     mediaAgents as never,
     receiveQuality as never,
+    {} as never,
   );
   return { service, profile, subscriptionIntents };
 }
@@ -53,6 +54,7 @@ describe("PeerMeshService media-agent fallback", () => {
       {} as never,
       mediaAgents as never,
       { profile: () => "auto" } as never,
+      {} as never,
     );
     const internals = service as unknown as {
       ownId: string;
@@ -208,6 +210,52 @@ describe("PeerMeshService media-agent fallback", () => {
     expect(service.setReceiveQualityProfile("medium")).toBe(true);
     expect(sends.every((send) => JSON.parse(String(send.mock.calls[0][0])).profile === "medium")).toBe(true);
     expect(service.setReceiveQualityProfile("unbounded")).toBe(false);
+  });
+
+  it("sends mesh telemetry only to peers that explicitly opened the analysis view", () => {
+    const links = [{
+      targetKind: "peer" as const,
+      targetId: "1111111111111111",
+      rates: [500_000, 200_000, 40_000, 30_000, 300_000, 100_000, 150_000, 60_000, 10_000, 10_000] as const,
+    }];
+    const meshAnalysis = { localTelemetryLinks: vi.fn(() => links) };
+    const service = new PeerMeshService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { profile: () => "auto" } as never,
+      meshAnalysis as never,
+    );
+    const interestedSend = vi.fn();
+    const idleSend = vi.fn();
+    const peers = new Map([
+      ["1111111111111111", {
+        id: "1111111111111111",
+        channels: new Map([["control", { readyState: "open", bufferedAmount: 0, send: interestedSend }]]),
+      }],
+      ["2222222222222222", {
+        id: "2222222222222222",
+        channels: new Map([["control", { readyState: "open", bufferedAmount: 0, send: idleSend }]]),
+      }],
+    ]);
+    const internals = service as unknown as {
+      connections: { peers: typeof peers };
+      remoteAnalysisViewers: Set<string>;
+      broadcastMeshTelemetry(now: number): void;
+    };
+    internals.connections = { peers };
+    internals.remoteAnalysisViewers.add("1111111111111111");
+
+    internals.broadcastMeshTelemetry(10_000);
+
+    expect(meshAnalysis.localTelemetryLinks).toHaveBeenCalledWith(10_000);
+    expect(interestedSend).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(interestedSend.mock.calls[0][0]))).toMatchObject({
+      type: "mesh-telemetry",
+      links,
+    });
+    expect(idleSend).not.toHaveBeenCalled();
   });
 
   it("locally suppresses audio-only video but preserves a shared trusted-relay input", () => {

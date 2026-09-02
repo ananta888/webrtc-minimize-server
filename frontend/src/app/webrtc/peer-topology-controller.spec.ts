@@ -37,9 +37,14 @@ describe("peer topology and trusted relay controllers", () => {
     expect(topology.apply(snapshot(61_000), peers, { maxChildren: 3, maxHops: 3 })).not.toBeNull();
     expect(topology.path(peers[0], peers[2])).toEqual(peers);
     expect(topology.children(peers[0], peers[1]).has(peers[2])).toBe(true);
+    expect(topology.analysisEdges()).toEqual([
+      { rootPeerId: peers[0], parentPeerId: peers[0], childPeerId: peers[1] },
+      { rootPeerId: peers[0], parentPeerId: peers[1], childPeerId: peers[2] },
+    ]);
     vi.advanceTimersByTime(60_001);
     expect(expired).toHaveBeenCalledOnce();
     expect(topology.mode(peers[0])).toBe("adaptive_mesh");
+    expect(topology.analysisEdges()).toEqual([]);
   });
 
   it("allows only the materialized video fanout while audio remains direct", () => {

@@ -75,6 +75,18 @@
       "title": "Empfaengerbestimmte Qualitaet ueber Direct- und Media-Agent-Pfade",
       "task_ids": ["BME-015"],
       "status": "done"
+    },
+    {
+      "id": "BME-M12",
+      "title": "Interaktive Mesh-, Relay- und Traffic-Analyse",
+      "task_ids": ["BME-016"],
+      "status": "done"
+    },
+    {
+      "id": "BME-M13",
+      "title": "Mesh-Analyse versionieren und auf dem Mini-PC ausrollen",
+      "task_ids": ["BME-017"],
+      "status": "in_progress"
     }
   ],
   "tasks": [
@@ -291,25 +303,54 @@
         "Dasselbe Profil begrenzt Kamera-Layer im Media-Agent-Pfad und deaktiviert bei nur Audio alle eigenen Remote-Video-Subscriptions, waehrend Mikrofon und Bildschirmton getrennt aktiv bleiben; Single-Layer-Bildschirmgrenzen und fehlende QoS-Garantien werden ehrlich erklaert.",
         "Unit-, Multi-Peer-Isolations-, Direct-Sender-, Agent-Intent-, Persistenz- und UI-Tests sowie npm run check und npm run todos:validate bestehen; reale Chromium-/Firefox-Medienevidence wird sichtbar als bestanden oder offen dokumentiert."
       ]
+    },
+    {
+      "id": "BME-016",
+      "title": "Raumgebundene Mesh-, Relay- und Traffic-Analyse in Angular implementieren",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["BME-007", "BME-010", "BME-015"],
+      "acceptance_criteria": [
+        "Eine responsive, tastaturbedienbare Angular-SVG-Ansicht zeigt hoechstens die aktuelle serverautorisierte Room-Membership sowie Direct-, Trusted-Relay-, Browser-Agent- und Agent-Agent-Kanten; ein Klick auf einen Knoten zeigt dessen vorhandene Mess-, Rollen-, Pfad- und Publikationswerte als Text, ohne Capture ausgeloest zu haben.",
+        "Kanten tragen automatisch lesbare kbit/s- oder Mbit/s-Raten aus monotonen lokalen WebRTC-Bytezaehlern beziehungsweise klar gekennzeichneter, groessenbegrenzter Raumtelemetrie; unbekannte oder lokal nicht beobachtbare Agent-Agent-Raten werden nicht erfunden.",
+        "Der geschlossene Telemetrievertrag besitzt harte Anzahl-, Groessen-, Raten-, Sequenz- und Ablaufgrenzen; empfangene Werte duerfen ausschliesslich bestehende serverautorisierte Teilnehmer und Topologiekanten annotieren und niemals Membership, Routen, Consent oder Medienautoritaet erzeugen.",
+        "Unit-, Contract-, Stale-/Reset-, Membership-Isolations-, Graph-Layout-, Formatierungs-, Klick-/Tastatur- und Browser-Tests sowie npm run check bestehen; Messfenster, Naeherungscharakter und Datenschutzgrenze sind dokumentiert."
+      ]
+    },
+    {
+      "id": "BME-017",
+      "title": "Gepruefte Mesh-Analyse committen, pushen und auf dem Mini-PC ausrollen",
+      "status": "in_progress",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 10,
+      "depends_on": ["BME-016"],
+      "acceptance_criteria": [
+        "Nur die geprueften Source-, Test-, Dokumentations-, Infrastruktur- und Todo-Dateien werden gezielt ohne Secrets oder generierte Artefakte als Conventional Commit auf main versioniert und zu origin/main gepusht.",
+        "Das saubere Mini-PC-Repository wird exakt auf den gepushten Commit aktualisiert und der WebRTC-Dienst mit dem versionierten Caddy-Netzwerk-Override neu gebaut und recreated, ohne Caddy, persistente Daten oder Agent-Secrets zu ersetzen.",
+        "Containerzustand, RestartCount, interner Healthcheck sowie der normale HTTPS-Pfad fuer healthz, Angular-App und neues Analyse-Bundle werden nach dem Rollout reproduzierbar geprueft; Abweichungen verhindern done."
+      ]
     }
   ],
-  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011", "BME-012", "BME-013", "BME-014", "BME-015"],
+  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011", "BME-012", "BME-013", "BME-014", "BME-015", "BME-016", "BME-017"],
   "tasks_status_summary": {
-    "total": 15,
-    "by_status": { "todo": 0, "in_progress": 2, "partial": 1, "blocked": 0, "done": 12 },
-    "progress_percent_done": 80,
-    "by_priority": { "P0": 10, "P1": 5, "P2": 0, "P3": 0 },
-    "by_risk": { "low": 0, "medium": 1, "high": 5, "critical": 9 },
-    "critical_path": { "total": 14, "done": 11, "remaining": 3 },
-    "milestones": { "total": 11, "todo": 0, "in_progress": 3, "blocked": 0, "done": 8 }
+    "total": 17,
+    "by_status": { "todo": 0, "in_progress": 3, "partial": 1, "blocked": 0, "done": 13 },
+    "progress_percent_done": 76.47,
+    "by_priority": { "P0": 10, "P1": 7, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 7, "critical": 9 },
+    "critical_path": { "total": 16, "done": 12, "remaining": 4 },
+    "milestones": { "total": 13, "todo": 0, "in_progress": 4, "blocked": 0, "done": 9 }
   },
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 2,
+    "in_progress": 3,
     "partial": 1,
     "blocked": 0,
-    "done": 12
+    "done": 13
   },
   "summary_notes": [
     "PROD-NET-004 wird mit diesem Track aus dem Category-Backlog in ausfuehrbare Arbeit ueberfuehrt.",
@@ -334,6 +375,9 @@
     "Der erste Mini-PC-Recreate deckte eine bestehende betriebliche Kopplung auf: Docker-Caddy erwartete den Alias webrtc-room-server im externen Netz webrtc-edge. Ein versioniertes Compose-Override macht diese Verbindung nun recreate-fest; der temporaere Restore und der anschliessende direkte sowie oeffentliche HTTPS-Healthcheck waren erfolgreich.",
     "BME-015 vereinheitlicht die bisher Agent-spezifische Empfangsschicht zu einem empfaengerbestimmten Profil fuer Direct- und Media-Agent-Pfade. Die Auswahl ist nur eine zusaetzliche per-Ziel-Obergrenze und verleiht Browsern weder Membership- noch fremde Medienautoritaet.",
     "BME-015 ist am 2026-09-02 abgeschlossen: 95 Angular-Tests belegen Persistenz, Legacy-Migration, geschlossenen Control-Intent, per-Peer-Isolation, Agent-Subscriptions, Audio-only und UI; der reale Chromium-Direct-Pfad beobachtete 120 kbit/s, 6 FPS, vierfache Skalierung sowie Video aus/an, Firefox spielte mit niedrigem Profil weiter. Der gesamte npm-run-check-Gate bestand mit 90 Node-/Browser-/Integrationsfaellen und Produktionsbuild; der credential-abhaengige Keycloak-/TURN-Live-Gate blieb sichtbar uebersprungen.",
+    "BME-016 verfolgt die angeforderte interaktive Raumansicht fuer Mesh, Trusted Relays und native Media-Agenten. Ausschliesslich aktuelle serverautorisierte Membership und Routen duerfen den Graphen bilden; Peer-Telemetrie ist kurzlebige, untrusted Anzeigeinformation und niemals Policy-Autoritaet.",
+    "BME-016 ist am 2026-09-02 abgeschlossen: Der responsive, tastaturbedienbare SVG-Graph zeigt autorisierte Direct-, Trusted-Relay-, Browser-Agent- und Agent-Foederationskanten mit automatisch formatierten kbit/s-/Mbit/s-Werten. Ein Knotenklick schluesselt Gesamt-, Audio-, Kamera/Video-, Bildschirm- und DataChannel-Upload/-Download auf. Telemetrie wird nur bei geoeffneter Analyse angefordert, ist geschlossen, begrenzt, kurzlebig und ohne Routingautoritaet. Der vollstaendige npm-run-check-Gate bestand mit 108 Angular- und 90 Node-/Browser-/Integrationsfaellen einschliesslich realer Chromium-, Firefox- und Sechs-Peer-Relay-Pfade sowie Produktionsbuild; der credential-abhaengige Keycloak-/TURN-Live-Gate blieb sichtbar uebersprungen.",
+    "BME-017 verfolgt den vom Nutzer beauftragten Commit-, Push- und Mini-PC-Rollout der geprueften Mesh-Analyse; produktive Secrets, persistente Daten und der bestehende Caddy bleiben ausserhalb des Changes.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
   ]
 }

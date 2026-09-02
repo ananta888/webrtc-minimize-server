@@ -44,6 +44,10 @@
           <span>Live</span>
           @if (session.joined()) { <span class="nav-live" aria-label="Aktiv"></span> }
         </button>
+        <button id="mesh-analysis-navigation" type="button" class="nav-item" [class.active]="activeSection() === 'analysis'" [attr.aria-current]="activeSection() === 'analysis' ? 'page' : null" (click)="show('analysis')">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="12" cy="19" r="2"/><path d="M6.5 10.5l4-4M13.5 6.5l4 4M17.5 13.5l-4 4M10.5 17.5l-4-4"/></svg>
+          <span>Analyse</span>
+        </button>
         <button type="button" class="nav-item" [class.active]="activeSection() === 'chat'" [attr.aria-current]="activeSection() === 'chat' ? 'page' : null" (click)="show('chat')">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 01-4 4H8l-5 3V7a4 4 0 014-4h10a4 4 0 014 4z"/></svg>
           <span>Chat</span>
@@ -365,6 +369,10 @@
             <button class="button primary" type="submit" [disabled]="!session.joined() || !chatInput().trim()">Senden</button>
           </form>
         </section>
+      }
+
+      @if (activeSection() === 'analysis') {
+        <app-mesh-analysis />
       }
 
       @if (activeSection() === 'settings') {

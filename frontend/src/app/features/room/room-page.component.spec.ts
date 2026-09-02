@@ -24,6 +24,15 @@ describe("Room page information architecture", () => {
     expect(template).toContain('(click)="enterListedRoom(room)"');
   });
 
+  it("offers the room-bound mesh analysis as a separate non-capturing view", () => {
+    expect(template).toContain('id="mesh-analysis-navigation"');
+    expect(template).toContain("activeSection() === 'analysis'");
+    expect(template).toContain("<app-mesh-analysis />");
+    expect(component).toContain('"rooms" | "live" | "analysis" | "chat" | "settings"');
+    expect(component).not.toContain("getUserMedia");
+    expect(component).not.toContain("getDisplayMedia");
+  });
+
   it("keeps room visibility changes on an explicit owner action", () => {
     expect(template).toContain('(click)="setVisibility(room, room.visibility === \'public\' ? \'private\' : \'public\')"');
     expect(template).toContain('(click)="toggleCurrentVisibility()"');

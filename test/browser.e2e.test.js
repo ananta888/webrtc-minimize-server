@@ -379,6 +379,19 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
     return succeededWith(screen, "high") && succeededWith(microphone, "medium") && succeededWith(camera, "low");
   });
   assert.deepEqual(await ada.evaluate(() => window.__captureCalls), ["getUserMedia", "getUserMedia", "getDisplayMedia"]);
+  await ada.locator("#mesh-analysis-navigation").click();
+  await ada.locator("#mesh-node-count", { hasText: "2" }).waitFor();
+  await ada.locator("#mesh-edge-count", { hasText: "1" }).waitFor({ timeout: 8_000 });
+  await ada.locator(".mesh-edge .edge-label").filter({ hasText: /(?:kbit|Mbit)\/s/ }).waitFor();
+  await ada.locator('.mesh-node[aria-label^="Grace,"] > circle').first().click();
+  await ada.locator("#mesh-selected-node", { hasText: "Grace" }).waitFor();
+  for (const label of ["Audio", "Kamera / Video", "Bildschirmteilen"]) {
+    const row = ada.locator(".traffic-detail dl > div", { hasText: label });
+    await row.waitFor();
+    assert.match(await row.textContent(), /(?:kbit|Mbit)\/s/);
+    assert.doesNotMatch(await row.textContent(), /nicht messbar/);
+  }
+  assert.deepEqual(await ada.evaluate(() => window.__captureCalls), ["getUserMedia", "getUserMedia", "getDisplayMedia"]);
   await ada.locator(".persistent-media-dock #toggle-screen", { hasText: "Bildschirmfreigabe stoppen" }).click();
   await ada.locator(".nav-item", { hasText: "Live" }).click();
 
@@ -797,6 +810,19 @@ test("six Chromium peers use consented video relay, adaptive sender tiers and on
     await page.locator("#toggle-camera", { hasText: "Kamera stoppen" }).waitFor();
   }
   await pages[0].waitForTimeout(3_000);
+  await pages[0].locator("#mesh-analysis-navigation").click();
+  await pages[0].locator("#mesh-node-count", { hasText: "6" }).waitFor();
+  assert.ok(await pages[0].locator(".mesh-edge.trusted-relay").count() > 0);
+  await pages[0].locator(".mesh-edge .edge-label").filter({ hasText: /(?:kbit|Mbit)\/s/ }).first().waitFor({ timeout: 8_000 });
+  await pages[0].locator('.mesh-node[aria-label^="Grace,"] > circle').first().click();
+  await pages[0].locator("#mesh-selected-node", { hasText: "Grace" }).waitFor();
+  assert.equal(await pages[0].evaluate(() => window.__captureCalls.length), 1);
+  await pages[0].locator(".nav-item", { hasText: "Live" }).click();
+  await pages[0].waitForFunction(() => {
+    const focused = document.querySelectorAll(".remote-media").length;
+    const mosaicLabel = document.querySelector("#inactive-mosaic .media-label")?.textContent || "";
+    return focused + Number(/(\d+) Vorschauen/.exec(mosaicLabel)?.[1] || 0) === 5;
+  });
   for (let index = 0; index < pages.length; index += 1) {
     const focused = await pages[index].locator(".remote-media").count();
     const mosaic = pages[index].locator("#inactive-mosaic .media-label");
@@ -921,5 +947,14 @@ test("two Firefox peers retain direct adaptive mesh, SFrame, chat and camera", {
   await grace.waitForFunction(() => [...document.querySelectorAll("video:not([muted])")]
     .some((video) => video.readyState >= 2 && video.videoWidth > 0));
   await grace.locator("#topology-status", { hasText: "adaptive_mesh" }).waitFor();
+  await grace.locator("#mesh-analysis-navigation").click();
+  await grace.locator("#mesh-node-count", { hasText: "2" }).waitFor();
+  await grace.locator("#mesh-edge-count", { hasText: "1" }).waitFor({ timeout: 8_000 });
+  await grace.locator('.mesh-node[aria-label^="Ada,"] > circle').first().click();
+  await grace.locator("#mesh-selected-node", { hasText: "Ada" }).waitFor();
+  const firefoxVideoRate = grace.locator(".traffic-detail dl > div", { hasText: "Kamera / Video" });
+  assert.match(await firefoxVideoRate.textContent(), /(?:kbit|Mbit)\/s/);
+  assert.doesNotMatch(await firefoxVideoRate.textContent(), /nicht messbar/);
+  assert.deepEqual(await grace.evaluate(() => window.__captureCalls), []);
   assert.deepEqual(pageErrors, []);
 });

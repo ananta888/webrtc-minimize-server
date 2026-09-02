@@ -531,7 +531,7 @@ app-media-control-bar { display: block; }
   .button.compact { padding-inline: .55rem; }
   .app-body { display: block; min-height: calc(100vh - 4rem); }
   .side-menu { position: sticky; z-index: 25; top: 4rem; display: block; width: 100%; height: auto; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: .42rem; background: rgba(10, 14, 22, .93); backdrop-filter: blur(18px); }
-  .side-menu nav { display: grid; min-width: 25rem; grid-template-columns: repeat(4, 1fr); }
+  .side-menu nav { display: grid; min-width: 29rem; grid-template-columns: repeat(5, 1fr); }
   .nav-item { grid-template-columns: 1.15rem auto; justify-content: center; gap: .38rem; }
   .nav-item span:nth-child(2) { font-size: .68rem; }
   .nav-item.active::before { left: 25%; bottom: -.43rem; width: 50%; height: 2px; }

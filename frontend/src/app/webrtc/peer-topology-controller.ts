@@ -7,6 +7,12 @@ interface MaterializedRoute {
   readonly paths: ReadonlyMap<string, readonly string[]>;
 }
 
+export interface PeerTopologyAnalysisEdge {
+  readonly rootPeerId: string;
+  readonly parentPeerId: string;
+  readonly childPeerId: string;
+}
+
 export class PeerTopologyController {
   #routes = new Map<string, MaterializedRoute>();
   #membershipEpoch = 0;
@@ -79,6 +85,24 @@ export class PeerTopologyController {
 
   path(rootPeerId: string, destinationPeerId: string): readonly string[] | null {
     return this.#routes.get(rootPeerId)?.paths.get(destinationPeerId) || null;
+  }
+
+  analysisEdges(): readonly PeerTopologyAnalysisEdge[] {
+    const edges: PeerTopologyAnalysisEdge[] = [];
+    for (const [rootPeerId, route] of this.#routes) {
+      if (route.mode !== "trusted_peer_relay") continue;
+      for (const [parentPeerId, children] of route.children) {
+        for (const childPeerId of children) edges.push(Object.freeze({
+          rootPeerId,
+          parentPeerId,
+          childPeerId,
+        }));
+      }
+    }
+    return Object.freeze(edges.sort((left, right) => (
+      `${left.rootPeerId}:${left.parentPeerId}:${left.childPeerId}`
+        .localeCompare(`${right.rootPeerId}:${right.parentPeerId}:${right.childPeerId}`)
+    )));
   }
 
   clear(): void {

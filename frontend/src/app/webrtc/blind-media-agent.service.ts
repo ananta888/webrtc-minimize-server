@@ -40,11 +40,29 @@ export interface AgentTrackInput {
   readonly receiver: RTCRtpReceiver;
 }
 
+export interface MediaAgentAnalysisSnapshot {
+  readonly agents: readonly Readonly<{
+    id: string;
+    ownerPeerId: string;
+    role: "primary" | "standby";
+    connected: boolean;
+    readyPeerIds: readonly string[];
+  }>[];
+  readonly publisherAssignments: readonly Readonly<{ peerId: string; agentId: string }>[];
+  readonly subscriberAssignments: readonly Readonly<{ peerId: string; agentId: string }>[];
+  readonly federationLinks: readonly Readonly<{
+    leftAgentId: string;
+    rightAgentId: string;
+    ready: boolean;
+  }>[];
+}
+
 interface MediaAgentCallbacks {
   readonly attachSender: (sender: RTCRtpSender, contextId: string, keyId: string, baseKey: Uint8Array) => boolean;
   readonly acceptTrack: (input: AgentTrackInput) => boolean;
   readonly trackState: (state: MediaAgentTrackState) => void;
   readonly routeChanged: () => void;
+  readonly connectionChanged: () => void;
 }
 
 interface AgentConnection extends ManagedPeer {
@@ -58,6 +76,7 @@ const EMPTY_CALLBACKS: MediaAgentCallbacks = {
   acceptTrack: () => false,
   trackState: () => undefined,
   routeChanged: () => undefined,
+  connectionChanged: () => undefined,
 };
 
 const CAMERA_SIMULCAST_ENCODINGS: readonly RTCRtpEncodingParameters[] = Object.freeze([
@@ -311,6 +330,42 @@ export class BlindMediaAgentService {
     return connection && sender ? { peer: connection, sender } : null;
   }
 
+  analysisTargets(): readonly Readonly<{ agentId: string; peer: ManagedPeer }>[] {
+    return Object.freeze([...this.connections.values()]
+      .map((peer) => Object.freeze({ agentId: peer.agentId, peer }))
+      .sort((left, right) => left.agentId.localeCompare(right.agentId)));
+  }
+
+  analysisSnapshot(): MediaAgentAnalysisSnapshot {
+    const route = this.route;
+    if (!route) return Object.freeze({
+      agents: Object.freeze([]),
+      publisherAssignments: Object.freeze([]),
+      subscriberAssignments: Object.freeze([]),
+      federationLinks: Object.freeze([]),
+    });
+    const candidates = [route.primary, ...route.standbys].filter(Boolean) as NonNullable<typeof route.primary>[];
+    return Object.freeze({
+      agents: Object.freeze(candidates.map((agent) => {
+        const readyPeerIds = route.readiness.find(({ agentId }) => agentId === agent.id)?.readyPeerIds || [];
+        return Object.freeze({
+          id: agent.id,
+          ownerPeerId: agent.ownerPeerId,
+          role: route.primary?.id === agent.id ? "primary" as const : "standby" as const,
+          connected: this.connections.get(agent.id)?.connected === true,
+          readyPeerIds: Object.freeze([...readyPeerIds]),
+        });
+      })),
+      publisherAssignments: Object.freeze([...route.publisherAssignments]),
+      subscriberAssignments: Object.freeze([...route.subscriberAssignments]),
+      federationLinks: Object.freeze(route.federationLinks.map((link) => Object.freeze({
+        leftAgentId: link.leftAgentId,
+        rightAgentId: link.rightAgentId,
+        ready: link.readyAgentIds.length === 2,
+      }))),
+    });
+  }
+
   assignedAgentId(publisherPeerId: string): string {
     return this.route?.publisherAssignments.find((entry) => entry.peerId === publisherPeerId)?.agentId || "";
   }
@@ -499,6 +554,7 @@ export class BlindMediaAgentService {
       }
       if (pc.connectionState === "failed") this.status.set("error");
       else this.updateStatus();
+      this.callbacks.connectionChanged();
     };
     pc.onnegotiationneeded = () => void this.negotiate(connection);
     pc.createDataChannel("media-agent-control", { ordered: true });

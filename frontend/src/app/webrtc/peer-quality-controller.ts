@@ -1,4 +1,5 @@
 import { MediaSource, QualitySettings, classifyLinkStats, stabilizeLinkClass } from "./media-optimization-policy";
+import { MeshTrafficCounters } from "./mesh-analysis.service";
 import { RtpSenderMediaPolicy } from "./media-strategy.service";
 import { ManagedPeer } from "./peer-connection-manager";
 
@@ -6,6 +7,18 @@ export interface PeerQualitySample {
   readonly availableOutgoingBitrate?: number;
   readonly roundTripTime?: number;
   readonly lossRatio?: number;
+  readonly trafficCounters: MeshTrafficCounters;
+}
+
+type StatsValue = RTCStats & Record<string, unknown>;
+
+function byteCounter(value: unknown): number | null {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(number)) : null;
+}
+
+function statsString(value: unknown): string {
+  return typeof value === "string" ? value : "";
 }
 
 interface ParameterApplication {
@@ -23,20 +36,100 @@ function videoTierRank(tier: QualitySettings["tier"]): number {
 }
 
 export class PeerQualityController {
-  async sample(peer: ManagedPeer, now = Date.now()): Promise<PeerQualitySample> {
+  async sample(
+    peer: ManagedPeer,
+    now = Date.now(),
+    trackSources: ReadonlyMap<string, MediaSource> = new Map(),
+  ): Promise<PeerQualitySample> {
     const reports = await peer.pc.getStats();
+    const values: StatsValue[] = [];
+    reports.forEach((report) => values.push(report as StatsValue));
+    const byId = new Map(values.map((report) => [report.id, report]));
     let availableOutgoingBitrate: number | undefined;
     let roundTripTime: number | undefined;
     let lossRatio: number | undefined;
-    reports.forEach((report) => {
-      if (report.type === "candidate-pair" && report.state === "succeeded" && (report.nominated || report.selected)) {
-        if (Number.isFinite(report.availableOutgoingBitrate)) availableOutgoingBitrate = report.availableOutgoingBitrate;
-        if (Number.isFinite(report.currentRoundTripTime)) roundTripTime = report.currentRoundTripTime;
+    const candidatePairs: StatsValue[] = [];
+    const transportSelectedPairIds = new Set<string>();
+    let transportOutgoingBytes = 0;
+    let transportIncomingBytes = 0;
+    let transportCounters = 0;
+    let audioOutgoingBytes = 0;
+    let audioIncomingBytes = 0;
+    let videoOutgoingBytes = 0;
+    let videoIncomingBytes = 0;
+    let screenOutgoingBytes = 0;
+    let screenIncomingBytes = 0;
+    let dataOutgoingBytes = 0;
+    let dataIncomingBytes = 0;
+    for (const report of values) {
+      if (report.type === "candidate-pair" && report["state"] === "succeeded"
+        && (report["nominated"] || report["selected"])) {
+        candidatePairs.push(report);
       }
-      if (report.type === "remote-inbound-rtp" && Number.isFinite(report.fractionLost)) {
-        lossRatio = Math.max(lossRatio || 0, report.fractionLost);
+      if (report.type === "remote-inbound-rtp" && Number.isFinite(report["fractionLost"])) {
+        lossRatio = Math.max(lossRatio || 0, Number(report["fractionLost"]));
       }
-    });
+      if (report.type === "transport") {
+        const selectedCandidatePairId = statsString(report["selectedCandidatePairId"]);
+        if (selectedCandidatePairId) transportSelectedPairIds.add(selectedCandidatePairId);
+        const outgoing = byteCounter(report["bytesSent"]);
+        const incoming = byteCounter(report["bytesReceived"]);
+        if (outgoing !== null && incoming !== null) {
+          transportOutgoingBytes += outgoing;
+          transportIncomingBytes += incoming;
+          transportCounters += 1;
+        }
+      }
+      if (report.type === "data-channel") {
+        dataOutgoingBytes += byteCounter(report["bytesSent"]) || 0;
+        dataIncomingBytes += byteCounter(report["bytesReceived"]) || 0;
+      }
+      if (report.type !== "outbound-rtp" && report.type !== "inbound-rtp") continue;
+      const outgoing = report.type === "outbound-rtp";
+      const bytes = byteCounter(report[outgoing ? "bytesSent" : "bytesReceived"]);
+      if (bytes === null) continue;
+      const linkedTrack = byId.get(statsString(report["trackId"]))
+        || byId.get(statsString(report["mediaSourceId"]));
+      const trackIdentifier = statsString(report["trackIdentifier"])
+        || statsString(linkedTrack?.["trackIdentifier"]);
+      const kind = statsString(report["kind"]) || statsString(report["mediaType"])
+        || statsString(linkedTrack?.["kind"]);
+      if (kind === "audio") {
+        if (outgoing) audioOutgoingBytes += bytes; else audioIncomingBytes += bytes;
+      } else if (kind === "video" && trackSources.get(trackIdentifier) === "screen") {
+        if (outgoing) screenOutgoingBytes += bytes; else screenIncomingBytes += bytes;
+      } else if (kind === "video") {
+        if (outgoing) videoOutgoingBytes += bytes; else videoIncomingBytes += bytes;
+      }
+    }
+    const pair = candidatePairs.sort((left, right) => {
+      const transportDifference = Number(transportSelectedPairIds.has(right.id))
+        - Number(transportSelectedPairIds.has(left.id));
+      if (transportDifference !== 0) return transportDifference;
+      const selectedDifference = Number(Boolean(right["selected"])) - Number(Boolean(left["selected"]));
+      if (selectedDifference !== 0) return selectedDifference;
+      const rightBytes = (byteCounter(right["bytesSent"]) || 0) + (byteCounter(right["bytesReceived"]) || 0);
+      const leftBytes = (byteCounter(left["bytesSent"]) || 0) + (byteCounter(left["bytesReceived"]) || 0);
+      return rightBytes - leftBytes;
+    })[0] || null;
+    if (Number.isFinite(pair?.["availableOutgoingBitrate"])) {
+      availableOutgoingBitrate = Number(pair?.["availableOutgoingBitrate"]);
+    }
+    if (Number.isFinite(pair?.["currentRoundTripTime"])) {
+      roundTripTime = Number(pair?.["currentRoundTripTime"]);
+    }
+    const pairOutgoingBytes = byteCounter(pair?.["bytesSent"]);
+    const pairIncomingBytes = byteCounter(pair?.["bytesReceived"]);
+    const categorizedOutgoing = audioOutgoingBytes + videoOutgoingBytes + screenOutgoingBytes + dataOutgoingBytes;
+    const categorizedIncoming = audioIncomingBytes + videoIncomingBytes + screenIncomingBytes + dataIncomingBytes;
+    const outgoingBytes = Math.max(
+      categorizedOutgoing,
+      pairOutgoingBytes ?? (transportCounters > 0 ? transportOutgoingBytes : categorizedOutgoing),
+    );
+    const incomingBytes = Math.max(
+      categorizedIncoming,
+      pairIncomingBytes ?? (transportCounters > 0 ? transportIncomingBytes : categorizedIncoming),
+    );
     const candidate = classifyLinkStats({ availableOutgoingBitrate, roundTripTime, lossRatio });
     if (candidate !== peer.linkCandidate) {
       peer.linkCandidate = candidate;
@@ -50,7 +143,24 @@ export class PeerQualityController {
     });
     peer.linkClass = stable.value;
     peer.linkCandidateSince = stable.candidateSince;
-    return { availableOutgoingBitrate, roundTripTime, lossRatio };
+    return {
+      availableOutgoingBitrate,
+      roundTripTime,
+      lossRatio,
+      trafficCounters: Object.freeze({
+        sampledAt: now,
+        outgoingBytes,
+        incomingBytes,
+        audioOutgoingBytes,
+        audioIncomingBytes,
+        videoOutgoingBytes,
+        videoIncomingBytes,
+        screenOutgoingBytes,
+        screenIncomingBytes,
+        dataOutgoingBytes,
+        dataIncomingBytes,
+      }),
+    };
   }
 
   async applyAudio(

@@ -27,8 +27,9 @@ import { SignalingService } from "../../webrtc/signaling.service";
 import { VideoCapturePreferencesService, VideoCaptureSource } from "../../webrtc/video-capture-preferences.service";
 import { PairWorkspacePanelComponent } from "../../workspace/pair-workspace-panel.component";
 import { PairWorkspaceService, WorkspaceSummary } from "../../workspace/pair-workspace.service";
+import { MeshAnalysisComponent } from "../../mesh-analysis/mesh-analysis.component";
 
-type AppSection = "rooms" | "live" | "chat" | "settings";
+type AppSection = "rooms" | "live" | "analysis" | "chat" | "settings";
 
 @Component({
   selector: "app-room-page",
@@ -38,6 +39,7 @@ type AppSection = "rooms" | "live" | "chat" | "settings";
     MediaControlBarComponent,
     MediaStreamDirective,
     MediaMosaicComponent,
+    MeshAnalysisComponent,
     PairWorkspacePanelComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -110,7 +112,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   async ngOnInit(): Promise<void> {
     window.addEventListener("beforeunload", this.beforeUnload);
     const params = new URLSearchParams(location.search);
-    if (new Set<AppSection>(["rooms", "live", "chat", "settings"]).has(params.get("section") as AppSection)) {
+    if (new Set<AppSection>(["rooms", "live", "analysis", "chat", "settings"]).has(params.get("section") as AppSection)) {
       this.activeSection.set(params.get("section") as AppSection);
     }
     this.roomInput.set(params.get("room") || "");

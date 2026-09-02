@@ -78,6 +78,7 @@ describe("blind media-agent browser adapter", () => {
         acceptTrack: () => false,
         trackState: () => undefined,
         routeChanged: () => undefined,
+        connectionChanged: () => undefined,
       },
     });
   });
@@ -273,6 +274,7 @@ describe("blind media-agent browser adapter", () => {
         acceptTrack: () => true,
         trackState: () => undefined,
         routeChanged: () => undefined,
+        connectionChanged: () => undefined,
       },
     });
     expect(service.applyRoute({
