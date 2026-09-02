@@ -90,3 +90,86 @@ func TestMediaPeerRetriesNegotiationRequestedDuringOutstandingOffer(t *testing.T
 		t.Fatal("coalesced renegotiation did not advertise the added video track")
 	}
 }
+
+func TestFederationForwardQueuesNegotiationDuringOutstandingOffer(t *testing.T) {
+	cfg, err := loadConfig(environment(validEnvironment()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	api, closeTransport, err := createWebRTCAPI(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeTransport()
+	agent := newMediaAgent(cfg, api)
+	control := &fakeControl{messages: make(chan capturedControl, 32)}
+	agent.setSignaling(control)
+	room := &mediaRoom{
+		agent: agent, id: "room-123456", routeEpoch: 1, expiresAt: time.Now().Add(time.Minute),
+		federationLinks: map[string]*federationPeer{}, tracks: map[string]*forwardPublication{},
+	}
+	pc, err := api.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := &federationPeer{
+		room: room,
+		link: federationLink{
+			LinkID: "abcdefghijklmnopqrstuv", LeftAgentID: "edge-0000000000000001",
+			RightAgentID: "edge-0000000000000002", InitiatorAgentID: "edge-0000000000000001",
+		},
+		remoteAgentID: "edge-0000000000000002", pc: pc, ready: true,
+		senders: map[string]*federationForward{}, done: make(chan struct{}),
+	}
+	room.federationLinks[peer.link.LinkID] = peer
+	t.Cleanup(func() { peer.close(false) })
+	if _, err = pc.CreateDataChannel("federation-control", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	peer.negotiate()
+	firstOffer := nextPeerOffer(t, control.messages)
+	video, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000},
+		"camera-track", "fed:0123456789abcdef:low",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publication := &forwardPublication{
+		room: room, publisherID: "0123456789abcdef", publicationID: "camera-track",
+		layers: map[string]*forwardLayer{}, subscribers: map[string]*subscriberForward{},
+	}
+	layer := &forwardLayer{
+		publication: publication, name: "low", local: video, federationLocal: video,
+		federationPeers: map[string]*federationPeer{},
+	}
+	publication.layers["low"] = layer
+	peer.setForward(publication, "low", true)
+	if !waitForTestCondition(time.Second, func() bool {
+		peer.mu.Lock()
+		defer peer.mu.Unlock()
+		return peer.needsNegotiation
+	}) {
+		t.Fatal("federation mutation was not queued behind the outstanding offer")
+	}
+
+	browser := newBrowserPeer(t, "fedcba9876543210")
+	if err = browser.SetRemoteDescription(firstOffer); err != nil {
+		t.Fatal(err)
+	}
+	answer, err := browser.CreateAnswer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = browser.SetLocalDescription(answer); err != nil {
+		t.Fatal(err)
+	}
+	if err = peer.acceptSignal(serverMessage{Description: &answer}); err != nil {
+		t.Fatal(err)
+	}
+	secondOffer := nextPeerOffer(t, control.messages)
+	if !strings.Contains(secondOffer.SDP, "m=video") {
+		t.Fatal("queued federation renegotiation did not advertise the added video track")
+	}
+}

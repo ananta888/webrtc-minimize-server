@@ -578,11 +578,17 @@ func (f *federationPeer) setForward(publication *forwardPublication, layerName s
 	}
 	if !active {
 		f.mu.Unlock()
+		if current != nil {
+			go f.negotiate()
+		}
 		return
 	}
 	sender, err := f.pc.AddTrack(layer.federationLocal)
 	if err != nil {
 		f.mu.Unlock()
+		if current != nil {
+			go f.negotiate()
+		}
 		return
 	}
 	f.senders[key] = &federationForward{sender: sender, layer: layer}
@@ -591,6 +597,10 @@ func (f *federationPeer) setForward(publication *forwardPublication, layerName s
 	layer.federationPeers[f.link.LinkID] = f
 	publication.mu.Unlock()
 	go layer.readFeedback(sender)
+	// Pion may coalesce OnNegotiationNeeded while another offer is pending.
+	// Calling negotiate explicitly records that exact later mutation through
+	// needsNegotiation and retries it after the current answer.
+	go f.negotiate()
 }
 
 func (f *federationPeer) close(announce bool) {
