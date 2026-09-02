@@ -53,7 +53,9 @@ type mediaPeer struct {
 	pc                *webrtc.PeerConnection
 	mu                sync.Mutex
 	pendingCandidates []webrtc.ICECandidateInit
+	makingOffer       bool
 	ignoreOffer       bool
+	needsNegotiation  bool
 	closed            bool
 }
 
@@ -418,15 +420,25 @@ func (p *mediaPeer) acceptSignal(message serverMessage) error {
 		}
 		go p.room.attachExistingTracks(p)
 	}
+	if p.needsNegotiation {
+		p.needsNegotiation = false
+		go p.negotiate()
+	}
 	return nil
 }
 
 func (p *mediaPeer) negotiate() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.closed || p.pc.SignalingState() != webrtc.SignalingStateStable {
+	if p.closed {
 		return
 	}
+	if p.makingOffer || p.pc.SignalingState() != webrtc.SignalingStateStable {
+		p.needsNegotiation = true
+		return
+	}
+	p.makingOffer = true
+	defer func() { p.makingOffer = false }()
 	offer, err := p.pc.CreateOffer(nil)
 	if err != nil {
 		return
