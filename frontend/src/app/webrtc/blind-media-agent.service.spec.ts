@@ -246,6 +246,67 @@ describe("blind media-agent browser adapter", () => {
     expect(pc.connectionState).toBe("closed");
   });
 
+  it("reports the locally assigned shard as connected without requiring a primary connection", () => {
+    const remotePeerId = "fedcba9876543210";
+    service.updateMembershipEpoch(3);
+    expect(service.applyRoute({
+      version: 3,
+      type: "media-agent-state",
+      enabled: true,
+      membershipEpoch: 3,
+      routeEpoch: 5,
+      leaseExpiresAt: now + 30_000,
+      primary: { id: "owner-edge", ownerPeerId: remotePeerId, creatorPreferred: true },
+      standbys: [{ id: "second-edge", ownerPeerId: ownPeerId, creatorPreferred: false }],
+      forwarderIds: ["owner-edge", "second-edge"],
+      publisherAssignments: [
+        { peerId: ownPeerId, agentId: "second-edge" },
+        { peerId: remotePeerId, agentId: "owner-edge" },
+      ],
+      subscriberAssignments: [
+        { peerId: ownPeerId, agentId: "second-edge" },
+        { peerId: remotePeerId, agentId: "owner-edge" },
+      ],
+      federationLinks: [{
+        linkId: "abcdefghijklmnopqrstuv",
+        leftAgentId: "owner-edge",
+        rightAgentId: "second-edge",
+        initiatorAgentId: "owner-edge",
+        readyAgentIds: [],
+      }],
+      federationRoutes: [{
+        publisherPeerId: remotePeerId,
+        sourceAgentId: "owner-edge",
+        maximumHops: 2,
+        edges: [],
+      }, {
+        publisherPeerId: ownPeerId,
+        sourceAgentId: "second-edge",
+        maximumHops: 2,
+        edges: [],
+      }],
+      readiness: [
+        { agentId: "owner-edge", readyPeerIds: [remotePeerId] },
+        { agentId: "second-edge", readyPeerIds: [ownPeerId] },
+      ],
+    }, new Set([ownPeerId, remotePeerId]))).toBe(true);
+    expect(FakePeerConnection.instances).toHaveLength(1);
+    expect(service.primaryAgentId()).toBe("owner-edge");
+    expect(service.analysisTargets()[0].agentId).toBe("second-edge");
+    expect(service.status()).toBe("connecting");
+
+    const assignedShard = FakePeerConnection.instances[0];
+    assignedShard.connectionState = "connected";
+    assignedShard.onconnectionstatechange?.(new Event("connectionstatechange"));
+
+    expect(service.status()).toBe("connected");
+    expect(sent.at(-1)).toMatchObject({
+      type: "media-agent-peer-state",
+      agentId: "second-edge",
+      connected: true,
+    });
+  });
+
   it("queues an early ICE candidate until the agent description is installed", async () => {
     service.updateMembershipEpoch(3);
     expect(service.applyRoute({

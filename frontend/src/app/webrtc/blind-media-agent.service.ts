@@ -672,9 +672,22 @@ export class BlindMediaAgentService {
   }
 
   private updateStatus(): void {
-    const primary = this.connections.get(this.primaryAgentId());
-    if (!this.primaryAgentId()) this.status.set(this.availableAgents().length ? "idle" : "unavailable");
-    else this.status.set(primary?.connected ? "connected" : "connecting");
+    if (!this.primaryAgentId()) {
+      this.status.set(this.availableAgents().length ? "idle" : "unavailable");
+      return;
+    }
+    const assignedAgentIds = new Set([
+      this.assignedAgentId(this.ownPeerId),
+      this.assignedSubscriberAgentId(this.ownPeerId),
+    ].filter(Boolean));
+    const assignedConnections = [...assignedAgentIds].map((agentId) => this.connections.get(agentId));
+    if (assignedConnections.length > 0 && assignedConnections.every((connection) => connection?.connected)) {
+      this.status.set("connected");
+    } else if (assignedConnections.some((connection) => connection?.pc.connectionState === "failed")) {
+      this.status.set("error");
+    } else {
+      this.status.set("connecting");
+    }
   }
 
   private setAvailability(raw: readonly unknown[]): boolean {
