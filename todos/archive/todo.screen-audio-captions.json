@@ -5,7 +5,7 @@
   "track": "screen-audio-captions",
   "purpose": "Lokale Vosk-Untertitel wahlweise aus dem bereits freigegebenen Mikrofon- oder Bildschirmton erzeugen und bewusst nur lokal oder direkt mit Raumpeers teilen.",
   "goal": "Ein Nutzer kann Mikrofon und freigegebenen Bildschirmton getrennt oder parallel transkribieren, die Quelle jedes Untertitels erkennen und vor dem Start festlegen, ob Text nur lokal sichtbar bleibt oder ueber den bestehenden captions-DataChannel an Raumpeers geht.",
-  "status": "in_progress",
+  "status": "done",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
   "risk_scale": ["low", "medium", "high", "critical"],
@@ -26,7 +26,7 @@
       "id": "SAC-M03",
       "title": "Mehrquellen-Verifikation und Rollout",
       "task_ids": ["SAC-003"],
-      "status": "in_progress"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -61,10 +61,10 @@
     {
       "id": "SAC-003",
       "title": "Tests, Dokumentation und Produktionsrollout abschliessen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 85,
+      "progress_percent": 100,
       "depends_on": ["SAC-002"],
       "acceptance_criteria": [
         "Unit- und Browsertests pruefen parallele Quellen, selektiven Stopp, lokalen Modus, v1/v2-Interop, Quelle/Sprecherbindung, Limits und Capture-Freiheit.",
@@ -76,26 +76,28 @@
   "critical_path_tasks": ["SAC-001", "SAC-002", "SAC-003"],
   "tasks_status_summary": {
     "total": 3,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 2 },
-    "progress_percent_done": 66.67,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 3 },
+    "progress_percent_done": 100,
     "by_priority": { "P0": 2, "P1": 1, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 2, "critical": 1 },
-    "critical_path": { "total": 3, "done": 2, "remaining": 1 },
-    "milestones": { "total": 3, "todo": 0, "in_progress": 1, "blocked": 0, "done": 2 }
+    "critical_path": { "total": 3, "done": 3, "remaining": 0 },
+    "milestones": { "total": 3, "todo": 0, "in_progress": 0, "blocked": 0, "done": 3 }
   },
   "progress_summary": {
-    "state": "in_progress",
+    "state": "done",
     "todo_remaining": 0,
-    "in_progress": 1,
+    "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 1
+    "done": 3
   },
   "summary_notes": [
     "Bildschirmton bleibt ein getrenntes, standardmaessig deaktiviertes Capture-Opt-in. Untertitel erweitern dessen Autoritaet nicht und koennen keinen fehlenden Browser-Audiotrack erzeugen.",
     "Lokale Anzeige und Peer-Verteilung betreffen nur fluechtigen Text. Audio bleibt im bestehenden WebRTC-Medienpfad beziehungsweise im lokalen Track-Clone und erreicht die Signaling Control Plane nicht.",
     "Die Quellen-Pipelines teilen ein geladenes Modell, besitzen aber getrennte Recognizer, AudioGraphs, Revisionen und Timer. Ein Quellenende entfernt nur seinen Clone; das Original bleibt Eigentum des Medien-Lifecycles.",
     "Ein lokaler Zwei-Chromium-Smoke mit echtem en-US-Vosk-WASM-Modell erkannte aus einem bewusst per getDisplayMedia bereitgestellten Bildschirm-Audiotrack den Text 'hello' und zeigte ihn beim zweiten Peer als 'Ada · Bildschirmton'; der Empfaenger hatte null Modell-Downloads und null Capture-Aufrufe.",
+    "npm run check bestand mit 139 Frontend- und 96 Node-/Browsertests; das explizit credential-gebundene Keycloak-/TURN-Live-Gate meldete den vorgesehenen sichtbaren Skip, da diese Aenderung weder Identity noch ICE veraendert.",
+    "Commit 1154c01 wurde nach origin/main gepusht und auf dem Mini-PC gebaut. Interner und oeffentlicher /healthz antworteten mit status ok; der Produktionsbrowser lud 13 Modelle, wechselte lokal auf Bildschirmton und verzeichnete dabei null Capture-Aufrufe oder Page-Fehler.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
   ]
 }
