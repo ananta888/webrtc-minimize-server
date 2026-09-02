@@ -141,10 +141,13 @@ veraendert. Erst das erste auf diesem Track weitergeleitete Paket bestaetigt
 die angewendete Subscription-Revision. Dadurch bleibt der direkte
 Publisher-Fallback waehrend eines noch nicht fliessenden Layerwechsels aktiv.
 Ein neu hinzugefuegter Egress-Sender darf RTP erst schreiben, nachdem genau der
-Sender in einem lokalen Offer enthalten war und das zugehoerige Answer
-erfolgreich angewendet wurde. Bis dahin werden Pakete nicht im Agenten
-gepuffert; der Direct-SFrame-Pfad bleibt autoritativ, und der periodische
-Keyframe-Request ermoeglicht danach einen frischen Decodereinstieg.
+Sender entweder in einem lokalen Offer enthalten war und das zugehoerige
+Answer erfolgreich angewendet wurde oder als sendende MID in einem lokalen
+Answer auf ein Remote-Offer enthalten ist. Receive-only, inaktive, abgelehnte
+oder keinem Transceiver eindeutig zugeordnete SDP-Sektionen schalten keinen
+Sender frei. Bis dahin werden Pakete nicht im Agenten gepuffert; der
+Direct-SFrame-Pfad bleibt autoritativ, und der periodische Keyframe-Request
+ermoeglicht danach einen frischen Decodereinstieg.
 
 Ein Egress-RTP-Track kann nach einer Neuverhandlung vor dem zugehoerigen
 autoritativen `media-agent-track-state` im Browser eintreffen. Er bleibt dann
@@ -170,7 +173,8 @@ direkt zu benoetigten Egress-Agenten; ein Publisher auf einem Standby geht bei
 Bedarf ueber den Primary zum anderen Standby. Aus aktiven Subscription-Plänen
 entstehen exakte `(Link, Richtung, Publisher, Publikation, Layer)`-Demands.
 Nicht angeforderte Layer werden auf diesem Link nicht als Sender angebunden.
-Ein neuer Sender gilt erst nach dem Answer auf genau das lokale Offer als
+Ein neuer Sender gilt erst nach dem Answer auf genau das lokale Offer oder
+seiner sendenden MID im lokalen Answer auf ein serialisiertes Remote-Offer als
 ausgehandelt. Wird sein Demand vorher widerrufen, wird er entfernt statt mit
 einer noch nie publizierten Media-Identitaet fuer spaeteres ReplaceTrack
 zurueckzubleiben; erst bestaetigte Sender duerfen ohne SDP pausieren und

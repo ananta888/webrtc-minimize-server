@@ -190,6 +190,115 @@ func TestMediaPeerCoalescesThreeForwardTracksBehindOutstandingOffer(t *testing.T
 	}
 }
 
+func TestMediaPeerMarksSenderNegotiatedWhenFirstAdvertisedInLocalAnswer(t *testing.T) {
+	cfg, err := loadConfig(environment(validEnvironment()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	api, closeTransport, err := createWebRTCAPI(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeTransport()
+	agent := newMediaAgent(cfg, api)
+	control := &fakeControl{messages: make(chan capturedControl, 32)}
+	agent.setSignaling(control)
+	room := &mediaRoom{agent: agent, id: "room-123456", routeEpoch: 1}
+	pc, err := api.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := &mediaPeer{
+		room: room, id: "0123456789abcdef", pc: pc,
+		senderNegotiated: make(map[*webrtc.RTPSender]bool),
+	}
+	t.Cleanup(peer.close)
+	video, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000},
+		"camera-track", "publisher-stream",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sender, err := pc.AddTrack(video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer.senderNegotiated[sender] = false
+
+	browser := newBrowserPeer(t, peer.id)
+	if _, err = browser.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, webrtc.RTPTransceiverInit{
+		Direction: webrtc.RTPTransceiverDirectionRecvonly,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	offer, err := browser.CreateOffer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = browser.SetLocalDescription(offer); err != nil {
+		t.Fatal(err)
+	}
+	if err = peer.acceptSignal(serverMessage{
+		Type: "peer-signal", RoomID: room.id, PeerID: peer.id, RouteEpoch: room.routeEpoch,
+		Description: &offer,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !peer.senderReady(sender) {
+		t.Fatal("sender first advertised in a local answer remained non-writable")
+	}
+}
+
+func TestLocalSendingSendersRejectsReceiveOnlyAnswer(t *testing.T) {
+	native := newBrowserPeer(t, "0123456789abcdef")
+	nativeTrack, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000},
+		"native-camera", "native-stream",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativeSender, err := native.AddTrack(nativeTrack)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	remote := newBrowserPeer(t, "fedcba9876543210")
+	remoteTrack, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000},
+		"remote-camera", "remote-stream",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = remote.AddTransceiverFromTrack(remoteTrack, webrtc.RTPTransceiverInit{
+		Direction: webrtc.RTPTransceiverDirectionSendonly,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	offer, err := remote.CreateOffer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = remote.SetLocalDescription(offer); err != nil {
+		t.Fatal(err)
+	}
+	if err = native.SetRemoteDescription(offer); err != nil {
+		t.Fatal(err)
+	}
+	answer, err := native.CreateAnswer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = native.SetLocalDescription(answer); err != nil {
+		t.Fatal(err)
+	}
+	if _, present := localSendingSenders(native, answer)[nativeSender]; present {
+		t.Fatal("receive-only answer incorrectly authorized its local sender")
+	}
+}
+
 func TestSubscriberLayerSwitchReusesNegotiatedSender(t *testing.T) {
 	cfg, err := loadConfig(environment(validEnvironment()))
 	if err != nil {

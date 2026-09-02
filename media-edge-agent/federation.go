@@ -260,8 +260,15 @@ func (f *federationPeer) acceptSignal(message serverMessage) error {
 		if err = f.pc.SetLocalDescription(answer); err != nil {
 			return err
 		}
+		localSenders := localSendingSenders(f.pc, answer)
 		if err = f.sendSignal(map[string]any{"description": answer}); err != nil {
 			return err
+		}
+		for _, forward := range f.senders {
+			if _, present := localSenders[forward.sender]; present && forward.active && forward.sender.Track() != nil {
+				forward.negotiated = true
+				go forward.layer.requestKeyframe()
+			}
 		}
 	}
 	go f.continueNegotiation()
@@ -307,9 +314,11 @@ func (f *federationPeer) negotiate() {
 		f.mu.Unlock()
 		return
 	}
+	localSenders := localSendingSenders(f.pc, offer)
 	f.pendingOfferSenders = make(map[string]*federationForward)
 	for key, forward := range f.senders {
-		if forward.active && forward.sender.Track() != nil {
+		if _, present := localSenders[forward.sender]; present && forward.active &&
+			!forward.negotiated && forward.sender.Track() != nil {
 			f.pendingOfferSenders[key] = forward
 		}
 	}

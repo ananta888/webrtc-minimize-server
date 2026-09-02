@@ -12,6 +12,7 @@ import (
 
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
+	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -429,11 +430,17 @@ func (p *mediaPeer) acceptSignal(message serverMessage) error {
 		if err = p.pc.SetLocalDescription(answer); err != nil {
 			return fmt.Errorf("set local answer: %w", err)
 		}
+		localSenders := localSendingSenders(p.pc, answer)
 		if err = p.room.agent.signal.send(map[string]any{
 			"type": "media-agent-signal", "roomId": p.room.id, "peerId": p.id,
 			"routeEpoch": p.room.routeEpoch, "description": answer,
 		}); err != nil {
 			return err
+		}
+		for sender := range localSenders {
+			if _, present := p.senderNegotiated[sender]; present && sender.Track() != nil {
+				p.senderNegotiated[sender] = true
+			}
 		}
 		go p.room.attachExistingTracks(p)
 	}
@@ -469,10 +476,10 @@ func (p *mediaPeer) negotiate() {
 		p.mu.Unlock()
 		return
 	}
-	p.pendingOfferSenders = make(map[*webrtc.RTPSender]struct{})
-	for sender, negotiated := range p.senderNegotiated {
-		if !negotiated && sender.Track() != nil {
-			p.pendingOfferSenders[sender] = struct{}{}
+	p.pendingOfferSenders = localSendingSenders(p.pc, offer)
+	for sender := range p.pendingOfferSenders {
+		if p.senderNegotiated[sender] {
+			delete(p.pendingOfferSenders, sender)
 		}
 	}
 	err = p.room.agent.signal.send(map[string]any{
@@ -530,6 +537,50 @@ func (p *mediaPeer) senderReady(sender *webrtc.RTPSender) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return !p.closed && p.senderNegotiated[sender] && sender.Track() != nil
+}
+
+func localSendingSenders(
+	pc *webrtc.PeerConnection,
+	description webrtc.SessionDescription,
+) map[*webrtc.RTPSender]struct{} {
+	result := make(map[*webrtc.RTPSender]struct{})
+	var parsed sdp.SessionDescription
+	if err := parsed.UnmarshalString(description.SDP); err != nil {
+		return result
+	}
+	sessionDirection := sdpDirection(parsed.Attributes)
+	sendingMIDs := make(map[string]bool)
+	for _, media := range parsed.MediaDescriptions {
+		mid, present := media.Attribute("mid")
+		if !present || mid == "" || media.MediaName.Port.Value == 0 {
+			continue
+		}
+		direction := sdpDirection(media.Attributes)
+		if direction == "" {
+			direction = sessionDirection
+		}
+		if direction == "" {
+			direction = "sendrecv"
+		}
+		sendingMIDs[mid] = direction == "sendrecv" || direction == "sendonly"
+	}
+	for _, transceiver := range pc.GetTransceivers() {
+		sender := transceiver.Sender()
+		if sender != nil && sender.Track() != nil && sendingMIDs[transceiver.Mid()] {
+			result[sender] = struct{}{}
+		}
+	}
+	return result
+}
+
+func sdpDirection(attributes []sdp.Attribute) string {
+	for _, attribute := range attributes {
+		switch attribute.Key {
+		case "sendrecv", "sendonly", "recvonly", "inactive":
+			return attribute.Key
+		}
+	}
+	return ""
 }
 
 func (p *mediaPeer) close() {
