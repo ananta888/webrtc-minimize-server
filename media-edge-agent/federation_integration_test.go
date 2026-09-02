@@ -237,6 +237,10 @@ func TestNativeAgentsFederateBidirectionalDemandedOpaqueLayersWithoutOfferGlare(
 		LinkID: linkID, FromAgentID: cfgA.agentID, ToAgentID: cfgB.agentID,
 		PublisherPeerID: publisherID, PublicationID: "camera-track", Layer: "medium",
 	}
+	screenDemand := federationDemand{
+		LinkID: linkID, FromAgentID: cfgA.agentID, ToAgentID: cfgB.agentID,
+		PublisherPeerID: publisherID, PublicationID: "screen-track", Layer: "single",
+	}
 	audioRoute := federationRoute{
 		PublisherPeerID: subscriberID, SourceAgentID: cfgB.agentID, MaximumHops: 2,
 		Edges: []federationEdge{{
@@ -262,7 +266,7 @@ func TestNativeAgentsFederateBidirectionalDemandedOpaqueLayersWithoutOfferGlare(
 			PreferredLayer: "audio", MaximumLayer: "audio", Revision: 1,
 		}}, FederationLinks: []federationLink{link},
 		FederationRoutes:  []federationRoute{cameraRoute, audioRoute},
-		FederationDemands: []federationDemand{cameraDemand, audioDemand},
+		FederationDemands: []federationDemand{cameraDemand, screenDemand, audioDemand},
 		ICEServers:        []webrtc.ICEServer{},
 	}
 	leaseB := agentLease{
@@ -272,14 +276,21 @@ func TestNativeAgentsFederateBidirectionalDemandedOpaqueLayersWithoutOfferGlare(
 			{ID: publisherID},
 			{ID: subscriberID, Connect: true, Publish: true, Subscribe: true},
 		},
-		Subscriptions: []subscriptionPlan{{
-			SubscriberPeerID: subscriberID, PublisherPeerID: publisherID,
-			PublicationID: "camera-track", Source: "camera", Enabled: true,
-			PreferredLayer: "high", MaximumLayer: "high", Revision: 1,
-		}},
+		Subscriptions: []subscriptionPlan{
+			{
+				SubscriberPeerID: subscriberID, PublisherPeerID: publisherID,
+				PublicationID: "camera-track", Source: "camera", Enabled: true,
+				PreferredLayer: "high", MaximumLayer: "high", Revision: 1,
+			},
+			{
+				SubscriberPeerID: subscriberID, PublisherPeerID: publisherID,
+				PublicationID: "screen-track", Source: "screen", Enabled: true,
+				PreferredLayer: "single", MaximumLayer: "single", Revision: 2,
+			},
+		},
 		FederationLinks:   []federationLink{link},
 		FederationRoutes:  []federationRoute{cameraRoute, audioRoute},
-		FederationDemands: []federationDemand{cameraDemand, audioDemand}, ICEServers: []webrtc.ICEServer{},
+		FederationDemands: []federationDemand{cameraDemand, screenDemand, audioDemand}, ICEServers: []webrtc.ICEServer{},
 	}
 
 	publisher := newBrowserPeer(t, publisherID)
@@ -315,6 +326,17 @@ func TestNativeAgentsFederateBidirectionalDemandedOpaqueLayersWithoutOfferGlare(
 	if err = sender.AddEncoding(highTrack); err != nil {
 		t.Fatal(err)
 	}
+	screenTrack, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90000},
+		"screen-track", "publisher-stream", webrtc.WithRTPStreamID("s"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	screenSender, err := publisher.AddTrack(screenTrack)
+	if err != nil {
+		t.Fatal(err)
+	}
 	audioTrack, err := webrtc.NewTrackLocalStaticRTP(
 		webrtc.RTPCodecCapability{
 			MimeType: webrtc.MimeTypeOpus, ClockRate: 48_000, Channels: 2,
@@ -328,8 +350,16 @@ func TestNativeAgentsFederateBidirectionalDemandedOpaqueLayersWithoutOfferGlare(
 		t.Fatal(err)
 	}
 	receivedCamera := make(chan *webrtc.TrackRemote, 1)
+	receivedScreen := make(chan *webrtc.TrackRemote, 1)
 	receivedAudio := make(chan *webrtc.TrackRemote, 1)
-	subscriber.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) { receivedCamera <- track })
+	subscriber.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		switch track.ID() {
+		case "camera-track":
+			receivedCamera <- track
+		case "screen-track":
+			receivedScreen <- track
+		}
+	})
 	publisher.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) { receivedAudio <- track })
 	browsers := map[string]*federationBrowserEndpoint{
 		publisherID: {
@@ -398,9 +428,30 @@ func TestNativeAgentsFederateBidirectionalDemandedOpaqueLayersWithoutOfferGlare(
 		t.Fatal("simulcast MID/RID extensions were not negotiated")
 	}
 	mid := publisher.GetTransceivers()[0].Mid()
+	screenParameters := screenSender.GetParameters()
+	var screenMidExtensionID, screenRIDExtensionID uint8
+	for _, extension := range screenParameters.HeaderExtensions {
+		switch extension.URI {
+		case "urn:ietf:params:rtp-hdrext:sdes:mid":
+			screenMidExtensionID = uint8(extension.ID)
+		case "urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id":
+			screenRIDExtensionID = uint8(extension.ID)
+		}
+	}
+	screenMid := ""
+	for _, transceiver := range publisher.GetTransceivers() {
+		if transceiver.Sender() == screenSender {
+			screenMid = transceiver.Mid()
+			break
+		}
+	}
+	if screenMidExtensionID == 0 || screenRIDExtensionID == 0 || screenMid == "" {
+		t.Fatal("screen MID/RID extensions were not negotiated")
+	}
 	lowCiphertext := []byte{0x88, 0x08, 0x6c, 0x6f, 0x77, 0xde, 0xad, 0xbe, 0xef}
 	mediumCiphertext := []byte{0x88, 0x08, 0x6d, 0x69, 0x64, 0xde, 0xad, 0xbe, 0xef}
 	highCiphertext := []byte{0x88, 0x08, 0x68, 0x69, 0x67, 0x68, 0xde, 0xad, 0xbe, 0xef}
+	screenCiphertext := []byte{0x88, 0x08, 0x73, 0x63, 0x72, 0x6e, 0xde, 0xad, 0xbe, 0xef}
 	audioCiphertext := []byte{0xf8, 0xff, 0xfe, 0x11, 0x22, 0x33}
 	writerStop := make(chan struct{})
 	defer close(writerStop)
@@ -424,6 +475,14 @@ func TestNativeAgentsFederateBidirectionalDemandedOpaqueLayersWithoutOfferGlare(
 					_ = packet.Header.SetExtension(ridExtensionID, []byte(track.RID()))
 					_ = track.WriteRTP(packet)
 				}
+				screenPacket := &rtp.Packet{
+					Header: rtp.Header{Version: 2, PayloadType: 96, SequenceNumber: sequence,
+						Timestamp: uint32(sequence) * 3000, SSRC: 377},
+					Payload: screenCiphertext,
+				}
+				_ = screenPacket.Header.SetExtension(screenMidExtensionID, []byte(screenMid))
+				_ = screenPacket.Header.SetExtension(screenRIDExtensionID, []byte("s"))
+				_ = screenTrack.WriteRTP(screenPacket)
 				_ = audioTrack.WriteRTP(&rtp.Packet{
 					Header: rtp.Header{
 						Version: 2, PayloadType: 111, SequenceNumber: sequence,
@@ -442,6 +501,14 @@ func TestNativeAgentsFederateBidirectionalDemandedOpaqueLayersWithoutOfferGlare(
 		t.Fatalf("agent broker failed: %v", brokerErr)
 	case <-time.After(15 * time.Second):
 		t.Fatal("subscriber did not receive the federated camera layer")
+	}
+	var remoteScreen *webrtc.TrackRemote
+	select {
+	case remoteScreen = <-receivedScreen:
+	case brokerErr := <-brokerErrors:
+		t.Fatalf("agent broker failed: %v", brokerErr)
+	case <-time.After(15 * time.Second):
+		t.Fatal("subscriber did not receive the federated screen layer")
 	}
 	var remoteAudio *webrtc.TrackRemote
 	select {
@@ -467,6 +534,23 @@ func TestNativeAgentsFederateBidirectionalDemandedOpaqueLayersWithoutOfferGlare(
 		t.Fatalf("agent broker failed: %v", brokerErr)
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out reading federated RTP")
+	}
+	screenPacketRead := make(chan *rtp.Packet, 1)
+	go func() {
+		packet, _, readErr := remoteScreen.ReadRTP()
+		if readErr == nil {
+			screenPacketRead <- packet
+		}
+	}()
+	select {
+	case packet := <-screenPacketRead:
+		if !bytes.Equal(packet.Payload, screenCiphertext) {
+			t.Fatalf("federation modified opaque screen video: %x", packet.Payload)
+		}
+	case brokerErr := <-brokerErrors:
+		t.Fatalf("agent broker failed: %v", brokerErr)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out reading federated screen RTP")
 	}
 	audioPacketRead := make(chan *rtp.Packet, 1)
 	go func() {

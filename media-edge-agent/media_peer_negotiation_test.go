@@ -91,6 +91,76 @@ func TestMediaPeerRetriesNegotiationRequestedDuringOutstandingOffer(t *testing.T
 	}
 }
 
+func TestMediaPeerCoalescesThreeForwardTracksBehindOutstandingOffer(t *testing.T) {
+	cfg, err := loadConfig(environment(validEnvironment()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	api, closeTransport, err := createWebRTCAPI(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeTransport()
+	agent := newMediaAgent(cfg, api)
+	control := &fakeControl{messages: make(chan capturedControl, 32)}
+	agent.setSignaling(control)
+	room := &mediaRoom{agent: agent, id: "room-123456", routeEpoch: 1}
+	pc, err := api.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := &mediaPeer{room: room, id: "0123456789abcdef", pc: pc}
+	t.Cleanup(peer.close)
+	if _, err = pc.CreateDataChannel("bootstrap", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	peer.negotiate()
+	firstOffer := nextPeerOffer(t, control.messages)
+	tracks := []struct {
+		codec webrtc.RTPCodecCapability
+		id    string
+	}{
+		{codec: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48_000, Channels: 2}, id: "microphone-track"},
+		{codec: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000}, id: "camera-track"},
+		{codec: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000}, id: "screen-track"},
+	}
+	for _, definition := range tracks {
+		track, trackErr := webrtc.NewTrackLocalStaticRTP(definition.codec, definition.id, "fedcba9876543210")
+		if trackErr != nil {
+			t.Fatal(trackErr)
+		}
+		if _, trackErr = peer.addForwardTrack(track); trackErr != nil {
+			t.Fatal(trackErr)
+		}
+	}
+
+	browser := newBrowserPeer(t, peer.id)
+	if err = browser.SetRemoteDescription(firstOffer); err != nil {
+		t.Fatal(err)
+	}
+	answer, err := browser.CreateAnswer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = browser.SetLocalDescription(answer); err != nil {
+		t.Fatal(err)
+	}
+	if err = peer.acceptSignal(serverMessage{
+		Type: "peer-signal", RoomID: room.id, PeerID: peer.id, RouteEpoch: room.routeEpoch,
+		Description: &answer,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	secondOffer := nextPeerOffer(t, control.messages)
+	audioSections := strings.Count(secondOffer.SDP, "m=audio")
+	videoSections := strings.Count(secondOffer.SDP, "m=video")
+	if audioSections != 1 || videoSections != 2 {
+		t.Fatalf("coalesced offer media-section mismatch: audio=%d video=%d", audioSections, videoSections)
+	}
+}
+
 func TestSubscriberLayerSwitchReusesNegotiatedSender(t *testing.T) {
 	cfg, err := loadConfig(environment(validEnvironment()))
 	if err != nil {

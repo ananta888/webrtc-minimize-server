@@ -425,7 +425,6 @@ func (p *mediaPeer) acceptSignal(message serverMessage) error {
 		go p.room.attachExistingTracks(p)
 	}
 	if p.needsNegotiation {
-		p.needsNegotiation = false
 		go p.negotiate()
 	}
 	return nil
@@ -433,27 +432,73 @@ func (p *mediaPeer) acceptSignal(message serverMessage) error {
 
 func (p *mediaPeer) negotiate() {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	if p.closed {
+		p.mu.Unlock()
 		return
 	}
+	p.needsNegotiation = true
 	if p.makingOffer || p.pc.SignalingState() != webrtc.SignalingStateStable {
-		p.needsNegotiation = true
+		p.mu.Unlock()
 		return
 	}
+	p.needsNegotiation = false
 	p.makingOffer = true
-	defer func() { p.makingOffer = false }()
 	offer, err := p.pc.CreateOffer(nil)
 	if err != nil {
+		p.needsNegotiation = true
+		p.makingOffer = false
+		p.mu.Unlock()
 		return
 	}
 	if err = p.pc.SetLocalDescription(offer); err != nil {
+		p.needsNegotiation = true
+		p.makingOffer = false
+		p.mu.Unlock()
 		return
 	}
-	_ = p.room.agent.signal.send(map[string]any{
+	err = p.room.agent.signal.send(map[string]any{
 		"type": "media-agent-signal", "roomId": p.room.id, "peerId": p.id,
 		"routeEpoch": p.room.routeEpoch, "description": offer,
 	})
+	if err != nil {
+		p.needsNegotiation = true
+	}
+	p.makingOffer = false
+	p.mu.Unlock()
+}
+
+func (p *mediaPeer) addForwardTrack(track webrtc.TrackLocal) (*webrtc.RTPSender, error) {
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return nil, fmt.Errorf("peer connection closed")
+	}
+	sender, err := p.pc.AddTrack(track)
+	if err == nil {
+		p.needsNegotiation = true
+	}
+	p.mu.Unlock()
+	if err == nil {
+		go p.negotiate()
+	}
+	return sender, err
+}
+
+func (p *mediaPeer) removeForwardTrack(sender *webrtc.RTPSender) error {
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return nil
+	}
+	err := p.pc.RemoveTrack(sender)
+	if err == nil {
+		p.needsNegotiation = true
+	}
+	p.mu.Unlock()
+	if err == nil {
+		go p.negotiate()
+	}
+	return err
 }
 
 func (p *mediaPeer) close() {
@@ -642,16 +687,13 @@ func (p *forwardPublication) reconcileSubscriber(peerID string) {
 	if current != nil {
 		delete(p.subscribers, peerID)
 		if peer != nil {
-			_ = peer.pc.RemoveTrack(current.sender)
+			_ = peer.removeForwardTrack(current.sender)
 		}
 	}
 	if target == "" || peer == nil {
 		p.mu.Unlock()
 		if current != nil && planned {
 			p.reportSubscription(peerID, plan.PreferredLayer, plan.Revision, false)
-			if peer != nil {
-				go peer.negotiate()
-			}
 		}
 		return
 	}
@@ -666,7 +708,7 @@ func (p *forwardPublication) reconcileSubscriber(peerID string) {
 		p.reportSubscription(peerID, plan.PreferredLayer, plan.Revision, false)
 		return
 	}
-	sender, err := peer.pc.AddTrack(local)
+	sender, err := peer.addForwardTrack(local)
 	if err != nil {
 		p.mu.Unlock()
 		p.reportSubscription(peerID, plan.PreferredLayer, plan.Revision, false)
@@ -678,7 +720,6 @@ func (p *forwardPublication) reconcileSubscriber(peerID string) {
 	p.mu.Unlock()
 	layer.requestKeyframe()
 	go p.readSubscriberFeedback(peerID, sender)
-	go peer.negotiate()
 }
 
 func sameCodec(left, right webrtc.RTPCodecCapability) bool {
@@ -921,7 +962,7 @@ func (p *forwardPublication) close() {
 	p.room.mu.RUnlock()
 	for peerID, forward := range subscribers {
 		if peer := peers[peerID]; peer != nil {
-			_ = peer.pc.RemoveTrack(forward.sender)
+			_ = peer.removeForwardTrack(forward.sender)
 		}
 	}
 }
