@@ -373,6 +373,17 @@ lokalen Maximalstufe genau einen Layer. Der Egress bindet fuer diese
 Subscription nur diesen RTP-Layer; Audio, Bildschirm und Bildschirmton bleiben
 je ein separater Single-Layer. Der Agent verarbeitet den SFrame-Payload nicht.
 
+Die lokale Maximalstufe ist das allgemeine Empfangsprofil desselben Browsers,
+nicht mehr eine Agent-Sondereinstellung. Im Direct Mesh sendet der Browser sie
+als geschlossenen `receive-quality`-Intent an jede Gegenstelle; dort begrenzt sie
+nur den separaten `RTCRtpSender` zu diesem Ziel. Im Agent-Pfad begrenzt sie die
+eigene Kamera-Subscription. `audio-only` deaktiviert Kamera und Bildschirm,
+aber nicht Mikrofon oder Bildschirmton. Der gemeinsame Single-Layer-Bildschirm
+des Agenten besitzt keine individuellen low/medium-Varianten. Ein Browser, der
+im entschluesselnden Legacy-Modus als Zwischenrelay dient, muss seinen
+gemeinsamen Eingang fuer die Nachgelagerten behalten; seine persoenliche
+Empfangswahl darf deren Qualitaet nicht absenken.
+
 ### 7.1 Beispiel: acht Browser, zwei direkt verbundene Agenten
 
 ```mermaid
@@ -633,6 +644,9 @@ der Egress uebernimmt die Kopien fuer seine lokalen Subscriber.
 | Kamera Balanced | 420 kbit/s, 15 FPS |
 | Kamera Focus | 1.200 kbit/s, 24 FPS |
 | Bildschirm | 2.500 kbit/s, 24 FPS |
+| Direct-Empfangsprofil niedrig, Kamera | 120 kbit/s, 6 FPS, 4x skaliert |
+| Direct-Empfangsprofil niedrig, Bildschirm | 600 kbit/s, 5 FPS, 2x skaliert |
+| Direct-Empfangsprofil mittel, Bildschirm | 1.200 kbit/s, 12 FPS |
 
 Die Medienprioritaet multipliziert Video fuer Rang 1/2/3 mit ungefaehr
 `1.0`, `0.72` und `0.45` und begrenzt niedrigere Prioritaeten zusaetzlich bei

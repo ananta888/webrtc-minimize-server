@@ -20,8 +20,6 @@ export interface AvailableMediaAgent {
   readonly online: boolean;
 }
 
-export type MediaAgentLayerLimit = "auto" | "low" | "medium" | "high";
-
 export interface AgentPublicationInput {
   readonly agentId: string;
   readonly publicationId: string;
@@ -83,7 +81,6 @@ export class BlindMediaAgentService {
   readonly routeEpoch = signal(0);
   readonly status = signal<"unavailable" | "idle" | "connecting" | "connected" | "error">("unavailable");
   readonly simulcastCapability = signal<"probing" | "available" | "fallback">("probing");
-  readonly layerLimit = signal<MediaAgentLayerLimit>(this.loadLayerLimit());
   readonly takeoverRequest = signal<MediaAgentTakeoverRequest | null>(null);
   private readonly connections = new Map<string, AgentConnection>();
   private readonly descriptors = new Map<string, MediaAgentTrackState>();
@@ -377,14 +374,6 @@ export class BlindMediaAgentService {
     return true;
   }
 
-  setLayerLimit(value: unknown): boolean {
-    if (value !== "auto" && value !== "low" && value !== "medium" && value !== "high") return false;
-    this.layerLimit.set(value);
-    try { localStorage.setItem("webrtc-media-agent-layer-limit-v1", value); } catch { /* optional storage */ }
-    this.subscriptionSignatures.clear();
-    return true;
-  }
-
   routeReady(agentId: string, memberPeerIds: ReadonlySet<string>): boolean {
     const connection = this.connections.get(agentId);
     const ready = new Set(this.route?.readiness.find((entry) => entry.agentId === agentId)?.readyPeerIds || []);
@@ -622,13 +611,6 @@ export class BlindMediaAgentService {
     if (!agents.some(({ id }) => id === selected)) this.selectedAgentId.set(agents[0]?.id || "");
     this.updateStatus();
     return true;
-  }
-
-  private loadLayerLimit(): MediaAgentLayerLimit {
-    try {
-      const value = localStorage.getItem("webrtc-media-agent-layer-limit-v1");
-      return value === "low" || value === "medium" || value === "high" ? value : "auto";
-    } catch { return "auto"; }
   }
 
   private publicationKey(publisherPeerId: string, publicationId: string): string {

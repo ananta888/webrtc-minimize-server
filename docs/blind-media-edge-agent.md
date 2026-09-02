@@ -101,6 +101,14 @@ Encrypt-Kontext des Publishers reserviert seinen Counter synchron vor jedem
 asynchronen Encrypt-Aufruf, sodass parallele Simulcast-Frames keinen AES-GCM-
 Nonce wiederverwenden.
 
+Der Layer-Wunsch stammt aus demselben allgemeinen Empfangsprofil, das auch
+direkte Gegenstellen pro Ziel-Sender begrenzt. `audio-only` setzt Kamera- und
+Bildschirm-Subscriptions dieses Browsers auf deaktiviert; Mikrofon und
+Bildschirmton bleiben getrennt aktiv. Kamera kann individuell auf low, medium
+oder high begrenzt werden. Bildschirm bleibt im Agent-Pfad eine gemeinsame
+Single-Layer-Publikation und ist deshalb pro Subscriber nur ein- oder
+ausschaltbar, nicht individuell niedriger aufloesbar.
+
 Bei mindestens zwei aktiven Forwardern erzeugt die Control Plane direkte
 Agent-Agent-Links als Stern um den Primary und pro Publisher einen gerichteten,
 zyklusfreien DAG mit hoechstens zwei Hops. Ein Publisher auf dem Primary geht

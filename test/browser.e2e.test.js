@@ -174,6 +174,8 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   await ada.locator("#chat-log").getByText("Grace: Peer-Chat verbunden").waitFor();
   assert.deepEqual(await ada.evaluate(() => window.__captureCalls), []);
   assert.deepEqual(await grace.evaluate(() => window.__captureCalls), []);
+  await grace.locator("#receive-quality-profile-live").selectOption("low");
+  assert.deepEqual(await grace.evaluate(() => window.__captureCalls), []);
 
   await ada.locator("#chat-message").fill("Hallo über den DataChannel");
   await ada.locator("#chat-form button").click();
@@ -185,6 +187,39 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   await Promise.all([ada, grace].map((page) => page.locator("#sframe-status", { hasText: "active" }).waitFor()));
   await grace.waitForFunction(() => [...document.querySelectorAll("video:not([muted])")]
     .some((video) => video.readyState >= 2 && video.videoWidth > 0));
+  await ada.waitForFunction(() => {
+    const cameraTrackIds = new Set(Object.entries(window.__localTrackSources)
+      .filter(([, source]) => source === "camera").map(([trackId]) => trackId));
+    return window.__senderParameterEvents.some((event) => cameraTrackIds.has(event.trackId)
+      && event.succeeded === true
+      && event.encodings.some((encoding) => encoding.active === true
+        && encoding.maxBitrate === 120_000
+        && encoding.maxFramerate === 6
+        && encoding.scaleResolutionDownBy === 4));
+  });
+  await grace.locator("#receive-quality-profile-live").selectOption("audio-only");
+  await grace.waitForFunction(() => [...document.querySelectorAll(".remote-media video")]
+    .some((video) => video.srcObject?.getVideoTracks().some((track) => !track.enabled)));
+  await ada.waitForFunction(() => {
+    const cameraTrackIds = new Set(Object.entries(window.__localTrackSources)
+      .filter(([, source]) => source === "camera").map(([trackId]) => trackId));
+    return window.__senderParameterEvents.some((event) => cameraTrackIds.has(event.trackId)
+      && event.succeeded === true
+      && event.encodings.some((encoding) => encoding.active === false));
+  });
+  await ada.evaluate(() => { window.__senderParameterEvents = []; });
+  await grace.locator("#receive-quality-profile-live").selectOption("auto");
+  await grace.waitForFunction(() => [...document.querySelectorAll(".remote-media video")]
+    .some((video) => video.srcObject?.getVideoTracks().some((track) => track.enabled)));
+  await ada.waitForFunction(() => {
+    const cameraTrackIds = new Set(Object.entries(window.__localTrackSources)
+      .filter(([, source]) => source === "camera").map(([trackId]) => trackId));
+    return window.__senderParameterEvents.some((event) => cameraTrackIds.has(event.trackId)
+      && event.succeeded === true
+      && event.encodings.some((encoding) => encoding.active === true));
+  });
+  await ada.evaluate(() => { window.__senderParameterEvents = []; });
+  assert.deepEqual(await grace.evaluate(() => window.__captureCalls), []);
 
   const cameraCapture = await ada.evaluate(() => window.__captureConstraints
     .find((event) => event.method === "getUserMedia" && event.constraints.video));
@@ -871,6 +906,9 @@ test("two Firefox peers retain direct adaptive mesh, SFrame, chat and camera", {
   await grace.locator("#join-room").click();
   await Promise.all([ada, grace].map((page) => page.locator("#participant-count", { hasText: "2 / 20" }).waitFor()));
   assert.deepEqual(await ada.evaluate(() => window.__captureCalls), []);
+  assert.deepEqual(await grace.evaluate(() => window.__captureCalls), []);
+  await grace.locator("#receive-quality-profile-live").selectOption("low");
+  assert.equal(await grace.locator("#receive-quality-profile-live").inputValue(), "low");
   assert.deepEqual(await grace.evaluate(() => window.__captureCalls), []);
   await ada.locator("#chat-message").fill("Firefox DataChannel");
   await ada.locator("#chat-form button").click();

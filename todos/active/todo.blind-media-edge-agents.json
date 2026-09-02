@@ -69,6 +69,12 @@
       "title": "Sicheres Self-Service-Onboarding freiwilliger Media-Agenten",
       "task_ids": ["BME-012", "BME-013", "BME-014"],
       "status": "in_progress"
+    },
+    {
+      "id": "BME-M11",
+      "title": "Empfaengerbestimmte Qualitaet ueber Direct- und Media-Agent-Pfade",
+      "task_ids": ["BME-015"],
+      "status": "done"
     }
   ],
   "tasks": [
@@ -270,17 +276,32 @@
         "Cross-Compile-/Checksum-Gates bauen die deklarierten Plattformartefakte reproduzierbar; mindestens der reale Linux-Laptop-Installer registriert einen neuen Agenten, authentisiert ihn nach Neustart erneut und kann ihn aus der App widerrufen.",
         "npm run check, Go-Race/Vet, Compose-/Image-/Secret-Gates, Commit, Push und Mini-PC-Rollout bestehen; nicht real ausgefuehrte macOS-/Windows-Installationen bleiben sichtbar unverified statt als bestanden behauptet."
       ]
+    },
+    {
+      "id": "BME-015",
+      "title": "Einheitliches empfaengerbestimmtes Qualitaetsprofil fuer Direct und Media-Agent implementieren",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["BME-009", "BME-010"],
+      "acceptance_criteria": [
+        "Die Angular-App bietet ein persistiertes allgemeines Empfangsprofil auto, niedrig, mittel, hoch oder nur Audio; ein vorhandener Agent-Schichtwert wird kompatibel migriert und keine Capture-API wird durch Laden oder Profilwechsel gestartet.",
+        "Ein geschlossener, groessenbegrenzter Peer-Control-Intent teilt die Auswahl jeder direkten Gegenstelle mit; der Publisher kombiniert sie pro Zielpeer ausschliesslich als zusaetzliche Video-Obergrenze mit eigener Strategie und Linkzustand, sodass ein Empfaenger weder andere Empfaenger hochstufen noch deren Pfad beeinflussen kann.",
+        "Dasselbe Profil begrenzt Kamera-Layer im Media-Agent-Pfad und deaktiviert bei nur Audio alle eigenen Remote-Video-Subscriptions, waehrend Mikrofon und Bildschirmton getrennt aktiv bleiben; Single-Layer-Bildschirmgrenzen und fehlende QoS-Garantien werden ehrlich erklaert.",
+        "Unit-, Multi-Peer-Isolations-, Direct-Sender-, Agent-Intent-, Persistenz- und UI-Tests sowie npm run check und npm run todos:validate bestehen; reale Chromium-/Firefox-Medienevidence wird sichtbar als bestanden oder offen dokumentiert."
+      ]
     }
   ],
-  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011", "BME-012", "BME-013", "BME-014"],
+  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011", "BME-012", "BME-013", "BME-014", "BME-015"],
   "tasks_status_summary": {
-    "total": 14,
-    "by_status": { "todo": 0, "in_progress": 2, "partial": 1, "blocked": 0, "done": 11 },
-    "progress_percent_done": 78.57,
-    "by_priority": { "P0": 10, "P1": 4, "P2": 0, "P3": 0 },
-    "by_risk": { "low": 0, "medium": 1, "high": 4, "critical": 9 },
-    "critical_path": { "total": 13, "done": 10, "remaining": 3 },
-    "milestones": { "total": 10, "todo": 0, "in_progress": 3, "blocked": 0, "done": 7 }
+    "total": 15,
+    "by_status": { "todo": 0, "in_progress": 2, "partial": 1, "blocked": 0, "done": 12 },
+    "progress_percent_done": 80,
+    "by_priority": { "P0": 10, "P1": 5, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 5, "critical": 9 },
+    "critical_path": { "total": 14, "done": 11, "remaining": 3 },
+    "milestones": { "total": 11, "todo": 0, "in_progress": 3, "blocked": 0, "done": 8 }
   },
   "progress_summary": {
     "state": "in_progress",
@@ -288,7 +309,7 @@
     "in_progress": 2,
     "partial": 1,
     "blocked": 0,
-    "done": 11
+    "done": 12
   },
   "summary_notes": [
     "PROD-NET-004 wird mit diesem Track aus dem Category-Backlog in ausfuehrbare Arbeit ueberfuehrt.",
@@ -311,6 +332,8 @@
     "BME-012 und BME-013 sind lokal abgeschlossen: persistente OIDC-Owner-Bindung, gehashte Einmaltickets, lokale P-256-Proof-of-Possession-Identitaet, kompatible HMAC-Authentisierung, sofortiger Widerruf sowie explizites Angular-Onboarding mit kontoeigener Liste und checksum-gebundenen Linux-/macOS-/Windows-Installern sind durch Node-, Go-, Schema- und Angular-Tests belegt. Kein Seitenladen oder Paneloeffnen startet Download, Installation, Capture, Portfreigabe oder Raumconsent; die fehlende kommerzielle Codesignatur wird sichtbar ausgewiesen.",
     "Der lokale BME-014-Gate ist am 2026-09-01 mit 86 Angular- und 90 Node-/Browser-/Integrationsfaellen einschliesslich Chromium und Firefox, Angular-Produktionsbuild, Go-Race/Vet, geschlossenen JSON-Schemas, beiden Compose-Validierungen, einem Produktionsimage mit allen fuenf Artefakten, HTTP-Artefakt-Smoke und npm-Produktionsaudit ohne Findings bestanden. Offen bleiben der reale OIDC-ausgeloeste Linux-Laptop-Installer samt Restart/Widerruf sowie echte macOS-/Windows-Geraetetests; diese Pfade werden nicht als verifiziert behauptet.",
     "Der erste Mini-PC-Recreate deckte eine bestehende betriebliche Kopplung auf: Docker-Caddy erwartete den Alias webrtc-room-server im externen Netz webrtc-edge. Ein versioniertes Compose-Override macht diese Verbindung nun recreate-fest; der temporaere Restore und der anschliessende direkte sowie oeffentliche HTTPS-Healthcheck waren erfolgreich.",
+    "BME-015 vereinheitlicht die bisher Agent-spezifische Empfangsschicht zu einem empfaengerbestimmten Profil fuer Direct- und Media-Agent-Pfade. Die Auswahl ist nur eine zusaetzliche per-Ziel-Obergrenze und verleiht Browsern weder Membership- noch fremde Medienautoritaet.",
+    "BME-015 ist am 2026-09-02 abgeschlossen: 95 Angular-Tests belegen Persistenz, Legacy-Migration, geschlossenen Control-Intent, per-Peer-Isolation, Agent-Subscriptions, Audio-only und UI; der reale Chromium-Direct-Pfad beobachtete 120 kbit/s, 6 FPS, vierfache Skalierung sowie Video aus/an, Firefox spielte mit niedrigem Profil weiter. Der gesamte npm-run-check-Gate bestand mit 90 Node-/Browser-/Integrationsfaellen und Produktionsbuild; der credential-abhaengige Keycloak-/TURN-Live-Gate blieb sichtbar uebersprungen.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
   ]
 }

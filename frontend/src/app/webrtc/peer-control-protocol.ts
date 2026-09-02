@@ -1,3 +1,5 @@
+import { ReceiveQualityProfile, isReceiveQualityProfile } from "./receive-quality-policy";
+
 export const MAX_CHAT_BYTES = 8_192;
 export const MAX_CONTROL_BYTES = 2_048;
 export const CHAT_BUFFER_LIMIT = 256_000;
@@ -6,6 +8,7 @@ export const CONTROL_BUFFER_LIMIT = 32_000;
 export type PeerControlMessage = Readonly<
   | { version: 1; type: "activity"; sequence: number; level: number }
   | { version: 1; type: "quality"; sequence: number; linkClass: "unknown" | "good" | "constrained" | "critical" }
+  | { version: 1; type: "receive-quality"; sequence: number; profile: ReceiveQualityProfile }
 >;
 
 export function parsePeerControl(raw: unknown): PeerControlMessage | null {
@@ -20,6 +23,11 @@ export function parsePeerControl(raw: unknown): PeerControlMessage | null {
       const level = Number(value["level"]);
       if (!Number.isFinite(level) || level < 0 || level > 1) return null;
       return { version: 1, type: "activity", sequence, level };
+    }
+    if (value["type"] === "receive-quality") {
+      if (Object.keys(value).some((key) => !new Set(["version", "type", "sequence", "profile"]).has(key))) return null;
+      if (!isReceiveQualityProfile(value["profile"])) return null;
+      return { version: 1, type: "receive-quality", sequence, profile: value["profile"] };
     }
     const linkClass = String(value["linkClass"]);
     if (value["type"] === "quality" && new Set(["unknown", "good", "constrained", "critical"]).has(linkClass)) {

@@ -83,6 +83,20 @@ describe("Room page information architecture", () => {
     expect(component).not.toContain("setParameters");
   });
 
+  it("offers one receiver-owned ceiling for direct and media-agent paths without capture", () => {
+    expect(template).toContain('id="receive-quality-profile-live"');
+    expect(template).toContain('id="receive-quality-profile"');
+    expect(template).toContain('id="receive-quality-description"');
+    expect(template).toContain("option of receiveQuality.options");
+    expect(template).toContain("zusätzliche Obergrenze nur für deinen Empfang");
+    expect(template).toContain("Agent-Bildschirm ist derzeit Single-Layer");
+    expect(template).not.toContain('id="media-agent-layer-limit"');
+    expect(component).toContain("this.mesh.setReceiveQualityProfile(value)");
+    expect(component).not.toContain("setMediaAgentLayerLimit");
+    expect(component).not.toContain("getUserMedia");
+    expect(component).not.toContain("getDisplayMedia");
+  });
+
   it("keeps native media-agent consent explicit and shows bounded takeover controls", () => {
     expect(template).toContain('id="media-agent-consent"');
     expect(template).toContain('id="media-agent-auto-takeover"');

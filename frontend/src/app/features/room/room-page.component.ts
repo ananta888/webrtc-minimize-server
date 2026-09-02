@@ -21,6 +21,7 @@ import { OptimizationMode } from "../../webrtc/media-optimization-policy";
 import { MediaPublicationService } from "../../webrtc/media-publication.service";
 import { MediaStrategyService } from "../../webrtc/media-strategy.service";
 import { PeerMeshService } from "../../webrtc/peer-mesh.service";
+import { ReceiveQualityPreferenceService } from "../../webrtc/receive-quality-preference.service";
 import { RoomMode, RoomSessionService } from "../../webrtc/room-session.service";
 import { SignalingService } from "../../webrtc/signaling.service";
 import { VideoCapturePreferencesService, VideoCaptureSource } from "../../webrtc/video-capture-preferences.service";
@@ -100,6 +101,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     readonly mediaAgents: BlindMediaAgentService,
     readonly media: MediaPublicationService,
     readonly mediaStrategy: MediaStrategyService,
+    readonly receiveQuality: ReceiveQualityPreferenceService,
     readonly videoPreferences: VideoCapturePreferencesService,
     readonly directory: RoomDirectoryService,
     readonly workspaces: PairWorkspaceService,
@@ -334,8 +336,8 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     }
   }
 
-  setMediaAgentLayerLimit(value: unknown): void {
-    if (this.mediaAgents.setLayerLimit(value)) this.mesh.refreshAgentSubscriptionIntents();
+  setReceiveQualityProfile(value: unknown): void {
+    this.mesh.setReceiveQualityProfile(value);
   }
 
   async downloadMediaAgentInstaller(): Promise<void> {

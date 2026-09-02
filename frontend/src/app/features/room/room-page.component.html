@@ -331,6 +331,12 @@
                 </select>
               </label>
               <label>Adaptive Video-Regel<select id="optimization-mode" [ngModel]="mesh.optimizationMode()" (ngModelChange)="setOptimizationMode($event)"><option value="auto">Auto · Active Speaker</option><option value="balanced">Alle als Vorschau</option><option value="data-saver">Datensparend</option></select></label>
+              <label>Mein Empfang
+                <select id="receive-quality-profile-live" [ngModel]="receiveQuality.profile()" (ngModelChange)="setReceiveQualityProfile($event)">
+                  @for (option of receiveQuality.options; track option.id) { <option [value]="option.id">{{ option.label }}</option> }
+                </select>
+              </label>
+              <p class="hint">{{ receiveQuality.description() }}</p>
               <p class="hint">Priorität: {{ mediaLabel(mediaStrategy.priorityOrder()[0]) }} → {{ mediaLabel(mediaStrategy.priorityOrder()[1]) }} → {{ mediaLabel(mediaStrategy.priorityOrder()[2]) }}</p>
               <p id="active-speakers" class="hint">Fokus: {{ mesh.activeSpeakerNames().length ? mesh.activeSpeakerNames().join(', ') : 'stabile Teilnehmerreihenfolge' }}</p>
               @if (config.value()?.optimization?.peerRelayEnabled && config.value()?.mediaE2ee?.mode === 'disabled') {
@@ -400,6 +406,16 @@
             </section>
 
             <label>Adaptive Video-Regel<select id="adaptive-video-mode" [ngModel]="mesh.optimizationMode()" (ngModelChange)="setOptimizationMode($event)"><option value="auto">Auto · Active Speaker</option><option value="balanced">Alle als Vorschau</option><option value="data-saver">Datensparend</option></select></label>
+            <section class="strategy-setting-group" aria-labelledby="receive-quality-heading">
+              <div><p class="eyebrow">Eingehende Medien</p><h3 id="receive-quality-heading">Meine Empfangsqualität</h3></div>
+              <label>Obergrenze
+                <select id="receive-quality-profile" [ngModel]="receiveQuality.profile()" (ngModelChange)="setReceiveQualityProfile($event)">
+                  @for (option of receiveQuality.options; track option.id) { <option [value]="option.id">{{ option.label }}</option> }
+                </select>
+              </label>
+              <p id="receive-quality-description" class="hint">{{ receiveQuality.description() }}</p>
+              <p class="hint">Die Auswahl wirkt sofort als zusätzliche Obergrenze nur für deinen Empfang. Direkte Gegenstellen begrenzen ihre separate Senderinstanz; ein Media-Agent wählt höchstens die gewünschte Kamera-Schicht. Automatik, Sender und Netz dürfen weiter reduzieren. Agent-Bildschirm ist derzeit Single-Layer und deshalb nur mit „Nur Audio“ vollständig abwählbar. Dient dein Browser im optionalen Legacy-Modus als Trusted Relay, bleibt dessen gemeinsamer Eingang für nachgelagerte Teilnehmer ungekürzt.</p>
+            </section>
             <dl class="fact-list">
               <div><dt>Eigene Videoqualität</dt><dd id="local-quality">{{ mesh.localQuality() }}</dd></div>
               <div><dt>Linkklasse</dt><dd id="link-quality">{{ mesh.linkSummary() }}</dd></div>
@@ -550,14 +566,7 @@
                   <input id="media-agent-auto-takeover" type="checkbox" [disabled]="!mediaAgents.consentEnabled()" [ngModel]="mediaAgents.automaticTakeover()" (ngModelChange)="setMediaAgentAutomaticTakeover($event)">
                   <span><strong>Bei Ausfall automatisch übernehmen</strong><small>Ausgeschaltet erscheint zuerst eine sichtbare Übernahmeanfrage.</small></span>
                 </label>
-                <label>Maximale empfangene Kamera-Schicht
-                  <select id="media-agent-layer-limit" [ngModel]="mediaAgents.layerLimit()" (ngModelChange)="setMediaAgentLayerLimit($event)">
-                    <option value="auto">Automatisch · bis hoch</option>
-                    <option value="low">Niedrig · Vorschau</option>
-                    <option value="medium">Mittel · ausgewogen</option>
-                    <option value="high">Hoch · Fokus</option>
-                  </select>
-                </label>
+                <p class="hint">Die allgemeine Einstellung „Meine Empfangsqualität“ steuert auch die maximale Kamera-Schicht dieses Agent-Pfads.</p>
               } @else {
                 <p class="hint">In der aktuellen Raumsitzung ist noch kein eigener Agent verfügbar. Installiere ihn oben oder aktualisiere nach dem Start; direkte Browserverbindungen bleiben der Fallback.</p>
               }

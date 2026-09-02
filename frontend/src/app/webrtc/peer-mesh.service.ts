@@ -54,6 +54,13 @@ import { PeerTopologyController } from "./peer-topology-controller";
 import { TrustedRelayController } from "./trusted-relay-controller";
 import { PeerQualityController } from "./peer-quality-controller";
 import { MediaStrategyService } from "./media-strategy.service";
+import {
+  ReceiveQualityProfile,
+  capVideoQualityForReceiver,
+  mediaAgentCameraLayerCeiling,
+  receiveVideoEnabled,
+} from "./receive-quality-policy";
+import { ReceiveQualityPreferenceService } from "./receive-quality-preference.service";
 
 interface PeerState extends ManagedPeer {
   readonly overlayQueue: BoundedOverlayQueue;
@@ -179,6 +186,7 @@ export class PeerMeshService {
   readonly mediaAgentPrimaryId = this.mediaAgents.primaryAgentId;
   readonly mediaAgentRouteEpoch = this.mediaAgents.routeEpoch;
   readonly optimizationMode = this.mediaStrategy.optimizationMode;
+  readonly receiveQualityProfile = this.receiveQuality.profile;
   readonly relayConsent = signal(false);
   readonly relayCapability = signal<"idle" | "available" | "unsupported">("idle");
   readonly qualityCapability = signal<"probing" | "available" | "degraded">("probing");
@@ -204,6 +212,7 @@ export class PeerMeshService {
   private readonly descriptors = new Map<string, Pick<Publication, "rootPeerId" | "rootName" | "source">>();
   private readonly topology = new PeerTopologyController(() => {
     this.topologyMode.set("adaptive_mesh");
+    this.applyReceivePlaybackPreference();
     this.reconcileAllPublications();
   });
   private readonly relay = new TrustedRelayController(this.topology);
@@ -227,6 +236,8 @@ export class PeerMeshService {
   private readonly agentMediaKeys = new Map<string, AgentMediaKeyState>();
   private readonly agentSubscriptionReady = new Map<string, Set<string>>();
   private readonly agentSubscriptionRevisions = new Map<string, number>();
+  private readonly requestedReceiveProfiles = new Map<string, ReceiveQualityProfile>();
+  private readonly sentReceiveProfiles = new Map<string, ReceiveQualityProfile>();
   private membershipStable = false;
   private roomId = "";
   private optimization: OptimizationRuntimeConfig = {
@@ -253,6 +264,7 @@ export class PeerMeshService {
     private readonly activity: AudioActivityService,
     private readonly mediaStrategy: MediaStrategyService,
     private readonly mediaAgents: BlindMediaAgentService,
+    private readonly receiveQuality: ReceiveQualityPreferenceService,
   ) {}
 
   initialize(
@@ -322,6 +334,7 @@ export class PeerMeshService {
     const peer = this.connections?.add(peerId, name) as PeerState | null;
     if (!peer) return;
     Object.defineProperty(peer, "overlayQueue", { value: new BoundedOverlayQueue(), enumerable: true });
+    this.requestedReceiveProfiles.set(peerId, "auto");
     this.participantNames.set(peerId, peer.name);
     if (this.membershipEpoch() > 0) this.membershipStable = false;
     this.participantCount.set(this.peers.size + 1);
@@ -456,6 +469,7 @@ export class PeerMeshService {
       this.rotateMediaKeys();
     }
     this.topologyMode.set(this.topology.mode(this.ownId));
+    this.applyReceivePlaybackPreference();
     this.reconcileAllPublications();
     this.provisionAgentMediaKeys();
   }
@@ -520,11 +534,21 @@ export class PeerMeshService {
     this.refreshAgentSubscriptionIntents();
   }
 
+  setReceiveQualityProfile(value: unknown): boolean {
+    if (!this.receiveQuality.setProfile(value)) return false;
+    this.applyReceivePlaybackPreference();
+    for (const peer of this.peers.values()) this.sendReceiveQualityTo(peer);
+    void this.applyQualityPolicies(true);
+    this.refreshAgentSubscriptionIntents();
+    return true;
+  }
+
   refreshAgentSubscriptionIntents(): void {
     const activeIds = this.focusPeerIds();
     const screenActive = [...this.descriptors.values()].some(({ source }) => source === "screen");
-    const configuredLimit = this.mediaAgents.layerLimit();
-    const maximumVideoLayer = configuredLimit === "auto" ? "high" : configuredLimit;
+    const receiveProfile = this.receiveQuality.profile();
+    const videoEnabled = receiveVideoEnabled(receiveProfile);
+    const maximumVideoLayer = mediaAgentCameraLayerCeiling(receiveProfile);
     for (const [publicationId, descriptor] of this.descriptors) {
       if (descriptor.rootPeerId === this.ownId) continue;
       let enabled = true;
@@ -534,6 +558,7 @@ export class PeerMeshService {
         preferredLayer = "audio";
         maximumLayer = "audio";
       } else if (descriptor.source === "screen") {
+        enabled = videoEnabled;
         preferredLayer = "single";
         maximumLayer = "single";
       } else {
@@ -545,7 +570,7 @@ export class PeerMeshService {
           linkClass: this.linkSummary(),
           screenActive,
         });
-        enabled = quality.active;
+        enabled = videoEnabled && quality.active;
         const desired = agentLayerForTier(quality.tier);
         preferredLayer = AGENT_VIDEO_LAYER_RANK[desired] > AGENT_VIDEO_LAYER_RANK[maximumVideoLayer]
           ? maximumVideoLayer : desired;
@@ -638,6 +663,8 @@ export class PeerMeshService {
     this.updateOverlayAvailability();
     this.participantNames.delete(peerId);
     this.activity.removePeer(peerId);
+    this.requestedReceiveProfiles.delete(peerId);
+    this.sentReceiveProfiles.delete(peerId);
     for (const publication of [...this.publications.values()]) {
       if (!publication.local && publication.inboundPeerId === peerId) this.removePublication(publication.id);
     }
@@ -672,6 +699,8 @@ export class PeerMeshService {
     this.remoteMedia.set([]);
     this.publications.clear();
     this.descriptors.clear();
+    this.requestedReceiveProfiles.clear();
+    this.sentReceiveProfiles.clear();
     this.localStreams.clear();
     this.overlay.destroy();
     this.overlayGeneration += 1;
@@ -759,6 +788,7 @@ export class PeerMeshService {
       inboundPeerId: `agent:${input.agentId}`,
     };
     this.publications.set(publication.id, publication);
+    this.applyReceivePlaybackPreference();
     this.replaceRemoteView(publication);
     if (input.track.kind === "audio") this.activity.observe(publication.rootPeerId, input.track);
     input.track.onended = () => {
@@ -836,6 +866,7 @@ export class PeerMeshService {
     }
     if (current && !current.local) this.discardInboundForReplacement(current);
     this.publications.set(publication.id, publication);
+    this.applyReceivePlaybackPreference();
     this.replaceRemoteView(publication);
     if (track.kind === "audio") this.activity.observe(publication.rootPeerId, track);
     track.onended = () => {
@@ -1026,7 +1057,10 @@ export class PeerMeshService {
     };
     channel.onopen = () => {
       if (kind === "chat") this.addChat("System", `${peer.name}: Peer-Chat verbunden`, true);
-      else if (kind === "control") this.sendActivityTo(peer);
+      else if (kind === "control") {
+        this.sendActivityTo(peer);
+        this.sendReceiveQualityTo(peer, true);
+      }
       else {
         this.flushOverlayQueue(peer);
         this.updateOverlayAvailability();
@@ -1047,7 +1081,12 @@ export class PeerMeshService {
       if (!message || message.sequence <= peer.lastControlSequence) return;
       peer.lastControlSequence = message.sequence;
       if (message.type === "activity") this.activity.acceptPeerLevel(peer.id, message.level);
-      else peer.reportedLinkClass = message.linkClass;
+      else if (message.type === "quality") peer.reportedLinkClass = message.linkClass;
+      else if (this.requestedReceiveProfiles.get(peer.id) !== message.profile) {
+        // The bounded 500 ms policy cycle coalesces rapid peer changes and applies only the
+        // latest per-target ceiling instead of letting control traffic trigger encoder work.
+        this.requestedReceiveProfiles.set(peer.id, message.profile);
+      }
     };
   }
 
@@ -1069,6 +1108,22 @@ export class PeerMeshService {
     channel.send(JSON.stringify({ version: 1, type: "quality", sequence: ++this.controlSequence, linkClass: peer.linkClass }));
   }
 
+  private sendReceiveQualityTo(peer: PeerState, force = false): void {
+    const channel = peer.channels.get("control");
+    if (channel?.readyState !== "open" || channel.bufferedAmount >= CONTROL_BUFFER_LIMIT) return;
+    const profile = this.receiveQuality.profile();
+    if (!force && this.sentReceiveProfiles.get(peer.id) === profile) return;
+    try {
+      channel.send(JSON.stringify({
+        version: 1,
+        type: "receive-quality",
+        sequence: ++this.controlSequence,
+        profile,
+      }));
+      this.sentReceiveProfiles.set(peer.id, profile);
+    } catch { /* a later quality sample retries while the channel remains open */ }
+  }
+
   private startTimers(): void {
     this.activityTimer = setInterval(() => {
       for (const peer of this.peers.values()) this.sendActivityTo(peer);
@@ -1086,6 +1141,7 @@ export class PeerMeshService {
 
   private async sampleQuality(): Promise<void> {
     for (const peer of this.peers.values()) {
+      this.sendReceiveQualityTo(peer);
       try {
         const { availableOutgoingBitrate, roundTripTime, lossRatio } = await this.quality.sample(peer);
         peer.healthSamples = Math.min(10_000, peer.healthSamples + 1);
@@ -1149,12 +1205,17 @@ export class PeerMeshService {
           screenActive,
         });
         const prioritizedQuality = this.mediaStrategy.prioritizeVideo(publication.source, quality);
+        const targetQuality = capVideoQualityForReceiver(
+          publication.source,
+          prioritizedQuality,
+          this.requestedReceiveProfileFor(publication, peer.id),
+        );
         const capability = await this.quality.applyVideo(
           peer,
           publicationId,
           sender,
           publication.source,
-          prioritizedQuality,
+          targetQuality,
           this.mediaStrategy.priority(publication.source),
           force,
         );
@@ -1207,6 +1268,22 @@ export class PeerMeshService {
     }
     this.localQuality.set(ownQuality);
     this.refreshAgentSubscriptionIntents();
+  }
+
+  private requestedReceiveProfileFor(publication: Publication, targetPeerId: string): ReceiveQualityProfile {
+    // A legacy trusted relay needs one upstream rendition for its descendants. Letting its
+    // local preference lower that shared input would silently lower other recipients too.
+    if (this.routeChildren(publication.rootPeerId, targetPeerId).size > 0) return "auto";
+    return this.requestedReceiveProfiles.get(targetPeerId) || "auto";
+  }
+
+  private applyReceivePlaybackPreference(): void {
+    const videoEnabled = receiveVideoEnabled(this.receiveQuality.profile());
+    for (const publication of this.publications.values()) {
+      if (publication.local || publication.track.kind !== "video") continue;
+      const sharedRelayInput = this.routeChildren(publication.rootPeerId, this.ownId).size > 0;
+      publication.track.enabled = videoEnabled || sharedRelayInput;
+    }
   }
 
   private addChat(author: string, text: string, system: boolean): void {
