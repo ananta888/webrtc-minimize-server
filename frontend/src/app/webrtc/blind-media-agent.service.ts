@@ -73,6 +73,7 @@ interface AgentConnection extends ManagedPeer {
   readonly agentId: string;
   readonly pendingCandidates: Array<RTCIceCandidateInit | null>;
   remoteTrackBindings: ReadonlyMap<string, MediaAgentRemoteTrackBinding>;
+  needsNegotiation: boolean;
   connected: boolean;
 }
 
@@ -277,7 +278,10 @@ export class BlindMediaAgentService {
         if (!remoteTrackBindings) throw new Error("invalid_media_agent_sdp_binding");
         const collision = description.type === "offer"
           && (connection.makingOffer || connection.pc.signalingState !== "stable");
-        if (collision) await connection.pc.setLocalDescription({ type: "rollback" });
+        if (collision) {
+          connection.needsNegotiation = true;
+          await connection.pc.setLocalDescription({ type: "rollback" });
+        }
         connection.settingRemoteAnswerPending = description.type === "answer";
         const previousRemoteTrackBindings = connection.remoteTrackBindings;
         connection.remoteTrackBindings = remoteTrackBindings;
@@ -297,6 +301,9 @@ export class BlindMediaAgentService {
         if (description.type === "offer") {
           await connection.pc.setLocalDescription();
           this.sendSignal(signal.agentId, { description: connection.pc.localDescription });
+        }
+        if (connection.needsNegotiation && connection.pc.signalingState === "stable") {
+          void this.negotiate(connection);
         }
         return;
       }
@@ -382,6 +389,7 @@ export class BlindMediaAgentService {
         return false;
       }
       connection.senders.set(input.publicationId, sender);
+      void this.negotiate(connection);
       return true;
     } catch { return false; }
   }
@@ -392,6 +400,7 @@ export class BlindMediaAgentService {
       if (!sender) continue;
       try { connection.pc.removeTrack(sender); } catch { /* already closed */ }
       connection.senders.delete(publicationId);
+      void this.negotiate(connection);
     }
   }
 
@@ -583,6 +592,7 @@ export class BlindMediaAgentService {
       connected: false,
       pendingCandidates: [],
       remoteTrackBindings: new Map(),
+      needsNegotiation: false,
     };
     this.connections.set(agentId, connection);
     pc.onicecandidate = ({ candidate }) => this.sendSignal(agentId, { candidate });
@@ -636,11 +646,24 @@ export class BlindMediaAgentService {
   }
 
   private async negotiate(connection: AgentConnection): Promise<void> {
+    connection.needsNegotiation = true;
+    if (connection.makingOffer || connection.pc.signalingState !== "stable") return;
+    connection.needsNegotiation = false;
+    connection.makingOffer = true;
+    let offerCreated = false;
     try {
-      connection.makingOffer = true;
       await connection.pc.setLocalDescription();
       this.sendSignal(connection.agentId, { description: connection.pc.localDescription });
-    } catch { this.status.set("error"); } finally { connection.makingOffer = false; }
+      offerCreated = true;
+    } catch {
+      connection.needsNegotiation = true;
+      this.status.set("error");
+    } finally {
+      connection.makingOffer = false;
+      if (offerCreated && connection.needsNegotiation && connection.pc.signalingState === "stable") {
+        queueMicrotask(() => void this.negotiate(connection));
+      }
+    }
   }
 
   private sendSignal(agentId: string, payload: object): void {

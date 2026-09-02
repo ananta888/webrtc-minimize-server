@@ -350,6 +350,58 @@ describe("blind media-agent browser adapter", () => {
     expect(pc.candidates).toEqual([{ candidate: "candidate:1 1 UDP 1 192.0.2.1 45000 typ host" }]);
   });
 
+  it("retries a negotiation requested while a local offer is outstanding", async () => {
+    service.updateMembershipEpoch(3);
+    expect(service.applyRoute({
+      version: 3,
+      type: "media-agent-state",
+      enabled: true,
+      membershipEpoch: 3,
+      routeEpoch: 5,
+      leaseExpiresAt: now + 30_000,
+      primary: { id: "owner-edge", ownerPeerId: ownPeerId, creatorPreferred: true },
+      standbys: [],
+      forwarderIds: ["owner-edge"],
+      publisherAssignments: [{ peerId: ownPeerId, agentId: "owner-edge" }],
+      subscriberAssignments: [{ peerId: ownPeerId, agentId: "owner-edge" }],
+      federationLinks: [],
+      federationRoutes: [],
+      readiness: [{ agentId: "owner-edge", readyPeerIds: [] }],
+    }, new Set([ownPeerId]))).toBe(true);
+    const pc = FakePeerConnection.instances[0];
+    let offers = 0;
+    pc.setLocalDescription = async (description?: RTCSessionDescriptionInit): Promise<void> => {
+      if (description?.type === "rollback") {
+        pc.localDescription = null;
+        pc.signalingState = "stable";
+        return;
+      }
+      offers += 1;
+      pc.localDescription = { type: "offer", sdp: `v=0\r\na=x-offer:${offers}\r\n` } as RTCSessionDescription;
+      pc.signalingState = "have-local-offer";
+    };
+    pc.setRemoteDescription = async (description: RTCSessionDescriptionInit): Promise<void> => {
+      pc.remoteDescription = description as RTCSessionDescription;
+      if (description.type === "answer") pc.signalingState = "stable";
+    };
+
+    pc.onnegotiationneeded?.(new Event("negotiationneeded"));
+    await vi.waitFor(() => expect(offers).toBe(1));
+    pc.onnegotiationneeded?.(new Event("negotiationneeded"));
+    expect(offers).toBe(1);
+
+    await service.acceptSignal({
+      version: 1,
+      type: "media-agent-signal",
+      agentId: "owner-edge",
+      roomId: "room-123456",
+      routeEpoch: 5,
+      description: { type: "answer", sdp: "v=0\r\n" },
+    });
+
+    await vi.waitFor(() => expect(offers).toBe(2));
+  });
+
   it("quarantines an early inbound track until matching server authority arrives", () => {
     const remotePeerId = "fedcba9876543210";
     const acceptTrack = vi.fn(() => true);
