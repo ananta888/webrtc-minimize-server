@@ -32,6 +32,7 @@ export class MediaPublicationService {
   readonly screenAudioActive = signal(false);
   private readonly streams = new Map<LocalMediaSource, MediaStream>();
   private readonly microphoneStopListeners = new Set<() => void>();
+  private readonly screenAudioStopListeners = new Set<() => void>();
   private readonly constraintUpdates: Record<VideoCaptureSource, Promise<void>> = {
     camera: Promise.resolve(),
     screen: Promise.resolve(),
@@ -117,9 +118,9 @@ export class MediaPublicationService {
       return;
     }
     if (source === "microphone") {
-      for (const listener of this.microphoneStopListeners) {
-        try { listener(); } catch { /* a consumer cannot block capture shutdown */ }
-      }
+      this.notifyStopListeners(this.microphoneStopListeners);
+    } else if (source === "screen" && stream.getAudioTracks().length > 0) {
+      this.notifyStopListeners(this.screenAudioStopListeners);
     }
     this.mesh.detachPublication(source);
     for (const track of stream.getTracks()) {
@@ -145,9 +146,18 @@ export class MediaPublicationService {
     return this.streams.get("microphone")?.getAudioTracks()[0] || null;
   }
 
+  screenAudioTrack(): MediaStreamTrack | null {
+    return this.streams.get("screen")?.getAudioTracks()[0] || null;
+  }
+
   registerMicrophoneStopListener(listener: () => void): () => void {
     this.microphoneStopListeners.add(listener);
     return () => this.microphoneStopListeners.delete(listener);
+  }
+
+  registerScreenAudioStopListener(listener: () => void): () => void {
+    this.screenAudioStopListeners.add(listener);
+    return () => this.screenAudioStopListeners.delete(listener);
   }
 
   async setVideoResolution(source: VideoCaptureSource, resolutionId: unknown): Promise<void> {
@@ -260,8 +270,15 @@ export class MediaPublicationService {
     const stream = this.streams.get("screen");
     if (!stream || !stream.getTracks().includes(track)) return;
     track.onended = null;
+    this.notifyStopListeners(this.screenAudioStopListeners);
     this.mesh.detachPublicationTrack("screen", track);
     if (track.readyState !== "ended") track.stop();
     this.screenAudioActive.set(stream.getAudioTracks().length > 0);
+  }
+
+  private notifyStopListeners(listeners: ReadonlySet<() => void>): void {
+    for (const listener of listeners) {
+      try { listener(); } catch { /* a consumer cannot block capture shutdown */ }
+    }
   }
 }

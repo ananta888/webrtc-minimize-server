@@ -29,11 +29,13 @@ Bildschirmfreigabe ist standardmäßig video-only. Bildschirmton muss unter `Ein
 Unter `Untertitel` stehen 13 fest erlaubte, direkt nachladbare Vosk-Modelle von
 Deutsch und zwei Englischvarianten bis Mandarin, Persisch, Russisch, Türkisch
 und Vietnamesisch bereit. Auswahl und Laden fordern keine Aufnahmeberechtigung
-an. Nach dem bewussten Mikrofonstart verarbeitet ein isolierter WebAssembly-
-Worker ausschließlich einen lokalen Track-Clone; Empfänger benötigen kein
-eigenes Modell. Begrenzte Textupdates laufen über einen dedizierten WebRTC-
-DataChannel, nicht über die Signaling Control Plane, und der Verlauf bleibt
-flüchtig.
+an. Nach dem bewussten Mikrofonstart oder einer Bildschirmfreigabe mit Ton
+verarbeitet ein isolierter WebAssembly-Worker ausschließlich lokale Track-
+Clones; Mikrofon und Bildschirmton können mit getrennten Recognizern parallel
+laufen. Vor dem Start ist wählbar, ob Text nur im eigenen Browser erscheint
+oder über den dedizierten WebRTC-DataChannel an Raumpeers geht. Empfänger
+benötigen kein eigenes Modell. Die Signaling Control Plane sieht weder Audio
+noch Untertitel, und der Verlauf bleibt flüchtig.
 
 Die Archive sind je nach Sprache etwa 32 bis 49 MB groß, werden erst per Klick
 geladen und können im Browserprofil gecacht oder wieder gelöscht werden. Die

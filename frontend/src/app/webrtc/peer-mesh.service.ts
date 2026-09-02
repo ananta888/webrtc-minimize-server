@@ -152,6 +152,8 @@ export interface CaptionEntry {
   readonly text: string;
   readonly final: boolean;
   readonly local: boolean;
+  readonly source: CaptionWireMessage["source"];
+  readonly sharedWithRoom: boolean;
   readonly receivedAt: number;
 }
 
@@ -746,17 +748,22 @@ export class PeerMeshService {
     this.addChat(this.ownName || "Du", value, false);
   }
 
-  sendCaption(message: Omit<CaptionWireMessage, "version" | "type">): boolean {
+  sendCaption(
+    message: Omit<CaptionWireMessage, "version" | "type">,
+    shareWithRoom = true,
+  ): boolean {
     if (!this.ownId) return false;
     const payload = encodeCaptionMessage(message);
     if (!payload) return false;
     const parsed = parseCaptionMessage(payload);
     if (!parsed) return false;
-    for (const peer of this.peers.values()) {
-      const channel = peer.channels.get("captions");
-      if (channel?.readyState === "open" && channel.bufferedAmount < CAPTION_BUFFER_LIMIT) channel.send(payload);
+    if (shareWithRoom) {
+      for (const peer of this.peers.values()) {
+        const channel = peer.channels.get("captions");
+        if (channel?.readyState === "open" && channel.bufferedAmount < CAPTION_BUFFER_LIMIT) channel.send(payload);
+      }
     }
-    this.upsertCaption(this.ownId, this.ownName || "Du", parsed, true);
+    this.upsertCaption(this.ownId, this.ownName || "Du", parsed, true, shareWithRoom);
     return true;
   }
 
@@ -1181,7 +1188,7 @@ export class PeerMeshService {
         if (!this.captionRateLimiter.accept(peer.id)) return;
         const message = parseCaptionMessage(data);
         if (message && this.captionRevisions.accept(peer.id, message)) {
-          this.upsertCaption(peer.id, peer.name, message, false);
+          this.upsertCaption(peer.id, peer.name, message, false, true);
         }
         return;
       }
@@ -1523,7 +1530,13 @@ export class PeerMeshService {
     this.chat.update((entries) => [...entries.slice(-199), { id: ++this.chatSerial, author, text, system }]);
   }
 
-  private upsertCaption(peerId: string, author: string, message: CaptionWireMessage, local: boolean): void {
+  private upsertCaption(
+    peerId: string,
+    author: string,
+    message: CaptionWireMessage,
+    local: boolean,
+    sharedWithRoom: boolean,
+  ): void {
     const id = `${peerId}:${message.utteranceId}`;
     const entry: CaptionEntry = Object.freeze({
       id,
@@ -1533,6 +1546,8 @@ export class PeerMeshService {
       text: message.text,
       final: message.final,
       local,
+      source: message.source,
+      sharedWithRoom,
       receivedAt: Date.now(),
     });
     this.captions.update((entries) => {

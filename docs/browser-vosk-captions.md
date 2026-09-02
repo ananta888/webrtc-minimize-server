@@ -1,20 +1,29 @@
 # Lokale Live-Untertitel mit Vosk
 
 Stand: 2026-09-02. Die Angular-Anwendung kann Sprache freiwillig und lokal im
-Browser erkennen. Audio wird weder an den Node-Server noch an Vosk- oder andere
-Cloud-Dienste übertragen. Nur die daraus entstehenden begrenzten Textupdates
-werden an die bereits verbundenen Raumpeers gesendet.
+Browser erkennen. Als Quelle dient wahlweise ein bereits laufendes Mikrofon
+oder der bereits freigegebene Bildschirmton. Audio wird weder an den Node-
+Server noch an Vosk- oder andere Cloud-Dienste übertragen. Begrenzte
+Textupdates bleiben nach Wahl lokal oder werden an bereits verbundene
+Raumpeers gesendet.
 
 ## Bedienung
 
 1. Unter **Untertitel** ein Modell auswählen und **Modell direkt laden**
    anklicken. Auswahl und Download öffnen kein Mikrofon.
-2. Einem Raum beitreten und unter **Live** das Mikrofon mit dem eigenen Button
-   starten.
-3. Unter **Untertitel** auf **Untertitel starten** klicken.
-4. Die Einblendung über den Videokacheln kann lokal ein- oder ausgeschaltet
+2. Einem Raum beitreten und unter **Live** das Mikrofon starten oder unter
+   **Einstellungen → Video & Bandbreite** Bildschirmton aktivieren und danach
+   bewusst einen Tab/Bildschirm mit Ton teilen. Die Untertitelansicht startet
+   selbst keine Aufnahme.
+3. **Mikrofon** oder **Bildschirmton** auswählen und vor dem Start festlegen,
+   ob der erkannte Text nur lokal bleibt oder mit dem Raum geteilt wird.
+4. Die gewünschte Quelle starten. Beide Quellen können mit getrennten
+   Recognizern parallel laufen und einzeln gestoppt werden.
+5. Die Einblendung über den Videokacheln kann lokal ein- oder ausgeschaltet
    werden. **Untertitel stoppen**, Mikrofon-Stopp, Leave, Logout oder das
-   Schließen der Seite beendet die Erkennung.
+   Schließen der Seite beendet die betroffene beziehungsweise gesamte
+   Erkennung. Endet nur der Bildschirm-Audiotrack, läuft ein aktiver Mikrofon-
+   Recognizer weiter.
 
 Nur der Sprecher benötigt das Sprachmodell. Andere Teilnehmer erhalten dessen
 Text auf dem bereits bestehenden WebRTC-Pfad und müssen dafür weder ein Modell
@@ -62,19 +71,26 @@ Modell gleichzeitig im Worker aktiv.
 
 ```mermaid
 flowchart LR
-    Click["sichtbarer Nutzerklick"] --> ExistingMic["bereits aktiver Mikrofontrack"]
-    ExistingMic -->|"Track-Clone"| Worklet["AudioWorklet\n4096 Samples"]
+    Click["sichtbarer Nutzerklick"] --> ExistingAudio{"bereits aktive Audioquelle"}
+    ExistingAudio --> ExistingMic["Mikrofontrack"]
+    ExistingAudio --> ExistingScreen["Bildschirm-Audiotrack"]
+    ExistingMic -->|"eigener Track-Clone"| Worklet["AudioWorklet je Quelle\n4096 Samples"]
+    ExistingScreen -->|"eigener Track-Clone"| Worklet
     Worklet --> Worker["lokaler Vosk-WASM-Worker"]
     Worker --> State["max. 100 flüchtige UI-Zeilen"]
-    Worker --> Contract["Caption Contract v1\nText / Revision / Sprache"]
-    Contract --> DC["dedizierter geordneter\nWebRTC-DataChannel"]
+    Worker --> Contract["Caption Contract v2\nText / Revision / Sprache / Quelle"]
+    Contract --> Local["lokale Anzeige"]
+    Contract -->|"nur nach lokaler Wahl"| DC["dedizierter geordneter\nWebRTC-DataChannel"]
     DC --> Peers["aktuelle Raumpeers"]
     Signaling["Node Control Plane"] -.->|"sieht weder Audio noch Text"| DC
 ```
 
 Der `captions`-DataChannel ist zuverlässig und geordnet. Sein Contract ist
-additiv versioniert und akzeptiert ausschließlich die exakten Felder
-`version`, `type`, `utteranceId`, `revision`, `language`, `text` und `final`.
+additiv versioniert. Version 2 akzeptiert ausschließlich die exakten Felder
+`version`, `type`, `utteranceId`, `revision`, `language`, `text`, `final` und
+`source`; die Quelle ist nur `microphone` oder `screen-audio`. Exakte
+Version-1-Nachrichten bleiben kompatibel und werden als Mikrofonuntertitel
+interpretiert.
 Grenzen sind 500 Zeichen je Text, 2.048 Byte je Nachricht, 64 KB
 DataChannel-Backpressure und 24 Updates pro Peer in fünf Sekunden. Revisionen
 müssen monoton sein; unbekannte Felder oder Typen werden verworfen. Der
@@ -110,15 +126,19 @@ Downloadgröße benötigen und mehr Akku verbrauchen.
 
 ## Lifecycle und Verifikation
 
-- Der AudioGraph verwendet nur einen Clone eines bereits laufenden
-  Mikrofontracks und einen auf null gesetzten Ausgang; er spielt das Signal
-  nicht erneut ab.
-- Stop, Mikrofonende, Leave, Logout, Modellwechsel und Destroy schließen
-  Recognizer, Worklet, AudioContext, Track-Clone und Worker idempotent.
+- Jeder AudioGraph verwendet nur einen Clone eines bereits laufenden Mikrofon-
+  oder Bildschirm-Audiotracks und einen auf null gesetzten Ausgang; er spielt
+  das Signal nicht erneut ab.
+- Beide Quellen teilen höchstens ein geladenes Modell, besitzen aber getrennte
+  Recognizer, Worklets, AudioContexts, Revisionen und Timer. Das Ende einer
+  Quelle schließt nur deren Pipeline; der Worker endet nach der letzten Quelle.
+- Stop, Quellenende, Leave, Logout, Modellwechsel und Destroy schließen die
+  betroffenen Ressourcen idempotent.
 - Teilresultate werden höchstens alle 250 ms gesendet; Finalresultate sofort.
 - Der sichtbare Verlauf ist auf 100 Einträge begrenzt und verschwindet beim
   Verlassen oder Zerstören der Raumsitzung. Es entsteht keine Transkriptdatei.
 - Unit-Tests prüfen Modell-Allowlist, Runtime-Abbruch, Cleanup, Contract,
   Backpressure, Rate und Sprecherbindung. Der Browser-Gate prüft Chromium und
-  Firefox ohne Capture; ein lokaler Live-Smoke wurde zusätzlich mit zwei
-  Chromium-Identitäten, echtem WASM-Modell und AudioWorklet durchgeführt.
+  Firefox ohne Capture; lokale Live-Smokes verwenden zusätzlich zwei Chromium-
+  Identitäten, ein echtes WASM-Modell, AudioWorklet sowie einen bewusst
+  bereitgestellten Bildschirm-Audiotrack.

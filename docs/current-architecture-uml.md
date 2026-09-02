@@ -12,7 +12,8 @@ Browser-Ciphertext-DAG. Sie verwenden Mermaid, damit GitHub sie direkt rendert.
   Agent-Leases. Er transportiert keine Medienframes.
 - **Browser Data Plane:** getrennte Publikationen fuer Mikrofon, Kamera,
   Bildschirm und optionalen Bildschirmton; WebRTC-Medien, DataChannels und
-  freiwillige lokale Vosk-Erkennung aus einem Clone des aktiven Mikrofons.
+  freiwillige lokale Vosk-Erkennung aus getrennten Clones des aktiven
+  Mikrofons und/oder Bildschirmtons.
 - **Blind Media Edge Agent:** nativer Pion-Prozess. Er terminiert
   ICE/DTLS-SRTP, leitet aber nur bereits SFrame-verschluesselte RTP-Payloads
   weiter und erhaelt keinen SFrame-Schluessel.
@@ -59,7 +60,7 @@ flowchart LR
     UI --> Auth
     UI --> Media
     UI -->|"Modell- und Startklick"| Captions
-    Media -->|"aktiver Mikrofon-Clone"| Captions
+    Media -->|"aktiver Mikrofon- oder Bildschirmton-Clone"| Captions
     Auth <-->|"Authorization Code + PKCE"| Keycloak
     Session <-->|"HTTPS API + WSS Signaling"| Proxy
     Proxy <--> Node
@@ -68,7 +69,7 @@ flowchart LR
     Node --> AgentRegistry
 
     Mesh <-->|"DTLS-SRTP + SCTP\ndirekt oder ueber TURN"| Other
-    Captions -->|"Caption v1 ueber SCTP"| Mesh
+    Captions -->|"Caption v2 optional ueber SCTP"| Mesh
     Mesh -.->|"ICE-Fallback"| EdgeTurn
     Mesh -.->|"letzter ICE-Fallback"| InfraTurn
     Media --> E2EE
@@ -141,9 +142,9 @@ flowchart TB
     RoomSession --> Signaling
     RoomSession --> PeerMesh
     Capture --> PeerMesh
-    Capture -->|"aktiver Mikrofon-Clone"| CaptionRuntime
+    Capture -->|"aktive Mikrofon-/Bildschirmton-Clones"| CaptionRuntime
     CaptionModels --> CaptionRuntime
-    CaptionRuntime -->|"Caption v1"| PeerMesh
+    CaptionRuntime -->|"Caption v2 lokal oder Peer"| PeerMesh
     Strategy --> Quality
     PeerMesh --> PCM
     PeerMesh --> Quality
@@ -796,7 +797,7 @@ zum Bandbreitenengpass werden, ohne den Anwendungsfanout zu reduzieren.
 | Kamera | lokaler Browser nach Klick | jeder Raumpeer direkt/TURN | q/h/f zum Ingress; je Subscriber ein Layer ueber Egress | nein | nein, SFrame-Ciphertext |
 | Bildschirmvideo | lokaler Browser nach Klick | jeder Raumpeer direkt/TURN | Single-Layer ueber Ingress/Foederation/Egress | nein | nein, SFrame-Ciphertext |
 | Bildschirmton | lokaler Browser nach separater Zustimmung | jeder Raumpeer direkt/TURN | Single-Layer ueber Ingress/Foederation/Egress | nein | nein, SFrame-Ciphertext |
-| Lokale Vosk-Untertitel | Sprecherbrowser nach Modell-, Mikrofon- und Erkennungsklick | dedizierter direkter SCTP-DataChannel je Raumpeer | weiterhin direkte Browser-DataChannels, niemals Agent | nein | nein, nicht beteiligt |
+| Lokale Vosk-Untertitel | Sprecherbrowser nach Modell-, Quellen- und Erkennungsklick; Mikrofon/Bildschirmton getrennt | nach Wahl nur lokale UI oder dedizierter direkter SCTP-DataChannel je Raumpeer | weiterhin direkte Browser-DataChannels, niemals Agent | nein | nein, nicht beteiligt |
 | Chat/Control | Browser | direkte SCTP-DataChannels | weiterhin Browser-DataChannels | nein | nein, kein Medien-Agent-Pfad |
 | Overlay-Nutzdaten/Keys | Zielbrowser | direkter oder serverautorisierter Peer-Overlay | weiterhin Peer-Overlay, niemals Agent | nur Ciphertext/Metadaten | nein, nicht beteiligt |
 | SDP/ICE | Browser/Agent | ueber Node an geprueften Raumpeer | ueber Node an geprueften Agent/Peer | ja, aber nicht loggen | nur eigene ICE-/SDP-Sitzung |

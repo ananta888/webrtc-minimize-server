@@ -20,6 +20,7 @@ import { MediaControlBarComponent } from "../../shared/media-control-bar.compone
 import { MediaStreamDirective } from "../../shared/media-stream.directive";
 import { MediaMosaicComponent } from "../../shared/media-mosaic.component";
 import { BlindMediaAgentService } from "../../webrtc/blind-media-agent.service";
+import { CaptionAudioSource } from "../../webrtc/caption-contract";
 import { OptimizationMode } from "../../webrtc/media-optimization-policy";
 import { MediaPublicationService } from "../../webrtc/media-publication.service";
 import { MediaStrategyService } from "../../webrtc/media-strategy.service";
@@ -296,6 +297,14 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     if (!this.captions.active()) this.captionModels.select(modelId);
   }
 
+  setCaptionSource(source: unknown): void {
+    this.captions.selectSource(source);
+  }
+
+  setCaptionSharing(enabled: unknown): void {
+    this.captions.setShareWithRoom(enabled);
+  }
+
   async loadCaptionModel(): Promise<void> {
     this.clearMessages();
     await this.captionModels.loadSelected();
@@ -310,11 +319,16 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   }
 
   async toggleCaptions(): Promise<void> {
-    if (this.captions.active()) {
-      this.captions.stop();
+    const source = this.captions.selectedSource();
+    if (this.captions.isSourceActive(source)) {
+      this.captions.stop(source);
       return;
     }
-    await this.captions.start();
+    await this.captions.start(source);
+  }
+
+  stopAllCaptions(): void {
+    this.captions.stop();
   }
 
   setCaptionOverlay(enabled: unknown): void {
@@ -326,7 +340,11 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   }
 
   captionModelStatusLabel(): string {
-    if (this.captions.active()) return "Erkennung aktiv";
+    if (this.captions.active()) {
+      const count = this.captions.activeSources().length;
+      return count === 1 ? "Eine Quelle aktiv" : `${count} Quellen aktiv`;
+    }
+    if (this.captions.starting()) return "Erkennung startet";
     return {
       idle: "Nicht geladen",
       downloading: "Download läuft",
@@ -338,6 +356,28 @@ export class RoomPageComponent implements OnInit, OnDestroy {
 
   captionTime(timestamp: number): string {
     return new Date(timestamp).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
+  captionSourceLabel(source: CaptionAudioSource): string {
+    return source === "microphone" ? "Mikrofon" : "Bildschirmton";
+  }
+
+  captionSourceStatus(source: CaptionAudioSource): string {
+    if (this.captions.isSourceActive(source)) return "Transkription aktiv";
+    if (this.captions.isSourceStarting(source)) return "wird gestartet";
+    if (this.captions.sourceAvailable(source)) return "Audiotrack bereit";
+    if (source === "microphone") return "Mikrofon nicht aktiv";
+    if (this.media.active("screen") && this.videoPreferences.screenAudioEnabled()) {
+      return "kein Audiotrack vom Browser";
+    }
+    return "Bildschirmton nicht freigegeben";
+  }
+
+  captionActiveSourcesLabel(): string {
+    const sources = this.captions.activeSources();
+    return sources.length > 0
+      ? sources.map((source) => this.captionSourceLabel(source)).join(" + ")
+      : this.captionSourceLabel(this.captions.selectedSource());
   }
 
   setOptimizationMode(mode: OptimizationMode): void {

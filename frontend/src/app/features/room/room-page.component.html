@@ -307,7 +307,7 @@
               @if (captions.showOverlay() && captions.overlayEntries().length > 0) {
                 <div id="live-caption-overlay" class="live-caption-overlay" aria-live="polite" aria-label="Live-Untertitel">
                   @for (entry of captions.overlayEntries(); track entry.id) {
-                    <p [class.partial]="!entry.final"><strong>{{ entry.local ? 'Du' : entry.author }}</strong><span>{{ entry.text }}</span></p>
+                    <p [class.partial]="!entry.final"><strong>{{ entry.local ? 'Du' : entry.author }} · {{ captionSourceLabel(entry.source) }}</strong><span>{{ entry.text }}</span></p>
                   }
                 </div>
               }
@@ -341,8 +341,8 @@
 
             <section class="surface compact-panel caption-compact-panel">
               <div class="surface-heading small"><span class="feature-icon amber" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 10a3 3 0 10-6 2 3 3 0 006 2M20 10a3 3 0 10-6 2 3 3 0 006 2"/></svg></span><div><p class="eyebrow">Lokal mit Vosk</p><h2>Live-Untertitel</h2></div></div>
-              <p><strong>{{ captions.active() ? 'Erkennung aktiv' : (captionModels.ready() ? 'Modell bereit' : 'Modell noch nicht geladen') }}</strong></p>
-              <p class="hint">{{ captionModels.selectedModel().language }} · {{ captionModelSize(captionModels.selectedModel().sizeBytes) }}. Dein Audio wird lokal verarbeitet.</p>
+              <p><strong>{{ captions.active() ? captionModelStatusLabel() : (captionModels.ready() ? 'Modell bereit' : 'Modell noch nicht geladen') }}</strong></p>
+              <p class="hint">{{ captionModels.selectedModel().language }} · {{ captionModelSize(captionModels.selectedModel().sizeBytes) }} · {{ captionActiveSourcesLabel() }}. Der Vosk-Eingang bleibt lokal.</p>
               <button class="button ghost wide" type="button" (click)="show('captions')">Untertitel öffnen</button>
             </section>
 
@@ -392,7 +392,7 @@
 
       @if (activeSection() === 'captions') {
         <section class="view-header captions-header">
-          <div><button class="back-link" type="button" (click)="show('live')">← Zum Live-Raum</button><p class="eyebrow">Offline Speech-to-Text</p><h1>Live-Untertitel mit Vosk</h1><p>Die Erkennung läuft lokal in deinem Browser. Nur begrenzte Textupdates gehen direkt über WebRTC an die verbundenen Raumteilnehmer; die Signaling Control Plane erhält weder Audio noch Transkripte.</p></div>
+          <div><button class="back-link" type="button" (click)="show('live')">← Zum Live-Raum</button><p class="eyebrow">Offline Speech-to-Text</p><h1>Live-Untertitel mit Vosk</h1><p>Die Erkennung kann dein Mikrofon und bereits freigegebenen Bildschirmton lokal verarbeiten. Nur wenn du „Mit dem Raum teilen“ wählst, gehen begrenzte Textupdates direkt über WebRTC an die verbundenen Teilnehmer; die Signaling Control Plane erhält weder Audio noch Transkripte.</p></div>
           <span class="caption-status-badge" [class.active]="captions.active()" [attr.data-status]="captions.active() ? 'active' : captionModels.status()">{{ captionModelStatusLabel() }}</span>
         </section>
 
@@ -403,9 +403,30 @@
               <div><dt>Gewähltes Modell</dt><dd id="selected-caption-model">{{ captionModels.selectedModel().language }}</dd></div>
               <div><dt>Download</dt><dd>{{ captionModelSize(captionModels.selectedModel().sizeBytes) }}</dd></div>
               <div><dt>Lokale Kopie</dt><dd id="caption-model-cache-status">{{ captionModels.isCached(captionModels.selectedModelId()) ? 'gespeichert' : 'noch nicht geladen' }}</dd></div>
-              <div><dt>Mikrofon</dt><dd>{{ media.active('microphone') ? 'bereits freigegeben' : 'nicht aktiv' }}</dd></div>
-              <div><dt>Audioziel</dt><dd>nur dieser Browser</dd></div>
+              <div><dt>Gewählte Quelle</dt><dd id="selected-caption-source">{{ captionSourceLabel(captions.selectedSource()) }}</dd></div>
+              <div><dt>Quellenstatus</dt><dd>{{ captionSourceStatus(captions.selectedSource()) }}</dd></div>
+              <div><dt>Textausgabe</dt><dd id="caption-sharing-state">{{ captions.shareWithRoom() ? 'lokal und im Raum' : 'nur auf diesem Gerät' }}</dd></div>
+              <div><dt>Vosk-Audio</dt><dd>nur lokaler Track-Clone</dd></div>
             </dl>
+
+            <fieldset id="caption-source-picker" class="caption-source-picker">
+              <legend>Audioquelle auswählen</legend>
+              <label [class.selected]="captions.selectedSource() === 'microphone'" [class.active]="captions.isSourceActive('microphone')">
+                <input type="radio" name="captionAudioSource" value="microphone" [ngModel]="captions.selectedSource()" (ngModelChange)="setCaptionSource($event)">
+                <span><strong>Mikrofon</strong><small>Deine Sprache aus dem bereits gestarteten Mikrofon</small></span>
+                <em>{{ captionSourceStatus('microphone') }}</em>
+              </label>
+              <label [class.selected]="captions.selectedSource() === 'screen-audio'" [class.active]="captions.isSourceActive('screen-audio')">
+                <input type="radio" name="captionAudioSource" value="screen-audio" [ngModel]="captions.selectedSource()" (ngModelChange)="setCaptionSource($event)">
+                <span><strong>Bildschirmton</strong><small>Ton eines bewusst mit Audio geteilten Tabs oder Bildschirms</small></span>
+                <em>{{ captionSourceStatus('screen-audio') }}</em>
+              </label>
+            </fieldset>
+
+            <label class="agent-consent caption-sharing-setting" [class.locked]="captions.active() || captions.starting()">
+              <input id="caption-share-with-room" type="checkbox" [disabled]="captions.active() || captions.starting()" [ngModel]="captions.shareWithRoom()" (ngModelChange)="setCaptionSharing($event)">
+              <span><strong>Erkannten Text mit dem Raum teilen</strong><small>{{ captions.shareWithRoom() ? 'Lokale und entfernte Teilnehmer sehen neue Textupdates.' : 'Das Transkript bleibt ausschließlich in deinem Browser.' }} Vor dem Start festlegen.</small></span>
+            </label>
 
             @if (captionModels.status() === 'downloading' || captionModels.status() === 'preparing') {
               <div id="caption-model-progress" class="caption-progress" aria-live="polite">
@@ -416,16 +437,18 @@
             } @else {
               <div class="caption-actions">
                 <button id="load-vosk-model" class="button ghost" type="button" [disabled]="captions.active()" (click)="loadCaptionModel()">{{ captionModels.ready() ? 'Modell neu laden' : (captionModels.isCached(captionModels.selectedModelId()) ? 'Lokales Modell öffnen' : 'Modell direkt laden') }}</button>
-                <button id="toggle-live-captions" class="button primary" type="button" [class.danger]="captions.active()" [disabled]="captions.starting() || (!captions.active() && (!session.joined() || !media.active('microphone') || !captionModels.ready() || !captions.supported()))" (click)="toggleCaptions()">{{ captions.active() ? 'Untertitel stoppen' : (captions.starting() ? 'Starte…' : 'Untertitel starten') }}</button>
+                <button id="toggle-live-captions" class="button primary" type="button" [class.danger]="captions.isSourceActive(captions.selectedSource())" [disabled]="captions.starting() || (!captions.isSourceActive(captions.selectedSource()) && (!session.joined() || !captions.sourceAvailable(captions.selectedSource()) || !captionModels.ready() || !captions.supported()))" (click)="toggleCaptions()">{{ captions.isSourceActive(captions.selectedSource()) ? captionSourceLabel(captions.selectedSource()) + ' stoppen' : (captions.isSourceStarting(captions.selectedSource()) ? 'Starte…' : captionSourceLabel(captions.selectedSource()) + ' starten') }}</button>
               </div>
             }
+            @if (captions.activeSources().length > 1) { <button id="stop-all-captions" class="button ghost compact" type="button" (click)="stopAllCaptions()">Alle Untertitelquellen stoppen</button> }
             @if (!captions.supported()) { <p class="screen-audio-warning">Dieser Browser stellt AudioWorklet nicht bereit. Es erfolgt kein automatischer oder serverseitiger Fallback.</p> }
-            @if (!media.active('microphone')) { <p class="hint">Starte dein Mikrofon zuerst sichtbar im Live-Raum. Diese Seite fordert selbst keine Aufnahmeberechtigung an.</p> }
+            @if (captions.selectedSource() === 'microphone' && !captions.sourceAvailable('microphone')) { <p class="hint">Starte dein Mikrofon zuerst sichtbar im Live-Raum. Diese Seite fordert selbst keine Aufnahmeberechtigung an.</p> }
+            @if (captions.selectedSource() === 'screen-audio' && !captions.sourceAvailable('screen-audio')) { <p class="hint">Aktiviere Bildschirmton unter „Einstellungen → Video &amp; Bandbreite“ und teile anschließend per sichtbarem Klick einen Tab oder Bildschirm mit Ton. Ob Audio verfügbar ist, entscheidet der Browser.</p> }
             <label class="agent-consent caption-overlay-setting">
               <input id="caption-overlay-enabled" type="checkbox" [ngModel]="captions.showOverlay()" (ngModelChange)="setCaptionOverlay($event)">
               <span><strong>Untertitel über dem Live-Video einblenden</strong><small>Wirkt nur auf deinem Gerät und kann jederzeit ausgeschaltet werden.</small></span>
             </label>
-            <p class="caption-privacy-note">Keine Transkriptdatei wird erzeugt. Beim Verlassen des Raums verschwinden alle Untertitel aus dem erreichbaren Browserzustand. Erkennung kann Fehler enthalten und ist keine verlässliche Gesprächsdokumentation.</p>
+            <p class="caption-privacy-note">Mikrofon und Bildschirmton können parallel transkribiert werden; jede Quelle lässt sich einzeln stoppen. Keine Transkriptdatei wird erzeugt. Beim Verlassen des Raums verschwinden alle Untertitel aus dem erreichbaren Browserzustand. Erkennung kann Fehler enthalten und ist keine verlässliche Gesprächsdokumentation.</p>
           </section>
 
           <section class="surface caption-transcript-card" aria-labelledby="caption-transcript-heading">
@@ -433,11 +456,11 @@
             <div id="caption-transcript" class="caption-transcript" aria-live="polite">
               @for (entry of captions.recentEntries(); track entry.id) {
                 <article [class.partial]="!entry.final" [class.local]="entry.local">
-                  <div><strong>{{ entry.local ? 'Du' : entry.author }}</strong><span>{{ entry.language }}</span><time>{{ captionTime(entry.receivedAt) }}</time></div>
+                  <div><strong>{{ entry.local ? 'Du' : entry.author }}</strong><span class="caption-source-tag">{{ captionSourceLabel(entry.source) }}</span><span>{{ entry.language }}</span>@if (entry.local && !entry.sharedWithRoom) { <span class="caption-local-tag">nur lokal</span> }<time>{{ captionTime(entry.receivedAt) }}</time></div>
                   <p>{{ entry.text }}</p>
                 </article>
               } @empty {
-                <div class="list-empty"><span aria-hidden="true">CC</span><strong>Noch keine Untertitel</strong><p>Geladene Modelle starten nicht von selbst. Aktiviere zuerst Mikrofon und Erkennung.</p></div>
+                <div class="list-empty"><span aria-hidden="true">CC</span><strong>Noch keine Untertitel</strong><p>Geladene Modelle starten nicht von selbst. Aktiviere Mikrofon oder Bildschirmton und starte die gewünschte Quelle.</p></div>
               }
             </div>
           </section>

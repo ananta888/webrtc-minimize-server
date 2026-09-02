@@ -14,12 +14,25 @@ const valid = Object.freeze({
   language: "de-DE",
   text: "Guten Morgen",
   final: false,
+  source: "microphone" as const,
 });
 
 describe("caption peer contract", () => {
   it("round-trips a bounded versioned caption", () => {
     const encoded = encodeCaptionMessage(valid);
-    expect(parseCaptionMessage(encoded)).toEqual({ version: 1, type: "caption", ...valid });
+    expect(parseCaptionMessage(encoded)).toEqual({ version: 2, type: "caption", ...valid });
+  });
+
+  it("accepts exact v1 messages as microphone captions and rejects unknown v2 sources", () => {
+    const { source: _source, ...legacy } = valid;
+    expect(parseCaptionMessage(JSON.stringify({ version: 1, type: "caption", ...legacy }))).toEqual({
+      version: 1,
+      type: "caption",
+      ...legacy,
+      source: "microphone",
+    });
+    expect(parseCaptionMessage(JSON.stringify({ version: 2, type: "caption", ...valid, source: "system-audio" }))).toBeNull();
+    expect(parseCaptionMessage(JSON.stringify({ version: 1, type: "caption", ...valid }))).toBeNull();
   });
 
   it("rejects unknown fields, malformed identities, languages and oversized text", () => {

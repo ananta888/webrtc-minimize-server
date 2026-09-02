@@ -5,7 +5,7 @@ import { chromium, firefox } from "playwright";
 
 import { createAppServer } from "../src/server.js";
 
-test("Chromium and Firefox expose the fixed Vosk catalog without implicit download or capture", { timeout: 45_000 }, async (context) => {
+test("Chromium and Firefox expose Vosk sources, local sharing and the fixed catalog without implicit capture", { timeout: 45_000 }, async (context) => {
   const engines = [];
   for (const [name, engine] of [["Chromium", chromium], ["Firefox", firefox]]) {
     try {
@@ -74,6 +74,16 @@ test("Chromium and Firefox expose the fixed Vosk catalog without implicit downlo
       assert.equal(modelRequests, 0, `${name} downloaded a model before a click`);
       assert.deepEqual(await page.evaluate(() => window.__captionCaptureCalls), [], name);
       assert.equal(await page.locator("#toggle-live-captions").isDisabled(), true, name);
+
+      await page.locator('input[name="captionAudioSource"][value="screen-audio"]').check();
+      await page.waitForFunction(() => document.querySelector("#selected-caption-source")?.textContent?.trim() === "Bildschirmton");
+      assert.equal((await page.locator("#selected-caption-source").textContent()).trim(), "Bildschirmton", name);
+      assert.equal(await page.locator("#caption-share-with-room").isChecked(), true, name);
+      await page.locator("#caption-share-with-room").uncheck();
+      await page.waitForFunction(() => document.querySelector("#caption-sharing-state")?.textContent?.trim() === "nur auf diesem Gerät");
+      assert.equal((await page.locator("#caption-sharing-state").textContent()).trim(), "nur auf diesem Gerät", name);
+      assert.equal(modelRequests, 0, `${name} downloaded a model while selecting screen audio`);
+      assert.deepEqual(await page.evaluate(() => window.__captionCaptureCalls), [], name);
 
       await page.locator("#caption-model-search").fill("português");
       assert.equal(await page.locator("#caption-model-list .caption-model-option").count(), 1, name);

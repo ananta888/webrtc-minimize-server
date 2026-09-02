@@ -17,7 +17,7 @@ export class CaptionAudioGraphFactory {
 
   async connect(track: MediaStreamTrack, consume: CaptionPcmConsumer): Promise<CaptionAudioGraph> {
     if (!this.supported() || track.kind !== "audio" || track.readyState !== "live") {
-      throw new Error("AudioWorklet oder ein aktives Mikrofon ist in diesem Browser nicht verfügbar.");
+      throw new Error("AudioWorklet oder eine aktive Audioquelle ist in diesem Browser nicht verfügbar.");
     }
     const clone = track.clone();
     const context = new AudioContext({ latencyHint: "interactive" });

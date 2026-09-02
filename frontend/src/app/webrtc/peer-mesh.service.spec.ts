@@ -313,9 +313,31 @@ describe("PeerMeshService media-agent fallback", () => {
       language: "de-DE",
       text: "Lokaler Text",
       final: false,
+      source: "screen-audio",
     })).toBe(true);
     expect(outbound).toHaveBeenCalledOnce();
-    expect(service.captions()[0]).toMatchObject({ author: "Ada", text: "Lokaler Text", local: true });
+    expect(service.captions()[0]).toMatchObject({
+      author: "Ada",
+      text: "Lokaler Text",
+      local: true,
+      source: "screen-audio",
+      sharedWithRoom: true,
+    });
+
+    expect(service.sendCaption({
+      utteranceId: "cccccccccccccccc",
+      revision: 0,
+      language: "de-DE",
+      text: "Nur auf diesem Gerät",
+      final: true,
+      source: "microphone",
+    }, false)).toBe(true);
+    expect(outbound).toHaveBeenCalledOnce();
+    expect(service.captions().at(-1)).toMatchObject({
+      text: "Nur auf diesem Gerät",
+      local: true,
+      sharedWithRoom: false,
+    });
 
     const incomingChannel = {
       label: "captions",
@@ -336,6 +358,7 @@ describe("PeerMeshService media-agent fallback", () => {
       language: "en-US",
       text: "Remote text",
       final: true,
+      source: "screen-audio",
     })!;
     incomingChannel.onmessage?.({ data: incoming } as MessageEvent);
 
@@ -344,6 +367,8 @@ describe("PeerMeshService media-agent fallback", () => {
       author: "Grace",
       text: "Remote text",
       local: false,
+      source: "screen-audio",
+      sharedWithRoom: true,
     });
   });
 });

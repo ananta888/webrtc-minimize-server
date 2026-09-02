@@ -194,6 +194,9 @@ describe("MediaPublicationService", () => {
       audio: { restrictOwnAudio: true },
     });
     expect(service.screenAudioActive()).toBe(true);
+    expect(service.screenAudioTrack()).toBe(screen.audio);
+    const screenAudioStopped = vi.fn();
+    const unregister = service.registerScreenAudioStopListener(screenAudioStopped);
 
     service.setScreenAudioEnabled(false);
     expect(getDisplayMedia).toHaveBeenCalledTimes(1);
@@ -202,7 +205,32 @@ describe("MediaPublicationService", () => {
     expect(screen.video.stop).not.toHaveBeenCalled();
     expect(screen.stream.getAudioTracks()).toEqual([]);
     expect(service.screenAudioActive()).toBe(false);
+    expect(service.screenAudioTrack()).toBeNull();
+    expect(screenAudioStopped).toHaveBeenCalledOnce();
+    unregister();
     expect(service.active("screen")).toBe(true);
+  });
+
+  it("notifies screen-audio consumers when the whole display publication stops", async () => {
+    const screen = fakeScreenStream();
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn(), getDisplayMedia: vi.fn().mockResolvedValue(screen.stream) },
+    });
+    const mesh = { attachPublication: vi.fn(), detachPublication: vi.fn() };
+    const preferences = new VideoCapturePreferencesService();
+    preferences.setScreenAudioEnabled(true);
+    const service = new MediaPublicationService(mesh as never, preferences, new MediaStrategyService());
+    const stopped = vi.fn();
+    service.registerScreenAudioStopListener(stopped);
+
+    await service.start("screen");
+    service.stop("screen");
+
+    expect(stopped).toHaveBeenCalledOnce();
+    expect(service.screenAudioTrack()).toBeNull();
+    expect(screen.video.stop).toHaveBeenCalledOnce();
+    expect(screen.audio.stop).toHaveBeenCalledOnce();
   });
 
   it("uses a portable boolean audio opt-in when own-audio restriction is unavailable", async () => {

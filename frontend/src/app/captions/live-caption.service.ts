@@ -1,5 +1,6 @@
 import { Injectable, computed, signal } from "@angular/core";
 
+import { CaptionAudioSource } from "../webrtc/caption-contract";
 import { MediaPublicationService } from "../webrtc/media-publication.service";
 import { PeerMeshService } from "../webrtc/peer-mesh.service";
 import { CaptionAudioGraph, CaptionAudioGraphFactory } from "./caption-audio-graph";
@@ -7,9 +8,36 @@ import { VoskModelManagerService } from "./vosk-model-manager.service";
 import { VoskRecognizerPort } from "./vosk-runtime-adapter";
 
 const PARTIAL_SEND_INTERVAL_MS = 250;
+export const CAPTION_AUDIO_SOURCES: readonly CaptionAudioSource[] = Object.freeze(["microphone", "screen-audio"]);
 
-function storedOverlayPreference(): boolean {
-  try { return localStorage.getItem("webrtc-caption-overlay-v1") !== "false"; } catch { return true; }
+interface CaptionPipeline {
+  readonly source: CaptionAudioSource;
+  readonly generation: number;
+  readonly graph: CaptionAudioGraph;
+  readonly recognizer: VoskRecognizerPort;
+  currentUtteranceId: string;
+  revision: number;
+  lastSentAt: number;
+  lastSentText: string;
+  pendingPartialTimer: ReturnType<typeof setTimeout> | null;
+  partialText: string;
+}
+
+function storedBoolean(key: string, defaultValue: boolean): boolean {
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? defaultValue : value === "true";
+  } catch {
+    return defaultValue;
+  }
+}
+
+function storedSource(): CaptionAudioSource {
+  try {
+    return localStorage.getItem("webrtc-caption-source-v1") === "screen-audio" ? "screen-audio" : "microphone";
+  } catch {
+    return "microphone";
+  }
 }
 
 function utteranceId(): string {
@@ -20,25 +48,27 @@ function utteranceId(): string {
 
 @Injectable({ providedIn: "root" })
 export class LiveCaptionService {
-  readonly active = signal(false);
-  readonly starting = signal(false);
+  readonly selectedSource = signal<CaptionAudioSource>(storedSource());
+  readonly activeSources = signal<readonly CaptionAudioSource[]>([]);
+  readonly startingSources = signal<readonly CaptionAudioSource[]>([]);
+  readonly active = computed(() => this.activeSources().length > 0);
+  readonly starting = computed(() => this.startingSources().length > 0);
   readonly error = signal("");
-  readonly partialText = signal("");
-  readonly showOverlay = signal(storedOverlayPreference());
+  readonly showOverlay = signal(storedBoolean("webrtc-caption-overlay-v1", true));
+  readonly shareWithRoom = signal(storedBoolean("webrtc-caption-share-v1", true));
   readonly entries = this.mesh.captions;
   readonly recentEntries = computed(() => this.entries().slice(-100).reverse());
   readonly overlayEntries = computed(() => this.entries().slice(-3));
   readonly supported = computed(() => this.audioGraphFactory.supported());
-  private graph: CaptionAudioGraph | null = null;
-  private recognizer: VoskRecognizerPort | null = null;
-  private sourceTrackId = "";
-  private currentUtteranceId = "";
-  private revision = 0;
-  private lastSentAt = 0;
-  private lastSentText = "";
-  private pendingPartialTimer: ReturnType<typeof setTimeout> | null = null;
-  private generation = 0;
+  private readonly partialTexts = signal<Record<CaptionAudioSource, string>>({
+    microphone: "",
+    "screen-audio": "",
+  });
+  readonly partialText = computed(() => this.partialTexts()[this.selectedSource()]);
+  private readonly pipelines = new Map<CaptionAudioSource, CaptionPipeline>();
+  private readonly generations = new Map<CaptionAudioSource, number>();
   private readonly unregisterMicrophoneListener: () => void;
+  private readonly unregisterScreenAudioListener: () => void;
 
   constructor(
     private readonly media: MediaPublicationService,
@@ -46,12 +76,47 @@ export class LiveCaptionService {
     private readonly models: VoskModelManagerService,
     private readonly audioGraphFactory: CaptionAudioGraphFactory,
   ) {
-    this.unregisterMicrophoneListener = this.media.registerMicrophoneStopListener(() => this.stop());
+    this.unregisterMicrophoneListener = this.media.registerMicrophoneStopListener(() => this.stop("microphone"));
+    this.unregisterScreenAudioListener = this.media.registerScreenAudioStopListener(() => this.stop("screen-audio"));
   }
 
-  async start(): Promise<boolean> {
-    if (this.active()) return true;
-    if (this.starting()) return false;
+  selectSource(value: unknown): boolean {
+    if (value !== "microphone" && value !== "screen-audio") return false;
+    this.selectedSource.set(value);
+    try { localStorage.setItem("webrtc-caption-source-v1", value); } catch { /* optional preference */ }
+    return true;
+  }
+
+  setShareWithRoom(value: unknown): boolean {
+    if (this.active() || this.starting()) return false;
+    const enabled = value === true;
+    this.shareWithRoom.set(enabled);
+    try { localStorage.setItem("webrtc-caption-share-v1", String(enabled)); } catch { /* optional preference */ }
+    return true;
+  }
+
+  setOverlay(enabled: unknown): void {
+    const value = enabled === true;
+    this.showOverlay.set(value);
+    try { localStorage.setItem("webrtc-caption-overlay-v1", String(value)); } catch { /* optional preference */ }
+  }
+
+  sourceAvailable(source: CaptionAudioSource): boolean {
+    const track = this.sourceTrack(source);
+    return Boolean(track && track.readyState === "live");
+  }
+
+  isSourceActive(source: CaptionAudioSource): boolean {
+    return this.pipelines.has(source);
+  }
+
+  isSourceStarting(source: CaptionAudioSource): boolean {
+    return this.startingSources().includes(source);
+  }
+
+  async start(source: CaptionAudioSource = this.selectedSource()): Promise<boolean> {
+    if (this.isSourceActive(source)) return true;
+    if (this.isSourceStarting(source)) return false;
     this.error.set("");
     if (!this.models.ready()) {
       this.error.set("Bitte lade zuerst das ausgewählte Sprachmodell.");
@@ -61,156 +126,222 @@ export class LiveCaptionService {
       this.error.set("Live-Untertitel können erst in einem Raum gestartet werden.");
       return false;
     }
-    const track = this.media.microphoneTrack();
+    const track = this.sourceTrack(source);
     if (!track || track.readyState !== "live") {
-      this.error.set("Starte zuerst bewusst dein Mikrofon. Untertitel fordern keine eigene Aufnahmefreigabe an.");
+      this.error.set(source === "microphone"
+        ? "Starte zuerst bewusst dein Mikrofon. Untertitel fordern keine eigene Aufnahmefreigabe an."
+        : "Teile zuerst bewusst einen Bildschirm oder Tab mit Ton. Untertitel fordern keine eigene Bildschirmfreigabe an.");
       return false;
     }
     if (!this.audioGraphFactory.supported()) {
       this.error.set("Dieser Browser unterstützt den benötigten AudioWorklet-Pfad nicht.");
       return false;
     }
-    const generation = ++this.generation;
-    this.starting.set(true);
-    this.sourceTrackId = track.id;
+    const generation = this.nextGeneration(source);
+    const sourceTrackId = track.id;
+    this.updateSourceSignal(this.startingSources, source, true);
     let graph: CaptionAudioGraph | null = null;
     let recognizer: VoskRecognizerPort | null = null;
     try {
       graph = await this.audioGraphFactory.connect(track, (samples, sampleRate) => {
-        if (!this.active() || !this.recognizer || generation !== this.generation) return;
+        const pipeline = this.pipelines.get(source);
+        if (!pipeline || pipeline.generation !== generation) return;
         try {
-          this.recognizer.acceptWaveformFloat(samples, sampleRate);
+          pipeline.recognizer.acceptWaveformFloat(samples, sampleRate);
         } catch (error) {
-          this.fail(error instanceof Error ? error.message : "Vosk konnte den Audioblock nicht verarbeiten.");
+          this.fail(source, error instanceof Error ? error.message : "Vosk konnte den Audioblock nicht verarbeiten.");
         }
       });
-      if (generation !== this.generation || this.media.microphoneTrack()?.id !== this.sourceTrackId) {
+      if (generation !== this.currentGeneration(source) || this.sourceTrack(source)?.id !== sourceTrackId) {
         await graph.close();
         return false;
       }
       recognizer = this.models.createRecognizer(graph.sampleRate);
-      recognizer.on("partialresult", (message) => this.acceptRecognition(message.result?.partial || "", false));
-      recognizer.on("result", (message) => this.acceptRecognition(message.result?.text || "", true));
-      recognizer.on("error", (message) => this.fail(message.error || "Vosk-Erkennung ist fehlgeschlagen."));
-      this.graph = graph;
-      this.recognizer = recognizer;
-      this.active.set(true);
+      const pipeline: CaptionPipeline = {
+        source,
+        generation,
+        graph,
+        recognizer,
+        currentUtteranceId: "",
+        revision: 0,
+        lastSentAt: 0,
+        lastSentText: "",
+        pendingPartialTimer: null,
+        partialText: "",
+      };
+      recognizer.on("partialresult", (message) => this.acceptRecognition(pipeline, message.result?.partial || "", false));
+      recognizer.on("result", (message) => this.acceptRecognition(pipeline, message.result?.text || "", true));
+      recognizer.on("error", (message) => this.fail(source, message.error || "Vosk-Erkennung ist fehlgeschlagen."));
+      this.pipelines.set(source, pipeline);
+      this.updateSourceSignal(this.activeSources, source, true);
       return true;
     } catch (error) {
       recognizer?.remove();
       if (graph) await graph.close();
-      if (generation === this.generation) {
+      if (generation === this.currentGeneration(source)) {
         this.error.set(error instanceof Error ? error.message : "Live-Untertitel konnten nicht gestartet werden.");
       }
       return false;
     } finally {
-      if (generation === this.generation) this.starting.set(false);
+      if (generation === this.currentGeneration(source)) {
+        this.updateSourceSignal(this.startingSources, source, false);
+        this.releaseModelIfIdle();
+      }
     }
   }
 
-  stop(): void {
-    this.generation += 1;
-    if (this.partialText().trim() && this.currentUtteranceId) this.publish(this.partialText(), true);
-    if (this.pendingPartialTimer) clearTimeout(this.pendingPartialTimer);
-    this.pendingPartialTimer = null;
-    this.recognizer?.remove();
-    this.recognizer = null;
-    const graph = this.graph;
-    this.graph = null;
-    if (graph) void graph.close();
-    this.active.set(false);
-    this.starting.set(false);
-    this.partialText.set("");
-    this.resetUtterance();
-    this.sourceTrackId = "";
+  stop(source?: CaptionAudioSource): void {
+    if (source) {
+      this.stopSource(source);
+      this.releaseModelIfIdle();
+      return;
+    }
+    for (const item of CAPTION_AUDIO_SOURCES) this.stopSource(item);
     this.models.unload();
-  }
-
-  setOverlay(enabled: unknown): void {
-    const value = enabled === true;
-    this.showOverlay.set(value);
-    try { localStorage.setItem("webrtc-caption-overlay-v1", String(value)); } catch { /* optional preference */ }
   }
 
   clear(): void {
     this.mesh.clearCaptions();
-    this.partialText.set("");
+    for (const pipeline of this.pipelines.values()) {
+      if (pipeline.pendingPartialTimer) clearTimeout(pipeline.pendingPartialTimer);
+      pipeline.pendingPartialTimer = null;
+      pipeline.partialText = "";
+      this.resetUtterance(pipeline);
+    }
+    this.partialTexts.set({ microphone: "", "screen-audio": "" });
   }
 
   destroy(): void {
     this.stop();
     this.unregisterMicrophoneListener();
+    this.unregisterScreenAudioListener();
     this.models.destroy();
     this.mesh.clearCaptions();
   }
 
-  private acceptRecognition(rawText: string, final: boolean): void {
-    if (!this.active()) return;
+  private stopSource(source: CaptionAudioSource): void {
+    this.nextGeneration(source);
+    this.updateSourceSignal(this.startingSources, source, false);
+    const pipeline = this.pipelines.get(source);
+    if (!pipeline) {
+      this.setPartialText(source, "");
+      return;
+    }
+    if (pipeline.partialText.trim() && pipeline.currentUtteranceId) this.publish(pipeline, pipeline.partialText, true);
+    if (pipeline.pendingPartialTimer) clearTimeout(pipeline.pendingPartialTimer);
+    pipeline.pendingPartialTimer = null;
+    pipeline.recognizer.remove();
+    this.pipelines.delete(source);
+    void pipeline.graph.close();
+    this.updateSourceSignal(this.activeSources, source, false);
+    this.setPartialText(source, "");
+    this.resetUtterance(pipeline);
+  }
+
+  private acceptRecognition(pipeline: CaptionPipeline, rawText: string, final: boolean): void {
+    if (this.pipelines.get(pipeline.source) !== pipeline) return;
     const text = rawText.trim().slice(0, 500).trim();
     if (!text) {
       if (final) {
-        this.partialText.set("");
-        this.resetUtterance();
+        pipeline.partialText = "";
+        this.setPartialText(pipeline.source, "");
+        this.resetUtterance(pipeline);
       }
       return;
     }
-    this.partialText.set(text);
+    pipeline.partialText = text;
+    this.setPartialText(pipeline.source, text);
     if (final) {
-      if (this.pendingPartialTimer) clearTimeout(this.pendingPartialTimer);
-      this.pendingPartialTimer = null;
-      this.publish(text, true);
-      this.partialText.set("");
-      this.resetUtterance();
+      if (pipeline.pendingPartialTimer) clearTimeout(pipeline.pendingPartialTimer);
+      pipeline.pendingPartialTimer = null;
+      this.publish(pipeline, text, true);
+      pipeline.partialText = "";
+      this.setPartialText(pipeline.source, "");
+      this.resetUtterance(pipeline);
       return;
     }
-    if (!this.currentUtteranceId) this.beginUtterance();
-    if (text === this.lastSentText) return;
-    const delay = PARTIAL_SEND_INTERVAL_MS - (Date.now() - this.lastSentAt);
+    if (!pipeline.currentUtteranceId) this.beginUtterance(pipeline);
+    if (text === pipeline.lastSentText) return;
+    const delay = PARTIAL_SEND_INTERVAL_MS - (Date.now() - pipeline.lastSentAt);
     if (delay <= 0) {
-      this.publish(text, false);
+      this.publish(pipeline, text, false);
       return;
     }
-    if (!this.pendingPartialTimer) {
-      this.pendingPartialTimer = setTimeout(() => {
-        this.pendingPartialTimer = null;
-        if (this.active() && this.partialText() && this.partialText() !== this.lastSentText) {
-          this.publish(this.partialText(), false);
+    if (!pipeline.pendingPartialTimer) {
+      pipeline.pendingPartialTimer = setTimeout(() => {
+        pipeline.pendingPartialTimer = null;
+        if (this.pipelines.get(pipeline.source) === pipeline
+          && pipeline.partialText && pipeline.partialText !== pipeline.lastSentText) {
+          this.publish(pipeline, pipeline.partialText, false);
         }
       }, delay);
     }
   }
 
-  private publish(text: string, final: boolean): void {
-    if (!this.currentUtteranceId) this.beginUtterance();
+  private publish(pipeline: CaptionPipeline, text: string, final: boolean): void {
+    if (!pipeline.currentUtteranceId) this.beginUtterance(pipeline);
     const sent = this.mesh.sendCaption({
-      utteranceId: this.currentUtteranceId,
-      revision: this.revision,
+      utteranceId: pipeline.currentUtteranceId,
+      revision: pipeline.revision,
       language: this.models.selectedModel().languageTag,
       text,
       final,
-    });
+      source: pipeline.source,
+    }, this.shareWithRoom());
     if (!sent) return;
-    this.revision += 1;
-    this.lastSentAt = Date.now();
-    this.lastSentText = text;
+    pipeline.revision += 1;
+    pipeline.lastSentAt = Date.now();
+    pipeline.lastSentText = text;
   }
 
-  private beginUtterance(): void {
-    this.currentUtteranceId = utteranceId();
-    this.revision = 0;
-    this.lastSentAt = 0;
-    this.lastSentText = "";
+  private beginUtterance(pipeline: CaptionPipeline): void {
+    pipeline.currentUtteranceId = utteranceId();
+    pipeline.revision = 0;
+    pipeline.lastSentAt = 0;
+    pipeline.lastSentText = "";
   }
 
-  private resetUtterance(): void {
-    this.currentUtteranceId = "";
-    this.revision = 0;
-    this.lastSentAt = 0;
-    this.lastSentText = "";
+  private resetUtterance(pipeline: CaptionPipeline): void {
+    pipeline.currentUtteranceId = "";
+    pipeline.revision = 0;
+    pipeline.lastSentAt = 0;
+    pipeline.lastSentText = "";
   }
 
-  private fail(message: string): void {
+  private sourceTrack(source: CaptionAudioSource): MediaStreamTrack | null {
+    return source === "microphone" ? this.media.microphoneTrack() : this.media.screenAudioTrack();
+  }
+
+  private fail(source: CaptionAudioSource, message: string): void {
     this.error.set(message);
-    this.stop();
+    this.stop(source);
+  }
+
+  private nextGeneration(source: CaptionAudioSource): number {
+    const generation = (this.generations.get(source) || 0) + 1;
+    this.generations.set(source, generation);
+    return generation;
+  }
+
+  private currentGeneration(source: CaptionAudioSource): number {
+    return this.generations.get(source) || 0;
+  }
+
+  private setPartialText(source: CaptionAudioSource, text: string): void {
+    this.partialTexts.update((current) => ({ ...current, [source]: text }));
+  }
+
+  private updateSourceSignal(
+    target: { (): readonly CaptionAudioSource[]; set(value: readonly CaptionAudioSource[]): void },
+    source: CaptionAudioSource,
+    enabled: boolean,
+  ): void {
+    const active = new Set(target());
+    if (enabled) active.add(source); else active.delete(source);
+    target.set(CAPTION_AUDIO_SOURCES.filter((item) => active.has(item)));
+  }
+
+  private releaseModelIfIdle(): void {
+    if (this.pipelines.size === 0 && this.startingSources().length === 0) this.models.unload();
   }
 }
