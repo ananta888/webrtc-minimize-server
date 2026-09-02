@@ -273,23 +273,21 @@ export class BlindMediaAgentService {
       const description = "description" in signal ? signal.description : undefined;
       if (description) {
         if (!new Set(["offer", "answer"]).has(description.type) || typeof description.sdp !== "string") return;
-        const remoteTrackBindings = description.type === "offer"
-          ? parseMediaAgentRemoteTrackBindings(description.sdp)
-          : null;
-        if (description.type === "offer" && !remoteTrackBindings) throw new Error("invalid_media_agent_sdp_binding");
+        const remoteTrackBindings = parseMediaAgentRemoteTrackBindings(description.sdp);
+        if (!remoteTrackBindings) throw new Error("invalid_media_agent_sdp_binding");
         const collision = description.type === "offer"
           && (connection.makingOffer || connection.pc.signalingState !== "stable");
         if (collision) await connection.pc.setLocalDescription({ type: "rollback" });
         connection.settingRemoteAnswerPending = description.type === "answer";
         const previousRemoteTrackBindings = connection.remoteTrackBindings;
-        if (remoteTrackBindings) connection.remoteTrackBindings = remoteTrackBindings;
+        connection.remoteTrackBindings = remoteTrackBindings;
         try {
-          // Firefox can dispatch `track` synchronously while the remote offer is
-          // being installed. Make the already validated MID authority visible
-          // before that event, then restore the previous binding on rejection.
+          // Browsers can dispatch `track` synchronously while an offer or a
+          // sendrecv answer is installed. Make the already validated MID
+          // authority visible first, then restore it on rejection.
           await connection.pc.setRemoteDescription(description);
         } catch (error) {
-          if (remoteTrackBindings) connection.remoteTrackBindings = previousRemoteTrackBindings;
+          connection.remoteTrackBindings = previousRemoteTrackBindings;
           throw error;
         }
         connection.settingRemoteAnswerPending = false;

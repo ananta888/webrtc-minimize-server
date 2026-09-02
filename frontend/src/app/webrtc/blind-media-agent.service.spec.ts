@@ -456,7 +456,12 @@ describe("blind media-agent browser adapter", () => {
     });
   });
 
-  it("binds a synchronous Firefox track event through the validated offer MID", async () => {
+  it.each([
+    { descriptionType: "offer" as const, direction: "sendonly" },
+    { descriptionType: "answer" as const, direction: "sendrecv" },
+  ])("binds a synchronous track event through a validated $descriptionType MID", async ({
+    descriptionType, direction,
+  }) => {
     const remotePeerId = "fedcba9876543210";
     const acceptTrack = vi.fn(() => true);
     service.initialize({
@@ -533,6 +538,7 @@ describe("blind media-agent browser adapter", () => {
       enabled: true,
     }) as unknown as MediaStreamTrack;
     const receiver = {} as RTCRtpReceiver;
+    pc.signalingState = descriptionType === "answer" ? "have-local-offer" : "stable";
     pc.setRemoteDescription = async (description: RTCSessionDescriptionInit): Promise<void> => {
       pc.remoteDescription = description as RTCSessionDescription;
       pc.ontrack?.({
@@ -541,6 +547,7 @@ describe("blind media-agent browser adapter", () => {
         streams: [{ id: "firefox-generated-stream-id" } as MediaStream],
         transceiver: { mid: "7", receiver } as RTCRtpTransceiver,
       } as RTCTrackEvent);
+      pc.signalingState = "stable";
     };
     await service.acceptSignal({
       version: 1,
@@ -549,12 +556,12 @@ describe("blind media-agent browser adapter", () => {
       roomId: "room-123456",
       routeEpoch: 5,
       description: {
-        type: "offer",
+        type: descriptionType,
         sdp: [
           "v=0",
           "m=video 9 UDP/TLS/RTP/SAVPF 96",
           "a=mid:7",
-          "a=sendonly",
+          `a=${direction}`,
           `a=msid:${remotePeerId} camera-track`,
           "",
         ].join("\r\n"),
