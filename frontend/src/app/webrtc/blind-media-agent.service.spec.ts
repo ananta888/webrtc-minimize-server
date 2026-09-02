@@ -7,17 +7,24 @@ import { SignalingService } from "./signaling.service";
 class FakePeerConnection {
   static instances: FakePeerConnection[] = [];
   connectionState: RTCPeerConnectionState = "new";
+  iceConnectionState: RTCIceConnectionState = "new";
   signalingState: RTCSignalingState = "stable";
   localDescription: RTCSessionDescription | null = null;
   remoteDescription: RTCSessionDescription | null = null;
   readonly candidates: Array<RTCIceCandidateInit | null> = [];
   onicecandidate: RTCPeerConnection["onicecandidate"] = null;
+  oniceconnectionstatechange: RTCPeerConnection["oniceconnectionstatechange"] = null;
   ontrack: RTCPeerConnection["ontrack"] = null;
   onconnectionstatechange: RTCPeerConnection["onconnectionstatechange"] = null;
   onnegotiationneeded: RTCPeerConnection["onnegotiationneeded"] = null;
   readonly transceivers: RTCRtpTransceiverInit[] = [];
+  readonly configurations: RTCConfiguration[] = [];
+  restarts = 0;
+  configuration: RTCConfiguration;
 
-  constructor(readonly configuration: RTCConfiguration) {
+  constructor(configuration: RTCConfiguration) {
+    this.configuration = configuration;
+    this.configurations.push(configuration);
     FakePeerConnection.instances.push(this);
   }
 
@@ -38,6 +45,12 @@ class FakePeerConnection {
   async addIceCandidate(candidate: RTCIceCandidateInit | null): Promise<void> {
     this.candidates.push(candidate);
   }
+  setConfiguration(configuration: RTCConfiguration): void {
+    this.configuration = configuration;
+    this.configurations.push(configuration);
+  }
+  getConfiguration(): RTCConfiguration { return this.configuration; }
+  restartIce(): void { this.restarts += 1; }
   close(): void { this.connectionState = "closed"; }
 }
 
@@ -225,6 +238,7 @@ describe("blind media-agent browser adapter", () => {
     expect(service.status()).toBe("connecting");
     expect(FakePeerConnection.instances).toHaveLength(1);
     const pc = FakePeerConnection.instances[0];
+    expect(pc.configuration.iceServers).toEqual([{ urls: "stun:direct.test" }]);
     pc.connectionState = "connected";
     pc.onconnectionstatechange?.(new Event("connectionstatechange"));
     expect(service.routeReady("owner-edge", new Set([ownPeerId]))).toBe(true);
@@ -248,6 +262,66 @@ describe("blind media-agent browser adapter", () => {
     vi.advanceTimersByTime(30_000);
     expect(service.primaryAgentId()).toBe("");
     expect(pc.connectionState).toBe("closed");
+    expect(pc.restarts).toBe(0);
+  });
+
+  it("escalates media-agent ICE from direct through the bounded relay tiers", () => {
+    service.initialize({
+      ownPeerId,
+      roomId: "room-123456",
+      membershipEpoch: 3,
+      icePolicy: {
+        ...icePolicy,
+        peerRelayIceServers: [{ urls: "turn:edge.test", username: "edge", credential: "secret" }],
+      },
+      availableAgents: [{ id: "owner-edge", online: true }],
+      callbacks: {
+        attachSender: () => false,
+        acceptTrack: () => false,
+        trackState: () => undefined,
+        routeChanged: () => undefined,
+        connectionChanged: () => undefined,
+      },
+    });
+    expect(service.applyRoute({
+      version: 3,
+      type: "media-agent-state",
+      enabled: true,
+      membershipEpoch: 3,
+      routeEpoch: 5,
+      leaseExpiresAt: now + 30_000,
+      primary: { id: "owner-edge", ownerPeerId: ownPeerId, creatorPreferred: true },
+      standbys: [],
+      forwarderIds: ["owner-edge"],
+      publisherAssignments: [{ peerId: ownPeerId, agentId: "owner-edge" }],
+      subscriberAssignments: [{ peerId: ownPeerId, agentId: "owner-edge" }],
+      federationLinks: [],
+      federationRoutes: [],
+      readiness: [{ agentId: "owner-edge", readyPeerIds: [] }],
+    }, new Set([ownPeerId]))).toBe(true);
+
+    const pc = FakePeerConnection.instances.at(-1)!;
+    expect(pc.configuration.iceServers).toEqual([{ urls: "stun:direct.test" }]);
+    vi.advanceTimersByTime(2_999);
+    expect(pc.configurations).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(pc.configuration.iceServers).toEqual([
+      { urls: "stun:direct.test" },
+      { urls: "turn:edge.test", username: "edge", credential: "secret" },
+    ]);
+    expect(pc.restarts).toBe(1);
+    expect(service.analysisTargets()[0].peer.iceTier).toBe(1);
+
+    vi.advanceTimersByTime(4_999);
+    expect(pc.configurations).toHaveLength(2);
+    vi.advanceTimersByTime(1);
+    expect(pc.configuration.iceServers).toEqual([
+      { urls: "stun:direct.test" },
+      { urls: "turn:edge.test", username: "edge", credential: "secret" },
+      { urls: "turn:relay.test", username: "u", credential: "p" },
+    ]);
+    expect(pc.restarts).toBe(2);
+    expect(service.analysisTargets()[0].peer.iceTier).toBe(2);
   });
 
   it("reports the locally assigned shard as connected without requiring a primary connection", () => {

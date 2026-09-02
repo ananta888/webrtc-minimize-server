@@ -227,6 +227,16 @@ verbessert direkte Pfade und senkt TURN-Last, ist aber keine Protokollpflicht.
 Ohne direkten NAT-Pfad muss erreichbares TURN vorhanden sein; der bestehende
 TURN-Agent allein wird dadurch nicht zum Medien-SFU.
 
+Die Browser-Verbindung zum Media-Agent startet wie das normale Peer-Mesh nur
+mit dem Direct-/STUN-Tier. Erst nach den servergelieferten, begrenzten
+Fallback-Fristen werden freiwilliges Edge-TURN und danach Infrastruktur-TURN
+per ICE-Restart addiert. Eine verbundene Route loescht den ausstehenden Timer.
+Damit verbrauchen direkt erreichbare Browser-Agent-Paare keine vorsorglichen
+Coturn-Allokationen. Der native Pion-Agent erhaelt derzeit weiterhin die
+vollstaendige geschlossene ICE-Serverliste seiner kurzen Lease; dessen
+Gathering und die Coturn-`user-quota`/`total-quota` muessen deshalb in der
+Produktionskapazitaet beruecksichtigt werden.
+
 Ohne konfigurierte, authentisierte und vom Nutzer zugestimmte Media-Agenten
 zeigt die UI nur das bestehende Mesh und behauptet keine Fanout-Reduktion. Ein
 einzelner Agent arbeitet ohne Foederationslink; weitere Agenten werden nur

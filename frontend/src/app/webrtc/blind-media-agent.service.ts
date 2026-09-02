@@ -1,6 +1,6 @@
 import { Injectable, computed, signal } from "@angular/core";
 
-import { cumulativeIceServers, IceTierPolicy } from "./ice-policy";
+import { cumulativeIceServers, iceServerUrls, IceTierPolicy } from "./ice-policy";
 import {
   MediaAgentRouteState,
   MediaAgentLayer,
@@ -13,7 +13,7 @@ import {
   validateMediaAgentTrackState,
 } from "./media-agent-contract";
 import { ServerMessage, SignalingService } from "./signaling.service";
-import { ManagedPeer } from "./peer-connection-manager";
+import { classifySelectedIcePath, ManagedPeer } from "./peer-connection-manager";
 import {
   MediaAgentRemoteTrackBinding,
   parseMediaAgentRemoteTrackBindings,
@@ -98,6 +98,8 @@ const SINGLE_VIDEO_ENCODING: RTCRtpEncodingParameters = Object.freeze({ rid: "s"
 const MAX_SELECTED_MEDIA_AGENTS = 3;
 const MAX_PENDING_AGENT_TRACKS = 64;
 const PENDING_AGENT_TRACK_TTL_MS = 5_000;
+const ICE_RESTART_COOLDOWN_MS = 10_000;
+const ICE_TIER_EVENT_DEBOUNCE_MS = 1_000;
 
 @Injectable({ providedIn: "root" })
 export class BlindMediaAgentService {
@@ -564,7 +566,7 @@ export class BlindMediaAgentService {
 
   private createConnection(agentId: string): void {
     if (!this.icePolicy) return;
-    const pc = new RTCPeerConnection({ iceServers: [...cumulativeIceServers(this.icePolicy, 2)] });
+    const pc = new RTCPeerConnection({ iceServers: [...cumulativeIceServers(this.icePolicy, 0)] });
     const connection: AgentConnection = {
       id: agentId,
       name: `Media-Agent ${agentId}`,
@@ -583,7 +585,7 @@ export class BlindMediaAgentService {
       healthSamples: 0,
       linkCandidate: "unknown",
       linkCandidateSince: Date.now(),
-      iceTier: 2,
+      iceTier: 0,
       icePath: "unknown",
       iceStartedAt: Date.now(),
       fallbackTimer: null,
@@ -621,27 +623,107 @@ export class BlindMediaAgentService {
       if (!descriptor && this.queuePendingTrack(input)) return;
       this.acceptInboundTrack(input);
     };
-    pc.onconnectionstatechange = () => {
-      const connected = pc.connectionState === "connected";
-      if (connection.connected !== connected) {
-        connection.connected = connected;
-        try {
-          this.signaling.send({
-            type: "media-agent-peer-state",
-            agentId,
-            roomId: this.roomId,
-            routeEpoch: this.routeEpoch(),
-            connected,
-          });
-        } catch { /* session is closing */ }
-      }
-      if (pc.connectionState === "failed") this.status.set("error");
-      else this.updateStatus();
-      this.callbacks.connectionChanged();
-    };
+    pc.oniceconnectionstatechange = () => this.handleConnectionState(connection);
+    pc.onconnectionstatechange = () => this.handleConnectionState(connection);
     pc.onnegotiationneeded = () => void this.negotiate(connection);
     pc.createDataChannel("media-agent-control", { ordered: true });
+    this.scheduleIceFallback(connection);
     this.updateStatus();
+  }
+
+  private handleConnectionState(connection: AgentConnection): void {
+    const connected = connection.pc.connectionState === "connected"
+      || new Set<RTCIceConnectionState>(["connected", "completed"]).has(connection.pc.iceConnectionState);
+    if (connection.connected !== connected) {
+      connection.connected = connected;
+      try {
+        this.signaling.send({
+          type: "media-agent-peer-state",
+          agentId: connection.agentId,
+          roomId: this.roomId,
+          routeEpoch: this.routeEpoch(),
+          connected,
+        });
+      } catch { /* session is closing */ }
+    }
+    if (connected) {
+      this.clearIceFallback(connection);
+      void this.detectIcePath(connection);
+    } else if (connection.pc.connectionState === "failed" || connection.pc.iceConnectionState === "failed") {
+      this.activateNextIceTier(connection);
+    } else if (connection.pc.iceConnectionState === "disconnected" && !connection.fallbackTimer) {
+      connection.fallbackTimer = setTimeout(() => this.activateNextIceTier(connection), 1_500);
+    }
+    this.updateStatus();
+    this.callbacks.connectionChanged();
+  }
+
+  private nextIceTier(connection: AgentConnection): 1 | 2 | null {
+    if (!this.icePolicy) return null;
+    if (connection.iceTier === 0 && this.icePolicy.peerRelayIceServers.length > 0) return 1;
+    if (connection.iceTier < 2 && this.icePolicy.infrastructureRelayIceServers.length > 0) return 2;
+    return null;
+  }
+
+  private scheduleIceFallback(connection: AgentConnection): void {
+    this.clearIceFallback(connection);
+    if (!this.icePolicy || connection.pc.connectionState === "closed") return;
+    const tier = this.nextIceTier(connection);
+    if (!tier) return;
+    const deadline = connection.iceStartedAt + (tier === 1
+      ? this.icePolicy.peerRelayAfterMs
+      : this.icePolicy.infrastructureRelayAfterMs);
+    connection.fallbackTimer = setTimeout(
+      () => this.activateIceTier(connection, tier),
+      Math.max(0, deadline - Date.now()),
+    );
+  }
+
+  private activateNextIceTier(connection: AgentConnection): void {
+    const now = Date.now();
+    if (connection.lastIceRestartAt > 0
+      && now - connection.lastIceRestartAt < ICE_TIER_EVENT_DEBOUNCE_MS) return;
+    const tier = this.nextIceTier(connection);
+    if (tier) {
+      this.activateIceTier(connection, tier);
+      return;
+    }
+    if (now - connection.lastIceRestartAt >= ICE_RESTART_COOLDOWN_MS
+      && connection.pc.connectionState !== "closed") {
+      connection.lastIceRestartAt = now;
+      connection.pc.restartIce();
+    }
+  }
+
+  private activateIceTier(connection: AgentConnection, tier: 1 | 2): void {
+    if (!this.icePolicy || tier <= connection.iceTier || connection.pc.connectionState === "closed") return;
+    this.clearIceFallback(connection);
+    connection.iceTier = tier;
+    connection.lastIceRestartAt = Date.now();
+    connection.pc.setConfiguration({ iceServers: [...cumulativeIceServers(this.icePolicy, tier)] });
+    connection.pc.restartIce();
+    this.updateStatus();
+    this.callbacks.connectionChanged();
+    this.scheduleIceFallback(connection);
+  }
+
+  private clearIceFallback(connection: AgentConnection): void {
+    if (connection.fallbackTimer) clearTimeout(connection.fallbackTimer);
+    connection.fallbackTimer = null;
+  }
+
+  private async detectIcePath(connection: AgentConnection): Promise<void> {
+    if (!this.icePolicy) return;
+    try {
+      connection.icePath = classifySelectedIcePath(
+        await connection.pc.getStats(),
+        connection.iceTier,
+        iceServerUrls(this.icePolicy.peerRelayIceServers),
+      );
+      this.callbacks.connectionChanged();
+    } catch {
+      connection.icePath = "unknown";
+    }
   }
 
   private async negotiate(connection: AgentConnection): Promise<void> {
@@ -681,6 +763,7 @@ export class BlindMediaAgentService {
     const connection = this.connections.get(agentId);
     if (!connection) return;
     this.connections.delete(agentId);
+    this.clearIceFallback(connection);
     if (announce && connection.connected) {
       try {
         this.signaling.send({
@@ -751,7 +834,9 @@ export class BlindMediaAgentService {
     const assignedConnections = [...assignedAgentIds].map((agentId) => this.connections.get(agentId));
     if (assignedConnections.length > 0 && assignedConnections.every((connection) => connection?.connected)) {
       this.status.set("connected");
-    } else if (assignedConnections.some((connection) => connection?.pc.connectionState === "failed")) {
+    } else if (assignedConnections.some((connection) => (
+      connection?.pc.connectionState === "failed" && this.nextIceTier(connection) === null
+    ))) {
       this.status.set("error");
     } else {
       this.status.set("connecting");
