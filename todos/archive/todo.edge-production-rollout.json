@@ -5,7 +5,7 @@
   "track": "edge-production-rollout",
   "purpose": "Den verifizierten SFrame-/Edge-Stand gezielt committen, auf origin/main veroeffentlichen, auf dem Mini-PC ausrollen und diesen Laptop nur bei real nachgewiesener Erreichbarkeit als freiwilligen Edge-TURN-Knoten registrieren.",
   "goal": "webrtc.ananta.de laeuft mit required-SFrame und gestufter Direct-Edge-Infrastruktur-ICE-Policy; der Laptop bietet einen begrenzten, freiwilligen Pion-TURN-Edge-Pfad, ohne Secrets zu versionieren oder nicht erreichbare Relay-Faehigkeit zu behaupten.",
-  "status": "in_progress",
+  "status": "done",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
   "risk_scale": ["low", "medium", "high", "critical"],
@@ -20,13 +20,13 @@
       "id": "EPR-M02",
       "title": "Produktions- und Edge-Rollout",
       "task_ids": ["EPR-003", "EPR-004"],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "EPR-M03",
       "title": "End-to-End-Nachweis",
       "task_ids": ["EPR-005"],
-      "status": "todo"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -75,10 +75,10 @@
     {
       "id": "EPR-004",
       "title": "Laptop als begrenzten freiwilligen Edge-TURN-Agent aktivieren",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 85,
+      "progress_percent": 100,
       "depends_on": ["EPR-001", "EPR-002"],
       "acceptance_criteria": [
         "Ein neues zufaelliges Shared Secret liegt ausschliesslich in nicht versionierten .env-Dateien auf Laptop und Control Plane.",
@@ -89,10 +89,10 @@
     {
       "id": "EPR-005",
       "title": "Produktions-, Credential-, Relay- und Rueckfallpfad verifizieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["EPR-003", "EPR-004"],
       "acceptance_criteria": [
         "Eine autorisierte Session liefert den Laptop ausschliesslich im zweiten ICE-Tier mit kurzlebigem Credential und ohne Shared Secret aus.",
@@ -104,20 +104,20 @@
   "critical_path_tasks": ["EPR-001", "EPR-002", "EPR-003", "EPR-004", "EPR-005"],
   "tasks_status_summary": {
     "total": 5,
-    "by_status": { "todo": 1, "in_progress": 1, "partial": 0, "blocked": 0, "done": 3 },
-    "progress_percent_done": 60,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 5 },
+    "progress_percent_done": 100,
     "by_priority": { "P0": 4, "P1": 1, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 2, "critical": 3 },
-    "critical_path": { "total": 5, "done": 3, "remaining": 2 },
-    "milestones": { "total": 3, "todo": 1, "in_progress": 1, "blocked": 0, "done": 1 }
+    "critical_path": { "total": 5, "done": 5, "remaining": 0 },
+    "milestones": { "total": 3, "todo": 0, "in_progress": 0, "blocked": 0, "done": 3 }
   },
   "progress_summary": {
-    "state": "in_progress",
-    "todo_remaining": 1,
-    "in_progress": 1,
+    "state": "done",
+    "todo_remaining": 0,
+    "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 3
+    "done": 5
   },
   "summary_notes": [
     "Der Laptop darf nur dann als produktiver Edge registriert werden, wenn andere Teilnehmer seine Listener- und Relay-Ports real erreichen koennen.",
@@ -130,6 +130,11 @@
     "FRITZ!Box lehnt IGD AddPortMapping mit 403 ab, bietet aber erfolgreiches PCP an; deshalb wird der selbst erneuernde PCP-Pfad vor einer Edge-Registrierung implementiert und real extern geprueft.",
     "PCP ist im nativen Agent fail-closed implementiert und getestet; die FRITZ!Box beantwortet MAP-Erstellung fuer KRUSTYSFRAME derzeit mit NOT_AUTHORIZED, bis die geraetebezogene selbststaendige Portfreigabe aktiviert wird.",
     "Ein echter REST-authentisierter TURN-Allocationstest vom Mini-PC zum nativen Windows-Agent war gruen; der dafuer verwendete temporaere Secret-Config-Teststand wurde danach entfernt und der Agent wieder fail-closed gestoppt.",
+    "Nach der nutzerseitigen festen Routerfreigabe am 2026-09-02 war minipc.ananta.de:3478 von Oracle ueber TCP erreichbar; ein von Oracle gestarteter echter UDP-REST-TURN-Test erhielt in 0,03 Sekunden eine gueltige Allokation im Bereich 49160-49223. Der native Windows-Agent laeuft deshalb dauerhaft mit pcp=false, geschuetzter Secret-Datei und vorhandenem Autostart; die vorherige PCP-Konfiguration liegt als geschuetztes lokales Rollback-Backup vor.",
+    "Die produktive Mini-PC-.env enthaelt nun secret-sicher den Knoten laptop-edge-turn mit zwei turn:-URLs und Modus 0600; ihr Vorzustand liegt als Modus-0600-Backup vor. Der laufende Container meldete beim Vorbereiten noch einen aktiven Raum und wird erst kontrolliert recreated, bevor EPR-004 oder EPR-005 als abgeschlossen gelten.",
+    "Der kontrollierte Recreate wurde erst bei null Raeumen und null Teilnehmern ausgefuehrt. Ein erster Aufruf ohne den erforderlichen zweiten Compose-File-Parameter entfernte kurz den stabilen Caddy-Netzalias und erzeugte 502; das vorhandene Override infra/reverse-proxy/compose.caddy-network.yaml stellte webrtc-room-server unmittelbar wieder her. Interner, LAN-erzwungener und normaler Oracle-HTTPS-Pfad lieferten danach Health ok und edgeRelayConfigured true bei RestartCount 0.",
+    "Ein kurzlebiger Keycloak-Testnutzer bestand am 2026-09-02 den echten Browser-PKCE-/JWKS-Pfad, Session- und Einmal-Ticket-Ausgabe, browser-sichere kurzlebige Edge-Credentials, den separaten Laptop-Edge-Relaykandidaten sowie den Infrastruktur-TURN-Relaykandidaten. Peer-Edge lag zeitlich vor Infrastruktur-TURN; kein Capture wurde durch Login oder Join ausgeloest. Nutzer und temporaeres Oracle-Testbinary wurden anschliessend nachweislich geloescht.",
+    "Der vollstaendige npm-run-check-Gate bestand mit 139 Angular- und 96 Node-/Browser-/Integrationsfaellen, Chromium, Firefox, SFrame-Counter ueber 350, Produktionsbuild, Todo- und Workflow-Validierung. Der standardmaessige credentiallose Infrastrukturaufruf blieb sichtbar uebersprungen; der separate credentialgebundene Produktionsgate war zuvor gruen.",
     "Keycloak-Live-Nachweis: Realm-Registrierung ist aktiv; Client, Redirect, Web-Origin, S256-PKCE und Audience sind gesetzt. Eine temporaere Browser-Selbstregistrierung bestand PKCE, Issuer/Audience, Raum-Erstellung und WebSocket-Join; der Testnutzer wurde geloescht.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
   ]

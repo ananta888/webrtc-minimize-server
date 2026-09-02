@@ -10,7 +10,63 @@ const appOrigin = process.env.LIVE_APP_ORIGIN || "http://localhost:8080";
 const issuer = process.env.LIVE_OIDC_ISSUER || "http://localhost:8081/realms/webrtc";
 const username = process.env.LIVE_OIDC_USERNAME || "";
 const password = process.env.LIVE_OIDC_PASSWORD || "";
+const requireEdgeTurn = process.env.LIVE_REQUIRE_EDGE_TURN === "1";
+const requireInfrastructureTurn = process.env.LIVE_REQUIRE_INFRASTRUCTURE_TURN !== "0";
+const expectedEdgeHost = process.env.LIVE_EDGE_TURN_HOST || "";
 if (!username || !password) throw new Error("LIVE_OIDC_USERNAME and LIVE_OIDC_PASSWORD are required");
+
+function turnUrls(server) {
+  return typeof server?.urls === "string" ? [server.urls] : Array.isArray(server?.urls) ? server.urls : [];
+}
+
+function turnHost(url) {
+  return /^turns?:([^/?#:]+|\[[^\]]+\])(?::\d+)?(?:\?|$)/i.exec(url)?.[1]?.replace(/^\[|\]$/g, "") || "";
+}
+
+function assertEphemeralTurnServers(servers, label) {
+  assert.ok(Array.isArray(servers) && servers.length > 0, `${label} TURN servers must be present`);
+  for (const server of servers) {
+    assert.deepEqual(
+      Object.keys(server).sort(),
+      ["credential", "credentialType", "urls", "username"],
+      `${label} TURN credentials must expose only browser-safe fields`,
+    );
+    assert.match(server.username, /^\d+:[a-f0-9]{20}$/, `${label} TURN username must be ephemeral`);
+    assert.equal(server.credentialType, "password", `${label} TURN credential type must be password`);
+    assert.ok(typeof server.credential === "string" && server.credential.length >= 20, `${label} TURN credential is missing`);
+    assert.ok(turnUrls(server).every((url) => /^turns?:/i.test(url)), `${label} TURN URLs are invalid`);
+  }
+}
+
+async function gatherRelayEvidence(page, servers, label) {
+  const evidence = await page.evaluate(async (iceServers) => {
+    const pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: "relay" });
+    const candidateTypes = [];
+    pc.createDataChannel("turn-gate");
+    pc.onicecandidate = (event) => {
+      if (!event.candidate) return;
+      const type = / typ ([a-z]+)(?: |$)/.exec(event.candidate.candidate)?.[1] || "unknown";
+      candidateTypes.push(type);
+    };
+    await pc.setLocalDescription(await pc.createOffer());
+    await new Promise((resolve) => {
+      if (pc.iceGatheringState === "complete") resolve();
+      else {
+        const timeout = setTimeout(resolve, 10_000);
+        pc.addEventListener("icegatheringstatechange", () => {
+          if (pc.iceGatheringState === "complete") {
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
+      }
+    });
+    pc.close();
+    return { candidateCount: candidateTypes.length, relayCount: candidateTypes.filter((type) => type === "relay").length };
+  }, servers);
+  assert.ok(evidence.relayCount > 0, `${label} TURN relay candidate missing (${evidence.candidateCount} candidates)`);
+  return evidence;
+}
 
 const discoveryResponse = await fetch(`${issuer}/.well-known/openid-configuration`);
 assert.equal(discoveryResponse.status, 200, "OIDC discovery must be reachable");
@@ -64,36 +120,44 @@ try {
   const sessionResponse = await sessionResponsePromise;
   assert.equal(sessionResponse.status(), 201, "OIDC-authorized session must be issued");
   const session = await sessionResponse.json();
-  const turnServers = session.iceServers.filter((server) => String(server.urls).includes("turn:"));
-  assert.ok(turnServers.length > 0, "authorized session must contain ephemeral TURN credentials");
-  assert.match(turnServers[0].username, /^\d+:[a-f0-9]{20}$/);
+  assert.deepEqual(Object.keys(session.icePolicy).sort(), [
+    "directIceServers",
+    "infrastructureRelayAfterMs",
+    "infrastructureRelayIceServers",
+    "peerRelayAfterMs",
+    "peerRelayIceServers",
+    "version",
+  ]);
+  assert.equal(session.icePolicy.version, 1);
+  assert.ok(session.icePolicy.peerRelayAfterMs < session.icePolicy.infrastructureRelayAfterMs,
+    "peer Edge TURN must precede infrastructure TURN");
+  assert.ok(session.icePolicy.directIceServers.every((server) => !server.username && !server.credential),
+    "direct STUN tier must not receive TURN credentials");
+  const edgeTurnServers = session.icePolicy.peerRelayIceServers;
+  const infrastructureTurnServers = session.icePolicy.infrastructureRelayIceServers;
+  const allTurnServers = [...edgeTurnServers, ...infrastructureTurnServers];
+  assert.ok(allTurnServers.length > 0, "authorized session must contain ephemeral TURN credentials");
+  if (requireEdgeTurn) {
+    assertEphemeralTurnServers(edgeTurnServers, "peer-edge");
+    if (expectedEdgeHost) {
+      assert.ok(edgeTurnServers.flatMap(turnUrls).every((url) => turnHost(url) === expectedEdgeHost),
+        "peer-edge TURN host differs from the explicit live gate target");
+    }
+  }
+  if (requireInfrastructureTurn) assertEphemeralTurnServers(infrastructureTurnServers, "infrastructure");
   await page.locator("#connection-status", { hasText: "Signaling verbunden" }).waitFor();
   assert.deepEqual(await page.evaluate(() => window.__captureCalls), [], "join must not invoke capture");
 
-  const candidates = await page.evaluate(async (iceServers) => {
-    const pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: "relay" });
-    const result = [];
-    pc.createDataChannel("turn-gate");
-    pc.onicecandidate = (event) => { if (event.candidate) result.push(event.candidate.candidate); };
-    await pc.setLocalDescription(await pc.createOffer());
-    await new Promise((resolve) => {
-      if (pc.iceGatheringState === "complete") resolve();
-      else {
-        const timeout = setTimeout(resolve, 10_000);
-        pc.addEventListener("icegatheringstatechange", () => {
-          if (pc.iceGatheringState === "complete") {
-            clearTimeout(timeout);
-            resolve();
-          }
-        });
-      }
-    });
-    pc.close();
-    return result;
-  }, turnServers);
-  assert.ok(candidates.some((candidate) => / typ relay(?: |$)/.test(candidate)), `TURN relay candidate missing: ${candidates.join(" | ")}`);
+  const evidence = [];
+  if (requireEdgeTurn) evidence.push(["peer-edge", await gatherRelayEvidence(page, edgeTurnServers, "peer-edge")]);
+  if (requireInfrastructureTurn) {
+    evidence.push(["infrastructure", await gatherRelayEvidence(page, infrastructureTurnServers, "infrastructure")]);
+  }
+  if (!requireEdgeTurn && !requireInfrastructureTurn) {
+    evidence.push(["configured", await gatherRelayEvidence(page, allTurnServers, "configured")]);
+  }
   assert.deepEqual(pageErrors, []);
-  console.log("PASS live Keycloak PKCE/JWKS, authorized ticket and Coturn relay gate");
+  console.log(`PASS live Keycloak PKCE/JWKS, authorized ticket and TURN tiers: ${evidence.map(([label]) => label).join(", ")}`);
 } finally {
   await browser.close();
 }
