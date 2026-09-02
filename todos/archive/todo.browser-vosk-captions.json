@@ -5,7 +5,7 @@
   "track": "browser-vosk-captions",
   "purpose": "Freiwillige lokale Live-Untertitel mit Vosk-WebAssembly und einer umfangreichen, kontrollierten Auswahl direkt nachladbarer Browser-Modelle bereitstellen.",
   "goal": "Teilnehmer koennen nach einem sichtbaren Klick ein browserkompatibles Vosk-Sprachmodell laden, ihr bereits freigegebenes Mikrofon lokal transkribieren und begrenzte Untertitel direkt an Raumpeers senden, ohne Audio an die Control Plane zu uebertragen.",
-  "status": "in_progress",
+  "status": "done",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
   "risk_scale": ["low", "medium", "high", "critical"],
@@ -26,7 +26,7 @@
       "id": "VSK-M03",
       "title": "Browsermatrix und Produktionsrollout",
       "task_ids": ["VSK-004"],
-      "status": "in_progress"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -75,10 +75,10 @@
     {
       "id": "VSK-004",
       "title": "Tests, Dokumentation und Produktionsrollout abschliessen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 95,
+      "progress_percent": 100,
       "depends_on": ["VSK-003"],
       "acceptance_criteria": [
         "Unit- und UI-Tests decken Katalog, unbekannte Payloads, Groessen-/Ratenlimits, explizites Laden, Capture-Freiheit, Cleanup und Mehrpeeranzeige ab; Chromium und Firefox werden mindestens auf Featureerkennung und kontrollierten Fallback geprueft.",
@@ -90,20 +90,20 @@
   "critical_path_tasks": ["VSK-001", "VSK-002", "VSK-003", "VSK-004"],
   "tasks_status_summary": {
     "total": 4,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 3 },
-    "progress_percent_done": 75,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 4 },
+    "progress_percent_done": 100,
     "by_priority": { "P0": 2, "P1": 2, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 2, "critical": 2 },
-    "critical_path": { "total": 4, "done": 3, "remaining": 1 },
-    "milestones": { "total": 3, "todo": 0, "in_progress": 1, "blocked": 0, "done": 2 }
+    "critical_path": { "total": 4, "done": 4, "remaining": 0 },
+    "milestones": { "total": 3, "todo": 0, "in_progress": 0, "blocked": 0, "done": 3 }
   },
   "progress_summary": {
-    "state": "in_progress",
+    "state": "done",
     "todo_remaining": 0,
-    "in_progress": 1,
+    "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 3
+    "done": 4
   },
   "summary_notes": [
     "Vosk-Browser ist eine Community-WebAssembly-Verpackung und keine vorhandene Runtime-Faehigkeit des Projekts; ihr Worker-, Modell- und Browserverhalten wird deshalb isoliert und mit ehrlichem Fallback integriert.",
@@ -111,6 +111,9 @@
     "Ein realer lokaler Chromium-Smoke lud das deutsche Modell ohne Capture. Ein weiterer Zwei-Browser-Smoke erkannte synthetisches Mikrofon-Audio und stellte den Text einem zweiten Raumpeer ohne dessen Modell- oder Capture-Aufruf ueber den captions-DataChannel zu.",
     "Das finale lokale Gate bestand mit 33 Frontend-Dateien und 135 Tests, 96 Node-/Mehrbrowser-/Sicherheitstests, Produktionsbuild sowie explizitem Skip des credentialpflichtigen Live-Infrastruktur-Gates. Chromium und Firefox bestaetigten 13 Katalogmodelle ohne impliziten Download oder Capture.",
     "npm audit --omit=dev meldete null bekannte Produktionsschwachstellen. Das finale Docker-Image baute den 4330654 Byte grossen gepinnten Worker und seine separate Apache-2.0-Lizenz erfolgreich ein.",
+    "Feature-Commit 84fbc0ff991b816e52891f03ae80eeb55432b858 wurde auf origin/main gepusht und per sauberem Fast-forward ueber den vorhandenen Compose-/Caddy-Pfad auf dem Mini-PC ausgerollt.",
+    "Produktionsnachweis: Container mit null Neustarts, interner und oeffentlicher Healthcheck HTTP 200 sowie Keycloak-Discovery HTTP 200. Hauptdokument-CSP bleibt ohne unsafe-eval; nur /assets/vosk-worker.js erhaelt die isolierte Ausnahme und Worker, Worklet sowie Lizenz antworten mit HTTP 200.",
+    "Ein frisches Produktions-Chromium zeigte alle 13 Modelle ohne impliziten Modell- oder Capture-Aufruf. Nach genau einem sichtbaren Klick lud und initialisierte es das deutsche Modell, markierte die lokale Cache-Kopie und meldete weder Capture-Aufrufe noch Browserfehler.",
     "Die offiziellen Vosk-ZIP-Modelle sind nicht unmittelbar mit dem tar.gz-Lader von vosk-browser kompatibel. Der ausfuehrbare Katalog verwendet nur bereits browserfertig verpackte Modelle; grosse Servermodelle werden nicht als direkt ladbar behauptet.",
     "Ein Untertitel ist untrusted Anzeigeinhalt. Peer-ID und Raumzugehoerigkeit bleiben Eigentum der Control Plane beziehungsweise der bestehenden PeerConnection.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
