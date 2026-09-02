@@ -1,0 +1,980 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "trusted-broadcast-packager",
+  "purpose": "Einen optionalen, klar getrennten Broadcast-Zweig für große, überwiegend passive Zuschauerzahlen planen: Ein explizit autorisierter Browser- oder Native-Packager publiziert ausgewählte Quellen per WHIP an ein austauschbares Media-Gateway, das LL-HLS als belastbaren Basispfad und MoQ ausschließlich capability-gesteuert bereitstellt, ohne das bestehende SFrame-E2EE-Meet oder die blinden Media-Agenten umzudeuten.",
+  "goal": "Ein produktionsreifer, contract-first Broadcast-Pfad mit nachvollziehbaren Trust-Grenzen, kurzlebiger Autorisierung, öffentlicher und privater Sichtbarkeit, Live-Untertiteln, abgestuften Codec-/Rendition-Profilen, optionalem MoQ, kontrollierter Skalierung, Failover, Telemetrie und reproduzierbaren Sicherheits-, Browser-, Last- und Betriebsnachweisen. Der interaktive Raum bleibt unabhängig davon auf maximal 20 Mitglieder begrenzt und Ende-zu-Ende-verschlüsselt.",
+  "status": "todo",
+  "created": "2026-09-02",
+  "updated": "2026-09-02",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "review_basis": {
+    "repository_state": "Planungsstand vor Implementierung; vorhandenes WebRTC-Meet, SFrame, Blind-Agenten, Vosk-Untertitel, Room-Policy und Deployment werden als bestehende Systeme behandelt und nicht stillschweigend ersetzt.",
+    "standards_cutoff": "2026-09-02",
+    "decision_rule": "RFCs und offizielle Herstellerdokumentation definieren die Capability-Matrix; Entwürfe und Beta-Funktionen bleiben versioniert, austauschbar, standardmäßig deaktiviert und dürfen nicht als portable Produktionsgarantie beschrieben werden."
+  },
+  "source_references": [
+    {
+      "id": "SRC-WHIP-RFC9725",
+      "title": "RFC 9725 - WebRTC-HTTP Ingestion Protocol",
+      "url": "https://datatracker.ietf.org/doc/rfc9725/",
+      "planning_relevance": "Normative Basis für HTTPS, Bearer-Autorisierung, SDP-POST, trickle ICE, Simulcast-Aushandlung und die Einschränkung, dass während einer WHIP-Session keine beliebige Media-Section-Renegotiation erfolgt."
+    },
+    {
+      "id": "SRC-WHEP-DRAFT",
+      "title": "IETF WHEP Internet-Draft",
+      "url": "https://datatracker.ietf.org/doc/draft-ietf-wish-whep/",
+      "planning_relevance": "WHEP ist ein möglicher Low-Latency-Ausgabepfad, bleibt zum Stichtag aber ein aktiver Entwurf und ist deshalb kein verpflichtender Basispfad."
+    },
+    {
+      "id": "SRC-APPLE-LLHLS",
+      "title": "Apple - Enabling Low-Latency HLS",
+      "url": "https://developer.apple.com/documentation/http-live-streaming/enabling-low-latency-http-live-streaming-hls",
+      "planning_relevance": "Primärreferenz für LL-HLS-Playlist-, Part-, Blocking-Reload- und Player-Anforderungen."
+    },
+    {
+      "id": "SRC-APPLE-HLS-AUTHORING",
+      "title": "Apple - HLS Authoring Specification",
+      "url": "https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices/",
+      "planning_relevance": "Grundlage für Apple-/Safari-Kompatibilität, Codec-, Rendition- und Authoring-Entscheidungen."
+    },
+    {
+      "id": "SRC-MOQT-DRAFT20",
+      "title": "IETF Media over QUIC Transport draft-20",
+      "url": "https://datatracker.ietf.org/doc/draft-ietf-moq-transport/",
+      "planning_relevance": "Versionierte Forschungsbasis für Publish/Subscribe, Relays, WebTransport/QUIC und partielle Zuverlässigkeit; kein stabiler Ersatz für LL-HLS."
+    },
+    {
+      "id": "SRC-MOQ-LOC-DRAFT04",
+      "title": "IETF Low Overhead Container Format for MoQ draft-04",
+      "url": "https://datatracker.ietf.org/doc/draft-ietf-moq-loc/",
+      "planning_relevance": "Versionierte Containerbasis für optionale MoQ-Audio-/Video-Objekte."
+    },
+    {
+      "id": "SRC-MOQ-SECURE-OBJECTS",
+      "title": "IETF MoQ Secure Objects draft-01",
+      "url": "https://datatracker.ietf.org/doc/draft-ietf-moq-secure-objects/",
+      "planning_relevance": "Forschungsgrundlage für objektbezogene Ende-zu-Ende-Authentisierung und Verschlüsselung über nicht vertrauenswürdige Relays; ausdrücklich noch keine vorhandene Produkteigenschaft."
+    },
+    {
+      "id": "SRC-MEDIAMTX-WHIP",
+      "title": "MediaMTX - Publish with WebRTC clients",
+      "url": "https://mediamtx.org/docs/publish/webrtc-clients",
+      "planning_relevance": "Offizielle Capability-Referenz für WHIP-Ingest und Connectivity-Anforderungen des initialen Gateway-Adapters."
+    },
+    {
+      "id": "SRC-MEDIAMTX-HLS",
+      "title": "MediaMTX - Read a stream with HLS",
+      "url": "https://mediamtx.org/docs/read/hls",
+      "planning_relevance": "Offizielle Referenz für HLS-/Low-Latency-Konfiguration und Browserausgabe."
+    },
+    {
+      "id": "SRC-MEDIAMTX-MOQ",
+      "title": "MediaMTX - Read a stream with MoQ",
+      "url": "https://mediamtx.org/docs/read/moq",
+      "planning_relevance": "Offizielle, versionsabhängige Capability-Referenz für einen experimentellen MoQ-Ausgabepfad."
+    },
+    {
+      "id": "SRC-MEDIAMTX-AUTH",
+      "title": "MediaMTX - Authentication",
+      "url": "https://mediamtx.org/docs/features/authentication",
+      "planning_relevance": "Grundlage für externe HTTP-/JWT-Autorisierung, Aktionen und pfadbezogene Berechtigungen."
+    },
+    {
+      "id": "SRC-MEDIAMTX-CONTROL",
+      "title": "MediaMTX - Control API",
+      "url": "https://mediamtx.org/docs/features/control-api",
+      "planning_relevance": "Grundlage für die Netzwerkisolation der administrativen API; keine direkte Browserfreigabe."
+    },
+    {
+      "id": "SRC-MEDIAMTX-METRICS",
+      "title": "MediaMTX - Metrics",
+      "url": "https://mediamtx.org/docs/features/metrics",
+      "planning_relevance": "Offizielle Basis für inhaltsfreie Gateway-Metriken und Health-Gates."
+    },
+    {
+      "id": "SRC-MEDIAMTX-SCALE",
+      "title": "MediaMTX - Scale",
+      "url": "https://mediamtx.org/docs/features/scalability",
+      "planning_relevance": "Begründet die getrennten Origin-, LL-HLS- und CDN-Profile; LL-HLS-Playlists sind nicht wie Standard-HLS beliebig cachebar."
+    },
+    {
+      "id": "SRC-CLOUDFLARE-WEBRTC",
+      "title": "Cloudflare Stream - WebRTC beta",
+      "url": "https://developers.cloudflare.com/stream/webrtc-beta/",
+      "planning_relevance": "Provider-Adapter müssen aktuelle Einschränkungen ehrlich abbilden; Cloudflare Stream darf nicht pauschal als WHIP-zu-HLS-Packager angenommen werden."
+    },
+    {
+      "id": "SRC-CLOUDFLARE-MOQ",
+      "title": "Cloudflare Media over QUIC",
+      "url": "https://developers.cloudflare.com/moq/",
+      "planning_relevance": "Optionale externe MoQ-Relay-Capability mit expliziter Draft-/Client-Versionsprüfung, getrennt von Cloudflare Stream."
+    }
+  ],
+  "architectural_invariants": [
+    "Das bestehende interaktive Meet bleibt WebRTC-basiert, auf höchstens 20 Room-Mitglieder begrenzt und verwendet den vorhandenen SFrame-Pfad; Broadcast-Zuschauer sind keine Room-Mitglieder, erhalten keine Peer-ID, keine SFrame-Room-Schlüssel und keine interaktiven Medienrechte.",
+    "Die Node-Control-Plane besitzt Broadcast-Policy, Autorisierung, Zustandsübergänge und kurzlebige Grants, terminiert, decodiert, transcodiert, speichert oder protokolliert aber niemals Audio-, Video-, Bildschirm- oder Chat-Inhalte.",
+    "Blind Media Agents und Data-Overlay-Relays bleiben kryptografisch blind. Sie besitzen keinen Decrypt-Port und dürfen nicht durch Konfiguration in einen Trusted-Packager umgedeutet werden.",
+    "Das lokale Original eines Nutzers darf erst nach einem sichtbaren Klick vor der SFrame-Transformation in eine getrennte Broadcast-Publikation geforkt werden. Das Öffnen eines Panels, ein Raumbeitritt oder ein Remotesignal startet weder Capture noch Broadcast.",
+    "Fremde oder gemischte Raumquellen dürfen nur an einen sichtbar ausgewählten Trusted-Packager entschlüsselt werden. Die Freigabe ist quellen-, raum-, epoch-, zweck- und zeitgebunden, widerrufbar und erweitert keine Room-Membership.",
+    "Der Broadcast-Zweig besitzt nicht automatisch die E2EE-Eigenschaften des Raums. TLS, DTLS-SRTP, signierte URLs, DRM oder Provider-Verschlüsselung dürfen in UI und Dokumentation nicht als Raum-E2EE bezeichnet werden.",
+    "LL-HLS ist der interoperable Basispfad. MoQ, WHEP, Secure Objects, Hardware-Codecs und Provider-Beta-Funktionen sind capability-gesteuerte Adapter mit einem dokumentierten Fallback.",
+    "MediaMTX ist ein zunächst geeigneter, gepinnter Adapter und keine Domain-Abhängigkeit. Contracts und Browser-Ports bleiben gegen andere Gateways, native Packager und Provider austauschbar.",
+    "Recording, DVR, dauerhafte Transkriptspeicherung und automatische Veröffentlichung sind standardmäßig aus und nicht implizit Teil einer Live-Publikation.",
+    "Es gibt keine feste globale Obergrenze aktiver Räume in der Domain. Konfigurierbare Ressourcen-, Principal-, Tenant-, Gateway- und Broadcast-Limits dürfen als Admission-Control wirken und müssen bei Ablehnung einen sichtbaren Grund liefern.",
+    "Tokens, Room-Codes, Namen, SDP, ICE, IP-Kandidaten, Untertiteltext und Medieninhalt erscheinen nicht in Produktionslogs oder allgemeinen Metriken.",
+    "Öffentliche Auslieferung erfolgt ausschließlich über HTTPS; WSS, HTTP/3/QUIC, ICE-UDP und zusätzliche Ports werden nur pro aktivierter Capability gezielt freigegeben."
+  ],
+  "trust_model": {
+    "interactive_room": "SFrame-geschützter, interaktiver Raum mit Control-/Audio-Mesh, autorisierten Relay-Topologien und höchstens 20 Mitgliedern.",
+    "own_source_packager": "Der veröffentlichende Browser oder Native-Agent verarbeitet ausschließlich lokal gewählte Originalquellen und benötigt dafür keinen fremden Raum-Schlüssel.",
+    "trusted_program_packager": "Ein freiwilliger, explizit autorisierter Endpunkt darf ausgewählte freigegebene Quellen entschlüsseln, mischen und für den Broadcast neu codieren; er ist damit für genau diese Quellen ein vertrauenswürdiger Medienendpunkt.",
+    "media_gateway": "WHIP-/HLS-/MoQ-Gateway mit kurzlebiger, pfadgebundener Berechtigung. Es sieht den absichtlich für das Publikum erzeugten Broadcast-Program-Stream, aber keine nicht veröffentlichten Raumquellen und keine SFrame-Room-Schlüssel.",
+    "cdn_or_provider": "Optionaler Auslieferer für große Reichweite. Er erhält nur die freigegebene Broadcast-Ausgabe und wird in Datenschutz-, Region-, Retention- und Kostenentscheidungen einbezogen.",
+    "viewer": "Nicht interaktiver Empfänger einer öffentlichen oder autorisierten privaten Publikation; Zuschauerstatus erzeugt keine Room-Membership und keine Signaling-Autorität."
+  },
+  "target_architecture": {
+    "control_flow": [
+      "OIDC-authentisierter Nutzer fordert für einen konkreten Raum und Zweck eine Broadcast-Aktion an.",
+      "Die Control Plane prüft Tenant, Membership, Rolle, Raumvisibility, Consent, Quoten, aktiven Lease-Epoch und Zieladapter.",
+      "Die Control Plane gibt kurzlebige, einmalig oder eng wiederverwendbar begrenzte Publisher-, Packager- und Playback-Grants aus; Provider-Secrets bleiben serverseitig.",
+      "Packager und Gateway melden nur Zustände, pseudonyme IDs und technische Metriken; die Control Plane nimmt keine Medienpakete oder Untertitelinhalte entgegen."
+    ],
+    "own_source_media_flow": [
+      "Expliziter lokaler Klick -> Kamera, Mikrofon, Bildschirm oder Systemaudio.",
+      "Lokaler Track-Fork -> SFrame-Raumpublikation und getrennte, bewusst aktivierte Broadcast-Program-Publikation.",
+      "Browser/Native Packager -> WHIP -> Media-Gateway -> LL-HLS; optional nach Capability MoQ.",
+      "Öffentlicher oder autorisierter Zuschauer -> Player, ohne in den WebRTC-Raum einzutreten."
+    ],
+    "trusted_program_media_flow": [
+      "Ausgewählte Publisher erteilen einem konkreten Trusted-Packager einen sichtbaren, widerrufbaren Decrypt-/Program-Consent.",
+      "Der Trusted-Packager empfängt ausschließlich autorisierte Quellen, entschlüsselt lokal, mischt Audio, komponiert Video und codiert ein separates Programm.",
+      "Das Programm wird über einen kurzlebig autorisierten Gateway-Pfad publiziert; unautorisierte Quellen, Chat und Data-Overlay bleiben ausgeschlossen.",
+      "Widerruf, Quellenende, Lease-Verlust, Epochwechsel, Leave oder Logout entfernt Schlüsselmaterial, stoppt Tracks und beendet die Gateway-Publikation idempotent."
+    ],
+    "delivery_profiles": [
+      "Origin LL-HLS für kleine bis mittlere Zuschauerzahlen mit niedriger Latenz und gemessener Gateway-Grenze.",
+      "CDN-fähiges fMP4-HLS für große Reichweite, wenn LL-HLS-Playlist- und Origin-Last nicht sinnvoll cachebar sind.",
+      "Optionales MoQ für explizit unterstützte Publisher-/Relay-/Player-Versionen; bei jedem Capability- oder Laufzeitfehler Rückfall auf LL-HLS/HLS.",
+      "Optionaler WHEP-Pfad erst nach eigenem Interoperabilitäts-Gate, weil WHEP zum Planungsstichtag kein RFC-Basispfad ist."
+    ]
+  },
+  "rollout_stages": [
+    {
+      "id": "TBP-R0",
+      "title": "Contracts, ADR und Threat Model",
+      "exit_gate": "Trust-Grenzen, Zustandsmaschine, Grants, Codec-Matrix, Provider-Capabilities und messbare SLOs sind geprüft; es existiert noch kein produktiver Medienpfad."
+    },
+    {
+      "id": "TBP-R1",
+      "title": "Eigene Quelle zu privatem LL-HLS-Pilot",
+      "exit_gate": "Ein Nutzer kann eine lokale Quelle sichtbar starten und stoppen, per RFC-9725-WHIP an einen isolierten MediaMTX-Testadapter senden und mit kurzlebiger Berechtigung in zwei realen Browserfamilien ansehen."
+    },
+    {
+      "id": "TBP-R2",
+      "title": "Öffentlich/privat, Untertitel und belastbarer Origin",
+      "exit_gate": "Directory-Policy, Segment-/Playlist-Schutz, Vosk-/WebVTT-Synchronität, Codec-Fallback, Observability und definierte Origin-Lastgrenzen sind real belegt."
+    },
+    {
+      "id": "TBP-R3",
+      "title": "Trusted Program, Native Transcoding, ABR und Failover",
+      "exit_gate": "Quellenbezogener Decrypt-Consent, Audio-/Video-Komposition, Native-Packager, Rendition-Leiter, Lease-Fencing und Takeover sind gegen SFrame-Isolation und Ausfälle geprüft."
+    },
+    {
+      "id": "TBP-R4",
+      "title": "CDN-Reichweite und optionales MoQ",
+      "exit_gate": "CDN-Profil und Kostenlimits sind lastgetestet; MoQ bleibt getrennt aktivierbar und hat eine dokumentierte Draft-Matrix sowie einen automatischen LL-HLS-Fallback."
+    },
+    {
+      "id": "TBP-R5",
+      "title": "Produktionsfreigabe",
+      "exit_gate": "Security-, Datenschutz-, Browser-, Last-, Chaos-, Rollback- und Betriebs-Gates sind reproduzierbar grün; verbleibende Einschränkungen werden sichtbar als solche ausgeliefert."
+    }
+  ],
+  "non_goals": [
+    "Kein Ersatz des interaktiven WebRTC-Raums, des Signaling-Servers, von TURN oder der vorhandenen Blind-Agenten.",
+    "Keine Behauptung, LL-HLS oder normales MoQ sei Ende-zu-Ende-verschlüsselt wie der SFrame-Raum.",
+    "Kein automatisches Publizieren beim Raumbeitritt und keine durch Zuschauer oder Remotesignale auslösbare Capture-Berechtigung.",
+    "Keine ungeprüfte unbegrenzte Zuschauerzahl, Latenz-, Verfügbarkeits- oder Kosten-Garantie.",
+    "Kein standardmäßig aktives Recording, DVR, dauerhaftes Transcript, Werbetracking oder personenbezogenes Zuschauerprofil.",
+    "Kein Vendor-Lock-in in Domain-Contracts und keine direkte Browserberechtigung für Provider-Control-APIs oder Langzeit-Secrets."
+  ],
+  "open_decisions": [
+    "Welcher erste Produktionsstandort besitzt genügend symmetrischen Upload, CPU/GPU und Ausfallsicherheit für Media-Gateway und Native-Packager: Oracle, Mini-PC, freiwilliger Edge-Agent oder ein separater Medienhost?",
+    "Welche Browser-Codec-Ausgabe wird für den Pilot ohne Transcoding akzeptiert und welche Zielgeräte erzwingen H.264/AAC beziehungsweise einen nativen Transcode-Pfad?",
+    "Welche messbaren Zuschauer-, Egress-, Latenz- und Kostenwerte trennen Origin-LL-HLS, CDN-HLS und optionales MoQ?",
+    "Soll eine private HLS-Wiedergabe primär über Same-Site-HttpOnly-Cookies, signierte Manifest-/Segmentpfade oder einen autorisierenden Reverse-Proxy erfolgen, insbesondere für natives Safari-HLS?",
+    "Welche Rollen dürfen eine öffentliche Publikation starten, fremde Quellen als Program auswählen, Packager wechseln und eine Sendung endgültig beenden?",
+    "Welche expliziten Retention- und Moderationsregeln gelten später, falls Recording oder dauerhaftes Transcript als eigener Track angenommen wird?"
+  ],
+  "milestones": [
+    {
+      "id": "TBP-M01",
+      "title": "Bestandsaufnahme, Architektur und Trust-Grenzen",
+      "task_ids": ["TBP-001", "TBP-002", "TBP-003", "TBP-004"],
+      "status": "todo"
+    },
+    {
+      "id": "TBP-M02",
+      "title": "Broadcast-Domain, Contracts und Autorisierung",
+      "task_ids": ["TBP-005", "TBP-006", "TBP-007", "TBP-008"],
+      "status": "todo"
+    },
+    {
+      "id": "TBP-M03",
+      "title": "Expliziter Browser-Publisher und WHIP",
+      "task_ids": ["TBP-009", "TBP-010", "TBP-011", "TBP-012"],
+      "status": "todo"
+    },
+    {
+      "id": "TBP-M04",
+      "title": "Trusted Program, Komposition und Native-Packager",
+      "task_ids": ["TBP-013", "TBP-014", "TBP-015", "TBP-016"],
+      "status": "todo"
+    },
+    {
+      "id": "TBP-M05",
+      "title": "MediaMTX-Adapter, LL-HLS und Codec-Pipeline",
+      "task_ids": ["TBP-017", "TBP-018", "TBP-019", "TBP-020"],
+      "status": "todo"
+    },
+    {
+      "id": "TBP-M06",
+      "title": "Player, private Auslieferung und Reichweitenskalierung",
+      "task_ids": ["TBP-021", "TBP-022", "TBP-023", "TBP-024"],
+      "status": "todo"
+    },
+    {
+      "id": "TBP-M07",
+      "title": "Optionales MoQ und zukunftsfähige Transportadapter",
+      "task_ids": ["TBP-025", "TBP-026", "TBP-027", "TBP-028"],
+      "status": "todo"
+    },
+    {
+      "id": "TBP-M08",
+      "title": "Angular-UX, Moderation, Zuschauer und Untertitel",
+      "task_ids": ["TBP-029", "TBP-030", "TBP-031", "TBP-032"],
+      "status": "todo"
+    },
+    {
+      "id": "TBP-M09",
+      "title": "Abuse-Schutz, Observability, HA und Deployment",
+      "task_ids": ["TBP-033", "TBP-034", "TBP-035", "TBP-036"],
+      "status": "todo"
+    },
+    {
+      "id": "TBP-M10",
+      "title": "Verifikation, Lastnachweis und Produktionsfreigabe",
+      "task_ids": ["TBP-037", "TBP-038", "TBP-039", "TBP-040"],
+      "status": "todo"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "TBP-001",
+      "title": "Bestehende Medien-, SFrame-, Relay-, Caption- und Deployment-Pfade reproduzierbar inventarisieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Ein versioniertes Ist-Datenflussdiagramm benennt Capture, SFrame-Transformation, Mesh, Trusted-Relay, Blind-Agent, Vosk-Captions, Signaling, Caddy und laufende Zielhosts ohne erfundene Komponenten.",
+        "Für jeden vorhandenen Pfad sind Eigentümer, Trust-Level, Schlüsselzugriff, Ports, Protokolle, Browserunterstützung, Ressourcenverbrauch und bekannte Verifikationslücken festgehalten.",
+        "Mindestens ein realer Zwei-Browser-Basistest belegt, dass Kamera, Audio, Bildschirm, SFrame und Stop-/Leave-Cleanup vor der Broadcast-Arbeit erwartungsgemäß funktionieren oder konkrete Vorfehler dokumentiert sind.",
+        "Die Herkunftsmatrix in docs/ananta-webrtc-adoption.md ist geprüft; Ananta bleibt Herkunftsquelle und wird keine Runtime-Abhängigkeit."
+      ]
+    },
+    {
+      "id": "TBP-002",
+      "title": "ADR für getrennte Interactive-, Broadcast- und Delivery-Planes verabschieden",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-001"],
+      "acceptance_criteria": [
+        "Eine ADR definiert Control Plane, interaktive SFrame Data Plane, Own-Source-Packager, Trusted-Program-Packager, Media-Gateway, CDN/Provider und Viewer als getrennte Komponenten mit kleinen Ports.",
+        "Die ADR erklärt für lokale, fremde und gemischte Quellen exakt, wo Klartext existiert und warum Blind-Agenten weder Schlüssel noch einen Decrypt-Port erhalten.",
+        "Zuschauer werden ausdrücklich nicht in Room-Membership, Peer-Liste, 20er-Grenze oder Mesh-Topologie aufgenommen; die Control Plane bleibt alleinige Policy-Autorität.",
+        "Alternative Gateways und Packager können über Capability-Adapter ergänzt werden, ohne zentrale Domain-Contracts oder Angular-Komponenten venderspezifisch zu verzweigen."
+      ]
+    },
+    {
+      "id": "TBP-003",
+      "title": "Threat Model, Datenschutzmodell und ehrliche E2EE-Semantik definieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-001", "TBP-002"],
+      "acceptance_criteria": [
+        "Das Threat Model behandelt kompromittierte Packager/Gateways, Token-Replay, Pfaderraten, Hotlinking, unerlaubte Quellenauswahl, Key-Retention, Insider, CDN/Provider, Metadaten, DoS und ungewolltes Recording.",
+        "Security Claims unterscheiden SFrame-Raum-E2EE, trusted decrypt/re-encode, Transportverschlüsselung, optionale Objektverschlüsselung und öffentliche Wiedergabe in UI, Dokumentation und Contracts.",
+        "Für Identität, technische Metriken, Viewer-Zählung, IP-/Providerdaten, Untertitel, Logs und optionale Aufnahme sind Zweck, Speicherort, minimale Aufbewahrung, Löschung und Verantwortlichkeit festgelegt.",
+        "Negative Abuse-Cases und prüfbare Mitigations werden jedem späteren Security-Test zugeordnet; unbekannte Felder, Typen und Capabilities bleiben fail-closed."
+      ]
+    },
+    {
+      "id": "TBP-004",
+      "title": "Standards-, Browser-, Codec- und Provider-Capability-Matrix versionieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-001", "TBP-002"],
+      "acceptance_criteria": [
+        "Die Matrix pinnt RFC 9725, den geprüften WHEP-Entwurf, MoQT-/LOC-/Secure-Objects-Draftstände, MediaMTX-Version, Player-Versionen und Provider-API-Versionen mit Abrufdatum.",
+        "Chrome/Edge, Firefox, Safari Desktop und mindestens Android/iOS werden für Capture, Systemaudio, Insertable Streams, WHIP, HLS/LL-HLS, WebTransport/MoQ und Autoplay getrennt als supported, degraded, experimental oder unavailable geführt.",
+        "Opus, AAC, VP8, VP9, H.264 und AV1 werden für Ingest, Passthrough, Transcoding, Safari-Ausgabe, Hardwarebeschleunigung und Lizenz-/Betriebsfolgen geprüft; kein Remux wird als Transcode ausgegeben.",
+        "MediaMTX, Cloudflare Stream, Cloudflare MoQ und weitere Adapter deklarieren maschinenlesbar nur tatsächlich belegte Ingest-, Output-, Auth-, Recording-, Caption- und E2EE-Capabilities."
+      ]
+    },
+    {
+      "id": "TBP-005",
+      "title": "Versionierte Broadcast-Domain und JSON-Schemas einführen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-002", "TBP-003", "TBP-004"],
+      "acceptance_criteria": [
+        "Additive JSON-Schemas definieren BroadcastProgram, ProgramSource, Publication, Rendition, DeliveryEndpoint, ProviderCapability, Consent, Lease, Grant, ViewerPolicy, CaptionTrack, Health und Event.",
+        "Jedes Objekt trägt Contract-Version, Tenant/Subject beziehungsweise pseudonyme Referenz, Room-ID-Bindung, Program-ID, Revision/Epoch, Zeitgrenzen und erlaubte Aktionen, wo diese semantisch erforderlich sind.",
+        "Unknown Types, Unknown Fields an sicherheitskritischen Grenzen, ungültige Übergänge, Cross-Room-/Cross-Tenant-Referenzen, Oversize und abgelaufene Epochen werden serverseitig abgewiesen.",
+        "Contracts enthalten keine SDP-, ICE-, Token-, Secret-, Klartextcaption- oder Medienfelder und hängen von keinem konkreten Gateway-SDK ab.",
+        "Schema-Fixtures und Kompatibilitätstests belegen gültige Minimal-/Vollobjekte sowie Negativfälle für jede Contract-Familie."
+      ]
+    },
+    {
+      "id": "TBP-006",
+      "title": "Broadcast-Zustandsmaschine, Idempotenz und Epoch-Fencing implementieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-005"],
+      "acceptance_criteria": [
+        "Die Zustandsmaschine bildet mindestens draft, preparing, awaiting_consent, publishing, live, degraded, stopping, stopped und failed mit erlaubten Übergängen ab.",
+        "Create, start, source-change, handoff, revoke, stop und retry besitzen Idempotency-Keys; doppelte, verspätete oder umgeordnete Events erzeugen keine zweite Publikation und reaktivieren keinen gestoppten Stream.",
+        "Membership-, Route-, Topology-, Broadcast- und Lease-Epochen bleiben getrennt; Packager/Gateway-Kommandos benötigen die aktuelle Program-Revision und ein nicht abgelaufenes Fencing-Token.",
+        "Leave, Logout, Room-Ende, Consent-Widerruf, Source-Ende, Lease-Verlust und Prozessabbruch besitzen deterministische Cleanup- und Recovery-Übergänge.",
+        "Ein reiner Domain-Test simuliert Race Conditions und beweist, dass höchstens ein aktiver Writer pro Program-Epoch akzeptiert wird."
+      ]
+    },
+    {
+      "id": "TBP-007",
+      "title": "Kurzlebige Publisher-, Packager- und Playback-Grants sicher ausgeben",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-003", "TBP-005", "TBP-006"],
+      "acceptance_criteria": [
+        "Die Control Plane prüft OIDC-Issuer, Algorithmus, Audience, Ablauf, Subject, Tenant, Room-Membership, Rolle, Gerätebeweis, Consent und Quoten vor jeder Grant-Ausgabe fail-closed.",
+        "Publisher- und Packager-Grants sind kurzlebig, program-, path-, action-, tenant-, subject-, device-, epoch- und audience-gebunden; Playback-Grants sind mindestens program-, policy- und zeitgebunden.",
+        "Bearer-Tokens werden ausschließlich in Authorization-Headern oder einem begründeten, getesteten Cookie-/Signed-Path-Verfahren verwendet, niemals in Logs, Referern, Signaling-Nachrichten oder allgemeinen Analyseevents.",
+        "Provider-Langzeit-Secrets, Gateway-Control-Credentials und Signaturschlüssel bleiben außerhalb des Browsers und außerhalb versionierter Dateien; Rotation und sofortige Sperrung sind getestet.",
+        "Replay, falsche Audience, falscher Pfad, falsche Aktion, Cross-Tenant, abgelaufener Grant und widerrufene Program-Epoch besitzen Negativtests."
+      ]
+    },
+    {
+      "id": "TBP-008",
+      "title": "Öffentliche/private Audience-Policy und Directory-Semantik ergänzen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-003", "TBP-005", "TBP-006", "TBP-007"],
+      "acceptance_criteria": [
+        "Ein Program kann gemäß serverseitiger Rolle jederzeit zwischen private, unlisted und public wechseln; ein Wechsel erhöht Revision/Epoch und aktualisiert neue Playlist-/Segmentzugriffe atomar.",
+        "Public Directory liefert nur freigegebene Minimalmetadaten; private Programme sind ohne Berechtigung weder auflistbar noch über unterscheidbare Fehler, IDs, Viewerzahlen oder Timing enumerierbar.",
+        "Viewer-Berechtigung erzeugt keine Room-Membership, keinen Session-Ticket-Zugriff, keine Peer-ID, keine SFrame-Schlüssel, keine Chatrechte und keine Capture-Aktion.",
+        "Policy definiert Besitzer-, Moderator-, Presenter-, Packager- und Viewer-Aktionen einschließlich sofortigem Stop, Visibility-Wechsel, Quellwiderruf und Packager-Handoff.",
+        "Bestehende öffentliche/private Room-UX bleibt kompatibel; Broadcast-Sichtbarkeit wird sichtbar getrennt und kann die Room-Policy nicht erweitern."
+      ]
+    },
+    {
+      "id": "TBP-009",
+      "title": "Browser-Broadcast-Modul nach kleinen Ports und Adaptern strukturieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-002", "TBP-004", "TBP-005"],
+      "acceptance_criteria": [
+        "Getrennte Angular-Services/Ports besitzen Program-State, Consent, Source-Selection, Capture-Fork, Composition, WHIP-Publication, Delivery-Capabilities, Playback und Stats; UI-Komponenten enthalten keine Token- oder RTCPeerConnection-Policy.",
+        "WHIP-, Mock-, Native-Bridge- und spätere Provider-Adapter implementieren kleine Capability-Interfaces und dürfen nicht durch irreführende No-op-Methoden substituiert werden.",
+        "Browser-State besitzt keine zweite implizite globale Peer-Liste; Quellenreferenzen stammen aus dem klar besitzenden Room-/Publication-State und werden bei Destroy vollständig entfernt.",
+        "Unit-Tests belegen deterministische Start-/Stop-/Retry-Reihenfolge, Abort-Signale, Subscription-Cleanup und fehlende Capture-Aufrufe beim Konstruktor oder Panel-Öffnen."
+      ]
+    },
+    {
+      "id": "TBP-010",
+      "title": "Expliziten Own-Source-Fork mit Preview, Consent und Cleanup bauen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-003", "TBP-009"],
+      "acceptance_criteria": [
+        "Nur ein sichtbarer lokaler Klick darf Kamera, Mikrofon, Bildschirm oder Systemaudio für den Broadcast wählen beziehungsweise eine bereits aktive lokale Quelle in den Broadcast-Zweig aufnehmen.",
+        "Eine Preflight-Ansicht zeigt Quellen, Vorschau, Tonpegel, Captions, Zielpublikum, E2EE-Verlust am Broadcast-Abzweig, Codecprofil und geschätzten Upload vor dem Start.",
+        "Der Fork entsteht vor SFrame nur für eigene Originaltracks; der SFrame-Raumpfad bleibt unverändert und ein Broadcast-Stop beendet nicht ungewollt die lokale Raumfreigabe.",
+        "Mikrofon, Kamera, Bildschirm und Systemaudio bleiben getrennte, idempotent stoppbare Publikationen; Sessionwechsel, Leave, Logout, Pagehide und Destroy räumen Broadcast-Clones, AudioNodes und Worker auf.",
+        "Tests beweisen, dass kein remote ausgelöstes Signal, Visibility-Wechsel, Reload, Deep Link oder wiederhergestellter UI-State Capture beziehungsweise Broadcast automatisch startet."
+      ]
+    },
+    {
+      "id": "TBP-011",
+      "title": "RFC-9725-konformen WHIP-Publisher-Adapter implementieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-004", "TBP-006", "TBP-007", "TBP-009", "TBP-010"],
+      "acceptance_criteria": [
+        "Der Adapter verwendet HTTPS, SDP offer/answer, Location-Resource, kurzlebigen Bearer-Grant, ICE-PATCH/Trickle und DELETE gemäß RFC 9725; Redirect-, CORS- und Auth-Verhalten ist explizit getestet.",
+        "ICE-Server, Codec-Präferenzen, Simulcast-Capability und Bundle/RTCP-Mux werden aus geprüfter Runtime-Konfiguration abgeleitet und nicht aus untrusted Signaling-Feldern übernommen.",
+        "Response-Größen, Content-Types, Statuscodes, ETags/ICE-Fragmente, Timeouts, Retry-Budget und Abort werden begrenzt; Tokens, SDP und ICE erscheinen nicht in Produktionslogs.",
+        "Create und Delete sind im lokalen Lifecycle idempotent, verlorene Sessions werden nicht unendlich wiederbelebt und Serverfehler führen in einen sichtbaren degraded/failed-State.",
+        "Ein Mock- und ein realer MediaMTX-Integrationstest decken Success, Unauthorized, Expired, Redirect, ICE restart, Network drop und Stop ab."
+      ]
+    },
+    {
+      "id": "TBP-012",
+      "title": "Feste WHIP-Media-Sections, Quellenwechsel und adaptive Sendersteuerung beherrschen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-005", "TBP-006", "TBP-011"],
+      "acceptance_criteria": [
+        "Audio- und Video-Transceiver werden vor der WHIP-Aushandlung passend zur Program-Policy angelegt; spätere m-line-Änderungen erzwingen einen kontrollierten Session-Neustart statt nicht standardisierter Renegotiation.",
+        "replaceTrack wird nur bei kompatibler Kind-/Codec-/Envelope-Konfiguration verwendet; Kamera-, Bildschirm-, Stille-, Slate- und Source-Ende-Wechsel besitzen definierte State- und Viewer-Auswirkungen.",
+        "Senderparameter für Auflösung, FPS, Bitrate, Content-Hint, Degradation Preference, Audioqualität und Simulcast werden capability-geprüft, begrenzt und ohne Einfluss auf die Raumqualität angewendet.",
+        "GetStats steuert ein begrenztes Adaptionsmodell mit Hysterese und Cooldown; Packet Loss, RTT, Encode-Zeit und verfügbare Uploadrate lösen keine schnellen Qualitätsoszillationen aus.",
+        "Ein Langzeittest mit wiederholten Wechseln und mindestens einer Netzwerkunterbrechung belegt, dass Video nicht bei weiterlaufender Bitrate einfriert und Ressourcen nach Stop freigegeben werden."
+      ]
+    },
+    {
+      "id": "TBP-013",
+      "title": "Quellengebundenen Trusted-Decrypt-Consent und Schlüssel-Lifecycle entwerfen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-003", "TBP-005", "TBP-006", "TBP-007", "TBP-008"],
+      "acceptance_criteria": [
+        "Jeder Publisher muss pro Program, Packager-Gerät, Medienart, Source-ID, Zweck, Ablauf und Room-Epoch sichtbar zustimmen; Gruppenersteller- oder Agentstatus allein erteilt keine Entschlüsselungsberechtigung.",
+        "Der Packager erhält nur für autorisierte Quellen kurzlebiges Schlüsselmaterial beziehungsweise eine zielgebundene SFrame-Empfängerfähigkeit; Blind-Agenten, Gateway, CDN und Zuschauer erhalten sie nie.",
+        "Widerruf, Packager-Wechsel, Lease-Verlust, Epochwechsel, Leave und Destroy entfernen Schlüssel aus erreichbarem Browser-/Agent-State und stoppen die betroffene Programquelle deterministisch.",
+        "UI und Audit-Ereignisse zeigen, welcher konkrete Trusted-Packager welche Quellen verarbeiten darf, ohne Schlüssel, Tokens, Room-Codes, Namen oder Medienmetadaten in Logs zu schreiben.",
+        "Kryptografische und Protokoll-Negativtests decken Replay, falschen Zielagenten, falsche Source, Cross-Room, alte Epoch, manipulierten Consent und nachträgliche Quellenerweiterung ab."
+      ]
+    },
+    {
+      "id": "TBP-014",
+      "title": "Trusted-Audio-Programmbus mit Echo-, Pegel- und Sprachpriorität bauen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-010", "TBP-013"],
+      "acceptance_criteria": [
+        "Der Packager mischt nur autorisierte Mikrofon-, Systemaudio- und optional freigegebene Remotequellen in einen getrennten Programmbus; lokales Monitoring speist nicht erneut in Mikrofon oder Screen-Audio ein.",
+        "Talkback, Program-Monitoring, Raumwiedergabe und Broadcast-Ausgang besitzen explizite Routingregeln, Mute, Ducking, Gain, Limiter und eine sichere Standardstrategie gegen Echo und Clipping.",
+        "Audio-Priorität, Opus/AAC-Zielrate, Kanalzahl, DTX/FEC soweit verfügbar und Sprach-/Musikprofil sind konfigurierbar, capability-begrenzt und im Preview messbar.",
+        "Quellenwechsel, Stille, Bluetooth-Gerätewechsel, Screen-Audio-Ende und Packager-Handoff erzeugen keine dauerhaften AudioNodes, Doppelwiedergabe oder unkontrollierte Lautstärkesprünge.",
+        "Ein realer Kopfhörer-/Lautsprecher-Test mit Bildschirmton, Mikrofon und zwei Teilnehmern dokumentiert Echo, Lippensynchronität, Pegel und Fallback statt nur technische Track-Aktivität."
+      ]
+    },
+    {
+      "id": "TBP-015",
+      "title": "Trusted-Video-Compositor für Kamera, Bildschirm, Layout und Slate entwickeln",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-010", "TBP-013", "TBP-014"],
+      "acceptance_criteria": [
+        "Der Compositor nimmt nur consentierte Quellen auf und unterstützt mindestens Single Source, Screen plus Presenter, Side-by-Side, Active Speaker, Grid, Waiting Slate und End Slate.",
+        "Layout, Zielauflösung, FPS, Crop/Fit, Screen-Text-Lesbarkeit, Kamera-Thumbnail-Floor, Hintergrund und Quellenpriorität sind profilegesteuert und ändern die interaktive Raumdarstellung nicht.",
+        "Frame-Timestamps und Audio-Clock bleiben monoton; versteckte Tabs, OffscreenCanvas-/Worker-Fallback, Source-Ende und Encoder-Backpressure besitzen definierte Degradationspfade.",
+        "Optional eingeblendete Untertitel, Sprechername oder Programtitel werden nur nach expliziter Policy gerendert und geben keine privaten Room-Metadaten an öffentliche Zuschauer weiter.",
+        "Visuelle Golden-/Integrationstests und ein realer 60-Minuten-Test prüfen Layoutwechsel, Bildschirmtext, Kamera, A/V-Sync, Memory-/CPU-Wachstum und Freeze-Recovery."
+      ]
+    },
+    {
+      "id": "TBP-016",
+      "title": "Installierbaren Native-Packager mit Transcoding, ABR und Geräte-Capabilities ergänzen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-004", "TBP-005", "TBP-006", "TBP-013", "TBP-014", "TBP-015"],
+      "acceptance_criteria": [
+        "Der native Agent ist eine getrennte, freiwillige Rolle mit signiertem/prüfbarem Build, eindeutiger Geräteidentität, konto-/tenantgebundener Registrierung und pro Raum ausdrücklich aktivierter Packager-Capability.",
+        "Capability-Reports enthalten ausschließlich notwendige Codec-, Hardware-, CPU-/GPU-, Upload-, Energie-, Version- und Health-Klassen; die Control Plane validiert Grenzen und glaubt keine selbstdeklarierte Autorität.",
+        "Eine isolierte Pipeline kann Program-Audio/-Video in definierte H.264/AAC- und/oder andere bestätigte Zielprofile transcodieren, Keyframes ausrichten und eine begrenzte ABR-Rendition-Leiter erzeugen.",
+        "Hardwarebeschleunigung besitzt Software-Fallback, Temperatur-/CPU-/Upload-Budgets, harte Queue-Grenzen und sichtbare Ablehnungsgründe; ein Agent wird niemals automatisch für fremde Räume freigegeben.",
+        "Installation, Update, Deinstallation, Secret-Speicherung, Autostart, Firewallbedarf und Sandbox/Least-Privilege sind für unterstützte Betriebssysteme dokumentiert und negativ getestet.",
+        "Browser-Packager bleibt für geeignete Single-Rendition-Fälle verfügbar; die UI wählt Native nicht stillschweigend und behauptet keine nicht gemessene Qualitätssteigerung."
+      ]
+    },
+    {
+      "id": "TBP-017",
+      "title": "MediaMTX als gepinnten, reproduzierbaren Gateway-Adapter bereitstellen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-004", "TBP-005", "TBP-006", "TBP-007"],
+      "acceptance_criteria": [
+        "Container-Image, Konfigurationsschema und relevante MediaMTX-Capabilities werden digest-/versionsgepinnt; SBOM, Lizenz und reproduzierbarer Build-/Pull-Nachweis liegen vor.",
+        "WHIP-Ingest, HLS/LL-HLS, optional MoQ, Metrics und Control API sind als getrennte Adapter-Capabilities konfiguriert; nicht benötigte Protokolle und Defaultpfade bleiben deaktiviert.",
+        "Pfadnamen werden aus nicht erratbaren, programgebundenen IDs abgeleitet und serverseitig autorisiert; statische Publisher-Passwörter oder Control-Secrets gelangen nicht in die Angular-Runtime.",
+        "Gateway läuft in einem eigenen Netzwerk-/Prozesskontext mit Read-only-Dateisystem soweit möglich, begrenzten Ressourcen, Healthcheck und ohne Recording/DVR-Volume im Defaultprofil.",
+        "Ein lokales Integrationprofil startet und stoppt vollständig, ohne bestehende Caddy-, WebRTC-, Keycloak-, TURN- oder Blind-Agent-Ports zu übernehmen."
+      ]
+    },
+    {
+      "id": "TBP-018",
+      "title": "Gateway-, Control- und Media-Pfade mit Least Privilege isolieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-006", "TBP-007", "TBP-008", "TBP-017"],
+      "acceptance_criteria": [
+        "MediaMTX-Control-API und Metrics sind nicht öffentlich erreichbar, benötigen intern Auth/Netzwerkpolicy und akzeptieren nur den minimalen orchestrierenden Dienst; Browser sprechen ausschließlich freigegebene Media-/Playback-Endpunkte an.",
+        "Externe Auth oder JWT prüft Aktion, Pfad, Program, Tenant, Subject, Audience, Ablauf, Epoch und optional IP-/Device-Policy konsistent für Publish, Read und Playback.",
+        "Caddy-/Reverse-Proxy-Regeln begrenzen Methoden, Header, Body, Origin, CORS, Rate, Timeouts und Pfadnormalisierung; Admin-, Debug-, pprof- und Metrics-Pfade bleiben default-deny.",
+        "SSRF, Open-Proxy, Path Traversal, Host-Header-Manipulation, Token-in-Query, Cross-Origin-Publish und Zugriff nach Widerruf besitzen automatisierte Negativtests.",
+        "Secret-Rotation kann laufende Sessions kontrolliert auslaufen lassen oder widerrufen; alte Credentials und Backups werden sicher entfernt, ohne Klartext im Repository oder Deployment-Output."
+      ]
+    },
+    {
+      "id": "TBP-019",
+      "title": "LL-HLS-Erzeugung mit niedriger Latenz und sauberem Lifecycle verifizieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-011", "TBP-017", "TBP-018"],
+      "acceptance_criteria": [
+        "LL-HLS-Konfiguration definiert Segment-/Part-Dauer, Keyframe-Abstand, Playlistfenster, Blocking Reload, Part Hold Back, Timeouts und maximale In-Memory-Dauer auf Basis gemessener Playerkompatibilität.",
+        "Start, verspäteter Viewer, Source-Wechsel, Discontinuity, Netzwerkverlust, Publisher-Restart und Stop erzeugen valide Playlists ohne endlose Stale-Parts oder unbeschränkt wachsende temporäre Daten.",
+        "End-to-glass-Latenz, Join-Zeit, Rebuffering, A/V-Sync und Live-Edge-Abstand werden mit einer dokumentierten Uhr-/Messmethode statt nur anhand angezeigter Bitrate erfasst.",
+        "Defaultbetrieb speichert keine Aufnahme; flüchtige Segmente und Playlists werden nach Program-Ende oder TTL zuverlässig entfernt und sind nach Policy-Widerruf nicht weiter autorisierbar.",
+        "Ein mindestens 60-minütiger Browserlauf und ein kontrollierter Publisher-Neustart bleiben innerhalb definierter Memory-, CPU-, Disk-, Latenz- und Freeze-Grenzen."
+      ]
+    },
+    {
+      "id": "TBP-020",
+      "title": "Codec-, Transcode- und Rendition-Profile mit Admission-Control festlegen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-004", "TBP-016", "TBP-017", "TBP-019"],
+      "acceptance_criteria": [
+        "Mindestens ein nachweislich kompatibles Pilotprofil und eine abgestufte Ziel-Rendition-Leiter definieren Codec, Level/Profile, Auflösung, FPS, Bitrate, GOP/Keyframes, Audioformat und Kanalzahl.",
+        "Browser-Simulcast, einzelne WHIP-Encodings, Gateway-Passthrough und native ABR-Transcodes werden getrennt modelliert; das System erfindet aus einem Single-Layer-Ingest keine individuelle ABR-Fähigkeit.",
+        "CPU/GPU, Speicher, Encoder-Slots und Egress werden vor Start reserviert beziehungsweise abgelehnt; Überlast reduziert Profile nach Policy oder stoppt kontrolliert statt den interaktiven Raum zu beeinträchtigen.",
+        "Safari/iOS, Chromium, Firefox und mindestens ein Android-Gerät spielen das gewählte HLS-Profil real ab; nicht kompatible Clients erhalten einen sichtbaren Fallback oder eine konkrete Fehlermeldung.",
+        "Qualitätsmetriken enthalten VMAF/SSIM oder begründete Alternativen, Textlesbarkeit beim Screen-Share, Audio-Lautheit, A/V-Sync und subjektive Stichproben; keine einzelne Bitrate gilt als Qualitätsbeweis."
+      ]
+    },
+    {
+      "id": "TBP-021",
+      "title": "Capability-gesteuerten LL-HLS/HLS-Player für Browser und Mobilgeräte bauen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-007", "TBP-019", "TBP-020"],
+      "acceptance_criteria": [
+        "Der Player wählt natives HLS oder eine gepinnte hls.js-/äquivalente Engine anhand echter Capability-Checks; MoQ/WHEP werden nur über separate Adapter angeboten.",
+        "Autoplay-Regeln, Mute/Unmute, Lautstärke, Vollbild, Picture-in-Picture, Qualitätswahl, Live-Edge, Untertitel, Poster, Wiederverbinden und Program-Ende funktionieren mit sichtbaren Zuständen.",
+        "Stall-Erkennung nutzt Media-, Buffer- und Delivery-Stats; ein kontrolliertes Resync beziehungsweise Rendition-Fallback behebt eingefrorenes Bild bei weiterlaufendem Empfang, ohne Endlosschleife.",
+        "Player-Fehler geben keine privaten IDs, Token, Pfade oder Providerantworten preis; Telemetrie verwendet pseudonyme Program-/Sessionklassen und lässt sich datenschutzkonform begrenzen.",
+        "Destroy, Navigation, Visibility-Wechsel und erneutes Öffnen räumen MediaSource, Netzwerkrequests, Timer, Worker, TextTracks und EventListener vollständig auf."
+      ]
+    },
+    {
+      "id": "TBP-022",
+      "title": "Private Manifest-, Segment- und Part-Auslieferung durchgängig autorisieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-006", "TBP-007", "TBP-008", "TBP-018", "TBP-021"],
+      "acceptance_criteria": [
+        "Das ausgewählte Verfahren schützt Master-/Media-Playlists, Initialisierungssegmente, Segmente, Parts, Preload Hints, Untertitel und Keys konsistent; der Schutz endet nicht nach dem ersten Manifest.",
+        "Safari-natives HLS, hls.js und mobile Browser werden mit dem gewählten Same-Site-HttpOnly-Cookie-, Reverse-Proxy- oder signierten Pfadmodell real getestet; Tokens landen nicht in History, Referer oder Analytics.",
+        "Grantablauf, Visibility-Wechsel, Logout, Moderator-Revoke und Program-Ende sperren neue Requests innerhalb einer definierten Frist; Cache-Control verhindert private Wiederverwendung über Nutzergrenzen.",
+        "CORS, CSP, CORP/COEP soweit passend, CSRF, Origin/Host, HTTPS, Cookie-Flags und CDN-Forwarding sind dokumentiert und mit positiven sowie negativen Browserfällen geprüft.",
+        "Öffentliche Streams verwenden eine getrennte, absichtlich öffentliche Policy und können nicht durch erratbare Pfade auf private Geschwisterprogramme zugreifen."
+      ]
+    },
+    {
+      "id": "TBP-023",
+      "title": "Origin-, CDN- und Standard-HLS-Skalierungsprofile implementieren",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-019", "TBP-021", "TBP-022"],
+      "acceptance_criteria": [
+        "Ein gemessenes Origin-LL-HLS-Profil definiert maximale gleichzeitige Viewer, Requests pro Sekunde, Egress, offene Blocking-Reloads, CPU/RAM und erwartete Latenz pro Hostklasse.",
+        "Ein getrenntes CDN-Profil verwendet cachebares fMP4-HLS oder einen nachweislich kompatiblen LL-HLS-CDN-Pfad und dokumentiert den Latenz-/Skalierungs-Tradeoff statt unbegrenzte LL-HLS-Cachebarkeit zu behaupten.",
+        "CDN-Origin-Authentisierung, Host-/Path-Allowlist, hlsCDNSecret oder äquivalenter Mechanismus, Cache-Key, Purge, private Auth und Shielding sind fail-closed konfiguriert.",
+        "Ein Program kann anhand Policy und Messwerten kontrolliert zwischen Delivery-Profilen wechseln; Player verarbeitet Discontinuity/URL-Wechsel oder zeigt einen bewussten kurzen Restart.",
+        "Provider-Ausfall besitzt einen getesteten Origin- oder Alternativprovider-Fallback, dessen geringere Kapazität sichtbar ist und per Admission-Control geschützt wird."
+      ]
+    },
+    {
+      "id": "TBP-024",
+      "title": "Kapazitäts-, Kosten- und Qualitätsbudgets für große Reichweite operationalisieren",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-004", "TBP-020", "TBP-023"],
+      "acceptance_criteria": [
+        "Konfigurierbare Budgets begrenzen Viewer, Egress, Encoder-Minuten, Transcode-Slots, Providerkosten und Programmdauer pro Tenant/Principal/Deployment, ohne eine feste globale Room-Anzahl in die Domain einzuführen.",
+        "Vor dem Start zeigt die UI eine nachvollziehbare Kapazitäts-/Kostenklasse; Soft- und Hard-Limits erzeugen Warnungen, Admission-Denial oder kontrollierten Profilwechsel statt überraschender Rechnung.",
+        "Viewerzahlen sind aggregiert, gegen Mehrfachzählung grob robust und datensparsam; keine invasive Fingerprinting- oder personenbezogene Trackingpflicht wird eingeführt.",
+        "SLOs für Startzeit, End-to-glass-Latenz, Rebuffering, Verfügbarkeit, Caption-Delay und Abbruchquote sind je Delivery-Profil definiert und besitzen Messfenster sowie Error Budgets.",
+        "Kapazitätsbehauptungen werden erst nach reproduzierbarem Lasttest veröffentlicht und nennen Hardware, Region, Codec, Renditions, Zuschauerverteilung und Begrenzungen."
+      ]
+    },
+    {
+      "id": "TBP-025",
+      "title": "Versionierte MoQ-/LOC-Contracts und Capability-Negotiation ergänzen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-004", "TBP-005", "TBP-006"],
+      "acceptance_criteria": [
+        "Contracts pinnen MoQT-, LOC-, WebTransport- und gegebenenfalls Secure-Objects-Versionen und behandeln inkompatible Draftstände als unavailable statt durch stilles Downgrade.",
+        "Namespace, Track, Group, Object, Catalog, Codec, Rendition, Priorität, Ablauf und Subscription-Filter werden begrenzt und auf Program-/Tenant-/Audience-Policy abgebildet.",
+        "Browser, Gateway und Provider handeln eine gemeinsame Capability-Menge aus; fehlt sie, wird ohne Datenverlust oder Berechtigungserweiterung LL-HLS/HLS gewählt.",
+        "Unbekannte MoQ-Extensions, übergroße Catalogs/Objects, unzulässige Namespaces, alte Epochs und Cross-Program-Subscriptions werden fail-closed getestet.",
+        "Die experimentelle Capability ist standardmäßig deaktiviert und nennt in UI/Docs den konkreten Draftstand sowie die unterstützte Browser-/Provider-Matrix."
+      ]
+    },
+    {
+      "id": "TBP-026",
+      "title": "Austauschbare MediaMTX- und Provider-MoQ-Adapter implementieren",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-006", "TBP-007", "TBP-017", "TBP-025"],
+      "acceptance_criteria": [
+        "Ein kleiner MoQ-Publish/Subscribe-Port trennt Domain und UI von MediaMTX-, Cloudflare- oder anderen Provider-APIs; Adapter geben versionierte Capabilities und Einschränkungen ehrlich zurück.",
+        "Cloudflare Stream und Cloudflare MoQ werden als getrennte Produkte/Capabilities behandelt; ein WHIP-Input wird nicht ohne offiziellen Nachweis als HLS-/MoQ-Ausgabe desselben Dienstes vorausgesetzt.",
+        "Provider-Credentials verbleiben serverseitig, sind tenant-/environmentgetrennt, kurzlebig soweit angeboten und besitzen Rotation, Quoten, Audit und Kill-Switch.",
+        "Publisher-/Subscriber-URL, Namespace und Token werden gegen SSRF, Host-Manipulation, Cross-Tenant-Nutzung und Log-Leakage geschützt; nur Allowlist-Ziele sind zulässig.",
+        "Contract-Tests erlauben den Austausch zwischen Mock, MediaMTX und mindestens einem optionalen Provider, ohne zentrale Broadcast-State-Machine oder Angular-Komponenten zu patchen."
+      ]
+    },
+    {
+      "id": "TBP-027",
+      "title": "MoQ-Playerpfad mit automatischem LL-HLS-Fallback verifizieren",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-021", "TBP-022", "TBP-025", "TBP-026"],
+      "acceptance_criteria": [
+        "Der Player wählt MoQ nur bei kompatiblem Secure Context, WebTransport-/Codec-Support, gemeinsamer Draftversion, erfolgreicher Autorisierung und erreichbarem QUIC-Pfad.",
+        "Handshake-, Auth-, Codec-, Relay-, Network-Change- und Stall-Fehler wechseln innerhalb eines begrenzten Budgets zu LL-HLS/HLS, ohne parallelen unkontrollierten Doppeldownload.",
+        "MoQ misst Join-Zeit, Glass-to-glass-Latenz, Rebuffering, Objektverlust, verworfene Gruppen, Decode-Backpressure und Egress getrennt vom HLS-Pfad.",
+        "Manuelle Pfadwahl ist als Diagnose sichtbar, aber sichere Auto-Auswahl bleibt Standard; eine experimentelle Kennzeichnung verhindert falsche Portabilitäts- oder Verfügbarkeitsversprechen.",
+        "Mindestens zwei kompatible Clientkontexte und ein absichtlich inkompatibler beziehungsweise UDP-blockierter Kontext belegen Erfolg und Fallback real."
+      ]
+    },
+    {
+      "id": "TBP-028",
+      "title": "MoQ Secure Objects und verschlüsselten Broadcast als getrennte Forschungsstufe evaluieren",
+      "status": "todo",
+      "priority": "P2",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-003", "TBP-006", "TBP-025", "TBP-027"],
+      "acceptance_criteria": [
+        "Eine ADR bewertet Secure Objects gegen bestehendes SFrame hinsichtlich Schlüsselverteilung, Catalog-Schutz, Metadatenleckage, Relay-Cachebarkeit, Random Access, ABR, Rotation, Widerruf und Browserimplementierbarkeit.",
+        "Ein Prototyp darf nur in einem separaten Experimentalprofil laufen und muss beweisen, dass Relays/Provider Objektinhalte nicht entschlüsseln oder unbemerkt manipulieren können.",
+        "Trusted Composition wird nicht als blindes Relay ausgegeben: Wenn ein Packager mischt oder transcodiert, endet die Quellverschlüsselung dort und eine optionale neue Broadcast-Verschlüsselung beginnt als eigener Trust-Kontext.",
+        "Schlüssel gelangen nie in URL, Logs, Gateway-Control-Plane oder CDN; Viewer-Entitlement, Rotation, Late Join, Revocation und Geräteverlust besitzen ein überprüfbares Modell.",
+        "Ohne belastbare Browsermatrix, unabhängige Security-Review und Fallback bleibt die Capability deaktiviert und wird nicht als Produktions-E2EE beworben."
+      ]
+    },
+    {
+      "id": "TBP-029",
+      "title": "Angular-Broadcast-Cockpit mit explizitem Preflight, Live-State und Kill-Switch bauen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-007", "TBP-008", "TBP-009", "TBP-010", "TBP-011"],
+      "acceptance_criteria": [
+        "Das bestehende Menü erhält einen klaren Broadcast-Bereich für Quelle, Preview, Programlayout, Audio, Untertitel, Sichtbarkeit, Delivery-Profil, Packager, Qualitätsprofil und geschätzte Ressourcen.",
+        "Start erfordert eine zusammenfassende Bestätigung von Publikum, Quellen und Trust-Grenze; Live, degraded, reconnecting, handing_over, stopping, stopped und failed sind dauerhaft sichtbar.",
+        "Ein jederzeit erreichbarer Stop/Kill-Switch beendet Publikation, widerruft Grants und räumt lokale Quellen idempotent auf; Visibility- oder Packager-Wechsel zeigt die erwartete Unterbrechung.",
+        "UI zeigt E2EE-Raum und Broadcast-Zweig getrennt, einschließlich des konkreten Trusted-Packagers und der Tatsache, dass Gateway/Zuschauer den erzeugten Broadcast-Program-Stream verarbeiten können.",
+        "Öffnen, Schließen, Routing, Refresh und State-Wiederherstellung des Cockpits lösen ohne Nutzeraktion weder Capture, Decrypt-Consent noch erneuten Broadcaststart aus."
+      ]
+    },
+    {
+      "id": "TBP-030",
+      "title": "Moderator-, Quellen-, Packager- und Handoff-Workflows umsetzen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-008", "TBP-013", "TBP-016", "TBP-029"],
+      "acceptance_criteria": [
+        "Autorisierte Rollen können Quellen anfragen, Publisher-Consent sehen, Layout ändern, eine Quelle entfernen, Packager auswählen, Standby benennen, Handoff starten und die Sendung beenden.",
+        "Publisher können ihre eigene Quelle unabhängig vom Moderator sofort widerrufen; der Stream wechselt auf sichere Ersatzquelle/Slate und nutzt keine zuletzt decodierten Frames weiter.",
+        "Mehrere eigene installierte Packager-/Edge-Geräte sind auswählbar, aber nur ein gefenceter aktiver Program-Writer publiziert; Standbys erhalten keine unnötigen Decrypt-Schlüssel.",
+        "Packager-Auswahl berücksichtigt nur consentierte Geräte desselben Kontos/Tenants/Raums sowie Capability, Health, Upload, Energie und Operatorlimits; fremde Räume können den Agenten nicht beanspruchen.",
+        "Alle Aktionen besitzen verständliche Bestätigung, Konflikt-/Epoch-Fehler, Audit-Metadaten ohne Medieninhalt und getestete Tastaturbedienung."
+      ]
+    },
+    {
+      "id": "TBP-031",
+      "title": "Öffentliche und private Zuschaueroberfläche mit Directory und Qualitätswahl erstellen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-007", "TBP-008", "TBP-021", "TBP-022", "TBP-029"],
+      "acceptance_criteria": [
+        "Eine übersichtliche Ansicht trennt live öffentliche Programme, berechtigte private Programme, eigene Programme und beendete/unerreichbare Zustände ohne private Enumeration.",
+        "Ein Klick öffnet den Player mit Titel, Besitzeranzeige nach Policy, Live-State, aggregierter Viewerzahl, Latenzmodus, Qualitätswahl, Audio, Vollbild, Untertiteln und verständlichem Fallbackstatus.",
+        "Private Zuschauer werden über OIDC/Grant autorisiert; öffentliche Zuschauer benötigen keine Room-Membership oder SFrame-Schlüssel und werden nicht in der Teilnehmerliste angezeigt.",
+        "Schwache Geräte oder Netze können niedrige Qualität manuell wählen; Auto berücksichtigt Buffer, Bandbreite, Decodeleistung und Datensparmodus mit Hysterese.",
+        "Deep Links, Refresh, Program-Ende, Revoke, Offline, 404/403 und Providerwechsel besitzen sichere, barrierearme Zustände ohne Token- oder interne Pfadleaks."
+      ]
+    },
+    {
+      "id": "TBP-032",
+      "title": "Vosk-Live-Captions als synchronisierte, consentierte Broadcast-Untertitel ausliefern",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-003", "TBP-014", "TBP-015", "TBP-019", "TBP-021", "TBP-031"],
+      "acceptance_criteria": [
+        "Der Publisher wählt explizit, ob lokale Vosk-Ergebnisse nur lokal, im SFrame-Raum, im Broadcast als TextTrack und/oder eingebrannt sichtbar sind; Default erweitert die Freigabe nicht.",
+        "Finalisierte Captions werden am Trusted-Packager mit Program-Zeitbasis in begrenzte WebVTT-/Timed-Metadata-Segmente überführt; Partial-Ergebnisse werden nur flüchtig angezeigt und nicht blind persistiert.",
+        "Sprachmodell, Sprache, Sprecherlabel, Caption-Delay, Zeilenlänge, Position und Stil sind einstellbar; Modellnachladen bleibt Nutzeraktion und folgt bestehenden Größen-/Integritätsgrenzen.",
+        "Private Captions besitzen denselben Manifest-/Segmentzugriffsschutz wie das Programm; Node-Control-Plane, Blind-Agent, allgemeine Logs und Metriken sehen keinen Transcript-Text.",
+        "Source-Wechsel, Pause, Late Join, Discontinuity, Handoff und Player-Resync halten Captions innerhalb eines definierten Synchronitätsbudgets; alte Cues erscheinen nicht nach Widerruf erneut.",
+        "Ein realer Screen-Audio- und Mikrofontest in mindestens zwei Sprachen dokumentiert Wortfehler, Delay, CPU/RAM, mobile Degradation und barrierearme Bedienung."
+      ]
+    },
+    {
+      "id": "TBP-033",
+      "title": "Admission-Control, Backpressure, Quoten und Abuse-Schutz durchgängig erzwingen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-003", "TBP-006", "TBP-007", "TBP-017", "TBP-018", "TBP-023", "TBP-024", "TBP-026"],
+      "acceptance_criteria": [
+        "Harte Limits existieren vor Allokation für Request-/Message-Größe, Rate, aktive Programs pro Principal/Tenant/Gateway, Quellen, Renditions, Encoder, Queue, Speicher, Segmentfenster, Viewer, Egress und Laufzeit.",
+        "Packager und Gateway wenden bounded queues, drop/degrade/stop-Strategien und Timeouts an; langsame Viewer, Encoder oder Provider erzeugen keinen unbeschränkten RAM-/Disk-/Socket-Anstieg.",
+        "Token-Guessing, Pfadenumeration, Hotlinking, Credential-Stuffing, Start/Stop-Flapping, View-Bots, Catalog-Flood, Zip/JSON-Bombs, SSRF und offene Relay-/Proxy-Nutzung besitzen Mitigations und Negativtests.",
+        "Rate-/Quota-Fehler sind für Nutzer verständlich, geben aber keine private Existenz oder interne Kapazitätsdetails preis; Operatoren erhalten pseudonyme technische Diagnosecodes.",
+        "Überlast des Broadcast-Zweigs kann ihn degradieren oder stoppen, beeinträchtigt aber in einem gemeinsamen Belastungstest nicht Signaling, SFrame-Raum, TURN-Credential-Ausgabe oder Room-Limits."
+      ]
+    },
+    {
+      "id": "TBP-034",
+      "title": "Inhaltsfreie Observability, SLOs und Alarmierung etablieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-005", "TBP-017", "TBP-019", "TBP-021", "TBP-024", "TBP-025"],
+      "acceptance_criteria": [
+        "Metriken decken Program-State, Start-/Stop-Latenz, WHIP-Sessions, Ingest-/Egress-Bitrate, Frames, Keyframes, Drops, Encoderzeit, Segments/Parts, Viewerklassen, Buffering, Captions-Delay, CPU/RAM/Disk und Quoten ab.",
+        "Labels sind cardinality-begrenzt und pseudonym; Namen, Room-Codes, Tokens, SDP, ICE, IP-Kandidaten, Medien, Caption-Text und frei eingegebene Titel fehlen aus Logs, Traces und Metriken.",
+        "Health-, readiness- und dependency-Zustände unterscheiden Control Plane, Packager, Gateway, Origin/CDN und optionale MoQ-Adapter; ein optionaler Ausfall macht nicht pauschal das Meet ungesund.",
+        "Dashboards zeigen End-to-glass, Join-Zeit, Rebuffering, A/V-Sync-Proxies, aktive Renditions, Egress/Kostenklasse, Failover und Error Budget; Schwellenwerte besitzen Runbook-Links.",
+        "Sampling, Retention, Zugriffsrechte, Exportziele und Löschung erfüllen das Datenschutzmodell und sind in einem Log-/Metric-Leakage-Test geprüft."
+      ]
+    },
+    {
+      "id": "TBP-035",
+      "title": "Lease-basiertes Packager-/Gateway-Failover und Disaster-Recovery umsetzen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-006", "TBP-007", "TBP-008", "TBP-016", "TBP-017", "TBP-019", "TBP-023"],
+      "acceptance_criteria": [
+        "Pro Program existiert genau ein gefenceter aktiver Packager-Writer; Lease-TTL, Heartbeat, Quorum-/Healthsignal, Standby, Grace Period und Takeover-Reihenfolge sind deterministisch.",
+        "Ein Standby erhält Schlüssel und Quellen erst nach benötigtem Consent beziehungsweise ausdrücklich vorautorisiertem, zeitlich begrenztem Handoff-Modell; bloße Erreichbarkeit reicht nicht.",
+        "Packager-, Browser-, Gateway-, Host-, Netzwerk- und Providerausfall werden unterschieden; Recovery erzeugt entweder kontrollierte HLS-Discontinuity/Player-Restart oder einen sichtbaren Stop, nie Split-Brain.",
+        "State-Recovery nutzt nur erlaubte Broadcast-Metadaten und Idempotency-Outbox; Medien, SFrame-Schlüssel und Transcripts werden nicht zur Wiederherstellung in der Node-Control-Plane persistiert.",
+        "Ein Chaos-Test beendet aktiven Packager und Gateway in definierten Phasen und belegt Fencing, maximale Unterbrechung, Cleanup alter Pfade sowie Rückkehr ohne doppelte Publikation."
+      ]
+    },
+    {
+      "id": "TBP-036",
+      "title": "Produktionsdeployment, Netzwerk, Secrets und Rollback härten",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-017", "TBP-018", "TBP-022", "TBP-033", "TBP-034", "TBP-035"],
+      "acceptance_criteria": [
+        "Eine Deployment-ADR wählt Host/Region für Control Plane, Gateway, Packager, Origin und optionale Provider anhand Upload, Latenz, CPU/GPU, Kosten, Datenschutz und Ausfallradius.",
+        "DNS, TLS, WSS/HTTPS, Caddy, WHIP/WebRTC-ICE, LL-HLS und optional HTTP/3/QUIC besitzen eine minimale Port-/Firewallmatrix; kein Port wird ohne aktive Capability und externen Test pauschal geöffnet.",
+        "Secrets kommen aus einem geeigneten Store oder nicht versionierter Runtime-Konfiguration, sind getrennt nach Umgebung/Rolle, rotierbar und fehlen in Git, Images, Angular-Bundle, Backups und normalen Toolausgaben.",
+        "Container/Prozesse verwenden Least Privilege, Read-only-Root soweit möglich, Resource Limits, Netzwerksegmentierung, Security Updates, SBOM/Provenance und kontrollierte Egress-Allowlisten.",
+        "Blue/green oder gleichwertiger Rollout, Daten-/Contract-Kompatibilität, Health-Gates und ein getesteter Rollback erhalten das bisherige webrtc.ananta.de-Meet auch bei fehlgeschlagenem Broadcast-Release.",
+        "Runbook und externer Smoke-Test prüfen Zertifikate, Auth, private/public Wiedergabe, Stop/Cleanup und optionalen MoQ-Port, ohne Produktionssecrets oder private Inhalte aufzuzeichnen."
+      ]
+    },
+    {
+      "id": "TBP-037",
+      "title": "Umfassende Contract-, Domain-, Security- und Negativtests automatisieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-005", "TBP-006", "TBP-007", "TBP-008", "TBP-011", "TBP-018", "TBP-022", "TBP-033"],
+      "acceptance_criteria": [
+        "Tests decken alle Schemas, State-Transitions, Idempotency, Lease-Fencing, Grants, Visibility, Consent, Capability-Negotiation, Adapter und Cleanup mit positiven und negativen Fixtures ab.",
+        "Falscher Issuer/Audience/Subject/Tenant/Room/Device/Path/Action/Epoch, Ablauf, Replay, Oversize, Rate-Limit, unbekannte Messages, Cross-Origin und Disconnect werden fail-closed geprüft.",
+        "Browser-Tests beweisen, dass Panel, Join, Viewer-Link, Remotesignal, Refresh und wiederhergestellter State ohne sichtbaren Nutzerklick keine Capture- oder Decrypt-Berechtigung anfordern.",
+        "Leakage-Tests scannen Logs, Responses, Bundles, Images und Artefakte auf Tokens, Secrets, Private Keys, Room-Codes, SDP/ICE und Caption-Inhalt mit sicheren synthetischen Canaries.",
+        "npm run check und npm run todos:validate enthalten die neuen Gates; nicht verfügbare externe Infrastruktur wird sichtbar als Skip mit Grund und nicht als bestanden gemeldet."
+      ]
+    },
+    {
+      "id": "TBP-038",
+      "title": "Reale Browser-, Geräte-, Netzwerk- und Provider-Interoperabilität nachweisen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["TBP-011", "TBP-012", "TBP-019", "TBP-020", "TBP-021", "TBP-027", "TBP-029", "TBP-031", "TBP-032", "TBP-037"],
+      "acceptance_criteria": [
+        "Mindestens Chromium/Edge, Firefox, Safari Desktop, Android und iOS werden mit dokumentierten Versionen für Publish soweit unterstützt, natives/hls.js Playback, private Auth, Captions, Autoplay und Stop getestet.",
+        "Zwei echte Browseridentitäten belegen, dass der SFrame-Raum während eines Own-Source- und eines Trusted-Program-Broadcasts weiter funktioniert und Zuschauer keine Membership-/Schlüsselrechte erhalten.",
+        "WLAN, Mobilfunk, NAT, Paketverlust, Bandbreitenabfall, Netzwerkwechsel, blockiertes UDP/QUIC und erneute Verbindung prüfen WHIP, LL-HLS und optionales MoQ samt Fallback real.",
+        "MediaMTX und jeder als production-ready markierte Provideradapter bestehen dieselben Contract-/Auth-/Lifecycle-Szenarien; Beta-/fehlende Capabilities erscheinen sichtbar als unavailable oder experimental.",
+        "Video-Freeze, Audio-Echo, Screen-Audio, A/V-Sync, Textlesbarkeit und Caption-Sync werden nach Zeit und Medienwahrnehmung bewertet, nicht allein anhand fortlaufender Bytes."
+      ]
+    },
+    {
+      "id": "TBP-039",
+      "title": "Last-, Langzeit-, Qualitäts-, Chaos- und Kosten-Gates durchführen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-020", "TBP-023", "TBP-024", "TBP-027", "TBP-033", "TBP-034", "TBP-035", "TBP-037", "TBP-038"],
+      "acceptance_criteria": [
+        "Reproduzierbare Profile testen mindestens einen Publisher plus 20 interaktive Room-Mitglieder sowie abgestufte Zuschauerlasten am Origin und über CDN, ohne eine unbelegte konkrete Maximalzahl als Produktgarantie zu veröffentlichen.",
+        "Ein mehrstündiger Soak-Test mit Quellen-/Layout-/Renditionwechsel, Captioning, Late Join, Netzwerkfehlern und Stop prüft Memory, Handles, CPU/GPU, Disk, Egress, Freeze, Drift und Cleanup.",
+        "Chaos-Szenarien umfassen Packager-Crash, Gateway-Restart, Control-Plane-Restart, Providerfehler, DNS/TLS-Fehler, abgelaufene Grants, Partition und Split-Brain-Versuch; Recovery bleibt innerhalb dokumentierter Budgets.",
+        "Qualitätsbericht korreliert Ingest/Output-Bitrate, Packet Loss, Encoder-QP/-Zeit, VMAF/SSIM oder Alternative, Rebuffering, Screen-Text, A/V-/Caption-Sync und subjektive Stichprobe.",
+        "Kostenbericht misst Compute, GPU, Egress, CDN/Provider, Observability und Speicher je Delivery-Profil; Quoten und Warnschwellen werden aus Messwerten statt Annahmen gesetzt.",
+        "Das interaktive Meet besitzt eigene Vergleichsmessungen vor/während/nach Last und überschreitet keine beschlossenen Signaling-, Medien- oder Latenzbudgets durch den Broadcast-Zweig."
+      ]
+    },
+    {
+      "id": "TBP-040",
+      "title": "Dokumentation, Runbooks, Datenschutzreview und gestufte Produktionsfreigabe abschließen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["TBP-028", "TBP-036", "TBP-037", "TBP-038", "TBP-039"],
+      "acceptance_criteria": [
+        "Architektur-, Sequenz-, Deployment-, Trust-, Key-, Port-, Codec-, Player-, Caption-, Failover- und Datenflussdiagramme stimmen mit dem verifizierten Code und den tatsächlich aktivierten Adaptern überein.",
+        "Nutzerhilfe erklärt Own Source versus Trusted Program, Raum-E2EE versus Broadcast, öffentlich/private, Packagerfolgen, Untertitel, Datenverbrauch, Latenz, Stop und Einschränkungen in verständlicher Sprache.",
+        "Operator-Runbooks decken Provisionierung, Health, Alarm, Quoten, Kosten, Secret-/Zertifikatsrotation, Incident, Providerausfall, Takeover, Purge, Rollback und sichere Außerbetriebnahme ab.",
+        "Datenschutz-/Security-Review, Dependency-/Image-Scan, SBOM, Lizenzprüfung, Backup-/Restore-Grenzen und externe Erreichbarkeitstests sind dokumentiert; Recording/Transcript-Retention bleibt ohne eigenen angenommenen Track aus.",
+        "Rollout erfolgt hinter serverseitigem Feature-Flag zunächst intern, dann für ausgewählte private Programme und erst nach grünen Gates öffentlich; Kill-Switch und Rollback wurden vor jeder Stufe getestet.",
+        "Erst nach realer Verifikation werden Tasks und Milestones done/100 gesetzt, Summary-Caches aktualisiert, npm run check sowie npm run todos:validate ausgeführt und verbleibende experimentelle Capabilities sichtbar markiert."
+      ]
+    }
+  ],
+  "critical_path_tasks": [
+    "TBP-001",
+    "TBP-002",
+    "TBP-003",
+    "TBP-004",
+    "TBP-005",
+    "TBP-006",
+    "TBP-007",
+    "TBP-008",
+    "TBP-009",
+    "TBP-010",
+    "TBP-011",
+    "TBP-012",
+    "TBP-013",
+    "TBP-014",
+    "TBP-015",
+    "TBP-016",
+    "TBP-017",
+    "TBP-018",
+    "TBP-019",
+    "TBP-020",
+    "TBP-021",
+    "TBP-022",
+    "TBP-023",
+    "TBP-024",
+    "TBP-029",
+    "TBP-030",
+    "TBP-031",
+    "TBP-032",
+    "TBP-033",
+    "TBP-034",
+    "TBP-035",
+    "TBP-036",
+    "TBP-037",
+    "TBP-038",
+    "TBP-039",
+    "TBP-040"
+  ],
+  "tasks_status_summary": {
+    "total": 40,
+    "by_status": { "todo": 40, "in_progress": 0, "partial": 0, "blocked": 0, "done": 0 },
+    "progress_percent_done": 0,
+    "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
+    "critical_path": { "total": 36, "done": 0, "remaining": 36 },
+    "milestones": { "total": 10, "todo": 10, "in_progress": 0, "blocked": 0, "done": 0 }
+  },
+  "progress_summary": {
+    "state": "todo",
+    "todo_remaining": 40,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 0
+  },
+  "summary_notes": [
+    "Dieser Track ist bewusst im Backlog und beginnt keine Implementierung. Vor dem ersten Code muss der konkret angenommene Task auf in_progress und 1..99 Prozent gesetzt werden.",
+    "LL-HLS ist der geplante Basispfad; MoQ, WHEP und Secure Objects bleiben bis zu ihren jeweiligen Capability-, Browser-, Security- und Interoperabilitäts-Gates experimental beziehungsweise deaktiviert.",
+    "Ein Trusted-Packager ist ein bewusst vertrauenswürdiger Medienendpunkt und kein Blind-Agent. Diese Rollen dürfen weder in Contracts noch in UI oder Deployment zusammenfallen.",
+    "Zuschauerlast wird aus dem 20-Personen-Raum herausgehalten. Das erweitert nicht die Room-Kapazität und erzeugt keine versteckte Membership oder Signaling-Autorität.",
+    "Cloudflare Stream und Cloudflare MoQ werden nicht als ein austauschbarer WHIP-zu-HLS/MoQ-Automat angenommen; jeder Provideradapter muss seine zum Implementierungszeitpunkt belegten Fähigkeiten deklarieren.",
+    "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
+  ]
+}
