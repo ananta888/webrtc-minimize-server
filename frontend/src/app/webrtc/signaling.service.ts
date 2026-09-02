@@ -76,6 +76,19 @@ export class SignalingService {
     this.socket.send(JSON.stringify(message));
   }
 
+  leave(): void {
+    const socket = this.socket;
+    if (socket?.readyState === WebSocket.OPEN) {
+      try {
+        socket.send(JSON.stringify({ type: "leave" }));
+      } finally {
+        this.close();
+      }
+      return;
+    }
+    this.close();
+  }
+
   close(): void {
     const socket = this.socket;
     this.socket = null;

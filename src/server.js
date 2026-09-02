@@ -783,6 +783,18 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
       return;
     }
     const { peer, existingPeers } = joined;
+    let left = false;
+    const leave = () => {
+      if (left) return;
+      left = true;
+      relayHealth.leave(peer.roomId, peer.id);
+      mediaAgents.leavePeer(peer);
+      for (const recipient of registry.leave(peer)) {
+        safeSend(recipient.socket, { type: "peer-left", peerId: peer.id });
+      }
+      directory.touch(peer.roomId);
+      broadcastTopology(peer.roomId, true);
+    };
     directory.touch(peer.roomId);
     socket.isAlive = true;
     safeSend(socket, {
@@ -814,6 +826,11 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
         try { message = parseClientMessage(raw); } catch (error) {
           if (!(error instanceof ProtocolError)) throw error;
           message = parseBrowserMediaAgentMessage(raw);
+        }
+        if (message.type === "leave") {
+          leave();
+          socket.close(1000, "client_leave");
+          return;
         }
         if (message.type === "signal") {
           const recipient = registry.recipient(peer, message.to);
@@ -982,18 +999,6 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
       }
     });
 
-    let left = false;
-    const leave = () => {
-      if (left) return;
-      left = true;
-      relayHealth.leave(peer.roomId, peer.id);
-      mediaAgents.leavePeer(peer);
-      for (const recipient of registry.leave(peer)) {
-        safeSend(recipient.socket, { type: "peer-left", peerId: peer.id });
-      }
-      directory.touch(peer.roomId);
-      broadcastTopology(peer.roomId, true);
-    };
     socket.on("close", leave);
     socket.on("error", leave);
   });

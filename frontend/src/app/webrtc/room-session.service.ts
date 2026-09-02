@@ -110,7 +110,7 @@ export class RoomSessionService {
   }
 
   leave(): void {
-    this.signaling.close();
+    this.signaling.leave();
     this.mesh.close();
     this.joined.set(false);
     this.workspaceId.set("");

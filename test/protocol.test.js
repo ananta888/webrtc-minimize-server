@@ -33,6 +33,15 @@ test("parseClientMessage accepts closed SDP and ICE signals", () => {
   }))), { type: "signal", to: recipient, candidate: null });
 });
 
+test("parseClientMessage accepts only an exact explicit leave control", () => {
+  assert.deepEqual(parseClientMessage(Buffer.from(JSON.stringify({
+    type: "leave",
+  }))), { type: "leave" });
+  assert.throws(() => parseClientMessage(Buffer.from(JSON.stringify({
+    type: "leave", roomId: "room-alpha",
+  }))), (error) => error.code === "unknown_message_field");
+});
+
 test("parseClientMessage validates media metadata and rejects unknown traffic", () => {
   assert.deepEqual(parseClientMessage(Buffer.from(JSON.stringify({
     type: "media-state", source: "camera", active: true, trackId: "track-1",

@@ -109,6 +109,12 @@ function validateCandidate(candidate) {
 
 export function parseClientMessage(raw) {
   const value = parseJson(raw);
+  if (value.type === "leave") {
+    if (!hasOnlyKeys(value, new Set(["type"]))) {
+      throw new ProtocolError("unknown_message_field");
+    }
+    return Object.freeze({ type: "leave" });
+  }
   if (value.type === "signal") {
     const to = requireRecipient(value);
     const hasDescription = Object.hasOwn(value, "description");

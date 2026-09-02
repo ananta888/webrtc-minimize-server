@@ -11,7 +11,9 @@ class FakeWebSocket {
   static readonly CLOSING = 2;
   static latest: FakeWebSocket | null = null;
 
-  readonly readyState = FakeWebSocket.OPEN;
+  readyState = FakeWebSocket.OPEN;
+  readonly sent: string[] = [];
+  readonly closes: Array<{ code?: number; reason?: string }> = [];
   onopen: (() => void) | null = null;
   onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: (() => void) | null = null;
@@ -21,8 +23,11 @@ class FakeWebSocket {
     FakeWebSocket.latest = this;
   }
 
-  send(): void {}
-  close(): void {}
+  send(value: string): void { this.sent.push(value); }
+  close(code?: number, reason?: string): void {
+    this.closes.push({ code, reason });
+    this.readyState = FakeWebSocket.CLOSING;
+  }
 }
 
 describe("signaling server-message envelope", () => {
@@ -61,5 +66,17 @@ describe("signaling server-message envelope", () => {
     socket.onmessage?.({ data: JSON.stringify({ version: 1, type: "media-agent-state" }) } as MessageEvent);
     expect(received).toHaveLength(3);
     expect(service.lastError()).toBe("invalid_server_message");
+  });
+
+  it("sends the explicit leave control before closing the transport", () => {
+    const service = new SignalingService();
+    service.connect("/signal", () => undefined);
+    const socket = FakeWebSocket.latest!;
+
+    service.leave();
+
+    expect(socket.sent).toEqual([JSON.stringify({ type: "leave" })]);
+    expect(socket.closes).toEqual([{ code: 1000, reason: "client_leave" }]);
+    expect(service.status()).toBe("idle");
   });
 });

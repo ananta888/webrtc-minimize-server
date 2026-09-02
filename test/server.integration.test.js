@@ -235,6 +235,24 @@ test("two room peers receive membership and target-bound signals", async (contex
   ada.socket.close();
 });
 
+test("explicit leave releases membership before the transport close completes", async (context) => {
+  const app = await startTestServer();
+  context.after(() => app.close());
+  const observer = await connectAuthorized(app, "room-leave", "Observer");
+  await observer.next((message) => message.type === "welcome");
+  const leaving = await connectAuthorized(app, "room-leave", "Leaving");
+  const leavingWelcome = await leaving.next((message) => message.type === "welcome");
+  await observer.next((message) => message.type === "peer-joined");
+
+  leaving.socket.send(JSON.stringify({ type: "leave" }));
+
+  const left = await observer.next((message) => message.type === "peer-left");
+  assert.equal(left.peerId, leavingWelcome.peerId);
+  const health = await fetch(`${app.httpUrl}/healthz`).then((response) => response.json());
+  assert.equal(health.participants, 1);
+  observer.socket.close();
+});
+
 test("control plane publishes epoch-bound relay trees only after enough explicit consent", async (context) => {
   const app = await startTestServer({ mediaE2eeMode: "disabled" });
   context.after(() => app.close());
