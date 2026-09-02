@@ -581,23 +581,7 @@ export class BlindMediaAgentService {
         receiver,
       };
       if (!descriptor && this.queuePendingTrack(input)) return;
-      const accepted = this.callbacks.acceptTrack(input);
-      if (!accepted) {
-        track.enabled = false;
-      } else if (publisherPeerId && publisherPeerId !== this.ownPeerId) {
-        const publicationId = descriptor?.publicationId || track.id;
-        const subscriptionKey = this.publicationKey(publisherPeerId, publicationId);
-        this.subscriptionTracks.set(subscriptionKey, track);
-        this.acknowledgeSubscriptionTrack(subscriptionKey, publisherPeerId);
-        track.addEventListener("ended", () => {
-          if (this.subscriptionTracks.get(subscriptionKey) !== track) return;
-          this.subscriptionTracks.delete(subscriptionKey);
-          const state = this.subscriptionStates.get(subscriptionKey);
-          if (state) this.sendSubscriptionAck(
-            agentId, publisherPeerId, publicationId, state.revision, false,
-          );
-        }, { once: true });
-      }
+      this.acceptInboundTrack(input);
     };
     pc.onconnectionstatechange = () => {
       const connected = pc.connectionState === "connected";
@@ -792,9 +776,25 @@ export class BlindMediaAgentService {
       if (pending.input.publisherPeerId !== publisherPeerId || pending.input.publicationId !== publicationId) continue;
       clearTimeout(pending.timer);
       this.pendingTracks.delete(key);
-      const accepted = this.callbacks.acceptTrack({ ...pending.input, source: descriptor.source });
-      pending.input.track.enabled = accepted;
+      this.acceptInboundTrack({ ...pending.input, source: descriptor.source });
     }
+  }
+
+  private acceptInboundTrack(input: AgentTrackInput): void {
+    const accepted = this.callbacks.acceptTrack(input);
+    input.track.enabled = accepted;
+    if (!accepted || !input.publisherPeerId || input.publisherPeerId === this.ownPeerId) return;
+    const subscriptionKey = this.publicationKey(input.publisherPeerId, input.publicationId);
+    this.subscriptionTracks.set(subscriptionKey, input.track);
+    this.acknowledgeSubscriptionTrack(subscriptionKey, input.publisherPeerId);
+    input.track.addEventListener("ended", () => {
+      if (this.subscriptionTracks.get(subscriptionKey) !== input.track) return;
+      this.subscriptionTracks.delete(subscriptionKey);
+      const state = this.subscriptionStates.get(subscriptionKey);
+      if (state) this.sendSubscriptionAck(
+        input.agentId, input.publisherPeerId, input.publicationId, state.revision, false,
+      );
+    }, { once: true });
   }
 
   private dropPendingTracks(publisherPeerId: string, publicationId: string): void {

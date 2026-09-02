@@ -399,6 +399,25 @@ describe("blind media-agent browser adapter", () => {
     } as RTCTrackEvent);
     expect(track.enabled).toBe(false);
     expect(acceptTrack).not.toHaveBeenCalled();
+    expect(service.setSubscriptionIntent({
+      publisherPeerId: remotePeerId,
+      publicationId: "remote-camera",
+      source: "camera",
+      enabled: true,
+      preferredLayer: "high",
+      maximumLayer: "high",
+    })).toBe(true);
+    expect(service.applySubscriptionState(remotePeerId, {
+      version: 2,
+      type: "media-agent-subscription-state",
+      agentId: "owner-edge",
+      routeEpoch: 5,
+      publicationId: "remote-camera",
+      subscriberPeerId: ownPeerId,
+      selectedLayer: "high",
+      revision: 11,
+      ready: true,
+    })).toBe(true);
 
     service.applyTrackState({
       version: 2,
@@ -422,6 +441,15 @@ describe("blind media-agent browser adapter", () => {
       track,
     }));
     expect(track.enabled).toBe(true);
+    expect(sent.at(-1)).toMatchObject({
+      version: 1,
+      type: "media-agent-subscription-ack",
+      agentId: "owner-edge",
+      publisherPeerId: remotePeerId,
+      publicationId: "remote-camera",
+      revision: 11,
+      ready: true,
+    });
   });
 
   it("expires an unconfirmed inbound track without granting media authority", () => {
