@@ -86,7 +86,7 @@
       "id": "BME-M13",
       "title": "Mesh-Analyse versionieren und auf dem Mini-PC ausrollen",
       "task_ids": ["BME-017"],
-      "status": "in_progress"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -322,10 +322,10 @@
     {
       "id": "BME-017",
       "title": "Gepruefte Mesh-Analyse committen, pushen und auf dem Mini-PC ausrollen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 10,
+      "progress_percent": 100,
       "depends_on": ["BME-016"],
       "acceptance_criteria": [
         "Nur die geprueften Source-, Test-, Dokumentations-, Infrastruktur- und Todo-Dateien werden gezielt ohne Secrets oder generierte Artefakte als Conventional Commit auf main versioniert und zu origin/main gepusht.",
@@ -337,20 +337,20 @@
   "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011", "BME-012", "BME-013", "BME-014", "BME-015", "BME-016", "BME-017"],
   "tasks_status_summary": {
     "total": 17,
-    "by_status": { "todo": 0, "in_progress": 3, "partial": 1, "blocked": 0, "done": 13 },
-    "progress_percent_done": 76.47,
+    "by_status": { "todo": 0, "in_progress": 2, "partial": 1, "blocked": 0, "done": 14 },
+    "progress_percent_done": 82.35,
     "by_priority": { "P0": 10, "P1": 7, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 1, "high": 7, "critical": 9 },
-    "critical_path": { "total": 16, "done": 12, "remaining": 4 },
-    "milestones": { "total": 13, "todo": 0, "in_progress": 4, "blocked": 0, "done": 9 }
+    "critical_path": { "total": 16, "done": 13, "remaining": 3 },
+    "milestones": { "total": 13, "todo": 0, "in_progress": 3, "blocked": 0, "done": 10 }
   },
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 3,
+    "in_progress": 2,
     "partial": 1,
     "blocked": 0,
-    "done": 13
+    "done": 14
   },
   "summary_notes": [
     "PROD-NET-004 wird mit diesem Track aus dem Category-Backlog in ausfuehrbare Arbeit ueberfuehrt.",
@@ -378,6 +378,7 @@
     "BME-016 verfolgt die angeforderte interaktive Raumansicht fuer Mesh, Trusted Relays und native Media-Agenten. Ausschliesslich aktuelle serverautorisierte Membership und Routen duerfen den Graphen bilden; Peer-Telemetrie ist kurzlebige, untrusted Anzeigeinformation und niemals Policy-Autoritaet.",
     "BME-016 ist am 2026-09-02 abgeschlossen: Der responsive, tastaturbedienbare SVG-Graph zeigt autorisierte Direct-, Trusted-Relay-, Browser-Agent- und Agent-Foederationskanten mit automatisch formatierten kbit/s-/Mbit/s-Werten. Ein Knotenklick schluesselt Gesamt-, Audio-, Kamera/Video-, Bildschirm- und DataChannel-Upload/-Download auf. Telemetrie wird nur bei geoeffneter Analyse angefordert, ist geschlossen, begrenzt, kurzlebig und ohne Routingautoritaet. Der vollstaendige npm-run-check-Gate bestand mit 108 Angular- und 90 Node-/Browser-/Integrationsfaellen einschliesslich realer Chromium-, Firefox- und Sechs-Peer-Relay-Pfade sowie Produktionsbuild; der credential-abhaengige Keycloak-/TURN-Live-Gate blieb sichtbar uebersprungen.",
     "BME-017 verfolgt den vom Nutzer beauftragten Commit-, Push- und Mini-PC-Rollout der geprueften Mesh-Analyse; produktive Secrets, persistente Daten und der bestehende Caddy bleiben ausserhalb des Changes.",
+    "BME-017 ist am 2026-09-02 abgeschlossen: Feature-Commit 2dbaee3 wurde gezielt ohne Secrets oder Buildartefakte auf ananta888/main gepusht und auf dem sauberen Mini-PC per Fast-Forward ausgerollt. Das versionierte Caddy-Netzwerk-Override baute und recreatete ausschliesslich den WebRTC-Dienst. Interner Healthcheck, LAN-erzwungenes TLS und normaler oeffentlicher DNS-Pfad lieferten Status ok sowie main-ZW56CHUV.js mit Mesh-Analyse-Marker; WebRTC und unveraenderter Caddy hatten RestartCount 0, der Alias webrtc-room-server blieb vorhanden, .env blieb Modus 0600 und laptop-edge authentisierte nach dem Recreate erneut.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
   ]
 }
