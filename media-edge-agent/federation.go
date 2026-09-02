@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 )
@@ -41,6 +42,7 @@ type federationPeer struct {
 type federationForward struct {
 	sender *webrtc.RTPSender
 	layer  *forwardLayer
+	active bool
 }
 
 func federationDemandKey(demand federationDemand) string {
@@ -566,6 +568,34 @@ func (f *federationPeer) setForward(publication *forwardPublication, layerName s
 	current := f.senders[key]
 	active := !f.closed && f.ready && needed && layer != nil
 	if current != nil && active && current.layer == layer {
+		if !current.active && current.sender.ReplaceTrack(layer.federationLocal) == nil {
+			current.active = true
+			f.mu.Unlock()
+			publication.mu.Lock()
+			layer.federationPeers[f.link.LinkID] = f
+			publication.mu.Unlock()
+			return
+		}
+		if !current.active {
+			delete(f.senders, key)
+			_ = f.pc.RemoveTrack(current.sender)
+			f.mu.Unlock()
+			go f.negotiate()
+			f.setForward(publication, layerName, needed)
+			return
+		}
+		f.mu.Unlock()
+		return
+	}
+	if current != nil && !active && current.active && current.sender.ReplaceTrack(nil) == nil {
+		current.active = false
+		f.mu.Unlock()
+		current.layer.publication.mu.Lock()
+		delete(current.layer.federationPeers, f.link.LinkID)
+		current.layer.publication.mu.Unlock()
+		return
+	}
+	if current != nil && !active && !current.active {
 		f.mu.Unlock()
 		return
 	}
@@ -591,16 +621,45 @@ func (f *federationPeer) setForward(publication *forwardPublication, layerName s
 		}
 		return
 	}
-	f.senders[key] = &federationForward{sender: sender, layer: layer}
+	f.senders[key] = &federationForward{sender: sender, layer: layer, active: true}
 	f.mu.Unlock()
 	publication.mu.Lock()
 	layer.federationPeers[f.link.LinkID] = f
 	publication.mu.Unlock()
-	go layer.readFeedback(sender)
+	go f.readForwardFeedback(key, sender)
 	// Pion may coalesce OnNegotiationNeeded while another offer is pending.
 	// Calling negotiate explicitly records that exact later mutation through
 	// needsNegotiation and retries it after the current answer.
 	go f.negotiate()
+}
+
+func (f *federationPeer) readForwardFeedback(key string, sender *webrtc.RTPSender) {
+	for {
+		packets, _, err := sender.ReadRTCP()
+		if err != nil {
+			return
+		}
+		requestKeyframe := false
+		for _, packet := range packets {
+			switch packet.(type) {
+			case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
+				requestKeyframe = true
+			}
+		}
+		if !requestKeyframe {
+			continue
+		}
+		f.mu.Lock()
+		forward := f.senders[key]
+		var layer *forwardLayer
+		if forward != nil && forward.sender == sender && forward.active {
+			layer = forward.layer
+		}
+		f.mu.Unlock()
+		if layer != nil {
+			layer.requestKeyframe()
+		}
+	}
 }
 
 func (f *federationPeer) close(announce bool) {

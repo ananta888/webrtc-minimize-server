@@ -624,6 +624,18 @@ func (p *forwardPublication) reconcileSubscriber(peerID string) {
 		p.reportSubscription(peerID, target, plan.Revision, true)
 		return
 	}
+	if current != nil && target != "" {
+		layer := p.layers[target]
+		if layer != nil && current.sender.ReplaceTrack(layer.local) == nil {
+			current.layer = target
+			current.revision = plan.Revision
+			p.mu.Unlock()
+			// The publication and codec stay identical, so a layer switch can use
+			// the existing RTP transceiver and must not create SDP churn.
+			p.reportSubscription(peerID, target, plan.Revision, true)
+			return
+		}
+	}
 	if current != nil {
 		delete(p.subscribers, peerID)
 		if peer != nil {
@@ -659,8 +671,37 @@ func (p *forwardPublication) reconcileSubscriber(peerID string) {
 		p.reportSubscription(peerID, current.layer, current.revision, false)
 	}
 	p.reportSubscription(peerID, target, plan.Revision, true)
-	go layer.readFeedback(sender)
+	go p.readSubscriberFeedback(peerID, sender)
 	go peer.negotiate()
+}
+
+func (p *forwardPublication) readSubscriberFeedback(peerID string, sender *webrtc.RTPSender) {
+	for {
+		packets, _, err := sender.ReadRTCP()
+		if err != nil {
+			return
+		}
+		requestKeyframe := false
+		for _, packet := range packets {
+			switch packet.(type) {
+			case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
+				requestKeyframe = true
+			}
+		}
+		if !requestKeyframe {
+			continue
+		}
+		p.mu.Lock()
+		forward := p.subscribers[peerID]
+		var layer *forwardLayer
+		if forward != nil && forward.sender == sender {
+			layer = p.layers[forward.layer]
+		}
+		p.mu.Unlock()
+		if layer != nil {
+			layer.requestKeyframe()
+		}
+	}
 }
 
 func (p *forwardPublication) selectLayer(plan subscriptionPlan) string {
@@ -696,25 +737,6 @@ func (p *forwardPublication) reportSubscription(peerID, layer string, revision i
 		"publisherPeerId": p.publisherID, "publicationId": p.publicationID,
 		"subscriberPeerId": peerID, "selectedLayer": layer, "revision": revision, "ready": ready,
 	})
-}
-
-func (l *forwardLayer) readFeedback(sender *webrtc.RTPSender) {
-	for {
-		packets, _, err := sender.ReadRTCP()
-		if err != nil {
-			return
-		}
-		requestKeyframe := false
-		for _, packet := range packets {
-			switch packet.(type) {
-			case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
-				requestKeyframe = true
-			}
-		}
-		if requestKeyframe {
-			l.requestKeyframe()
-		}
-	}
 }
 
 func (l *forwardLayer) readLoop() {

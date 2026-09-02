@@ -91,6 +91,76 @@ func TestMediaPeerRetriesNegotiationRequestedDuringOutstandingOffer(t *testing.T
 	}
 }
 
+func TestSubscriberLayerSwitchReusesNegotiatedSender(t *testing.T) {
+	cfg, err := loadConfig(environment(validEnvironment()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	api, closeTransport, err := createWebRTCAPI(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeTransport()
+	agent := newMediaAgent(cfg, api)
+	control := &fakeControl{messages: make(chan capturedControl, 8)}
+	agent.setSignaling(control)
+	const subscriberID = "fedcba9876543210"
+	room := &mediaRoom{
+		agent: agent, id: "room-123456", routeEpoch: 1,
+		allowedPeers: map[string]bool{subscriberID: true}, peers: map[string]*mediaPeer{},
+		subscriptions: map[string]subscriptionPlan{},
+	}
+	pc, err := api.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := &mediaPeer{room: room, id: subscriberID, pc: pc}
+	room.peers[subscriberID] = peer
+	t.Cleanup(peer.close)
+	low, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000},
+		"camera-track", "0123456789abcdef",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	high, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000},
+		"camera-track", "0123456789abcdef",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sender, err := pc.AddTrack(low)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publication := &forwardPublication{
+		room: room, publisherID: "0123456789abcdef", publicationID: "camera-track",
+		layers: map[string]*forwardLayer{}, subscribers: map[string]*subscriberForward{},
+	}
+	publication.layers["low"] = &forwardLayer{publication: publication, name: "low", local: low}
+	publication.layers["high"] = &forwardLayer{publication: publication, name: "high", local: high}
+	publication.subscribers[subscriberID] = &subscriberForward{layer: "low", revision: 1, sender: sender}
+	room.subscriptions[subscriptionKey(subscriberID, publication.publisherID, publication.publicationID)] = subscriptionPlan{
+		SubscriberPeerID: subscriberID, PublisherPeerID: publication.publisherID,
+		PublicationID: publication.publicationID, Source: "camera", Enabled: true,
+		PreferredLayer: "high", MaximumLayer: "high", Revision: 2,
+	}
+
+	publication.reconcileSubscriber(subscriberID)
+	forward := publication.subscribers[subscriberID]
+	if forward == nil || forward.sender != sender || forward.layer != "high" || forward.revision != 2 {
+		t.Fatal("subscriber layer switch replaced the sender or failed to apply the exact revision")
+	}
+	if sender.Track() != high {
+		t.Fatal("subscriber sender did not switch to the selected layer")
+	}
+	if pc.SignalingState() != webrtc.SignalingStateStable {
+		t.Fatal("same-codec layer switch unexpectedly required SDP renegotiation")
+	}
+}
+
 func TestFederationForwardQueuesNegotiationDuringOutstandingOffer(t *testing.T) {
 	cfg, err := loadConfig(environment(validEnvironment()))
 	if err != nil {
@@ -171,5 +241,22 @@ func TestFederationForwardQueuesNegotiationDuringOutstandingOffer(t *testing.T) 
 	secondOffer := nextPeerOffer(t, control.messages)
 	if !strings.Contains(secondOffer.SDP, "m=video") {
 		t.Fatal("queued federation renegotiation did not advertise the added video track")
+	}
+	key := federationTrackKey(publication.publisherID, publication.publicationID, "low")
+	forward := peer.senders[key]
+	if forward == nil || !forward.active || forward.sender.Track() != video {
+		t.Fatal("federation forward did not retain its active sender")
+	}
+	peer.setForward(publication, "low", false)
+	if peer.senders[key] != forward || forward.active || forward.sender.Track() != nil {
+		t.Fatal("federation deselection did not pause the retained sender")
+	}
+	peer.setForward(publication, "low", false)
+	if peer.senders[key] != forward {
+		t.Fatal("repeated federation deselection removed the reusable sender")
+	}
+	peer.setForward(publication, "low", true)
+	if peer.senders[key] != forward || !forward.active || forward.sender.Track() != video {
+		t.Fatal("federation reselection did not resume the retained sender")
 	}
 }
