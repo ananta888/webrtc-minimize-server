@@ -57,6 +57,12 @@ test("POSIX installers are syntax-valid, checksum-bound and use a one-time enrol
     assert.match(installer.content, /MEDIA_AGENT_ENROLLMENT_TOKEN/);
     assert.match(installer.content, /wss:\/\/webrtc\.example\/media-agent/);
     assert.match(installer.content, new RegExp(installer.artifactSha256));
+    if (platform === "linux") {
+      assert.match(installer.content, /loginctl enable-linger "\$\(id -un\)"/);
+      assert.match(installer.content, /Dauerhafter Benutzerbetrieb wurde aktiviert/);
+    } else {
+      assert.doesNotMatch(installer.content, /enable-linger/);
+    }
     assert.doesNotMatch(installer.content, /Remove Everything/);
     assert.doesNotMatch(installer.content, /MEDIA_AGENT_SHARED_SECRET/);
     assert.match(installer.content, /Raumfreigabe bleibt .* standardmäßig AUS/);
