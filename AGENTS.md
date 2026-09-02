@@ -44,7 +44,7 @@ Browser sind verantwortlich für:
 - Kamera-Simulcast mit `q`/`h`/`f`, lokaler maximaler Layerwahl und Receiver-ACK vor Abschalten des Direct-Fallbacks,
 - Ausführung ausschließlich serverautorisierter Trusted-Relay-Kanten nach separatem Nutzerconsent,
 - zielpeergebundene ECDH-/AES-GCM-Verschlüsselung für opaque Data-Overlay-Pakete einschließlich Replay-, TTL-, Hop-, Queue- und Chunk-Resume-Grenzen,
-- RFC-9605-SFrame mit `AES_128_GCM_SHA256_128` über WebRTC Encoded Transform für Audio-, Kamera- und Bildschirmframes sowie
+- RFC-9605-SFrame mit `AES_128_GCM_SHA256_128` über WebRTC Encoded Transform für Audio-, Kamera- und Bildschirmframes, einem exakt ausgehandelten versionierten Codec-Envelope und ausschließlich authentifizierten VP8-/Opus-Klartextpräfixen sowie
 - publikations-, Zielpeer- und Membership-Epoch-gebundene SFrame-Schlüssel, die ausschließlich über den opaque Data-Overlay verteilt und vor Senderaktivierung quittiert werden.
 
 Peers dürfen aus Signalen keine Room-Membership oder zusätzliche Autorität ableiten. Die Control Plane bleibt Eigentümerin der Membership.
@@ -58,9 +58,11 @@ Peers dürfen aus Signalen keine Room-Membership oder zusätzliche Autorität ab
 - Room-Membership, Peer-IDs und Medien bleiben flüchtig. Nur ausdrücklich aktivierte Pair-Workspace-Metadaten und Events dürfen im konfigurierten Store persistieren.
 - Der Raumcode ist ein Bearer-Invite, keine Identität. Identität stammt ausschließlich aus verifizierten OIDC-Claims; das Gerät stammt ausschließlich aus einem serverseitig geprüften P-256-Nachweis.
 - WebRTC bietet hopweise Transportverschlüsselung. Zusätzlich ist RFC-9605-SFrame für Browser mit WebRTC Encoded Transform implementiert; `required` muss bei fehlender Capability oder fehlendem quittiertem Schlüssel ohne Klartext-Fallback abbrechen.
+- Der Medien-Envelope `codec-prefix-v1` lässt nur die für den Browser-Packetizer notwendigen VP8-Key-/Delta-Präfixe beziehungsweise das Opus-TOC sichtbar und authentisiert sie als AES-GCM-AAD. Unbekannte Envelope-Versionen oder Codecs bleiben fail-closed und dürfen keinen aktiven E2EE-Status erzeugen.
 - STUN/TURN sind konfigurierbare Infrastrukturhilfen, keine Policy-Autorität. TURN-Credentials werden kurzlebig und erst nach Session-Autorisierung erzeugt.
 - Ein decode/re-encode-fähiger Trusted-Video-Relay-Baum bleibt nur im expliziten Legacy-Modus `MEDIA_E2EE_MODE=disabled` vorhanden und darf nicht als blind bezeichnet werden. In `required`/`preferred` ist dieser Medienfanout deaktiviert; direkte ICE-Pfade, freiwillige Edge-TURN-Knoten und Infrastruktur-TURN transportieren SFrame-Ciphertext.
 - SFrame allein reduziert den Peer-Fanout nicht. Ein portabler Ciphertext-Medien-DAG zwischen Browsern bleibt Backlog. Der optionale native Blind-Media-Agent implementiert dagegen einen selektiven SFrame-blinden SFU-Pfad mit Simulcast und direkter, ausschließlich serverautorisierter Agent-Föderation; er ist keine QoS-Garantie und erhält weder Frame-Schlüssel noch Membership-/Policy-Autorität. Ein zentral betriebener SFU, Workspace-HA/Backup und MLS-artige Gruppenschlüsselverwaltung bleiben Backlog-Fähigkeiten.
+- Ein einzelner geeigneter nativer Media-Agent darf ab drei Raumteilnehmern geleast werden; Publisher-Sharding beginnt separat ab der konfigurierten größeren Schwelle. Ein Legacy-Browser-Relay-Baum darf unabhängig von seiner Mindestgröße nur entstehen, wenn seine Kindergrenze den direkten `N - 1`-Publisher-Fanout tatsächlich reduziert.
 - Die SFrame-Peer-Key-Zuordnung stammt derzeit aus dem authentisierten Signaling-Pfad. Sie schützt Inhalte vor ehrlichen, aber neugierigen TURN-/Edge-/Control-Plane-Betreibern, beweist jedoch keine Ende-zu-Ende-Identität gegen einen vollständig kompromittierten Signaling-Server.
 
 ## Todo-gesteuerte Entwicklung
@@ -102,7 +104,7 @@ Ein Track kommt nur ins Archiv, wenn alle Tasks und Milestones `done` sind und d
 - Gerätebeweise an die normalisierten Join-Felder binden, zeitlich begrenzen und gegen Replay schützen. Private Geräteschlüssel dürfen nicht exportierbar oder serverseitig gespeichert sein.
 - `AUTH_MODE=disabled`, Keycloak `start-dev`, lokale Beispielpasswörter und unverschlüsseltes TURN sind ausschließlich Entwicklungsprofile und dürfen nicht als produktionssicher dokumentiert werden.
 - Kein E2EE-, Anonymitäts- oder Identitätsversprechen machen, das der implementierte Pfad nicht beweist.
-- Im `required`-SFrame-Modus dürfen fehlende Capability, ausstehende ACKs, unbekannte KIDs, Authentifizierungsfehler oder Replays niemals einen Klartext-Fallback auslösen.
+- Im `required`-SFrame-Modus dürfen fehlende Capability, ausstehende ACKs, unbekannte KIDs, Envelope-/Codecfehler, Authentifizierungsfehler oder Replays niemals einen Klartext-Fallback auslösen. Ein struktureller Transformfehler darf auch im `preferred`-Modus nicht nachträglich auf Klartext wechseln.
 - Freiwillige TURN-Edge-Agenten besitzen keine Membership- oder Policy-Autorität, verwenden ausschließlich kurzlebige serverseitig ausgestellte Credentials und benötigen explizit erreichbare TURN- sowie Relay-Ports.
 - Blind-Media-Agenten bleiben pro Raum/Owner default-aus und widerrufbar, besitzen keinen Decrypt-Port und dürfen nur die im aktuellen Lease genannten Browser, Links, Publikationen und Layer transportieren. Direkte Agent-Agent-Control-Nachrichten erweitern niemals die Serverautorität.
 - Trusted Peer Relay bleibt operatorseitig begrenzt, nutzerseitig default-aus und widerrufbar; die UI muss die Medienverarbeitung, Upload-, CPU- und Batteriefolgen erklären.

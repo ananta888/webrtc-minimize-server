@@ -149,6 +149,7 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
     mediaE2ee: {
       mode: "required",
       cipherSuite: "AES_128_GCM_SHA256_128",
+      frameEnvelope: "codec-prefix-v1",
     },
     mediaAgents: {
       configured: false,
@@ -157,12 +158,13 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
       unsignedArtifacts: false,
       leaseMs: 30_000,
       maxStandbys: 2,
+      minimumParticipants: 3,
       shardMinParticipants: 6,
     },
     optimization: {
       activeSpeakerLimit: 5,
       peerRelayEnabled: true,
-      peerRelayMinParticipants: 6,
+      peerRelayMinParticipants: 3,
       peerRelayMaxChildren: 3,
       peerRelayMaxHops: 3,
       routeLeaseMs: 60_000,
@@ -223,7 +225,7 @@ test("two room peers receive membership and target-bound signals", async (contex
 });
 
 test("control plane publishes epoch-bound relay trees only after enough explicit consent", async (context) => {
-  const app = await startTestServer();
+  const app = await startTestServer({ mediaE2eeMode: "disabled" });
   context.after(() => app.close());
   const peers = [];
   const peerIds = [];
@@ -271,8 +273,36 @@ test("control plane publishes epoch-bound relay trees only after enough explicit
     && message.routes.length === 5 && message.topologyEpoch > relayed.topologyEpoch);
   assert.ok(degraded.topologyEpoch > relayed.topologyEpoch);
   assert.ok(degraded.membershipEpoch > relayed.membershipEpoch);
-  assert.ok(degraded.routes.every((route) => route.mode === "adaptive_mesh"));
+  assert.ok(degraded.routes.some((route) => route.mode === "trusted_peer_relay"));
+  assert.ok(degraded.routes.filter((route) => route.mode === "trusted_peer_relay")
+    .every((route) => route.edges.filter((edge) => edge.parentPeerId === route.rootPeerId).length <= 3));
   for (const peer of peers.slice(0, 5)) peer.socket.close();
+});
+
+test("required SFrame never authorizes the decrypting browser relay", async (context) => {
+  const app = await startTestServer({ mediaE2eeMode: "required" });
+  context.after(() => app.close());
+  const peers = [];
+  for (let index = 0; index < 5; index += 1) {
+    const peer = await connectAuthorized(app, "room-required-relay", `Peer ${index + 1}`);
+    await peer.next((message) => message.type === "welcome");
+    peers.push(peer);
+  }
+  const initial = await peers[0].next((message) => (
+    message.type === "topology-state" && message.routes.length === 5
+  ));
+  peers[0].socket.send(JSON.stringify({ type: "relay-consent", enabled: true }));
+  const firstConsent = await peers[0].next((message) => (
+    message.type === "topology-state" && message.routeEpoch > initial.routeEpoch
+  ));
+  peers[1].socket.send(JSON.stringify({ type: "relay-consent", enabled: true }));
+  const secondConsent = await peers[0].next((message) => (
+    message.type === "topology-state" && message.routeEpoch > firstConsent.routeEpoch
+  ));
+  assert.ok(secondConsent.routes.every((route) => (
+    route.mode === "adaptive_mesh" && route.edges.length === 0
+  )));
+  for (const peer of peers) peer.socket.close();
 });
 
 test("signaling admits 20 peers, rejects peer 21 and isolates another room", async (context) => {
@@ -467,6 +497,10 @@ test("operator-bound media agent uses challenge auth, creator preference and epo
   const welcome = await browser.next((message) => message.type === "welcome");
   assert.equal(welcome.roomCreator, true);
   assert.deepEqual(welcome.mediaAgents, [{ id: "owner-edge", online: true }]);
+  const observerA = await connectAuthorized(app, room.roomId, "Observer A", { authorization: "Bearer owner" });
+  await observerA.next((message) => message.type === "welcome");
+  const observerB = await connectAuthorized(app, room.roomId, "Observer B", { authorization: "Bearer owner" });
+  await observerB.next((message) => message.type === "welcome");
 
   browser.socket.send(JSON.stringify({
     type: "media-agent-consent",
@@ -543,6 +577,8 @@ test("operator-bound media agent uses challenge auth, creator preference and epo
     && message.primary === null && message.routeEpoch > route.routeEpoch);
   assert.ok(fallback.routeEpoch > route.routeEpoch);
   browser.socket.close();
+  observerA.socket.close();
+  observerB.socket.close();
 });
 
 test("OIDC owner downloads, enrolls, authenticates and revokes a self-service media agent", async (context) => {

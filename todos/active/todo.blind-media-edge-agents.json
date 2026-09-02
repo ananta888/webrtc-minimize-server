@@ -87,6 +87,12 @@
       "title": "Mesh-Analyse versionieren und auf dem Mini-PC ausrollen",
       "task_ids": ["BME-017"],
       "status": "done"
+    },
+    {
+      "id": "BME-M14",
+      "title": "Browseruebergreifende SFrame-Interop und adaptive Kleinraum-Routen",
+      "task_ids": ["BME-018", "BME-019"],
+      "status": "done"
     }
   ],
   "tasks": [
@@ -332,17 +338,45 @@
         "Das saubere Mini-PC-Repository wird exakt auf den gepushten Commit aktualisiert und der WebRTC-Dienst mit dem versionierten Caddy-Netzwerk-Override neu gebaut und recreated, ohne Caddy, persistente Daten oder Agent-Secrets zu ersetzen.",
         "Containerzustand, RestartCount, interner Healthcheck sowie der normale HTTPS-Pfad fuer healthz, Angular-App und neues Analyse-Bundle werden nach dem Rollout reproduzierbar geprueft; Abweichungen verhindern done."
       ]
+    },
+    {
+      "id": "BME-018",
+      "title": "Versionierten codec-bewussten SFrame-Envelope browseruebergreifend implementieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["BME-004", "BME-009"],
+      "acceptance_criteria": [
+        "Ein explizit versionierter Medien-Envelope erhaelt die fuer den Browser-Packetizer notwendigen VP8-Key-/Delta-Headerbytes, authentisiert sie als AEAD-Metadaten und verschluesselt den restlichen Frame samt eindeutigem SFrame-KID/-Counter ohne Klartextfallback.",
+        "Direct-, Simulcast- und Media-Agent-Pfade handeln die Envelope-Version fail-closed aus; unbekannte Versionen, ungueltige Codec-Praefixe, falsche Keys, Manipulation, Replay und gemischte alte/neue Peers erzeugen keine irrefuehrende E2EE-Aktivmeldung.",
+        "Ein Chromium-nach-Firefox-Langzeittest ueberschreitet Counter 350, beobachtet weitere empfangene und dekodierte Frames sowie einen danach korrekt dekodierten Keyframe; Chromium-Chromium, Firefox-Firefox, Audio und vorhandene SFrame-Testvektoren bleiben bestanden."
+      ]
+    },
+    {
+      "id": "BME-019",
+      "title": "Drei- bis Fuenf-Teilnehmer-Raeume nach messbarem Fanout-Vorteil adaptiv behandeln",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["BME-018"],
+      "acceptance_criteria": [
+        "Die Policy unterscheidet einen einzelnen consentierten nativen Media-Agenten von einem Browser-Relay-Baum: ein gesunder Agent darf ab drei Teilnehmern bei nachgewiesenem Nutzen gewaehlt werden, waehrend ein Browser-Relay nur aktiviert wird, wenn die autorisierte Baumform den Publisher-Fanout tatsaechlich reduziert.",
+        "Drei Teilnehmer bleiben ohne geeigneten Agenten direkt; bei vier oder fuenf Teilnehmern beruecksichtigt die Wahl Uploadreserve, Linkklasse, Batterie, Consent und erwarteten Fanout statt allein eine pauschale Raumgroesse, und faellt bei fehlender Evidence oder Lease auf Direct-SFrame zurueck.",
+        "Deterministische Drei-, Vier-, Fuenf- und Sechs-Peer-Tests belegen Root-Fanout, Agentwahl, Nichtwahl ohne Vorteil, Consent-Widerruf und Fallback; Runtime-Konfiguration, UI-Erklaerung und Bandbreitendokumentation beschreiben die getrennten Schwellen korrekt."
+      ]
     }
   ],
-  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011", "BME-012", "BME-013", "BME-014", "BME-015", "BME-016", "BME-017"],
+  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011", "BME-012", "BME-013", "BME-014", "BME-015", "BME-016", "BME-017", "BME-018", "BME-019"],
   "tasks_status_summary": {
-    "total": 17,
-    "by_status": { "todo": 0, "in_progress": 2, "partial": 1, "blocked": 0, "done": 14 },
-    "progress_percent_done": 82.35,
-    "by_priority": { "P0": 10, "P1": 7, "P2": 0, "P3": 0 },
-    "by_risk": { "low": 0, "medium": 1, "high": 7, "critical": 9 },
-    "critical_path": { "total": 16, "done": 13, "remaining": 3 },
-    "milestones": { "total": 13, "todo": 0, "in_progress": 3, "blocked": 0, "done": 10 }
+    "total": 19,
+    "by_status": { "todo": 0, "in_progress": 2, "partial": 1, "blocked": 0, "done": 16 },
+    "progress_percent_done": 84.21,
+    "by_priority": { "P0": 11, "P1": 8, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 8, "critical": 10 },
+    "critical_path": { "total": 18, "done": 15, "remaining": 3 },
+    "milestones": { "total": 14, "todo": 0, "in_progress": 3, "blocked": 0, "done": 11 }
   },
   "progress_summary": {
     "state": "in_progress",
@@ -350,7 +384,7 @@
     "in_progress": 2,
     "partial": 1,
     "blocked": 0,
-    "done": 14
+    "done": 16
   },
   "summary_notes": [
     "PROD-NET-004 wird mit diesem Track aus dem Category-Backlog in ausfuehrbare Arbeit ueberfuehrt.",
@@ -379,6 +413,10 @@
     "BME-016 ist am 2026-09-02 abgeschlossen: Der responsive, tastaturbedienbare SVG-Graph zeigt autorisierte Direct-, Trusted-Relay-, Browser-Agent- und Agent-Foederationskanten mit automatisch formatierten kbit/s-/Mbit/s-Werten. Ein Knotenklick schluesselt Gesamt-, Audio-, Kamera/Video-, Bildschirm- und DataChannel-Upload/-Download auf. Telemetrie wird nur bei geoeffneter Analyse angefordert, ist geschlossen, begrenzt, kurzlebig und ohne Routingautoritaet. Der vollstaendige npm-run-check-Gate bestand mit 108 Angular- und 90 Node-/Browser-/Integrationsfaellen einschliesslich realer Chromium-, Firefox- und Sechs-Peer-Relay-Pfade sowie Produktionsbuild; der credential-abhaengige Keycloak-/TURN-Live-Gate blieb sichtbar uebersprungen.",
     "BME-017 verfolgt den vom Nutzer beauftragten Commit-, Push- und Mini-PC-Rollout der geprueften Mesh-Analyse; produktive Secrets, persistente Daten und der bestehende Caddy bleiben ausserhalb des Changes.",
     "BME-017 ist am 2026-09-02 abgeschlossen: Feature-Commit 2dbaee3 wurde gezielt ohne Secrets oder Buildartefakte auf ananta888/main gepusht und auf dem sauberen Mini-PC per Fast-Forward ausgerollt. Das versionierte Caddy-Netzwerk-Override baute und recreatete ausschliesslich den WebRTC-Dienst. Interner Healthcheck, LAN-erzwungenes TLS und normaler oeffentlicher DNS-Pfad lieferten Status ok sowie main-ZW56CHUV.js mit Mesh-Analyse-Marker; WebRTC und unveraenderter Caddy hatten RestartCount 0, der Alias webrtc-room-server blieb vorhanden, .env blieb Modus 0600 und laptop-edge authentisierte nach dem Recreate erneut.",
+    "BME-018 und BME-019 verfolgen den reproduzierten Chromium-nach-Firefox-Freeze nach dem SFrame-Counterbreitenwechsel sowie die getrennte, nutzenbasierte Behandlung von nativen Agenten und Browser-Relays in Drei- bis Fuenf-Teilnehmer-Raeumen. Eine niedrigere Routing-Schwelle gilt ausdruecklich nicht als Behebung des SFrame-Interopfehlers.",
+    "BME-018 ist am 2026-09-02 abgeschlossen: Medien-Key und ACK verwenden fail-closed Protokoll v2 mit codec-prefix-v1; der VP8-Key-/Delta-Praefix beziehungsweise das Opus-TOC bleiben fuer den Browser-Packetizer sichtbar, werden zusammen mit dem Envelope-Header als AES-GCM-AAD authentisiert und alle uebrigen Framebytes bleiben SFrame-verschluesselt. Unit-Tests decken Counter 255/256, Prefix-Manipulation, Replay-/Auth-Pfade, Opus-DTX und unbekannte Versionen/Codecs ab. Der reale Chromium-nach-Firefox-VP8-Gate lief 45 Sekunden ueber 400 dekodierte Frames und Counter 350 hinaus, dekodierte danach einen weiteren Keyframe und meldete weder Drops noch Paketverlust; Chromium- und Firefox-Basispfade blieben gruen.",
+    "BME-019 ist am 2026-09-02 abgeschlossen: Ein geeigneter raumgebunden consentierter nativer Primary darf ab drei Teilnehmern gewaehlt werden, waehrend Publisher-Sharding ab sechs bleibt. Kapazitaet unter 25 Prozent, Last ab 90 Prozent, kritische Batterie, beschraenktes Netz, fehlender Consent oder Lease verhindern die Wahl. Der Legacy-Browserbaum wird nur erzeugt, wenn maxChildren den direkten N-minus-1-Fanout reduziert; mit Default 3 bleiben Drei-/Viererraeume direkt und Fuenfer-/Sechserraeume koennen relayn. Deterministische Registry-/Topologie- und Serverintegrationstests belegen 2/3/4/5/6, Widerruf und Fallback; Runtime-Konfiguration, Angular-UI und Bandbreitendokumentation sind synchron.",
+    "Der abschliessende npm-run-check-Gate bestand am 2026-09-02 mit 112 Angular- sowie 94 Node-/Browser-/Integrationsfaellen und Produktionsbuild. Darin belegt ein eigener Negativtest, dass Relay-Consent im required-SFrame-Modus keinen entschluesselnden Browserbaum autorisiert. Der credential-abhaengige Keycloak-/TURN-Live-Gate blieb sichtbar uebersprungen und wird nicht als Produktionsnachweis gezaehlt.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
   ]
 }

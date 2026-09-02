@@ -4,7 +4,8 @@ const CREATOR_PREFERENCE_SCORE = 240;
 
 export function mediaAgentScore(candidate) {
   if (!candidate?.healthy || candidate.draining || candidate.battery === "critical"
-    || candidate.network === "constrained" || candidate.visible === false) return Number.NEGATIVE_INFINITY;
+    || candidate.network === "constrained" || candidate.visible === false
+    || Number(candidate.capacity) < 25 || Number(candidate.load) >= 90) return Number.NEGATIVE_INFINITY;
   return (candidate.creatorOwned ? CREATOR_PREFERENCE_SCORE : 0)
     + (BATTERY_SCORE[candidate.battery] ?? BATTERY_SCORE.unknown)
     + (NETWORK_SCORE[candidate.network] ?? NETWORK_SCORE.unknown)

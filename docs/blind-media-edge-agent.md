@@ -1,6 +1,6 @@
 # SFrame-blinder Media-Edge-Agent
 
-Stand: 2026-09-01. Dieses Dokument trennt den feature-gegateten Media-Agenten vom
+Stand: 2026-09-02. Dieses Dokument trennt den feature-gegateten Media-Agenten vom
 bereits vorhandenen TURN-Edge-Agenten und legt die Sicherheits- und
 Wahlregeln fest.
 
@@ -50,6 +50,13 @@ reine Control Plane und terminiert weder RTP noch RTCP oder Medienframes.
 - `MEDIA_E2EE_MODE=required` darf bei Agent-Ausfall niemals in Klartext oder
   Decode/Re-encode zurueckfallen. Bis eine neue Agentroute vollstaendig bereit
   ist, bleibt das bestehende required-SFrame-Mesh autoritativ.
+- Media-Key und ACK handeln Protokollversion 2 und den Envelope
+  `codec-prefix-v1` exakt aus. Fuer VP8 bleiben die 10 notwendigen
+  Keyframe- beziehungsweise 3 Deltaframe-Praefixbytes vor dem SFrame-Header
+  sichtbar; fuer Opus bleibt das TOC-Byte sichtbar. Envelope-Header und
+  Klartextpraefix sind AES-GCM-authentisierte Metadaten, alle uebrigen
+  Framebytes bleiben verschluesselt. Unbekannte Versionen und Codecs fallen
+  auch auf Agentrouten nicht auf Klartext zurueck.
 
 ## Creator-Praeferenz und Rollenwechsel
 
@@ -76,7 +83,18 @@ Control Plane erneuert werden:
    Heartbeat und kurze Lease die Erkennung. Bis ein Ersatz bereit ist, bleibt
    das vorhandene SFrame-Mesh aktiv.
 
-Unterhalb von `MEDIA_AGENT_SHARD_MIN_PARTICIPANTS` (Default 6) ist nur der
+Ein nativer Primary wird erst ab `MEDIA_AGENT_MIN_PARTICIPANTS` (Default 3)
+geleast. Bei zwei Teilnehmern wuerde er keine Publisher-Kopie einsparen; der
+Raum bleibt deshalb direkt. Unterhalb der Shard-Schwelle, mit den Defaults
+also zwischen drei und fuenf Teilnehmern, kann ein
+geeigneter Primary den Upload jedes Publishers von `N - 1` Kopien auf eine
+Simulcast-Publikation reduzieren. Die Control Plane verlangt weiterhin
+raumgebundenen Consent, frischen Heartbeat, mindestens 25 Prozent gemeldete
+Kapazitaet, weniger als 90 Prozent Last sowie eine nicht kritische Batterie-
+und Netzklasse. Ohne diese Evidence oder nach Widerruf bleibt beziehungsweise
+wird der Pfad Direct-SFrame.
+
+Unterhalb von `MEDIA_AGENT_SHARD_MIN_PARTICIPANTS` (Default 6) ist nur dieser
 Primary Forwarder; die Standbys besitzen keine Browser- oder Medienroute. Ab
 dem Schwellwert verteilt die Control Plane jeden Publisher deterministisch und
 eindeutig auf Primary und hoechstens zwei Standbys. Der Creator-Publisher bleibt
@@ -230,4 +248,6 @@ der reale Mehr-Browser-/Mehr-Agent-/NAT-Gate aus BME-006/BME-011 erforderlich.
 Der lokale Pion-Gate belegt individuelle Simulcast-Auswahl und einen direkten
 Zwei-Agenten-Pfad mit byte-identischem opaque Payload. Solange die echte
 Produktionsmatrix fehlt, ist die Implementierung nicht als garantierter
-20-Teilnehmer-QoS-Pfad zu beschreiben.
+20-Teilnehmer-QoS-Pfad zu beschreiben. Der Browser-Gate prueft unabhaengig
+davon Chromium→Firefox mit VP8 bis ueber SFrame-Counter 350 und verlangt nach
+dieser Grenze einen weiteren dekodierten Keyframe ohne Frame-Drops.

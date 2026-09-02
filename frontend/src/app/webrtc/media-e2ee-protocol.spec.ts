@@ -28,6 +28,8 @@ describe("media E2EE overlay contract", () => {
     expect(parseMediaE2eeMessage({ ...key, leakedSecret: true })).toBeNull();
     expect(parseMediaE2eeMessage({ ...key, baseKey: "short" })).toBeNull();
     expect(parseMediaE2eeMessage({ ...key, membershipEpoch: 0 })).toBeNull();
+    expect(parseMediaE2eeMessage({ ...key, version: 1 })).toBeNull();
+    expect(parseMediaE2eeMessage({ ...key, frameEnvelope: "legacy" })).toBeNull();
     expect(parseMediaE2eeMessage({ ...createMediaKeyAck(key), keyId: "ABC" })).toBeNull();
   });
 });

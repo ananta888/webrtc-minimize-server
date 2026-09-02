@@ -1,6 +1,8 @@
 import { SFRAME_BASE_KEY_BYTES } from "./sframe-codec";
+import { SFRAME_MEDIA_ENVELOPE } from "./sframe-media-envelope";
 
 export const MEDIA_E2EE_CIPHER_SUITE = "AES_128_GCM_SHA256_128" as const;
+export const MEDIA_E2EE_PROTOCOL_VERSION = 2 as const;
 
 const TRACK_ID = /^[A-Za-z0-9_={}:-]{1,128}$/;
 const PEER_ID = /^[a-f0-9]{16}$/;
@@ -8,23 +10,25 @@ const KEY_ID = /^[a-f0-9]{16}$/;
 const BASE_KEY = /^[A-Za-z0-9_-]{22}$/;
 
 export interface MediaKeyMessage {
-  readonly version: 1;
+  readonly version: typeof MEDIA_E2EE_PROTOCOL_VERSION;
   readonly type: "media-key";
   readonly publicationId: string;
   readonly senderPeerId: string;
   readonly membershipEpoch: number;
   readonly keyId: string;
   readonly cipherSuite: typeof MEDIA_E2EE_CIPHER_SUITE;
+  readonly frameEnvelope: typeof SFRAME_MEDIA_ENVELOPE;
   readonly baseKey: string;
 }
 
 export interface MediaKeyAckMessage {
-  readonly version: 1;
+  readonly version: typeof MEDIA_E2EE_PROTOCOL_VERSION;
   readonly type: "media-key-ack";
   readonly publicationId: string;
   readonly senderPeerId: string;
   readonly membershipEpoch: number;
   readonly keyId: string;
+  readonly frameEnvelope: typeof SFRAME_MEDIA_ENVELOPE;
 }
 
 export type MediaE2eeMessage = MediaKeyMessage | MediaKeyAckMessage;
@@ -64,25 +68,27 @@ export function createMediaKeyMessage(input: Readonly<{
     throw new Error("invalid_media_key");
   }
   return Object.freeze({
-    version: 1,
+    version: MEDIA_E2EE_PROTOCOL_VERSION,
     type: "media-key",
     publicationId: input.publicationId,
     senderPeerId: input.senderPeerId,
     membershipEpoch: input.membershipEpoch,
     keyId: input.keyId,
     cipherSuite: MEDIA_E2EE_CIPHER_SUITE,
+    frameEnvelope: SFRAME_MEDIA_ENVELOPE,
     baseKey: encode(input.baseKey),
   });
 }
 
 export function createMediaKeyAck(message: MediaKeyMessage): MediaKeyAckMessage {
   return Object.freeze({
-    version: 1,
+    version: MEDIA_E2EE_PROTOCOL_VERSION,
     type: "media-key-ack",
     publicationId: message.publicationId,
     senderPeerId: message.senderPeerId,
     membershipEpoch: message.membershipEpoch,
     keyId: message.keyId,
+    frameEnvelope: message.frameEnvelope,
   });
 }
 
@@ -91,23 +97,29 @@ export function parseMediaE2eeMessage(raw: unknown): MediaE2eeMessage | null {
   const value = raw as Record<string, unknown>;
   if (value["type"] === "media-key") {
     if (!exactKeys(value, [
-      "version", "type", "publicationId", "senderPeerId", "membershipEpoch", "keyId", "cipherSuite", "baseKey",
-    ]) || value["version"] !== 1 || !TRACK_ID.test(String(value["publicationId"] || ""))
+      "version", "type", "publicationId", "senderPeerId", "membershipEpoch", "keyId", "cipherSuite",
+      "frameEnvelope", "baseKey",
+    ]) || value["version"] !== MEDIA_E2EE_PROTOCOL_VERSION
+      || !TRACK_ID.test(String(value["publicationId"] || ""))
       || !PEER_ID.test(String(value["senderPeerId"] || ""))
       || !Number.isSafeInteger(value["membershipEpoch"]) || Number(value["membershipEpoch"]) < 1
       || !KEY_ID.test(String(value["keyId"] || ""))
-      || value["cipherSuite"] !== MEDIA_E2EE_CIPHER_SUITE) return null;
+      || value["cipherSuite"] !== MEDIA_E2EE_CIPHER_SUITE
+      || value["frameEnvelope"] !== SFRAME_MEDIA_ENVELOPE) return null;
     const decoded = decode(String(value["baseKey"] || ""));
     if (!decoded) return null;
     decoded.fill(0);
     return Object.freeze(value as unknown as MediaKeyMessage);
   }
   if (value["type"] === "media-key-ack") {
-    if (!exactKeys(value, ["version", "type", "publicationId", "senderPeerId", "membershipEpoch", "keyId"])
-      || value["version"] !== 1 || !TRACK_ID.test(String(value["publicationId"] || ""))
+    if (!exactKeys(value, [
+      "version", "type", "publicationId", "senderPeerId", "membershipEpoch", "keyId", "frameEnvelope",
+    ]) || value["version"] !== MEDIA_E2EE_PROTOCOL_VERSION
+      || !TRACK_ID.test(String(value["publicationId"] || ""))
       || !PEER_ID.test(String(value["senderPeerId"] || ""))
       || !Number.isSafeInteger(value["membershipEpoch"]) || Number(value["membershipEpoch"]) < 1
-      || !KEY_ID.test(String(value["keyId"] || ""))) return null;
+      || !KEY_ID.test(String(value["keyId"] || ""))
+      || value["frameEnvelope"] !== SFRAME_MEDIA_ENVELOPE) return null;
     return Object.freeze(value as unknown as MediaKeyAckMessage);
   }
   return null;

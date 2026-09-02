@@ -269,6 +269,15 @@ sequenceDiagram
     B->>B: DTLS-SRTP und danach SFrame entschluesseln
 ```
 
+Der Key-Handshake akzeptiert nur Protokollversion 2 mit
+`frameEnvelope=codec-prefix-v1`. Vor dem SFrame-Header bleiben bei VP8 zehn
+Keyframe- oder drei Deltaframe-Bytes und bei Opus ein TOC-Byte sichtbar, damit
+der Browser-Packetizer den Codecframe korrekt klassifiziert. Dieser Praefix
+und der versionierte Envelope-Header sind AES-GCM Additional Authenticated
+Data; Manipulation verwirft den Frame. Der restliche Codecframe bleibt
+verschluesselt. Alte Formate, unbekannte Codecs oder ein fehlender Transform
+erzeugen im `required`-Modus keinen Klartextpfad.
+
 TURN aendert hier nur den Netzpfad. A muss weiterhin fuer B, C, D und alle
 weiteren Teilnehmer je einen WebRTC-Sender bedienen. Ein TURN Edge Agent ist
 daher kein Fanout-Server.
@@ -358,10 +367,35 @@ Membership-nahe Steuerdaten und den sofortigen Medienrueckfall. Der
 Media-Agent reduziert den Medienfanout des Publishers, nicht zwingend die
 Gesamtzahl offener PeerConnections.
 
+### 6.3 Entscheidung fuer drei bis sechs Teilnehmer
+
+```mermaid
+flowchart TD
+    N["Raumgroesse N"] --> Pair{"N >= 3?"}
+    Pair -- nein --> Direct["Direct-SFrame-Mesh"]
+    Pair -- ja --> Agent{"Gesunder nativer Agent?\nOwner + Consent + Lease\ncapacity >= 25, load < 90\nNetz/Batterie geeignet"}
+    Agent -- ja --> Single["Ein Primary\nab N=6 optional Sharding"]
+    Agent -- nein --> Legacy{"MEDIA_E2EE_MODE=disabled\nund Browser-Relay erlaubt?"}
+    Legacy -- nein --> Direct
+    Legacy -- ja --> Benefit{"N - 1 > maxChildren\nund genug Relay-Consent?"}
+    Benefit -- nein --> Direct
+    Benefit -- ja --> BrowserTree["Trusted Browser Relay\nDefault erstmals bei N=5"]
+```
+
+Der native Agent und der Browser-Relay verwenden bewusst verschiedene
+Nutzenkriterien. Ein nativer Agent nimmt einem Publisher ab drei Teilnehmern
+mindestens eine Zielkopie ab. Ein Browserbaum mit `maxChildren=3` reduziert
+den Root-Fanout dagegen erst von vier auf drei, also bei fuenf Teilnehmern;
+bei `maxChildren=2` waere der erste Vorteil bei vier. Im produktiven
+`required`-SFrame-Modus ist der entschluesselnde Browserbaum deaktiviert.
+
 ## 7. Selektiver Simulcast-SFU und direkte Agent-Foederation
 
-Unterhalb von `MEDIA_AGENT_SHARD_MIN_PARTICIPANTS` (Default `6`) ist nur der
-Primary ein Forwarder. Ab dem Schwellwert werden Primary und vorhandene
+Ab `MEDIA_AGENT_MIN_PARTICIPANTS` (Default `3`) darf ein geeigneter,
+raumgebunden consentierter Primary Forwarder werden; ein Raum mit zwei
+Teilnehmern bleibt direkt. Unterhalb von `MEDIA_AGENT_SHARD_MIN_PARTICIPANTS`
+(Default `6`) bleibt dieser Primary der einzige Forwarder. Ab dem Schwellwert
+werden Primary und vorhandene
 Standbys zu bis zu drei Forwardern. Die Control Plane weist jedem Publisher
 genau einen Ingress und jedem Subscriber hoechstens einen Egress zu. Die beiden
 Zuordnungen sind getrennte Contract-Felder; aktuell verwendet der deterministische
@@ -545,7 +579,8 @@ Ein Agent wird nur Kandidat, wenn:
 2. genau dieser Nutzer im betreffenden Raum Mitglied ist,
 3. er den Agenten in diesem Raum im Browser freigegeben hat,
 4. Agent-WSS und Heartbeat frisch sind,
-5. `maxRooms`, `maxPeers` und die grundlegenden Capabilities passen,
+5. `maxRooms`, `maxPeers`, mindestens 25 Prozent freie gemeldete Kapazitaet
+   und weniger als 90 Prozent Last passen,
 6. der Agent weder `draining`, unsichtbar, batterie-kritisch noch
    netzbeschraenkt ist.
 

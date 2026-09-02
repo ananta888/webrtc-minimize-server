@@ -113,6 +113,8 @@ describe("Room page information architecture", () => {
     expect(template).toContain('id="accept-media-agent-takeover"');
     expect(template).toContain('id="decline-media-agent-takeover"');
     expect(template).toContain("Standardmäßig aus, raumgebunden und jederzeit widerrufbar");
+    expect(template).toContain("mit den Defaults also bei 3–5 Personen");
+    expect(template).toContain("mediaAgents?.minimumParticipants");
     expect(template).toContain("(!mediaAgents.selectedAgentOnline() && !mediaAgents.consentEnabled())");
     expect(template).toContain("Membership, Routen, Epochen und kurze Leases");
     expect(component).toContain("this.mediaAgents.setConsent(enabled)");

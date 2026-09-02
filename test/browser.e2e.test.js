@@ -958,3 +958,145 @@ test("two Firefox peers retain direct adaptive mesh, SFrame, chat and camera", {
   assert.deepEqual(await grace.evaluate(() => window.__captureCalls), []);
   assert.deepEqual(pageErrors, []);
 });
+
+test("Chromium VP8 remains decodable in Firefox beyond SFrame counter 350", { timeout: 80_000 }, async (context) => {
+  try {
+    await Promise.all([fs.access(chromium.executablePath()), fs.access(firefox.executablePath())]);
+  } catch {
+    context.skip("Playwright Chromium and Firefox are required for the SFrame interop gate");
+    return;
+  }
+  const app = createAppServer({
+    config: {
+      host: "127.0.0.1",
+      port: 0,
+      publicOrigin: "",
+      stunUrls: [],
+      turnServers: [],
+      maxRoomParticipants: 20,
+      roomIdleTtlMs: 120_000,
+      signalRateLimit: 120,
+      pairWorkspaceEnabled: false,
+      mediaE2eeMode: "required",
+    },
+  });
+  await new Promise((resolve, reject) => {
+    app.server.once("error", reject);
+    app.server.listen(0, "127.0.0.1", resolve);
+  });
+  const origin = `http://127.0.0.1:${app.server.address().port}`;
+  const chromiumBrowser = await chromium.launch({
+    headless: true,
+    args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
+  });
+  const firefoxBrowser = await firefox.launch({
+    headless: true,
+    firefoxUserPrefs: {
+      "media.navigator.streams.fake": true,
+      "media.navigator.permission.disabled": true,
+    },
+  });
+  const chromiumContext = await chromiumBrowser.newContext({ permissions: ["camera", "microphone"] });
+  const firefoxContext = await firefoxBrowser.newContext();
+  const observePeerConnections = () => {
+    window.__peerConnections = [];
+    const NativePeerConnection = window.RTCPeerConnection;
+    window.RTCPeerConnection = new Proxy(NativePeerConnection, {
+      construct(Target, args) {
+        const connection = Reflect.construct(Target, args);
+        window.__peerConnections.push(connection);
+        return connection;
+      },
+    });
+  };
+  await chromiumContext.addInitScript(observePeerConnections);
+  await firefoxContext.addInitScript(observePeerConnections);
+  context.after(async () => {
+    await Promise.allSettled([
+      chromiumContext.close(),
+      firefoxContext.close(),
+      chromiumBrowser.close(),
+      firefoxBrowser.close(),
+    ]);
+    for (const socket of app.webSocketServer.clients) socket.terminate();
+    await new Promise((resolve) => app.server.close(resolve));
+  });
+
+  const sender = await chromiumContext.newPage();
+  const receiver = await firefoxContext.newPage();
+  const pageErrors = [];
+  sender.on("pageerror", (error) => pageErrors.push(`Chromium: ${error.message}`));
+  receiver.on("pageerror", (error) => pageErrors.push(`Firefox: ${error.message}`));
+  const inboundVideoStats = () => receiver.evaluate(async () => {
+    const result = {
+      framesReceived: 0,
+      framesDecoded: 0,
+      framesDropped: 0,
+      keyFramesDecoded: 0,
+      packetsLost: 0,
+      codec: "",
+    };
+    for (const connection of window.__peerConnections) {
+      const report = await connection.getStats();
+      const codecs = new Map();
+      report.forEach((stat) => {
+        if (stat.type === "codec") codecs.set(stat.id, stat.mimeType || "");
+      });
+      report.forEach((stat) => {
+        if (stat.type !== "inbound-rtp" || (stat.kind || stat.mediaType) !== "video") return;
+        result.framesReceived += stat.framesReceived || 0;
+        result.framesDecoded += stat.framesDecoded || 0;
+        result.framesDropped += stat.framesDropped || 0;
+        result.keyFramesDecoded += stat.keyFramesDecoded || 0;
+        result.packetsLost += stat.packetsLost || 0;
+        result.codec ||= codecs.get(stat.codecId) || "";
+      });
+    }
+    return result;
+  });
+  const waitForInboundVideoStats = async (predicate, timeoutMs) => {
+    const deadline = Date.now() + timeoutMs;
+    let latest = await inboundVideoStats();
+    while (!predicate(latest) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      latest = await inboundVideoStats();
+    }
+    if (!predicate(latest)) throw new Error(`sframe_video_stats_timeout:${JSON.stringify(latest)}`);
+    return latest;
+  };
+
+  await sender.goto(origin);
+  await sender.locator("#display-name").fill("Chromium sender");
+  await sender.locator("#create-room").click();
+  await sender.waitForFunction(() => document.querySelector("#room-id").value.startsWith("room-"));
+  const roomId = await sender.locator("#room-id").inputValue();
+  await sender.locator("#join-room").click();
+  await receiver.goto(`${origin}/?room=${roomId}`);
+  await receiver.locator("#display-name").fill("Firefox receiver");
+  await receiver.locator("#join-room").click();
+  await Promise.all([sender, receiver].map((page) => (
+    page.locator("#participant-count", { hasText: "2 / 20" }).waitFor()
+  )));
+  await sender.locator("#toggle-camera").click();
+  await receiver.locator(".media-label").getByText("Chromium sender · Kamera").waitFor();
+  await Promise.all([sender, receiver].map((page) => (
+    page.locator("#sframe-status", { hasText: "active" }).waitFor()
+  )));
+  await receiver.waitForFunction(() => [...document.querySelectorAll("video:not([muted])")]
+    .some((video) => video.readyState >= 2 && video.videoWidth > 0));
+  const beyondCounterBoundary = await waitForInboundVideoStats((stats) => stats.framesDecoded > 400, 48_000);
+  const continued = await waitForInboundVideoStats((stats) => (
+    stats.keyFramesDecoded > beyondCounterBoundary.keyFramesDecoded
+      && stats.framesDecoded > beyondCounterBoundary.framesDecoded + 20
+  ), 15_000);
+
+  assert.equal(continued.codec, "video/VP8", JSON.stringify({ beyondCounterBoundary, continued }));
+  assert.ok(beyondCounterBoundary.framesDecoded > 400);
+  assert.ok(continued.framesDecoded > beyondCounterBoundary.framesDecoded + 20);
+  assert.ok(continued.keyFramesDecoded > beyondCounterBoundary.keyFramesDecoded);
+  assert.ok(continued.framesReceived - continued.framesDecoded <= 2);
+  assert.ok(continued.keyFramesDecoded >= 4);
+  assert.equal(continued.framesDropped, 0);
+  assert.equal(continued.packetsLost, 0);
+  assert.deepEqual(pageErrors, []);
+});

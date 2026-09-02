@@ -116,6 +116,7 @@ interface AgentMediaKeyState {
 export interface MediaE2eeRuntimeConfig {
   readonly mode: "disabled" | "preferred" | "required";
   readonly cipherSuite: "AES_128_GCM_SHA256_128";
+  readonly frameEnvelope: "codec-prefix-v1";
 }
 
 export interface RemoteMediaView {
@@ -233,8 +234,10 @@ export class PeerMeshService {
   private mediaE2ee: MediaE2eeRuntimeConfig = {
     mode: "disabled",
     cipherSuite: "AES_128_GCM_SHA256_128",
+    frameEnvelope: "codec-prefix-v1",
   };
   private mediaE2eeController: MediaE2eeController | null = null;
+  private mediaTransformFailed = false;
   private readonly pendingMediaKeys = new Map<string, PendingMediaKey>();
   private readonly activeSenderMediaContexts = new Set<string>();
   private readonly activeReceiverMediaContexts = new Set<string>();
@@ -248,7 +251,7 @@ export class PeerMeshService {
   private optimization: OptimizationRuntimeConfig = {
     activeSpeakerLimit: 5,
     peerRelayEnabled: false,
-    peerRelayMinParticipants: 6,
+    peerRelayMinParticipants: 3,
     peerRelayMaxChildren: 3,
     peerRelayMaxHops: 3,
     routeLeaseMs: 60_000,
@@ -293,7 +296,12 @@ export class PeerMeshService {
     this.icePolicy = icePolicy;
     if (optimization) this.optimization = optimization;
     if (mediaE2ee) this.mediaE2ee = mediaE2ee;
-    this.mediaE2eeController = this.mediaE2ee.mode === "disabled" ? null : new MediaE2eeController();
+    this.mediaTransformFailed = false;
+    this.mediaE2eeController = this.mediaE2ee.mode === "disabled"
+      ? null
+      : new MediaE2eeController(() => {
+        this.failMediaE2ee();
+      });
     const e2eeSupported = this.mediaE2eeController?.supported === true;
     this.mediaE2eeState.set(this.mediaE2ee.mode === "disabled"
       ? "disabled"
@@ -313,9 +321,12 @@ export class PeerMeshService {
       availableAgents,
       callbacks: {
         attachSender: (sender, contextId, keyId, baseKey) => {
-          if (!this.shouldProtectMedia()
-            || this.mediaE2eeController?.attachSender(sender, contextId) !== true
-            || this.mediaE2eeController.setSenderKey(contextId, keyId, baseKey) !== true) return false;
+          if (!this.shouldProtectMedia()) return false;
+          if (this.mediaE2eeController?.attachSender(sender, contextId) !== true
+            || this.mediaE2eeController.setSenderKey(contextId, keyId, baseKey) !== true) {
+            this.failMediaE2ee();
+            return false;
+          }
           this.activeSenderMediaContexts.add(contextId);
           return true;
         },
@@ -743,6 +754,7 @@ export class PeerMeshService {
     this.iceState.set("idle");
     this.icePath.set("unknown");
     this.mediaE2eeState.set("disabled");
+    this.mediaTransformFailed = false;
     this.membershipStable = false;
     this.topologyMode.set("adaptive_mesh");
     this.topologyEpoch.set(0);
@@ -800,7 +812,7 @@ export class PeerMeshService {
       || !this.peers.has(input.publisherPeerId) || !this.shouldProtectMedia()) return false;
     const contextId = this.inboundMediaContext(input.publisherPeerId, input.publicationId);
     if (this.mediaE2eeController?.attachReceiver(input.receiver, contextId) !== true) {
-      if (this.mediaE2ee.mode === "required") this.mediaE2eeState.set("unsupported");
+      this.failMediaE2ee();
       return false;
     }
     const existing = this.publications.get(input.publicationId);
@@ -885,14 +897,19 @@ export class PeerMeshService {
       local: false,
       inboundPeerId: peer.id,
     };
+    if ((this.mediaE2ee.mode === "required" || this.mediaTransformFailed) && !this.shouldProtectMedia()) {
+      track.enabled = false;
+      this.mediaE2eeState.set("unsupported");
+      return;
+    }
     if (this.shouldProtectMedia()) {
       const attached = this.mediaE2eeController?.attachReceiver(
         receiver,
         this.inboundMediaContext(publication.rootPeerId, publication.id),
       ) === true;
-      if (!attached && this.mediaE2ee.mode === "required") {
+      if (!attached) {
         track.enabled = false;
-        this.mediaE2eeState.set("unsupported");
+        this.failMediaE2ee();
         return;
       }
     }
@@ -979,7 +996,7 @@ export class PeerMeshService {
         peer.senders.delete(publication.id);
         peer.appliedTiers.delete(publication.id);
       } else if (shouldSend && !existing && publication.track.readyState === "live") {
-        if (this.mediaE2ee.mode === "required" && !this.shouldProtectMedia()) {
+        if ((this.mediaE2ee.mode === "required" || this.mediaTransformFailed) && !this.shouldProtectMedia()) {
           this.mediaE2eeState.set("unsupported");
           continue;
         }
@@ -989,7 +1006,7 @@ export class PeerMeshService {
             const contextId = this.outboundMediaContext(publication.id, peer.id);
             if (!this.mediaE2eeController?.attachSender(sender, contextId)) {
               peer.pc.removeTrack(sender);
-              this.mediaE2eeState.set("unsupported");
+              this.failMediaE2ee();
               continue;
             }
           }
@@ -1476,6 +1493,7 @@ export class PeerMeshService {
   private shouldProtectMedia(): boolean {
     return this.mediaE2ee.mode !== "disabled"
       && this.optimization.dataOverlayEnabled
+      && !this.mediaTransformFailed
       && this.mediaE2eeController?.supported === true;
   }
 
@@ -1640,7 +1658,7 @@ export class PeerMeshService {
       ) === true;
       key.fill(0);
       if (!installed) {
-        if (this.mediaE2ee.mode === "required") this.mediaE2eeState.set("unsupported");
+        this.failMediaE2ee();
         return;
       }
       this.activeReceiverMediaContexts.add(this.inboundMediaContext(originPeerId, message.publicationId));
@@ -1656,7 +1674,8 @@ export class PeerMeshService {
     const contextId = this.outboundMediaContext(message.publicationId, originPeerId);
     const pending = this.pendingMediaKeys.get(contextId);
     if (!pending || pending.message.membershipEpoch !== message.membershipEpoch
-      || pending.message.keyId !== message.keyId) return;
+      || pending.message.keyId !== message.keyId
+      || pending.message.frameEnvelope !== message.frameEnvelope) return;
     const installed = this.mediaE2eeController?.setSenderKey(
       contextId,
       message.keyId,
@@ -1666,7 +1685,7 @@ export class PeerMeshService {
     this.destroyPendingMediaKey(pending);
     this.pendingMediaKeys.delete(contextId);
     if (installed) this.refreshMediaE2eeState();
-    else this.mediaE2eeState.set("unsupported");
+    else this.failMediaE2ee();
   }
 
   private async acceptAgentMediaE2eeEnvelope(
@@ -1685,7 +1704,7 @@ export class PeerMeshService {
       const installed = this.mediaE2eeController?.setReceiverKey(contextId, message.keyId, key) === true;
       key.fill(0);
       if (!installed) {
-        if (this.mediaE2ee.mode === "required") this.mediaE2eeState.set("unsupported");
+        this.failMediaE2ee();
         return;
       }
       this.activeReceiverMediaContexts.add(contextId);
@@ -1700,7 +1719,8 @@ export class PeerMeshService {
     if (message.senderPeerId !== this.ownId || originPeerId === this.ownId) return;
     const state = this.agentMediaKeys.get(message.publicationId);
     if (!state || state.agentId !== message.agentId || state.routeEpoch !== message.routeEpoch
-      || state.message.keyId !== message.keyId || !this.peers.has(originPeerId)) return;
+      || state.message.keyId !== message.keyId || state.message.frameEnvelope !== message.frameEnvelope
+      || !this.peers.has(originPeerId)) return;
     state.acknowledgedPeerIds.add(originPeerId);
     this.activateAgentMediaKey(state);
   }
@@ -1774,6 +1794,11 @@ export class PeerMeshService {
     } else {
       this.mediaE2eeState.set("pending");
     }
+  }
+
+  private failMediaE2ee(): void {
+    this.mediaTransformFailed = true;
+    this.mediaE2eeState.set("unsupported");
   }
 
   private destroyPendingMediaKey(pending: PendingMediaKey): void {

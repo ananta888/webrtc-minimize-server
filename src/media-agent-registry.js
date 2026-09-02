@@ -224,6 +224,7 @@ export class MediaAgentRegistry {
   #rooms = new Map();
   #leaseMs;
   #maxStandbys;
+  #minimumParticipants;
   #shardMinParticipants;
   #takeoverTtlMs;
   #enrollmentStore;
@@ -232,12 +233,14 @@ export class MediaAgentRegistry {
     definitions = [],
     leaseMs = 30_000,
     maxStandbys = 2,
+    minimumParticipants = 3,
     shardMinParticipants = 6,
     takeoverTtlMs = 20_000,
     enrollmentStore = null,
   } = {}) {
     this.#leaseMs = leaseMs;
     this.#maxStandbys = maxStandbys;
+    this.#minimumParticipants = minimumParticipants;
     this.#shardMinParticipants = shardMinParticipants;
     this.#takeoverTtlMs = takeoverTtlMs;
     this.#enrollmentStore = enrollmentStore;
@@ -553,7 +556,12 @@ export class MediaAgentRegistry {
 
     const candidates = [];
     const byAgent = new Map();
-    for (const consent of consents.values()) {
+    const roomHasFanoutBenefit = members.length >= this.#minimumParticipants;
+    if (!roomHasFanoutBenefit) {
+      state.hadPrimary = false;
+      state.pending = null;
+    }
+    for (const consent of roomHasFanoutBenefit ? consents.values() : []) {
       const agent = this.#agents.get(consent.agentId);
       if (!agent || !agent.socket || now - agent.lastSeen > this.#leaseMs
         || agent.definition.ownerPrincipal !== consent.principal

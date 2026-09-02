@@ -1,13 +1,22 @@
 /// <reference lib="webworker" />
 
 import { SFrameDecryptContext, SFrameEncryptContext } from "./sframe-codec";
+import {
+  decryptMediaFrame,
+  EncodedMediaFrame,
+  encryptMediaFrame,
+  SFRAME_MEDIA_ENVELOPE,
+} from "./sframe-media-envelope";
 
-interface EncodedFrame {
-  data: ArrayBuffer;
-}
+interface EncodedFrame extends EncodedMediaFrame { data: ArrayBuffer }
 
 interface ScriptTransformer {
-  readonly options: unknown;
+  readonly options: Readonly<{
+    version?: unknown;
+    direction?: unknown;
+    contextId?: unknown;
+    frameEnvelope?: unknown;
+  }>;
   readonly readable: ReadableStream<EncodedFrame>;
   readonly writable: WritableStream<EncodedFrame>;
 }
@@ -30,6 +39,20 @@ const KEY_ID = /^[a-f0-9]{16}$/;
 const encryptors = new Map<string, SFrameEncryptContext>();
 const decryptors = new Map<string, SFrameDecryptContext>();
 const decryptorKeyIds = new Map<string, Set<string>>();
+const reportedTransformFailures = new Set<string>();
+
+function reportTransformFailure(contextId: string, direction: "encrypt" | "decrypt", error: unknown): void {
+  const code = error && typeof error === "object" && "code" in error
+    ? String((error as { code: unknown }).code)
+    : "media_transform_failed";
+  if (!new Set([
+    "media_frame_type", "media_codec_unsupported", "media_frame_too_short", "media_envelope_version",
+  ]).has(code)) return;
+  const key = `${contextId}\0${direction}\0${code}`;
+  if (reportedTransformFailures.has(key)) return;
+  reportedTransformFailures.add(key);
+  postMessage({ version: 1, type: "transform-error", contextId, direction, code });
+}
 
 function destroyContext(contextId: string): void {
   encryptors.get(contextId)?.destroy();
@@ -37,6 +60,7 @@ function destroyContext(contextId: string): void {
   encryptors.delete(contextId);
   decryptors.delete(contextId);
   decryptorKeyIds.delete(contextId);
+  for (const key of reportedTransformFailures) if (key.startsWith(`${contextId}\0`)) reportedTransformFailures.delete(key);
 }
 
 function clearAll(): void {
@@ -45,6 +69,7 @@ function clearAll(): void {
   encryptors.clear();
   decryptors.clear();
   decryptorKeyIds.clear();
+  reportedTransformFailures.clear();
 }
 
 addEventListener("message", ({ data }: MessageEvent<WorkerCommand>) => {
@@ -83,25 +108,27 @@ addEventListener("message", ({ data }: MessageEvent<WorkerCommand>) => {
 });
 
 addEventListener("rtctransform", ((event: TransformEvent) => {
-  const options = event.transformer.options as Record<string, unknown> | null;
+  const options = event.transformer.options;
   const contextId = String(options?.["contextId"] || "");
   const direction = options?.["direction"];
-  if (!CONTEXT_ID.test(contextId) || (direction !== "encrypt" && direction !== "decrypt")) {
+  if (options?.["version"] !== 1 || options?.["frameEnvelope"] !== SFRAME_MEDIA_ENVELOPE
+    || !CONTEXT_ID.test(contextId) || (direction !== "encrypt" && direction !== "decrypt")) {
     void event.transformer.readable.cancel("invalid_sframe_transform");
     return;
   }
   const transform = new TransformStream<EncodedFrame, EncodedFrame>({
     async transform(frame, controller) {
       try {
-        const input = new Uint8Array(frame.data);
+        const context = direction === "encrypt" ? encryptors.get(contextId) : decryptors.get(contextId);
+        if (!context) return;
         const output = direction === "encrypt"
-          ? await encryptors.get(contextId)?.encrypt(input)
-          : await decryptors.get(contextId)?.decrypt(input);
-        if (!output) return;
+          ? await encryptMediaFrame(context as SFrameEncryptContext, frame)
+          : await decryptMediaFrame(context as SFrameDecryptContext, frame);
         frame.data = output.buffer.slice(output.byteOffset, output.byteOffset + output.byteLength);
         controller.enqueue(frame);
-      } catch {
+      } catch (error) {
         // Authentication failures, replay, missing keys and exhausted counters are fail-closed.
+        reportTransformFailure(contextId, direction, error);
       }
     },
   });

@@ -30,7 +30,7 @@ const DEFAULTS = Object.freeze({
   infrastructureTurnFallbackMs: 9_000,
   mediaE2eeMode: "required",
   peerMediaRelayEnabled: true,
-  peerMediaRelayMinParticipants: 6,
+  peerMediaRelayMinParticipants: 3,
   peerMediaRelayMaxChildren: 3,
   peerMediaRelayMaxHops: 3,
   peerRouteLeaseMs: 60_000,
@@ -45,6 +45,7 @@ const DEFAULTS = Object.freeze({
   mediaAgentLeaseMs: 30_000,
   mediaAgentRenewMs: 10_000,
   mediaAgentMaxStandbys: 2,
+  mediaAgentMinParticipants: 3,
   mediaAgentShardMinParticipants: 6,
   mediaAgentTakeoverTtlMs: 20_000,
   mediaAgentRateLimit: 2_000,
@@ -421,6 +422,11 @@ export function loadConfig(env = process.env) {
       env.MEDIA_AGENT_MAX_STANDBYS,
       DEFAULTS.mediaAgentMaxStandbys,
       { minimum: 0, maximum: 2, name: "MEDIA_AGENT_MAX_STANDBYS" },
+    ),
+    mediaAgentMinParticipants: boundedInteger(
+      env.MEDIA_AGENT_MIN_PARTICIPANTS,
+      DEFAULTS.mediaAgentMinParticipants,
+      { minimum: 3, maximum: 20, name: "MEDIA_AGENT_MIN_PARTICIPANTS" },
     ),
     mediaAgentShardMinParticipants: boundedInteger(
       env.MEDIA_AGENT_SHARD_MIN_PARTICIPANTS,

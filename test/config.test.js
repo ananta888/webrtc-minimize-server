@@ -17,6 +17,7 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.equal(config.infrastructureTurnFallbackMs, 9_000);
   assert.equal(config.mediaE2eeMode, "required");
   assert.equal(config.peerMediaRelayEnabled, true);
+  assert.equal(config.peerMediaRelayMinParticipants, 3);
   assert.equal(config.peerRouteLeaseMs, 60_000);
   assert.equal(config.peerRouteRenewMs, 25_000);
   assert.equal(config.peerDataOverlayEnabled, true);
@@ -25,6 +26,7 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.deepEqual(config.mediaAgents, []);
   assert.equal(config.mediaAgentLeaseMs, 30_000);
   assert.equal(config.mediaAgentRenewMs, 10_000);
+  assert.equal(config.mediaAgentMinParticipants, 3);
   assert.equal(config.mediaAgentShardMinParticipants, 6);
   assert.equal(config.mediaAgentRateLimit, 2_000);
   assert.equal(config.mediaAgentSelfServiceEnabled, false);
@@ -106,12 +108,14 @@ test("loadConfig accepts only closed operator-bound blind media agents", () => {
     MEDIA_AGENT_LEASE_MS: "45000",
     MEDIA_AGENT_RENEW_MS: "15000",
     MEDIA_AGENT_MAX_STANDBYS: "1",
+    MEDIA_AGENT_MIN_PARTICIPANTS: "4",
     MEDIA_AGENT_SHARD_MIN_PARTICIPANTS: "5",
   });
   assert.deepEqual(config.mediaAgents, [definition]);
   assert.equal(config.mediaAgentLeaseMs, 45_000);
   assert.equal(config.mediaAgentRenewMs, 15_000);
   assert.equal(config.mediaAgentMaxStandbys, 1);
+  assert.equal(config.mediaAgentMinParticipants, 4);
   assert.equal(config.mediaAgentShardMinParticipants, 5);
   assert.throws(() => loadConfig({
     MEDIA_EDGE_AGENTS_JSON: JSON.stringify([{ ...definition, sharedSecret: "short" }]),
@@ -123,6 +127,7 @@ test("loadConfig accepts only closed operator-bound blind media agents", () => {
     MEDIA_AGENT_LEASE_MS: "15000", MEDIA_AGENT_RENEW_MS: "15000",
   }), /shorter/);
   assert.throws(() => loadConfig({ MEDIA_AGENT_SHARD_MIN_PARTICIPANTS: "2" }), /between 3 and 20/);
+  assert.throws(() => loadConfig({ MEDIA_AGENT_MIN_PARTICIPANTS: "2" }), /between 3 and 20/);
 });
 
 test("loadConfig accepts explicit OIDC and ephemeral TURN settings", () => {

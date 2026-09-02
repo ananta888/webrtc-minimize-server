@@ -1,3 +1,5 @@
+import { SFRAME_MEDIA_ENVELOPE } from "./sframe-media-envelope";
+
 interface ScriptTransformTarget {
   transform: unknown | null;
 }
@@ -5,7 +7,12 @@ interface ScriptTransformTarget {
 interface ScriptTransformConstructor {
   new(
     worker: Worker,
-    options: Readonly<{ version: 1; direction: "encrypt" | "decrypt"; contextId: string }>,
+    options: Readonly<{
+      version: 1;
+      direction: "encrypt" | "decrypt";
+      contextId: string;
+      frameEnvelope: typeof SFRAME_MEDIA_ENVELOPE;
+    }>,
   ): unknown;
 }
 
@@ -37,6 +44,8 @@ export class MediaE2eeController {
   readonly supported = supportsMediaE2ee();
   private readonly attached = new WeakMap<object, string>();
   private worker: Worker | null = null;
+
+  constructor(private readonly onTransformFailure: (contextId: string, code: string) => void = () => undefined) {}
 
   attachSender(sender: RTCRtpSender, contextId: string): boolean {
     return this.attach(sender as unknown as ScriptTransformTarget, contextId, "encrypt");
@@ -76,7 +85,7 @@ export class MediaE2eeController {
     if (!Transform || !worker || !CONTEXT_ID.test(contextId)) return false;
     if (this.attached.get(target as object) === contextId) return true;
     try {
-      const options = { version: 1 as const, direction, contextId };
+      const options = { version: 1 as const, direction, contextId, frameEnvelope: SFRAME_MEDIA_ENVELOPE };
       target.transform = new Transform(worker, options);
       this.attached.set(target as object, contextId);
       return true;
@@ -111,7 +120,20 @@ export class MediaE2eeController {
 
   private ensureWorker(): Worker | null {
     if (!this.supported) return null;
-    this.worker ||= new Worker(new URL("./sframe.worker", import.meta.url), { type: "module", name: "sframe-media" });
+    if (!this.worker) {
+      this.worker = new Worker(new URL("./sframe.worker", import.meta.url), { type: "module", name: "sframe-media" });
+      this.worker.addEventListener("message", ({ data }: MessageEvent<unknown>) => {
+        if (!data || typeof data !== "object" || Array.isArray(data)) return;
+        const value = data as Record<string, unknown>;
+        if (Object.keys(value).length !== 5 || value["version"] !== 1 || value["type"] !== "transform-error"
+          || !CONTEXT_ID.test(String(value["contextId"] || ""))
+          || !new Set(["encrypt", "decrypt"]).has(String(value["direction"] || ""))
+          || !new Set([
+            "media_frame_type", "media_codec_unsupported", "media_frame_too_short", "media_envelope_version",
+          ]).has(String(value["code"] || ""))) return;
+        this.onTransformFailure(String(value["contextId"]), String(value["code"]));
+      });
+    }
     return this.worker;
   }
 }

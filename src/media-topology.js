@@ -115,7 +115,8 @@ export function buildRelayTree(peerIds, rootPeerId, eligibleRelayIds, options = 
 
 export function buildRoomTopology(peers, epochs, options = {}) {
   const enabled = options.enabled ?? true;
-  const minimumParticipants = options.minimumParticipants ?? 6;
+  const minimumParticipants = options.minimumParticipants ?? 3;
+  const maxChildren = options.maxChildren ?? 3;
   const leaseMs = options.leaseMs ?? 60_000;
   const now = options.now ?? Date.now();
   const blockedRelayIds = options.blockedRelayIds ?? new Set();
@@ -130,9 +131,11 @@ export function buildRoomTopology(peers, epochs, options = {}) {
     .map((peer) => peer.id);
   const expiresAt = now + leaseMs;
   const routes = peerIds.map((rootPeerId) => {
-    const edges = enabled && peerIds.length >= minimumParticipants
+    const reducesPublisherFanout = peerIds.length - 1 > maxChildren;
+    const edges = enabled && peerIds.length >= minimumParticipants && reducesPublisherFanout
       ? buildRelayTree(peerIds, rootPeerId, eligible, {
         ...options,
+        maxChildren,
         routeEpoch: normalizedEpochs.route,
         expiresAt,
         ranks,

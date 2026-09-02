@@ -50,6 +50,49 @@ test("room topology requires policy, room size and enough consenting relays", ()
   assert.ok(disabled.routes.every((route) => route.mode === "adaptive_mesh" && route.edges.length === 0));
 });
 
+test("small-room browser relays activate only when their bound reduces publisher fanout", () => {
+  const peers = Array.from({ length: 6 }, (_, index) => ({
+    id: `peer-${index}`,
+    relayConsent: true,
+    relayCapability: {
+      visible: true,
+      battery: "mains",
+      network: "fast",
+      selfCapacity: 90,
+      observedCapacity: 90,
+      deliveryRatio: 1,
+    },
+  }));
+  const options = {
+    enabled: true,
+    minimumParticipants: 3,
+    maxChildren: 3,
+    maxHops: 3,
+    now: 1_000,
+    leaseMs: 60_000,
+  };
+
+  for (const participantCount of [3, 4]) {
+    const direct = buildRoomTopology(peers.slice(0, participantCount), participantCount, options);
+    assert.ok(direct.routes.every((route) => (
+      route.mode === "adaptive_mesh" && route.edges.length === 0
+    )));
+  }
+  for (const participantCount of [5, 6]) {
+    const relayed = buildRoomTopology(peers.slice(0, participantCount), participantCount, options);
+    assert.ok(relayed.routes.every((route) => route.mode === "trusted_peer_relay"));
+    assert.ok(relayed.routes.every((route) => (
+      route.edges.filter((edge) => edge.parentPeerId === route.rootPeerId).length === 3
+    )));
+  }
+
+  const boundedAtTwo = buildRoomTopology(peers.slice(0, 4), 4, { ...options, maxChildren: 2 });
+  assert.ok(boundedAtTwo.routes.every((route) => route.mode === "trusted_peer_relay"));
+  assert.ok(boundedAtTwo.routes.every((route) => (
+    route.edges.filter((edge) => edge.parentPeerId === route.rootPeerId).length === 2
+  )));
+});
+
 test("relay eligibility is conservative and respects observed capacity and cooldown", () => {
   const base = {
     id: "relay",

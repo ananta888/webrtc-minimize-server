@@ -30,6 +30,8 @@ describe("media-agent group-key overlay contract", () => {
     expect(parseMediaAgentE2eeMessage({ ...message, agentId: "UPPERCASE" })).toBeNull();
     expect(parseMediaAgentE2eeMessage({ ...message, routeEpoch: 0 })).toBeNull();
     expect(parseMediaAgentE2eeMessage({ ...message, baseKey: "short" })).toBeNull();
+    expect(parseMediaAgentE2eeMessage({ ...message, version: 1 })).toBeNull();
+    expect(parseMediaAgentE2eeMessage({ ...message, frameEnvelope: "legacy" })).toBeNull();
     expect(parseMediaAgentE2eeMessage({ ...message, decryptAtAgent: true })).toBeNull();
   });
 });

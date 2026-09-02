@@ -24,9 +24,16 @@ test("creator preference is a bounded election bonus and unhealthy agents stay i
   const creator = candidate("creator", { creatorOwned: true, capacity: 70 });
   const fast = candidate("fast", { capacity: 100, battery: "limited", network: "normal" });
   const hidden = candidate("hidden", { creatorOwned: true, visible: false });
+  const exhausted = candidate("exhausted", { capacity: 24 });
+  const overloaded = candidate("overloaded", { load: 90 });
   assert.ok(mediaAgentScore(creator) > mediaAgentScore(fast));
   assert.equal(mediaAgentScore(hidden), Number.NEGATIVE_INFINITY);
-  assert.deepEqual(rankMediaAgents([fast, hidden, creator]).map(({ id }) => id), ["creator", "fast"]);
+  assert.equal(mediaAgentScore(exhausted), Number.NEGATIVE_INFINITY);
+  assert.equal(mediaAgentScore(overloaded), Number.NEGATIVE_INFINITY);
+  assert.deepEqual(
+    rankMediaAgents([fast, hidden, exhausted, overloaded, creator]).map(({ id }) => id),
+    ["creator", "fast"],
+  );
 });
 
 test("severe load and weak network can overrule the bounded creator preference", () => {

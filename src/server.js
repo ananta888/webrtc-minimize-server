@@ -128,6 +128,7 @@ function publicRuntimeConfig(config, services = {}) {
     mediaE2ee: {
       mode: config.mediaE2eeMode,
       cipherSuite: "AES_128_GCM_SHA256_128",
+      frameEnvelope: "codec-prefix-v1",
     },
     mediaAgents: {
       configured: services.mediaAgents?.configured || config.mediaAgents.length > 0,
@@ -136,6 +137,7 @@ function publicRuntimeConfig(config, services = {}) {
       unsignedArtifacts: targets.length > 0,
       leaseMs: config.mediaAgentLeaseMs,
       maxStandbys: config.mediaAgentMaxStandbys,
+      minimumParticipants: config.mediaAgentMinParticipants,
       shardMinParticipants: config.mediaAgentShardMinParticipants,
     },
     optimization: {
@@ -715,7 +717,7 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
     epochs.topology += 1;
     roomEpochs.set(roomId, epochs);
     const topology = buildRoomTopology(members, epochs, {
-      enabled: config.peerMediaRelayEnabled,
+      enabled: config.peerMediaRelayEnabled && config.mediaE2eeMode === "disabled",
       minimumParticipants: config.peerMediaRelayMinParticipants,
       maxChildren: config.peerMediaRelayMaxChildren,
       maxHops: config.peerMediaRelayMaxHops,
@@ -1301,6 +1303,7 @@ export function createAppServer(options = {}) {
     definitions: [...config.mediaAgents, ...(mediaAgentEnrollmentStore?.definitions() || [])],
     leaseMs: config.mediaAgentLeaseMs,
     maxStandbys: config.mediaAgentMaxStandbys,
+    minimumParticipants: config.mediaAgentMinParticipants,
     shardMinParticipants: config.mediaAgentShardMinParticipants,
     takeoverTtlMs: config.mediaAgentTakeoverTtlMs,
     enrollmentStore: mediaAgentEnrollmentStore,

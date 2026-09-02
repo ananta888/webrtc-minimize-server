@@ -432,7 +432,7 @@
             <p id="active-speakers" class="hint">Fokus: {{ mesh.activeSpeakerNames().length ? mesh.activeSpeakerNames().join(', ') : 'stabile Teilnehmerreihenfolge' }}. Die Strategie setzt Capture-Zielwerte, Senderlimits und relative RTP-Prioritäten; sie ist keine garantierte Netz-QoS.</p>
             @if (config.value()?.optimization?.peerRelayEnabled && config.value()?.mediaE2ee?.mode === 'disabled') {
               <label class="relay-consent"><input id="relay-consent" type="checkbox" [disabled]="!session.joined()" [ngModel]="mesh.relayConsent()" (ngModelChange)="setRelayConsent($event)"> Diesem Browser erlauben, Video für andere Raumteilnehmer weiterzuleiten</label>
-              <p class="relay-warning">Trusted Relay kann Medien hopweise verarbeiten und neu encodieren. Es kann CPU, Akku sowie Upload beanspruchen.</p>
+              <p class="relay-warning">Trusted Relay kann Medien hopweise verarbeiten und neu encodieren. Es kann CPU, Akku sowie Upload beanspruchen. Die Control Plane nutzt es nur, wenn der begrenzte Baum weniger Publisher-Zielkopien als der direkte Pfad benötigt.</p>
             } @else if (config.value()?.mediaE2ee?.mode !== 'disabled') {
               <p class="relay-warning">Der entschlüsselnde Browser-Relay ist bei SFrame deaktiviert. TURN verbessert nur die Erreichbarkeit; ein separat gestarteter Blind-Media-Agent kann dagegen SFrame-Ciphertext fanout-reduzierend weiterleiten.</p>
             }
@@ -590,7 +590,7 @@
               @if (session.roomCreator()) {
                 <p class="creator-agent-note">Du bist der Raumersteller. Dein gesunder, zugestimmter Agent wird bevorzugt; Gesundheit, Netz, Last und Batterie können diese Präferenz überstimmen.</p>
               }
-              <p class="hint">Ab {{ config.value()?.mediaAgents?.shardMinParticipants }} Teilnehmern darf die Control Plane Publizierende auf Primary und höchstens {{ config.value()?.mediaAgents?.maxStandbys }} weitere zugestimmte Agenten verteilen. Jeder Publisher bleibt genau einem Agenten zugeordnet; kleine Räume verwenden nur den Primary.</p>
+              <p class="hint">Ab {{ config.value()?.mediaAgents?.minimumParticipants }} Teilnehmern darf ein gesunder, zugestimmter Primary die Medien verteilen; ein Zweiergespräch bleibt direkt. Unterhalb der Shard-Schwelle – mit den Defaults also bei 3–5 Personen – bewertet die Control Plane Consent, Kapazität, Last, Netz und Batterie und nutzt höchstens diesen einen Forwarder. Erst ab {{ config.value()?.mediaAgents?.shardMinParticipants }} Teilnehmern darf sie Publizierende auf Primary und höchstens {{ config.value()?.mediaAgents?.maxStandbys }} weitere zugestimmte Agenten verteilen. Jeder Publisher bleibt genau einem Agenten zugeordnet.</p>
               <p class="agent-risk">Ein zugewiesener Agent verarbeitet weiterzuleitende Medienpakete, sieht Verbindungsmetadaten wie IP-Adressen, Timing, Codec und Datenrate und kann Pakete verwerfen. Er benötigt Upload, CPU und gegebenenfalls Akku oder TURN. Ein fester UDP-Port ist nicht erforderlich; eine bewusst konfigurierte Portfreigabe kann direkte ICE-Pfade verbessern.</p>
               </section>
             </section>
