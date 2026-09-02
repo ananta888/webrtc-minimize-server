@@ -64,13 +64,16 @@ function sendJson(response, statusCode, body, extraHeaders = {}) {
   response.end(payload);
 }
 
-function securityHeaders(config) {
-  const connectSources = ["'self'", "ws:", "wss:"];
+function securityHeaders(config, { voskWorker = false } = {}) {
+  const connectSources = ["'self'", "ws:", "wss:", "https://raw.githubusercontent.com"];
+  if (voskWorker) connectSources.push("blob:");
   if (config.oidcIssuer) connectSources.push(new URL(config.oidcIssuer).origin);
   return {
     "content-security-policy": [
       "default-src 'self'",
       `connect-src ${connectSources.join(" ")}`,
+      `script-src 'self' 'wasm-unsafe-eval'${voskWorker ? " 'unsafe-eval'" : ""}`,
+      "worker-src 'self' blob:",
       "img-src 'self' data:",
       "media-src 'self' blob:",
       "object-src 'none'",
@@ -183,7 +186,7 @@ async function serveStatic(request, response, pathname, config, publicDir) {
       "content-type": MIME_TYPES.get(path.extname(absolutePath)) || "application/octet-stream",
       "content-length": content.length,
       "cache-control": requestedPath === "/index.html" ? "no-cache" : "public, max-age=300",
-      ...securityHeaders(config),
+      ...securityHeaders(config, { voskWorker: requestedPath === "/assets/vosk-worker.js" }),
     });
     response.end(content);
   } catch (error) {

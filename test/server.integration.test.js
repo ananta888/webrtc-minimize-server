@@ -173,6 +173,11 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
     pairWorkspaceEnabled: false,
   });
   assert.match(configResponse.headers.get("content-security-policy"), /default-src 'self'/);
+  assert.match(configResponse.headers.get("content-security-policy"), /script-src 'self' 'wasm-unsafe-eval'/);
+  assert.doesNotMatch(configResponse.headers.get("content-security-policy"), /'unsafe-eval'/);
+  assert.match(configResponse.headers.get("content-security-policy"), /worker-src 'self' blob:/);
+  assert.match(configResponse.headers.get("content-security-policy"), /connect-src[^;]+https:\/\/raw\.githubusercontent\.com/);
+  assert.doesNotMatch(configResponse.headers.get("content-security-policy"), /connect-src[^;]+blob:/);
 
   const roomResponse = await fetch(`${app.httpUrl}/api/rooms`, { method: "POST" });
   assert.equal(roomResponse.status, 201);
@@ -184,6 +189,12 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
   const indexResponse = await fetch(app.httpUrl);
   assert.equal(indexResponse.status, 200);
   assert.match(await indexResponse.text(), /<app-root>/);
+
+  const workerResponse = await fetch(`${app.httpUrl}/assets/vosk-worker.js`);
+  assert.equal(workerResponse.status, 200);
+  assert.match(workerResponse.headers.get("content-security-policy"), /script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'/);
+  assert.match(workerResponse.headers.get("content-security-policy"), /connect-src[^;]+blob:/);
+  assert.match(await workerResponse.text(), /new RecognizerWorker\(\)/);
 });
 
 test("two room peers receive membership and target-bound signals", async (context) => {

@@ -31,6 +31,7 @@ export class MediaPublicationService {
   readonly pending = signal<LocalMediaSource | null>(null);
   readonly screenAudioActive = signal(false);
   private readonly streams = new Map<LocalMediaSource, MediaStream>();
+  private readonly microphoneStopListeners = new Set<() => void>();
   private readonly constraintUpdates: Record<VideoCaptureSource, Promise<void>> = {
     camera: Promise.resolve(),
     screen: Promise.resolve(),
@@ -115,6 +116,11 @@ export class MediaPublicationService {
       if (source === "screen") this.screenAudioActive.set(false);
       return;
     }
+    if (source === "microphone") {
+      for (const listener of this.microphoneStopListeners) {
+        try { listener(); } catch { /* a consumer cannot block capture shutdown */ }
+      }
+    }
     this.mesh.detachPublication(source);
     for (const track of stream.getTracks()) {
       track.onended = null;
@@ -133,6 +139,15 @@ export class MediaPublicationService {
 
   active(source: LocalMediaSource): boolean {
     return this.streams.has(source);
+  }
+
+  microphoneTrack(): MediaStreamTrack | null {
+    return this.streams.get("microphone")?.getAudioTracks()[0] || null;
+  }
+
+  registerMicrophoneStopListener(listener: () => void): () => void {
+    this.microphoneStopListeners.add(listener);
+    return () => this.microphoneStopListeners.delete(listener);
   }
 
   async setVideoResolution(source: VideoCaptureSource, resolutionId: unknown): Promise<void> {

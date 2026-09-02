@@ -3,6 +3,14 @@ import { Injectable, computed, signal } from "@angular/core";
 import { AudioActivityService } from "./audio-activity.service";
 import { IcePathClass, IceTierPolicy } from "./ice-policy";
 import {
+  CAPTION_BUFFER_LIMIT,
+  CaptionRateLimiter,
+  CaptionRevisionTracker,
+  CaptionWireMessage,
+  encodeCaptionMessage,
+  parseCaptionMessage,
+} from "./caption-contract";
+import {
   LinkClass,
   MediaSource,
   OptimizationMode,
@@ -136,6 +144,17 @@ export interface ChatEntry {
   readonly system: boolean;
 }
 
+export interface CaptionEntry {
+  readonly id: string;
+  readonly peerId: string;
+  readonly author: string;
+  readonly language: string;
+  readonly text: string;
+  readonly final: boolean;
+  readonly local: boolean;
+  readonly receivedAt: number;
+}
+
 export interface OverlayDelivery {
   readonly id: number;
   readonly originPeerId: string;
@@ -177,6 +196,7 @@ export class PeerMeshService {
   readonly remoteMedia = signal<readonly RemoteMediaView[]>([]);
   readonly participantCount = signal(0);
   readonly chat = signal<readonly ChatEntry[]>([]);
+  readonly captions = signal<readonly CaptionEntry[]>([]);
   readonly overlayDeliveries = signal<readonly OverlayDelivery[]>([]);
   readonly overlayMode = signal<"unavailable" | "direct-encrypted" | "opaque-relay">("unavailable");
   readonly overlayReady = signal(false);
@@ -258,6 +278,8 @@ export class PeerMeshService {
     dataOverlayEnabled: false,
   };
   private chatSerial = 0;
+  private readonly captionRateLimiter = new CaptionRateLimiter();
+  private readonly captionRevisions = new CaptionRevisionTracker();
   private controlSequence = 0;
   private activityTimer: ReturnType<typeof setInterval> | null = null;
   private qualityTimer: ReturnType<typeof setInterval> | null = null;
@@ -707,6 +729,9 @@ export class PeerMeshService {
     this.updateIceState();
     this.meshAnalysis.removeTarget("peer", peerId);
     this.remoteAnalysisViewers.delete(peerId);
+    this.captionRateLimiter.remove(peerId);
+    this.captionRevisions.remove(peerId);
+    this.captions.update((entries) => entries.filter((entry) => entry.peerId !== peerId || entry.final));
     this.refreshAnalysisContext();
   }
 
@@ -719,6 +744,24 @@ export class PeerMeshService {
       if (channel?.readyState === "open" && channel.bufferedAmount < CHAT_BUFFER_LIMIT) channel.send(payload);
     }
     this.addChat(this.ownName || "Du", value, false);
+  }
+
+  sendCaption(message: Omit<CaptionWireMessage, "version" | "type">): boolean {
+    if (!this.ownId) return false;
+    const payload = encodeCaptionMessage(message);
+    if (!payload) return false;
+    const parsed = parseCaptionMessage(payload);
+    if (!parsed) return false;
+    for (const peer of this.peers.values()) {
+      const channel = peer.channels.get("captions");
+      if (channel?.readyState === "open" && channel.bufferedAmount < CAPTION_BUFFER_LIMIT) channel.send(payload);
+    }
+    this.upsertCaption(this.ownId, this.ownName || "Du", parsed, true);
+    return true;
+  }
+
+  clearCaptions(): void {
+    this.captions.set([]);
   }
 
   close(): void {
@@ -743,6 +786,9 @@ export class PeerMeshService {
     this.overlayInitialization = Promise.resolve();
     this.overlayPublicKey = null;
     this.overlayDeliveries.set([]);
+    this.captions.set([]);
+    this.captionRateLimiter.clear();
+    this.captionRevisions.clear();
     this.overlayMode.set("unavailable");
     this.overlayReady.set(false);
     this.peerChoices.set([]);
@@ -1093,7 +1139,7 @@ export class PeerMeshService {
   }
 
   private attachChannel(peer: PeerState, channel: RTCDataChannel): void {
-    if (channel.label !== "chat" && channel.label !== "control" && channel.label !== "overlay") {
+    if (channel.label !== "captions" && channel.label !== "chat" && channel.label !== "control" && channel.label !== "overlay") {
       channel.close();
       return;
     }
@@ -1102,7 +1148,9 @@ export class PeerMeshService {
     peer.channels.set(kind, channel);
     channel.binaryType = "arraybuffer";
     channel.bufferedAmountLowThreshold = kind === "control"
-      ? CONTROL_BUFFER_LIMIT / 2 : kind === "chat" ? CHAT_BUFFER_LIMIT / 2 : 256 * 1024;
+      ? CONTROL_BUFFER_LIMIT / 2
+      : kind === "chat" ? CHAT_BUFFER_LIMIT / 2
+        : kind === "captions" ? CAPTION_BUFFER_LIMIT / 2 : 256 * 1024;
     channel.onbufferedamountlow = () => {
       if (kind === "overlay") this.flushOverlayQueue(peer);
     };
@@ -1113,7 +1161,7 @@ export class PeerMeshService {
         this.sendReceiveQualityTo(peer, true);
         this.sendAnalysisInterestTo(peer);
       }
-      else {
+      else if (kind === "overlay") {
         this.flushOverlayQueue(peer);
         this.updateOverlayAvailability();
         this.provisionMediaKeysForPeer(peer.id);
@@ -1127,6 +1175,14 @@ export class PeerMeshService {
       if (kind === "chat") {
         const message = parsePeerChat(data);
         if (message) this.addChat(peer.name, message.text, false);
+        return;
+      }
+      if (kind === "captions") {
+        if (!this.captionRateLimiter.accept(peer.id)) return;
+        const message = parseCaptionMessage(data);
+        if (message && this.captionRevisions.accept(peer.id, message)) {
+          this.upsertCaption(peer.id, peer.name, message, false);
+        }
         return;
       }
       const message = parsePeerControl(data);
@@ -1465,6 +1521,26 @@ export class PeerMeshService {
 
   private addChat(author: string, text: string, system: boolean): void {
     this.chat.update((entries) => [...entries.slice(-199), { id: ++this.chatSerial, author, text, system }]);
+  }
+
+  private upsertCaption(peerId: string, author: string, message: CaptionWireMessage, local: boolean): void {
+    const id = `${peerId}:${message.utteranceId}`;
+    const entry: CaptionEntry = Object.freeze({
+      id,
+      peerId,
+      author,
+      language: message.language,
+      text: message.text,
+      final: message.final,
+      local,
+      receivedAt: Date.now(),
+    });
+    this.captions.update((entries) => {
+      const retained = entries.filter((current) => (
+        current.id !== id && (current.peerId !== peerId || current.final)
+      ));
+      return [...retained.slice(-99), entry];
+    });
   }
 
   private updateIceState(): void {

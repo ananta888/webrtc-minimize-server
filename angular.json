@@ -21,7 +21,13 @@
               "frontend/src/styles.css",
               "frontend/src/app/mesh-analysis/mesh-analysis.component.css"
             ],
-            "assets": []
+            "assets": [
+              {
+                "glob": "**/*",
+                "input": "frontend/src/assets",
+                "output": "/assets/"
+              }
+            ]
           },
           "configurations": {
             "production": {

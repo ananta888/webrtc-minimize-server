@@ -1,6 +1,7 @@
 import { signal } from "@angular/core";
 import { describe, expect, it, vi } from "vitest";
 
+import { encodeCaptionMessage } from "./caption-contract";
 import { QualitySettings } from "./media-optimization-policy";
 import { PeerMeshService } from "./peer-mesh.service";
 import { ReceiveQualityProfile, isReceiveQualityProfile } from "./receive-quality-policy";
@@ -286,5 +287,63 @@ describe("PeerMeshService media-agent fallback", () => {
     internals.routeChildren = () => new Set(["2222222222222222"]);
     expect(service.setReceiveQualityProfile("audio-only")).toBe(true);
     expect(track.enabled).toBe(true);
+  });
+
+  it("sends captions on their bounded channel and attributes remote text to the connected peer", () => {
+    const { service } = createService();
+    const outbound = vi.fn();
+    const peer = {
+      id: "1111111111111111",
+      name: "Grace",
+      channels: new Map([["captions", { readyState: "open", bufferedAmount: 0, send: outbound, close: vi.fn() }]]),
+    };
+    const internals = service as unknown as {
+      ownId: string;
+      ownName: string;
+      connections: { peers: Map<string, typeof peer> };
+      attachChannel(peerState: object, channel: RTCDataChannel): void;
+    };
+    internals.ownId = "0123456789abcdef";
+    internals.ownName = "Ada";
+    internals.connections = { peers: new Map([[peer.id, peer]]) };
+
+    expect(service.sendCaption({
+      utteranceId: "aaaaaaaaaaaaaaaa",
+      revision: 0,
+      language: "de-DE",
+      text: "Lokaler Text",
+      final: false,
+    })).toBe(true);
+    expect(outbound).toHaveBeenCalledOnce();
+    expect(service.captions()[0]).toMatchObject({ author: "Ada", text: "Lokaler Text", local: true });
+
+    const incomingChannel = {
+      label: "captions",
+      readyState: "open",
+      bufferedAmount: 0,
+      close: vi.fn(),
+      send: vi.fn(),
+      binaryType: "blob",
+      bufferedAmountLowThreshold: 0,
+      onbufferedamountlow: null,
+      onopen: null,
+      onmessage: null,
+    } as unknown as RTCDataChannel;
+    internals.attachChannel(peer, incomingChannel);
+    const incoming = encodeCaptionMessage({
+      utteranceId: "bbbbbbbbbbbbbbbb",
+      revision: 0,
+      language: "en-US",
+      text: "Remote text",
+      final: true,
+    })!;
+    incomingChannel.onmessage?.({ data: incoming } as MessageEvent);
+
+    expect(service.captions().at(-1)).toMatchObject({
+      peerId: peer.id,
+      author: "Grace",
+      text: "Remote text",
+      local: false,
+    });
   });
 });

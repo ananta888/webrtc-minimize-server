@@ -1,6 +1,6 @@
 # Aktuelle WebRTC-Architektur als UML-/Datenflussmodell
 
-Stand: 2026-09-01, bezogen auf den aktuellen `main`-Stand. Die Diagramme
+Stand: 2026-09-02, bezogen auf den aktuellen `main`-Stand. Die Diagramme
 beschreiben die implementierte Architektur einschliesslich selektivem
 Simulcast-SFU und nativer Agent-Foederation, nicht einen portablen
 Browser-Ciphertext-DAG. Sie verwenden Mermaid, damit GitHub sie direkt rendert.
@@ -11,7 +11,8 @@ Browser-Ciphertext-DAG. Sie verwenden Mermaid, damit GitHub sie direkt rendert.
   kurzlebige Peer-IDs, Signaling, ICE-Konfiguration, Topologien und
   Agent-Leases. Er transportiert keine Medienframes.
 - **Browser Data Plane:** getrennte Publikationen fuer Mikrofon, Kamera,
-  Bildschirm und optionalen Bildschirmton; WebRTC-Medien und DataChannels.
+  Bildschirm und optionalen Bildschirmton; WebRTC-Medien, DataChannels und
+  freiwillige lokale Vosk-Erkennung aus einem Clone des aktiven Mikrofons.
 - **Blind Media Edge Agent:** nativer Pion-Prozess. Er terminiert
   ICE/DTLS-SRTP, leitet aber nur bereits SFrame-verschluesselte RTP-Payloads
   weiter und erhaelt keinen SFrame-Schluessel.
@@ -35,6 +36,7 @@ flowchart LR
         Session["Room Session + Signaling"]
         Mesh["Peer-Mesh + DataChannels"]
         Media["Capture + getrennte Publikationen"]
+        Captions["Vosk Worker + fluechtige Untertitel"]
         E2EE["SFrame + ECDH/AES-GCM Overlay"]
         AgentAdapter["Blind-Media-Agent-Adapter"]
     end
@@ -56,6 +58,8 @@ flowchart LR
     User -->|"sichtbarer Klick"| UI
     UI --> Auth
     UI --> Media
+    UI -->|"Modell- und Startklick"| Captions
+    Media -->|"aktiver Mikrofon-Clone"| Captions
     Auth <-->|"Authorization Code + PKCE"| Keycloak
     Session <-->|"HTTPS API + WSS Signaling"| Proxy
     Proxy <--> Node
@@ -64,6 +68,7 @@ flowchart LR
     Node --> AgentRegistry
 
     Mesh <-->|"DTLS-SRTP + SCTP\ndirekt oder ueber TURN"| Other
+    Captions -->|"Caption v1 ueber SCTP"| Mesh
     Mesh -.->|"ICE-Fallback"| EdgeTurn
     Mesh -.->|"letzter ICE-Fallback"| InfraTurn
     Media --> E2EE
@@ -77,13 +82,13 @@ flowchart LR
     classDef data fill:#173c33,stroke:#66e0b7,color:#fff;
     classDef relay fill:#3d3020,stroke:#ffc66d,color:#fff;
     class Node,Membership,Policy,AgentRegistry,Proxy,Keycloak control;
-    class UI,Auth,Session,Mesh,Media,E2EE,AgentAdapter,Other data;
+    class UI,Auth,Session,Mesh,Media,Captions,E2EE,AgentAdapter,Other data;
     class InfraTurn,EdgeTurn,MediaAgent relay;
 ```
 
 Die Control Plane sieht Identitaet, Raumzugehoerigkeit, Signaling-Metadaten,
-Agentzustand und Netzmetadaten. Audio-, Video-, Bildschirm- und Chat-Inhalte
-laufen in der Data Plane. Keycloak-Tokens werden weder in WebSocket-Nachrichten
+Agentzustand und Netzmetadaten. Audio-, Video-, Bildschirm-, Chat- und
+Untertitelinhalte laufen in der Data Plane. Keycloak-Tokens werden weder in WebSocket-Nachrichten
 noch in Medienpfade geschrieben; der Signaling-WebSocket verwendet ein
 kurzlebiges Einmal-Ticket.
 
@@ -96,6 +101,8 @@ flowchart TB
         RoomSession["RoomSessionService"]
         Signaling["SignalingService"]
         Capture["MediaPublicationService"]
+        CaptionModels["VoskModelManagerService\nfester Katalog + Cache"]
+        CaptionRuntime["LiveCaptionService\nAudioWorklet + isolierter Worker"]
         Strategy["MediaStrategyService\nAudio/Video/Prioritaet"]
         PeerMesh["PeerMeshService\nOrchestrierung"]
         PCM["PeerConnectionManager\n1 PC je Gegenueber"]
@@ -128,10 +135,15 @@ flowchart TB
 
     RoomPage --> RoomSession
     RoomPage --> Capture
+    RoomPage --> CaptionModels
+    RoomPage --> CaptionRuntime
     RoomPage --> Strategy
     RoomSession --> Signaling
     RoomSession --> PeerMesh
     Capture --> PeerMesh
+    Capture -->|"aktiver Mikrofon-Clone"| CaptionRuntime
+    CaptionModels --> CaptionRuntime
+    CaptionRuntime -->|"Caption v1"| PeerMesh
     Strategy --> Quality
     PeerMesh --> PCM
     PeerMesh --> Quality
@@ -784,6 +796,7 @@ zum Bandbreitenengpass werden, ohne den Anwendungsfanout zu reduzieren.
 | Kamera | lokaler Browser nach Klick | jeder Raumpeer direkt/TURN | q/h/f zum Ingress; je Subscriber ein Layer ueber Egress | nein | nein, SFrame-Ciphertext |
 | Bildschirmvideo | lokaler Browser nach Klick | jeder Raumpeer direkt/TURN | Single-Layer ueber Ingress/Foederation/Egress | nein | nein, SFrame-Ciphertext |
 | Bildschirmton | lokaler Browser nach separater Zustimmung | jeder Raumpeer direkt/TURN | Single-Layer ueber Ingress/Foederation/Egress | nein | nein, SFrame-Ciphertext |
+| Lokale Vosk-Untertitel | Sprecherbrowser nach Modell-, Mikrofon- und Erkennungsklick | dedizierter direkter SCTP-DataChannel je Raumpeer | weiterhin direkte Browser-DataChannels, niemals Agent | nein | nein, nicht beteiligt |
 | Chat/Control | Browser | direkte SCTP-DataChannels | weiterhin Browser-DataChannels | nein | nein, kein Medien-Agent-Pfad |
 | Overlay-Nutzdaten/Keys | Zielbrowser | direkter oder serverautorisierter Peer-Overlay | weiterhin Peer-Overlay, niemals Agent | nur Ciphertext/Metadaten | nein, nicht beteiligt |
 | SDP/ICE | Browser/Agent | ueber Node an geprueften Raumpeer | ueber Node an geprueften Agent/Peer | ja, aber nicht loggen | nur eigene ICE-/SDP-Sitzung |

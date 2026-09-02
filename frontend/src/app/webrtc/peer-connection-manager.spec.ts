@@ -12,6 +12,7 @@ class FakePeerConnection {
   iceConnectionState: RTCIceConnectionState = "new";
   signalingState: RTCSignalingState = "stable";
   localDescription: RTCSessionDescription | null = null;
+  readonly createdChannels: string[] = [];
   onicecandidate: RTCPeerConnection["onicecandidate"] = null;
   ontrack: RTCPeerConnection["ontrack"] = null;
   ondatachannel: RTCPeerConnection["ondatachannel"] = null;
@@ -26,6 +27,10 @@ class FakePeerConnection {
   }
 
   setConfiguration(configuration: RTCConfiguration): void { this.configuration = configuration; }
+  createDataChannel(label: string): RTCDataChannel {
+    this.createdChannels.push(label);
+    return { label, close: vi.fn() } as unknown as RTCDataChannel;
+  }
   restartIce(): void { this.restarts += 1; }
   close(): void { this.connectionState = "closed"; this.iceConnectionState = "closed"; }
 }
@@ -119,5 +124,19 @@ describe("staged ICE connection manager", () => {
       ["local", { id: "local", type: "local-candidate", candidateType: "host", address: "192.0.2.1" }],
     ]) as unknown as RTCStatsReport;
     expect(classifySelectedIcePath(direct, 0, new Set())).toBe("direct");
+  });
+
+  it("negotiates a dedicated reliable captions channel without waiting for model activation", () => {
+    const channels: string[] = [];
+    const connections = new PeerConnectionManager("0000000000000001", policy, true, {
+      signal: () => undefined,
+      track: () => undefined,
+      channel: (_peer, channel) => channels.push(channel.label),
+      state: () => undefined,
+      negotiationError: () => undefined,
+    });
+    connections.add("ffffffffffffffff", "Grace");
+    expect(channels).toEqual(["control", "chat", "captions", "overlay"]);
+    connections.close();
   });
 });

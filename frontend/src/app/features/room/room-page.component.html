@@ -44,6 +44,11 @@
           <span>Live</span>
           @if (session.joined()) { <span class="nav-live" aria-label="Aktiv"></span> }
         </button>
+        <button id="captions-navigation" type="button" class="nav-item" [class.active]="activeSection() === 'captions'" [attr.aria-current]="activeSection() === 'captions' ? 'page' : null" (click)="show('captions')">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 10a3 3 0 10-6 2 3 3 0 006 2M20 10a3 3 0 10-6 2 3 3 0 006 2"/></svg>
+          <span>Untertitel</span>
+          @if (captions.active()) { <span class="nav-live" aria-label="Untertitel aktiv"></span> }
+        </button>
         <button id="mesh-analysis-navigation" type="button" class="nav-item" [class.active]="activeSection() === 'analysis'" [attr.aria-current]="activeSection() === 'analysis' ? 'page' : null" (click)="show('analysis')">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="12" cy="19" r="2"/><path d="M6.5 10.5l4-4M13.5 6.5l4 4M17.5 13.5l-4 4M10.5 17.5l-4-4"/></svg>
           <span>Analyse</span>
@@ -299,6 +304,13 @@
                   <audio autoplay [appMediaStream]="item.stream" [attr.aria-label]="item.peerName + ' · ' + mediaLabel(item.source)"></audio>
                 }
               </div>
+              @if (captions.showOverlay() && captions.overlayEntries().length > 0) {
+                <div id="live-caption-overlay" class="live-caption-overlay" aria-live="polite" aria-label="Live-Untertitel">
+                  @for (entry of captions.overlayEntries(); track entry.id) {
+                    <p [class.partial]="!entry.final"><strong>{{ entry.local ? 'Du' : entry.author }}</strong><span>{{ entry.text }}</span></p>
+                  }
+                </div>
+              }
               @if (media.publications().length === 0 && mesh.remoteMedia().length === 0) {
                 <div id="empty-media" class="empty-media">
                   <span class="empty-media-orbit" aria-hidden="true"><span></span></span>
@@ -325,6 +337,13 @@
                 <input id="chat-message" maxlength="2000" autocomplete="off" placeholder="Nachricht schreiben…" [disabled]="!session.joined()" [ngModel]="chatInput()" (ngModelChange)="chatInput.set($event)" name="chatMessage">
                 <button class="send-button" type="submit" [disabled]="!session.joined() || !chatInput().trim()" aria-label="Nachricht senden">↑</button>
               </form>
+            </section>
+
+            <section class="surface compact-panel caption-compact-panel">
+              <div class="surface-heading small"><span class="feature-icon amber" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 10a3 3 0 10-6 2 3 3 0 006 2M20 10a3 3 0 10-6 2 3 3 0 006 2"/></svg></span><div><p class="eyebrow">Lokal mit Vosk</p><h2>Live-Untertitel</h2></div></div>
+              <p><strong>{{ captions.active() ? 'Erkennung aktiv' : (captionModels.ready() ? 'Modell bereit' : 'Modell noch nicht geladen') }}</strong></p>
+              <p class="hint">{{ captionModels.selectedModel().language }} · {{ captionModelSize(captionModels.selectedModel().sizeBytes) }}. Dein Audio wird lokal verarbeitet.</p>
+              <button class="button ghost wide" type="button" (click)="show('captions')">Untertitel öffnen</button>
             </section>
 
             <section class="surface compact-panel optimization">
@@ -368,6 +387,88 @@
             <input id="chat-message" maxlength="2000" autocomplete="off" placeholder="Nachricht an alle Peers" [disabled]="!session.joined()" [ngModel]="chatInput()" (ngModelChange)="chatInput.set($event)" name="chatMessage">
             <button class="button primary" type="submit" [disabled]="!session.joined() || !chatInput().trim()">Senden</button>
           </form>
+        </section>
+      }
+
+      @if (activeSection() === 'captions') {
+        <section class="view-header captions-header">
+          <div><button class="back-link" type="button" (click)="show('live')">← Zum Live-Raum</button><p class="eyebrow">Offline Speech-to-Text</p><h1>Live-Untertitel mit Vosk</h1><p>Die Erkennung läuft lokal in deinem Browser. Nur begrenzte Textupdates gehen direkt über WebRTC an die verbundenen Raumteilnehmer; die Signaling Control Plane erhält weder Audio noch Transkripte.</p></div>
+          <span class="caption-status-badge" [class.active]="captions.active()" [attr.data-status]="captions.active() ? 'active' : captionModels.status()">{{ captionModelStatusLabel() }}</span>
+        </section>
+
+        <section class="caption-layout">
+          <section class="surface caption-control-card" aria-labelledby="caption-control-heading">
+            <div class="surface-heading"><span class="feature-icon amber" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3zM5 11a7 7 0 0014 0M12 18v3M8 21h8"/></svg></span><div><p class="eyebrow">Bewusste lokale Aktion</p><h2 id="caption-control-heading">Erkennung steuern</h2></div></div>
+            <dl class="fact-list caption-facts">
+              <div><dt>Gewähltes Modell</dt><dd id="selected-caption-model">{{ captionModels.selectedModel().language }}</dd></div>
+              <div><dt>Download</dt><dd>{{ captionModelSize(captionModels.selectedModel().sizeBytes) }}</dd></div>
+              <div><dt>Lokale Kopie</dt><dd id="caption-model-cache-status">{{ captionModels.isCached(captionModels.selectedModelId()) ? 'gespeichert' : 'noch nicht geladen' }}</dd></div>
+              <div><dt>Mikrofon</dt><dd>{{ media.active('microphone') ? 'bereits freigegeben' : 'nicht aktiv' }}</dd></div>
+              <div><dt>Audioziel</dt><dd>nur dieser Browser</dd></div>
+            </dl>
+
+            @if (captionModels.status() === 'downloading' || captionModels.status() === 'preparing') {
+              <div id="caption-model-progress" class="caption-progress" aria-live="polite">
+                <div><strong>{{ captionModels.status() === 'downloading' ? 'Modell wird geladen' : 'Modell wird im Worker vorbereitet' }}</strong><span>{{ captionModels.progress() }} %</span></div>
+                <progress max="100" [value]="captionModels.progress()">{{ captionModels.progress() }} %</progress>
+                <button class="button ghost compact" type="button" (click)="cancelCaptionModelLoad()">Abbrechen</button>
+              </div>
+            } @else {
+              <div class="caption-actions">
+                <button id="load-vosk-model" class="button ghost" type="button" [disabled]="captions.active()" (click)="loadCaptionModel()">{{ captionModels.ready() ? 'Modell neu laden' : (captionModels.isCached(captionModels.selectedModelId()) ? 'Lokales Modell öffnen' : 'Modell direkt laden') }}</button>
+                <button id="toggle-live-captions" class="button primary" type="button" [class.danger]="captions.active()" [disabled]="captions.starting() || (!captions.active() && (!session.joined() || !media.active('microphone') || !captionModels.ready() || !captions.supported()))" (click)="toggleCaptions()">{{ captions.active() ? 'Untertitel stoppen' : (captions.starting() ? 'Starte…' : 'Untertitel starten') }}</button>
+              </div>
+            }
+            @if (!captions.supported()) { <p class="screen-audio-warning">Dieser Browser stellt AudioWorklet nicht bereit. Es erfolgt kein automatischer oder serverseitiger Fallback.</p> }
+            @if (!media.active('microphone')) { <p class="hint">Starte dein Mikrofon zuerst sichtbar im Live-Raum. Diese Seite fordert selbst keine Aufnahmeberechtigung an.</p> }
+            <label class="agent-consent caption-overlay-setting">
+              <input id="caption-overlay-enabled" type="checkbox" [ngModel]="captions.showOverlay()" (ngModelChange)="setCaptionOverlay($event)">
+              <span><strong>Untertitel über dem Live-Video einblenden</strong><small>Wirkt nur auf deinem Gerät und kann jederzeit ausgeschaltet werden.</small></span>
+            </label>
+            <p class="caption-privacy-note">Keine Transkriptdatei wird erzeugt. Beim Verlassen des Raums verschwinden alle Untertitel aus dem erreichbaren Browserzustand. Erkennung kann Fehler enthalten und ist keine verlässliche Gesprächsdokumentation.</p>
+          </section>
+
+          <section class="surface caption-transcript-card" aria-labelledby="caption-transcript-heading">
+            <div class="owned-agent-heading"><div><p class="eyebrow">Flüchtiger Raumzustand</p><h2 id="caption-transcript-heading">Untertitelverlauf</h2></div><button id="clear-captions" class="text-action" type="button" [disabled]="captions.entries().length === 0" (click)="captions.clear()">Leeren</button></div>
+            <div id="caption-transcript" class="caption-transcript" aria-live="polite">
+              @for (entry of captions.recentEntries(); track entry.id) {
+                <article [class.partial]="!entry.final" [class.local]="entry.local">
+                  <div><strong>{{ entry.local ? 'Du' : entry.author }}</strong><span>{{ entry.language }}</span><time>{{ captionTime(entry.receivedAt) }}</time></div>
+                  <p>{{ entry.text }}</p>
+                </article>
+              } @empty {
+                <div class="list-empty"><span aria-hidden="true">CC</span><strong>Noch keine Untertitel</strong><p>Geladene Modelle starten nicht von selbst. Aktiviere zuerst Mikrofon und Erkennung.</p></div>
+              }
+            </div>
+          </section>
+        </section>
+
+        <section class="surface model-catalog" aria-labelledby="vosk-model-catalog-heading">
+          <div class="model-catalog-heading">
+            <div><p class="eyebrow">13 direkt nachladbare Modelle</p><h2 id="vosk-model-catalog-heading">Vosk-Modellkatalog</h2><p>Alle ausführbaren Einträge sind browserfertige gzip-Tar-Archive aus einem fest gepinnten Stand. Die offiziellen ZIP- und großen Servermodelle werden nicht fälschlich als browserkompatibel angeboten.</p></div>
+            <label>Modelle filtern<input id="caption-model-search" type="search" autocomplete="off" placeholder="Sprache oder Kürzel" [ngModel]="captionModelSearch()" (ngModelChange)="captionModelSearch.set($event)"></label>
+          </div>
+          <div id="caption-model-list" class="caption-model-list">
+            @for (model of filteredCaptionModels(); track model.id) {
+              <label class="caption-model-option" [class.selected]="captionModels.selectedModelId() === model.id" [class.cached]="captionModels.isCached(model.id)">
+                <input type="radio" name="captionModel" [value]="model.id" [disabled]="captions.active() || captionModels.status() === 'downloading' || captionModels.status() === 'preparing'" [ngModel]="captionModels.selectedModelId()" (ngModelChange)="setCaptionModel($event)">
+                <span class="caption-model-language"><strong>{{ model.language }}</strong><small>{{ model.nativeLanguage }} · {{ model.languageTag }}</small></span>
+                <span class="caption-model-meta"><strong>{{ captionModelSize(model.sizeBytes) }}</strong><small>{{ model.license }}</small></span>
+                <span class="caption-model-state">{{ captionModels.isCached(model.id) ? 'lokal' : 'Download' }}</span>
+              </label>
+            } @empty {
+              <div class="list-empty"><span aria-hidden="true">?</span><strong>Kein Modell gefunden</strong><p>Ändere den Sprachfilter.</p></div>
+            }
+          </div>
+          <div class="catalog-footer">
+            <p><strong>{{ captionModels.selectedModel().language }}:</strong> {{ captionModels.selectedModel().note }}. Lizenz: {{ captionModels.selectedModel().license }}.</p>
+            @if (captionModels.selectedModel().license === 'CC-BY-NC-SA-4.0') { <p class="screen-audio-warning">Das ausgewählte französische Modell ist nur für nicht-kommerzielle Nutzung freigegeben.</p> }
+            <div class="inline-actions">
+              <a class="text-action" href="https://github.com/ccoreilly/vosk-browser" target="_blank" rel="noopener noreferrer">Browserpakete und Quellcode</a>
+              <a class="text-action" href="https://alphacephei.com/vosk/models" target="_blank" rel="noopener noreferrer">Offizieller Vosk-Katalog</a>
+              @if (captionModels.isCached(captionModels.selectedModelId())) { <button class="text-action danger-text" type="button" [disabled]="captions.active()" (click)="removeCachedCaptionModel(captionModels.selectedModelId())">Lokale Kopie löschen</button> }
+            </div>
+          </div>
         </section>
       }
 

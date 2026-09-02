@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 const template = readFileSync("frontend/src/app/features/room/room-page.component.html", "utf8");
 const component = readFileSync("frontend/src/app/features/room/room-page.component.ts", "utf8");
 const mediaControls = readFileSync("frontend/src/app/shared/media-control-bar.component.ts", "utf8");
+const captionService = readFileSync("frontend/src/app/captions/live-caption.service.ts", "utf8");
+const captionCatalog = readFileSync("frontend/src/app/captions/vosk-model-catalog.ts", "utf8");
 
 describe("Room page information architecture", () => {
   it("links the top-right GitHub icon to this repository without reusing the app tab", () => {
@@ -28,7 +30,30 @@ describe("Room page information architecture", () => {
     expect(template).toContain('id="mesh-analysis-navigation"');
     expect(template).toContain("activeSection() === 'analysis'");
     expect(template).toContain("<app-mesh-analysis />");
-    expect(component).toContain('"rooms" | "live" | "analysis" | "chat" | "settings"');
+    expect(component).toContain('"rooms" | "live" | "captions" | "analysis" | "chat" | "settings"');
+    expect(component).not.toContain("getUserMedia");
+    expect(component).not.toContain("getDisplayMedia");
+  });
+
+  it("offers explicit local Vosk captions and a directly loadable fixed model catalog", () => {
+    expect(template).toContain('id="captions-navigation"');
+    expect(template).toContain("activeSection() === 'captions'");
+    expect(template).toContain('id="load-vosk-model"');
+    expect(template).toContain('(click)="loadCaptionModel()"');
+    expect(template).toContain('id="toggle-live-captions"');
+    expect(template).toContain('(click)="toggleCaptions()"');
+    expect(template).toContain('id="caption-model-list"');
+    expect(template).toContain('id="caption-model-search"');
+    expect(template).toContain('id="caption-transcript"');
+    expect(template).toContain('id="live-caption-overlay"');
+    expect(template).toContain("filteredCaptionModels()");
+    expect(template).toContain("Starte dein Mikrofon zuerst sichtbar im Live-Raum");
+    expect(captionCatalog).toContain("VOSK_BROWSER_SOURCE_REVISION");
+    expect(captionCatalog).toContain('"vi-vn-small-0.3"');
+    expect(captionService).toContain("this.media.microphoneTrack()");
+    expect(captionService).toContain("registerMicrophoneStopListener");
+    expect(captionService).not.toContain("getUserMedia");
+    expect(captionService).not.toContain("getDisplayMedia");
     expect(component).not.toContain("getUserMedia");
     expect(component).not.toContain("getDisplayMedia");
   });

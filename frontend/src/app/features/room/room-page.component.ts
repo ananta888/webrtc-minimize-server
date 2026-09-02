@@ -2,6 +2,9 @@ import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, effect
 import { FormsModule } from "@angular/forms";
 
 import { OidcAuthService } from "../../auth/oidc-auth.service";
+import { LiveCaptionService } from "../../captions/live-caption.service";
+import { formatModelSize } from "../../captions/vosk-model-catalog";
+import { VoskModelManagerService } from "../../captions/vosk-model-manager.service";
 import { RuntimeConfigService } from "../../core/runtime-config.service";
 import { DeviceIdentityService } from "../../identity/device-identity.service";
 import {
@@ -29,7 +32,7 @@ import { PairWorkspacePanelComponent } from "../../workspace/pair-workspace-pane
 import { PairWorkspaceService, WorkspaceSummary } from "../../workspace/pair-workspace.service";
 import { MeshAnalysisComponent } from "../../mesh-analysis/mesh-analysis.component";
 
-type AppSection = "rooms" | "live" | "analysis" | "chat" | "settings";
+type AppSection = "rooms" | "live" | "captions" | "analysis" | "chat" | "settings";
 
 @Component({
   selector: "app-room-page",
@@ -56,6 +59,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   readonly newRoomTitle = signal("Meine Runde");
   readonly newRoomVisibility = signal<RoomVisibility>("private");
   readonly chatInput = signal("");
+  readonly captionModelSearch = signal("");
   readonly workspaceTitle = signal("Pair Dev Workspace");
   readonly mediaAgentLabel = signal("Mein Rechner");
   readonly mediaAgentTarget = signal("");
@@ -69,6 +73,13 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   readonly canEnter = computed(() => this.ready() && (!this.authRequired() || this.auth.authenticated()));
   readonly canOwnRooms = computed(() => this.auth.authenticated());
   readonly ownMediaAgentOnline = computed(() => this.mediaAgentOnboarding.agents().some((agent) => agent.online));
+  readonly filteredCaptionModels = computed(() => {
+    const query = this.captionModelSearch().trim().toLocaleLowerCase("de-DE");
+    if (!query) return this.captionModels.models;
+    return this.captionModels.models.filter((model) => (
+      `${model.language} ${model.nativeLanguage} ${model.languageTag} ${model.id}`.toLocaleLowerCase("de-DE").includes(query)
+    ));
+  });
   readonly currentRoom = computed(() => {
     const roomId = this.session.joined() ? this.session.roomId() : this.roomInput();
     return [...this.directory.ownRooms(), ...this.directory.publicRooms()]
@@ -83,6 +94,8 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     || this.directory.error()
     || this.session.error()
     || this.media.error()
+    || this.captions.error()
+    || this.captionModels.error()
     || this.mediaAgentOnboarding.error()
     || this.auth.error()
   ));
@@ -102,6 +115,8 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     readonly mesh: PeerMeshService,
     readonly mediaAgents: BlindMediaAgentService,
     readonly media: MediaPublicationService,
+    readonly captions: LiveCaptionService,
+    readonly captionModels: VoskModelManagerService,
     readonly mediaStrategy: MediaStrategyService,
     readonly receiveQuality: ReceiveQualityPreferenceService,
     readonly videoPreferences: VideoCapturePreferencesService,
@@ -112,7 +127,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   async ngOnInit(): Promise<void> {
     window.addEventListener("beforeunload", this.beforeUnload);
     const params = new URLSearchParams(location.search);
-    if (new Set<AppSection>(["rooms", "live", "analysis", "chat", "settings"]).has(params.get("section") as AppSection)) {
+    if (new Set<AppSection>(["rooms", "live", "captions", "analysis", "chat", "settings"]).has(params.get("section") as AppSection)) {
       this.activeSection.set(params.get("section") as AppSection);
     }
     this.roomInput.set(params.get("room") || "");
@@ -152,6 +167,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     if (this.directoryRefreshHandle) clearInterval(this.directoryRefreshHandle);
     this.stopCaptureOnSessionEnd.destroy();
     this.shutdown();
+    this.captions.destroy();
   }
 
   show(section: AppSection): void {
@@ -222,6 +238,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   }
 
   leave(): void {
+    this.captions.stop();
     this.media.stopAll();
     this.session.leave();
     this.notice.set("Du hast den Raum verlassen.");
@@ -230,6 +247,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   }
 
   async logout(): Promise<void> {
+    this.captions.stop();
     this.media.stopAll();
     this.session.leave();
     this.activeSection.set("rooms");
@@ -272,6 +290,54 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   sendChat(): void {
     this.mesh.sendChat(this.chatInput());
     this.chatInput.set("");
+  }
+
+  setCaptionModel(modelId: unknown): void {
+    if (!this.captions.active()) this.captionModels.select(modelId);
+  }
+
+  async loadCaptionModel(): Promise<void> {
+    this.clearMessages();
+    await this.captionModels.loadSelected();
+  }
+
+  cancelCaptionModelLoad(): void {
+    this.captionModels.cancelLoad();
+  }
+
+  async removeCachedCaptionModel(modelId: string): Promise<void> {
+    await this.captionModels.removeCachedModel(modelId);
+  }
+
+  async toggleCaptions(): Promise<void> {
+    if (this.captions.active()) {
+      this.captions.stop();
+      return;
+    }
+    await this.captions.start();
+  }
+
+  setCaptionOverlay(enabled: unknown): void {
+    this.captions.setOverlay(enabled);
+  }
+
+  captionModelSize(sizeBytes: number): string {
+    return formatModelSize(sizeBytes);
+  }
+
+  captionModelStatusLabel(): string {
+    if (this.captions.active()) return "Erkennung aktiv";
+    return {
+      idle: "Nicht geladen",
+      downloading: "Download läuft",
+      preparing: "Worker startet",
+      ready: "Modell bereit",
+      error: "Fehler",
+    }[this.captionModels.status()];
+  }
+
+  captionTime(timestamp: number): string {
+    return new Date(timestamp).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   }
 
   setOptimizationMode(mode: OptimizationMode): void {
@@ -438,6 +504,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   }
 
   private shutdown(): void {
+    this.captions.stop();
     this.media.stopAll();
     this.session.leave();
   }

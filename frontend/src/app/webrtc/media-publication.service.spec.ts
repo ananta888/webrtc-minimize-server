@@ -109,7 +109,13 @@ describe("MediaPublicationService", () => {
     });
     expect(strategy.appliedAudioLabel()).toContain("48 kHz · 1 Kanal · Echo an");
     expect(mesh.attachPublication).toHaveBeenCalledWith("microphone", audio.stream);
+    expect(service.microphoneTrack()).toBe(audio.track);
+    const microphoneStopped = vi.fn();
+    const unregister = service.registerMicrophoneStopListener(microphoneStopped);
     service.stopAll();
+    expect(microphoneStopped).toHaveBeenCalledOnce();
+    expect(service.microphoneTrack()).toBeNull();
+    unregister();
     expect(audio.track.stop).toHaveBeenCalledTimes(1);
     expect(strategy.appliedAudioLabel()).toBe("Nicht aktiv");
   });

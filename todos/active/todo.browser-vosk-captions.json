@@ -1,0 +1,118 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "browser-vosk-captions",
+  "purpose": "Freiwillige lokale Live-Untertitel mit Vosk-WebAssembly und einer umfangreichen, kontrollierten Auswahl direkt nachladbarer Browser-Modelle bereitstellen.",
+  "goal": "Teilnehmer koennen nach einem sichtbaren Klick ein browserkompatibles Vosk-Sprachmodell laden, ihr bereits freigegebenes Mikrofon lokal transkribieren und begrenzte Untertitel direkt an Raumpeers senden, ohne Audio an die Control Plane zu uebertragen.",
+  "status": "in_progress",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "VSK-M01",
+      "title": "Sicherheitsgrenze und browserfertiger Modellkatalog",
+      "task_ids": ["VSK-001"],
+      "status": "done"
+    },
+    {
+      "id": "VSK-M02",
+      "title": "Lokale Erkennung und gebundener Untertitelpfad",
+      "task_ids": ["VSK-002", "VSK-003"],
+      "status": "done"
+    },
+    {
+      "id": "VSK-M03",
+      "title": "Browsermatrix und Produktionsrollout",
+      "task_ids": ["VSK-004"],
+      "status": "in_progress"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "VSK-001",
+      "title": "Browser-Vosk-Grenze und festen Modellkatalog definieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Der Katalog enthaelt ausschliesslich browserfertige Vosk-tar.gz-Modelle aus fest erlaubten HTTPS-Quellen mit stabiler ID, Sprache, Groesse, Lizenz, Herkunft und Eignungshinweis; beliebige Nutzer-URLs werden nicht ausgefuehrt.",
+        "Ein Modell wird erst durch einen sichtbaren lokalen Klick geladen; Auswahl, Laden oder Oeffnen der Untertitelansicht ruft weder getUserMedia noch eine andere Capture-API auf.",
+        "UI und Dokumentation weisen Downloadgroesse, lokalen Speicher-/CPU-Bedarf, Drittquellenstatus und fehlende Transkriptpersistenz ehrlich aus."
+      ]
+    },
+    {
+      "id": "VSK-002",
+      "title": "Vosk-WebAssembly-Lifecycle an vorhandenes Mikrofon binden",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": ["VSK-001"],
+      "acceptance_criteria": [
+        "Die Erkennung laeuft in einem Worker und verarbeitet ausschliesslich einen Clone des bereits aktivierten lokalen Mikrofontracks; ohne aktives Mikrofon bleibt Start fail-closed und fordert keine Browserberechtigung an.",
+        "Start, Stop, Modellwechsel, Mikrofonende, Raumwechsel und Destroy beenden AudioGraph, Track-Clone, Recognizer, Worker und erreichbaren Transkriptzustand deterministisch.",
+        "Teil- und Endergebnisse, Ladefortschritt, Fehler und aktives Modell sind als begrenzter testbarer Angular-State verfuegbar."
+      ]
+    },
+    {
+      "id": "VSK-003",
+      "title": "Versionierte Peer-Untertitel und vollstaendige Angular-Bedienung integrieren",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["VSK-002"],
+      "acceptance_criteria": [
+        "Ein additiver versionierter Untertitel-Contract validiert ID, Revision, Sprache, Textlaenge, Finalstatus und Rate fail-closed; die Sprecheridentitaet stammt ausschliesslich aus der vorhandenen PeerConnection und nicht aus dem Payload.",
+        "Untertitel laufen nur direkt ueber vorhandene WebRTC-DataChannels, werden von der Signaling Control Plane weder terminiert noch persistiert und verleihen keine Membership- oder Medienautoritaet.",
+        "Eine eigene Untertitelansicht bietet filterbare Modellauswahl, direkten expliziten Ladevorgang, Start/Stop, Status, lokale und entfernte Live-Zeilen sowie eine optionale Live-Einblendung im Raum."
+      ]
+    },
+    {
+      "id": "VSK-004",
+      "title": "Tests, Dokumentation und Produktionsrollout abschliessen",
+      "status": "in_progress",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 95,
+      "depends_on": ["VSK-003"],
+      "acceptance_criteria": [
+        "Unit- und UI-Tests decken Katalog, unbekannte Payloads, Groessen-/Ratenlimits, explizites Laden, Capture-Freiheit, Cleanup und Mehrpeeranzeige ab; Chromium und Firefox werden mindestens auf Featureerkennung und kontrollierten Fallback geprueft.",
+        "npm run check und npm run todos:validate bestehen; ein echter Modell-Download beziehungsweise fehlende externe Infrastruktur wird sichtbar als Erfolg oder Skip dokumentiert.",
+        "Nur gepruefte Source-, Test-, Dokumentations- und Todo-Dateien werden gezielt committed und gepusht; Mini-PC-Rollout und normaler HTTPS-Smoke erfolgen ohne Secrets oder generierte Modelle im Repository."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["VSK-001", "VSK-002", "VSK-003", "VSK-004"],
+  "tasks_status_summary": {
+    "total": 4,
+    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 3 },
+    "progress_percent_done": 75,
+    "by_priority": { "P0": 2, "P1": 2, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 0, "high": 2, "critical": 2 },
+    "critical_path": { "total": 4, "done": 3, "remaining": 1 },
+    "milestones": { "total": 3, "todo": 0, "in_progress": 1, "blocked": 0, "done": 2 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 0,
+    "in_progress": 1,
+    "partial": 0,
+    "blocked": 0,
+    "done": 3
+  },
+  "summary_notes": [
+    "Vosk-Browser ist eine Community-WebAssembly-Verpackung und keine vorhandene Runtime-Faehigkeit des Projekts; ihr Worker-, Modell- und Browserverhalten wird deshalb isoliert und mit ehrlichem Fallback integriert.",
+    "Der Produktionbuild extrahiert den Worker nur aus vosk-browser 0.0.8 mit festem SHA-256-Digest. unsafe-eval gilt nur fuer seine statische Antwort; der Hauptdokument-CSP bleibt ohne diese Ausnahme und der verborgene Worker-IDBFS-Cache ist deaktiviert.",
+    "Ein realer lokaler Chromium-Smoke lud das deutsche Modell ohne Capture. Ein weiterer Zwei-Browser-Smoke erkannte synthetisches Mikrofon-Audio und stellte den Text einem zweiten Raumpeer ohne dessen Modell- oder Capture-Aufruf ueber den captions-DataChannel zu.",
+    "Das finale lokale Gate bestand mit 33 Frontend-Dateien und 135 Tests, 96 Node-/Mehrbrowser-/Sicherheitstests, Produktionsbuild sowie explizitem Skip des credentialpflichtigen Live-Infrastruktur-Gates. Chromium und Firefox bestaetigten 13 Katalogmodelle ohne impliziten Download oder Capture.",
+    "npm audit --omit=dev meldete null bekannte Produktionsschwachstellen. Das finale Docker-Image baute den 4330654 Byte grossen gepinnten Worker und seine separate Apache-2.0-Lizenz erfolgreich ein.",
+    "Die offiziellen Vosk-ZIP-Modelle sind nicht unmittelbar mit dem tar.gz-Lader von vosk-browser kompatibel. Der ausfuehrbare Katalog verwendet nur bereits browserfertig verpackte Modelle; grosse Servermodelle werden nicht als direkt ladbar behauptet.",
+    "Ein Untertitel ist untrusted Anzeigeinhalt. Peer-ID und Raumzugehoerigkeit bleiben Eigentum der Control Plane beziehungsweise der bestehenden PeerConnection.",
+    "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
+  ]
+}

@@ -4,6 +4,8 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY angular.json tsconfig.json ./
 COPY frontend ./frontend
+COPY scripts/extract-vosk-worker.mjs ./scripts/extract-vosk-worker.mjs
+COPY third_party/vosk-browser ./third_party/vosk-browser
 RUN npm run build
 
 FROM node:22-alpine AS dependencies

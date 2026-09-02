@@ -7,7 +7,7 @@ import {
 } from "./ice-policy";
 import { ServerMessage } from "./signaling.service";
 
-export type PeerChannelKind = "chat" | "control" | "overlay";
+export type PeerChannelKind = "captions" | "chat" | "control" | "overlay";
 
 export interface ManagedPeer {
   readonly id: string;
@@ -133,6 +133,7 @@ export class PeerConnectionManager {
     if (this.ownPeerId < peerId) {
       this.callbacks.channel(peer, pc.createDataChannel("control", { ordered: true }));
       this.callbacks.channel(peer, pc.createDataChannel("chat", { ordered: true }));
+      this.callbacks.channel(peer, pc.createDataChannel("captions", { ordered: true }));
       if (this.dataOverlayEnabled) {
         this.callbacks.channel(peer, pc.createDataChannel("overlay", { ordered: false, maxRetransmits: 3 }));
       }

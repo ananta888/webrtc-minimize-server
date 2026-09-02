@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ananta888/webrtc-minimize-server/actions/workflows/ci.yml/badge.svg)](https://github.com/ananta888/webrtc-minimize-server/actions/workflows/ci.yml)
 
-Ein eigenständiger, Keycloak-fähiger Raumserver mit Angular-Oberfläche für Audio, Video, Bildschirmfreigabe und Peer-Chat. Der Node-Server autorisiert Membership, Topologie und SDP/ICE, terminiert aber keine Medien. Jede PeerConnection versucht zuerst einen direkten Pfad, danach freiwillige Edge-TURN-Knoten und erst zuletzt Infrastruktur-TURN. Audio-, Kamera- und Bildschirmframes sind im Standardmodus zusätzlich mit RFC-9605-SFrame Ende-zu-Ende verschlüsselt. Das ausgehandelte Medienprotokoll v2 verwendet den codec-bewussten Envelope `codec-prefix-v1`: Bei VP8 bleiben ausschließlich die für den Browser-Packetizer erforderlichen 10 Keyframe- beziehungsweise 3 Deltaframe-Bytes sichtbar, bei Opus das TOC-Byte; diese Bytes und die Envelope-Version sind AES-GCM-authentisiert, der restliche Frame ist verschlüsselt.
+Ein eigenständiger, Keycloak-fähiger Raumserver mit Angular-Oberfläche für Audio, Video, Bildschirmfreigabe, Peer-Chat und freiwillige lokale Vosk-Untertitel. Der Node-Server autorisiert Membership, Topologie und SDP/ICE, terminiert aber keine Medien oder Untertitel. Jede PeerConnection versucht zuerst einen direkten Pfad, danach freiwillige Edge-TURN-Knoten und erst zuletzt Infrastruktur-TURN. Audio-, Kamera- und Bildschirmframes sind im Standardmodus zusätzlich mit RFC-9605-SFrame Ende-zu-Ende verschlüsselt. Das ausgehandelte Medienprotokoll v2 verwendet den codec-bewussten Envelope `codec-prefix-v1`: Bei VP8 bleiben ausschließlich die für den Browser-Packetizer erforderlichen 10 Keyframe- beziehungsweise 3 Deltaframe-Bytes sichtbar, bei Opus das TOC-Byte; diese Bytes und die Envelope-Version sind AES-GCM-authentisiert, der restliche Frame ist verschlüsselt.
 
 Die [aktuelle Architektur als UML-/Datenflussmodell](docs/current-architecture-uml.md) zeigt den vollständigen Direct-, TURN-, Single-/Multi-Media-Agent-, Consent-, Failover- und Bandbreitenpfad mit konkreten Teilnehmerbeispielen.
 
@@ -23,6 +23,23 @@ Danach `http://localhost:8080` in zwei Browserfenstern öffnen. `npm start` verw
 Medien werden niemals automatisch angefordert. Mikrofon, Kamera und Bildschirm starten nur über ihre jeweiligen Buttons. Beim Verlassen stoppt die App alle eigenen Tracks.
 
 Bildschirmfreigabe ist standardmäßig video-only. Bildschirmton muss unter `Einstellungen → Video & Bandbreite` separat und bewusst aktiviert werden, weil Tab- oder Systemaudio den laufenden Gesprächston erneut in den Raum senden und dadurch Echo erzeugen kann. Das Opt-in allein startet keinen Capture-Aufruf und gilt beim nächsten Bildschirm-teilen-Klick. Wird es während einer Freigabe ausgeschaltet, stoppt ausschließlich der Bildschirm-Audiotrack; das geteilte Bild läuft weiter. Unterstützte Browser werden zusätzlich um `restrictOwnAudio` gebeten, diese experimentelle Eigentonfilterung ist jedoch nur Zusatzschutz und keine portable Echo-Garantie. Für Bildschirmton werden Kopfhörer empfohlen.
+
+## Lokale Live-Untertitel
+
+Unter `Untertitel` stehen 13 fest erlaubte, direkt nachladbare Vosk-Modelle von
+Deutsch und zwei Englischvarianten bis Mandarin, Persisch, Russisch, Türkisch
+und Vietnamesisch bereit. Auswahl und Laden fordern keine Aufnahmeberechtigung
+an. Nach dem bewussten Mikrofonstart verarbeitet ein isolierter WebAssembly-
+Worker ausschließlich einen lokalen Track-Clone; Empfänger benötigen kein
+eigenes Modell. Begrenzte Textupdates laufen über einen dedizierten WebRTC-
+DataChannel, nicht über die Signaling Control Plane, und der Verlauf bleibt
+flüchtig.
+
+Die Archive sind je nach Sprache etwa 32 bis 49 MB groß, werden erst per Klick
+geladen und können im Browserprofil gecacht oder wieder gelöscht werden. Die
+Erkennung kann deutlich mehr Arbeitsspeicher und CPU benötigen. Details zu
+Modellen, Lizenzen, CSP-Isolation, Grenzen und Bedienung stehen in
+[docs/browser-vosk-captions.md](docs/browser-vosk-captions.md).
 
 ## Räume
 
@@ -271,7 +288,7 @@ docker build --tag webrtc-media-edge-agent:local media-edge-agent
 (cd media-edge-agent && MEDIA_AGENT_ENV_FILE=.env.example docker compose --env-file .env.example config --quiet)
 ```
 
-`npm run check` umfasst Todo-/Workflow-Schemas, Angular-Unit-Tests, Angular-Produktionbuild und Node-/Integrationstests. Die Browsermatrix prüft SFrame im `required`-Modus mit echten Chromium- und Firefox-Kontexten ohne automatische Capture-Anfrage. Ein gerichteter Chromium→Firefox-VP8-Langzeittest überschreitet Counter 350 und verlangt danach weiter dekodierte Frames sowie einen neuen Keyframe ohne Drops; Unit-Tests prüfen zusätzlich Prefix-Authentisierung, Counterbreitenwechsel, Opus und unbekannte Envelope-/Codecvarianten. Die 3/4/5/6-Peer-Grenztests unterscheiden nativen Single-Agent-Nutzen vom nur bei kleinerem Root-Fanout erlaubten Legacy-Browserbaum. Der getrennte Sechs-Chromium-Gate prüft den expliziten Legacy-Relay-Baum einschließlich Sender-Fanout, Active Speaker, Datensparprofil, Mosaik und Churn-Fallback. Fehlende Browser werden ausschließlich mit sichtbarer Begründung übersprungen. Der TURN-Edge-Agent besitzt zusätzlich einen echten lokalen Allokationstest. Der Blind-Media-Agent testet echte Pion-PeerConnections für individuelle `low`/`high`-Auswahl sowie einen direkten Zwei-Agenten-Pfad, auf dem ausschließlich der angeforderte Simulcast-Layer mit byte-identischem opaque SFrame-Payload ankommt. JSON-Schema-, DAG-, stale-Epoch- und Cross-Agent-Negativtests sichern die Control Plane. Der geforderte reale Fünf-Browser-/Zwei-Prozess-/NAT-Produktionsgate bleibt sichtbar in BME-006/BME-011.
+`npm run check` umfasst Todo-/Workflow-Schemas, Angular-Unit-Tests, Angular-Produktionbuild und Node-/Integrationstests. Die Browsermatrix prüft SFrame im `required`-Modus mit echten Chromium- und Firefox-Kontexten ohne automatische Capture-Anfrage. Für Vosk prüft sie zusätzlich den vollständigen 13-Modell-Katalog, fehlenden Vorabdownload und fehlende Capture-Aufrufe; der Produktionbuild extrahiert den isolierten Worker nur bei exakt passender Paketversion und SHA-256-Prüfsumme. Ein gerichteter Chromium→Firefox-VP8-Langzeittest überschreitet Counter 350 und verlangt danach weiter dekodierte Frames sowie einen neuen Keyframe ohne Drops; Unit-Tests prüfen zusätzlich Prefix-Authentisierung, Counterbreitenwechsel, Opus und unbekannte Envelope-/Codecvarianten. Die 3/4/5/6-Peer-Grenztests unterscheiden nativen Single-Agent-Nutzen vom nur bei kleinerem Root-Fanout erlaubten Legacy-Browserbaum. Der getrennte Sechs-Chromium-Gate prüft den expliziten Legacy-Relay-Baum einschließlich Sender-Fanout, Active Speaker, Datensparprofil, Mosaik und Churn-Fallback. Fehlende Browser werden ausschließlich mit sichtbarer Begründung übersprungen. Der TURN-Edge-Agent besitzt zusätzlich einen echten lokalen Allokationstest. Der Blind-Media-Agent testet echte Pion-PeerConnections für individuelle `low`/`high`-Auswahl sowie einen direkten Zwei-Agenten-Pfad, auf dem ausschließlich der angeforderte Simulcast-Layer mit byte-identischem opaque SFrame-Payload ankommt. JSON-Schema-, DAG-, stale-Epoch- und Cross-Agent-Negativtests sichern die Control Plane. Der geforderte reale Fünf-Browser-/Zwei-Prozess-/NAT-Produktionsgate bleibt sichtbar in BME-006/BME-011.
 
 Der Live-Infrastruktur-Gate startet absichtlich nicht implizit. Mit laufendem Compose-Stack, einer eigens angelegten Testidentität und expliziten Variablen prüft er Keycloak Discovery, PKCE-Login, JWKS-Tokenprüfung, autorisierte Einmal-Tickets sowie eine echte Coturn-Relay-Allokation:
 
