@@ -30,6 +30,7 @@ import {
 } from "./protocol.js";
 import { RoomAdmissionError, RoomFullError, RoomRegistry } from "./room-registry.js";
 import { SessionTicketError, SessionTicketStore } from "./session-tickets.js";
+import { createMediaAgentIceServers } from "./media-agent-ice.js";
 import { createEdgeTurnCredentials, createTurnCredentials } from "./turn-credentials.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -623,12 +624,7 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
     cooldownMs: config.peerRelayHealthCooldownMs,
   });
 
-  const iceServersForAgent = (agentId) => [
-    ...config.stunUrls.map((urls) => ({ urls })),
-    ...createEdgeTurnCredentials(config, `media-agent:${agentId}`),
-    ...config.turnServers,
-    ...createTurnCredentials(config, `media-agent:${agentId}`),
-  ];
+  const iceServersForAgent = (agentId) => createMediaAgentIceServers(config, agentId);
 
   let agentSyncTimer = null;
   const sendAgentSync = () => {

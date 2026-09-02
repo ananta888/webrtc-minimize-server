@@ -182,6 +182,20 @@ func TestLeaseValidationBoundsMembershipEpochPeersAndICE(t *testing.T) {
 	}
 }
 
+func TestAgentSyncAcceptsBrowserSTUNAndTURNAsURLArrays(t *testing.T) {
+	raw := []byte(`{"version":1,"type":"agent-sync","leases":[{"version":3,"type":"agent-lease","roomId":"room-123456","role":"primary","membershipEpoch":1,"routeEpoch":1,"leaseExpiresAt":20000,"peers":[],"subscriptions":[],"federationLinks":[],"federationRoutes":[],"federationDemands":[],"iceServers":[{"urls":["stun:stun.example:3478"]},{"urls":["turn:edge.example:3478?transport=udp","turn:edge.example:3478?transport=tcp"],"username":"1700000300:opaque","credential":"secret","credentialType":"password"}]}]}`)
+	message, err := decodeServerMessage(raw)
+	if err != nil {
+		t.Fatalf("production-shaped ICE servers were rejected: %v", err)
+	}
+	if len(message.Leases) != 1 || len(message.Leases[0].ICEServers) != 2 {
+		t.Fatal("production-shaped ICE servers were not retained")
+	}
+	if len(message.Leases[0].ICEServers[0].URLs) != 1 || message.Leases[0].ICEServers[0].URLs[0] != "stun:stun.example:3478" {
+		t.Fatal("STUN URL array changed during decoding")
+	}
+}
+
 func TestVersionTwoLeaseRestrictsPublisherAuthority(t *testing.T) {
 	cfg, err := loadConfig(environment(validEnvironment()))
 	if err != nil {
