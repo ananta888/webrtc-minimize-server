@@ -6,6 +6,32 @@ export interface ServerMessage {
   readonly [key: string]: unknown;
 }
 
+export const SERVER_MESSAGE_VERSIONS = Object.freeze({
+  welcome: 1,
+  "peer-joined": 1,
+  "peer-left": 1,
+  signal: 1,
+  "media-state": 1,
+  "topology-state": 1,
+  "media-agent-state": 3,
+  "media-agent-availability": 1,
+  "media-agent-takeover-request": 1,
+  "media-agent-signal": 1,
+  "media-agent-track-state": 2,
+  "media-agent-subscription-state": 2,
+  "overlay-key": 1,
+  error: 1,
+} satisfies Readonly<Record<string, number>>);
+
+export function validateServerMessageEnvelope(raw: unknown): ServerMessage | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  const type = value["type"];
+  if (typeof type !== "string" || !Object.hasOwn(SERVER_MESSAGE_VERSIONS, type)) return null;
+  if (value["version"] !== SERVER_MESSAGE_VERSIONS[type as keyof typeof SERVER_MESSAGE_VERSIONS]) return null;
+  return value as ServerMessage;
+}
+
 @Injectable({ providedIn: "root" })
 export class SignalingService {
   readonly status = signal<"idle" | "connecting" | "connected" | "error">("idle");
@@ -23,8 +49,12 @@ export class SignalingService {
     socket.onopen = () => this.status.set("connected");
     socket.onmessage = (event) => {
       try {
-        const message = JSON.parse(String(event.data)) as ServerMessage;
-        if (message.version === 1 && typeof message.type === "string") this.handler?.(message);
+        const message = validateServerMessageEnvelope(JSON.parse(String(event.data)));
+        if (!message) {
+          this.lastError.set("invalid_server_message");
+          return;
+        }
+        this.handler?.(message);
       } catch {
         this.lastError.set("invalid_server_message");
       }
