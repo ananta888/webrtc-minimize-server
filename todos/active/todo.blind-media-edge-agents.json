@@ -99,6 +99,12 @@
       "title": "Atomare Mehrfachauswahl eigener Media-Agenten pro Raumsitzung",
       "task_ids": ["BME-020"],
       "status": "done"
+    },
+    {
+      "id": "BME-M16",
+      "title": "Media-Agent-Verwaltung in die interaktive Analyse integrieren",
+      "task_ids": ["BME-021"],
+      "status": "in_progress"
     }
   ],
   "tasks": [
@@ -387,22 +393,37 @@
         "Ein Peer kann zwei eigene Agenten fuer denselben Raum bereitstellen: bei drei bis fuenf Teilnehmern bleibt genau ein Forwarder mit dem zweiten Agenten als Standby, ab der Shard-Schwelle koennen beide nach Control-Plane-Wahl als Forwarder und foederierte Knoten arbeiten.",
         "Contract-, Registry-, Serverintegrations-, Angular-Service- und UI-Tests sowie npm run check und npm run todos:validate bestehen; Commit, Push, Mini-PC-Rollout und normaler HTTPS-Smoke werden ohne Secrets oder erfundene Live-Medienevidence dokumentiert."
       ]
+    },
+    {
+      "id": "BME-021",
+      "title": "Media-Agent-Anzeige und -Bedienung im Analysebereich zusammenfuehren",
+      "status": "in_progress",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 75,
+      "depends_on": ["BME-016", "BME-020"],
+      "acceptance_criteria": [
+        "Der Angular-Bereich Analyse zeigt neben dem Raumgraphen die vollstaendige Media-Agent-Verwaltung mit Self-Service-Inventar, Online-/Widerrufszustand, atomarer Mehrfachauswahl, Raumconsent, Auto-Takeover und aktueller Primary-/Forwarder-/Standby-Route.",
+        "Der allgemeine Einstellungsbereich enthaelt keine zweite Media-Agent-Bedienflaeche; Promo- und Login-Rueckspruenge fuehren direkt zur Analyse, waehrend bestehende IDs und Bedienpfade kompatibel bleiben.",
+        "Das Oeffnen der Analyse, Anzeigen oder Aendern von Agent-Einstellungen startet weiterhin keine Kamera-, Mikrofon- oder Bildschirm-Capture-API und erweitert weder Membership noch Agentautoritaet.",
+        "Angular-UI-Tests, Produktionsbuild, npm run check und npm run todos:validate bestehen; Commit, Push, Mini-PC-Rollout und normaler HTTPS-Smoke werden ohne Secrets dokumentiert."
+      ]
     }
   ],
-  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011", "BME-012", "BME-013", "BME-014", "BME-015", "BME-016", "BME-017", "BME-018", "BME-019", "BME-020"],
+  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011", "BME-012", "BME-013", "BME-014", "BME-015", "BME-016", "BME-017", "BME-018", "BME-019", "BME-020", "BME-021"],
   "tasks_status_summary": {
-    "total": 20,
-    "by_status": { "todo": 0, "in_progress": 2, "partial": 1, "blocked": 0, "done": 17 },
-    "progress_percent_done": 85,
-    "by_priority": { "P0": 11, "P1": 9, "P2": 0, "P3": 0 },
-    "by_risk": { "low": 0, "medium": 1, "high": 9, "critical": 10 },
-    "critical_path": { "total": 19, "done": 16, "remaining": 3 },
-    "milestones": { "total": 15, "todo": 0, "in_progress": 3, "blocked": 0, "done": 12 }
+    "total": 21,
+    "by_status": { "todo": 0, "in_progress": 3, "partial": 1, "blocked": 0, "done": 17 },
+    "progress_percent_done": 80.95,
+    "by_priority": { "P0": 11, "P1": 10, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 2, "high": 9, "critical": 10 },
+    "critical_path": { "total": 20, "done": 16, "remaining": 4 },
+    "milestones": { "total": 16, "todo": 0, "in_progress": 4, "blocked": 0, "done": 12 }
   },
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 2,
+    "in_progress": 3,
     "partial": 1,
     "blocked": 0,
     "done": 17
@@ -441,6 +462,8 @@
     "BME-020 verfolgt die angeforderte raumgebundene Mehrfachauswahl: Ein Browser-Peer soll mehrere exakt kontoeigene Agents in einer atomaren, begrenzten Consent-Menge anbieten und gemeinsam widerrufen koennen; Membership, Agentwahl und Sharding bleiben alleinige Control-Plane-Policy.",
     "BME-020 ist implementiert und fokussiert geprueft: Der additive Consent-Set-Contract, Composite-Registry-State, ein Browser mit zwei eigenen foederierten Agenten sowie Angular-Mehrfachauswahl, Dreiergrenze, Offline-Widerruf und Capture-Freiheit bestehen. Der vollstaendige Check-, Commit-, Push- und Produktionsgate ist noch offen.",
     "BME-020 ist am 2026-09-02 abgeschlossen: Feature-Commit bf69c41 ist auf ananta888/main gepusht und per sauberem Fast-Forward auf dem Mini-PC ausgerollt. npm run check bestand mit 114 Angular- und 95 Node-/Browser-/Integrationsfaellen, Chromium, Firefox, SFrame-Counter ueber 350, Produktionsbuild, Todo- und Workflow-Gates; der credential-abhaengige Keycloak-/TURN-Gate blieb sichtbar uebersprungen. Normales DNS ohne aktiven Hosts-Eintrag lieferte ueber 89.168.123.128 Health 200, main-BF6QCBAF.js und den neuen Consent-Set-Marker. WebRTC, unveraenderter Caddy, Mini-PC-Agent und Laptop-Agent liefen mit RestartCount 0; beide Agenten authentisierten nach dem Recreate erneut, und die nicht versionierte Mini-PC-.env blieb Modus 0600.",
+    "BME-021 verfolgt die angeforderte Zusammenfuehrung von Topologieanalyse und Media-Agent-Bedienung: Inventar, Installation, Widerruf, Mehrfach-Consent und aktuelle Agentroute sollen im Analysebereich sichtbar sein, ohne Capture oder zusaetzliche Autoritaet auszulösen.",
+    "BME-021 ist implementiert und fokussiert geprueft: Analyse rendert Graph und danach die einzige Media-Agent-Bedienflaeche; Einstellungen, Promo und Login-Ruecksprung sind konsistent getrennt. 24 fokussierte Angular-Faelle sowie der Produktionsbuild bestanden, der vollstaendige Check- und Rolloutgate ist noch offen.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
   ]
 }

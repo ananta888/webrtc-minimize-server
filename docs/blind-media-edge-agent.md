@@ -205,7 +205,11 @@ Das öffentliche Deployment baut zusätzlich fünf native Artefakte für Linux
 amd64/arm64, macOS amd64/arm64 und Windows amd64. Die App zeigt nur Artefakte,
 die der Server beim Start wirklich gefunden und mit SHA-256 erfasst hat. Ein
 Download entsteht ausschließlich nach einem sichtbaren Klick unter
-`Einstellungen → Dein Media-Agent`; die Datei installiert nichts von selbst.
+`Analyse → Dein Media-Agent`; die Datei installiert nichts von selbst. Derselbe
+Analysebereich zeigt darunter das eigene Agent-Inventar, die atomare
+Mehrfachauswahl, den raumgebundenen Consent und die aktuelle
+Primary-/Forwarder-/Standby-Route; unter Einstellungen existiert keine zweite
+Agent-Bedienflaeche.
 
 Der Ablauf trennt kurzlebige Einschreibung und dauerhafte Geräteidentität:
 

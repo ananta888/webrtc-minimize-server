@@ -33,6 +33,22 @@ describe("Room page information architecture", () => {
     expect(component).not.toContain("getDisplayMedia");
   });
 
+  it("keeps the complete media-agent inventory and room controls inside analysis", () => {
+    const graphIndex = template.indexOf("<app-mesh-analysis />");
+    const agentPanelIndex = template.indexOf('id="media-agent-analysis-panel"');
+    expect(agentPanelIndex).toBeGreaterThan(graphIndex);
+    expect(template).toContain("activeSection() === 'analysis' && (config.value()?.mediaAgents?.configured");
+    expect(template).toContain('(click)="show(\'analysis\')">Media-Agent ansehen');
+    expect(template).toContain("auth.login('/?section=analysis')");
+    expect(template).not.toContain("auth.login('/?section=settings')");
+    expect(template).toContain('id="media-agent-onboarding"');
+    expect(template).toContain('id="media-agent-select"');
+    expect(template).toContain('id="media-agent-consent"');
+    expect(template).toContain('id="media-agent-primary"');
+    expect(template).toContain('id="media-agent-forwarders"');
+    expect(template).toContain('id="media-agent-standbys"');
+  });
+
   it("keeps room visibility changes on an explicit owner action", () => {
     expect(template).toContain('(click)="setVisibility(room, room.visibility === \'public\' ? \'private\' : \'public\')"');
     expect(template).toContain('(click)="toggleCurrentVisibility()"');

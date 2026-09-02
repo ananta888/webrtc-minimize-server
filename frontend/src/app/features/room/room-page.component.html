@@ -115,7 +115,7 @@
               <h2 id="media-agent-promo-heading">Ein freiwilliger Rechner kann den Upload der Runde teilen</h2>
               <p>{{ ownMediaAgentOnline() ? 'Dein Media-Agent ist online. Du entscheidest weiterhin in jedem Raum getrennt, ob er helfen darf.' : 'In wenigen sichtbaren Schritten wird ein geeigneter Desktop-Rechner zum optionalen Media-Agent – ohne automatische Medienfreigabe oder notwendige Portöffnung.' }}</p>
             </div>
-            <button class="button ghost" type="button" (click)="show('settings')">Media-Agent ansehen</button>
+            <button class="button ghost" type="button" (click)="show('analysis')">Media-Agent ansehen</button>
           </section>
         }
 
@@ -375,11 +375,14 @@
         <app-mesh-analysis />
       }
 
-      @if (activeSection() === 'settings') {
-        <section class="view-header">
-          <div><p class="eyebrow">Kontrolle &amp; Transparenz</p><h1>Einstellungen</h1><p>Verbindungsqualität, Gerätebindung und Sicherheitsstatus auf einen Blick.</p></div>
-        </section>
-        <section class="settings-grid">
+      @if (activeSection() === 'settings' || activeSection() === 'analysis') {
+        @if (activeSection() === 'settings') {
+          <section class="view-header">
+            <div><p class="eyebrow">Kontrolle &amp; Transparenz</p><h1>Einstellungen</h1><p>Verbindungsqualität, Gerätebindung und Sicherheitsstatus auf einen Blick.</p></div>
+          </section>
+        }
+        <section class="settings-grid" [class.analysis-agent-grid]="activeSection() === 'analysis'">
+          @if (activeSection() === 'settings') {
           <section class="surface settings-card">
             <div class="surface-heading"><span class="feature-icon mint" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 18V8M10 18V4M16 18v-7M22 18H2"/></svg></span><div><p class="eyebrow">Adaptive Mesh</p><h2>Medienstrategie</h2></div></div>
             <label>Standardstrategie
@@ -483,9 +486,10 @@
             </section>
             <p class="hint">Auflösung und FPS aktualisieren einen laufenden Track ohne neue Freigabe. Bildschirmton wird beim Ausschalten sofort entfernt; das Einschalten gilt erst beim nächsten sichtbaren Klick auf „Bildschirm teilen“. Die Auswahl der Bildschirmquelle bleibt immer beim Browser.</p>
           </section>
+          }
 
-          @if (config.value()?.mediaAgents?.configured || config.value()?.mediaAgents?.selfService) {
-            <section class="surface settings-card media-agent-card">
+          @if (activeSection() === 'analysis' && (config.value()?.mediaAgents?.configured || config.value()?.mediaAgents?.selfService)) {
+            <section id="media-agent-analysis-panel" class="surface settings-card media-agent-card">
               <div class="surface-heading"><span class="feature-icon mint" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h16M12 4v16M7 7l10 10M17 7L7 17"/><circle cx="12" cy="12" r="9"/></svg></span><div><p class="eyebrow">Freiwillige Infrastruktur</p><h2>Dein Media-Agent</h2></div></div>
 
               @if (config.value()?.mediaAgents?.selfService) {
@@ -501,7 +505,7 @@
                   </ul>
 
                   @if (!auth.authenticated()) {
-                    <div class="agent-signin-callout"><p>Zum sicheren Registrieren wird der Agent an dein Keycloak-Konto gebunden.</p><button class="button primary" type="button" (click)="auth.login('/?section=settings')">Anmelden &amp; Agent installieren</button></div>
+                    <div class="agent-signin-callout"><p>Zum sicheren Registrieren wird der Agent an dein Keycloak-Konto gebunden.</p><button class="button primary" type="button" (click)="auth.login('/?section=analysis')">Anmelden &amp; Agent installieren</button></div>
                   } @else if (config.value()!.mediaAgents.targets.length === 0) {
                     <p class="agent-risk">Die geprüften Installationspakete sind auf diesem Server momentan nicht verfügbar. Es wurde nichts heruntergeladen oder installiert.</p>
                   } @else {
@@ -608,6 +612,7 @@
             </section>
           }
 
+          @if (activeSection() === 'settings') {
           <section class="surface settings-card">
             <div class="surface-heading"><span class="feature-icon violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-5"/></svg></span><div><p class="eyebrow">Sicherheitsstatus</p><h2>Identität &amp; Transport</h2></div></div>
             <p>Keycloak-Tokens werden serverseitig über JWKS geprüft. Das WebSocket erhält nur ein kurzlebiges Einmal-Ticket. Im SFrame-Modus werden Medienframes zusätzlich vor dem WebRTC-Transport verschlüsselt.</p>
@@ -634,6 +639,7 @@
               <div class="inline-actions"><button class="button ghost" type="button" (click)="auth.login()">Anmelden</button><button class="button primary" type="button" (click)="auth.register()">Konto erstellen</button></div>
             }
           </section>
+          }
         </section>
       }
 
