@@ -133,6 +133,14 @@ Encrypt-Kontext des Publishers reserviert seinen Counter synchron vor jedem
 asynchronen Encrypt-Aufruf, sodass parallele Simulcast-Frames keinen AES-GCM-
 Nonce wiederverwenden.
 
+Jeder Subscriber besitzt einen eigenen, ueber Layerwechsel erhaltenen
+Egress-Track. Der Agent setzt nur RTP-Sequenznummer und RTP-Zeitstempel aus den
+unabhaengigen RID-Sequenzraeumen in einen monotonen Empfaengerraum um; Payload,
+Marker, Codecframes und SFrame-Ciphertext werden nicht entschluesselt oder
+veraendert. Erst das erste auf diesem Track weitergeleitete Paket bestaetigt
+die angewendete Subscription-Revision. Dadurch bleibt der direkte
+Publisher-Fallback waehrend eines noch nicht fliessenden Layerwechsels aktiv.
+
 Ein Egress-RTP-Track kann nach einer Neuverhandlung vor dem zugehoerigen
 autoritativen `media-agent-track-state` im Browser eintreffen. Er bleibt dann
 deaktiviert in einer auf 64 Eintraege und fuenf Sekunden begrenzten lokalen
@@ -200,7 +208,10 @@ Bandbreitenreservierung noch eine 20-Teilnehmer-QoS-Garantie.
 Browser duerfen die lokale `MediaStreamTrack.id` nicht als
 browseruebergreifend identisch voraussetzen. Fuer Agent-Egress liest der
 Browser deshalb die begrenzte MID-zu-MSID-Abbildung aus dem autorisierten
-Agent-Offer. Diese Abbildung ist nur eine Transportbezeichnung: Akzeptiert und
+Agent-Offer. Weil Firefox das `track`-Ereignis bereits waehrend
+`setRemoteDescription()` ausloesen kann, wird die zuvor vollstaendig gepruefte
+Abbildung unmittelbar vor diesem Aufruf installiert und bei dessen Fehler
+wieder verworfen. Diese Abbildung ist nur eine Transportbezeichnung: Akzeptiert und
 quittiert wird der Track erst, wenn Publisher, Publication, Medienart,
 zugewiesener Egress-Agent, Route-Epoche und der getrennt von der Control Plane
 empfangene `media-agent-track-state` exakt uebereinstimmen. Eine unbekannte,

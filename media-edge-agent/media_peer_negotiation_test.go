@@ -141,7 +141,19 @@ func TestSubscriberLayerSwitchReusesNegotiatedSender(t *testing.T) {
 	}
 	publication.layers["low"] = &forwardLayer{publication: publication, name: "low", local: low}
 	publication.layers["high"] = &forwardLayer{publication: publication, name: "high", local: high}
-	publication.subscribers[subscriberID] = &subscriberForward{layer: "low", revision: 1, sender: sender}
+	output, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000},
+		"camera-track", "0123456789abcdef",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = sender.ReplaceTrack(output); err != nil {
+		t.Fatal(err)
+	}
+	publication.subscribers[subscriberID] = &subscriberForward{
+		layer: "low", revision: 1, sender: sender, local: output,
+	}
 	room.subscriptions[subscriptionKey(subscriberID, publication.publisherID, publication.publicationID)] = subscriptionPlan{
 		SubscriberPeerID: subscriberID, PublisherPeerID: publication.publisherID,
 		PublicationID: publication.publicationID, Source: "camera", Enabled: true,
@@ -153,8 +165,8 @@ func TestSubscriberLayerSwitchReusesNegotiatedSender(t *testing.T) {
 	if forward == nil || forward.sender != sender || forward.layer != "high" || forward.revision != 2 {
 		t.Fatal("subscriber layer switch replaced the sender or failed to apply the exact revision")
 	}
-	if sender.Track() != high {
-		t.Fatal("subscriber sender did not switch to the selected layer")
+	if sender.Track() != output {
+		t.Fatal("subscriber layer switch replaced the continuous egress track")
 	}
 	if pc.SignalingState() != webrtc.SignalingStateStable {
 		t.Fatal("same-codec layer switch unexpectedly required SDP renegotiation")

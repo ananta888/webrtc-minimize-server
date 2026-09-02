@@ -456,7 +456,7 @@ describe("blind media-agent browser adapter", () => {
     });
   });
 
-  it("binds a Firefox-local track ID through authorized offer MID and server track state", async () => {
+  it("binds a synchronous Firefox track event through the validated offer MID", async () => {
     const remotePeerId = "fedcba9876543210";
     const acceptTrack = vi.fn(() => true);
     service.initialize({
@@ -526,6 +526,22 @@ describe("blind media-agent browser adapter", () => {
       revision: 11,
       ready: true,
     })).toBe(true);
+    const pc = FakePeerConnection.instances.at(-1)!;
+    const track = Object.assign(new EventTarget(), {
+      id: "firefox-generated-track-id",
+      kind: "video",
+      enabled: true,
+    }) as unknown as MediaStreamTrack;
+    const receiver = {} as RTCRtpReceiver;
+    pc.setRemoteDescription = async (description: RTCSessionDescriptionInit): Promise<void> => {
+      pc.remoteDescription = description as RTCSessionDescription;
+      pc.ontrack?.({
+        track,
+        receiver,
+        streams: [{ id: "firefox-generated-stream-id" } as MediaStream],
+        transceiver: { mid: "7", receiver } as RTCRtpTransceiver,
+      } as RTCTrackEvent);
+    };
     await service.acceptSignal({
       version: 1,
       type: "media-agent-signal",
@@ -544,19 +560,6 @@ describe("blind media-agent browser adapter", () => {
         ].join("\r\n"),
       },
     });
-    const track = Object.assign(new EventTarget(), {
-      id: "firefox-generated-track-id",
-      kind: "video",
-      enabled: true,
-    }) as unknown as MediaStreamTrack;
-    const receiver = {} as RTCRtpReceiver;
-    FakePeerConnection.instances.at(-1)!.ontrack?.({
-      track,
-      receiver,
-      streams: [{ id: "firefox-generated-stream-id" } as MediaStream],
-      transceiver: { mid: "7", receiver } as RTCRtpTransceiver,
-    } as RTCTrackEvent);
-
     expect(acceptTrack).toHaveBeenCalledWith(expect.objectContaining({
       agentId: "owner-edge",
       publisherPeerId: remotePeerId,
@@ -566,7 +569,7 @@ describe("blind media-agent browser adapter", () => {
       receiver,
     }));
     expect(track.enabled).toBe(true);
-    expect(sent.at(-1)).toMatchObject({
+    expect(sent.findLast((message) => message["type"] === "media-agent-subscription-ack")).toMatchObject({
       version: 1,
       type: "media-agent-subscription-ack",
       publisherPeerId: remotePeerId,

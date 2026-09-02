@@ -281,9 +281,18 @@ export class BlindMediaAgentService {
           && (connection.makingOffer || connection.pc.signalingState !== "stable");
         if (collision) await connection.pc.setLocalDescription({ type: "rollback" });
         connection.settingRemoteAnswerPending = description.type === "answer";
-        await connection.pc.setRemoteDescription(description);
-        connection.settingRemoteAnswerPending = false;
+        const previousRemoteTrackBindings = connection.remoteTrackBindings;
         if (remoteTrackBindings) connection.remoteTrackBindings = remoteTrackBindings;
+        try {
+          // Firefox can dispatch `track` synchronously while the remote offer is
+          // being installed. Make the already validated MID authority visible
+          // before that event, then restore the previous binding on rejection.
+          await connection.pc.setRemoteDescription(description);
+        } catch (error) {
+          if (remoteTrackBindings) connection.remoteTrackBindings = previousRemoteTrackBindings;
+          throw error;
+        }
+        connection.settingRemoteAnswerPending = false;
         for (const candidate of connection.pendingCandidates.splice(0)) {
           await connection.pc.addIceCandidate(candidate);
         }

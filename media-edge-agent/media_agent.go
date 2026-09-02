@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -89,9 +90,12 @@ type forwardLayer struct {
 }
 
 type subscriberForward struct {
-	layer    string
-	revision int64
-	sender   *webrtc.RTPSender
+	layer         string
+	revision      int64
+	readyRevision int64
+	sender        *webrtc.RTPSender
+	local         *webrtc.TrackLocalStaticRTP
+	rewriter      rtpContinuityRewriter
 }
 
 type bitrateBudget struct {
@@ -620,19 +624,18 @@ func (p *forwardPublication) reconcileSubscriber(peerID string) {
 			return
 		}
 		current.revision = plan.Revision
+		current.readyRevision = 0
 		p.mu.Unlock()
-		p.reportSubscription(peerID, target, plan.Revision, true)
 		return
 	}
 	if current != nil && target != "" {
 		layer := p.layers[target]
-		if layer != nil && current.sender.ReplaceTrack(layer.local) == nil {
+		if layer != nil && sameCodec(current.local.Codec(), layer.local.Codec()) {
 			current.layer = target
 			current.revision = plan.Revision
+			current.readyRevision = 0
 			p.mu.Unlock()
-			// The publication and codec stay identical, so a layer switch can use
-			// the existing RTP transceiver and must not create SDP churn.
-			p.reportSubscription(peerID, target, plan.Revision, true)
+			layer.requestKeyframe()
 			return
 		}
 	}
@@ -644,8 +647,8 @@ func (p *forwardPublication) reconcileSubscriber(peerID string) {
 	}
 	if target == "" || peer == nil {
 		p.mu.Unlock()
-		if current != nil {
-			p.reportSubscription(peerID, current.layer, current.revision, false)
+		if current != nil && planned {
+			p.reportSubscription(peerID, plan.PreferredLayer, plan.Revision, false)
 			if peer != nil {
 				go peer.negotiate()
 			}
@@ -657,22 +660,54 @@ func (p *forwardPublication) reconcileSubscriber(peerID string) {
 		p.mu.Unlock()
 		return
 	}
-	sender, err := peer.pc.AddTrack(layer.local)
+	local, err := webrtc.NewTrackLocalStaticRTP(layer.local.Codec(), p.publicationID, p.publisherID)
 	if err != nil {
 		p.mu.Unlock()
-		if current != nil {
-			p.reportSubscription(peerID, current.layer, current.revision, false)
-		}
+		p.reportSubscription(peerID, plan.PreferredLayer, plan.Revision, false)
 		return
 	}
-	p.subscribers[peerID] = &subscriberForward{layer: target, revision: plan.Revision, sender: sender}
-	p.mu.Unlock()
-	if current != nil {
-		p.reportSubscription(peerID, current.layer, current.revision, false)
+	sender, err := peer.pc.AddTrack(local)
+	if err != nil {
+		p.mu.Unlock()
+		p.reportSubscription(peerID, plan.PreferredLayer, plan.Revision, false)
+		return
 	}
-	p.reportSubscription(peerID, target, plan.Revision, true)
+	p.subscribers[peerID] = &subscriberForward{
+		layer: target, revision: plan.Revision, sender: sender, local: local,
+	}
+	p.mu.Unlock()
+	layer.requestKeyframe()
 	go p.readSubscriberFeedback(peerID, sender)
 	go peer.negotiate()
+}
+
+func sameCodec(left, right webrtc.RTPCodecCapability) bool {
+	return strings.EqualFold(left.MimeType, right.MimeType) && left.ClockRate == right.ClockRate &&
+		left.Channels == right.Channels && left.SDPFmtpLine == right.SDPFmtpLine
+}
+
+func (p *forwardPublication) writeSubscribers(layerName string, packet *rtp.Packet) {
+	type readyReport struct {
+		peerID   string
+		layer    string
+		revision int64
+	}
+	reports := make([]readyReport, 0)
+	p.mu.Lock()
+	for peerID, forward := range p.subscribers {
+		if forward.layer != layerName {
+			continue
+		}
+		rewritten := forward.rewriter.rewrite(layerName, packet)
+		if err := forward.local.WriteRTP(&rewritten); err == nil && forward.readyRevision != forward.revision {
+			forward.readyRevision = forward.revision
+			reports = append(reports, readyReport{peerID: peerID, layer: layerName, revision: forward.revision})
+		}
+	}
+	p.mu.Unlock()
+	for _, report := range reports {
+		p.reportSubscription(report.peerID, report.layer, report.revision, true)
+	}
 }
 
 func (p *forwardPublication) readSubscriberFeedback(peerID string, sender *webrtc.RTPSender) {
@@ -783,7 +818,7 @@ func (l *forwardLayer) writeLoop() {
 			return
 		case packet := <-l.queue:
 			if packet != nil {
-				_ = l.local.WriteRTP(packet)
+				l.publication.writeSubscribers(l.name, packet)
 				_ = l.federationLocal.WriteRTP(packet)
 				l.publication.mu.Lock()
 				federations := make([]*federationPeer, 0, len(l.federationPeers))
@@ -835,32 +870,14 @@ func (p *forwardPublication) removeLayer(layer *forwardLayer) {
 		return
 	}
 	delete(p.layers, layer.name)
-	affected := make(map[string]*subscriberForward)
-	for peerID, forward := range p.subscribers {
-		if forward.layer == layer.name {
-			affected[peerID] = forward
-			delete(p.subscribers, peerID)
-		}
-	}
 	empty := len(p.layers) == 0
 	p.mu.Unlock()
 	p.room.mu.Lock()
 	p.room.trackCount = max(0, p.room.trackCount-1)
-	peers := make(map[string]*mediaPeer, len(affected))
-	for peerID := range affected {
-		peers[peerID] = p.room.peers[peerID]
-	}
 	if empty {
 		delete(p.room.tracks, p.publisherID+"\x00"+p.publicationID)
 	}
 	p.room.mu.Unlock()
-	for peerID, forward := range affected {
-		if peer := peers[peerID]; peer != nil {
-			_ = peer.pc.RemoveTrack(forward.sender)
-			go peer.negotiate()
-		}
-		p.reportSubscription(peerID, layer.name, forward.revision, false)
-	}
 	if layer.reported {
 		_ = p.room.agent.signal.send(map[string]any{
 			"version": 2, "type": "track-state", "roomId": p.room.id, "peerId": p.publisherID,
@@ -868,9 +885,7 @@ func (p *forwardPublication) removeLayer(layer *forwardLayer) {
 			"layer": layer.name, "rid": layer.rid, "active": false,
 		})
 	}
-	if !empty {
-		p.reconcileAll()
-	}
+	p.reconcileAll()
 	// Always detach the corresponding agent-agent sender. In particular, the
 	// final layer of a publication must not leave a stale sender that could be
 	// mistaken for a later publication reusing the same track id.

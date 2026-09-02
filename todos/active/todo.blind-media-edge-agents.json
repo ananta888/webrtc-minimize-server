@@ -185,7 +185,7 @@
       "status": "in_progress",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 65,
+      "progress_percent": 68,
       "depends_on": ["BME-005"],
       "acceptance_criteria": [
         "Mindestens fuenf echte Browser plus zwei Agentprozesse belegen reduzierten Publisher-Fanout, SFrame-Wiedergabe, Agent-Lastteilung, Planned Leave, Crash-Failover und Mesh-Rueckfall.",
@@ -257,7 +257,7 @@
       "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 84,
+      "progress_percent": 88,
       "depends_on": ["BME-006", "BME-010"],
       "acceptance_criteria": [
         "Mindestens fuenf echte Browser und zwei Agentprozesse belegen drei Kamera-Layer, individuelle Subscriber-Auswahl, reduzierten Publisher-/Inter-Agent-Fanout, byte-identischen SFrame-Ciphertext, Audio und Bildschirm sowie sichtbare Bandbreiten-/Layerstats.",
@@ -450,6 +450,7 @@
     "Der diagnostizierte Cross-Shard-Restfehler war Offer-Glare zwischen bidirektionalen Agent-Forwardern. Die eingesetzte Pion-Version unterstuetzt kein SDP-Rollback; der bisherige polite-Peer-Zweig brach deshalb vor Answer und Retry ab. Der serverbestimmte Link-Initiator serialisiert spaetere Offers nun ueber geschlossene monotone Request-/Grant-Turns im bereits authentisierten DataChannel. Ein realer Zwei-Pion-Agent-Test startete Kamera A-zu-B und Audio B-zu-A gleichzeitig zehnmal ohne Kollision und belegte jeweils byte-identische opaque RTP-Payloads. JSON-Schema, Go-Decoder und Architekturdokumentation sind synchron; der produktive Sechs-Browser-Gate bleibt bis Rollout und Direct-/All-TURN-Wiederholung offen.",
     "Der erste Turn-serialisierte Direct-Lauf hielt beide Agentseiten bereit und lieferte Cross-Shard-Audio sowie Bildschirmvideo mit fortlaufenden Bytes/Frames, aber nicht alle Kamera-Subscriptions. Die verbliebene Ursache lag im vorigen Sender-Retention-Fix: Ein Layer konnte vor dem Answer wieder abgewaehlt und per ReplaceTrack(nil) behalten werden, obwohl seine Media-Identitaet noch nie in erfolgreichem SDP publiziert war. Pro lokalem Offer wird nun ein exakter Sender-Snapshot erst beim passenden Answer als ausgehandelt markiert. Eine Abwahl davor entfernt den Sender und queued bounded Renegotiation; nur bestaetigte Sender duerfen SDP-frei pausieren. Der Pion-Test deckt Abwahl vor Answer, Markierung nach Answer sowie Pause/Wiederaufnahme ab; der erneute produktive Gate bleibt offen.",
     "Der zweite Direct-Lauf belegte anschliessend Kamera, Mikrofon und Bildschirm fuer alle erwarteten Chromium-Subscriptions mit weiterlaufenden Frames; ausschliesslich Firefox quittierte nichts, obwohl dessen RTP-Receiver vorhanden waren. Firefox uebernimmt die entfernte MSID nicht zwingend als lokale MediaStreamTrack.id, waehrend der Adapter bisher genau diese Gleichheit voraussetzte. Ein isolierter SDP-Parser bindet nun begrenzte, eindeutige sendende Agent-Offer-MIDs an Publisher und Publication aus MSID. Diese Angabe verleiht keine Autoritaet: Track-Art, aktuelle Membership-/Agentzuweisung, Route-Epoche und separater serverautorisierter Track-State muessen weiterhin exakt passen, sonst bleibt der Track deaktiviert und laeuft aus. Unit-Tests decken Firefox-lokale IDs, recvonly/rejected, ungueltige Identitaeten, doppelte MIDs und Groessenlimits ab; Produktionsdeployment und realer Firefox-Wiederholungslauf bleiben offen.",
+    "Nach Deployment des MID-Parsers bestaetigte Firefox je nach Offer-Reihenfolge Kamera und Bildschirm, verlor aber Tracks, deren Ereignis synchron waehrend setRemoteDescription eintraf. Die vollstaendig validierte MID-Tabelle wird nun vor diesem browserseitigen Ereignispunkt installiert und bei abgelehnter Description atomar zurueckgesetzt; ein synchron ausloesender Firefox-Regressionstest belegt den autorisierten ACK-Pfad. Derselbe Live-Lauf reproduzierte einen getrennten Layerwechsel-Freeze: Ein Egress-Sender behielt zwar seinen Transceiver, uebernahm aber Sequenznummer und Zeitstempel direkt aus unabhaengigen q/h/f-RTP-Raeumen. Pro Subscriber bleibt nun ein eigener Track gebunden, dessen Headeruebersetzer Sequenz und Zeit monoton haelt, waehrend die opaque Payload byteidentisch bleibt. Readiness wird erst nach einem tatsaechlich weitergeleiteten Paket der exakten Revision gemeldet. Unit-, zehnfacher Pion-Layerwechsel- und vollstaendiger Go-Race-Test bestehen; Build, Rollout und erneuter Direct-/All-TURN-Gate bleiben offen.",
     "BME-007 verfolgt die vom Nutzer angeforderte, codegebundene UML- und Bandbreitendarstellung aller aktuellen Direct-, TURN-, Trusted-Relay- und Blind-Media-Agent-Pfade.",
     "BME-007 ist abgeschlossen: docs/current-architecture-uml.md enthaelt elf lokal mit Mermaid CLI gerenderte Diagramme sowie gegengepruefte 5-, 8- und 20-Teilnehmer-Rechnungen; npm run check bestand mit sichtbarem lokalem Live-Infrastruktur-Skip.",
     "BME-008 bis BME-011 verfolgen den angeforderten sequentiellen Ausbau: zuerst geschlossene Contracts und selektives Simulcast innerhalb des vorhandenen Publisher-Shardings, unmittelbar danach eine control-plane-autorisierte Agent-Foederation und der reale Rolloutnachweis.",

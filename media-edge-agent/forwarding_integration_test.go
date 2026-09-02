@@ -89,7 +89,7 @@ func TestNativeAgentSelectsOpaqueSimulcastLayerPerSubscriber(t *testing.T) {
 		lowSubscriberID  = "1111111111111111"
 		highSubscriberID = "fedcba9876543210"
 	)
-	if err = agent.applySync([]agentLease{{
+	lease := agentLease{
 		Version: 3, Type: "agent-lease", RoomID: roomID, Role: "primary",
 		MembershipEpoch: 1, RouteEpoch: 1, LeaseExpiresAt: now.Add(30 * time.Second).UnixMilli(),
 		Peers: []leasePeer{
@@ -113,7 +113,8 @@ func TestNativeAgentSelectsOpaqueSimulcastLayerPerSubscriber(t *testing.T) {
 		FederationRoutes:  []federationRoute{},
 		FederationDemands: []federationDemand{},
 		ICEServers:        []webrtc.ICEServer{},
-	}}, now); err != nil {
+	}
+	if err = agent.applySync([]agentLease{lease}, now); err != nil {
 		t.Fatal(err)
 	}
 
@@ -254,8 +255,10 @@ func TestNativeAgentSelectsOpaqueSimulcastLayerPerSubscriber(t *testing.T) {
 				} {
 					payload := [][]byte{lowCiphertext, mediumCiphertext, highCiphertext}[index]
 					packet := &rtp.Packet{
-						Header: rtp.Header{Version: 2, PayloadType: 96, SequenceNumber: sequence,
-							Timestamp: uint32(sequence) * 3000, SSRC: uint32(77 + index)},
+						Header: rtp.Header{Version: 2, PayloadType: 96,
+							SequenceNumber: sequence + uint16(index*20_000),
+							Timestamp:      uint32(sequence)*3000 + uint32(index*9_000_000),
+							SSRC:           uint32(77 + index)},
 						Payload: payload,
 					}
 					_ = packet.Header.SetExtension(midExtensionID, []byte(mid))
@@ -265,6 +268,8 @@ func TestNativeAgentSelectsOpaqueSimulcastLayerPerSubscriber(t *testing.T) {
 			}
 		}
 	}()
+	remoteTracks := map[string]*webrtc.TrackRemote{}
+	initialPackets := map[string]*rtp.Packet{}
 	for subscriberID, expected := range map[string][]byte{
 		lowSubscriberID:  lowCiphertext,
 		highSubscriberID: highCiphertext,
@@ -275,6 +280,7 @@ func TestNativeAgentSelectsOpaqueSimulcastLayerPerSubscriber(t *testing.T) {
 		case <-time.After(10 * time.Second):
 			t.Fatalf("subscriber %s did not receive relayed track", subscriberID)
 		}
+		remoteTracks[subscriberID] = remote
 		packetRead := make(chan *rtp.Packet, 1)
 		go func() {
 			packet, _, readErr := remote.ReadRTP()
@@ -287,8 +293,50 @@ func TestNativeAgentSelectsOpaqueSimulcastLayerPerSubscriber(t *testing.T) {
 			if !bytes.Equal(packet.Payload, expected) {
 				t.Fatalf("subscriber %s received the wrong layer or modified SFrame ciphertext", subscriberID)
 			}
+			initialPackets[subscriberID] = packet
 		case <-time.After(5 * time.Second):
 			t.Fatalf("timed out reading relayed RTP for %s", subscriberID)
+		}
+	}
+
+	// Change the high subscriber to the independent low RID sequence space.
+	// The same negotiated browser track must continue with monotone RTP headers
+	// and byte-identical opaque payload instead of freezing at the layer switch.
+	lease.Subscriptions[1].PreferredLayer = "low"
+	lease.Subscriptions[1].MaximumLayer = "low"
+	lease.Subscriptions[1].Revision = 3
+	if err = agent.applySync([]agentLease{lease}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	previous := initialPackets[highSubscriberID]
+	deadline := time.After(5 * time.Second)
+	for {
+		packetRead := make(chan *rtp.Packet, 1)
+		go func() {
+			packet, _, readErr := remoteTracks[highSubscriberID].ReadRTP()
+			if readErr == nil {
+				packetRead <- packet
+			}
+		}()
+		select {
+		case packet := <-packetRead:
+			if packet.SequenceNumber != previous.SequenceNumber+1 || packet.Timestamp < previous.Timestamp {
+				t.Fatalf("subscriber RTP regressed across layer switch: previous=%+v next=%+v", previous.Header, packet.Header)
+			}
+			previous = packet
+			if bytes.Equal(packet.Payload, lowCiphertext) {
+				select {
+				case <-receivedTracks[highSubscriberID]:
+					t.Fatal("layer switch created a replacement browser track")
+				default:
+				}
+				return
+			}
+			if !bytes.Equal(packet.Payload, highCiphertext) {
+				t.Fatal("layer switch modified opaque SFrame ciphertext")
+			}
+		case <-deadline:
+			t.Fatal("subscriber did not continue on the selected low layer")
 		}
 	}
 }
