@@ -286,7 +286,13 @@
                 </article>
               }
               @for (item of mesh.focusRemoteMedia(); track item.key) {
-                <article class="media-card remote-media">
+                <article
+                  class="media-card remote-media"
+                  [attr.data-publication-id]="item.key"
+                  [attr.data-peer-id]="item.peerId"
+                  [attr.data-transport-peer-id]="item.transportPeerId"
+                  [attr.data-source]="item.source"
+                >
                   <span class="media-label">{{ item.peerName }} · {{ mediaLabel(item.source) }}</span>
                   @if (item.kind === 'video') { <video autoplay playsinline [appMediaStream]="item.stream"></video> }
                   @else { <audio autoplay controls [appMediaStream]="item.stream"></audio> }
