@@ -197,6 +197,16 @@ aktivieren den vorhandenen Direct-Fallback wieder. Die native Foederation ist
 damit ein implementierter selektiver, SFrame-blinder SFU-Pfad, aber weder eine
 Bandbreitenreservierung noch eine 20-Teilnehmer-QoS-Garantie.
 
+Browser duerfen die lokale `MediaStreamTrack.id` nicht als
+browseruebergreifend identisch voraussetzen. Fuer Agent-Egress liest der
+Browser deshalb die begrenzte MID-zu-MSID-Abbildung aus dem autorisierten
+Agent-Offer. Diese Abbildung ist nur eine Transportbezeichnung: Akzeptiert und
+quittiert wird der Track erst, wenn Publisher, Publication, Medienart,
+zugewiesener Egress-Agent, Route-Epoche und der getrennt von der Control Plane
+empfangene `media-agent-track-state` exakt uebereinstimmen. Eine unbekannte,
+mehrdeutige oder nicht bestaetigte MID bleibt deaktiviert und laeuft nach
+fuenf Sekunden aus.
+
 ## Ports und Betrieb
 
 Der Media-Agent baut seine WSS-Control-Verbindung ausgehend auf. Seine

@@ -28,6 +28,10 @@ class FakePeerConnection {
   }
   addTrack(): RTCRtpSender { return {} as RTCRtpSender; }
   removeTrack(): void {}
+  getTransceivers(): RTCRtpTransceiver[] { return []; }
+  async setLocalDescription(description?: RTCSessionDescriptionInit): Promise<void> {
+    this.localDescription = (description || { type: "answer", sdp: "v=0\r\n" }) as RTCSessionDescription;
+  }
   async setRemoteDescription(description: RTCSessionDescriptionInit): Promise<void> {
     this.remoteDescription = description as RTCSessionDescription;
   }
@@ -447,6 +451,126 @@ describe("blind media-agent browser adapter", () => {
       agentId: "owner-edge",
       publisherPeerId: remotePeerId,
       publicationId: "remote-camera",
+      revision: 11,
+      ready: true,
+    });
+  });
+
+  it("binds a Firefox-local track ID through authorized offer MID and server track state", async () => {
+    const remotePeerId = "fedcba9876543210";
+    const acceptTrack = vi.fn(() => true);
+    service.initialize({
+      ownPeerId,
+      roomId: "room-123456",
+      membershipEpoch: 3,
+      icePolicy,
+      availableAgents: [{ id: "owner-edge", online: true }],
+      callbacks: {
+        attachSender: () => true,
+        acceptTrack,
+        trackState: () => undefined,
+        routeChanged: () => undefined,
+        connectionChanged: () => undefined,
+      },
+    });
+    expect(service.applyRoute({
+      version: 3,
+      type: "media-agent-state",
+      enabled: true,
+      membershipEpoch: 3,
+      routeEpoch: 5,
+      leaseExpiresAt: now + 30_000,
+      primary: { id: "owner-edge", ownerPeerId: ownPeerId, creatorPreferred: true },
+      standbys: [],
+      forwarderIds: ["owner-edge"],
+      publisherAssignments: [
+        { peerId: ownPeerId, agentId: "owner-edge" },
+        { peerId: remotePeerId, agentId: "owner-edge" },
+      ],
+      subscriberAssignments: [
+        { peerId: ownPeerId, agentId: "owner-edge" },
+        { peerId: remotePeerId, agentId: "owner-edge" },
+      ],
+      federationLinks: [],
+      federationRoutes: [],
+      readiness: [{ agentId: "owner-edge", readyPeerIds: [ownPeerId, remotePeerId] }],
+    }, new Set([ownPeerId, remotePeerId]))).toBe(true);
+    service.applyTrackState({
+      version: 2,
+      type: "media-agent-track-state",
+      agentId: "owner-edge",
+      routeEpoch: 5,
+      peerId: remotePeerId,
+      publicationId: "camera-track",
+      source: "camera",
+      layer: "low",
+      rid: "q",
+      active: true,
+    });
+    expect(service.setSubscriptionIntent({
+      publisherPeerId: remotePeerId,
+      publicationId: "camera-track",
+      source: "camera",
+      enabled: true,
+      preferredLayer: "low",
+      maximumLayer: "low",
+    })).toBe(true);
+    expect(service.applySubscriptionState(remotePeerId, {
+      version: 2,
+      type: "media-agent-subscription-state",
+      agentId: "owner-edge",
+      routeEpoch: 5,
+      publicationId: "camera-track",
+      subscriberPeerId: ownPeerId,
+      selectedLayer: "low",
+      revision: 11,
+      ready: true,
+    })).toBe(true);
+    await service.acceptSignal({
+      version: 1,
+      type: "media-agent-signal",
+      agentId: "owner-edge",
+      roomId: "room-123456",
+      routeEpoch: 5,
+      description: {
+        type: "offer",
+        sdp: [
+          "v=0",
+          "m=video 9 UDP/TLS/RTP/SAVPF 96",
+          "a=mid:7",
+          "a=sendonly",
+          `a=msid:${remotePeerId} camera-track`,
+          "",
+        ].join("\r\n"),
+      },
+    });
+    const track = Object.assign(new EventTarget(), {
+      id: "firefox-generated-track-id",
+      kind: "video",
+      enabled: true,
+    }) as unknown as MediaStreamTrack;
+    const receiver = {} as RTCRtpReceiver;
+    FakePeerConnection.instances.at(-1)!.ontrack?.({
+      track,
+      receiver,
+      streams: [{ id: "firefox-generated-stream-id" } as MediaStream],
+      transceiver: { mid: "7", receiver } as RTCRtpTransceiver,
+    } as RTCTrackEvent);
+
+    expect(acceptTrack).toHaveBeenCalledWith(expect.objectContaining({
+      agentId: "owner-edge",
+      publisherPeerId: remotePeerId,
+      publicationId: "camera-track",
+      source: "camera",
+      track,
+      receiver,
+    }));
+    expect(track.enabled).toBe(true);
+    expect(sent.at(-1)).toMatchObject({
+      version: 1,
+      type: "media-agent-subscription-ack",
+      publisherPeerId: remotePeerId,
+      publicationId: "camera-track",
       revision: 11,
       ready: true,
     });

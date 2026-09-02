@@ -14,6 +14,10 @@ import {
 } from "./media-agent-contract";
 import { ServerMessage, SignalingService } from "./signaling.service";
 import { ManagedPeer } from "./peer-connection-manager";
+import {
+  MediaAgentRemoteTrackBinding,
+  parseMediaAgentRemoteTrackBindings,
+} from "./media-agent-sdp";
 
 export interface AvailableMediaAgent {
   readonly id: string;
@@ -68,6 +72,7 @@ interface MediaAgentCallbacks {
 interface AgentConnection extends ManagedPeer {
   readonly agentId: string;
   readonly pendingCandidates: Array<RTCIceCandidateInit | null>;
+  remoteTrackBindings: ReadonlyMap<string, MediaAgentRemoteTrackBinding>;
   connected: boolean;
 }
 
@@ -268,12 +273,17 @@ export class BlindMediaAgentService {
       const description = "description" in signal ? signal.description : undefined;
       if (description) {
         if (!new Set(["offer", "answer"]).has(description.type) || typeof description.sdp !== "string") return;
+        const remoteTrackBindings = description.type === "offer"
+          ? parseMediaAgentRemoteTrackBindings(description.sdp)
+          : null;
+        if (description.type === "offer" && !remoteTrackBindings) throw new Error("invalid_media_agent_sdp_binding");
         const collision = description.type === "offer"
           && (connection.makingOffer || connection.pc.signalingState !== "stable");
         if (collision) await connection.pc.setLocalDescription({ type: "rollback" });
         connection.settingRemoteAnswerPending = description.type === "answer";
         await connection.pc.setRemoteDescription(description);
         connection.settingRemoteAnswerPending = false;
+        if (remoteTrackBindings) connection.remoteTrackBindings = remoteTrackBindings;
         for (const candidate of connection.pendingCandidates.splice(0)) {
           await connection.pc.addIceCandidate(candidate);
         }
@@ -565,17 +575,29 @@ export class BlindMediaAgentService {
       lastIceRestartAt: 0,
       connected: false,
       pendingCandidates: [],
+      remoteTrackBindings: new Map(),
     };
     this.connections.set(agentId, connection);
     pc.onicecandidate = ({ candidate }) => this.sendSignal(agentId, { candidate });
-    pc.ontrack = ({ track, receiver, streams }) => {
+    pc.ontrack = ({ track, receiver, streams, transceiver }) => {
       const streamPublisherPeerId = streams[0]?.id || "";
-      const descriptor = this.descriptors.get(this.publicationKey(streamPublisherPeerId, track.id));
-      const publisherPeerId = descriptor?.peerId || streamPublisherPeerId;
+      const mid = transceiver?.mid || pc.getTransceivers()
+        .find((candidate) => candidate.receiver === receiver)?.mid || "";
+      const binding = mid ? connection.remoteTrackBindings.get(mid) : undefined;
+      if (binding && binding.kind !== track.kind) {
+        track.enabled = false;
+        return;
+      }
+      const candidatePublisherPeerId = binding?.publisherPeerId || streamPublisherPeerId;
+      const candidatePublicationId = binding?.publicationId || track.id;
+      const descriptor = this.descriptors.get(
+        this.publicationKey(candidatePublisherPeerId, candidatePublicationId),
+      );
+      const publisherPeerId = descriptor?.peerId || candidatePublisherPeerId;
       const input: AgentTrackInput = {
         agentId,
         publisherPeerId,
-        publicationId: descriptor?.publicationId || track.id,
+        publicationId: descriptor?.publicationId || candidatePublicationId,
         source: descriptor?.source || "",
         track,
         receiver,
