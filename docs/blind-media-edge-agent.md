@@ -133,6 +133,15 @@ Encrypt-Kontext des Publishers reserviert seinen Counter synchron vor jedem
 asynchronen Encrypt-Aufruf, sodass parallele Simulcast-Frames keinen AES-GCM-
 Nonce wiederverwenden.
 
+Ein Egress-RTP-Track kann nach einer Neuverhandlung vor dem zugehoerigen
+autoritativen `media-agent-track-state` im Browser eintreffen. Er bleibt dann
+deaktiviert in einer auf 64 Eintraege und fuenf Sekunden begrenzten lokalen
+Quarantaene. Nur ein passender, aktueller Track-State fuer vorhandene
+Membership, Publisher-Zuweisung, lokalen Egress und Route-Epoche darf den
+Track an den SFrame-Receiver uebergeben; Timeout, inaktiver State,
+Routenwechsel oder Leave verwerfen ihn. Die Ankunftsreihenfolge erweitert
+damit keine Medien- oder Membership-Autoritaet.
+
 Der Layer-Wunsch stammt aus demselben allgemeinen Empfangsprofil, das auch
 direkte Gegenstellen pro Ziel-Sender begrenzt. `audio-only` setzt Kamera- und
 Bildschirm-Subscriptions dieses Browsers auf deaktiviert; Mikrofon und

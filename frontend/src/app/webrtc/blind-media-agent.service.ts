@@ -71,6 +71,11 @@ interface AgentConnection extends ManagedPeer {
   connected: boolean;
 }
 
+interface PendingAgentTrack {
+  readonly input: AgentTrackInput;
+  readonly timer: ReturnType<typeof setTimeout>;
+}
+
 const EMPTY_CALLBACKS: MediaAgentCallbacks = {
   attachSender: () => false,
   acceptTrack: () => false,
@@ -86,6 +91,8 @@ const CAMERA_SIMULCAST_ENCODINGS: readonly RTCRtpEncodingParameters[] = Object.f
 ]);
 const SINGLE_VIDEO_ENCODING: RTCRtpEncodingParameters = Object.freeze({ rid: "s", active: true });
 const MAX_SELECTED_MEDIA_AGENTS = 3;
+const MAX_PENDING_AGENT_TRACKS = 64;
+const PENDING_AGENT_TRACK_TTL_MS = 5_000;
 
 @Injectable({ providedIn: "root" })
 export class BlindMediaAgentService {
@@ -116,6 +123,7 @@ export class BlindMediaAgentService {
   private readonly subscriptionSignatures = new Map<string, string>();
   private readonly subscriptionStates = new Map<string, MediaAgentSubscriptionState>();
   private readonly subscriptionTracks = new Map<string, MediaStreamTrack>();
+  private readonly pendingTracks = new Map<string, PendingAgentTrack>();
   private ownPeerId = "";
   private roomId = "";
   private membershipEpoch = 0;
@@ -236,6 +244,7 @@ export class BlindMediaAgentService {
       this.subscriptionSignatures.clear();
       this.subscriptionStates.clear();
       this.subscriptionTracks.clear();
+      this.clearPendingTracks();
     }
     this.route = state;
     this.lastRouteEpoch = state.routeEpoch;
@@ -308,6 +317,8 @@ export class BlindMediaAgentService {
       }
     }
     if (state.active || layers.size === 0) this.callbacks.trackState(state);
+    if (state.active) this.acceptPendingTrack(state.peerId, state.publicationId);
+    else if (layers.size === 0) this.dropPendingTracks(state.peerId, state.publicationId);
   }
 
   activatePublication(input: AgentPublicationInput): boolean {
@@ -494,6 +505,7 @@ export class BlindMediaAgentService {
     this.subscriptionSignatures.clear();
     this.subscriptionStates.clear();
     this.subscriptionTracks.clear();
+    this.clearPendingTracks();
     this.availableAgents.set([]);
     this.selectedAgentIds.set([]);
     this.consentedAgentIds.set([]);
@@ -560,14 +572,16 @@ export class BlindMediaAgentService {
       const streamPublisherPeerId = streams[0]?.id || "";
       const descriptor = this.descriptors.get(this.publicationKey(streamPublisherPeerId, track.id));
       const publisherPeerId = descriptor?.peerId || streamPublisherPeerId;
-      const accepted = this.callbacks.acceptTrack({
+      const input: AgentTrackInput = {
         agentId,
         publisherPeerId,
         publicationId: descriptor?.publicationId || track.id,
         source: descriptor?.source || "",
         track,
         receiver,
-      });
+      };
+      if (!descriptor && this.queuePendingTrack(input)) return;
+      const accepted = this.callbacks.acceptTrack(input);
       if (!accepted) {
         track.enabled = false;
       } else if (publisherPeerId && publisherPeerId !== this.ownPeerId) {
@@ -740,5 +754,63 @@ export class BlindMediaAgentService {
 
   private publicationKey(publisherPeerId: string, publicationId: string): string {
     return `${publisherPeerId}\0${publicationId}`;
+  }
+
+  private pendingTrackKey(input: Pick<AgentTrackInput, "agentId" | "publisherPeerId" | "publicationId">): string {
+    return `${input.agentId}\0${input.publisherPeerId}\0${input.publicationId}`;
+  }
+
+  private queuePendingTrack(input: AgentTrackInput): boolean {
+    if (!input.publisherPeerId || input.publisherPeerId === this.ownPeerId
+      || this.assignedSubscriberAgentId(this.ownPeerId) !== input.agentId
+      || !this.route?.publisherAssignments.some(({ peerId }) => peerId === input.publisherPeerId)
+      || this.pendingTracks.size >= MAX_PENDING_AGENT_TRACKS) {
+      input.track.enabled = false;
+      return false;
+    }
+    const key = this.pendingTrackKey(input);
+    const previous = this.pendingTracks.get(key);
+    if (previous) {
+      clearTimeout(previous.timer);
+      previous.input.track.enabled = false;
+    }
+    input.track.enabled = false;
+    const timer = setTimeout(() => {
+      const current = this.pendingTracks.get(key);
+      if (current?.input.track !== input.track) return;
+      this.pendingTracks.delete(key);
+      input.track.enabled = false;
+    }, PENDING_AGENT_TRACK_TTL_MS);
+    this.pendingTracks.set(key, { input, timer });
+    return true;
+  }
+
+  private acceptPendingTrack(publisherPeerId: string, publicationId: string): void {
+    const descriptor = this.descriptors.get(this.publicationKey(publisherPeerId, publicationId));
+    if (!descriptor) return;
+    for (const [key, pending] of this.pendingTracks) {
+      if (pending.input.publisherPeerId !== publisherPeerId || pending.input.publicationId !== publicationId) continue;
+      clearTimeout(pending.timer);
+      this.pendingTracks.delete(key);
+      const accepted = this.callbacks.acceptTrack({ ...pending.input, source: descriptor.source });
+      pending.input.track.enabled = accepted;
+    }
+  }
+
+  private dropPendingTracks(publisherPeerId: string, publicationId: string): void {
+    for (const [key, pending] of this.pendingTracks) {
+      if (pending.input.publisherPeerId !== publisherPeerId || pending.input.publicationId !== publicationId) continue;
+      clearTimeout(pending.timer);
+      pending.input.track.enabled = false;
+      this.pendingTracks.delete(key);
+    }
+  }
+
+  private clearPendingTracks(): void {
+    for (const pending of this.pendingTracks.values()) {
+      clearTimeout(pending.timer);
+      pending.input.track.enabled = false;
+    }
+    this.pendingTracks.clear();
   }
 }

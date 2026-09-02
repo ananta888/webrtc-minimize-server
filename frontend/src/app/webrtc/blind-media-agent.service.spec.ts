@@ -346,6 +346,139 @@ describe("blind media-agent browser adapter", () => {
     expect(pc.candidates).toEqual([{ candidate: "candidate:1 1 UDP 1 192.0.2.1 45000 typ host" }]);
   });
 
+  it("quarantines an early inbound track until matching server authority arrives", () => {
+    const remotePeerId = "fedcba9876543210";
+    const acceptTrack = vi.fn(() => true);
+    const trackState = vi.fn();
+    service.initialize({
+      ownPeerId,
+      roomId: "room-123456",
+      membershipEpoch: 3,
+      icePolicy,
+      availableAgents: [{ id: "owner-edge", online: true }],
+      callbacks: {
+        attachSender: () => true,
+        acceptTrack,
+        trackState,
+        routeChanged: () => undefined,
+        connectionChanged: () => undefined,
+      },
+    });
+    expect(service.applyRoute({
+      version: 3,
+      type: "media-agent-state",
+      enabled: true,
+      membershipEpoch: 3,
+      routeEpoch: 5,
+      leaseExpiresAt: now + 30_000,
+      primary: { id: "owner-edge", ownerPeerId: ownPeerId, creatorPreferred: true },
+      standbys: [],
+      forwarderIds: ["owner-edge"],
+      publisherAssignments: [
+        { peerId: ownPeerId, agentId: "owner-edge" },
+        { peerId: remotePeerId, agentId: "owner-edge" },
+      ],
+      subscriberAssignments: [
+        { peerId: ownPeerId, agentId: "owner-edge" },
+        { peerId: remotePeerId, agentId: "owner-edge" },
+      ],
+      federationLinks: [],
+      federationRoutes: [],
+      readiness: [{ agentId: "owner-edge", readyPeerIds: [ownPeerId, remotePeerId] }],
+    }, new Set([ownPeerId, remotePeerId]))).toBe(true);
+    const pc = FakePeerConnection.instances[0];
+    const track = Object.assign(new EventTarget(), {
+      id: "remote-camera",
+      kind: "video",
+      enabled: true,
+    }) as unknown as MediaStreamTrack;
+    pc.ontrack?.({
+      track,
+      receiver: {} as RTCRtpReceiver,
+      streams: [{ id: remotePeerId } as MediaStream],
+    } as RTCTrackEvent);
+    expect(track.enabled).toBe(false);
+    expect(acceptTrack).not.toHaveBeenCalled();
+
+    service.applyTrackState({
+      version: 2,
+      type: "media-agent-track-state",
+      agentId: "owner-edge",
+      routeEpoch: 5,
+      peerId: remotePeerId,
+      publicationId: "remote-camera",
+      source: "camera",
+      layer: "high",
+      rid: "f",
+      active: true,
+    });
+
+    expect(trackState).toHaveBeenCalledOnce();
+    expect(acceptTrack).toHaveBeenCalledWith(expect.objectContaining({
+      agentId: "owner-edge",
+      publisherPeerId: remotePeerId,
+      publicationId: "remote-camera",
+      source: "camera",
+      track,
+    }));
+    expect(track.enabled).toBe(true);
+  });
+
+  it("expires an unconfirmed inbound track without granting media authority", () => {
+    const remotePeerId = "fedcba9876543210";
+    const acceptTrack = vi.fn(() => true);
+    service.initialize({
+      ownPeerId,
+      roomId: "room-123456",
+      membershipEpoch: 3,
+      icePolicy,
+      availableAgents: [{ id: "owner-edge", online: true }],
+      callbacks: {
+        attachSender: () => true,
+        acceptTrack,
+        trackState: () => undefined,
+        routeChanged: () => undefined,
+        connectionChanged: () => undefined,
+      },
+    });
+    expect(service.applyRoute({
+      version: 3,
+      type: "media-agent-state",
+      enabled: true,
+      membershipEpoch: 3,
+      routeEpoch: 5,
+      leaseExpiresAt: now + 30_000,
+      primary: { id: "owner-edge", ownerPeerId: ownPeerId, creatorPreferred: true },
+      standbys: [],
+      forwarderIds: ["owner-edge"],
+      publisherAssignments: [
+        { peerId: ownPeerId, agentId: "owner-edge" },
+        { peerId: remotePeerId, agentId: "owner-edge" },
+      ],
+      subscriberAssignments: [
+        { peerId: ownPeerId, agentId: "owner-edge" },
+        { peerId: remotePeerId, agentId: "owner-edge" },
+      ],
+      federationLinks: [],
+      federationRoutes: [],
+      readiness: [{ agentId: "owner-edge", readyPeerIds: [ownPeerId, remotePeerId] }],
+    }, new Set([ownPeerId, remotePeerId]))).toBe(true);
+    const track = Object.assign(new EventTarget(), {
+      id: "unconfirmed-camera",
+      kind: "video",
+      enabled: true,
+    }) as unknown as MediaStreamTrack;
+    FakePeerConnection.instances[0].ontrack?.({
+      track,
+      receiver: {} as RTCRtpReceiver,
+      streams: [{ id: remotePeerId } as MediaStream],
+    } as RTCTrackEvent);
+
+    vi.advanceTimersByTime(5_000);
+    expect(track.enabled).toBe(false);
+    expect(acceptTrack).not.toHaveBeenCalled();
+  });
+
   it("creates bounded camera simulcast encodings without requesting capture", () => {
     service.updateMembershipEpoch(3);
     expect(service.applyRoute({
