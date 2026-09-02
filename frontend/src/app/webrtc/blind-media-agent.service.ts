@@ -84,6 +84,7 @@ const CAMERA_SIMULCAST_ENCODINGS: readonly RTCRtpEncodingParameters[] = Object.f
   Object.freeze({ rid: "h", active: true, scaleResolutionDownBy: 2, maxBitrate: 420_000, maxFramerate: 15 }),
   Object.freeze({ rid: "f", active: true, scaleResolutionDownBy: 1, maxBitrate: 1_200_000, maxFramerate: 24 }),
 ]);
+const SINGLE_VIDEO_ENCODING: RTCRtpEncodingParameters = Object.freeze({ rid: "s", active: true });
 const MAX_SELECTED_MEDIA_AGENTS = 3;
 
 @Injectable({ providedIn: "root" })
@@ -324,8 +325,26 @@ export class BlindMediaAgentService {
           }).sender;
           this.simulcastCapability.set("available");
         } catch {
-          sender = connection.pc.addTrack(input.track, input.stream);
+          try {
+            sender = connection.pc.addTransceiver(input.track, {
+              direction: "sendonly",
+              streams: [input.stream],
+              sendEncodings: [{ ...SINGLE_VIDEO_ENCODING }],
+            }).sender;
+          } catch {
+            sender = connection.pc.addTrack(input.track, input.stream);
+          }
           this.simulcastCapability.set("fallback");
+        }
+      } else if (input.track.kind === "video") {
+        try {
+          sender = connection.pc.addTransceiver(input.track, {
+            direction: "sendonly",
+            streams: [input.stream],
+            sendEncodings: [{ ...SINGLE_VIDEO_ENCODING }],
+          }).sender;
+        } catch {
+          sender = connection.pc.addTrack(input.track, input.stream);
         }
       } else {
         sender = connection.pc.addTrack(input.track, input.stream);

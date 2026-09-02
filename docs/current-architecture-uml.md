@@ -418,7 +418,10 @@ Kamera wird am Browser als `q`/low, `h`/medium und `f`/high ausgehandelt. Ein
 Subscriber waehlt anhand Active Speaker, Medienstrategie, Linkklasse und seiner
 lokalen Maximalstufe genau einen Layer. Der Egress bindet fuer diese
 Subscription nur diesen RTP-Layer; Audio, Bildschirm und Bildschirmton bleiben
-je ein separater Single-Layer. Der Agent verarbeitet den SFrame-Payload nicht.
+je ein separater Single-Layer. Single-Layer-Video verwendet zum Pion-Ingress
+den transportinternen RID `s`, den der Agent vor Control-Nachrichten wieder auf
+`single`/leeren RID normalisiert; dadurch entsteht keine zusaetzliche Schicht.
+Der Agent verarbeitet den SFrame-Payload nicht.
 
 Die lokale Maximalstufe ist das allgemeine Empfangsprofil desselben Browsers,
 nicht mehr eine Agent-Sondereinstellung. Im Direct Mesh sendet der Browser sie

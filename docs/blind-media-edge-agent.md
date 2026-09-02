@@ -118,6 +118,12 @@ Membership, Egress und Route-Epoche; erst danach erhaelt der Egress einen
 Subscription-Plan. Audio, Bildschirmvideo und Bildschirmton bleiben getrennte
 Single-Layer-Publikationen. Der Ingress demultiplext RID/SSRC, dekodiert nichts
 und meldet die tatsaechlich vorhandenen Layer an die Control Plane. Diese
+Single-Layer-Videospuren tragen zwischen Browser und Pion den reservierten
+Transport-RID `s`, weil Chromium bei spaet ausgehandelten Video-m-Sections
+keine SSRC-Deklaration garantieren muss. Der Agent bildet `s` vor jeder
+Control-Plane-Meldung geschlossen auf `single` mit leerem Contract-RID ab.
+Diese Transporthilfe erzeugt weder einen weiteren Qualitaetslayer noch neue
+Routingautoritaet. Die Control Plane
 waehlt fuer Agent-Links exakt den bevorzugten vorhandenen Layer, einen
 begrenzten niedrigeren Layer oder den portablen `single`-Fallback. Intent,
 Agent-Anwendung und Publisher-Readiness tragen eine monotone

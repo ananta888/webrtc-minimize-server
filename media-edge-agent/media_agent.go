@@ -543,7 +543,10 @@ func mediaLayer(remote *webrtc.TrackRemote) (string, string, bool) {
 	if remote.Kind() == webrtc.RTPCodecTypeAudio {
 		return "audio", "", remote.RID() == ""
 	}
-	rid := remote.RID()
+	return videoLayer(remote.RID())
+}
+
+func videoLayer(rid string) (string, string, bool) {
 	switch rid {
 	case "q":
 		return "low", rid, true
@@ -551,6 +554,11 @@ func mediaLayer(remote *webrtc.TrackRemote) (string, string, bool) {
 		return "medium", rid, true
 	case "f":
 		return "high", rid, true
+	case "s":
+		// Chromium may omit an SSRC declaration for a newly negotiated
+		// single-layer video m-section. The reserved transport-only RID lets
+		// Pion bind that RTP stream while the public contract remains single/"".
+		return "single", "", true
 	case "":
 		return "single", rid, true
 	default:

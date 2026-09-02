@@ -381,6 +381,38 @@ describe("blind media-agent browser adapter", () => {
     expect(capture).not.toHaveBeenCalled();
   });
 
+  it("marks a single-layer screen sender with the reserved transport RID", () => {
+    service.updateMembershipEpoch(3);
+    expect(service.applyRoute({
+      version: 3,
+      type: "media-agent-state",
+      enabled: true,
+      membershipEpoch: 3,
+      routeEpoch: 5,
+      leaseExpiresAt: now + 30_000,
+      primary: { id: "owner-edge", ownerPeerId: ownPeerId, creatorPreferred: true },
+      standbys: [],
+      forwarderIds: ["owner-edge"],
+      publisherAssignments: [{ peerId: ownPeerId, agentId: "owner-edge" }],
+      subscriberAssignments: [{ peerId: ownPeerId, agentId: "owner-edge" }],
+      federationLinks: [],
+      federationRoutes: [],
+      readiness: [{ agentId: "owner-edge", readyPeerIds: [ownPeerId] }],
+    }, new Set([ownPeerId]))).toBe(true);
+    expect(service.activatePublication({
+      agentId: "owner-edge",
+      publicationId: "screen-track",
+      source: "screen",
+      stream: {} as MediaStream,
+      track: { kind: "video", readyState: "live" } as MediaStreamTrack,
+      contextId: "agent-out:screen-track:owner-edge:5",
+      keyId: "0123456789abcdef",
+      baseKey: new Uint8Array(16),
+    })).toBe(false);
+    expect(FakePeerConnection.instances[0].transceivers[0].sendEncodings?.map(({ rid }) => rid)).toEqual(["s"]);
+    expect(capture).not.toHaveBeenCalled();
+  });
+
   it("does not let an ended superseded layer revoke the current subscription", () => {
     const remotePeerId = "fedcba9876543210";
     service.initialize({

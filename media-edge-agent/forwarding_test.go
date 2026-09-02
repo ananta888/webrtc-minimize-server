@@ -85,6 +85,26 @@ func TestPublicationSelectsOneBoundedLayerPerSubscriber(t *testing.T) {
 	}
 }
 
+func TestVideoLayerMapsReservedSingleTransportRIDToClosedContract(t *testing.T) {
+	tests := []struct {
+		rid, layer, contractRID string
+		valid                   bool
+	}{
+		{rid: "q", layer: "low", contractRID: "q", valid: true},
+		{rid: "h", layer: "medium", contractRID: "h", valid: true},
+		{rid: "f", layer: "high", contractRID: "f", valid: true},
+		{rid: "s", layer: "single", contractRID: "", valid: true},
+		{rid: "", layer: "single", contractRID: "", valid: true},
+		{rid: "unknown", valid: false},
+	}
+	for _, test := range tests {
+		layer, contractRID, valid := videoLayer(test.rid)
+		if layer != test.layer || contractRID != test.contractRID || valid != test.valid {
+			t.Fatalf("RID %q mapped to (%q, %q, %t)", test.rid, layer, contractRID, valid)
+		}
+	}
+}
+
 func TestLayerAggregatesBurstKeyframeFeedback(t *testing.T) {
 	layer := &forwardLayer{}
 	now := time.Unix(100, 0)
