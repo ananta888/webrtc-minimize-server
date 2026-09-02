@@ -17,6 +17,7 @@ export interface ManagedPeer {
   readonly senders: Map<string, RTCRtpSender>;
   readonly appliedTiers: Map<string, string>;
   makingOffer: boolean;
+  needsNegotiation: boolean;
   ignoreOffer: boolean;
   settingRemoteAnswerPending: boolean;
   readonly polite: boolean;
@@ -108,6 +109,7 @@ export class PeerConnectionManager {
       senders: new Map(),
       appliedTiers: new Map(),
       makingOffer: false,
+      needsNegotiation: false,
       ignoreOffer: false,
       settingRemoteAnswerPending: false,
       polite: this.ownPeerId > peerId,
@@ -154,12 +156,16 @@ export class PeerConnectionManager {
         const offerCollision = description.type === "offer" && !readyForOffer;
         peer.ignoreOffer = !peer.polite && offerCollision;
         if (peer.ignoreOffer) return;
+        if (offerCollision) peer.needsNegotiation = true;
         peer.settingRemoteAnswerPending = description.type === "answer";
         await peer.pc.setRemoteDescription(description);
         peer.settingRemoteAnswerPending = false;
         if (description.type === "offer") {
           await peer.pc.setLocalDescription();
           this.callbacks.signal(peer.id, { description: peer.pc.localDescription });
+        }
+        if (peer.needsNegotiation && peer.pc.signalingState === "stable") {
+          void this.negotiate(peer);
         }
         return;
       }
@@ -189,14 +195,23 @@ export class PeerConnectionManager {
   }
 
   private async negotiate(peer: ManagedPeer): Promise<void> {
+    peer.needsNegotiation = true;
+    if (peer.makingOffer || peer.pc.signalingState !== "stable") return;
+    peer.needsNegotiation = false;
+    peer.makingOffer = true;
+    let offerCreated = false;
     try {
-      peer.makingOffer = true;
       await peer.pc.setLocalDescription();
       this.callbacks.signal(peer.id, { description: peer.pc.localDescription });
+      offerCreated = true;
     } catch {
+      peer.needsNegotiation = true;
       this.callbacks.negotiationError(peer);
     } finally {
       peer.makingOffer = false;
+      if (offerCreated && peer.needsNegotiation && peer.pc.signalingState === "stable") {
+        queueMicrotask(() => void this.negotiate(peer));
+      }
     }
   }
 

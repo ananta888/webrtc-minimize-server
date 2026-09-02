@@ -73,7 +73,6 @@ interface AgentConnection extends ManagedPeer {
   readonly agentId: string;
   readonly pendingCandidates: Array<RTCIceCandidateInit | null>;
   remoteTrackBindings: ReadonlyMap<string, MediaAgentRemoteTrackBinding>;
-  needsNegotiation: boolean;
   connected: boolean;
 }
 

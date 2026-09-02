@@ -12,6 +12,7 @@ class FakePeerConnection {
   iceConnectionState: RTCIceConnectionState = "new";
   signalingState: RTCSignalingState = "stable";
   localDescription: RTCSessionDescription | null = null;
+  remoteDescription: RTCSessionDescription | null = null;
   readonly createdChannels: string[] = [];
   onicecandidate: RTCPeerConnection["onicecandidate"] = null;
   ontrack: RTCPeerConnection["ontrack"] = null;
@@ -32,6 +33,15 @@ class FakePeerConnection {
     return { label, close: vi.fn() } as unknown as RTCDataChannel;
   }
   restartIce(): void { this.restarts += 1; }
+  async setLocalDescription(description?: RTCSessionDescriptionInit): Promise<void> {
+    const resolved = description || { type: "offer", sdp: "v=0\r\n" };
+    this.localDescription = resolved as RTCSessionDescription;
+    this.signalingState = resolved.type === "offer" ? "have-local-offer" : "stable";
+  }
+  async setRemoteDescription(description: RTCSessionDescriptionInit): Promise<void> {
+    this.remoteDescription = description as RTCSessionDescription;
+    this.signalingState = description.type === "offer" ? "have-remote-offer" : "stable";
+  }
   close(): void { this.connectionState = "closed"; this.iceConnectionState = "closed"; }
 }
 
@@ -137,6 +147,36 @@ describe("staged ICE connection manager", () => {
     });
     connections.add("ffffffffffffffff", "Grace");
     expect(channels).toEqual(["control", "chat", "captions", "overlay"]);
+    connections.close();
+  });
+
+  it("replays a direct-mesh negotiation requested while an offer is outstanding", async () => {
+    const descriptions: RTCSessionDescriptionInit[] = [];
+    const connections = new PeerConnectionManager("0000000000000001", policy, true, {
+      signal: (_peerId, payload) => {
+        const description = (payload as { description?: RTCSessionDescriptionInit }).description;
+        if (description) descriptions.push(description);
+      },
+      track: () => undefined,
+      channel: () => undefined,
+      state: () => undefined,
+      negotiationError: () => undefined,
+    });
+    const peer = connections.add("ffffffffffffffff", "Grace")!;
+    const pc = peer.pc as unknown as FakePeerConnection;
+
+    pc.onnegotiationneeded?.(new Event("negotiationneeded"));
+    await vi.waitFor(() => expect(descriptions).toHaveLength(1));
+    pc.onnegotiationneeded?.(new Event("negotiationneeded"));
+    expect(descriptions).toHaveLength(1);
+
+    await connections.acceptSignal({
+      type: "signal",
+      from: peer.id,
+      fromName: peer.name,
+      description: { type: "answer", sdp: "v=0\r\n" },
+    });
+    await vi.waitFor(() => expect(descriptions).toHaveLength(2));
     connections.close();
   });
 });
