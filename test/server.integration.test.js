@@ -733,7 +733,7 @@ test("OIDC owner downloads, enrolls, authenticates and revokes a self-service me
   assert.equal(revokedList.agents[0].online, false);
 });
 
-test("control plane brokers only authorized agent federation and cross-shard layer readiness", async (context) => {
+test("one browser atomically authorizes two owned agents for federation and cross-shard readiness", async (context) => {
   const issuer = "https://identity.test/realms/webrtc";
   const identities = Object.fromEntries(["owner", "helper", "two", "three", "four", "five"].map((subject) => [
     subject,
@@ -754,7 +754,7 @@ test("control plane brokers only authorized agent federation and cross-shard lay
     },
     {
       id: "helper-edge",
-      ownerPrincipal: `${issuer}|helper`,
+      ownerPrincipal: `${issuer}|owner`,
       sharedSecret: "helper-edge-federation-secret-01234567",
     },
   ];
@@ -810,17 +810,10 @@ test("control plane brokers only authorized agent federation and cross-shard lay
     browsers.push({ subject, client, peerId: welcome.peerId });
   }
   const owner = browsers.find(({ subject }) => subject === "owner");
-  const helper = browsers.find(({ subject }) => subject === "helper");
   owner.client.socket.send(JSON.stringify({
-    type: "media-agent-consent",
-    enabled: true,
-    agentId: "owner-edge",
-    automaticTakeover: false,
-  }));
-  helper.client.socket.send(JSON.stringify({
-    type: "media-agent-consent",
-    enabled: true,
-    agentId: "helper-edge",
+    version: 1,
+    type: "media-agent-consent-set",
+    agentIds: ["owner-edge", "helper-edge"],
     automaticTakeover: false,
   }));
   const route = await owner.client.next((message) => (
@@ -990,6 +983,17 @@ test("control plane brokers only authorized agent federation and cross-shard lay
   assert.equal(ready.agentId, "helper-edge");
   assert.equal(ready.subscriberPeerId, subscriber.peerId);
   assert.equal(ready.revision, helperLease.subscriptions[0].revision);
+
+  owner.client.socket.send(JSON.stringify({
+    version: 1,
+    type: "media-agent-consent-set",
+    agentIds: [],
+    automaticTakeover: false,
+  }));
+  const revoked = await owner.client.next((message) => (
+    message.type === "media-agent-state" && message.forwarderIds?.length === 0
+  ), 5_000);
+  assert.equal(revoked.primary, null);
 
   for (const { client } of browsers) client.socket.close();
   for (const client of agents.values()) client.socket.close();

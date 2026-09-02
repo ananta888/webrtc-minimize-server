@@ -318,8 +318,8 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     }
   }
 
-  selectMediaAgent(agentId: unknown): void {
-    this.mediaAgents.selectAgent(String(agentId || ""));
+  setMediaAgentSelected(agentId: string, enabled: boolean): void {
+    this.mediaAgents.setAgentSelected(agentId, enabled);
   }
 
   setMediaAgentConsent(enabled: boolean): void {

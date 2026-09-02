@@ -107,16 +107,22 @@ describe("Room page information architecture", () => {
   });
 
   it("keeps native media-agent consent explicit and shows bounded takeover controls", () => {
+    expect(template).toContain('id="media-agent-select"');
+    expect(template).toContain("mediaAgents.maximumSelectedAgents");
+    expect(template).toContain("mediaAgents.isAgentSelected(agent.id)");
     expect(template).toContain('id="media-agent-consent"');
+    expect(template).toContain('id="media-agent-consented-agents"');
     expect(template).toContain('id="media-agent-auto-takeover"');
     expect(template).toContain('id="media-agent-takeover-request"');
     expect(template).toContain('id="accept-media-agent-takeover"');
     expect(template).toContain('id="decline-media-agent-takeover"');
     expect(template).toContain("Standardmäßig aus, raumgebunden und jederzeit widerrufbar");
-    expect(template).toContain("mit den Defaults also bei 3–5 Personen");
+    expect(template).toContain("gemeinsam und atomar freigegeben");
+    expect(template).toContain("bei 3–5 Personen");
     expect(template).toContain("mediaAgents?.minimumParticipants");
-    expect(template).toContain("(!mediaAgents.selectedAgentOnline() && !mediaAgents.consentEnabled())");
+    expect(template).toContain("(!mediaAgents.selectedAgentsOnline() && !mediaAgents.consentEnabled())");
     expect(template).toContain("Membership, Routen, Epochen und kurze Leases");
+    expect(component).toContain("this.mediaAgents.setAgentSelected(agentId, enabled)");
     expect(component).toContain("this.mediaAgents.setConsent(enabled)");
     expect(component).toContain("this.mediaAgents.respondToTakeover(accepted)");
     expect(component).not.toContain("getUserMedia");

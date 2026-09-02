@@ -93,6 +93,12 @@
       "title": "Browseruebergreifende SFrame-Interop und adaptive Kleinraum-Routen",
       "task_ids": ["BME-018", "BME-019"],
       "status": "done"
+    },
+    {
+      "id": "BME-M15",
+      "title": "Atomare Mehrfachauswahl eigener Media-Agenten pro Raumsitzung",
+      "task_ids": ["BME-020"],
+      "status": "in_progress"
     }
   ],
   "tasks": [
@@ -366,22 +372,37 @@
         "Drei Teilnehmer bleiben ohne geeigneten Agenten direkt; bei vier oder fuenf Teilnehmern beruecksichtigt die Wahl Uploadreserve, Linkklasse, Batterie, Consent und erwarteten Fanout statt allein eine pauschale Raumgroesse, und faellt bei fehlender Evidence oder Lease auf Direct-SFrame zurueck.",
         "Deterministische Drei-, Vier-, Fuenf- und Sechs-Peer-Tests belegen Root-Fanout, Agentwahl, Nichtwahl ohne Vorteil, Consent-Widerruf und Fallback; Runtime-Konfiguration, UI-Erklaerung und Bandbreitendokumentation beschreiben die getrennten Schwellen korrekt."
       ]
+    },
+    {
+      "id": "BME-020",
+      "title": "Mehrere eigene Media-Agenten aus einer Raumsitzung gleichzeitig consentieren",
+      "status": "in_progress",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 75,
+      "depends_on": ["BME-005", "BME-019"],
+      "acceptance_criteria": [
+        "Die Angular-App zeigt die serverseitig als kontoeigen gemeldeten Agenten als geschlossene Mehrfachauswahl; nur eine sichtbare lokale Aktion aktiviert die ausgewaehlten online Agenten, ohne Capture, Installation oder Portfreigabe auszulösen.",
+        "Ein additiver versionierter Batch-Contract ersetzt die Consent-Menge eines Browser-Peers atomar und begrenzt; der bisherige Einzel-Contract bleibt kompatibel, exakte Owner-Pruefung erfolgt vor jeder Mutation und Leave oder Widerruf entfernt alle betroffenen Eintraege.",
+        "Ein Peer kann zwei eigene Agenten fuer denselben Raum bereitstellen: bei drei bis fuenf Teilnehmern bleibt genau ein Forwarder mit dem zweiten Agenten als Standby, ab der Shard-Schwelle koennen beide nach Control-Plane-Wahl als Forwarder und foederierte Knoten arbeiten.",
+        "Contract-, Registry-, Serverintegrations-, Angular-Service- und UI-Tests sowie npm run check und npm run todos:validate bestehen; Commit, Push, Mini-PC-Rollout und normaler HTTPS-Smoke werden ohne Secrets oder erfundene Live-Medienevidence dokumentiert."
+      ]
     }
   ],
-  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011", "BME-012", "BME-013", "BME-014", "BME-015", "BME-016", "BME-017", "BME-018", "BME-019"],
+  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011", "BME-012", "BME-013", "BME-014", "BME-015", "BME-016", "BME-017", "BME-018", "BME-019", "BME-020"],
   "tasks_status_summary": {
-    "total": 19,
-    "by_status": { "todo": 0, "in_progress": 2, "partial": 1, "blocked": 0, "done": 16 },
-    "progress_percent_done": 84.21,
-    "by_priority": { "P0": 11, "P1": 8, "P2": 0, "P3": 0 },
-    "by_risk": { "low": 0, "medium": 1, "high": 8, "critical": 10 },
-    "critical_path": { "total": 18, "done": 15, "remaining": 3 },
-    "milestones": { "total": 14, "todo": 0, "in_progress": 3, "blocked": 0, "done": 11 }
+    "total": 20,
+    "by_status": { "todo": 0, "in_progress": 3, "partial": 1, "blocked": 0, "done": 16 },
+    "progress_percent_done": 80,
+    "by_priority": { "P0": 11, "P1": 9, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 9, "critical": 10 },
+    "critical_path": { "total": 19, "done": 15, "remaining": 4 },
+    "milestones": { "total": 15, "todo": 0, "in_progress": 4, "blocked": 0, "done": 11 }
   },
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 2,
+    "in_progress": 3,
     "partial": 1,
     "blocked": 0,
     "done": 16
@@ -417,6 +438,8 @@
     "BME-018 ist am 2026-09-02 abgeschlossen: Medien-Key und ACK verwenden fail-closed Protokoll v2 mit codec-prefix-v1; der VP8-Key-/Delta-Praefix beziehungsweise das Opus-TOC bleiben fuer den Browser-Packetizer sichtbar, werden zusammen mit dem Envelope-Header als AES-GCM-AAD authentisiert und alle uebrigen Framebytes bleiben SFrame-verschluesselt. Unit-Tests decken Counter 255/256, Prefix-Manipulation, Replay-/Auth-Pfade, Opus-DTX und unbekannte Versionen/Codecs ab. Der reale Chromium-nach-Firefox-VP8-Gate lief 45 Sekunden ueber 400 dekodierte Frames und Counter 350 hinaus, dekodierte danach einen weiteren Keyframe und meldete weder Drops noch Paketverlust; Chromium- und Firefox-Basispfade blieben gruen.",
     "BME-019 ist am 2026-09-02 abgeschlossen: Ein geeigneter raumgebunden consentierter nativer Primary darf ab drei Teilnehmern gewaehlt werden, waehrend Publisher-Sharding ab sechs bleibt. Kapazitaet unter 25 Prozent, Last ab 90 Prozent, kritische Batterie, beschraenktes Netz, fehlender Consent oder Lease verhindern die Wahl. Der Legacy-Browserbaum wird nur erzeugt, wenn maxChildren den direkten N-minus-1-Fanout reduziert; mit Default 3 bleiben Drei-/Viererraeume direkt und Fuenfer-/Sechserraeume koennen relayn. Deterministische Registry-/Topologie- und Serverintegrationstests belegen 2/3/4/5/6, Widerruf und Fallback; Runtime-Konfiguration, Angular-UI und Bandbreitendokumentation sind synchron.",
     "Der abschliessende npm-run-check-Gate bestand am 2026-09-02 mit 112 Angular- sowie 94 Node-/Browser-/Integrationsfaellen und Produktionsbuild. Darin belegt ein eigener Negativtest, dass Relay-Consent im required-SFrame-Modus keinen entschluesselnden Browserbaum autorisiert. Der credential-abhaengige Keycloak-/TURN-Live-Gate blieb sichtbar uebersprungen und wird nicht als Produktionsnachweis gezaehlt.",
+    "BME-020 verfolgt die angeforderte raumgebundene Mehrfachauswahl: Ein Browser-Peer soll mehrere exakt kontoeigene Agents in einer atomaren, begrenzten Consent-Menge anbieten und gemeinsam widerrufen koennen; Membership, Agentwahl und Sharding bleiben alleinige Control-Plane-Policy.",
+    "BME-020 ist implementiert und fokussiert geprueft: Der additive Consent-Set-Contract, Composite-Registry-State, ein Browser mit zwei eigenen foederierten Agenten sowie Angular-Mehrfachauswahl, Dreiergrenze, Offline-Widerruf und Capture-Freiheit bestehen. Der vollstaendige Check-, Commit-, Push- und Produktionsgate ist noch offen.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
   ]
 }

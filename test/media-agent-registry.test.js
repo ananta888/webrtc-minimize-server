@@ -93,6 +93,68 @@ test("agent auth consumes one challenge, binds exact owner and never exposes the
   }), /media_agent_not_owned/);
 });
 
+test("one browser atomically consents multiple owned agents and leave removes the whole set", () => {
+  const definitions = [
+    { id: "laptop-edge", ownerPrincipal: `${issuer}|owner`, sharedSecret: "laptop-edge-secret-that-is-long-123456" },
+    { id: "minipc-edge", ownerPrincipal: `${issuer}|owner`, sharedSecret: "minipc-edge-secret-that-is-long-123456" },
+    { id: "foreign-edge", ownerPrincipal: `${issuer}|other`, sharedSecret: "foreign-edge-secret-that-is-long-123456" },
+  ];
+  const registry = new MediaAgentRegistry({ definitions, shardMinParticipants: 6 });
+  for (const definition of definitions.slice(0, 2)) {
+    const socket = {};
+    authenticateAgent(registry, socket, definition.id, definition.sharedSecret);
+    registry.setCapability(socket, {
+      visible: true, battery: "mains", network: "fast", capacity: 90, load: 5,
+      maxRooms: 8, maxPeers: 20, maxTracks: 80,
+    });
+  }
+  const members = [
+    peer("0000000000000000", `${issuer}|owner`, true),
+    peer("1111111111111111", `${issuer}|one`),
+    peer("2222222222222222", `${issuer}|two`),
+    peer("3333333333333333", `${issuer}|three`),
+    peer("4444444444444444", `${issuer}|four`),
+    peer("5555555555555555", `${issuer}|five`),
+  ];
+  const owner = members[0];
+  registry.setConsentSet(owner, {
+    agentIds: ["minipc-edge", "laptop-edge"], automaticTakeover: false,
+  }, owner.principal, 10_000);
+
+  const small = registry.reconcile(owner.roomId, members.slice(0, 5), 1, 10_001);
+  assert.equal(small.primary.id, "laptop-edge");
+  assert.deepEqual(small.standbys.map(({ id }) => id), ["minipc-edge"]);
+  assert.deepEqual(small.forwarderIds, ["laptop-edge"]);
+
+  const sharded = registry.reconcile(owner.roomId, members, 2, 10_002);
+  assert.deepEqual(sharded.forwarderIds, ["laptop-edge", "minipc-edge"]);
+  assert.equal(sharded.federationLinks.length, 1);
+  assert.throws(() => registry.setConsentSet(owner, {
+    agentIds: ["laptop-edge", "foreign-edge"], automaticTakeover: false,
+  }, owner.principal, 10_003), /media_agent_not_owned/);
+  assert.deepEqual(
+    registry.reconcile(owner.roomId, members, 3, 10_003).forwarderIds,
+    ["laptop-edge", "minipc-edge"],
+  );
+  assert.throws(() => registry.setConsentSet(owner, {
+    agentIds: ["laptop-edge", "minipc-edge", "foreign-edge", "fourth-edge"],
+    automaticTakeover: false,
+  }), /invalid_media_agent_consent_set/);
+
+  registry.setConsent(owner, {
+    enabled: true, agentId: "minipc-edge", automaticTakeover: true,
+  }, owner.principal, 10_004);
+  assert.deepEqual(registry.reconcile(owner.roomId, members, 4, 10_004).forwarderIds, ["minipc-edge"]);
+
+  registry.setConsentSet(owner, {
+    agentIds: ["laptop-edge", "minipc-edge"], automaticTakeover: false,
+  }, owner.principal, 10_005);
+  registry.leavePeer(owner);
+  const direct = registry.reconcile(owner.roomId, members.slice(1), 5, 10_006);
+  assert.equal(direct.primary, null);
+  assert.deepEqual(direct.forwarderIds, []);
+});
+
 test("creator agent becomes primary, readiness requires both endpoints and stale epochs fail closed", () => {
   const registry = new MediaAgentRegistry({
     definitions: [{ id: "creator-edge", ownerPrincipal: `${issuer}|owner`, sharedSecret: secret }],

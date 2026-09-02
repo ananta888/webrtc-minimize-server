@@ -84,15 +84,23 @@ const CAMERA_SIMULCAST_ENCODINGS: readonly RTCRtpEncodingParameters[] = Object.f
   Object.freeze({ rid: "h", active: true, scaleResolutionDownBy: 2, maxBitrate: 420_000, maxFramerate: 15 }),
   Object.freeze({ rid: "f", active: true, scaleResolutionDownBy: 1, maxBitrate: 1_200_000, maxFramerate: 24 }),
 ]);
+const MAX_SELECTED_MEDIA_AGENTS = 3;
 
 @Injectable({ providedIn: "root" })
 export class BlindMediaAgentService {
   readonly availableAgents = signal<readonly AvailableMediaAgent[]>([]);
-  readonly selectedAgentId = signal("");
-  readonly selectedAgentOnline = computed(() => this.availableAgents().some((agent) => (
-    agent.id === this.selectedAgentId() && agent.online
-  )));
-  readonly consentEnabled = signal(false);
+  readonly maximumSelectedAgents = MAX_SELECTED_MEDIA_AGENTS;
+  readonly selectedAgentIds = signal<readonly string[]>([]);
+  readonly selectedAgentsOnline = computed(() => {
+    const selected = this.selectedAgentIds();
+    const online = new Set(this.availableAgents().filter((agent) => agent.online).map((agent) => agent.id));
+    return selected.length > 0 && selected.every((agentId) => online.has(agentId));
+  });
+  readonly selectionLimitReached = computed(() => (
+    this.selectedAgentIds().length >= MAX_SELECTED_MEDIA_AGENTS
+  ));
+  readonly consentedAgentIds = signal<readonly string[]>([]);
+  readonly consentEnabled = computed(() => this.consentedAgentIds().length > 0);
   readonly automaticTakeover = signal(false);
   readonly primaryAgentId = signal("");
   readonly standbyAgentIds = signal<readonly string[]>([]);
@@ -152,11 +160,18 @@ export class BlindMediaAgentService {
   }
 
   setConsent(enabled: boolean, automaticTakeover = this.automaticTakeover()): void {
-    const agentId = this.selectedAgentId();
-    if (!agentId || !this.ownPeerId || (enabled && !this.selectedAgentOnline())) return;
-    this.signaling.send({ type: "media-agent-consent", enabled, agentId, automaticTakeover });
-    this.consentEnabled.set(enabled);
+    if (!this.ownPeerId || (!enabled && !this.consentEnabled())) return;
+    const agentIds = enabled ? this.selectedAgentIds() : [];
+    if (enabled && !this.selectedAgentsOnline()) return;
+    this.signaling.send({
+      version: 1,
+      type: "media-agent-consent-set",
+      agentIds: [...agentIds],
+      automaticTakeover,
+    });
+    this.consentedAgentIds.set(Object.freeze([...agentIds]));
     this.automaticTakeover.set(automaticTakeover);
+    if (!enabled) this.retainOnlineSelection();
   }
 
   setAutomaticTakeover(enabled: boolean): void {
@@ -164,9 +179,22 @@ export class BlindMediaAgentService {
     if (this.consentEnabled()) this.setConsent(true, enabled);
   }
 
-  selectAgent(agentId: string): void {
-    if (this.consentEnabled() || !this.availableAgents().some((agent) => agent.id === agentId)) return;
-    this.selectedAgentId.set(agentId);
+  setAgentSelected(agentId: string, enabled: boolean): void {
+    if (this.consentEnabled()) return;
+    const agent = this.availableAgents().find((candidate) => candidate.id === agentId);
+    if (!agent || (enabled && !agent.online)) return;
+    const selected = new Set(this.selectedAgentIds());
+    if (enabled) {
+      if (selected.size >= MAX_SELECTED_MEDIA_AGENTS && !selected.has(agentId)) return;
+      selected.add(agentId);
+    } else {
+      selected.delete(agentId);
+    }
+    this.selectedAgentIds.set(Object.freeze([...selected].sort()));
+  }
+
+  isAgentSelected(agentId: string): boolean {
+    return this.selectedAgentIds().includes(agentId);
   }
 
   respondToTakeover(accepted: boolean): void {
@@ -448,8 +476,8 @@ export class BlindMediaAgentService {
     this.subscriptionStates.clear();
     this.subscriptionTracks.clear();
     this.availableAgents.set([]);
-    this.selectedAgentId.set("");
-    this.consentEnabled.set(false);
+    this.selectedAgentIds.set([]);
+    this.consentedAgentIds.set([]);
     this.automaticTakeover.set(false);
     this.primaryAgentId.set("");
     this.standbyAgentIds.set([]);
@@ -662,11 +690,20 @@ export class BlindMediaAgentService {
     }
     if (new Set(agents.map(({ id }) => id)).size !== agents.length) return false;
     agents.sort((left, right) => left.id.localeCompare(right.id));
-    const selected = this.selectedAgentId();
+    const selected = this.selectedAgentIds();
     this.availableAgents.set(Object.freeze(agents));
-    if (!agents.some(({ id }) => id === selected)) this.selectedAgentId.set(agents[0]?.id || "");
+    if (!this.consentEnabled()) this.retainOnlineSelection(selected);
     this.updateStatus();
     return true;
+  }
+
+  private retainOnlineSelection(selected = this.selectedAgentIds()): void {
+    const onlineAgents = this.availableAgents().filter((agent) => agent.online);
+    const onlineIds = new Set(onlineAgents.map((agent) => agent.id));
+    const retained = selected.filter((agentId) => onlineIds.has(agentId));
+    this.selectedAgentIds.set(Object.freeze(
+      retained.length > 0 ? retained : onlineAgents.slice(0, 1).map((agent) => agent.id),
+    ));
   }
 
   private publicationKey(publisherPeerId: string, publicationId: string): string {

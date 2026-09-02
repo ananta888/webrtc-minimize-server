@@ -9,6 +9,42 @@ import {
 
 test("browser media-agent contracts are closed and epoch-bound", () => {
   assert.deepEqual(parseBrowserMediaAgentMessage(Buffer.from(JSON.stringify({
+    version: 1,
+    type: "media-agent-consent-set",
+    agentIds: ["minipc-edge", "laptop-edge"],
+    automaticTakeover: true,
+  }))), {
+    version: 1,
+    type: "media-agent-consent-set",
+    agentIds: ["laptop-edge", "minipc-edge"],
+    automaticTakeover: true,
+  });
+  assert.deepEqual(parseBrowserMediaAgentMessage(Buffer.from(JSON.stringify({
+    version: 1,
+    type: "media-agent-consent-set",
+    agentIds: [],
+    automaticTakeover: false,
+  }))).agentIds, []);
+  for (const agentIds of [
+    ["laptop-edge", "laptop-edge"],
+    ["one", "two", "three", "four"],
+    [7],
+  ]) {
+    assert.throws(() => parseBrowserMediaAgentMessage(Buffer.from(JSON.stringify({
+      version: 1,
+      type: "media-agent-consent-set",
+      agentIds,
+      automaticTakeover: false,
+    }))), /invalid_media_agent_consent_set/);
+  }
+  assert.throws(() => parseBrowserMediaAgentMessage(Buffer.from(JSON.stringify({
+    version: 1,
+    type: "media-agent-consent-set",
+    agentIds: ["laptop-edge"],
+    automaticTakeover: false,
+    roomId: "room-123456",
+  }))), /unknown_media_agent_consent_set_field/);
+  assert.deepEqual(parseBrowserMediaAgentMessage(Buffer.from(JSON.stringify({
     type: "media-agent-consent",
     enabled: true,
     agentId: "laptop-edge",

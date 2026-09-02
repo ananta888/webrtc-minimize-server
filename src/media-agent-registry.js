@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import {
+  MAX_MEDIA_AGENT_CONSENTS,
   mediaAgentAuthProof,
   mediaAgentEnrollmentProofMessage,
   mediaAgentSignatureMessage,
@@ -78,6 +79,10 @@ function normalizeDefinition(definition) {
 
 function sorted(values) {
   return [...values].sort((left, right) => left.localeCompare(right));
+}
+
+function consentKey(peerId, agentId) {
+  return `${peerId}\0${agentId}`;
 }
 
 function federationLinkId(roomId, routeEpoch, leftAgentId, rightAgentId) {
@@ -355,8 +360,8 @@ export class MediaAgentRegistry {
     }
     const affectedRoomIds = this.roomsAffectedByAgent(agentId);
     for (const [roomId, consents] of this.#consents) {
-      for (const [peerId, consent] of consents) {
-        if (consent.agentId === agentId) consents.delete(peerId);
+      for (const [key, consent] of consents) {
+        if (consent.agentId === agentId) consents.delete(key);
       }
       if (consents.size === 0) this.#consents.delete(roomId);
     }
@@ -438,31 +443,64 @@ export class MediaAgentRegistry {
     if (!definition || definition.ownerPrincipal !== peer.principal) {
       throw new ProtocolError("media_agent_not_owned");
     }
+    const consents = this.setConsentSet(peer, {
+      agentIds: input.enabled ? [input.agentId] : [],
+      automaticTakeover: input.automaticTakeover,
+    }, creatorPrincipal, now);
+    return consents[0] || null;
+  }
+
+  setConsentSet(peer, input, creatorPrincipal = "", now = Date.now()) {
+    if (!Array.isArray(input.agentIds) || input.agentIds.length > MAX_MEDIA_AGENT_CONSENTS
+      || new Set(input.agentIds).size !== input.agentIds.length
+      || typeof input.automaticTakeover !== "boolean") {
+      throw new ProtocolError("invalid_media_agent_consent_set");
+    }
+    for (const agentId of input.agentIds) {
+      const definition = typeof agentId === "string" ? this.#agents.get(agentId)?.definition : null;
+      if (!definition || definition.ownerPrincipal !== peer.principal) {
+        throw new ProtocolError("media_agent_not_owned");
+      }
+    }
+
     let room = this.#consents.get(peer.roomId);
+    if (room) {
+      for (const [key, consent] of room) {
+        if (consent.peerId === peer.id) room.delete(key);
+      }
+    }
+    if (input.agentIds.length === 0) {
+      if (room?.size === 0) this.#consents.delete(peer.roomId);
+      return Object.freeze([]);
+    }
     if (!room) {
       room = new Map();
       this.#consents.set(peer.roomId, room);
     }
-    if (!input.enabled) {
-      room.delete(peer.id);
-      if (room.size === 0) this.#consents.delete(peer.roomId);
-      return null;
-    }
-    const consent = Object.freeze({
+    const creatorOwned = Boolean(creatorPrincipal)
+      ? peer.principal === creatorPrincipal
+      : peer.creator === true;
+    const consents = sorted(input.agentIds).map((agentId) => Object.freeze({
       peerId: peer.id,
       principal: peer.principal,
-      agentId: input.agentId,
+      agentId,
       automaticTakeover: input.automaticTakeover,
-      creatorOwned: Boolean(creatorPrincipal) ? peer.principal === creatorPrincipal : peer.creator === true,
+      creatorOwned,
       updatedAt: now,
-    });
-    room.set(peer.id, consent);
-    return consent;
+    }));
+    for (const consent of consents) {
+      room.set(consentKey(peer.id, consent.agentId), consent);
+    }
+    return Object.freeze(consents);
   }
 
   leavePeer(peer) {
     const room = this.#consents.get(peer.roomId);
-    room?.delete(peer.id);
+    if (room) {
+      for (const [key, consent] of room) {
+        if (consent.peerId === peer.id) room.delete(key);
+      }
+    }
     if (room?.size === 0) this.#consents.delete(peer.roomId);
     const state = this.#rooms.get(peer.roomId);
     if (state) {
@@ -549,7 +587,9 @@ export class MediaAgentRegistry {
     }
     const memberIds = new Set(members.map((member) => member.id));
     const consents = this.#consents.get(roomId) || new Map();
-    for (const peerId of [...consents.keys()]) if (!memberIds.has(peerId)) consents.delete(peerId);
+    for (const [key, consent] of consents) {
+      if (!memberIds.has(consent.peerId)) consents.delete(key);
+    }
     for (const [id, expiresAt] of state.approved) if (expiresAt < now) state.approved.delete(id);
     for (const [id, expiresAt] of state.declined) if (expiresAt < now) state.declined.delete(id);
     if (state.pending?.expiresAt < now) state.pending = null;

@@ -552,23 +552,34 @@
                 <div><p class="eyebrow">Je Raum getrennt</p><h3 id="agent-room-use-heading">Im aktuellen Raum verwenden</h3></div>
                 <p>Ein online gemeldeter Agent wird erst nach deiner ausdrücklichen Raumzustimmung eingeplant. Membership, Routen, Epochen und kurze Leases bleiben ausschließlich bei der Control Plane.</p>
 
-              @if (mediaAgents.availableAgents().length > 0) {
-                <label>Agent dieses Kontos
-                  <select id="media-agent-select" [disabled]="mediaAgents.consentEnabled()" [ngModel]="mediaAgents.selectedAgentId()" (ngModelChange)="selectMediaAgent($event)">
-                    @for (agent of mediaAgents.availableAgents(); track agent.id) {
-                      <option [value]="agent.id">{{ agent.id }} · {{ agent.online ? 'online' : 'offline' }}</option>
-                    }
-                  </select>
-                </label>
+              @if (mediaAgents.availableAgents().length > 0 || mediaAgents.consentEnabled()) {
+                <fieldset id="media-agent-select" class="agent-choice-list" [disabled]="mediaAgents.consentEnabled()">
+                  <legend>Agenten dieses Kontos · bis zu {{ mediaAgents.maximumSelectedAgents }} auswählen</legend>
+                  @for (agent of mediaAgents.availableAgents(); track agent.id; let index = $index) {
+                    <label class="agent-choice" [class.offline]="!agent.online">
+                      <input
+                        [id]="'media-agent-choice-' + index"
+                        type="checkbox"
+                        [disabled]="mediaAgents.consentEnabled() || !agent.online || (!mediaAgents.isAgentSelected(agent.id) && mediaAgents.selectionLimitReached())"
+                        [ngModel]="mediaAgents.isAgentSelected(agent.id)"
+                        (ngModelChange)="setMediaAgentSelected(agent.id, $event)"
+                      >
+                      <span><strong>{{ agent.id }}</strong><small>{{ agent.online ? 'online und auswählbar' : 'offline' }}</small></span>
+                    </label>
+                  }
+                  @if (mediaAgents.availableAgents().length === 0) {
+                    <p class="hint">Die zuvor freigegebenen Agenten sind nicht mehr in der Verfügbarkeitsliste. Du kannst die Raumfreigabe weiterhin gemeinsam widerrufen.</p>
+                  }
+                </fieldset>
                 <label class="agent-consent">
                   <input
                     id="media-agent-consent"
                     type="checkbox"
-                    [disabled]="!session.joined() || config.value()?.mediaE2ee?.mode === 'disabled' || !config.value()?.optimization?.dataOverlayEnabled || (!mediaAgents.selectedAgentOnline() && !mediaAgents.consentEnabled())"
+                    [disabled]="!session.joined() || config.value()?.mediaE2ee?.mode === 'disabled' || !config.value()?.optimization?.dataOverlayEnabled || (!mediaAgents.selectedAgentsOnline() && !mediaAgents.consentEnabled())"
                     [ngModel]="mediaAgents.consentEnabled()"
                     (ngModelChange)="setMediaAgentConsent($event)"
                   >
-                  <span><strong>Registrierten Rechner freiwillig für diesen Raum anbieten</strong><small>Standardmäßig aus, raumgebunden und jederzeit widerrufbar. Es wird keine Kamera-, Mikrofon- oder Bildschirmfreigabe ausgelöst.</small></span>
+                  <span><strong>Ausgewählte Rechner freiwillig für diesen Raum anbieten</strong><small>Alle markierten Online-Agenten werden gemeinsam und atomar freigegeben. Standardmäßig aus, raumgebunden und jederzeit widerrufbar. Es wird keine Kamera-, Mikrofon- oder Bildschirmfreigabe ausgelöst.</small></span>
                 </label>
                 <label class="agent-consent secondary-consent">
                   <input id="media-agent-auto-takeover" type="checkbox" [disabled]="!mediaAgents.consentEnabled()" [ngModel]="mediaAgents.automaticTakeover()" (ngModelChange)="setMediaAgentAutomaticTakeover($event)">
@@ -581,6 +592,7 @@
 
               <dl class="fact-list">
                 <div><dt>Eigene Zustimmung</dt><dd id="media-agent-consent-status">{{ mediaAgents.consentEnabled() ? 'aktiv' : 'aus' }}</dd></div>
+                <div><dt>Freigegebene Agenten</dt><dd id="media-agent-consented-agents">{{ mediaAgents.consentedAgentIds().length ? mediaAgents.consentedAgentIds().join(', ') : 'keine' }}</dd></div>
                 <div><dt>Primary</dt><dd id="media-agent-primary">{{ mediaAgents.primaryAgentId() || 'Mesh-Fallback' }}</dd></div>
                 <div><dt>Aktive Forwarder</dt><dd id="media-agent-forwarders">{{ mediaAgents.forwarderAgentIds().length ? mediaAgents.forwarderAgentIds().join(', ') : 'keine' }}</dd></div>
                 <div><dt>Standby-Pool</dt><dd id="media-agent-standbys">{{ mediaAgents.standbyAgentIds().length ? mediaAgents.standbyAgentIds().join(', ') : 'keine' }}</dd></div>
@@ -590,7 +602,7 @@
               @if (session.roomCreator()) {
                 <p class="creator-agent-note">Du bist der Raumersteller. Dein gesunder, zugestimmter Agent wird bevorzugt; Gesundheit, Netz, Last und Batterie können diese Präferenz überstimmen.</p>
               }
-              <p class="hint">Ab {{ config.value()?.mediaAgents?.minimumParticipants }} Teilnehmern darf ein gesunder, zugestimmter Primary die Medien verteilen; ein Zweiergespräch bleibt direkt. Unterhalb der Shard-Schwelle – mit den Defaults also bei 3–5 Personen – bewertet die Control Plane Consent, Kapazität, Last, Netz und Batterie und nutzt höchstens diesen einen Forwarder. Erst ab {{ config.value()?.mediaAgents?.shardMinParticipants }} Teilnehmern darf sie Publizierende auf Primary und höchstens {{ config.value()?.mediaAgents?.maxStandbys }} weitere zugestimmte Agenten verteilen. Jeder Publisher bleibt genau einem Agenten zugeordnet.</p>
+              <p class="hint">Ab {{ config.value()?.mediaAgents?.minimumParticipants }} Teilnehmern darf ein gesunder, zugestimmter Primary die Medien verteilen; ein Zweiergespräch bleibt direkt. Mehrere ausgewählte Agenten bilden bei 3–5 Personen einen Primary mit warmen Standbys, aber weiterhin nur einen Medien-Forwarder. Erst ab {{ config.value()?.mediaAgents?.shardMinParticipants }} Teilnehmern darf die Control Plane Publizierende auf Primary und höchstens {{ config.value()?.mediaAgents?.maxStandbys }} weitere zugestimmte Agenten verteilen und die aktiven Agenten direkt föderieren. Jeder Publisher bleibt genau einem Agenten zugeordnet.</p>
               <p class="agent-risk">Ein zugewiesener Agent verarbeitet weiterzuleitende Medienpakete, sieht Verbindungsmetadaten wie IP-Adressen, Timing, Codec und Datenrate und kann Pakete verwerfen. Er benötigt Upload, CPU und gegebenenfalls Akku oder TURN. Ein fester UDP-Port ist nicht erforderlich; eine bewusst konfigurierte Portfreigabe kann direkte ICE-Pfade verbessern.</p>
               </section>
             </section>

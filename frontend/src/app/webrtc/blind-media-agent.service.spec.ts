@@ -95,12 +95,71 @@ describe("blind media-agent browser adapter", () => {
     expect(sent).toEqual([]);
     service.setConsent(true);
     expect(sent).toEqual([{
-      type: "media-agent-consent",
-      enabled: true,
-      agentId: "owner-edge",
+      version: 1,
+      type: "media-agent-consent-set",
+      agentIds: ["owner-edge"],
       automaticTakeover: false,
     }]);
     expect(capture).not.toHaveBeenCalled();
+  });
+
+  it("atomically enables, updates and revokes multiple selected owned agents", () => {
+    expect(service.applyAvailability({
+      version: 1,
+      type: "media-agent-availability",
+      agents: [{ id: "owner-edge", online: true }, { id: "second-edge", online: true }],
+    })).toBe(true);
+    expect(service.selectedAgentIds()).toEqual(["owner-edge"]);
+    service.setAgentSelected("second-edge", true);
+    expect(service.selectedAgentIds()).toEqual(["owner-edge", "second-edge"]);
+
+    service.setConsent(true);
+    expect(service.consentedAgentIds()).toEqual(["owner-edge", "second-edge"]);
+    expect(sent.at(-1)).toEqual({
+      version: 1,
+      type: "media-agent-consent-set",
+      agentIds: ["owner-edge", "second-edge"],
+      automaticTakeover: false,
+    });
+    service.setAgentSelected("owner-edge", false);
+    expect(service.selectedAgentIds()).toEqual(["owner-edge", "second-edge"]);
+
+    service.setAutomaticTakeover(true);
+    expect(sent.at(-1)).toEqual({
+      version: 1,
+      type: "media-agent-consent-set",
+      agentIds: ["owner-edge", "second-edge"],
+      automaticTakeover: true,
+    });
+    service.applyAvailability({
+      version: 1,
+      type: "media-agent-availability",
+      agents: [{ id: "owner-edge", online: false }, { id: "second-edge", online: true }],
+    });
+    expect(service.selectedAgentIds()).toEqual(["owner-edge", "second-edge"]);
+    service.setConsent(false);
+    expect(service.consentEnabled()).toBe(false);
+    expect(service.selectedAgentIds()).toEqual(["second-edge"]);
+    expect(sent.at(-1)).toEqual({
+      version: 1,
+      type: "media-agent-consent-set",
+      agentIds: [],
+      automaticTakeover: true,
+    });
+    expect(capture).not.toHaveBeenCalled();
+  });
+
+  it("bounds the local multi-selection to the contract maximum", () => {
+    service.applyAvailability({
+      version: 1,
+      type: "media-agent-availability",
+      agents: ["a", "b", "c", "d"].map((suffix) => ({ id: `edge-${suffix}`, online: true })),
+    });
+    service.setAgentSelected("edge-b", true);
+    service.setAgentSelected("edge-c", true);
+    expect(service.selectionLimitReached()).toBe(true);
+    service.setAgentSelected("edge-d", true);
+    expect(service.selectedAgentIds()).toEqual(["edge-a", "edge-b", "edge-c"]);
   });
 
   it("updates owned-agent availability through a closed server message", () => {

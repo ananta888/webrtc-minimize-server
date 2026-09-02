@@ -60,9 +60,17 @@ reine Control Plane und terminiert weder RTP noch RTCP oder Medienframes.
 
 ## Creator-Praeferenz und Rollenwechsel
 
-Consent ist pro Nutzergeraet default-aus. Nach sichtbarer Zustimmung meldet
-ein nativer Agent seine operatorseitig konfigurierte Identitaet ausgehend per
-WSS an. Die Control Plane bindet ihn an den aktuellen OIDC-Principal und das
+Consent ist pro Nutzergeraet default-aus. Ein Browser kann bis zu drei eigene
+Online-Agenten markieren und ihre exakte Consent-Menge nach sichtbarer
+Zustimmung atomar mit `media-agent-consent-set` Version 1 ersetzen. Eine leere
+Menge widerruft alle Consents dieses Browser-Peers; Leave entfernt sie
+ebenfalls. Die Control Plane prueft vor der Mutation jede Agent-ID gegen den
+exakten aktuellen OIDC-Principal. Der alte Einzel-Consent bleibt fuer
+bestehende Clients kompatibel, verleiht aber weiterhin nur einem Agenten
+Autoritaet.
+
+Jeder native Agent meldet seine konfigurierte Identitaet ausgehend per WSS an.
+Die Control Plane bindet ihn an den aktuellen OIDC-Principal und das
 zustimmende Raumgeraet. Der Ersteller des Raums erhaelt in der Wahl nur einen
 Bonus; Erreichbarkeit, frischer Heartbeat, freie Kapazitaet, Netzklasse,
 Batterie und beobachtete Lieferqualitaet koennen diesen Bonus ueberstimmen.

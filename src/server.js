@@ -842,6 +842,15 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
           broadcastMediaAgentState(peer.roomId);
           return;
         }
+        if (message.type === "media-agent-consent-set") {
+          mediaAgents.setConsentSet(
+            peer,
+            message,
+            directory.ownerPrincipal(peer.roomId) || registry.creatorPrincipal(peer.roomId),
+          );
+          broadcastMediaAgentState(peer.roomId);
+          return;
+        }
         if (message.type === "media-agent-takeover-response") {
           mediaAgents.respondToTakeover(peer, message);
           broadcastMediaAgentState(peer.roomId);

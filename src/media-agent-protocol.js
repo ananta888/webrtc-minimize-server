@@ -4,6 +4,7 @@ import { PEER_ID_PATTERN, ProtocolError, TRACK_ID_PATTERN } from "./protocol.js"
 
 export const MEDIA_AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 export const MEDIA_AGENT_REQUEST_PATTERN = /^[a-f0-9]{32}$/;
+export const MAX_MEDIA_AGENT_CONSENTS = 3;
 const AUTH_PROOF_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const SIGNATURE_PROOF_PATTERN = /^[A-Za-z0-9_-]{86}$/;
 const ENROLLMENT_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -122,6 +123,26 @@ function federationSignal(value) {
 
 export function parseBrowserMediaAgentMessage(raw) {
   const value = parse(raw);
+  if (value.type === "media-agent-consent-set") {
+    if (!exact(value, new Set(["version", "type", "agentIds", "automaticTakeover"]))) {
+      throw new ProtocolError("unknown_media_agent_consent_set_field");
+    }
+    if (value.version !== 1 || !Array.isArray(value.agentIds)
+      || value.agentIds.length > MAX_MEDIA_AGENT_CONSENTS
+      || typeof value.automaticTakeover !== "boolean"
+      || value.agentIds.some((agentId) => (
+        typeof agentId !== "string" || !MEDIA_AGENT_ID_PATTERN.test(agentId)
+      ))
+      || new Set(value.agentIds).size !== value.agentIds.length) {
+      throw new ProtocolError("invalid_media_agent_consent_set");
+    }
+    return Object.freeze({
+      version: 1,
+      type: value.type,
+      agentIds: Object.freeze([...value.agentIds].sort()),
+      automaticTakeover: value.automaticTakeover,
+    });
+  }
   if (value.type === "media-agent-consent") {
     if (!exact(value, new Set(["type", "enabled", "agentId", "automaticTakeover"]))) {
       throw new ProtocolError("unknown_media_agent_consent_field");

@@ -301,9 +301,9 @@ sequenceDiagram
     M->>CP: Agent-ID + zeitgebundener Proof
     CP-->>M: authentisiert, noch ohne Raumrecht
 
-    U->>P: Agent in diesem Raum sichtbar freigeben
-    P->>CP: media-agent-consent mit Agent-ID
-    CP->>CP: exakten Owner-Principal, Peer und Room-Membership pruefen
+    U->>P: bis zu drei eigene Agenten markieren und sichtbar freigeben
+    P->>CP: media-agent-consent-set v1 mit exakter Agent-ID-Menge
+    CP->>CP: alle Owner-Principals, Peer, Grenze und Room-Membership atomar pruefen
     CP->>CP: Kandidaten bewerten und Route-Epoche erhoehen
     CP-->>M: agent-sync mit kurzer Room-/Peer-/Publish-Lease
     CP-->>P: primary/standby, Publisher-Zuordnung und Lease
