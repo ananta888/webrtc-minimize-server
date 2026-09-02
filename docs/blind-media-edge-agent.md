@@ -157,6 +157,11 @@ direkt zu benoetigten Egress-Agenten; ein Publisher auf einem Standby geht bei
 Bedarf ueber den Primary zum anderen Standby. Aus aktiven Subscription-Plänen
 entstehen exakte `(Link, Richtung, Publisher, Publikation, Layer)`-Demands.
 Nicht angeforderte Layer werden auf diesem Link nicht als Sender angebunden.
+Ein neuer Sender gilt erst nach dem Answer auf genau das lokale Offer als
+ausgehandelt. Wird sein Demand vorher widerrufen, wird er entfernt statt mit
+einer noch nie publizierten Media-Identitaet fuer spaeteres ReplaceTrack
+zurueckzubleiben; erst bestaetigte Sender duerfen ohne SDP pausieren und
+wiederaufgenommen werden.
 PLI-/FIR-Bursts mehrerer Downstreams werden pro Layer in einem begrenzten
 Zeitfenster zusammengefasst; pro Layer gelten eine harte Paketqueue und das
 raumweite Eingangsbitratebudget. Pions registrierte Standard-Interceptors

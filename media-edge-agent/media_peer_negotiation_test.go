@@ -216,6 +216,26 @@ func TestFederationForwardQueuesNegotiationDuringOutstandingOffer(t *testing.T) 
 		federationPeers: map[string]*federationPeer{},
 	}
 	publication.layers["low"] = layer
+	transient, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000},
+		"camera-track", "fed:0123456789abcdef:medium",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publication.layers["medium"] = &forwardLayer{
+		publication: publication, name: "medium", local: transient, federationLocal: transient,
+		federationPeers: map[string]*federationPeer{},
+	}
+	peer.setForward(publication, "medium", true)
+	transientKey := federationTrackKey(publication.publisherID, publication.publicationID, "medium")
+	if peer.senders[transientKey] == nil || peer.senders[transientKey].negotiated {
+		t.Fatal("new federation sender was incorrectly considered negotiated")
+	}
+	peer.setForward(publication, "medium", false)
+	if peer.senders[transientKey] != nil {
+		t.Fatal("unnegotiated deselected sender was retained with an unadvertised media identity")
+	}
 	peer.setForward(publication, "low", true)
 	if !waitForTestCondition(time.Second, func() bool {
 		peer.mu.Lock()
@@ -245,8 +265,24 @@ func TestFederationForwardQueuesNegotiationDuringOutstandingOffer(t *testing.T) 
 	}
 	key := federationTrackKey(publication.publisherID, publication.publicationID, "low")
 	forward := peer.senders[key]
-	if forward == nil || !forward.active || forward.sender.Track() != video {
+	if forward == nil || !forward.active || forward.negotiated || forward.sender.Track() != video {
 		t.Fatal("federation forward did not retain its active sender")
+	}
+	if err = browser.SetRemoteDescription(secondOffer); err != nil {
+		t.Fatal(err)
+	}
+	secondAnswer, err := browser.CreateAnswer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = browser.SetLocalDescription(secondAnswer); err != nil {
+		t.Fatal(err)
+	}
+	if err = peer.acceptSignal(serverMessage{Description: &secondAnswer}); err != nil {
+		t.Fatal(err)
+	}
+	if !forward.negotiated {
+		t.Fatal("answered federation offer did not mark the advertised sender negotiated")
 	}
 	peer.setForward(publication, "low", false)
 	if peer.senders[key] != forward || forward.active || forward.sender.Track() != nil {

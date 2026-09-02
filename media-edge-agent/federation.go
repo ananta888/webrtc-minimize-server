@@ -23,6 +23,7 @@ type federationPeer struct {
 	mu                           sync.Mutex
 	pendingCandidates            []webrtc.ICECandidateInit
 	senders                      map[string]*federationForward
+	pendingOfferSenders          map[string]*federationForward
 	control                      *webrtc.DataChannel
 	makingOffer                  bool
 	needsNegotiation             bool
@@ -46,9 +47,10 @@ type federationPeer struct {
 }
 
 type federationForward struct {
-	sender *webrtc.RTPSender
-	layer  *forwardLayer
-	active bool
+	sender     *webrtc.RTPSender
+	layer      *forwardLayer
+	active     bool
+	negotiated bool
 }
 
 func federationDemandKey(demand federationDemand) string {
@@ -240,6 +242,14 @@ func (f *federationPeer) acceptSignal(message serverMessage) error {
 		}
 	}
 	f.pendingCandidates = nil
+	if description.Type == webrtc.SDPTypeAnswer {
+		for key, pending := range f.pendingOfferSenders {
+			if f.senders[key] == pending && pending.active && pending.sender.Track() != nil {
+				pending.negotiated = true
+			}
+		}
+		f.pendingOfferSenders = nil
+	}
 	if description.Type == webrtc.SDPTypeOffer {
 		answer, err := f.pc.CreateAnswer(nil)
 		if err != nil {
@@ -294,6 +304,12 @@ func (f *federationPeer) negotiate() {
 		f.makingOffer = false
 		f.mu.Unlock()
 		return
+	}
+	f.pendingOfferSenders = make(map[string]*federationForward)
+	for key, forward := range f.senders {
+		if forward.active && forward.sender.Track() != nil {
+			f.pendingOfferSenders[key] = forward
+		}
 	}
 	f.needsNegotiation = false
 	f.localNegotiationGrant = 0
@@ -690,6 +706,16 @@ func (f *federationPeer) setForward(publication *forwardPublication, layerName s
 		f.mu.Unlock()
 		return
 	}
+	if current != nil && !active && !current.negotiated {
+		delete(f.senders, key)
+		_ = f.pc.RemoveTrack(current.sender)
+		f.mu.Unlock()
+		current.layer.publication.mu.Lock()
+		delete(current.layer.federationPeers, f.link.LinkID)
+		current.layer.publication.mu.Unlock()
+		go f.negotiate()
+		return
+	}
 	if current != nil && !active && current.active && current.sender.ReplaceTrack(nil) == nil {
 		current.active = false
 		f.mu.Unlock()
@@ -774,6 +800,7 @@ func (f *federationPeer) close(announce bool, reason string) {
 		f.closed = true
 		wasReady := f.ready
 		f.ready = false
+		f.pendingOfferSenders = nil
 		forwards := make([]*federationForward, 0, len(f.senders))
 		for _, forward := range f.senders {
 			forwards = append(forwards, forward)
