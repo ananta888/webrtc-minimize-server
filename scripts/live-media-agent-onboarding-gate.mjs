@@ -98,11 +98,14 @@ async function downloadInstallers(page) {
     const responsePromise = page.waitForResponse((response) => (
       response.url().endsWith("/api/media-agents/enrollments") && response.request().method() === "POST"
     ));
-    const downloadPromise = page.waitForEvent("download");
+    const downloadPromise = page.waitForEvent("download").catch((error) => error);
     await page.locator("#download-media-agent-installer").click();
-    const [response, download] = await Promise.all([responsePromise, downloadPromise]);
-    assert.equal(response.status(), 201, "live enrollment must be issued");
+    const response = await responsePromise;
     const enrollment = await response.json();
+    assert.equal(response.status(), 201,
+      `live enrollment must be issued, received ${response.status()} ${String(enrollment.error || "unknown").slice(0, 80)}`);
+    const download = await downloadPromise;
+    if (download instanceof Error) throw download;
     assert.ok(AGENT_ID_PATTERN.test(enrollment.agentId), "live enrollment returned an invalid agent ID");
     assert.equal(enrollment.target, target, "live enrollment target changed");
     assert.ok(Number.isSafeInteger(enrollment.expiresAt) && enrollment.expiresAt > Date.now(),
@@ -152,8 +155,22 @@ async function verifyAgentsOnline(page) {
 async function revokeAgents(page) {
   for (const agentId of agentIds) {
     const card = await ownedAgentCard(page, agentId);
-    await card.getByRole("button", { name: "Widerrufen" }).click();
-    await card.getByText(/widerrufen/).waitFor({ timeout: 20_000 });
+    const confirmation = new Promise((resolve, reject) => {
+      page.once("dialog", async (dialog) => {
+        try {
+          assert.equal(dialog.type(), "confirm", "agent revocation must require confirmation");
+          assert.match(dialog.message(), /wirklich widerrufen/i,
+            "agent revocation confirmation text changed");
+          await dialog.accept();
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    await Promise.all([card.getByRole("button", { name: "Widerrufen" }).click(), confirmation]);
+    const updated = page.locator("article.owned-agent", { has: page.locator("code", { hasText: agentId }) });
+    await updated.getByText(/widerrufen/).waitFor({ timeout: 20_000 });
   }
   assert.deepEqual(await page.evaluate(() => window.__captureCalls), [], "agent revocation must not invoke capture");
   console.log(`PASS live media-agent UI revocation: ${agentIds.length}`);
