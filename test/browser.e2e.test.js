@@ -10,7 +10,7 @@ const cameraContinuityWindowMs = Math.max(4_000, Math.min(
   Number.parseInt(process.env.CAMERA_CONTINUITY_WINDOW_MS || "4000", 10) || 4_000,
 ));
 
-test("two Chromium pages negotiate chat, camera, microphone and screen", { timeout: cameraContinuityWindowMs + 35_000 }, async (context) => {
+test("two Chromium pages negotiate SFrame chat and media then clean every capture on stop and leave", { timeout: cameraContinuityWindowMs + 35_000 }, async (context) => {
   try {
     await fs.access(chromium.executablePath());
   } catch {
@@ -393,11 +393,24 @@ test("two Chromium pages negotiate chat, camera, microphone and screen", { timeo
   }
   assert.deepEqual(await ada.evaluate(() => window.__captureCalls), ["getUserMedia", "getUserMedia", "getDisplayMedia"]);
   await ada.locator(".persistent-media-dock #toggle-screen", { hasText: "Bildschirmfreigabe stoppen" }).click();
+  await ada.waitForFunction(() => Object.entries(window.__localTrackSources)
+    .filter(([, source]) => source === "screen")
+    .every(([trackId]) => window.__localTracks[trackId]?.readyState === "ended"));
   await ada.locator(".nav-item", { hasText: "Live" }).click();
 
   assert.deepEqual(pageErrors, []);
   await ada.locator("#leave-room").click();
   await grace.locator("#participant-count", { hasText: "1 / 20" }).waitFor();
+  await ada.waitForFunction(() => Object.values(window.__localTracks)
+    .every((track) => track.readyState === "ended"));
+  assert.deepEqual(await ada.evaluate(() => Object.entries(window.__localTrackSources)
+    .map(([trackId, source]) => ({ source, readyState: window.__localTracks[trackId]?.readyState }))
+    .sort((left, right) => left.source.localeCompare(right.source))), [
+    { source: "camera", readyState: "ended" },
+    { source: "microphone", readyState: "ended" },
+    { source: "screen", readyState: "ended" },
+  ]);
+  await grace.locator(".remote-media", { hasText: "Ada" }).waitFor({ state: "detached" });
 });
 
 test("Chromium keeps screen audio default-off and revokes opted-in audio without stopping video", { timeout: 30_000 }, async (context) => {
@@ -1002,6 +1015,7 @@ test("Chromium VP8 remains decodable in Firefox beyond SFrame counter 350", { ti
   const firefoxContext = await firefoxBrowser.newContext();
   const observePeerConnections = () => {
     window.__peerConnections = [];
+    window.__senderEncodingActiveEvents = [];
     const NativePeerConnection = window.RTCPeerConnection;
     window.RTCPeerConnection = new Proxy(NativePeerConnection, {
       construct(Target, args) {
@@ -1010,6 +1024,14 @@ test("Chromium VP8 remains decodable in Firefox beyond SFrame counter 350", { ti
         return connection;
       },
     });
+    const nativeSetParameters = RTCRtpSender.prototype.setParameters;
+    RTCRtpSender.prototype.setParameters = function observedSetParameters(parameters) {
+      const active = parameters.encodings.map((encoding) => encoding.active !== false);
+      return nativeSetParameters.call(this, parameters).then((result) => {
+        window.__senderEncodingActiveEvents.push(active);
+        return result;
+      });
+    };
   };
   await chromiumContext.addInitScript(observePeerConnections);
   await firefoxContext.addInitScript(observePeerConnections);
@@ -1087,6 +1109,13 @@ test("Chromium VP8 remains decodable in Firefox beyond SFrame counter 350", { ti
   await receiver.waitForFunction(() => [...document.querySelectorAll("video:not([muted])")]
     .some((video) => video.readyState >= 2 && video.videoWidth > 0));
   const beyondCounterBoundary = await waitForInboundVideoStats((stats) => stats.framesDecoded > 400, 48_000);
+  const encodingEventOffset = await sender.evaluate(() => window.__senderEncodingActiveEvents.length);
+  await receiver.locator("#receive-quality-profile-live").selectOption("audio-only");
+  await sender.waitForFunction((offset) => window.__senderEncodingActiveEvents.slice(offset)
+    .some((encodings) => encodings.length > 0 && encodings.every((active) => active === false)), encodingEventOffset);
+  await receiver.locator("#receive-quality-profile-live").selectOption("auto");
+  await sender.waitForFunction((offset) => window.__senderEncodingActiveEvents.slice(offset)
+    .some((encodings) => encodings.some((active) => active === true)), encodingEventOffset);
   const continued = await waitForInboundVideoStats((stats) => (
     stats.keyFramesDecoded > beyondCounterBoundary.keyFramesDecoded
       && stats.framesDecoded > beyondCounterBoundary.framesDecoded + 20

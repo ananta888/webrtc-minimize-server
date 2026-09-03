@@ -1,6 +1,6 @@
 # Aktuelle WebRTC-Architektur als UML-/Datenflussmodell
 
-Stand: 2026-09-02, bezogen auf den aktuellen `main`-Stand. Die Diagramme
+Stand: 2026-09-03, bezogen auf den aktuellen `main`-Stand. Die Diagramme
 beschreiben die implementierte Architektur einschliesslich selektivem
 Simulcast-SFU und nativer Agent-Foederation, nicht einen portablen
 Browser-Ciphertext-DAG. Sie verwenden Mermaid, damit GitHub sie direkt rendert.
@@ -856,7 +856,8 @@ flowchart LR
     subgraph LAN["LAN"]
         MiniCaddy["vorhandener Mini-PC-Caddy"]
         App["Node + Angular\nContainer :8080"]
-        LaptopAgent["laptop-edge\nBlind-Media-Agent im Laptop/WSL"]
+        LaptopAgent["Laptop\nBlind-Media-Agent"]
+        MiniAgent["Mini-PC\nBlind-Media-Agent"]
     end
 
     InternetBrowser -->|"HTTPS/WSS"| OracleProxy
@@ -865,12 +866,18 @@ flowchart LR
     InternetBrowser -->|"OIDC PKCE"| KeycloakProd
     InternetBrowser -.->|"ICE-Fallback"| CoturnProd
     LaptopAgent -->|"ausgehendes WSS /media-agent"| OracleProxy
+    MiniAgent -->|"ausgehendes WSS /media-agent"| OracleProxy
     LaptopAgent <-->|"ICE direkt/STUN/TURN\nkeine feste Portfreigabe behauptet"| InternetBrowser
+    MiniAgent <-->|"ICE direkt/STUN/TURN\nkeine feste Portfreigabe behauptet"| InternetBrowser
 ```
 
-Der laufende `laptop-edge` ist der Blind-Media-Agent. Der getrennte freiwillige
-TURN-Edge-Prozess ist eine andere Anwendung und wird ohne nachgewiesene
-Router-/Firewall-Erreichbarkeit nicht als produktiver ICE-Tier behauptet.
+Laptop und Mini-PC betreiben jeweils einen aktiven Blind-Media-Agenten. Der
+getrennte freiwillige TURN-Edge-Prozess ist eine andere Anwendung und wird ohne
+nachgewiesene Router-/Firewall-Erreichbarkeit nicht als produktiver ICE-Tier
+behauptet. Die ergänzende
+[Broadcast-Ausgangsbasis](broadcast-baseline-inventory.md) dokumentiert die
+beobachtete Oracle-/Mini-PC-Proxykette und hält fest, dass noch kein WHIP-,
+LL-HLS-, MoQ- oder Trusted-Packager-Pfad vorhanden ist.
 
 ## 13. Was die Architektur bewusst nicht verspricht
 

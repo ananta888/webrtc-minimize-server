@@ -6,6 +6,8 @@ Ein eigenständiger, Keycloak-fähiger Raumserver mit Angular-Oberfläche für A
 
 Die [aktuelle Architektur als UML-/Datenflussmodell](docs/current-architecture-uml.md) zeigt den vollständigen Direct-, TURN-, Single-/Multi-Media-Agent-, Consent-, Failover- und Bandbreitenpfad mit konkreten Teilnehmerbeispielen.
 
+Die [verifizierte Broadcast-Ausgangsbasis](docs/broadcast-baseline-inventory.md) hält zusätzlich Trust-, Port-, Browser-, Ressourcen- und Deploymentgrenzen vor dem ersten Packager fest. MediaMTX, WHIP, LL-HLS, MoQ und ein Zuschauer-Player sind darin ausdrücklich noch nicht als vorhandene Produktfähigkeiten ausgewiesen.
+
 Die Hauptnavigation enthält außerdem eine [raumgebundene Mesh-Analyse](docs/mesh-analysis.md). Ihr interaktiver SVG-Graph zeigt Browser, Trusted Relays und native Media-Agenten sowie lokal gemessene beziehungsweise klar als Peer-Angabe markierte Kantenraten. Ein ausgewählter Knoten schlüsselt Upload und Download nach Audio, Kamera/Video, Bildschirmfreigabe und DataChannel auf. Direkt darunter liegen Inventar, Installation, Widerruf, Mehrfachauswahl, Raum-Consent und aktueller Routenzustand der eigenen Media-Agenten; der allgemeine Einstellungsbereich dupliziert diese Bedienung nicht. Die Telemetrie ist flüchtig, nur bei sichtbar geöffneter Analyse angefordert und niemals Membership- oder Routing-Autorität.
 
 ## Lokal starten
