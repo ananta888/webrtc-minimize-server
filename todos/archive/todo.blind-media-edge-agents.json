@@ -5,7 +5,7 @@
   "track": "blind-media-edge-agents",
   "purpose": "Den offenen PROD-NET-004-Fanout als optionalen nativen, SFrame-blinden Medien-Agenten bis zu selektivem Simulcast-SFU und control-plane-autorisierter Agent-Foederation umsetzen, weil standardisierte Browser-Encoded-Transforms Frames nicht zwischen PeerConnections verschieben duerfen.",
   "goal": "Zustimmende native Agenten reduzieren den Publisher-Fanout, waehlen pro Empfaenger eine autorisierte Simulcast-Schicht, foederieren SFrame-Ciphertext ueber begrenzte Agent-Routen und wechseln bei Leave, Ausfall oder Last kontrolliert auf Ersatz oder das bestehende Mesh.",
-  "status": "in_progress",
+  "status": "done",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
   "priority_scale": ["P0", "P1", "P2", "P3"],
   "risk_scale": ["low", "medium", "high", "critical"],
@@ -68,7 +68,7 @@
       "id": "BME-M10",
       "title": "Sicheres Self-Service-Onboarding freiwilliger Media-Agenten",
       "task_ids": ["BME-012", "BME-013", "BME-014"],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "BME-M11",
@@ -302,10 +302,10 @@
     {
       "id": "BME-014",
       "title": "Self-Service-Enrollment, Installer und Produktionsrollout verifizieren",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 99,
+      "progress_percent": 100,
       "depends_on": ["BME-012", "BME-013"],
       "acceptance_criteria": [
         "Positive und negative Node-/Go-/Angular-Tests decken Enrollment, Proof-of-Possession, Replay, Ablauf, Cross-Principal-Zugriff, Widerruf, Restart-Persistenz, geschlossene Contracts sowie exakt nutzerinitiierte Downloads ab.",
@@ -434,20 +434,20 @@
   "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011", "BME-012", "BME-013", "BME-014", "BME-015", "BME-016", "BME-017", "BME-018", "BME-019", "BME-020", "BME-021", "BME-022"],
   "tasks_status_summary": {
     "total": 22,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 21 },
-    "progress_percent_done": 95.45,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 22 },
+    "progress_percent_done": 100,
     "by_priority": { "P0": 12, "P1": 10, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 2, "high": 9, "critical": 11 },
-    "critical_path": { "total": 21, "done": 20, "remaining": 1 },
-    "milestones": { "total": 17, "todo": 0, "in_progress": 1, "blocked": 0, "done": 16 }
+    "critical_path": { "total": 21, "done": 21, "remaining": 0 },
+    "milestones": { "total": 17, "todo": 0, "in_progress": 0, "blocked": 0, "done": 17 }
   },
   "progress_summary": {
-    "state": "in_progress",
+    "state": "completed",
     "todo_remaining": 0,
-    "in_progress": 1,
+    "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 21
+    "done": 22
   },
   "summary_notes": [
     "PROD-NET-004 wird mit diesem Track aus dem Category-Backlog in ausfuehrbare Arbeit ueberfuehrt.",
@@ -518,6 +518,7 @@
     "BME-020 ist am 2026-09-02 abgeschlossen: Feature-Commit bf69c41 ist auf ananta888/main gepusht und per sauberem Fast-Forward auf dem Mini-PC ausgerollt. npm run check bestand mit 114 Angular- und 95 Node-/Browser-/Integrationsfaellen, Chromium, Firefox, SFrame-Counter ueber 350, Produktionsbuild, Todo- und Workflow-Gates; der credential-abhaengige Keycloak-/TURN-Gate blieb sichtbar uebersprungen. Normales DNS ohne aktiven Hosts-Eintrag lieferte ueber 89.168.123.128 Health 200, main-BF6QCBAF.js und den neuen Consent-Set-Marker. WebRTC, unveraenderter Caddy, Mini-PC-Agent und Laptop-Agent liefen mit RestartCount 0; beide Agenten authentisierten nach dem Recreate erneut, und die nicht versionierte Mini-PC-.env blieb Modus 0600.",
     "BME-021 verfolgt die angeforderte Zusammenfuehrung von Topologieanalyse und Media-Agent-Bedienung: Inventar, Installation, Widerruf, Mehrfach-Consent und aktuelle Agentroute sollen im Analysebereich sichtbar sein, ohne Capture oder zusaetzliche Autoritaet auszulösen.",
     "BME-021 ist am 2026-09-02 abgeschlossen: Analyse rendert zuerst den Raumgraphen und danach die einzige vollstaendige Media-Agent-Bedienflaeche mit Inventar, Installation, Widerruf, Mehrfachauswahl, Raumconsent und Primary-/Forwarder-/Standby-Route; Einstellungen, Promo und Login-Ruecksprung sind konsistent getrennt. Feature-Commit e7551bd ist auf ananta888/main gepusht und per sauberem Fast-Forward auf dem Mini-PC ausgerollt. npm run check bestand mit 115 Angular- und 95 Node-/Browser-/Integrationsfaellen, Chromium, Firefox, SFrame-Counter ueber 350, Produktionsbuild sowie Todo- und Workflow-Gates; der credential-abhaengige Keycloak-/TURN-Gate blieb sichtbar uebersprungen. Normales DNS lieferte Health 200, main-SODKNKI7.js und den Analyse-Panel-Marker. WebRTC, unveraenderter Caddy, Mini-PC-Agent und Laptop-Agent liefen mit RestartCount 0, beide Agenten meldeten authenticated and ready, und die nicht versionierte Mini-PC-.env blieb Modus 0600.",
+    "BME-014 ist am 2026-09-03 abgeschlossen: Der reale Linux-Laptop-Lifecycle bestand expliziten Browserdownload, checksum-gebundene Installation, P-256-Authentisierung, Online-Inventar, kontrollierten User-Service-Neustart mit erneuter Authentisierung, bestaetigten UI-Widerruf und gezielten Cleanup. Commit 0aa8f7f sichert den fehlertoleranten Live-Gate und die Evidence auf ananta888/main. Der anschliessende vollstaendige npm-run-check-Gate bestand Todo-/Workflow-Validierung, 172 Angular-Tests, Produktionsbuild main-WB4CQHHM.js, 99 Node-/Browser-/Integrationsfaelle einschliesslich Chromium, Firefox, sechs Peers und SFrame-Counter ueber 350; der credential-abhaengige externe Infrastruktur-Gate blieb sichtbar uebersprungen. Echte macOS-/Windows-Installationen bleiben ehrlich unverified. Damit sind alle 22 Tasks und 17 Milestones dieses Tracks nach ihren Akzeptanzkriterien abgeschlossen.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel mit npm run todos:validate geprueft."
   ]
 }
