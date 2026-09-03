@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MediaAgentOnboardingService } from "./media-agent-onboarding.service";
 
@@ -18,6 +18,10 @@ describe("MediaAgentOnboardingService", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     auth.authorizationHeader.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("does not fetch, install or download anything on construction", () => {
@@ -41,6 +45,7 @@ describe("MediaAgentOnboardingService", () => {
   });
 
   it("downloads an installer only from the explicit method and keeps no ticket in state", async () => {
+    vi.useFakeTimers();
     const response = {
       agentId: agent.id,
       filename: "ananta-media-agent-linux-amd64.sh",
@@ -64,6 +69,8 @@ describe("MediaAgentOnboardingService", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/media-agents/enrollments", expect.objectContaining({ method: "POST" }));
     expect(createObjectURL).toHaveBeenCalledOnce();
     expect(click).toHaveBeenCalledOnce();
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    await vi.runAllTimersAsync();
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:installer");
     expect(JSON.stringify(service.pending())).not.toContain("secret-ticket");
   });

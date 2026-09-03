@@ -133,7 +133,7 @@ export class MediaAgentOnboardingService {
         anchor.click();
       } finally {
         anchor.remove();
-        URL.revokeObjectURL(url);
+        setTimeout(() => URL.revokeObjectURL(url), 0);
       }
       const pending = Object.freeze({
         agentId: installer.agentId,
