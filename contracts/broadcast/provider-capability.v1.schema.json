@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/broadcast/provider-capability.v1.schema.json",
+  "title": "ProviderCapability v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion", "type", "tenantId", "operatorSubjectRef", "capabilityId", "adapterKind",
+    "adapterRef", "adapterVersion", "revision", "status", "ingestProtocols", "outputProtocols",
+    "authModes", "features", "runtimeVerified", "observedAt", "expiresAt"
+  ],
+  "properties": {
+    "contractVersion": {"$ref": "common.v1.schema.json#/$defs/contractVersion"},
+    "type": {"const": "provider-capability"},
+    "tenantId": {"$ref": "common.v1.schema.json#/$defs/tenantId"},
+    "operatorSubjectRef": {"$ref": "common.v1.schema.json#/$defs/subjectRef"},
+    "capabilityId": {"$ref": "common.v1.schema.json#/$defs/capabilityId"},
+    "adapterKind": {"enum": ["self-hosted-gateway", "delivery-provider", "native-packager"]},
+    "adapterRef": {"$ref": "common.v1.schema.json#/$defs/adapterRef"},
+    "adapterVersion": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9._+-]+$"},
+    "revision": {"$ref": "common.v1.schema.json#/$defs/revision"},
+    "status": {"enum": ["supported", "degraded", "experimental", "unavailable"]},
+    "ingestProtocols": {"type": "array", "maxItems": 4, "uniqueItems": true, "items": {"enum": ["whip", "rtmps", "srt", "moq"]}},
+    "outputProtocols": {"type": "array", "maxItems": 5, "uniqueItems": true, "items": {"enum": ["hls", "ll-hls", "whep", "moq", "dash"]}},
+    "authModes": {"type": "array", "maxItems": 5, "uniqueItems": true, "items": {"enum": ["bearer-header", "external-http", "jwt", "signed-path", "short-lived-token"]}},
+    "features": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["recording", "captions", "sframePassthrough", "moqSecureObjects", "remux", "transcoding"],
+      "properties": {
+        "recording": {"type": "boolean"},
+        "captions": {"type": "boolean"},
+        "sframePassthrough": {"type": "boolean"},
+        "moqSecureObjects": {"type": "boolean"},
+        "remux": {"type": "boolean"},
+        "transcoding": {"type": "boolean"}
+      }
+    },
+    "runtimeVerified": {"type": "boolean"},
+    "observedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "expiresAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "supported"}}, "required": ["status"]},
+      "then": {"properties": {"runtimeVerified": {"const": true}}}
+    }
+  ]
+}

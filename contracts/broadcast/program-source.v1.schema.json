@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/broadcast/program-source.v1.schema.json",
+  "title": "ProgramSource v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion", "type", "tenantId", "subjectRef", "roomId", "programId",
+    "sourceId", "revision", "programEpoch", "kind", "trustMode", "state", "createdAt", "updatedAt"
+  ],
+  "properties": {
+    "contractVersion": {"$ref": "common.v1.schema.json#/$defs/contractVersion"},
+    "type": {"const": "program-source"},
+    "tenantId": {"$ref": "common.v1.schema.json#/$defs/tenantId"},
+    "subjectRef": {"$ref": "common.v1.schema.json#/$defs/subjectRef"},
+    "roomId": {"$ref": "common.v1.schema.json#/$defs/roomId"},
+    "programId": {"$ref": "common.v1.schema.json#/$defs/programId"},
+    "sourceId": {"$ref": "common.v1.schema.json#/$defs/sourceId"},
+    "revision": {"$ref": "common.v1.schema.json#/$defs/revision"},
+    "programEpoch": {"$ref": "common.v1.schema.json#/$defs/epoch"},
+    "kind": {"enum": ["microphone", "camera", "screen", "screen-audio", "program-mix"]},
+    "trustMode": {"enum": ["own-source", "trusted-program"]},
+    "state": {"enum": ["selected", "active", "ended", "revoked"]},
+    "peerRef": {"$ref": "common.v1.schema.json#/$defs/peerRef"},
+    "consentId": {"$ref": "common.v1.schema.json#/$defs/consentId"},
+    "createdAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "updatedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"trustMode": {"const": "trusted-program"}}, "required": ["trustMode"]},
+      "then": {"properties": {"consentId": {}}, "required": ["consentId"]},
+      "else": {"not": {"properties": {"consentId": {}}, "required": ["consentId"]}}
+    }
+  ]
+}

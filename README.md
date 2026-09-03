@@ -14,6 +14,8 @@ Das verbindliche [Broadcast-Threat-Model](docs/broadcast-threat-model.md) trennt
 
 Die [versionierte Broadcast-Capability-Matrix](docs/broadcast-capability-matrix.md) trennt Upstream-Unterstützung von real geprüfter Produktreife. Sie pinnt Standards, Browser-/Mobilgrenzen, Player, Codecs und MediaMTX-/Cloudflare-/Native-Adapter; die geschlossene [JSON-Inventur](docs/broadcast-capability-matrix.v1.json) verhindert insbesondere falsche WHIP→LL-HLS-, Remux→Transcode- oder MoQ-Draft-Behauptungen.
 
+Die [Broadcast-Contracts v1](contracts/broadcast/README.md) definieren 13 geschlossene, herstellerneutrale Metadatenfamilien samt Fixtures und serverseitiger Scope-/Epoch-/Ablauf-/Transition-Grenze. Sie enthalten bewusst weder Medien noch Tokens, Secrets, SDP/ICE oder Caption-Text und sind noch an keinen produktiven Broadcast-Endpunkt angebunden.
+
 Die Hauptnavigation enthält außerdem eine [raumgebundene Mesh-Analyse](docs/mesh-analysis.md). Ihr interaktiver SVG-Graph zeigt Browser, Trusted Relays und native Media-Agenten sowie lokal gemessene beziehungsweise klar als Peer-Angabe markierte Kantenraten. Ein ausgewählter Knoten schlüsselt Upload und Download nach Audio, Kamera/Video, Bildschirmfreigabe und DataChannel auf. Direkt darunter liegen Inventar, Installation, Widerruf, Mehrfachauswahl, Raum-Consent und aktueller Routenzustand der eigenen Media-Agenten; der allgemeine Einstellungsbereich dupliziert diese Bedienung nicht. Die Telemetrie ist flüchtig, nur bei sichtbar geöffneter Analyse angefordert und niemals Membership- oder Routing-Autorität.
 
 ## Lokal starten

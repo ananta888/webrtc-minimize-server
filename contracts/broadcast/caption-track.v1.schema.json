@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/broadcast/caption-track.v1.schema.json",
+  "title": "CaptionTrack v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion", "type", "tenantId", "sourceSubjectRef", "roomId", "programId",
+    "sourceId", "captionTrackId", "revision", "programEpoch", "language", "format", "state",
+    "delivery", "persistence", "visibility", "createdAt", "updatedAt"
+  ],
+  "properties": {
+    "contractVersion": {"$ref": "common.v1.schema.json#/$defs/contractVersion"},
+    "type": {"const": "caption-track"},
+    "tenantId": {"$ref": "common.v1.schema.json#/$defs/tenantId"},
+    "sourceSubjectRef": {"$ref": "common.v1.schema.json#/$defs/subjectRef"},
+    "roomId": {"$ref": "common.v1.schema.json#/$defs/roomId"},
+    "programId": {"$ref": "common.v1.schema.json#/$defs/programId"},
+    "sourceId": {"$ref": "common.v1.schema.json#/$defs/sourceId"},
+    "captionTrackId": {"$ref": "common.v1.schema.json#/$defs/captionTrackId"},
+    "revision": {"$ref": "common.v1.schema.json#/$defs/revision"},
+    "programEpoch": {"$ref": "common.v1.schema.json#/$defs/epoch"},
+    "language": {"type": "string", "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$", "maxLength": 24},
+    "format": {"enum": ["webvtt", "imsc1", "moq-object"]},
+    "state": {"enum": ["planned", "active", "stopped", "failed"]},
+    "delivery": {"const": "live-only"},
+    "persistence": {"const": "none"},
+    "visibility": {"enum": ["private", "public"]},
+    "createdAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "updatedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"}
+  }
+}

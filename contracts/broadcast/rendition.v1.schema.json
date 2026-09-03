@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/broadcast/rendition.v1.schema.json",
+  "title": "Rendition v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion", "type", "tenantId", "subjectRef", "roomId", "programId",
+    "publicationId", "renditionId", "revision", "programEpoch", "mediaKind", "codec",
+    "bitrateBps", "state", "createdAt", "updatedAt"
+  ],
+  "properties": {
+    "contractVersion": {"$ref": "common.v1.schema.json#/$defs/contractVersion"},
+    "type": {"const": "rendition"},
+    "tenantId": {"$ref": "common.v1.schema.json#/$defs/tenantId"},
+    "subjectRef": {"$ref": "common.v1.schema.json#/$defs/subjectRef"},
+    "roomId": {"$ref": "common.v1.schema.json#/$defs/roomId"},
+    "programId": {"$ref": "common.v1.schema.json#/$defs/programId"},
+    "publicationId": {"$ref": "common.v1.schema.json#/$defs/publicationId"},
+    "renditionId": {"$ref": "common.v1.schema.json#/$defs/renditionId"},
+    "revision": {"$ref": "common.v1.schema.json#/$defs/revision"},
+    "programEpoch": {"$ref": "common.v1.schema.json#/$defs/epoch"},
+    "mediaKind": {"enum": ["audio", "video"]},
+    "codec": {"$ref": "common.v1.schema.json#/$defs/codec"},
+    "label": {"enum": ["audio", "low", "medium", "high", "source"]},
+    "bitrateBps": {"type": "integer", "minimum": 12000, "maximum": 50000000},
+    "width": {"type": "integer", "minimum": 160, "maximum": 7680},
+    "height": {"type": "integer", "minimum": 90, "maximum": 4320},
+    "frameRate": {"type": "number", "minimum": 1, "maximum": 120},
+    "channels": {"type": "integer", "minimum": 1, "maximum": 8},
+    "sampleRate": {"type": "integer", "enum": [8000, 16000, 24000, 32000, 44100, 48000]},
+    "state": {"enum": ["planned", "active", "degraded", "stopped", "failed"]},
+    "createdAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "updatedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"mediaKind": {"const": "video"}}, "required": ["mediaKind"]},
+      "then": {
+        "properties": {
+          "width": {},
+          "height": {},
+          "frameRate": {},
+          "codec": {"enum": ["vp8", "vp9", "h264", "av1"]}
+        },
+        "required": ["width", "height", "frameRate"],
+        "not": {"anyOf": [
+          {"properties": {"channels": {}}, "required": ["channels"]},
+          {"properties": {"sampleRate": {}}, "required": ["sampleRate"]}
+        ]}
+      },
+      "else": {
+        "properties": {
+          "channels": {},
+          "sampleRate": {},
+          "codec": {"enum": ["opus", "aac"]}
+        },
+        "required": ["channels", "sampleRate"],
+        "not": {"anyOf": [
+          {"properties": {"width": {}}, "required": ["width"]},
+          {"properties": {"height": {}}, "required": ["height"]},
+          {"properties": {"frameRate": {}}, "required": ["frameRate"]}
+        ]}
+      }
+    }
+  ]
+}

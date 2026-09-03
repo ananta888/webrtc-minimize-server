@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/broadcast/viewer-policy.v1.schema.json",
+  "title": "ViewerPolicy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion", "type", "tenantId", "ownerSubjectRef", "roomId", "programId",
+    "policyId", "revision", "programEpoch", "visibility", "authentication", "directoryListed",
+    "anonymousAllowed", "allowedOriginHashes", "updatedAt"
+  ],
+  "properties": {
+    "contractVersion": {"$ref": "common.v1.schema.json#/$defs/contractVersion"},
+    "type": {"const": "viewer-policy"},
+    "tenantId": {"$ref": "common.v1.schema.json#/$defs/tenantId"},
+    "ownerSubjectRef": {"$ref": "common.v1.schema.json#/$defs/subjectRef"},
+    "roomId": {"$ref": "common.v1.schema.json#/$defs/roomId"},
+    "programId": {"$ref": "common.v1.schema.json#/$defs/programId"},
+    "policyId": {"$ref": "common.v1.schema.json#/$defs/policyId"},
+    "revision": {"$ref": "common.v1.schema.json#/$defs/revision"},
+    "programEpoch": {"$ref": "common.v1.schema.json#/$defs/epoch"},
+    "visibility": {"enum": ["private", "public"]},
+    "authentication": {"enum": ["required", "optional", "none"]},
+    "directoryListed": {"type": "boolean"},
+    "anonymousAllowed": {"type": "boolean"},
+    "allowedOriginHashes": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/sha256"}},
+    "updatedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"visibility": {"const": "private"}}, "required": ["visibility"]},
+      "then": {"properties": {"authentication": {"const": "required"}, "directoryListed": {"const": false}, "anonymousAllowed": {"const": false}}}
+    },
+    {
+      "if": {"properties": {"authentication": {"const": "none"}}, "required": ["authentication"]},
+      "then": {"properties": {"anonymousAllowed": {"const": true}}}
+    }
+  ]
+}

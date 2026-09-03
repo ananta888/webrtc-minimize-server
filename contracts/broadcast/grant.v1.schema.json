@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/broadcast/grant.v1.schema.json",
+  "title": "Grant v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion", "type", "tenantId", "issuerSubjectRef", "roomId", "programId",
+    "grantId", "audienceRef", "revision", "programEpoch", "actions", "resourceRef", "status",
+    "singleUse", "issuedAt", "notBefore", "expiresAt"
+  ],
+  "properties": {
+    "contractVersion": {"$ref": "common.v1.schema.json#/$defs/contractVersion"},
+    "type": {"const": "grant"},
+    "tenantId": {"$ref": "common.v1.schema.json#/$defs/tenantId"},
+    "issuerSubjectRef": {"$ref": "common.v1.schema.json#/$defs/subjectRef"},
+    "roomId": {"$ref": "common.v1.schema.json#/$defs/roomId"},
+    "programId": {"$ref": "common.v1.schema.json#/$defs/programId"},
+    "grantId": {"$ref": "common.v1.schema.json#/$defs/grantId"},
+    "audienceRef": {"$ref": "common.v1.schema.json#/$defs/principalRef"},
+    "revision": {"$ref": "common.v1.schema.json#/$defs/revision"},
+    "programEpoch": {"$ref": "common.v1.schema.json#/$defs/epoch"},
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {"enum": ["whip:create", "whip:update", "whip:delete", "playback:manifest", "playback:segment", "whep:read", "moq:publish", "moq:subscribe"]}
+    },
+    "resourceRef": {"$ref": "common.v1.schema.json#/$defs/resourceRef"},
+    "status": {"enum": ["issued", "consumed", "revoked", "expired"]},
+    "singleUse": {"type": "boolean"},
+    "issuedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "notBefore": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "expiresAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "consumedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "revokedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "consumed"}}, "required": ["status"]},
+      "then": {"properties": {"consumedAt": {}}, "required": ["consumedAt"]},
+      "else": {"not": {"properties": {"consumedAt": {}}, "required": ["consumedAt"]}}
+    },
+    {
+      "if": {"properties": {"status": {"const": "revoked"}}, "required": ["status"]},
+      "then": {"properties": {"revokedAt": {}}, "required": ["revokedAt"]},
+      "else": {"not": {"properties": {"revokedAt": {}}, "required": ["revokedAt"]}}
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/broadcast/broadcast-program.v1.schema.json",
+  "title": "BroadcastProgram v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion", "type", "tenantId", "ownerSubjectRef", "roomId", "programId",
+    "revision", "programEpoch", "state", "visibility", "createdAt", "updatedAt"
+  ],
+  "properties": {
+    "contractVersion": {"$ref": "common.v1.schema.json#/$defs/contractVersion"},
+    "type": {"const": "broadcast-program"},
+    "tenantId": {"$ref": "common.v1.schema.json#/$defs/tenantId"},
+    "ownerSubjectRef": {"$ref": "common.v1.schema.json#/$defs/subjectRef"},
+    "roomId": {"$ref": "common.v1.schema.json#/$defs/roomId"},
+    "programId": {"$ref": "common.v1.schema.json#/$defs/programId"},
+    "revision": {"$ref": "common.v1.schema.json#/$defs/revision"},
+    "programEpoch": {"$ref": "common.v1.schema.json#/$defs/epoch"},
+    "state": {"enum": ["draft", "preparing", "awaiting_consent", "publishing", "live", "degraded", "stopping", "stopped", "failed"]},
+    "visibility": {"enum": ["private", "public"]},
+    "title": {"type": "string", "minLength": 1, "maxLength": 80, "pattern": "^[^\\u0000-\\u001f\\u007f]+$"},
+    "sourceIds": {"type": "array", "maxItems": 20, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/sourceId"}},
+    "publicationIds": {"type": "array", "maxItems": 8, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/publicationId"}},
+    "endpointIds": {"type": "array", "maxItems": 8, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/endpointId"}},
+    "captionTrackIds": {"type": "array", "maxItems": 8, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/captionTrackId"}},
+    "viewerPolicyId": {"$ref": "common.v1.schema.json#/$defs/policyId"},
+    "createdAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "updatedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"}
+  }
+}

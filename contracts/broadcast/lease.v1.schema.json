@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/broadcast/lease.v1.schema.json",
+  "title": "Lease v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion", "type", "tenantId", "holderRef", "roomId", "programId", "leaseId",
+    "revision", "programEpoch", "role", "status", "fencingRevision", "acquiredAt", "renewedAt", "expiresAt"
+  ],
+  "properties": {
+    "contractVersion": {"$ref": "common.v1.schema.json#/$defs/contractVersion"},
+    "type": {"const": "lease"},
+    "tenantId": {"$ref": "common.v1.schema.json#/$defs/tenantId"},
+    "holderRef": {"$ref": "common.v1.schema.json#/$defs/principalRef"},
+    "roomId": {"$ref": "common.v1.schema.json#/$defs/roomId"},
+    "programId": {"$ref": "common.v1.schema.json#/$defs/programId"},
+    "leaseId": {"$ref": "common.v1.schema.json#/$defs/leaseId"},
+    "revision": {"$ref": "common.v1.schema.json#/$defs/revision"},
+    "programEpoch": {"$ref": "common.v1.schema.json#/$defs/epoch"},
+    "role": {"enum": ["packager-writer", "gateway-writer"]},
+    "status": {"enum": ["active", "released", "expired", "lost"]},
+    "fencingRevision": {"$ref": "common.v1.schema.json#/$defs/revision"},
+    "acquiredAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "renewedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "expiresAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "releasedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "released"}}, "required": ["status"]},
+      "then": {"properties": {"releasedAt": {}}, "required": ["releasedAt"]},
+      "else": {"not": {"properties": {"releasedAt": {}}, "required": ["releasedAt"]}}
+    }
+  ]
+}

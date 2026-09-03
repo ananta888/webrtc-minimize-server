@@ -336,10 +336,10 @@
     {
       "id": "TBP-005",
       "title": "Versionierte Broadcast-Domain und JSON-Schemas einführen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 1,
+      "progress_percent": 100,
       "depends_on": ["TBP-002", "TBP-003", "TBP-004"],
       "acceptance_criteria": [
         "Additive JSON-Schemas definieren BroadcastProgram, ProgramSource, Publication, Rendition, DeliveryEndpoint, ProviderCapability, Consent, Lease, Grant, ViewerPolicy, CaptionTrack, Health und Event.",
@@ -352,10 +352,10 @@
     {
       "id": "TBP-006",
       "title": "Broadcast-Zustandsmaschine, Idempotenz und Epoch-Fencing implementieren",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 1,
       "depends_on": ["TBP-005"],
       "acceptance_criteria": [
         "Die Zustandsmaschine bildet mindestens draft, preparing, awaiting_consent, publishing, live, degraded, stopping, stopped und failed mit erlaubten Übergängen ab.",
@@ -954,20 +954,20 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 35, "in_progress": 1, "partial": 0, "blocked": 0, "done": 4 },
-    "progress_percent_done": 10,
+    "by_status": { "todo": 34, "in_progress": 1, "partial": 0, "blocked": 0, "done": 5 },
+    "progress_percent_done": 12.5,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
-    "critical_path": { "total": 36, "done": 4, "remaining": 32 },
+    "critical_path": { "total": 36, "done": 5, "remaining": 31 },
     "milestones": { "total": 10, "todo": 8, "in_progress": 1, "blocked": 0, "done": 1 }
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 35,
+    "todo_remaining": 34,
     "in_progress": 1,
     "partial": 0,
     "blocked": 0,
-    "done": 4
+    "done": 5
   },
   "summary_notes": [
     "Der Track wurde am 2026-09-03 nach Abschluss des Blind-Media-Agent-Tracks angenommen. TBP-001 inventarisiert zuerst den verifizierten Ist-Zustand; vor dieser Bestandsaufnahme beginnt kein Broadcast-Medienpfad.",
@@ -979,6 +979,7 @@
     "TBP-002 ist mit der angenommenen ADR 0001 abgeschlossen: Control Plane, Interactive SFrame Plane, Own-Source-Packager, Trusted-Program-Packager, Media-Gateway, CDN-/Provider-Adapter und Viewer besitzen getrennte Verantwortungen und kleine Softwareports. Die ADR dokumentiert Klartext fuer lokale, fremde und gemischte Quellen, haelt Blind-Agenten ohne Schluessel oder Decrypt-Capability und Zuschauer ausserhalb von Membership, Peer-Liste, 20er-Grenze und Mesh. Nach einem isoliert gruenen Firefox-/Vosk-Nachtest wurde der wiederholte volle npm-run-check-Gate am 2026-09-03 mit 172 Angular- und 99 Node-/Browser-/Integrationstests sowie Produktions-Build gruen; der credential-gebundene Live-Infrastrukturgate blieb sichtbar uebersprungen. TBP-003 beginnt mit Threat Model, Datenschutz und pruefbaren Security Claims.",
     "TBP-003 ist mit docs/broadcast-threat-model.md abgeschlossen. Das Modell trennt acht ehrliche Security Claims, definiert Assets/Akteure/Trust-Zonen, konkrete technische Retention und Verantwortlichkeit fuer Identitaet, Metriken, Viewerzahlen, IP-/Providerdaten, Captions, Logs und standardmaessig nicht vorhandenes Recording. Dreissig Threat-/Abuse-Cases einschliesslich kompromittierter Packager/Gateways/Provider, Replay, Pfaderraten, Hotlinking, Quellmissbrauch, Key-Retention, Insider, Metadaten und DoS sind zwanzig spaeteren fail-closed Test-IDs sowie den Implementierungs-/Real-Gates zugeordnet. Der volle npm-run-check-Gate bestand am 2026-09-03 mit 172 Angular- und 99 Node-/Browser-/Integrationstests sowie Produktions-Build; der credential-gebundene Live-Infrastrukturgate blieb sichtbar uebersprungen. TBP-004 beginnt mit der versionierten Standards-, Browser-, Codec- und Provider-Capability-Matrix.",
     "TBP-004 ist mit docs/broadcast-capability-matrix.md und der geschlossenen docs/broadcast-capability-matrix.v1.json abgeschlossen. Standards, Player, sieben Desktop-/Mobilplattformen, sechs Codecs und fuenf getrennte Gateway-/Provider-/Native-Adapter sind mit Abrufdatum, Upstream- und Produktstatus gepinnt. Fuenf neue Tests verhindern insbesondere falsche WHIP-zu-LL-HLS-, Remux-zu-Transcode-, Secure-Objects- und MoQ-Draft-Behauptungen. Der volle npm-run-check-Gate bestand am 2026-09-03 mit 172 Angular-Tests, Produktions-Build und 104 Node-/Browser-/Integrationstests einschliesslich Firefox und Counter-350; der credential-gebundene Live-Infrastrukturgate blieb sichtbar uebersprungen. TBP-005 beginnt mit geschlossenen herstellerneutralen Broadcast-Domain-Schemas.",
+    "TBP-005 ist mit dreizehn geschlossenen Broadcast-v1-Schemafamilien plus gemeinsamen Definitionen und je einem Minimal-, Voll- und Negativfixture abgeschlossen. src/broadcast-contracts.js begrenzt Wire-JSON auf 32 KiB, prueft Typ/Version/Unknown Fields, friert validierte Objekte ein und erzwingt Tenant-, Subject-/Principal-, Room-, Program-, Epoch-, Ablauf- und Revisionsbindungen. Aggregate pruefen Referenzen, aktiven Decrypt-Consent, Sichtbarkeit, runtime-verifizierte Delivery-Capability und einen aktiven Writer je Rolle; geschlossene State-Maschinen verweigern ungueltige oder terminale Rueckwaertsschritte. Der volle npm-run-check-Gate bestand am 2026-09-03 mit 172 Angular-Tests, Produktions-Build und 112 Node-/Browser-/Integrationstests einschliesslich aller dreizehn Capability-/Contracttests, Firefox und Counter-350; der credential-gebundene Live-Infrastrukturgate blieb sichtbar uebersprungen. TBP-006 beginnt mit zustandsbesitzender Idempotenz, getrennten Epochen und Writer-Fencing.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }

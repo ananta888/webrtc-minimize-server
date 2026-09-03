@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/broadcast/event.v1.schema.json",
+  "title": "Event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion", "type", "tenantId", "actorSubjectRef", "roomId", "programId",
+    "eventId", "revision", "programEpoch", "eventType", "entityKind", "entityRef",
+    "reasonCode", "occurredAt", "idempotencyKeyHash"
+  ],
+  "properties": {
+    "contractVersion": {"$ref": "common.v1.schema.json#/$defs/contractVersion"},
+    "type": {"const": "event"},
+    "tenantId": {"$ref": "common.v1.schema.json#/$defs/tenantId"},
+    "actorSubjectRef": {"$ref": "common.v1.schema.json#/$defs/subjectRef"},
+    "roomId": {"$ref": "common.v1.schema.json#/$defs/roomId"},
+    "programId": {"$ref": "common.v1.schema.json#/$defs/programId"},
+    "eventId": {"$ref": "common.v1.schema.json#/$defs/eventId"},
+    "revision": {"$ref": "common.v1.schema.json#/$defs/revision"},
+    "programEpoch": {"$ref": "common.v1.schema.json#/$defs/epoch"},
+    "eventType": {"enum": ["program-created", "program-state-changed", "source-selected", "source-revoked", "publication-state-changed", "endpoint-state-changed", "consent-granted", "consent-revoked", "lease-changed", "grant-changed", "caption-state-changed", "viewer-policy-changed"]},
+    "entityKind": {"enum": ["program", "source", "publication", "rendition", "endpoint", "consent", "lease", "grant", "viewer-policy", "caption-track"]},
+    "entityRef": {"$ref": "common.v1.schema.json#/$defs/entityRef"},
+    "fromState": {"type": "string", "minLength": 1, "maxLength": 24, "pattern": "^[a-z][a-z_-]+$"},
+    "toState": {"type": "string", "minLength": 1, "maxLength": 24, "pattern": "^[a-z][a-z_-]+$"},
+    "reasonCode": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,31}$"},
+    "occurredAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "idempotencyKeyHash": {"$ref": "common.v1.schema.json#/$defs/sha256"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"eventType": {"enum": ["program-state-changed", "publication-state-changed", "endpoint-state-changed", "lease-changed", "grant-changed", "caption-state-changed"]}}, "required": ["eventType"]},
+      "then": {"properties": {"fromState": {}, "toState": {}}, "required": ["fromState", "toState"]}
+    }
+  ]
+}

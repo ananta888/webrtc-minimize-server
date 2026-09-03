@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/broadcast/delivery-endpoint.v1.schema.json",
+  "title": "DeliveryEndpoint v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion", "type", "tenantId", "subjectRef", "roomId", "programId",
+    "publicationId", "endpointId", "capabilityId", "revision", "programEpoch", "protocol",
+    "visibility", "state", "resourceRef", "createdAt", "updatedAt"
+  ],
+  "properties": {
+    "contractVersion": {"$ref": "common.v1.schema.json#/$defs/contractVersion"},
+    "type": {"const": "delivery-endpoint"},
+    "tenantId": {"$ref": "common.v1.schema.json#/$defs/tenantId"},
+    "subjectRef": {"$ref": "common.v1.schema.json#/$defs/subjectRef"},
+    "roomId": {"$ref": "common.v1.schema.json#/$defs/roomId"},
+    "programId": {"$ref": "common.v1.schema.json#/$defs/programId"},
+    "publicationId": {"$ref": "common.v1.schema.json#/$defs/publicationId"},
+    "endpointId": {"$ref": "common.v1.schema.json#/$defs/endpointId"},
+    "capabilityId": {"$ref": "common.v1.schema.json#/$defs/capabilityId"},
+    "revision": {"$ref": "common.v1.schema.json#/$defs/revision"},
+    "programEpoch": {"$ref": "common.v1.schema.json#/$defs/epoch"},
+    "protocol": {"enum": ["hls", "ll-hls", "whep", "moq"]},
+    "visibility": {"enum": ["private", "public"]},
+    "state": {"enum": ["provisioning", "ready", "active", "draining", "stopped", "failed"]},
+    "resourceRef": {"$ref": "common.v1.schema.json#/$defs/resourceRef"},
+    "createdAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "updatedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "expiresAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"}
+  }
+}

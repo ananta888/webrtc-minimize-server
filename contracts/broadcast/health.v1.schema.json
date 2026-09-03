@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/broadcast/health.v1.schema.json",
+  "title": "Health v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion", "type", "tenantId", "reporterSubjectRef", "componentRef",
+    "componentKind", "revision", "state", "checks", "observedAt", "expiresAt"
+  ],
+  "properties": {
+    "contractVersion": {"$ref": "common.v1.schema.json#/$defs/contractVersion"},
+    "type": {"const": "health"},
+    "tenantId": {"$ref": "common.v1.schema.json#/$defs/tenantId"},
+    "reporterSubjectRef": {"$ref": "common.v1.schema.json#/$defs/subjectRef"},
+    "roomId": {"$ref": "common.v1.schema.json#/$defs/roomId"},
+    "programId": {"$ref": "common.v1.schema.json#/$defs/programId"},
+    "programEpoch": {"$ref": "common.v1.schema.json#/$defs/epoch"},
+    "componentRef": {"$ref": "common.v1.schema.json#/$defs/componentRef"},
+    "componentKind": {"enum": ["control-plane", "browser-packager", "native-packager", "media-gateway", "delivery-provider", "player"]},
+    "revision": {"$ref": "common.v1.schema.json#/$defs/revision"},
+    "state": {"enum": ["healthy", "degraded", "unhealthy", "unknown"]},
+    "checks": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "state"],
+        "properties": {
+          "code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,31}$"},
+          "state": {"enum": ["pass", "warn", "fail", "unknown"]}
+        }
+      }
+    },
+    "observedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "expiresAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"}
+  },
+  "dependentRequired": {
+    "roomId": ["programId", "programEpoch"],
+    "programId": ["roomId", "programEpoch"],
+    "programEpoch": ["roomId", "programId"]
+  }
+}
