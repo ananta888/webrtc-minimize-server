@@ -8,6 +8,8 @@ Die [aktuelle Architektur als UML-/Datenflussmodell](docs/current-architecture-u
 
 Die [verifizierte Broadcast-Ausgangsbasis](docs/broadcast-baseline-inventory.md) hält zusätzlich Trust-, Port-, Browser-, Ressourcen- und Deploymentgrenzen vor dem ersten Packager fest. MediaMTX, WHIP, LL-HLS, MoQ und ein Zuschauer-Player sind darin ausdrücklich noch nicht als vorhandene Produktfähigkeiten ausgewiesen.
 
+Die angenommene [Plane-ADR](docs/adr/0001-separated-interactive-broadcast-delivery-planes.md) trennt Control Plane, interaktiven SFrame-Raum, Own-Source-/Trusted-Program-Packager, Media-Gateway, Delivery-Provider und Viewer. Sie beschreibt insbesondere die Klartextgrenzen und hält Zuschauer vollständig außerhalb von Membership, Peer-Liste, 20er-Grenze und Mesh.
+
 Die Hauptnavigation enthält außerdem eine [raumgebundene Mesh-Analyse](docs/mesh-analysis.md). Ihr interaktiver SVG-Graph zeigt Browser, Trusted Relays und native Media-Agenten sowie lokal gemessene beziehungsweise klar als Peer-Angabe markierte Kantenraten. Ein ausgewählter Knoten schlüsselt Upload und Download nach Audio, Kamera/Video, Bildschirmfreigabe und DataChannel auf. Direkt darunter liegen Inventar, Installation, Widerruf, Mehrfachauswahl, Raum-Consent und aktueller Routenzustand der eigenen Media-Agenten; der allgemeine Einstellungsbereich dupliziert diese Bedienung nicht. Die Telemetrie ist flüchtig, nur bei sichtbar geöffneter Analyse angefordert und niemals Membership- oder Routing-Autorität.
 
 ## Lokal starten

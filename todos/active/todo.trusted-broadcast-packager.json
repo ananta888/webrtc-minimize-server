@@ -291,10 +291,10 @@
     {
       "id": "TBP-002",
       "title": "ADR für getrennte Interactive-, Broadcast- und Delivery-Planes verabschieden",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 1,
+      "progress_percent": 100,
       "depends_on": ["TBP-001"],
       "acceptance_criteria": [
         "Eine ADR definiert Control Plane, interaktive SFrame Data Plane, Own-Source-Packager, Trusted-Program-Packager, Media-Gateway, CDN/Provider und Viewer als getrennte Komponenten mit kleinen Ports.",
@@ -306,10 +306,10 @@
     {
       "id": "TBP-003",
       "title": "Threat Model, Datenschutzmodell und ehrliche E2EE-Semantik definieren",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 1,
       "depends_on": ["TBP-001", "TBP-002"],
       "acceptance_criteria": [
         "Das Threat Model behandelt kompromittierte Packager/Gateways, Token-Replay, Pfaderraten, Hotlinking, unerlaubte Quellenauswahl, Key-Retention, Insider, CDN/Provider, Metadaten, DoS und ungewolltes Recording.",
@@ -954,20 +954,20 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 38, "in_progress": 1, "partial": 0, "blocked": 0, "done": 1 },
-    "progress_percent_done": 2.5,
+    "by_status": { "todo": 37, "in_progress": 1, "partial": 0, "blocked": 0, "done": 2 },
+    "progress_percent_done": 5,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
-    "critical_path": { "total": 36, "done": 1, "remaining": 35 },
+    "critical_path": { "total": 36, "done": 2, "remaining": 34 },
     "milestones": { "total": 10, "todo": 9, "in_progress": 1, "blocked": 0, "done": 0 }
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 38,
+    "todo_remaining": 37,
     "in_progress": 1,
     "partial": 0,
     "blocked": 0,
-    "done": 1
+    "done": 2
   },
   "summary_notes": [
     "Der Track wurde am 2026-09-03 nach Abschluss des Blind-Media-Agent-Tracks angenommen. TBP-001 inventarisiert zuerst den verifizierten Ist-Zustand; vor dieser Bestandsaufnahme beginnt kein Broadcast-Medienpfad.",
@@ -976,6 +976,7 @@
     "Zuschauerlast wird aus dem 20-Personen-Raum herausgehalten. Das erweitert nicht die Room-Kapazität und erzeugt keine versteckte Membership oder Signaling-Autorität.",
     "Cloudflare Stream und Cloudflare MoQ werden nicht als ein austauschbarer WHIP-zu-HLS/MoQ-Automat angenommen; jeder Provideradapter muss seine zum Implementierungszeitpunkt belegten Fähigkeiten deklarieren.",
     "TBP-001 inventarisiert auf Basis von Git-Revision 5977482 den implementierten Capture-, SFrame-, Direct-/TURN-, Legacy-Relay-, Blind-Agent-, Vosk-, Signaling-, Caddy- und Deploymentpfad in docs/broadcast-baseline-inventory.md. Der reale fokussierte Zwei-Chromium-Gate belegt SFrame-Medien, Chat, Kamera-Kontinuitaet, expliziten Bildschirm-Stopp, Leave-Cleanup aller Capture-Tracks und Remote-Cleanup. Zwei fruehe Vollgates decodierten nach der Counter-Schwelle 587/589 beziehungsweise 851/851 Frames bei null Drops und null Paketverlust, trafen aber keinen weiteren natuerlichen Keyframe im 15-/30-Sekunden-Nachfenster. Statt das Zeitbudget weiter zu dehnen oder die nur im Dedicated Worker standardisierte Keyframe-API als portable Hauptthread-API auszugeben, erzwingt der Gate ueber den vorhandenen Empfangsprofilpfad ein bestaetigtes Sender-Pause/Resume im selben Publication-/SFrame-Kontext und verlangt danach weiterhin innerhalb von 15 Sekunden einen neuen decodierten Keyframe. Der abschliessende volle npm-run-check-Gate bestand am 2026-09-03 mit 172 Angular-Tests, Produktions-Build und 99 Node-/Browser-/Integrationstests einschliesslich Firefox und Counter-350-Regressionsfall; der credential-gebundene Live-Keycloak-/TURN-Gate blieb sichtbar uebersprungen. TBP-001 ist damit abgeschlossen, TBP-002 beginnt mit der verbindlichen Plane-ADR.",
+    "TBP-002 ist mit der angenommenen ADR 0001 abgeschlossen: Control Plane, Interactive SFrame Plane, Own-Source-Packager, Trusted-Program-Packager, Media-Gateway, CDN-/Provider-Adapter und Viewer besitzen getrennte Verantwortungen und kleine Softwareports. Die ADR dokumentiert Klartext fuer lokale, fremde und gemischte Quellen, haelt Blind-Agenten ohne Schluessel oder Decrypt-Capability und Zuschauer ausserhalb von Membership, Peer-Liste, 20er-Grenze und Mesh. Nach einem isoliert gruenen Firefox-/Vosk-Nachtest wurde der wiederholte volle npm-run-check-Gate am 2026-09-03 mit 172 Angular- und 99 Node-/Browser-/Integrationstests sowie Produktions-Build gruen; der credential-gebundene Live-Infrastrukturgate blieb sichtbar uebersprungen. TBP-003 beginnt mit Threat Model, Datenschutz und pruefbaren Security Claims.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }
