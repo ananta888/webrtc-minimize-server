@@ -798,8 +798,9 @@ aktuelle Zuordnung verteilt Publisherzahlen, nicht gemessene Egress-Bitraten.
 Der reale BME-006-Gate bestand mit sechs Browsern, zwei Agenten, Chromium und
 Firefox sowie Direct und All-TURN inklusive Failover und Mesh-Rueckfall. Das
 belegt den Produktionspfad, aber weiterhin keine garantierte QoS fuer 20
-Teilnehmer. Die erweiterten Drain-, Netzpartition- und Single-Layer-Gates
-bleiben BME-011 zugeordnet.
+Teilnehmer. BME-011 belegt zusaetzlich den portablen Single-Layer-Pfad,
+kontrolliertes Drain und eine Lease-/Heartbeat-Partition mit weiterlaufenden
+Frames auf dem Ersatzagenten.
 
 ### 9.7 TURN-Effekt
 

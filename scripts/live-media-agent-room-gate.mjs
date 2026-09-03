@@ -13,7 +13,10 @@ const appOrigin = process.env.LIVE_APP_ORIGIN || "https://webrtc.ananta.de";
 const username = process.env.LIVE_OIDC_USERNAME || "";
 const password = process.env.LIVE_OIDC_PASSWORD || "";
 const scenario = process.env.LIVE_MEDIA_AGENT_ICE_SCENARIO || "direct";
-const runFaults = process.env.LIVE_MEDIA_AGENT_FAULTS === "1";
+const faultMode = process.env.LIVE_MEDIA_AGENT_FAULT_MODE
+  || (process.env.LIVE_MEDIA_AGENT_FAULTS === "1" ? "outage" : "none");
+const runFaults = faultMode !== "none";
+const forceSingleLayer = process.env.LIVE_MEDIA_AGENT_FORCE_SINGLE_LAYER === "1";
 const routeTimeoutMs = Math.max(15_000, Math.min(120_000,
   Number(process.env.LIVE_MEDIA_AGENT_ROUTE_TIMEOUT_MS || "90000") || 90_000));
 const agentIds = String(process.env.LIVE_MEDIA_AGENT_IDS || "")
@@ -25,6 +28,8 @@ const AGENT_ID_PATTERN = /^edge-[a-f0-9]{16}$/;
 assert.ok(username && password, "LIVE_OIDC_USERNAME and LIVE_OIDC_PASSWORD are required");
 assert.equal(new URL(appOrigin).protocol, "https:", "live room gate requires HTTPS");
 assert.ok(scenario === "direct" || scenario === "all-turn", "ICE scenario must be direct or all-turn");
+assert.ok(["none", "outage", "drain", "partition"].includes(faultMode),
+  "fault mode must be none, outage, drain or partition");
 assert.equal(agentIds.length, 2, "exactly two agent IDs are required");
 assert.ok(agentIds.every((id) => AGENT_ID_PATTERN.test(id)), "invalid media-agent ID");
 assert.equal(new Set(agentIds).size, agentIds.length, "media-agent IDs must be unique");
@@ -38,8 +43,8 @@ const relayBrowserIndexes = Object.freeze(forceRelay ? [0, names.length - 1] : [
 const glareDelayMs = Math.max(0, Math.min(2_000,
   Number(process.env.LIVE_MEDIA_AGENT_GLARE_DELAY_MS || "0") || 0));
 
-async function instrument(context, forceRelayPolicy, delayedOfferMs) {
-  await context.addInitScript(({ forceRelayPolicy, delayedOfferMs }) => {
+async function instrument(context, forceRelayPolicy, delayedOfferMs, forceSingleLayerPolicy) {
+  await context.addInitScript(({ forceRelayPolicy, delayedOfferMs, forceSingleLayerPolicy }) => {
     const summarizeSdp = (description, direction) => {
       const lines = description.sdp.split(/\r?\n/);
       const sections = [];
@@ -276,17 +281,24 @@ async function instrument(context, forceRelayPolicy, delayedOfferMs) {
         const nativeAddTransceiver = connection.addTransceiver.bind(connection);
         connection.addTransceiver = (trackOrKind, init = {}) => {
           const track = typeof trackOrKind === "string" ? null : trackOrKind;
+          const sendEncodings = (init.sendEncodings || []).map((encoding) => ({
+            rid: encoding.rid || "",
+            active: encoding.active,
+            maxBitrate: encoding.maxBitrate,
+            maxFramerate: encoding.maxFramerate,
+            scaleResolutionDownBy: encoding.scaleResolutionDownBy,
+          }));
+          const forcedFailure = forceSingleLayerPolicy
+            && record.dataLabels.includes("media-agent-control")
+            && track?.kind === "video"
+            && ["q", "h", "f"].every((rid) => sendEncodings.some((encoding) => encoding.rid === rid));
           record.transceivers.push({
             trackId: track?.id || "",
             kind: track?.kind || String(trackOrKind),
-            sendEncodings: (init.sendEncodings || []).map((encoding) => ({
-              rid: encoding.rid || "",
-              active: encoding.active,
-              maxBitrate: encoding.maxBitrate,
-              maxFramerate: encoding.maxFramerate,
-              scaleResolutionDownBy: encoding.scaleResolutionDownBy,
-            })),
+            sendEncodings,
+            forcedFailure,
           });
+          if (forcedFailure) throw new DOMException("forced single-layer gate", "NotSupportedError");
           return nativeAddTransceiver(trackOrKind, init);
         };
         connection.addEventListener("icecandidate", (event) => {
@@ -450,7 +462,7 @@ async function instrument(context, forceRelayPolicy, delayedOfferMs) {
         return socket;
       },
     });
-  }, { forceRelayPolicy, delayedOfferMs });
+  }, { forceRelayPolicy, delayedOfferMs, forceSingleLayerPolicy });
 }
 
 async function seedAuthenticatedSession(context, entries) {
@@ -461,6 +473,7 @@ async function seedAuthenticatedSession(context, entries) {
 }
 
 async function login(page) {
+  let lastFailure = null;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
       await page.goto(appOrigin, { waitUntil: "domcontentloaded", timeout: 30_000 });
@@ -478,11 +491,19 @@ async function login(page) {
         await page.locator("#logout").waitFor({ timeout: 30_000 });
       }
       return;
-    } catch {
+    } catch (error) {
+      lastFailure = await page.evaluate(() => ({
+        location: `${location.origin}${location.pathname}`,
+        visibleError: [...document.querySelectorAll("#input-error, .alert-error, .pf-v5-c-alert__title")]
+          .map((entry) => entry.textContent?.trim().replace(/\s+/g, " ").slice(0, 160) || "")
+          .filter(Boolean)
+          .slice(0, 2),
+      })).catch(() => ({ location: "unavailable", visibleError: [] }));
+      lastFailure.error = error instanceof Error ? error.name : "Error";
       await page.waitForTimeout(500 * attempt);
     }
   }
-  throw new Error("OIDC browser login failed after bounded retries");
+  throw new Error(`OIDC browser login failed after bounded retries: ${JSON.stringify(lastFailure)}`);
 }
 
 async function waitForRoute(page, expectedForwarders) {
@@ -560,6 +581,18 @@ async function mediaSnapshot(page) {
         if (value.type === "inbound-rtp" && kind === "video") inboundVideoBytes += value.bytesReceived || 0;
         if (value.type === "inbound-rtp" && kind === "audio") inboundAudioBytes += value.bytesReceived || 0;
       });
+      if (!selectedPair) {
+        for (const value of stats.values()) {
+          if (value.type !== "transport" || !value.selectedCandidatePairId) continue;
+          const pair = stats.get(value.selectedCandidatePairId);
+          const local = stats.get(pair?.localCandidateId);
+          const remote = stats.get(pair?.remoteCandidateId);
+          if (pair?.type === "candidate-pair" && pair.state === "succeeded") {
+            selectedPair = { localType: local?.candidateType || "", remoteType: remote?.candidateType || "" };
+            break;
+          }
+        }
+      }
       for (const sender of record.connection.getSenders()) {
         if (!sender.track) continue;
         const senderReport = await boundedStats(sender);
@@ -850,7 +883,12 @@ try {
     });
     contexts.push(context);
     if (index > 0) await seedAuthenticatedSession(context, authenticatedSession);
-    await instrument(context, relayBrowserIndexes.includes(index), index === 0 ? glareDelayMs : 0);
+    await instrument(
+      context,
+      relayBrowserIndexes.includes(index),
+      index === 0 ? glareDelayMs : 0,
+      forceSingleLayer && index === 0,
+    );
     const page = await context.newPage();
     page.on("pageerror", (error) => pageErrors.push({ browser: index + 1, type: error.name || "Error" }));
     pages.push(page);
@@ -973,19 +1011,25 @@ try {
 
   await creator.locator("#mesh-analysis-navigation").click();
   try {
-    await creator.locator("#media-agent-simulcast", { hasText: "available" }).waitFor({ timeout: 60_000 });
+    await creator.locator("#media-agent-simulcast", {
+      hasText: forceSingleLayer ? "fallback" : "available",
+    }).waitFor({ timeout: 60_000 });
   } catch {
-    throw new Error(`camera simulcast sender was not activated: ${JSON.stringify(await mediaDiagnostics())}`);
+    throw new Error(`camera layer mode was not activated: ${JSON.stringify(await mediaDiagnostics())}`);
   }
-  await creator.waitForFunction(() => {
+  await creator.waitForFunction(({ singleLayer, publicationId }) => {
     const gate = window.__mediaAgentRoomGate;
-    const cameraIds = new Set(Object.entries(gate.localTrackSources)
-      .filter(([, source]) => source === "camera").map(([id]) => id));
-    return gate.peerConnections.some((record) => record.transceivers.some((entry) => (
-      cameraIds.has(entry.trackId)
-      && ["q", "h", "f"].every((rid) => entry.sendEncodings.some((encoding) => encoding.rid === rid))
+    const expectedRids = singleLayer ? ["s"] : ["q", "h", "f"];
+    const senderReady = gate.peerConnections.some((record) => record.transceivers.some((entry) => (
+      entry.trackId === publicationId
+      && entry.forcedFailure !== true
+      && expectedRids.every((rid) => entry.sendEncodings.some((encoding) => encoding.rid === rid))
     )));
-  }, null, { timeout: 60_000 });
+    if (!senderReady) return false;
+    return !singleLayer || gate.serverTrackStates.some((state) => (
+      state.publicationId === publicationId && state.layer === "single" && state.active === true
+    ));
+  }, { singleLayer: forceSingleLayer, publicationId: creatorCameraId }, { timeout: 60_000 });
 
   const receiver = pages[1 === secondPublisherIndex ? 2 : 1];
   await receiver.locator(".nav-item", { hasText: "Live" }).click();
@@ -1141,6 +1185,19 @@ try {
     })}`);
   }
 
+  if (forceSingleLayer) {
+    await creator.waitForFunction(({ publicationId, subscribers }) => {
+      const latest = new Map();
+      for (const state of window.__mediaAgentRoomGate.serverSubscriptionStates) {
+        latest.set(`${state.publicationId}\0${state.subscriberPeerId}`, state);
+      }
+      return subscribers.every((peerId, index) => index === 3 || (
+        latest.get(`${publicationId}\0${peerId}`)?.selectedLayer === "single"
+        && latest.get(`${publicationId}\0${peerId}`)?.ready === true
+      ));
+    }, { publicationId: creatorCameraId, subscribers: subscriberPeerIds }, { timeout: 60_000 });
+  }
+
   const negotiationTurns = await Promise.all(pages.map((page) => page.evaluate(() => ({
     sent: [...window.__mediaAgentRoomGate.agentNegotiationSentTypes],
     received: [...window.__mediaAgentRoomGate.agentNegotiationReceivedTypes],
@@ -1206,7 +1263,8 @@ try {
   let fallbackCopies = 0;
   if (runFaults) {
     const oldPrimary = (await latestRoute(creator)).primaryId;
-    await checkpoint("stop-primary", oldPrimary);
+    await checkpoint(faultMode === "drain" ? "drain-primary"
+      : faultMode === "partition" ? "partition-primary" : "stop-primary", oldPrimary);
     await creator.waitForFunction((previous) => {
       const state = window.__mediaAgentRoomGate.routeStates.at(-1);
       return state?.enabled && state.primaryId && state.primaryId !== previous && state.forwarderIds.length === 1;
@@ -1241,47 +1299,50 @@ try {
       })}`);
     }
 
-    await checkpoint("stop-primary", replacementPrimary);
-    await creator.locator("#media-agent-primary", { hasText: "Mesh-Fallback" }).waitFor({ timeout: 90_000 });
-    console.log("live gate entered direct mesh fallback");
-    await receiver.locator(".nav-item", { hasText: "Live" }).click();
-    const fallbackBeforeFrames = (await decodedFrames(receiver, creatorCameraId, "direct")).frames;
-    try {
-      await waitForDecodedFrameDelta(receiver, creatorCameraId, "direct", fallbackBeforeFrames, 30_000);
-    } catch {
-      throw new Error(`camera did not enter direct SFrame mesh fallback: ${JSON.stringify({
-        fallbackBeforeFrames,
-        diagnostics: await mediaDiagnostics(),
-      })}`);
+    if (faultMode === "outage") {
+      await checkpoint("stop-primary", replacementPrimary);
+      await creator.locator("#media-agent-primary", { hasText: "Mesh-Fallback" }).waitFor({ timeout: 90_000 });
+      console.log("live gate entered direct mesh fallback");
+      await receiver.locator(".nav-item", { hasText: "Live" }).click();
+      const fallbackBeforeFrames = (await decodedFrames(receiver, creatorCameraId, "direct")).frames;
+      try {
+        await waitForDecodedFrameDelta(receiver, creatorCameraId, "direct", fallbackBeforeFrames, 30_000);
+      } catch {
+        throw new Error(`camera did not enter direct SFrame mesh fallback: ${JSON.stringify({
+          fallbackBeforeFrames,
+          diagnostics: await mediaDiagnostics(),
+        })}`);
+      }
+      const fallbackRecoveredFrames = (await decodedFrames(receiver, creatorCameraId, "direct")).frames;
+      console.log("live gate decoded direct fallback video");
+      const fallbackBeforeStats = {
+        sender: await publicationStats(creator, creatorCameraId, "direct", "outbound"),
+        receiver: await publicationStats(receiver, creatorCameraId, "direct", "inbound"),
+      };
+      await receiver.waitForTimeout(8_000);
+      const fallbackAfterFrames = (await decodedFrames(receiver, creatorCameraId, "direct")).frames;
+      if (fallbackAfterFrames <= fallbackRecoveredFrames) {
+        throw new Error(`camera stalled after entering direct SFrame mesh fallback: ${JSON.stringify({
+          fallbackRecoveredFrames,
+          fallbackAfterFrames,
+          before: fallbackBeforeStats,
+          after: {
+            sender: await publicationStats(creator, creatorCameraId, "direct", "outbound"),
+            receiver: await publicationStats(receiver, creatorCameraId, "direct", "inbound"),
+          },
+          diagnostics: await mediaDiagnostics(),
+        })}`);
+      }
+      const fallbackBefore = await mediaSnapshot(creator);
+      await creator.waitForTimeout(5_000);
+      const fallbackAfter = await mediaSnapshot(creator);
+      fallbackCopies = byteDeltas(fallbackBefore, fallbackAfter, "outboundVideoBytes")
+        .filter((entry) => !entry.agent && entry.delta > 1_000).length;
+      assert.ok(fallbackCopies >= 1, "direct mesh fallback did not carry publisher video");
+      await checkpoint("restart-agents", agentIds.join(","));
+    } else {
+      await checkpoint(faultMode === "drain" ? "restart-drained" : "heal-partition", oldPrimary);
     }
-    const fallbackRecoveredFrames = (await decodedFrames(receiver, creatorCameraId, "direct")).frames;
-    console.log("live gate decoded direct fallback video");
-    const fallbackBeforeStats = {
-      sender: await publicationStats(creator, creatorCameraId, "direct", "outbound"),
-      receiver: await publicationStats(receiver, creatorCameraId, "direct", "inbound"),
-    };
-    await receiver.waitForTimeout(8_000);
-    const fallbackAfterFrames = (await decodedFrames(receiver, creatorCameraId, "direct")).frames;
-    if (fallbackAfterFrames <= fallbackRecoveredFrames) {
-      throw new Error(`camera stalled after entering direct SFrame mesh fallback: ${JSON.stringify({
-        fallbackRecoveredFrames,
-        fallbackAfterFrames,
-        before: fallbackBeforeStats,
-        after: {
-          sender: await publicationStats(creator, creatorCameraId, "direct", "outbound"),
-          receiver: await publicationStats(receiver, creatorCameraId, "direct", "inbound"),
-        },
-        diagnostics: await mediaDiagnostics(),
-      })}`);
-    }
-    const fallbackBefore = await mediaSnapshot(creator);
-    await creator.waitForTimeout(5_000);
-    const fallbackAfter = await mediaSnapshot(creator);
-    fallbackCopies = byteDeltas(fallbackBefore, fallbackAfter, "outboundVideoBytes")
-      .filter((entry) => !entry.agent && entry.delta > 1_000).length;
-    assert.ok(fallbackCopies >= 1, "direct mesh fallback did not carry publisher video");
-
-    await checkpoint("restart-agents", agentIds.join(","));
     await waitForRoute(creator, agentIds);
     await creator.locator("#media-agent-primary").filter({ hasNotText: "Mesh-Fallback" }).waitFor({ timeout: 90_000 });
   }
@@ -1326,7 +1387,7 @@ try {
   await creator.locator("#participant-count", { hasText: "5 / 20" }).waitFor({ timeout: 60_000 });
 
   assert.deepEqual(pageErrors, []);
-  console.log(`PASS live media-agent room: scenario=${scenario} browsers=6 agents=2 relayBrowsers=${relayBrowserIndexes.length} simulcast=3 publisherCopies=${agentVideoCopies} directCopies=${directVideoCopies} fallbackCopies=${fallbackCopies}`);
+  console.log(`PASS live media-agent room: scenario=${scenario} fault=${faultMode} browsers=6 agents=2 relayBrowsers=${relayBrowserIndexes.length} layers=${forceSingleLayer ? "single-fallback" : "simulcast-3"} publisherCopies=${agentVideoCopies} directCopies=${directVideoCopies} fallbackCopies=${fallbackCopies}`);
 } catch (error) {
   console.error(`FAIL live media-agent room before teardown: ${error instanceof Error ? error.stack : String(error)}`);
   throw error;

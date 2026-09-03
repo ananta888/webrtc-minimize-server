@@ -359,5 +359,6 @@ individuelle Simulcast-Auswahl und einen direkten Zwei-Agenten-Pfad mit
 byte-identischem opaque Payload. Diese Matrix ist trotzdem kein garantierter
 20-Teilnehmer-QoS-Nachweis. Der Browser-Gate prueft unabhaengig davon
 Chromium→Firefox mit VP8 bis ueber SFrame-Counter 350 und verlangt nach dieser
-Grenze einen weiteren dekodierten Keyframe ohne Frame-Drops. Die erweiterten
-Drain-, Netzpartition- und Single-Layer-Gates bleiben BME-011 zugeordnet.
+Grenze einen weiteren dekodierten Keyframe ohne Frame-Drops. BME-011 belegt
+zusaetzlich den portablen Single-Layer-Pfad, kontrolliertes Drain und eine
+Lease-/Heartbeat-Partition mit weiterlaufenden Frames auf dem Ersatzagenten.
