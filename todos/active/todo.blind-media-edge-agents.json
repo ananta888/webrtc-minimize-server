@@ -110,7 +110,7 @@
       "id": "BME-M17",
       "title": "Glare-freie Browser-Agent-Verhandlung",
       "task_ids": ["BME-022"],
-      "status": "in_progress"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -418,10 +418,10 @@
     {
       "id": "BME-022",
       "title": "Browser-Agent-Offers mit einem geschlossenen Request-Grant-Turn serialisieren",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 95,
+      "progress_percent": 100,
       "depends_on": ["BME-004", "BME-010", "BME-018"],
       "acceptance_criteria": [
         "Ein versionierter, exakt feldgepruefter und groessen-/ratenbegrenzter Control-DataChannel-Vertrag erteilt dem nativen Agenten hoechstens einen kurzlebigen Offer-Turn; Browser-Angebote haben Vorrang, ohne Membership-, Track-, Layer- oder Key-Autoritaet zu uebertragen.",
@@ -434,20 +434,20 @@
   "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011", "BME-012", "BME-013", "BME-014", "BME-015", "BME-016", "BME-017", "BME-018", "BME-019", "BME-020", "BME-021", "BME-022"],
   "tasks_status_summary": {
     "total": 22,
-    "by_status": { "todo": 0, "in_progress": 3, "partial": 1, "blocked": 0, "done": 18 },
-    "progress_percent_done": 81.82,
+    "by_status": { "todo": 0, "in_progress": 2, "partial": 1, "blocked": 0, "done": 19 },
+    "progress_percent_done": 86.36,
     "by_priority": { "P0": 12, "P1": 10, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 2, "high": 9, "critical": 11 },
-    "critical_path": { "total": 21, "done": 17, "remaining": 4 },
-    "milestones": { "total": 17, "todo": 0, "in_progress": 4, "blocked": 0, "done": 13 }
+    "critical_path": { "total": 21, "done": 18, "remaining": 3 },
+    "milestones": { "total": 17, "todo": 0, "in_progress": 3, "blocked": 0, "done": 14 }
   },
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 3,
+    "in_progress": 2,
     "partial": 1,
     "blocked": 0,
-    "done": 18
+    "done": 19
   },
   "summary_notes": [
     "PROD-NET-004 wird mit diesem Track aus dem Category-Backlog in ausfuehrbare Arbeit ueberfuehrt.",
@@ -486,6 +486,7 @@
     "BME-022 ist lokal umgesetzt und fokussiert verifiziert: Browser und Pion binden native Offers an einen exakt monotonen Request-/Grant-Turn auf dem geordneten media-agent-control-DataChannel; Browser-Offers haben Vorrang. Contract-, Angular-, Node-, Serverintegrations- und Pion-Tests pruefen Richtungsbindung, Epochen, Duplikate, Spruenge, unbekannte Felder, Groesse, Rate, Timeout und Coalescing. Ein ausgerollter Direct-Kandidatenlauf mit sechs Browsern, zwei Agenten, Kamera, Mikrofon, Bildschirm, individuellen Layern und einer Publisher-Kopie bestand bereits; wiederholte Direct-/All-TURN-/Fault-Laeufe, voller Check, sauberer finaler Build sowie Commit, Push und Rollout bleiben vor done offen.",
     "Ein passiver Wiederholungslauf reproduzierte BME-022 als lokale Browser-SDP-Race: negotiationneeded startete waehrend eines noch laufenden lokalen Answers einen zweiten Offer und Chromium verwarf danach die geaenderte m-line-Reihenfolge. Eine pro Verbindung begrenzte SDP-Barriere serialisiert Remote-Description, lokalen Answer und den folgenden Browser-Offer. Der Regressionstest bildet exakt diesen Zwischenzustand ab. Fuenf anschliessende Direct-Laeufe mit sechs Browsern und zwei Agenten bestanden Kamera, Mikrofon, Bildschirm, Simulcast, individuelle Layer, Foederation, Consent-Widerruf und Leave.",
     "Die diagnosefreie Produktionsmatrix bestand danach Direct und All-TURN jeweils normal sowie mit Primary-Ausfall, Ersatzagent, Totalausfall, weiter dekodierendem Direct-SFrame-Mesh und Rueckkehr beider Agenten. Ein absichtlich um eine Sekunde verzoegerter Browser-Offer deckte im TURN-Pfad vorauseilende ICE-Restart-Kandidaten auf; Browser und Pion puffern sie nun bounded nach usernameFragment und wenden nur die passende a=ice-ufrag-Generation an. Chromium und Firefox belegten echte lokale Relay-Kandidaten. Der Live-Gate besitzt wiederholbare stdin-Checkpoints, harte Stats-Grenzen und einen strikt aktuellen Leave-Nachweis. Beide Agenten sowie das oeffentliche Downloadartefakt laufen hashgleich; Vollgates, gezielter Commit, Push und Rollout des finalen Commit-Builds bleiben offen.",
+    "BME-022 ist am 2026-09-03 abgeschlossen: Die reale Sechs-Browser-/Zwei-Agent-Matrix bestand Direct und All-TURN jeweils normal und mit Primary-Ausfall, Ersatzagent, Totalausfall, weiter dekodierendem Direct-SFrame-Mesh sowie Rueckkehr beider Agenten. npm run check, Go-Race/Vet, 100 Wiederholungen der kritischen Verhandlungs-, Foederations- und ICE-Generationstests, alle Compose-Varianten, der gehaertete Agent-Image-Gate und npm-Produktionsaudit ohne Findings bestanden. Commit ad73de3 wurde gezielt auf ananta888/main gepusht und exakt daraus auf dem Mini-PC neu gebaut und ausgerollt; der normale HTTPS-Pfad liefert Health ok und main-LNX5FOA5.js. Laptop-Agent, Mini-PC-Agent und das oeffentliche Linux-amd64-Downloadartefakt sind bytegleich mit SHA-256 efcfbdffc3a619be091f117ad99c5ee171e2c30e43b98eb7f29cfde1a929ddbb; beide User-Dienste laufen aktiv mit NRestarts 0. Diagnose-Binaries und temporaere Diagnose-Hooks sind nicht im Commit enthalten. Oracle-Coturn war fuer die reale Relay-Matrix ausreichend, seine kleinen user-/total-quota-Werte sind jedoch ausdruecklich kein 20-Teilnehmer-Kapazitaetsnachweis.",
     "BME-007 verfolgt die vom Nutzer angeforderte, codegebundene UML- und Bandbreitendarstellung aller aktuellen Direct-, TURN-, Trusted-Relay- und Blind-Media-Agent-Pfade.",
     "BME-007 ist abgeschlossen: docs/current-architecture-uml.md enthaelt elf lokal mit Mermaid CLI gerenderte Diagramme sowie gegengepruefte 5-, 8- und 20-Teilnehmer-Rechnungen; npm run check bestand mit sichtbarem lokalem Live-Infrastruktur-Skip.",
     "BME-008 bis BME-011 verfolgen den angeforderten sequentiellen Ausbau: zuerst geschlossene Contracts und selektives Simulcast innerhalb des vorhandenen Publisher-Shardings, unmittelbar danach eine control-plane-autorisierte Agent-Foederation und der reale Rolloutnachweis.",
