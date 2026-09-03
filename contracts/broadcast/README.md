@@ -45,7 +45,7 @@ geschlossen und besitzt einen konstanten `type` und `contractVersion: 1`.
 
 ## Serverseitige Grenze
 
-Die Servergrenze bleibt auf drei kleine, getrennte Ports verteilt:
+Die Servergrenze bleibt auf kleine, getrennte Ports verteilt:
 
 - [`broadcast-contracts.js`](../../src/broadcast-contracts.js) begrenzt mit
   `parseBroadcastContract()` Wire-JSON vor dem Parsen auf 32 KiB,
@@ -56,13 +56,23 @@ Die Servergrenze bleibt auf drei kleine, getrennte Ports verteilt:
   tatsächlich runtime-geprüfte Delivery-Capabilities;
 - [`broadcast-transitions.js`](../../src/broadcast-transitions.js) fordert mit
   `assertBroadcastTransition()` eine exakt nächste Revision, dieselbe
-  Identität und Epoch sowie einen erlaubten Lifecycle-Schritt.
+  Identität und Epoch sowie einen erlaubten Lifecycle-Schritt;
+- [`broadcast-grant-policy.js`](../../src/broadcast-grant-policy.js) prüft
+  verifizierte OIDC-Attestation, aktuelle Membership/Rolle, Programm,
+  Trusted-Packager-Consent, Viewer-Policy und den angeforderten Scope;
+- [`broadcast-device-proof.js`](../../src/broadcast-device-proof.js) bindet
+  jeden Grant an einen frischen, nicht wiederverwendbaren P-256-Gerätebeweis;
+- [`broadcast-grant-authority.js`](../../src/broadcast-grant-authority.js)
+  signiert, registriert, konsumiert und widerruft die eng begrenzten Grants.
 
 Die Funktionen sind noch an keinen HTTP- oder WebSocket-Endpunkt angebunden.
 Diese Trennung ist beabsichtigt: Die
-[Broadcast-State-Machine](../../docs/broadcast-state-machine.md) besitzt jetzt
-den reinen, idempotenten und gefenceten Domain-State; TBP-007/TBP-008 ergänzen
-erst Autorisierung und öffentliche/private Audience-Policy.
+[Broadcast-State-Machine](../../docs/broadcast-state-machine.md) besitzt den
+reinen, idempotenten und gefenceten Domain-State. Die
+[Broadcast-Grant-Grenze](../../docs/broadcast-grants.md) ergänzt kurzlebige,
+OIDC-, Geräte-, Consent-, Policy-, Pfad- und Epoch-gebundene Autorisierung,
+ohne Tokenmaterial in den Contracts abzulegen. TBP-008 ergänzt als Nächstes
+die öffentliche/private Audience- und Directory-Policy.
 
 ## State-Maschinen
 

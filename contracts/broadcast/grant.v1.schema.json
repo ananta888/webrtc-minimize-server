@@ -6,8 +6,9 @@
   "additionalProperties": false,
   "required": [
     "contractVersion", "type", "tenantId", "issuerSubjectRef", "roomId", "programId",
-    "grantId", "audienceRef", "revision", "programEpoch", "actions", "resourceRef", "status",
-    "singleUse", "issuedAt", "notBefore", "expiresAt"
+    "grantId", "grantKind", "tokenAudience", "audienceRef", "deviceRef", "revision",
+    "programEpoch", "actions", "resourceRef", "pathHash", "status", "singleUse",
+    "issuedAt", "notBefore", "expiresAt"
   ],
   "properties": {
     "contractVersion": {"$ref": "common.v1.schema.json#/$defs/contractVersion"},
@@ -17,7 +18,10 @@
     "roomId": {"$ref": "common.v1.schema.json#/$defs/roomId"},
     "programId": {"$ref": "common.v1.schema.json#/$defs/programId"},
     "grantId": {"$ref": "common.v1.schema.json#/$defs/grantId"},
+    "grantKind": {"enum": ["publisher", "packager", "playback"]},
+    "tokenAudience": {"enum": ["broadcast-publisher", "broadcast-packager", "broadcast-playback"]},
     "audienceRef": {"$ref": "common.v1.schema.json#/$defs/principalRef"},
+    "deviceRef": {"$ref": "common.v1.schema.json#/$defs/deviceRef"},
     "revision": {"$ref": "common.v1.schema.json#/$defs/revision"},
     "programEpoch": {"$ref": "common.v1.schema.json#/$defs/epoch"},
     "actions": {
@@ -28,6 +32,9 @@
       "items": {"enum": ["whip:create", "whip:update", "whip:delete", "playback:manifest", "playback:segment", "whep:read", "moq:publish", "moq:subscribe"]}
     },
     "resourceRef": {"$ref": "common.v1.schema.json#/$defs/resourceRef"},
+    "pathHash": {"$ref": "common.v1.schema.json#/$defs/sha256"},
+    "policyId": {"$ref": "common.v1.schema.json#/$defs/policyId"},
+    "policyRevision": {"$ref": "common.v1.schema.json#/$defs/revision"},
     "status": {"enum": ["issued", "consumed", "revoked", "expired"]},
     "singleUse": {"type": "boolean"},
     "issuedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
@@ -37,6 +44,47 @@
     "revokedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"}
   },
   "allOf": [
+    {
+      "if": {"properties": {"grantKind": {"const": "publisher"}}, "required": ["grantKind"]},
+      "then": {
+        "properties": {
+          "tokenAudience": {"const": "broadcast-publisher"},
+          "actions": {"type": "array", "items": {"enum": ["whip:create", "whip:update", "whip:delete", "moq:publish"]}},
+          "singleUse": {"const": true}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"grantKind": {"const": "packager"}}, "required": ["grantKind"]},
+      "then": {
+        "properties": {
+          "tokenAudience": {"const": "broadcast-packager"},
+          "actions": {"type": "array", "items": {"enum": ["whip:create", "whip:update", "whip:delete", "moq:publish"]}},
+          "singleUse": {"const": true}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"grantKind": {"const": "playback"}}, "required": ["grantKind"]},
+      "then": {
+        "properties": {
+          "tokenAudience": {"const": "broadcast-playback"},
+          "actions": {"type": "array", "items": {"enum": ["playback:manifest", "playback:segment", "whep:read", "moq:subscribe"]}},
+          "singleUse": {"const": false},
+          "policyId": {},
+          "policyRevision": {}
+        },
+        "required": ["policyId", "policyRevision"]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {"required": ["policyId"]},
+            {"required": ["policyRevision"]}
+          ]
+        }
+      }
+    },
     {
       "if": {"properties": {"status": {"const": "consumed"}}, "required": ["status"]},
       "then": {"properties": {"consumedAt": {}}, "required": ["consumedAt"]},

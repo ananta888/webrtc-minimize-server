@@ -50,6 +50,9 @@ export function createOidcVerifier(config, options = {}) {
         return Object.freeze({
           subject: payload.sub,
           issuer: payload.iss,
+          audience: config.oidcAudience,
+          issuedAt: Number.isSafeInteger(payload.iat) ? payload.iat * 1_000 : 0,
+          expiresAt: payload.exp * 1_000,
           displayName: displayName(payload),
           algorithm: protectedHeader.alg,
         });

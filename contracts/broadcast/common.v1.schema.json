@@ -23,6 +23,7 @@
     "adapterRef": {"type": "string", "pattern": "^adp_[A-Za-z0-9_-]{16,64}$"},
     "componentRef": {"type": "string", "pattern": "^cmp_[A-Za-z0-9_-]{16,64}$"},
     "peerRef": {"type": "string", "pattern": "^peer_[A-Za-z0-9_-]{16,64}$"},
+    "deviceRef": {"type": "string", "pattern": "^dev_[A-Za-z0-9_-]{16,64}$"},
     "resourceRef": {"type": "string", "pattern": "^res_[A-Za-z0-9_-]{16,64}$"},
     "entityRef": {"type": "string", "pattern": "^(prg|src|pub|ren|end|cap|cns|lea|grt|pol|cpt)_[A-Za-z0-9_-]{16,64}$"},
     "revision": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},

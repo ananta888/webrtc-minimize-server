@@ -18,6 +18,8 @@ Die [Broadcast-Contracts v1](contracts/broadcast/README.md) definieren 13 geschl
 
 Die reine [Broadcast-State-Machine](docs/broadcast-state-machine.md) ergänzt idempotente Create-/Start-/Quellenwechsel-/Handoff-/Revoke-/Stop-/Retry-Kommandos, fünf unabhängige Epochen sowie ablaufendes Packager-/Gateway-Fencing. Sie erzeugt nur Control-Plane-Effekte und ist weiterhin nicht an einen produktiven Medienpfad angeschlossen.
 
+Die [Broadcast-Grant-Grenze](docs/broadcast-grants.md) prüft OIDC-Attestation, aktuelle Membership/Rolle, einen frischen raum- und aktionsgebundenen P-256-Gerätebeweis, Trusted-Packager-Consent, Viewer-Policy und Quoten, bevor sie kurzlebige ES256-Publisher-, Packager- oder Playback-Grants ausstellt. Grants sind eng an Programmrevision/Epoch, Audience, Gerät, Ressource und Pfad gebunden, serverseitig sofort widerrufbar und ausschließlich für `Authorization`-Header vorgesehen. Auch diese Domain-Schicht ist noch nicht an einen öffentlichen Broadcast-Endpunkt angebunden.
+
 Die Hauptnavigation enthält außerdem eine [raumgebundene Mesh-Analyse](docs/mesh-analysis.md). Ihr interaktiver SVG-Graph zeigt Browser, Trusted Relays und native Media-Agenten sowie lokal gemessene beziehungsweise klar als Peer-Angabe markierte Kantenraten. Ein ausgewählter Knoten schlüsselt Upload und Download nach Audio, Kamera/Video, Bildschirmfreigabe und DataChannel auf. Direkt darunter liegen Inventar, Installation, Widerruf, Mehrfachauswahl, Raum-Consent und aktueller Routenzustand der eigenen Media-Agenten; der allgemeine Einstellungsbereich dupliziert diese Bedienung nicht. Die Telemetrie ist flüchtig, nur bei sichtbar geöffneter Analyse angefordert und niemals Membership- oder Routing-Autorität.
 
 ## Lokal starten

@@ -37,9 +37,14 @@ test("OIDC verifier validates signature, issuer, audience, expiry and subject", 
   assert.deepEqual(identity, {
     subject: "user-123",
     issuer: "https://identity.test/realms/webrtc",
+    audience: "webrtc-room-server",
+    issuedAt: identity.issuedAt,
+    expiresAt: identity.expiresAt,
     displayName: "ada",
     algorithm: "RS256",
   });
+  assert.ok(identity.issuedAt > 0);
+  assert.ok(identity.expiresAt > identity.issuedAt);
   await assert.rejects(verifier.verify(await token({ audience: "other-service" })), (error) => (
     error instanceof AuthenticationError && error.code === "invalid_access_token"
   ));
