@@ -19,7 +19,7 @@
     "policyId": {"$ref": "common.v1.schema.json#/$defs/policyId"},
     "revision": {"$ref": "common.v1.schema.json#/$defs/revision"},
     "programEpoch": {"$ref": "common.v1.schema.json#/$defs/epoch"},
-    "visibility": {"enum": ["private", "public"]},
+    "visibility": {"enum": ["private", "unlisted", "public"]},
     "authentication": {"enum": ["required", "optional", "none"]},
     "directoryListed": {"type": "boolean"},
     "anonymousAllowed": {"type": "boolean"},
@@ -30,6 +30,18 @@
     {
       "if": {"properties": {"visibility": {"const": "private"}}, "required": ["visibility"]},
       "then": {"properties": {"authentication": {"const": "required"}, "directoryListed": {"const": false}, "anonymousAllowed": {"const": false}}}
+    },
+    {
+      "if": {"properties": {"visibility": {"const": "unlisted"}}, "required": ["visibility"]},
+      "then": {"properties": {"authentication": {"const": "required"}, "directoryListed": {"const": false}, "anonymousAllowed": {"const": false}}}
+    },
+    {
+      "if": {"properties": {"visibility": {"const": "public"}}, "required": ["visibility"]},
+      "then": {"properties": {"directoryListed": {"const": true}}}
+    },
+    {
+      "if": {"properties": {"authentication": {"const": "required"}}, "required": ["authentication"]},
+      "then": {"properties": {"anonymousAllowed": {"const": false}}}
     },
     {
       "if": {"properties": {"authentication": {"const": "none"}}, "required": ["authentication"]},

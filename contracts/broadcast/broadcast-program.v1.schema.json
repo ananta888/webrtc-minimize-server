@@ -18,7 +18,7 @@
     "revision": {"$ref": "common.v1.schema.json#/$defs/revision"},
     "programEpoch": {"$ref": "common.v1.schema.json#/$defs/epoch"},
     "state": {"enum": ["draft", "preparing", "awaiting_consent", "publishing", "live", "degraded", "stopping", "stopped", "failed"]},
-    "visibility": {"enum": ["private", "public"]},
+    "visibility": {"enum": ["private", "unlisted", "public"]},
     "title": {"type": "string", "minLength": 1, "maxLength": 80, "pattern": "^[^\\u0000-\\u001f\\u007f]+$"},
     "sourceIds": {"type": "array", "maxItems": 20, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/sourceId"}},
     "publicationIds": {"type": "array", "maxItems": 8, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/publicationId"}},

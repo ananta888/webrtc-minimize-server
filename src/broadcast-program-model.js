@@ -17,6 +17,7 @@ export const BROADCAST_PROGRAM_ACTIONS = Object.freeze([
   "retry",
   "lifecycle",
   "cleanup-complete",
+  "visibility-change",
 ]);
 export const BROADCAST_WRITER_ROLES = Object.freeze(["packager-writer", "gateway-writer"]);
 export const BROADCAST_DOMAIN_PATTERNS = Object.freeze({
@@ -24,6 +25,7 @@ export const BROADCAST_DOMAIN_PATTERNS = Object.freeze({
   subjectRef: /^sub_[A-Za-z0-9_-]{16,64}$/,
   roomId: /^[a-z0-9][a-z0-9-]{5,47}$/,
   programId: /^prg_[A-Za-z0-9_-]{16,64}$/,
+  policyId: /^pol_[A-Za-z0-9_-]{16,64}$/,
   sourceId: /^src_[A-Za-z0-9_-]{16,64}$/,
   consentId: /^cns_[A-Za-z0-9_-]{16,64}$/,
   leaseId: /^lea_[A-Za-z0-9_-]{16,64}$/,

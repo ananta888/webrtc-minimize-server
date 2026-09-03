@@ -77,10 +77,13 @@ Das öffentliche Key-Inventar zeigt nur Key-ID, Generation sowie
 kann anschließend deaktiviert und sein privater Anteil aus dem erreichbaren
 Authority-State entfernt werden.
 
-Öffentliches oder anonymes Playback wird durch TBP-007 bewusst noch nicht
-freigeschaltet. Directory-, Sichtbarkeits- und Audience-Regeln folgen in
-TBP-008. Viewer-Grants erzeugen dabei niemals Room-Membership, Peer-IDs,
-Signaling-Tickets, Chat-, Capture- oder SFrame-Rechte.
+Öffentliches oder anonymes Playback wird durch die Grant-Schicht allein nicht
+freigeschaltet. Die getrennte
+[Broadcast-Audience-Policy](broadcast-audience-policy.md) entscheidet
+Sichtbarkeit und Viewerzugriff; die spätere HTTP-/Player-Integration verbindet
+diese Entscheidung mit der Grant-Ausgabe. Viewerentscheidungen erzeugen dabei
+niemals Room-Membership, Peer-IDs, Signaling-Tickets, Chat-, Capture- oder
+SFrame-Rechte.
 
 ## Verifikation
 

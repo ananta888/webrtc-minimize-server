@@ -19,7 +19,7 @@ const LIFECYCLE_TRIGGERS = new Set([
 ]);
 const ADVANCE_TARGETS = new Set(["awaiting_consent", "publishing", "live", "degraded"]);
 const COMMAND_FIELDS = Object.freeze({
-  create: ["visibility", "title"],
+  create: ["visibility", "title", "viewerPolicyId"],
   start: ["expectedRevision", "expectedBroadcastEpoch", "requiresConsent"],
   advance: ["expectedRevision", "expectedBroadcastEpoch", "toState"],
   "source-change": ["expectedRevision", "expectedBroadcastEpoch", "sourceIds"],
@@ -38,6 +38,12 @@ const COMMAND_FIELDS = Object.freeze({
     "reasonCode",
   ],
   "cleanup-complete": ["expectedRevision", "expectedBroadcastEpoch", "reasonCode"],
+  "visibility-change": [
+    "expectedRevision",
+    "expectedBroadcastEpoch",
+    "visibility",
+    "policyHash",
+  ],
 });
 const COMMON_COMMAND_FIELDS = Object.freeze([
   "commandVersion",
@@ -120,12 +126,15 @@ export function normalizeBroadcastProgramCommand(value) {
 
   switch (command.action) {
     case "create":
-      if (!new Set(["private", "public"]).has(command.visibility)) {
+      if (!new Set(["private", "unlisted", "public"]).has(command.visibility)) {
         broadcastProgramFail("invalid_broadcast_command");
       }
       if (command.title !== undefined && (
         typeof command.title !== "string" || command.title.length < 1 || command.title.length > 80
       )) broadcastProgramFail("invalid_broadcast_command");
+      if (command.viewerPolicyId !== undefined) {
+        matches(command.viewerPolicyId, BROADCAST_DOMAIN_PATTERNS.policyId);
+      }
       break;
     case "start":
       if (typeof command.requiresConsent !== "boolean") broadcastProgramFail("invalid_broadcast_command");
@@ -157,6 +166,12 @@ export function normalizeBroadcastProgramCommand(value) {
     case "retry":
     case "cleanup-complete":
       if (command.reasonCode === undefined) broadcastProgramFail("invalid_broadcast_command");
+      break;
+    case "visibility-change":
+      if (!new Set(["private", "unlisted", "public"]).has(command.visibility)) {
+        broadcastProgramFail("invalid_broadcast_command");
+      }
+      matches(command.policyHash, BROADCAST_DOMAIN_PATTERNS.sha256);
       break;
     case "lifecycle": {
       if (!LIFECYCLE_TRIGGERS.has(command.trigger) || command.reasonCode === undefined) {

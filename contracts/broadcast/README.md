@@ -18,7 +18,7 @@ aktiviert noch keinen Broadcast-Pfad.
 | `consent` | quellen-, action-, epoch- und zeitgebundene Freigabe | ja |
 | `lease` | gefenceter Packager-/Gateway-Writer | ja |
 | `grant` | kurzlebige erlaubte Protokollaktionen ohne Tokenmaterial | ja |
-| `viewer-policy` | private/öffentliche Sichtbarkeit und Auth-Regel | ja |
+| `viewer-policy` | private/unlisted/öffentliche Broadcast-Sichtbarkeit und Auth-Regel | ja |
 | `caption-track` | Sprache, Format und flüchtiger Live-Lifecycle | ja |
 | `health` | begrenzte technische Zustände ohne Freitext | optional |
 | `event` | geschlossene Lifecycle-Ereignisse und Idempotency-Hash | ja |
@@ -71,8 +71,10 @@ Diese Trennung ist beabsichtigt: Die
 reinen, idempotenten und gefenceten Domain-State. Die
 [Broadcast-Grant-Grenze](../../docs/broadcast-grants.md) ergänzt kurzlebige,
 OIDC-, Geräte-, Consent-, Policy-, Pfad- und Epoch-gebundene Autorisierung,
-ohne Tokenmaterial in den Contracts abzulegen. TBP-008 ergänzt als Nächstes
-die öffentliche/private Audience- und Directory-Policy.
+ohne Tokenmaterial in den Contracts abzulegen. Die
+[Broadcast-Audience-Policy](../../docs/broadcast-audience-policy.md) setzt
+darauf die drei getrennten Sichtbarkeiten, Rollenaktionen, atomare
+Policy-/Epochwechsel sowie das minimale öffentliche Broadcast-Verzeichnis.
 
 ## State-Maschinen
 

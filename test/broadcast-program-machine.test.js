@@ -234,6 +234,43 @@ test("membership, route, topology, broadcast and lease epochs remain independent
   );
 });
 
+test("audience-policy changes are idempotent and roll only broadcast and lease epochs", () => {
+  const empty = initializeBroadcastProgramMachine(SCOPE, INITIAL_EPOCHS);
+  const created = apply(empty, "create", {
+    visibility: "private",
+    viewerPolicyId: "pol_aaaaaaaaaaaaaaaa",
+  }).state;
+  const change = command(created, "visibility-change", {
+    visibility: "unlisted",
+    policyHash: hash("unlisted-policy"),
+  });
+  const changed = applyBroadcastProgramCommand(created, change, NOW + 1);
+  assert.equal(changed.state.program.state, "draft");
+  assert.equal(changed.state.program.visibility, "unlisted");
+  assert.equal(changed.state.program.viewerPolicyId, "pol_aaaaaaaaaaaaaaaa");
+  assert.equal(changed.state.program.revision, 2);
+  assert.deepEqual(changed.state.epochs, {
+    membership: INITIAL_EPOCHS.membership,
+    route: INITIAL_EPOCHS.route,
+    topology: INITIAL_EPOCHS.topology,
+    broadcast: INITIAL_EPOCHS.broadcast + 1,
+    lease: INITIAL_EPOCHS.lease + 1,
+  });
+  assert.deepEqual(changed.effects.map(({ type }) => type), [
+    "fence-previous-writers",
+    "revoke-program-grants",
+    "reconfigure-delivery-visibility",
+  ]);
+  assert.equal(applyBroadcastProgramCommand(changed.state, change, NOW + 2).duplicate, true);
+  assert.throws(
+    () => applyBroadcastProgramCommand(changed.state, {
+      ...change,
+      visibility: "public",
+    }, NOW + 2),
+    errorCode("broadcast_idempotency_key_reused"),
+  );
+});
+
 test("packager and gateway commands require current revision and an unexpired exact fence", () => {
   const state = createPublishing();
   const packager = state.writerLeases.find((candidate) => candidate.role === "packager-writer");

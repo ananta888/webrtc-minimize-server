@@ -164,6 +164,7 @@ function applyCreate(state, command, now) {
     state: "draft",
     visibility: command.visibility,
     ...(command.title === undefined ? {} : { title: command.title }),
+    ...(command.viewerPolicyId === undefined ? {} : { viewerPolicyId: command.viewerPolicyId }),
     createdAt: now,
     updatedAt: now,
   };
@@ -404,6 +405,30 @@ function applyCleanupComplete(state, command, now) {
   };
 }
 
+function applyVisibilityChange(state, command, now) {
+  if (!state.program.viewerPolicyId) fail("broadcast_viewer_policy_required");
+  const previousProgramEpoch = state.epochs.broadcast;
+  const previousLeaseEpoch = state.epochs.lease;
+  const next = rollProgramEpoch(state, { visibility: command.visibility }, now);
+  return {
+    state: next,
+    effects: [
+      effect(next, "fence-previous-writers", {
+        previousLeaseEpoch,
+        reasonCode: "AUDIENCE_POLICY_CHANGED",
+      }),
+      effect(next, "revoke-program-grants", {
+        previousProgramEpoch,
+        reasonCode: "AUDIENCE_POLICY_CHANGED",
+      }),
+      effect(next, "reconfigure-delivery-visibility", {
+        visibility: command.visibility,
+        policyHash: command.policyHash,
+      }),
+    ],
+  };
+}
+
 export function applyBroadcastProgramCommand(value, input, now = Date.now()) {
   const state = validateBroadcastProgramMachine(value);
   const command = normalizeBroadcastProgramCommand(input);
@@ -447,6 +472,9 @@ export function applyBroadcastProgramCommand(value, input, now = Date.now()) {
       break;
     case "cleanup-complete":
       result = applyCleanupComplete(state, command, now);
+      break;
+    case "visibility-change":
+      result = applyVisibilityChange(state, command, now);
       break;
     default:
       fail("unknown_broadcast_command");

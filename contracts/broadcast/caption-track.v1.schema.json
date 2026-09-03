@@ -25,7 +25,7 @@
     "state": {"enum": ["planned", "active", "stopped", "failed"]},
     "delivery": {"const": "live-only"},
     "persistence": {"const": "none"},
-    "visibility": {"enum": ["private", "public"]},
+    "visibility": {"enum": ["private", "unlisted", "public"]},
     "createdAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
     "updatedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"}
   }
