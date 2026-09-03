@@ -195,8 +195,16 @@ describe("MediaPublicationService", () => {
     });
     expect(service.screenAudioActive()).toBe(true);
     expect(service.screenAudioTrack()).toBe(screen.audio);
+    expect(service.localOriginalSources().map(({ source }) => source).sort()).toEqual([
+      "screen",
+      "screen-audio",
+    ]);
+    const screenAudioSourceId = service.localOriginalSources()
+      .find(({ source }) => source === "screen-audio")!.sourceId;
     const screenAudioStopped = vi.fn();
+    const localOriginalStopped = vi.fn();
     const unregister = service.registerScreenAudioStopListener(screenAudioStopped);
+    const unregisterOriginal = service.registerLocalOriginalStopListener(localOriginalStopped);
 
     service.setScreenAudioEnabled(false);
     expect(getDisplayMedia).toHaveBeenCalledTimes(1);
@@ -207,7 +215,10 @@ describe("MediaPublicationService", () => {
     expect(service.screenAudioActive()).toBe(false);
     expect(service.screenAudioTrack()).toBeNull();
     expect(screenAudioStopped).toHaveBeenCalledOnce();
+    expect(localOriginalStopped).toHaveBeenCalledWith(screenAudioSourceId);
+    expect(service.localOriginalSources().map(({ source }) => source)).toEqual(["screen"]);
     unregister();
+    unregisterOriginal();
     expect(service.active("screen")).toBe(true);
   });
 
@@ -293,5 +304,29 @@ describe("MediaPublicationService", () => {
     expect(preferences.cameraAppliedLabel()).toBe("426 × 240 · 2 FPS");
     service.stop("camera");
     expect(preferences.cameraAppliedLabel()).toBe("Nicht aktiv");
+  });
+
+  it("removes owned-source references when mesh attachment fails after capture", async () => {
+    const audio = fakeStream("audio");
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(audio.stream), getDisplayMedia: vi.fn() },
+    });
+    const mesh = {
+      attachPublication: vi.fn(() => { throw new Error("mesh_attach_failed"); }),
+      detachPublication: vi.fn(),
+    };
+    const service = new MediaPublicationService(
+      mesh as never,
+      new VideoCapturePreferencesService(),
+      new MediaStrategyService(),
+    );
+
+    await service.start("microphone");
+    expect(service.error()).toBe("mesh_attach_failed");
+    expect(service.active("microphone")).toBe(false);
+    expect(service.localOriginalSources()).toEqual([]);
+    expect(audio.track.stop).toHaveBeenCalledOnce();
+    expect(mesh.detachPublication).toHaveBeenCalledWith("microphone");
   });
 });

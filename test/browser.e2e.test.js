@@ -126,7 +126,11 @@ test("two Chromium pages negotiate SFrame chat and media then clean every captur
   const pageErrors = [];
   for (const page of [ada, grace]) page.on("pageerror", (error) => pageErrors.push(error.message));
 
-  await ada.goto(origin);
+  await ada.goto(`${origin}/?section=broadcast`);
+  await ada.locator("#broadcast-preflight-heading").waitFor();
+  assert.deepEqual(await ada.evaluate(() => window.__captureCalls), []);
+  assert.match(await ada.locator("app-broadcast-preflight").textContent(), /Tritt zuerst einem Raum bei/);
+  await ada.locator(".nav-item", { hasText: "Räume" }).click();
   await ada.locator(".nav-item", { hasText: "Einstellungen" }).click();
   await ada.locator("#camera-resolution").selectOption("360p");
   await ada.locator("#camera-frame-rate").selectOption({ label: "5 FPS" });
@@ -292,6 +296,32 @@ test("two Chromium pages negotiate SFrame chat and media then clean every captur
   });
   assert.deepEqual(await ada.evaluate(() => window.__captureCalls), ["getUserMedia", "getUserMedia"]);
   assert.equal(await ada.locator("#media-strategy-preset").inputValue(), "custom");
+  const captureCallsBeforePreview = await ada.evaluate(() => [...window.__captureCalls]);
+  await ada.locator("#broadcast-navigation").click();
+  await ada.locator("#broadcast-preflight-heading").waitFor();
+  assert.deepEqual(await ada.evaluate(() => window.__captureCalls), captureCallsBeforePreview);
+  const ownSourceOptions = ada.locator("#broadcast-own-source-list input[type=checkbox]");
+  assert.equal(await ownSourceOptions.count(), 2);
+  for (let index = 0; index < await ownSourceOptions.count(); index += 1) {
+    await ownSourceOptions.nth(index).check();
+  }
+  assert.deepEqual(await ada.evaluate(() => window.__captureCalls), captureCallsBeforePreview);
+  await ada.locator("#prepare-broadcast-preview").click();
+  await ada.locator("#broadcast-preview").waitFor();
+  await ada.locator("#broadcast-preview video").waitFor();
+  assert.equal(await ada.locator("#broadcast-preview .preview-tile").count(), 2);
+  assert.equal(await ada.evaluate(() => {
+    const originalIds = new Set(Object.keys(window.__localTracks));
+    const previewTracks = [...document.querySelectorAll("#broadcast-preview video")]
+      .flatMap((video) => video.srcObject?.getTracks() || []);
+    return previewTracks.length === 1 && previewTracks.every((track) => !originalIds.has(track.id));
+  }), true);
+  await ada.locator("#stop-broadcast-preview").click();
+  await ada.locator("#broadcast-preview").waitFor({ state: "detached" });
+  assert.equal(await ada.evaluate(() => Object.values(window.__localTracks)
+    .filter((track) => track.kind === "audio" || track.kind === "video")
+    .every((track) => track.readyState === "live")), true);
+  assert.deepEqual(await ada.evaluate(() => window.__captureCalls), captureCallsBeforePreview);
   await ada.locator(".nav-item", { hasText: "Live" }).click();
 
   await ada.evaluate(() => { window.__forceLowBitrateLink = true; });
@@ -958,6 +988,15 @@ test("two Firefox peers retain direct adaptive mesh, SFrame, chat and camera", {
   await ada.locator("#toggle-camera", { hasText: "Kamera stoppen" }).waitFor();
   await grace.locator(".media-label").getByText("Ada · Kamera").waitFor();
   await Promise.all([ada, grace].map((page) => page.locator("#sframe-status", { hasText: "active" }).waitFor()));
+  await ada.locator("#broadcast-navigation").click();
+  assert.deepEqual(await ada.evaluate(() => window.__captureCalls), ["getUserMedia"]);
+  await ada.locator("#broadcast-own-source-list input[type=checkbox]").check();
+  await ada.locator("#prepare-broadcast-preview").click();
+  await ada.locator("#broadcast-preview video").waitFor();
+  await ada.locator("#stop-broadcast-preview").click();
+  await ada.locator("#broadcast-preview").waitFor({ state: "detached" });
+  assert.deepEqual(await ada.evaluate(() => window.__captureCalls), ["getUserMedia"]);
+  await ada.locator(".nav-item", { hasText: "Live" }).click();
   await grace.waitForFunction(() => [...document.querySelectorAll("video:not([muted])")]
     .some((video) => video.readyState >= 2 && video.videoWidth > 0));
   await grace.locator("#topology-status", { hasText: "adaptive_mesh" }).waitFor();

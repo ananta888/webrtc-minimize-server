@@ -70,7 +70,7 @@ export class BroadcastPlaybackService implements OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
-    this.controller?.abort("destroy");
+    this.controller?.abort(new DOMException("destroy", "AbortError"));
     void this.close();
   }
 
@@ -112,7 +112,7 @@ export class BroadcastPlaybackService implements OnDestroy {
   }
 
   private async closeWithPort(): Promise<void> {
-    this.controller?.abort("close");
+    this.controller?.abort(new DOMException("close", "AbortError"));
     this.lifecycle.set(this.session() || this.opening ? "closing" : "idle");
     if (this.opening) {
       try {

@@ -7,6 +7,8 @@ const component = readFileSync("frontend/src/app/features/room/room-page.compone
 const mediaControls = readFileSync("frontend/src/app/shared/media-control-bar.component.ts", "utf8");
 const captionService = readFileSync("frontend/src/app/captions/live-caption.service.ts", "utf8");
 const captionCatalog = readFileSync("frontend/src/app/captions/vosk-model-catalog.ts", "utf8");
+const broadcastPreflight = readFileSync("frontend/src/app/broadcast/broadcast-preflight.component.html", "utf8");
+const broadcastComponent = readFileSync("frontend/src/app/broadcast/broadcast-preflight.component.ts", "utf8");
 
 describe("Room page information architecture", () => {
   it("links the top-right GitHub icon to this repository without reusing the app tab", () => {
@@ -30,9 +32,29 @@ describe("Room page information architecture", () => {
     expect(template).toContain('id="mesh-analysis-navigation"');
     expect(template).toContain("activeSection() === 'analysis'");
     expect(template).toContain("<app-mesh-analysis />");
-    expect(component).toContain('"rooms" | "live" | "captions" | "analysis" | "chat" | "settings"');
+    expect(component).toContain('"rooms" | "live" | "broadcast" | "captions" | "analysis" | "chat" | "settings"');
     expect(component).not.toContain("getUserMedia");
     expect(component).not.toContain("getDisplayMedia");
+  });
+
+  it("offers an explicit own-source broadcast preflight without owning capture policy in UI", () => {
+    expect(template).toContain('id="broadcast-navigation"');
+    expect(template).toContain("activeSection() === 'broadcast'");
+    expect(template).toContain("<app-broadcast-preflight");
+    expect(broadcastPreflight).toContain('id="broadcast-own-source-list"');
+    expect(broadcastPreflight).toContain('id="prepare-broadcast-preview"');
+    expect(broadcastPreflight).toContain('(click)="preparePreview()"');
+    expect(broadcastPreflight).toContain('id="broadcast-audience"');
+    expect(broadcastPreflight).toContain('id="broadcast-captions"');
+    expect(broadcastPreflight).toContain('id="broadcast-codec-profile"');
+    expect(broadcastPreflight).toContain('id="broadcast-upload-estimate"');
+    expect(broadcastPreflight).toContain('id="broadcast-e2ee-warning"');
+    expect(broadcastPreflight).toContain("nicht SFrame-E2EE");
+    expect(broadcastPreflight).toContain("WHIP folgt in TBP-011");
+    expect(broadcastComponent).not.toContain("getUserMedia");
+    expect(broadcastComponent).not.toContain("getDisplayMedia");
+    expect(component).toContain('window.addEventListener("pagehide", this.pageHide)');
+    expect(component).toContain("this.broadcastPreflight.resetForSession()");
   });
 
   it("offers explicit local Vosk captions and a directly loadable fixed model catalog", () => {

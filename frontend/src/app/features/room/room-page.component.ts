@@ -2,6 +2,8 @@ import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, effect
 import { FormsModule } from "@angular/forms";
 
 import { OidcAuthService } from "../../auth/oidc-auth.service";
+import { BroadcastOwnSourcePreflightService } from "../../broadcast/broadcast-own-source-preflight.service";
+import { BroadcastPreflightComponent } from "../../broadcast/broadcast-preflight.component";
 import { LiveCaptionService } from "../../captions/live-caption.service";
 import { formatModelSize } from "../../captions/vosk-model-catalog";
 import { VoskModelManagerService } from "../../captions/vosk-model-manager.service";
@@ -33,13 +35,14 @@ import { PairWorkspacePanelComponent } from "../../workspace/pair-workspace-pane
 import { PairWorkspaceService, WorkspaceSummary } from "../../workspace/pair-workspace.service";
 import { MeshAnalysisComponent } from "../../mesh-analysis/mesh-analysis.component";
 
-type AppSection = "rooms" | "live" | "captions" | "analysis" | "chat" | "settings";
+type AppSection = "rooms" | "live" | "broadcast" | "captions" | "analysis" | "chat" | "settings";
 
 @Component({
   selector: "app-room-page",
   standalone: true,
   imports: [
     FormsModule,
+    BroadcastPreflightComponent,
     MediaControlBarComponent,
     MediaStreamDirective,
     MediaMosaicComponent,
@@ -95,6 +98,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     || this.directory.error()
     || this.session.error()
     || this.media.error()
+    || this.broadcastPreflight.errorCode()
     || this.captions.error()
     || this.captionModels.error()
     || this.mediaAgentOnboarding.error()
@@ -102,8 +106,12 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   ));
   private directoryRefreshHandle: ReturnType<typeof setInterval> | null = null;
   private readonly beforeUnload = () => this.shutdown();
+  private readonly pageHide = () => this.shutdown();
   private readonly stopCaptureOnSessionEnd = effect(() => {
-    if (!this.session.joined() && this.signaling.status() !== "connecting") this.media.stopAll();
+    if (!this.session.joined() && this.signaling.status() !== "connecting") {
+      void this.resetBroadcastPreflight();
+      this.media.stopAll();
+    }
   });
 
   constructor(
@@ -116,6 +124,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     readonly mesh: PeerMeshService,
     readonly mediaAgents: BlindMediaAgentService,
     readonly media: MediaPublicationService,
+    readonly broadcastPreflight: BroadcastOwnSourcePreflightService,
     readonly captions: LiveCaptionService,
     readonly captionModels: VoskModelManagerService,
     readonly mediaStrategy: MediaStrategyService,
@@ -127,8 +136,9 @@ export class RoomPageComponent implements OnInit, OnDestroy {
 
   async ngOnInit(): Promise<void> {
     window.addEventListener("beforeunload", this.beforeUnload);
+    window.addEventListener("pagehide", this.pageHide);
     const params = new URLSearchParams(location.search);
-    if (new Set<AppSection>(["rooms", "live", "captions", "analysis", "chat", "settings"]).has(params.get("section") as AppSection)) {
+    if (new Set<AppSection>(["rooms", "live", "broadcast", "captions", "analysis", "chat", "settings"]).has(params.get("section") as AppSection)) {
       this.activeSection.set(params.get("section") as AppSection);
     }
     this.roomInput.set(params.get("room") || "");
@@ -165,9 +175,11 @@ export class RoomPageComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     window.removeEventListener("beforeunload", this.beforeUnload);
+    window.removeEventListener("pagehide", this.pageHide);
     if (this.directoryRefreshHandle) clearInterval(this.directoryRefreshHandle);
     this.stopCaptureOnSessionEnd.destroy();
     this.shutdown();
+    void this.broadcastPreflight.destroy().catch(() => undefined);
     this.captions.destroy();
   }
 
@@ -239,6 +251,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   }
 
   leave(): void {
+    void this.resetBroadcastPreflight();
     this.captions.stop();
     this.media.stopAll();
     this.session.leave();
@@ -248,6 +261,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   }
 
   async logout(): Promise<void> {
+    await this.resetBroadcastPreflight();
     this.captions.stop();
     this.media.stopAll();
     this.session.leave();
@@ -512,7 +526,10 @@ export class RoomPageComponent implements OnInit, OnDestroy {
       this.activeSection.set("live");
       return;
     }
-    if (this.session.joined()) this.media.stopAll();
+    if (this.session.joined()) {
+      await this.resetBroadcastPreflight();
+      this.media.stopAll();
+    }
     if (options.clearWorkspaceInvite) this.session.setWorkspaceInvite("");
     this.roomInput.set(room);
     this.selectedMode.set(mode);
@@ -544,8 +561,17 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   }
 
   private shutdown(): void {
+    void this.resetBroadcastPreflight();
     this.captions.stop();
     this.media.stopAll();
     this.session.leave();
+  }
+
+  private async resetBroadcastPreflight(): Promise<void> {
+    try {
+      await this.broadcastPreflight.resetForSession();
+    } catch (error) {
+      this.pageError.set(error instanceof Error ? error.message : "broadcast_preview_cleanup_failed");
+    }
   }
 }

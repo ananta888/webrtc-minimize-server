@@ -1,12 +1,14 @@
 # Browser-Broadcast-Modul
 
-Stand: 2026-09-03, Implementierungsstufe `TBP-009`.
+Stand: 2026-09-03. `TBP-009` definiert Ports und Lifecycle; der
+[Own-Source-Preflight](broadcast-own-source-preflight.md) aus `TBP-010` bindet
+davon inzwischen Source-Auswahl und Capture-Fork sichtbar in Angular ein.
 
 Das Browser-Modul legt die kleinen Softwareports und den deterministischen
 Lifecycle für spätere Broadcast-Publisher und -Player fest. Es aktiviert noch
-keinen produktiven Broadcastpfad: Insbesondere sind weder echte Capture-Forks
-noch WHIP, LL-HLS oder ein Zuschauer-Player an die Angular-Anwendung
-angeschlossen. Diese Fähigkeiten folgen in eigenen Todo-Schritten.
+keinen produktiven Broadcastpfad: Eigene Preview-Forks sind vorhanden; WHIP,
+LL-HLS und ein Zuschauer-Player sind weiterhin nicht angeschlossen. Diese
+Fähigkeiten folgen in eigenen Todo-Schritten.
 
 ## Verantwortungen
 
@@ -78,9 +80,9 @@ Broadcast-Panel allein ruft keinen Consent-, Capture- oder Playback-Port auf.
 - Consent, Composition, Publication, Playback und Stats werden nach Rückkehr
   erneut strukturell und gegen Program-/Source-Epoch geprüft. Ungültige
   Adapterantworten sind kein impliziter Erfolg.
-- Der spätere Own-Source-Fork darf nur vor dem SFrame-Raumtransform entstehen.
-  Diese Regel ist hier als Portgrenze vorbereitet, aber erst `TBP-010`
-  implementiert den Track-Lifecycle.
+- Der Own-Source-Fork entsteht ausschließlich aus dem vom
+  `MediaPublicationService` besessenen Originaltrack vor dem
+  SFrame-Raumsender. `TBP-010` implementiert und testet diesen Track-Lifecycle.
 - Broadcast ist ein bewusst entschlüsselter Zusatzpfad. Dieses Modul ändert
   weder den bestehenden SFrame-Raumpfad noch Membership oder Relay-Autorität.
 

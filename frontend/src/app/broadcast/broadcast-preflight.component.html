@@ -1,0 +1,99 @@
+<section class="broadcast-heading" aria-labelledby="broadcast-preflight-heading">
+  <div>
+    <p class="eyebrow">Bewusster Broadcast-Abzweig</p>
+    <h1 id="broadcast-preflight-heading">Sendung vorbereiten</h1>
+    <p>Wähle nur eigene, bereits im Raum gestartete Quellen. Das Öffnen dieser Ansicht fordert keine Kamera-, Mikrofon- oder Bildschirmberechtigung an.</p>
+  </div>
+  <span class="status" [attr.data-state]="preflight.lifecycle()">{{ preflight.lifecycle() }}</span>
+</section>
+
+<section class="preflight-grid">
+  <section class="panel" aria-labelledby="broadcast-sources-heading">
+    <div class="panel-title">
+      <div><p class="eyebrow">1 · Eigene Quellen</p><h2 id="broadcast-sources-heading">Aus dem Live-Raum wählen</h2></div>
+      <span>{{ preflight.selectedSourceIds().length }}/4</span>
+    </div>
+
+    @if (!joined()) {
+      <p class="empty">Tritt zuerst einem Raum bei. Broadcast erzeugt keine Room-Membership.</p>
+    } @else {
+      <div id="broadcast-own-source-list" class="source-list">
+        @for (source of preflight.sources(); track source.sourceId) {
+          <label class="source-option">
+            <input
+              type="checkbox"
+              [checked]="preflight.selectedSourceIds().includes(source.sourceId)"
+              [disabled]="preflight.lifecycle() === 'preparing' || preflight.lifecycle() === 'stopping'"
+              (change)="setSourceSelected(source.sourceId, $any($event.target).checked)"
+            >
+            <span><strong>{{ preflight.sourceLabel(source.source) }}</strong><small>{{ source.kind === 'video' ? ((source.settings.width || '–') + ' × ' + (source.settings.height || '–') + ' · ' + (source.settings.frameRate || '–') + ' FPS') : ((source.settings.sampleRate || '–') + ' Hz · ' + (source.settings.channelCount || '–') + ' Kanal') }}</small></span>
+          </label>
+        } @empty {
+          <p class="empty">Noch keine eigene Quelle aktiv. Starte Mikrofon, Kamera oder Bildschirm zuerst mit dem sichtbaren Button im Live-Raum.</p>
+        }
+      </div>
+    }
+
+    <div class="actions">
+      @if (preflight.lifecycle() === 'ready') {
+        <button id="stop-broadcast-preview" class="button secondary" type="button" (click)="stopPreview()">Vorschau stoppen</button>
+      } @else {
+        <button
+          id="prepare-broadcast-preview"
+          class="button primary"
+          type="button"
+          [disabled]="!joined() || preflight.selectedSourceIds().length === 0 || preflight.lifecycle() === 'preparing' || preflight.lifecycle() === 'stopping'"
+          (click)="preparePreview()"
+        >{{ preflight.lifecycle() === 'preparing' ? 'Vorschau wird vorbereitet…' : 'Vorschau bewusst vorbereiten' }}</button>
+      }
+    </div>
+    @if (preflight.errorCode()) { <p class="error" role="alert">{{ preflight.errorCode() }}</p> }
+  </section>
+
+  <section class="panel" aria-labelledby="broadcast-policy-heading">
+    <div class="panel-title"><div><p class="eyebrow">2 · Publikum und Ausgabe</p><h2 id="broadcast-policy-heading">Preflight</h2></div></div>
+    <label class="field">Zielpublikum
+      <select id="broadcast-audience" [value]="preflight.audience()" (change)="preflight.setAudience($any($event.target).value)">
+        <option value="private">Privat · nur Berechtigte</option>
+        <option value="unlisted">Nicht gelistet · nur mit Link</option>
+        <option value="public">Öffentlich · im Broadcast-Verzeichnis</option>
+      </select>
+    </label>
+    <label class="caption-option">
+      <input id="broadcast-captions" type="checkbox" [checked]="preflight.includeCaptions()" [disabled]="!captionsActive()" (change)="preflight.setIncludeCaptions($any($event.target).checked)">
+      <span><strong>Finalisierte Vosk-Untertitel einplanen</strong><small>{{ captionsActive() ? 'Lokale Erkennung ist aktiv; Übernahme folgt im Caption-Packaging-Schritt.' : 'Starte Vosk bewusst im Bereich Untertitel.' }}</small></span>
+    </label>
+    <dl class="facts">
+      <div><dt>Codecprofil</dt><dd id="broadcast-codec-profile">{{ preflight.codecProfile() }}</dd></div>
+      <div><dt>Geschätzter Upload</dt><dd id="broadcast-upload-estimate">{{ preflight.formatBitrate(preflight.estimatedUploadBitsPerSecond()) }}</dd></div>
+      <div><dt>Vorschau</dt><dd>{{ preflight.previews().length ? preflight.previews().length + ' getrennte Track-Klone' : 'noch nicht erzeugt' }}</dd></div>
+      <div><dt>Auslieferung</dt><dd>Noch nicht aktiviert · WHIP folgt in TBP-011</dd></div>
+    </dl>
+    <div id="broadcast-e2ee-warning" class="trust-warning" role="note">
+      <strong>Vertrauensgrenze: nicht SFrame-E2EE</strong>
+      <p>Der Broadcast-Klon entsteht lokal vor der SFrame-Verschlüsselung. Ein später gewählter Trusted-Packager beziehungsweise Gateway kann diese freigegebenen Inhalte im Klartext verarbeiten. Der verschlüsselte interaktive Raumpfad bleibt davon getrennt.</p>
+    </div>
+  </section>
+</section>
+
+@if (preflight.previews().length) {
+  <section id="broadcast-preview" class="panel preview-panel" aria-labelledby="broadcast-preview-heading">
+    <div class="panel-title"><div><p class="eyebrow">3 · Lokale Vorschau</p><h2 id="broadcast-preview-heading">Genau diese Quellen würden gesendet</h2></div></div>
+    <div class="preview-grid">
+      @for (preview of preflight.previews(); track preview.forkId) {
+        <article class="preview-tile">
+          <strong>{{ preview.label }}</strong>
+          @if (preview.kind === 'camera' || preview.kind === 'screen') {
+            <video [appMediaStream]="preview.stream" autoplay muted playsinline></video>
+          } @else {
+            <div class="audio-preview">
+              <span aria-hidden="true">♪</span>
+              <meter min="0" max="1" [value]="preflight.audioLevels()[preview.forkId] || 0">{{ preflight.audioLevels()[preview.forkId] || 0 }}</meter>
+            </div>
+          }
+        </article>
+      }
+    </div>
+    <p class="preview-note">Die Vorschau verwendet getrennte Klone. „Vorschau stoppen“ beendet diese Klone und AudioNodes, aber nicht deine laufende Raumfreigabe.</p>
+  </section>
+}

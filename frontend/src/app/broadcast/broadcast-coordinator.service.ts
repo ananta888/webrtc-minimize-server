@@ -128,7 +128,7 @@ export class BroadcastCoordinatorService implements OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
-    this.startController?.abort("destroy");
+    this.startController?.abort(new DOMException("destroy", "AbortError"));
     void this.stop("destroy");
   }
 
@@ -219,7 +219,7 @@ export class BroadcastCoordinatorService implements OnDestroy {
   }
 
   private async runStop(reason: string): Promise<void> {
-    this.startController?.abort(reason);
+    this.startController?.abort(new DOMException(reason, "AbortError"));
     this.programState.stopping();
     if (this.startTask) {
       try {

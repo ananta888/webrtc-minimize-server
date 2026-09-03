@@ -415,10 +415,10 @@
     {
       "id": "TBP-010",
       "title": "Expliziten Own-Source-Fork mit Preview, Consent und Cleanup bauen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 1,
+      "progress_percent": 100,
       "depends_on": ["TBP-003", "TBP-009"],
       "acceptance_criteria": [
         "Nur ein sichtbarer lokaler Klick darf Kamera, Mikrofon, Bildschirm oder Systemaudio für den Broadcast wählen beziehungsweise eine bereits aktive lokale Quelle in den Broadcast-Zweig aufnehmen.",
@@ -431,10 +431,10 @@
     {
       "id": "TBP-011",
       "title": "RFC-9725-konformen WHIP-Publisher-Adapter implementieren",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 1,
       "depends_on": ["TBP-004", "TBP-006", "TBP-007", "TBP-009", "TBP-010"],
       "acceptance_criteria": [
         "Der Adapter verwendet HTTPS, SDP offer/answer, Location-Resource, kurzlebigen Bearer-Grant, ICE-PATCH/Trickle und DELETE gemäß RFC 9725; Redirect-, CORS- und Auth-Verhalten ist explizit getestet.",
@@ -954,20 +954,20 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 30, "in_progress": 1, "partial": 0, "blocked": 0, "done": 9 },
-    "progress_percent_done": 22.5,
+    "by_status": { "todo": 29, "in_progress": 1, "partial": 0, "blocked": 0, "done": 10 },
+    "progress_percent_done": 25,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
-    "critical_path": { "total": 36, "done": 9, "remaining": 27 },
+    "critical_path": { "total": 36, "done": 10, "remaining": 26 },
     "milestones": { "total": 10, "todo": 7, "in_progress": 1, "blocked": 0, "done": 2 }
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 30,
+    "todo_remaining": 29,
     "in_progress": 1,
     "partial": 0,
     "blocked": 0,
-    "done": 9
+    "done": 10
   },
   "summary_notes": [
     "Der Track wurde am 2026-09-03 nach Abschluss des Blind-Media-Agent-Tracks angenommen. TBP-001 inventarisiert zuerst den verifizierten Ist-Zustand; vor dieser Bestandsaufnahme beginnt kein Broadcast-Medienpfad.",
@@ -984,6 +984,7 @@
     "TBP-007 ist mit einer getrennten Grant-Policy, P-256-Geraetebeweisgrenze und ES256-Grant-Authority abgeschlossen. Verifizierte OIDC-Attestation, Tenant, aktuelle Membership/Rolle, registriertes Geraet, Programmrevision/Epoch, Trusted-Packager-Consent, Viewer-Policy und Quoten werden vor Ausgabe fail-closed geprueft. Publisher-/Packager-Grants sind kurzlebig und einmalig; Playback bleibt kurzlebig und policygebunden. Alle Grants binden Audience, pseudonyme Subject-/Device-Refs, Ressource, normalisierten Pfad-Hash und Aktionen, werden nur als strikter Authorization-Bearer akzeptiert und sind ueber Register, Program-Epoch und Key-Rotation sofort widerrufbar. Negativtests decken Replay, manipulierten Geraetebeweis, falsche Audience, Subject, Tenant, Raum, Programm, Epoch, Geraet, Aktion, Pfad, Ablauf, Consent, Rolle und deaktivierte Keys ab. Der volle npm-run-check-Gate bestand am 2026-09-03 mit 172 Angular-Tests, Produktions-Build und 125 Node-/Browser-/Integrationstests einschliesslich Firefox und Counter-350; der credential-gebundene Live-Infrastrukturgate blieb sichtbar uebersprungen. TBP-008 beginnt mit strikt getrennter Broadcast-Audience- und Directory-Policy.",
     "TBP-008 ist mit einer getrennten BroadcastAudienceRegistry und einer geschlossenen serverseitigen Rollenpolicy abgeschlossen. Private, unlisted und public sind in Program-, Endpoint-, Caption- und Viewer-Policy-Contracts konsistent; jeder Policy-Wechsel erhoeht Program-Revision, Broadcast-/Lease-Epoch und Policy-Revision, fencet alte Writer, widerruft alte Grants vor dem atomaren Snapshot und ist idempotent. Das Public Directory liefert nur Typ, opaque Program-ID, Titel, explizite Broadcast-Sichtbarkeit und groben Livezustand; private, unlisted und nicht aktive Programme bleiben verborgen. Unbekannte oder unberechtigte wohlgeformte IDs, falsche Origin und alte Epochen erhalten denselben 404 und durchlaufen dieselbe mindestens 20-ms-Entscheidungsschwelle. Viewerentscheidungen erlauben ausschliesslich Manifest/Segment und enthalten keine Membership-, Peer-, Ticket-, SFrame-, Chat-, Capture- oder Publish-Rechte. Owner-, Moderator-, Presenter-, Packager- und Viewer-Aktionen sind epoch- und scopegebunden; der bestehende RoomDirectory bleibt nachweislich unveraendert. Der volle npm-run-check-Gate bestand am 2026-09-03 mit 172 Angular-Tests, Produktions-Build und 133 Node-/Browser-/Integrationstests einschliesslich Firefox und Counter-350; der credential-gebundene Live-Infrastrukturgate blieb sichtbar uebersprungen. Meilenstein TBP-M02 ist abgeschlossen; TBP-009 beginnt mit kleinen Angular-Broadcast-Ports und Adaptern.",
     "TBP-009 ist mit neun kleinen Browser-Ports und getrennten Angular-Services fuer Program-State, Source-Auswahl, Orchestrierung und Playback abgeschlossen. Geschlossene User-Intent-Pläne lassen nur einen sichtbaren lokalen Start zu und uebernehmen Quellen ausschliesslich aus einem gebundenen Room-/Publication-Snapshot statt aus einer zweiten Peer-Liste. Consent-, Fork-, Composition-, Publication-, Playback-, Capability- und Stats-Ergebnisse werden fail-closed geprueft; Abort, Teilfehler, Retry und Destroy raeumen in umgekehrter Reihenfolge auf und behalten fehlgeschlagene Handles fuer einen erneuten Stop. WHIP-, Native-Bridge- und Provideradapter ohne echten Transport melden sich ehrlich unavailable; der zustandsbehaftete Mock bleibt test-only. Die Implementierungsgrenze ist in docs/browser-broadcast-module.md dokumentiert: Noch kein echter Capture-, WHIP- oder Playerpfad und keine UI-Verdrahtung. Der volle npm-run-check-Gate bestand am 2026-09-03 mit 184 Angular-Tests, Produktions-Build und 133 Node-/Browser-/Integrationstests einschliesslich Firefox und Counter-350; der credential-gebundene Live-Infrastrukturgate blieb sichtbar uebersprungen. TBP-010 beginnt mit dem expliziten Own-Source-Fork, Preflight und vollstaendigem Track-Cleanup.",
+    "TBP-010 ist mit einem sichtbaren Angular-Preflight und einem revisionsgebundenen Own-Source-Capture-Port abgeschlossen. Ausschliesslich die vom MediaPublicationService besessenen lokalen Originaltracks koennen vor dem SFrame-Sendertransform geklont werden; Remotequellen sind fuer den Port unerreichbar. Panel, Deep Link, Visibility- oder Storage-State, Checkboxen und Remotesignale erzeugen weder Capture noch Klone. Erst der lokale Preview-Klick erzeugt getrennte Kamera-, Mikrofon-, Bildschirm- oder Bildschirmton-Klone; Stop, Quellenende, Sessionwechsel, Leave, Logout, pagehide und Destroy entfernen Klone, AudioNodes, Animation-Loop und Kontext, ohne die Raumfreigabe zu beenden. Der Preflight zeigt lokale Video-/Pegelvorschau, private/unlisted/public, Caption-Status, ehrlichen noch nicht ausgehandelten Codecstatus, begrenzte Uploadschaetzung und die nicht-SFrame-E2EE-Trust-Grenze. Diese Stufe erzeugt noch keinen Worker und keinen Netz-Publisher. Der volle npm-run-check-Gate bestand am 2026-09-03 mit 196 Angular-Tests, Produktions-Build und 133 Node-/Browser-/Integrationstests; echte Chromium- und Firefox-Pfade prueften Preview-Klon, fehlende Zusatzberechtigung und weiterlaufenden SFrame-Raum, Counter-350 blieb gruen und der credential-gebundene Live-Infrastrukturgate sichtbar uebersprungen. TBP-011 beginnt mit dem RFC-9725-WHIP-Transport.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }

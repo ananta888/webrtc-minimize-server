@@ -18,6 +18,17 @@ interface ScreenAudioTrackConstraints extends MediaTrackConstraints {
 }
 
 export type LocalMediaSource = "microphone" | "camera" | "screen";
+export type LocalOriginalMediaSource = LocalMediaSource | "screen-audio";
+
+export interface LocalOriginalMediaSourceView {
+  readonly sourceId: string;
+  readonly source: LocalOriginalMediaSource;
+  readonly kind: "audio" | "video";
+  readonly settings: Readonly<Pick<
+    MediaTrackSettings,
+    "width" | "height" | "frameRate" | "sampleRate" | "channelCount"
+  >>;
+}
 
 export interface LocalMediaView {
   readonly source: LocalMediaSource;
@@ -27,12 +38,20 @@ export interface LocalMediaView {
 @Injectable({ providedIn: "root" })
 export class MediaPublicationService {
   readonly publications = signal<readonly LocalMediaView[]>([]);
+  readonly localOriginalSources = signal<readonly LocalOriginalMediaSourceView[]>([]);
+  readonly localPublicationRevision = signal(1);
   readonly error = signal("");
   readonly pending = signal<LocalMediaSource | null>(null);
   readonly screenAudioActive = signal(false);
   private readonly streams = new Map<LocalMediaSource, MediaStream>();
   private readonly microphoneStopListeners = new Set<() => void>();
   private readonly screenAudioStopListeners = new Set<() => void>();
+  private readonly localOriginalStopListeners = new Set<(sourceId: string) => void>();
+  private readonly localOriginalTracks = new Map<string, {
+    readonly source: LocalOriginalMediaSource;
+    readonly track: MediaStreamTrack;
+  }>();
+  private readonly localOriginalIds = new Map<MediaStreamTrack, string>();
   private readonly constraintUpdates: Record<VideoCaptureSource, Promise<void>> = {
     camera: Promise.resolve(),
     screen: Promise.resolve(),
@@ -89,6 +108,7 @@ export class MediaPublicationService {
       else this.recordAppliedSettings(source, stream.getVideoTracks()[0]);
       if (source === "screen") this.screenAudioActive.set(stream.getAudioTracks().length > 0);
       this.streams.set(source, stream);
+      this.registerLocalOriginalTracks(source, stream.getTracks());
       this.mesh.attachPublication(source, stream);
       const view: LocalMediaView = {
         source,
@@ -102,7 +122,15 @@ export class MediaPublicationService {
           : () => this.stop(source);
       }
     } catch (error) {
-      for (const track of stream?.getTracks() || []) track.stop();
+      if (stream) {
+        try { this.mesh.detachPublication(source); } catch { /* best-effort partial attach cleanup */ }
+        this.streams.delete(source);
+        this.unregisterLocalOriginalTracks(stream.getTracks());
+      }
+      for (const track of stream?.getTracks() || []) {
+        track.onended = null;
+        track.stop();
+      }
       if (source === "screen") this.screenAudioActive.set(false);
       const name = error instanceof DOMException ? error.name : "";
       this.error.set(name === "NotAllowedError" ? "media_permission_denied" : error instanceof Error ? error.message : "media_capture_failed");
@@ -123,6 +151,7 @@ export class MediaPublicationService {
       this.notifyStopListeners(this.screenAudioStopListeners);
     }
     this.mesh.detachPublication(source);
+    this.unregisterLocalOriginalTracks(stream.getTracks());
     for (const track of stream.getTracks()) {
       track.onended = null;
       track.stop();
@@ -158,6 +187,28 @@ export class MediaPublicationService {
   registerScreenAudioStopListener(listener: () => void): () => void {
     this.screenAudioStopListeners.add(listener);
     return () => this.screenAudioStopListeners.delete(listener);
+  }
+
+  registerLocalOriginalStopListener(listener: (sourceId: string) => void): () => void {
+    this.localOriginalStopListeners.add(listener);
+    return () => this.localOriginalStopListeners.delete(listener);
+  }
+
+  cloneLocalOriginalTrack(sourceId: string, publicationRevision: number): MediaStreamTrack {
+    if (!Number.isSafeInteger(publicationRevision)
+      || publicationRevision !== this.localPublicationRevision()) {
+      throw new Error("stale_local_publication_revision");
+    }
+    const owned = this.localOriginalTracks.get(sourceId);
+    if (!owned || owned.track.readyState === "ended" || typeof owned.track.clone !== "function") {
+      throw new Error("local_original_source_unavailable");
+    }
+    const clone = owned.track.clone();
+    if (!clone || clone === owned.track || clone.kind !== owned.track.kind) {
+      try { clone?.stop(); } catch { /* invalid clone has no usable lifecycle */ }
+      throw new Error("invalid_local_original_clone");
+    }
+    return clone;
   }
 
   async setVideoResolution(source: VideoCaptureSource, resolutionId: unknown): Promise<void> {
@@ -216,6 +267,8 @@ export class MediaPublicationService {
       this.error.set(name === "OverconstrainedError"
         ? "audio_constraints_unsupported"
         : error instanceof Error ? error.message : "audio_constraints_failed");
+    } finally {
+      this.refreshLocalOriginalSources();
     }
   }
 
@@ -238,6 +291,8 @@ export class MediaPublicationService {
       this.error.set(name === "OverconstrainedError"
         ? "video_constraints_unsupported"
         : error instanceof Error ? error.message : "video_constraints_failed");
+    } finally {
+      this.refreshLocalOriginalSources();
     }
   }
 
@@ -272,6 +327,7 @@ export class MediaPublicationService {
     track.onended = null;
     this.notifyStopListeners(this.screenAudioStopListeners);
     this.mesh.detachPublicationTrack("screen", track);
+    this.unregisterLocalOriginalTracks([track]);
     if (track.readyState !== "ended") track.stop();
     this.screenAudioActive.set(stream.getAudioTracks().length > 0);
   }
@@ -280,5 +336,72 @@ export class MediaPublicationService {
     for (const listener of listeners) {
       try { listener(); } catch { /* a consumer cannot block capture shutdown */ }
     }
+  }
+
+  private registerLocalOriginalTracks(source: LocalMediaSource, tracks: readonly MediaStreamTrack[]): void {
+    let changed = false;
+    for (const track of tracks) {
+      if (this.localOriginalIds.has(track)) continue;
+      const trackSource: LocalOriginalMediaSource = source === "screen" && track.kind === "audio"
+        ? "screen-audio"
+        : source;
+      const sourceId = this.localSourceId();
+      this.localOriginalIds.set(track, sourceId);
+      this.localOriginalTracks.set(sourceId, { source: trackSource, track });
+      changed = true;
+    }
+    if (changed) this.bumpLocalPublicationRevision();
+  }
+
+  private unregisterLocalOriginalTracks(tracks: readonly MediaStreamTrack[]): void {
+    const removed: string[] = [];
+    for (const track of tracks) {
+      const sourceId = this.localOriginalIds.get(track);
+      if (!sourceId) continue;
+      this.localOriginalIds.delete(track);
+      this.localOriginalTracks.delete(sourceId);
+      removed.push(sourceId);
+    }
+    if (removed.length === 0) return;
+    this.bumpLocalPublicationRevision();
+    for (const sourceId of removed) {
+      for (const listener of this.localOriginalStopListeners) {
+        try { listener(sourceId); } catch { /* a consumer cannot block original capture shutdown */ }
+      }
+    }
+  }
+
+  private bumpLocalPublicationRevision(): void {
+    const next = this.localPublicationRevision() >= Number.MAX_SAFE_INTEGER
+      ? 1
+      : this.localPublicationRevision() + 1;
+    this.localPublicationRevision.set(next);
+    this.refreshLocalOriginalSources();
+  }
+
+  private refreshLocalOriginalSources(): void {
+    this.localOriginalSources.set(Object.freeze([...this.localOriginalTracks.entries()]
+      .map(([sourceId, { source, track }]) => {
+        const settings = track.getSettings();
+        return Object.freeze({
+          sourceId,
+          source,
+          kind: track.kind as "audio" | "video",
+          settings: Object.freeze({
+            width: settings.width,
+            height: settings.height,
+            frameRate: settings.frameRate,
+            sampleRate: settings.sampleRate,
+            channelCount: settings.channelCount,
+          }),
+        });
+      })
+      .sort((left, right) => left.source.localeCompare(right.source))));
+  }
+
+  private localSourceId(): string {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return `src_${[...bytes].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
   }
 }
