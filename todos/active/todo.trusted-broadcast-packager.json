@@ -352,10 +352,10 @@
     {
       "id": "TBP-006",
       "title": "Broadcast-Zustandsmaschine, Idempotenz und Epoch-Fencing implementieren",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 1,
+      "progress_percent": 100,
       "depends_on": ["TBP-005"],
       "acceptance_criteria": [
         "Die Zustandsmaschine bildet mindestens draft, preparing, awaiting_consent, publishing, live, degraded, stopping, stopped und failed mit erlaubten Übergängen ab.",
@@ -368,10 +368,10 @@
     {
       "id": "TBP-007",
       "title": "Kurzlebige Publisher-, Packager- und Playback-Grants sicher ausgeben",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 1,
       "depends_on": ["TBP-003", "TBP-005", "TBP-006"],
       "acceptance_criteria": [
         "Die Control Plane prüft OIDC-Issuer, Algorithmus, Audience, Ablauf, Subject, Tenant, Room-Membership, Rolle, Gerätebeweis, Consent und Quoten vor jeder Grant-Ausgabe fail-closed.",
@@ -954,20 +954,20 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 34, "in_progress": 1, "partial": 0, "blocked": 0, "done": 5 },
-    "progress_percent_done": 12.5,
+    "by_status": { "todo": 33, "in_progress": 1, "partial": 0, "blocked": 0, "done": 6 },
+    "progress_percent_done": 15,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
-    "critical_path": { "total": 36, "done": 5, "remaining": 31 },
+    "critical_path": { "total": 36, "done": 6, "remaining": 30 },
     "milestones": { "total": 10, "todo": 8, "in_progress": 1, "blocked": 0, "done": 1 }
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 34,
+    "todo_remaining": 33,
     "in_progress": 1,
     "partial": 0,
     "blocked": 0,
-    "done": 5
+    "done": 6
   },
   "summary_notes": [
     "Der Track wurde am 2026-09-03 nach Abschluss des Blind-Media-Agent-Tracks angenommen. TBP-001 inventarisiert zuerst den verifizierten Ist-Zustand; vor dieser Bestandsaufnahme beginnt kein Broadcast-Medienpfad.",
@@ -980,6 +980,7 @@
     "TBP-003 ist mit docs/broadcast-threat-model.md abgeschlossen. Das Modell trennt acht ehrliche Security Claims, definiert Assets/Akteure/Trust-Zonen, konkrete technische Retention und Verantwortlichkeit fuer Identitaet, Metriken, Viewerzahlen, IP-/Providerdaten, Captions, Logs und standardmaessig nicht vorhandenes Recording. Dreissig Threat-/Abuse-Cases einschliesslich kompromittierter Packager/Gateways/Provider, Replay, Pfaderraten, Hotlinking, Quellmissbrauch, Key-Retention, Insider, Metadaten und DoS sind zwanzig spaeteren fail-closed Test-IDs sowie den Implementierungs-/Real-Gates zugeordnet. Der volle npm-run-check-Gate bestand am 2026-09-03 mit 172 Angular- und 99 Node-/Browser-/Integrationstests sowie Produktions-Build; der credential-gebundene Live-Infrastrukturgate blieb sichtbar uebersprungen. TBP-004 beginnt mit der versionierten Standards-, Browser-, Codec- und Provider-Capability-Matrix.",
     "TBP-004 ist mit docs/broadcast-capability-matrix.md und der geschlossenen docs/broadcast-capability-matrix.v1.json abgeschlossen. Standards, Player, sieben Desktop-/Mobilplattformen, sechs Codecs und fuenf getrennte Gateway-/Provider-/Native-Adapter sind mit Abrufdatum, Upstream- und Produktstatus gepinnt. Fuenf neue Tests verhindern insbesondere falsche WHIP-zu-LL-HLS-, Remux-zu-Transcode-, Secure-Objects- und MoQ-Draft-Behauptungen. Der volle npm-run-check-Gate bestand am 2026-09-03 mit 172 Angular-Tests, Produktions-Build und 104 Node-/Browser-/Integrationstests einschliesslich Firefox und Counter-350; der credential-gebundene Live-Infrastrukturgate blieb sichtbar uebersprungen. TBP-005 beginnt mit geschlossenen herstellerneutralen Broadcast-Domain-Schemas.",
     "TBP-005 ist mit dreizehn geschlossenen Broadcast-v1-Schemafamilien plus gemeinsamen Definitionen und je einem Minimal-, Voll- und Negativfixture abgeschlossen. src/broadcast-contracts.js begrenzt Wire-JSON auf 32 KiB, prueft Typ/Version/Unknown Fields, friert validierte Objekte ein und erzwingt Tenant-, Subject-/Principal-, Room-, Program-, Epoch-, Ablauf- und Revisionsbindungen. Aggregate pruefen Referenzen, aktiven Decrypt-Consent, Sichtbarkeit, runtime-verifizierte Delivery-Capability und einen aktiven Writer je Rolle; geschlossene State-Maschinen verweigern ungueltige oder terminale Rueckwaertsschritte. Der volle npm-run-check-Gate bestand am 2026-09-03 mit 172 Angular-Tests, Produktions-Build und 112 Node-/Browser-/Integrationstests einschliesslich aller dreizehn Capability-/Contracttests, Firefox und Counter-350; der credential-gebundene Live-Infrastrukturgate blieb sichtbar uebersprungen. TBP-006 beginnt mit zustandsbesitzender Idempotenz, getrennten Epochen und Writer-Fencing.",
+    "TBP-006 ist mit einem reinen, unveraenderlichen Broadcast-Reducer abgeschlossen. Neun Programmzustaende, geschlossene idempotente Kommandos, ein begrenztes Hash-Ledger, voneinander unabhaengige Membership-/Route-/Topology-/Broadcast-/Lease-Epochen und exakt revisions-, epoch-, rollen- sowie ablaufgebundene Packager-/Gateway-Fences sind implementiert. Source-Change, Handoff, Consent-/Source-Revoke, Stop, Leave, Logout, Room-Ende, Lease-Verlust, Prozessabbruch, Cleanup und Retry besitzen deterministische Effekte; stopped bleibt terminal. Der Race-Test verwirft den zweiten konkurrierenden Writer derselben Rolle und verspaetete Lease-Events koennen keinen Nachfolger entfernen. Der volle npm-run-check-Gate bestand am 2026-09-03 mit 172 Angular-Tests, Produktions-Build und 120 Node-/Browser-/Integrationstests einschliesslich Firefox und Counter-350; der credential-gebundene Live-Infrastrukturgate blieb sichtbar uebersprungen. TBP-007 beginnt mit kurzlebigen, eng gebundenen Grants und deren serverseitiger Autorisierung.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }

@@ -59,8 +59,10 @@ Die Servergrenze bleibt auf drei kleine, getrennte Ports verteilt:
   Identität und Epoch sowie einen erlaubten Lifecycle-Schritt.
 
 Die Funktionen sind noch an keinen HTTP- oder WebSocket-Endpunkt angebunden.
-Diese Trennung ist beabsichtigt: TBP-006 führt erst die zustandsbesitzende
-Domain ein und TBP-007/TBP-008 ergänzen Autorisierung und Signaling-Verträge.
+Diese Trennung ist beabsichtigt: Die
+[Broadcast-State-Machine](../../docs/broadcast-state-machine.md) besitzt jetzt
+den reinen, idempotenten und gefenceten Domain-State; TBP-007/TBP-008 ergänzen
+erst Autorisierung und öffentliche/private Audience-Policy.
 
 ## State-Maschinen
 

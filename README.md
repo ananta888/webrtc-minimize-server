@@ -16,6 +16,8 @@ Die [versionierte Broadcast-Capability-Matrix](docs/broadcast-capability-matrix.
 
 Die [Broadcast-Contracts v1](contracts/broadcast/README.md) definieren 13 geschlossene, herstellerneutrale Metadatenfamilien samt Fixtures und serverseitiger Scope-/Epoch-/Ablauf-/Transition-Grenze. Sie enthalten bewusst weder Medien noch Tokens, Secrets, SDP/ICE oder Caption-Text und sind noch an keinen produktiven Broadcast-Endpunkt angebunden.
 
+Die reine [Broadcast-State-Machine](docs/broadcast-state-machine.md) ergänzt idempotente Create-/Start-/Quellenwechsel-/Handoff-/Revoke-/Stop-/Retry-Kommandos, fünf unabhängige Epochen sowie ablaufendes Packager-/Gateway-Fencing. Sie erzeugt nur Control-Plane-Effekte und ist weiterhin nicht an einen produktiven Medienpfad angeschlossen.
+
 Die Hauptnavigation enthält außerdem eine [raumgebundene Mesh-Analyse](docs/mesh-analysis.md). Ihr interaktiver SVG-Graph zeigt Browser, Trusted Relays und native Media-Agenten sowie lokal gemessene beziehungsweise klar als Peer-Angabe markierte Kantenraten. Ein ausgewählter Knoten schlüsselt Upload und Download nach Audio, Kamera/Video, Bildschirmfreigabe und DataChannel auf. Direkt darunter liegen Inventar, Installation, Widerruf, Mehrfachauswahl, Raum-Consent und aktueller Routenzustand der eigenen Media-Agenten; der allgemeine Einstellungsbereich dupliziert diese Bedienung nicht. Die Telemetrie ist flüchtig, nur bei sichtbar geöffneter Analyse angefordert und niemals Membership- oder Routing-Autorität.
 
 ## Lokal starten
