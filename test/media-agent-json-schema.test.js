@@ -24,6 +24,7 @@ test("canonical media-agent JSON Schemas are closed and validate cross-runtime e
     routeStateSchema,
     enrollmentSchema,
     authenticationSchema,
+    browserAgentNegotiationSchema,
   ] = await Promise.all([
     contract("subscription-intent.v1.schema.json"),
     contract("subscription-ack.v1.schema.json"),
@@ -37,6 +38,7 @@ test("canonical media-agent JSON Schemas are closed and validate cross-runtime e
     contract("media-agent-route-state.v3.schema.json"),
     contract("agent-enrollment.v1.schema.json"),
     contract("agent-authentication.v2.schema.json"),
+    contract("browser-agent-negotiation-control.v1.schema.json"),
   ]);
   const validateIntent = ajv.compile(intentSchema);
   const validateAck = ajv.compile(ackSchema);
@@ -50,6 +52,7 @@ test("canonical media-agent JSON Schemas are closed and validate cross-runtime e
   const validateRouteState = ajv.compile(routeStateSchema);
   const validateEnrollment = ajv.compile(enrollmentSchema);
   const validateAuthentication = ajv.compile(authenticationSchema);
+  const validateBrowserAgentNegotiation = ajv.compile(browserAgentNegotiationSchema);
   const enrollment = {
     version: 1,
     type: "enroll",
@@ -75,6 +78,20 @@ test("canonical media-agent JSON Schemas are closed and validate cross-runtime e
     timestamp: enrollment.timestamp,
     proof: "short",
   }), false);
+  const browserAgentRequest = {
+    version: 1,
+    type: "media-agent-negotiation-request",
+    routeEpoch: 7,
+    sequence: 1,
+  };
+  assert.equal(validateBrowserAgentNegotiation(browserAgentRequest), true,
+    JSON.stringify(validateBrowserAgentNegotiation.errors));
+  assert.equal(validateBrowserAgentNegotiation({
+    ...browserAgentRequest,
+    type: "media-agent-negotiation-grant",
+  }), true, JSON.stringify(validateBrowserAgentNegotiation.errors));
+  assert.equal(validateBrowserAgentNegotiation({ ...browserAgentRequest, authority: true }), false);
+  assert.equal(validateBrowserAgentNegotiation({ ...browserAgentRequest, sequence: 0 }), false);
   const intent = {
     version: 1,
     type: "media-agent-subscription-intent",

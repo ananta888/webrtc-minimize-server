@@ -9,6 +9,21 @@ import {
 
 test("browser media-agent contracts are closed and epoch-bound", () => {
   assert.deepEqual(parseBrowserMediaAgentMessage(Buffer.from(JSON.stringify({
+    type: "media-agent-signal",
+    agentId: "laptop-edge",
+    roomId: "room-123456",
+    routeEpoch: 2,
+    description: { type: "offer", sdp: "v=0\r\n" },
+  }))).description.type, "offer");
+  assert.throws(() => parseBrowserMediaAgentMessage(Buffer.from(JSON.stringify({
+    type: "media-agent-signal",
+    agentId: "laptop-edge",
+    roomId: "room-123456",
+    routeEpoch: 2,
+    negotiationSequence: 1,
+    description: { type: "offer", sdp: "v=0\r\n" },
+  }))), /invalid_agent_negotiation_sequence/);
+  assert.deepEqual(parseBrowserMediaAgentMessage(Buffer.from(JSON.stringify({
     version: 1,
     type: "media-agent-consent-set",
     agentIds: ["minipc-edge", "laptop-edge"],
@@ -137,6 +152,21 @@ test("native agent contracts validate auth, capability, track and exact fields",
     type: "capability", visible: true, battery: "mains", network: "fast",
     capacity: 80, load: 5, maxRooms: 8, maxPeers: 20, maxTracks: 80,
   }))).maxRooms, 8);
+  assert.equal(parseMediaAgentMessage(Buffer.from(JSON.stringify({
+    type: "media-agent-signal",
+    peerId: "0123456789abcdef",
+    roomId: "room-123456",
+    routeEpoch: 7,
+    negotiationSequence: 3,
+    description: { type: "offer", sdp: "v=0\r\n" },
+  }))).negotiationSequence, 3);
+  assert.throws(() => parseMediaAgentMessage(Buffer.from(JSON.stringify({
+    type: "media-agent-signal",
+    peerId: "0123456789abcdef",
+    roomId: "room-123456",
+    routeEpoch: 7,
+    description: { type: "offer", sdp: "v=0\r\n" },
+  }))), /invalid_agent_negotiation_sequence/);
   assert.throws(() => parseMediaAgentMessage(Buffer.from(JSON.stringify({
     type: "capability", visible: true, battery: "mains", network: "fast",
     capacity: 80, load: 5, maxRooms: 0, maxPeers: 20, maxTracks: 80,

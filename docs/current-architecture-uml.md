@@ -329,6 +329,14 @@ sequenceDiagram
 
     P->>M: ICE/DTLS-SRTP-Verbindung aufbauen
     S->>M: ICE/DTLS-SRTP-Verbindung aufbauen
+    Note over P,M: Trickle-Kandidaten werden per usernameFragment nur zur passenden SDP-Generation angewendet.
+    M->>S: media-agent-negotiation-request v1 (Route-Epoche, Sequenz)
+    S->>S: eigenen Offer-Bedarf zuerst abschliessen und stable pruefen
+    S-->>M: media-agent-negotiation-grant v1 (exakte Sequenz)
+    M->>CP: Agent-Offer mit derselben Sequenz
+    CP-->>S: autorisiertes Agent-Offer mit derselben Sequenz
+    S-->>CP: Browser-Answer
+    CP-->>M: autorisierter Browser-Answer
     M-->>CP: Peer-State und Heartbeat zur aktuellen Route
     P-->>CP: Browser-Peer-State
     S-->>P: Subscription bereit
@@ -343,6 +351,15 @@ Der Agent terminiert fuer jeden Browser eine eigene ICE-/DTLS-/SRTP-Sitzung.
 Er sieht deshalb IP-Adressen, Timing, SSRCs, Codec-Metadaten und Datenraten.
 Der Medienframe im RTP-Payload bleibt SFrame-Ciphertext. Der Agent dekodiert
 und re-encodiert nicht und besitzt keinen Decrypt-Port.
+
+Der browsererzeugte, geordnete `media-agent-control`-DataChannel erteilt dem
+Agenten immer nur den naechsten kurzlebigen Offer-Turn. Browser-Offers haben
+Vorrang; ein Agent-Offer ohne den exakt angeforderten und erteilten Turn wird
+fail-closed verworfen. Das verhindert gekreuzte Offers, ohne die Control Plane
+oder den Agenten um Membership-, Medien- oder Schluesselrechte zu erweitern.
+Vorauseilende ICE-Restart-Kandidaten bleiben je Verbindung begrenzt und werden
+erst bei passender `a=ice-ufrag`-Generation angewendet; alte Generationen
+werden verworfen.
 
 ### 6.2 Logischer Datenfluss bei fuenf Teilnehmern
 

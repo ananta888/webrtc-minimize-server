@@ -198,6 +198,22 @@ EDGE_TURN_SERVERS_JSON='[{"id":"edge-1","urls":["turn:edge.example.org:3478?tran
 
 [`media-edge-agent/`](media-edge-agent/) enthält den davon unabhängigen, selektiven Pion-Medienforwarder. Er verbindet sich ausgehend per WSS, erhält nur kurze raum-, Membership- und Route-gebundene Leases und besitzt isolierte PeerConnections zu den ihm zugewiesenen Browsern sowie zu ausdrücklich serverautorisierten Nachbaragenten. Der Browser verschlüsselt Frames bereits vor dem Upload mit einem publikationsgebundenen SFrame-Gruppenschlüssel und verteilt diesen einzeln über den ECDH-/AES-GCM-Overlay an die anderen Raumteilnehmer – niemals an einen Agenten. Kamera-Simulcast wird pro Subscriber ohne Decode/Re-encode auf genau einen erlaubten, aktuell verfügbaren Layer reduziert. Ein eigener Egress-Track hält RTP-Sequenz und -Zeit beim Wechsel zwischen den unabhängigen RID-Sequenzräumen monoton; die opaque Payload bleibt dabei unverändert. Revisionsgebundene Readiness nach dem ersten weitergeleiteten Paket verhindert, dass ein alter oder noch nicht fließender Layerwechsel den Direct-Fallback abschaltet. Agentenübergreifend werden nur aktuell nachgefragte Layer weitergereicht.
 
+Native Browser-Agent-Offers werden zusätzlich über einen geschlossenen,
+geordneten `media-agent-control`-DataChannel serialisiert: Der Agent fordert
+eine monotone, routegebundene Sequenz an, der stabile Browser erteilt genau
+einen kurzlebigen Turn, und nur ein Offer mit derselben Sequenz wird über die
+Control Plane akzeptiert. Browser-Offers haben dabei Vorrang. Duplikate,
+Sprünge, unbekannte Felder, falsche Epochen und abgelaufene Turns schließen die
+betroffene Agent-Verbindung; sie erzeugen keine neue Medien- oder
+Membership-Autorität.
+
+Trickle-ICE bleibt auch über ICE-Restarts geordnet: Browser und Agent binden
+Kandidaten über `usernameFragment` an die passende SDP-Generation. Ein vor dem
+zugehörigen Offer eintreffender Kandidat wird nur begrenzt gehalten, mit genau
+dieser Generation angewendet und als alte Generation verworfen. Dadurch kann
+ein verzögerter Offer weder einen fremden Kandidaten übernehmen noch einen
+TURN-Restart durch Ufrag-Überkreuzung abbrechen.
+
 ```bash
 cd media-edge-agent
 cp .env.example .env
@@ -215,7 +231,7 @@ Für neue freiwillige Rechner ist im öffentlichen Compose-Preset zusätzlich de
 
 Download und Ausführung sind getrennte, explizite Nutzeraktionen. Seitenladen, Öffnen der Analyse oder ein Remotesignal startet weder Installation noch Capture, Portfreigabe oder Raum-Consent. Die Pakete sind derzeit nicht kommerziell code-signiert/notarisiert; UI und Installer weisen auf mögliche Betriebssystemwarnungen hin. Linux ist der reale Rolloutpfad dieses Projekts, macOS und Windows werden cross-kompiliert und vertraglich geprüft, bleiben bis zu einem echten Gerätetest aber ausdrücklich `unverified`.
 
-Consent ist in der Raumoberfläche standardmäßig aus und widerrufbar. Eine Übernahme erklärt Upload-, CPU-, Batterie-, IP-/Metadaten- und TURN-Folgen. Ein fester Port ist nicht zwingend: `MEDIA_AGENT_UDP_PORT=0` nutzt normale ICE-Sockets und bei Bedarf TURN. Eine feste UDP-Weiterleitung, beispielsweise `44000/udp`, plus passendes `MEDIA_AGENT_PUBLIC_IP` verbessert direkte Erreichbarkeit. Die Browser-Agent-Verbindung startet mit Direct/STUN und ergänzt Edge- sowie Infrastruktur-TURN erst nach den serverautorisierten Fristen per ICE-Restart; eine bereits verbundene Route stoppt diese Eskalation. Der native Pion-Agent erhält innerhalb seiner kurzen Lease derzeit die vollständige ICE-Serverliste, sodass dessen Candidate-Gathering in den Coturn-Quoten berücksichtigt werden muss. Betrieb, Trust-Grenzen, Creator-Wahl, Failover, Simulcast und Föderation beschreibt [docs/blind-media-edge-agent.md](docs/blind-media-edge-agent.md).
+Consent ist in der Raumoberfläche standardmäßig aus und widerrufbar. Eine Übernahme erklärt Upload-, CPU-, Batterie-, IP-/Metadaten- und TURN-Folgen. Ein fester Port ist nicht zwingend: `MEDIA_AGENT_UDP_PORT=0` nutzt normale ICE-Sockets und bei Bedarf TURN. Eine feste UDP-Weiterleitung, beispielsweise `44000/udp`, plus passendes `MEDIA_AGENT_PUBLIC_IP` verbessert direkte Erreichbarkeit. Die Browser-Agent-Verbindung startet mit Direct/STUN und ergänzt Edge- sowie Infrastruktur-TURN erst nach den serverautorisierten Fristen per ICE-Restart; eine bereits verbundene Route stoppt diese Eskalation. Der native Pion-Agent erhält innerhalb seiner kurzen Lease derzeit die vollständige ICE-Serverliste, sodass dessen Candidate-Gathering in den Coturn-Quoten berücksichtigt werden muss. `user-quota` muss mindestens die gleichzeitig benötigten Allocations eines Principals und `total-quota` die Raum-/Agent-Matrix tragen; kleine Beispielwerte sind keine 20-Teilnehmer-Kapazitätszusage. Betrieb, Trust-Grenzen, Creator-Wahl, Failover, Simulcast und Föderation beschreibt [docs/blind-media-edge-agent.md](docs/blind-media-edge-agent.md).
 
 ### Kapazitätsgrenze
 

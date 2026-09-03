@@ -110,12 +110,22 @@ export class RoomSessionService {
   }
 
   leave(): void {
-    this.signaling.leave();
-    this.mesh.close();
     this.joined.set(false);
     this.workspaceId.set("");
     this.workspaceRole.set("");
     this.roomCreator.set(false);
+    let cleanupFailed = false;
+    try {
+      this.signaling.leave();
+    } catch {
+      cleanupFailed = true;
+    }
+    try {
+      this.mesh.close();
+    } catch {
+      cleanupFailed = true;
+    }
+    if (cleanupFailed) this.error.set("session_cleanup_failed");
   }
 
   private handleMessage(message: ServerMessage, icePolicy: IceTierPolicy): void {

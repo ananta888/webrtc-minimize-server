@@ -136,6 +136,15 @@ describe("browser media-agent server contracts", () => {
     expect(validateMediaAgentSignal(description)).toEqual(description);
     expect(validateMediaAgentSignal({ ...description, token: "forbidden" })).toBeNull();
     expect(validateMediaAgentSignal({ ...description, version: 2 })).toBeNull();
+    const offer = {
+      ...description,
+      negotiationSequence: 4,
+      description: { type: "offer", sdp: "v=0\r\n" },
+    };
+    expect(validateMediaAgentSignal(offer)).toEqual(offer);
+    expect(validateMediaAgentSignal({ ...offer, negotiationSequence: 0 })).toBeNull();
+    const { negotiationSequence: _removed, ...unboundOffer } = offer;
+    expect(validateMediaAgentSignal(unboundOffer)).toBeNull();
     expect(validateMediaAgentSignal({
       version: 1,
       type: "media-agent-signal",

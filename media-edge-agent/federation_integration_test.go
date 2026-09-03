@@ -46,14 +46,15 @@ type federationBrowserEndpoint struct {
 }
 
 type routedAgentOutput struct {
-	Type             string                     `json:"type"`
-	RecipientAgentID string                     `json:"recipientAgentId"`
-	RoomID           string                     `json:"roomId"`
-	PeerID           string                     `json:"peerId"`
-	RouteEpoch       int64                      `json:"routeEpoch"`
-	LinkID           string                     `json:"linkId"`
-	Description      *webrtc.SessionDescription `json:"description"`
-	Candidate        json.RawMessage            `json:"candidate"`
+	Type                string                     `json:"type"`
+	RecipientAgentID    string                     `json:"recipientAgentId"`
+	RoomID              string                     `json:"roomId"`
+	PeerID              string                     `json:"peerId"`
+	RouteEpoch          int64                      `json:"routeEpoch"`
+	NegotiationSequence int64                      `json:"negotiationSequence"`
+	LinkID              string                     `json:"linkId"`
+	Description         *webrtc.SessionDescription `json:"description"`
+	Candidate           json.RawMessage            `json:"candidate"`
 }
 
 func runAgentMessageBroker(
@@ -112,6 +113,9 @@ func applyAgentSignalToBrowser(browser *federationBrowserEndpoint, message route
 	browser.mu.Lock()
 	defer browser.mu.Unlock()
 	if message.Description != nil {
+		if message.Description.Type == webrtc.SDPTypeOffer && message.NegotiationSequence < 1 {
+			return fmt.Errorf("native browser offer has no granted negotiation sequence")
+		}
 		if err := browser.pc.SetRemoteDescription(*message.Description); err != nil {
 			return fmt.Errorf("set browser remote description: %w", err)
 		}
@@ -369,6 +373,8 @@ func TestNativeAgentsFederateBidirectionalDemandedOpaqueLayersWithoutOfferGlare(
 			pc: subscriber, agent: agentB, roomID: roomID, peerID: subscriberID, routeEpoch: 1,
 		},
 	}
+	installBrowserAgentNegotiationControl(t, publisher, 1)
+	installBrowserAgentNegotiationControl(t, subscriber, 1)
 	brokerStop := make(chan struct{})
 	brokerErrors := make(chan error, 16)
 	defer close(brokerStop)

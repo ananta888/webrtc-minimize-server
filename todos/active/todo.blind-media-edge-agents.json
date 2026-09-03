@@ -105,6 +105,12 @@
       "title": "Media-Agent-Verwaltung in die interaktive Analyse integrieren",
       "task_ids": ["BME-021"],
       "status": "done"
+    },
+    {
+      "id": "BME-M17",
+      "title": "Glare-freie Browser-Agent-Verhandlung",
+      "task_ids": ["BME-022"],
+      "status": "in_progress"
     }
   ],
   "tasks": [
@@ -408,22 +414,37 @@
         "Das Oeffnen der Analyse, Anzeigen oder Aendern von Agent-Einstellungen startet weiterhin keine Kamera-, Mikrofon- oder Bildschirm-Capture-API und erweitert weder Membership noch Agentautoritaet.",
         "Angular-UI-Tests, Produktionsbuild, npm run check und npm run todos:validate bestehen; Commit, Push, Mini-PC-Rollout und normaler HTTPS-Smoke werden ohne Secrets dokumentiert."
       ]
+    },
+    {
+      "id": "BME-022",
+      "title": "Browser-Agent-Offers mit einem geschlossenen Request-Grant-Turn serialisieren",
+      "status": "in_progress",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 95,
+      "depends_on": ["BME-004", "BME-010", "BME-018"],
+      "acceptance_criteria": [
+        "Ein versionierter, exakt feldgepruefter und groessen-/ratenbegrenzter Control-DataChannel-Vertrag erteilt dem nativen Agenten hoechstens einen kurzlebigen Offer-Turn; Browser-Angebote haben Vorrang, ohne Membership-, Track-, Layer- oder Key-Autoritaet zu uebertragen.",
+        "Browser und Pion erzeugen auch bei gleichzeitigem Kamera-, Mikrofon-, Bildschirm-, Subscription- und ICE-Bedarf keine gekreuzten Offers; stale, doppelte, uebersprungene, unbekannte oder verspaetete Request-/Grant-Nachrichten werden fail-closed behandelt und ein verlorener Turn wird bounded erneut angefordert.",
+        "Unit-, Contract-, Pion- und reale Chromium-/Firefox-Gates reproduzieren den bisherigen RTP-Header-Extension-Fehler, belegen danach fortlaufend dekodierte SFrame-Frames ueber zwei Agenten und bestehen Direct sowie All-TURN einschliesslich Failover und Mesh-Rueckfall.",
+        "npm run check, Go-Race/Vet, Image-/Compose-/Secret-Gates, gezielter Commit, Push und Rollout auf Webdienst, Laptop- und Mini-PC-Agent bestehen; Diagnose-Hooks und Diagnose-Binaries sind vor Abschluss entfernt."
+      ]
     }
   ],
-  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011", "BME-012", "BME-013", "BME-014", "BME-015", "BME-016", "BME-017", "BME-018", "BME-019", "BME-020", "BME-021"],
+  "critical_path_tasks": ["BME-001", "BME-002", "BME-003", "BME-004", "BME-005", "BME-006", "BME-008", "BME-009", "BME-010", "BME-011", "BME-012", "BME-013", "BME-014", "BME-015", "BME-016", "BME-017", "BME-018", "BME-019", "BME-020", "BME-021", "BME-022"],
   "tasks_status_summary": {
-    "total": 21,
-    "by_status": { "todo": 0, "in_progress": 2, "partial": 1, "blocked": 0, "done": 18 },
-    "progress_percent_done": 85.71,
-    "by_priority": { "P0": 11, "P1": 10, "P2": 0, "P3": 0 },
-    "by_risk": { "low": 0, "medium": 2, "high": 9, "critical": 10 },
-    "critical_path": { "total": 20, "done": 17, "remaining": 3 },
-    "milestones": { "total": 16, "todo": 0, "in_progress": 3, "blocked": 0, "done": 13 }
+    "total": 22,
+    "by_status": { "todo": 0, "in_progress": 3, "partial": 1, "blocked": 0, "done": 18 },
+    "progress_percent_done": 81.82,
+    "by_priority": { "P0": 12, "P1": 10, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 2, "high": 9, "critical": 11 },
+    "critical_path": { "total": 21, "done": 17, "remaining": 4 },
+    "milestones": { "total": 17, "todo": 0, "in_progress": 4, "blocked": 0, "done": 13 }
   },
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 2,
+    "in_progress": 3,
     "partial": 1,
     "blocked": 0,
     "done": 18
@@ -460,6 +481,11 @@
     "Der ausgerollte Direct-Fault-Gate ist nun vollstaendig bestanden: sechs Browser in Chromium und Firefox, zwei Agentprozesse, drei Kamera-Layer, individuelle Empfangsprofile, Kamera, Mikrofon und Bildschirm, genau eine aktive Publisher-Kopie zum Agenten und keine parallele Direct-Kopie. Nach Stopp des Laptop-Agents uebernahm der Mini-PC mit neu dekodierten und acht Sekunden weiterlaufenden Frames; nach dessen Stopp dekodierte der logisch gebundene Direct-SFrame-Fallback weiter. Beide Agenten authentisierten sich nach dem Restart erneut; Consent-Widerruf und explizites Leave bestanden. Der anschliessende TURN-Gate deckte eine reale Kapazitaetsgrenze auf: Oracle-Coturn ist mit user-quota 4 und total-quota 32 konfiguriert, waehrend Browser-Agent-Verbindungen bisher sofort alle TURN-Tiers sammelten. Der Browseradapter startet deshalb nun Direct/STUN und eskaliert zeitgebunden per ICE-Restart zu Edge- und Infrastruktur-TURN; Unit-Test, voller Check, Rollout und erneute TURN-Matrix bleiben offen.",
     "Commit 47a76ad mit gestufter Browser-Agent-ICE-Eskalation ist gepusht und auf dem Mini-PC ausgerollt. Der anschliessende All-TURN-Vorlauf bestand mit sechs Browsern, davon je ein relay-only Chromium- und Firefox-Kontext, zwei Agenten, drei Simulcast-Layern, genau einer Publisher-Kopie und ohne parallele Direct-Videokopie. Der All-TURN-Fault-Lauf deckte vor dem ersten Prozessstopp einen getrennten nativen RTP-Wettlauf auf: Bei langsamer TURN-Aushandlung schrieb der Agent bereits in noch nicht per Answer bestaetigte Sender; Pion verwarf die unbekannte SSRC dauerhaft und Cross-Shard-Video fehlte trotz bereiter Foederation. Browser-Egress schreibt nun erst nach dem Answer auf das exakte lokale Offer. Agent-Foederation besitzt pro Nachbar einen eigenen TrackLocal und schreibt ebenfalls erst nach dessen eigener bestaetigter Offer-Runde; danach wird unmittelbar ein Keyframe angefordert. Der Go-Race-Gate, 20 Wiederholungen des bidirektionalen Zwei-Agenten-Tests, 154 Angular- und 99 Node-/Browser-/Integrationstests, SFrame-Counter 350, Go-Vet, beide Images, Compose-Gates und npm-Produktionsaudit bestehen. Commit, Rollout der neuen Binaries und Direct-/All-TURN-Fault-Wiederholung bleiben offen.",
     "Commit f012d21 ist gepusht, der Mini-PC-Webdienst per sauberem Fast-Forward ausgerollt und beide Agenten verwenden das hashgleiche neue Linux-Artefakt mit erfolgreicher Reauthentisierung. Der erste Direct-Live-Gate zeigte keine unbekannte-SSRC-Verwerfung mehr, legte aber einen komplementaeren SDP-Pfad offen: Ein Agent-Sender kann erstmals als sendende Mediensektion im lokalen Answer auf ein Browser- oder serialisiertes Agent-Offer ausgehandelt werden. Diese exakte MID war bisher nicht als sendebereit markiert; deshalb blieben Cross-Shard-Kamera und Bildschirm trotz physisch vorhandener Receiver ohne RTP. Ein geschlossener SDP-Parser ordnet nur nicht abgelehnte sendonly/sendrecv-MIDs den tatsaechlichen Pion-Transceivern zu und wird fuer Browser-Egress sowie Foederation verwendet. Positive und receive-only-negative Pion-Tests, Go-Race/Vet, 20 bidirektionale Zwei-Agenten-Wiederholungen, der volle npm-run-check-Gate mit 154 Angular- und 99 Node-/Browser-/Integrationsfaellen, beide Images, Compose und npm-Audit bestehen. Commit, Rollout und die komplette Live-Matrix bleiben offen.",
+    "Commit 0ee478d mit der Answer-Sendererkennung ist gepusht und auf Webdienst, Laptop-Agent sowie Mini-PC-Agent ausgerollt; beide nativen Artefakte sind hashgleich und restartfrei. Ein Direct-Lauf bestand vollstaendig, der unmittelbar folgende Wiederholungslauf reproduzierte jedoch einen spaeten Cross-Shard-Verlust: Kamera und Bildschirm liefen zunaechst, verschwanden nach weiteren individuellen Layerrevisionen auf dem Mini-PC-Shard, waehrend Audio und Agent-Link bereit blieben; unbekannte RTP-SSRCs traten auf keinem Agenten auf. Die erste Hypothese einer Pion-Wiederverwendung eines per ReplaceTrack(nil) pausierten Foederationssenders wurde mit einem nativen Zwei-Publikations-Test widerlegt und deshalb nicht als Fix uebernommen. Der Live-Gate erfasst als Naechstes begrenzt die autorisierten Track-State- und Subscription-Intent-Folgen, um Quell-Layer-Ende und verstummten Foederationssender eindeutig zu trennen. Fix, voller Gate, Rollout und wiederholte Direct-/All-TURN-Evidence bleiben offen.",
+    "BME-022 verfolgt den nun exakt reproduzierten Browser-Agent-Glare: Ein Browser-Offer und ein unmittelbar folgendes Pion-Offer kreuzten sich; Chromiums Rollback scheiterte danach mit RTP extension ID reassignment not supported auf einer aktiven MID. Eine capture-freie Audio-/Video-Vorbelegung verhinderte zwar diesen SDP-Fehler, lieferte aber im realen Sechs-Browser-Pfad trotz steigender RTP-Bytes keine verlaesslich dekodierten SFrame-Frames und wurde verworfen. Pion v4.2.18 weist SDPTypeRollback mit InvalidModificationError zurueck, sodass ein blosser Perfect-Negotiation-Rollenwechsel ebenfalls kein tragfaehiger Fix ist. Der bereits raumgebundene Agent-Control-DataChannel erhaelt deshalb einen geschlossenen, kurzlebigen Request-/Grant-Turn, bevor der Agent ein Offer erzeugen darf.",
+    "BME-022 ist lokal umgesetzt und fokussiert verifiziert: Browser und Pion binden native Offers an einen exakt monotonen Request-/Grant-Turn auf dem geordneten media-agent-control-DataChannel; Browser-Offers haben Vorrang. Contract-, Angular-, Node-, Serverintegrations- und Pion-Tests pruefen Richtungsbindung, Epochen, Duplikate, Spruenge, unbekannte Felder, Groesse, Rate, Timeout und Coalescing. Ein ausgerollter Direct-Kandidatenlauf mit sechs Browsern, zwei Agenten, Kamera, Mikrofon, Bildschirm, individuellen Layern und einer Publisher-Kopie bestand bereits; wiederholte Direct-/All-TURN-/Fault-Laeufe, voller Check, sauberer finaler Build sowie Commit, Push und Rollout bleiben vor done offen.",
+    "Ein passiver Wiederholungslauf reproduzierte BME-022 als lokale Browser-SDP-Race: negotiationneeded startete waehrend eines noch laufenden lokalen Answers einen zweiten Offer und Chromium verwarf danach die geaenderte m-line-Reihenfolge. Eine pro Verbindung begrenzte SDP-Barriere serialisiert Remote-Description, lokalen Answer und den folgenden Browser-Offer. Der Regressionstest bildet exakt diesen Zwischenzustand ab. Fuenf anschliessende Direct-Laeufe mit sechs Browsern und zwei Agenten bestanden Kamera, Mikrofon, Bildschirm, Simulcast, individuelle Layer, Foederation, Consent-Widerruf und Leave.",
+    "Die diagnosefreie Produktionsmatrix bestand danach Direct und All-TURN jeweils normal sowie mit Primary-Ausfall, Ersatzagent, Totalausfall, weiter dekodierendem Direct-SFrame-Mesh und Rueckkehr beider Agenten. Ein absichtlich um eine Sekunde verzoegerter Browser-Offer deckte im TURN-Pfad vorauseilende ICE-Restart-Kandidaten auf; Browser und Pion puffern sie nun bounded nach usernameFragment und wenden nur die passende a=ice-ufrag-Generation an. Chromium und Firefox belegten echte lokale Relay-Kandidaten. Der Live-Gate besitzt wiederholbare stdin-Checkpoints, harte Stats-Grenzen und einen strikt aktuellen Leave-Nachweis. Beide Agenten sowie das oeffentliche Downloadartefakt laufen hashgleich; Vollgates, gezielter Commit, Push und Rollout des finalen Commit-Builds bleiben offen.",
     "BME-007 verfolgt die vom Nutzer angeforderte, codegebundene UML- und Bandbreitendarstellung aller aktuellen Direct-, TURN-, Trusted-Relay- und Blind-Media-Agent-Pfade.",
     "BME-007 ist abgeschlossen: docs/current-architecture-uml.md enthaelt elf lokal mit Mermaid CLI gerenderte Diagramme sowie gegengepruefte 5-, 8- und 20-Teilnehmer-Rechnungen; npm run check bestand mit sichtbarem lokalem Live-Infrastruktur-Skip.",
     "BME-008 bis BME-011 verfolgen den angeforderten sequentiellen Ausbau: zuerst geschlossene Contracts und selektives Simulcast innerhalb des vorhandenen Publisher-Shardings, unmittelbar danach eine control-plane-autorisierte Agent-Foederation und der reale Rolloutnachweis.",

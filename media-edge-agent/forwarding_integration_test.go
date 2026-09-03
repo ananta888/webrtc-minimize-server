@@ -13,12 +13,13 @@ import (
 )
 
 type capturedControl struct {
-	Type        string                     `json:"type"`
-	RoomID      string                     `json:"roomId"`
-	PeerID      string                     `json:"peerId"`
-	RouteEpoch  int64                      `json:"routeEpoch"`
-	Description *webrtc.SessionDescription `json:"description"`
-	Candidate   json.RawMessage            `json:"candidate"`
+	Type                string                     `json:"type"`
+	RoomID              string                     `json:"roomId"`
+	PeerID              string                     `json:"peerId"`
+	RouteEpoch          int64                      `json:"routeEpoch"`
+	NegotiationSequence int64                      `json:"negotiationSequence"`
+	Description         *webrtc.SessionDescription `json:"description"`
+	Candidate           json.RawMessage            `json:"candidate"`
 }
 
 type fakeControl struct{ messages chan capturedControl }
@@ -48,6 +49,45 @@ func newBrowserPeer(t *testing.T, id string) *webrtc.PeerConnection {
 	}
 	t.Cleanup(func() { _ = pc.Close() })
 	return pc
+}
+
+func installBrowserAgentNegotiationControl(
+	t *testing.T,
+	pc *webrtc.PeerConnection,
+	routeEpoch int64,
+) *webrtc.DataChannel {
+	t.Helper()
+	channel, err := pc.CreateDataChannel(
+		"media-agent-control",
+		&webrtc.DataChannelInit{Ordered: boolPointer(true)},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var lastSequence int64
+	channel.OnMessage(func(raw webrtc.DataChannelMessage) {
+		message, decodeErr := decodeBrowserAgentNegotiationControl(raw.Data)
+		mu.Lock()
+		valid := decodeErr == nil && raw.IsString && message.Type == "media-agent-negotiation-request" &&
+			message.RouteEpoch == routeEpoch && message.Sequence == lastSequence+1
+		if valid {
+			lastSequence = message.Sequence
+		}
+		mu.Unlock()
+		if !valid {
+			_ = channel.Close()
+			return
+		}
+		response, encodeErr := json.Marshal(browserAgentNegotiationControl{
+			Version: 1, Type: "media-agent-negotiation-grant",
+			RouteEpoch: routeEpoch, Sequence: message.Sequence,
+		})
+		if encodeErr != nil || channel.SendText(string(response)) != nil {
+			_ = channel.Close()
+		}
+	})
+	return channel
 }
 
 func gatheredLocalDescription(t *testing.T, pc *webrtc.PeerConnection) webrtc.SessionDescription {
@@ -152,12 +192,9 @@ func TestNativeAgentSelectsOpaqueSimulcastLayerPerSubscriber(t *testing.T) {
 	if err = sender.AddEncoding(highPublication); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = lowSubscriber.CreateDataChannel("bootstrap", nil); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = highSubscriber.CreateDataChannel("bootstrap", nil); err != nil {
-		t.Fatal(err)
-	}
+	installBrowserAgentNegotiationControl(t, publisher, 1)
+	installBrowserAgentNegotiationControl(t, lowSubscriber, 1)
+	installBrowserAgentNegotiationControl(t, highSubscriber, 1)
 
 	receivedTracks := map[string]chan *webrtc.TrackRemote{
 		lowSubscriberID:  make(chan *webrtc.TrackRemote, 1),
@@ -198,6 +235,10 @@ func TestNativeAgentSelectsOpaqueSimulcastLayerPerSubscriber(t *testing.T) {
 				clientsMu.Lock()
 				if message.Description != nil {
 					if message.Description.Type == webrtc.SDPTypeOffer {
+						if message.NegotiationSequence < 1 {
+							clientsMu.Unlock()
+							continue
+						}
 						if pc.SetRemoteDescription(*message.Description) == nil {
 							answer, answerErr := pc.CreateAnswer(nil)
 							if answerErr == nil && pc.SetLocalDescription(answer) == nil {

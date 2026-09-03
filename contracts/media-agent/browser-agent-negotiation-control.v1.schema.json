@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/media-agent/browser-agent-negotiation-control.v1.schema.json",
+  "title": "Browser-to-media-agent negotiation turn control v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "type", "routeEpoch", "sequence"],
+  "properties": {
+    "version": { "const": 1 },
+    "type": {
+      "enum": ["media-agent-negotiation-request", "media-agent-negotiation-grant"]
+    },
+    "routeEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "sequence": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+  }
+}

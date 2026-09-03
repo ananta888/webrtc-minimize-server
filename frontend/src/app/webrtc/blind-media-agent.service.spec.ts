@@ -4,6 +4,29 @@ import { IceTierPolicy } from "./ice-policy";
 import { BlindMediaAgentService } from "./blind-media-agent.service";
 import { SignalingService } from "./signaling.service";
 
+class FakeDataChannel {
+  readyState: RTCDataChannelState = "connecting";
+  bufferedAmount = 0;
+  binaryType: BinaryType = "blob";
+  onopen: RTCDataChannel["onopen"] = null;
+  onmessage: RTCDataChannel["onmessage"] = null;
+  onclose: RTCDataChannel["onclose"] = null;
+  readonly sent: string[] = [];
+
+  send(data: string): void { this.sent.push(data); }
+  open(): void {
+    this.readyState = "open";
+    this.onopen?.(new Event("open"));
+  }
+  receive(data: string): void {
+    this.onmessage?.(new MessageEvent("message", { data }));
+  }
+  close(): void {
+    this.readyState = "closed";
+    this.onclose?.(new Event("close"));
+  }
+}
+
 class FakePeerConnection {
   static instances: FakePeerConnection[] = [];
   connectionState: RTCPeerConnectionState = "new";
@@ -17,7 +40,9 @@ class FakePeerConnection {
   ontrack: RTCPeerConnection["ontrack"] = null;
   onconnectionstatechange: RTCPeerConnection["onconnectionstatechange"] = null;
   onnegotiationneeded: RTCPeerConnection["onnegotiationneeded"] = null;
+  ondatachannel: RTCPeerConnection["ondatachannel"] = null;
   readonly transceivers: RTCRtpTransceiverInit[] = [];
+  readonly dataChannels: FakeDataChannel[] = [];
   readonly configurations: RTCConfiguration[] = [];
   restarts = 0;
   configuration: RTCConfiguration;
@@ -28,7 +53,11 @@ class FakePeerConnection {
     FakePeerConnection.instances.push(this);
   }
 
-  createDataChannel(): RTCDataChannel { return {} as RTCDataChannel; }
+  createDataChannel(): RTCDataChannel {
+    const channel = new FakeDataChannel();
+    this.dataChannels.push(channel);
+    return channel as unknown as RTCDataChannel;
+  }
   addTransceiver(_track: MediaStreamTrack, init?: RTCRtpTransceiverInit): RTCRtpTransceiver {
     this.transceivers.push(init || {});
     return { sender: {} as RTCRtpSender } as RTCRtpTransceiver;
@@ -106,6 +135,30 @@ describe("blind media-agent browser adapter", () => {
     vi.unstubAllGlobals();
     capture.mockReset();
   });
+
+  function activateSingleAgent(): { pc: FakePeerConnection; channel: FakeDataChannel } {
+    service.updateMembershipEpoch(3);
+    expect(service.applyRoute({
+      version: 3,
+      type: "media-agent-state",
+      enabled: true,
+      membershipEpoch: 3,
+      routeEpoch: 5,
+      leaseExpiresAt: now + 30_000,
+      primary: { id: "owner-edge", ownerPeerId: ownPeerId, creatorPreferred: true },
+      standbys: [],
+      forwarderIds: ["owner-edge"],
+      publisherAssignments: [{ peerId: ownPeerId, agentId: "owner-edge" }],
+      subscriberAssignments: [{ peerId: ownPeerId, agentId: "owner-edge" }],
+      federationLinks: [],
+      federationRoutes: [],
+      readiness: [{ agentId: "owner-edge", readyPeerIds: [] }],
+    }, new Set([ownPeerId]))).toBe(true);
+    const pc = FakePeerConnection.instances[0];
+    const channel = pc.dataChannels[0];
+    channel.open();
+    return { pc, channel };
+  }
 
   it("keeps consent off and requests it only through an explicit local action", () => {
     expect(service.consentEnabled()).toBe(false);
@@ -424,6 +477,55 @@ describe("blind media-agent browser adapter", () => {
     expect(pc.candidates).toEqual([{ candidate: "candidate:1 1 UDP 1 192.0.2.1 45000 typ host" }]);
   });
 
+  it("queues an ICE-restart candidate until its matching agent description is installed", async () => {
+    service.updateMembershipEpoch(3);
+    expect(service.applyRoute({
+      version: 3,
+      type: "media-agent-state",
+      enabled: true,
+      membershipEpoch: 3,
+      routeEpoch: 5,
+      leaseExpiresAt: now + 30_000,
+      primary: { id: "owner-edge", ownerPeerId: ownPeerId, creatorPreferred: true },
+      standbys: [],
+      forwarderIds: ["owner-edge"],
+      publisherAssignments: [{ peerId: ownPeerId, agentId: "owner-edge" }],
+      subscriberAssignments: [{ peerId: ownPeerId, agentId: "owner-edge" }],
+      federationLinks: [],
+      federationRoutes: [],
+      readiness: [{ agentId: "owner-edge", readyPeerIds: [] }],
+    }, new Set([ownPeerId]))).toBe(true);
+    const pc = FakePeerConnection.instances[0];
+    pc.remoteDescription = {
+      type: "answer",
+      sdp: "v=0\r\na=ice-ufrag:old\r\n",
+    } as RTCSessionDescription;
+    const futureCandidate = {
+      candidate: "candidate:2 1 UDP 1 192.0.2.2 45001 typ relay",
+      usernameFragment: "future",
+    };
+
+    await service.acceptSignal({
+      version: 1,
+      type: "media-agent-signal",
+      agentId: "owner-edge",
+      roomId: "room-123456",
+      routeEpoch: 5,
+      candidate: futureCandidate,
+    });
+    expect(pc.candidates).toEqual([]);
+
+    await service.acceptSignal({
+      version: 1,
+      type: "media-agent-signal",
+      agentId: "owner-edge",
+      roomId: "room-123456",
+      routeEpoch: 5,
+      description: { type: "answer", sdp: "v=0\r\na=ice-ufrag:future\r\n" },
+    });
+    expect(pc.candidates).toEqual([futureCandidate]);
+  });
+
   it("retries a negotiation requested while a local offer is outstanding", async () => {
     service.updateMembershipEpoch(3);
     expect(service.applyRoute({
@@ -474,6 +576,291 @@ describe("blind media-agent browser adapter", () => {
     });
 
     await vi.waitFor(() => expect(offers).toBe(2));
+  });
+
+  it("serializes an answer and the immediately following agent offer", async () => {
+    service.updateMembershipEpoch(3);
+    expect(service.applyRoute({
+      version: 3,
+      type: "media-agent-state",
+      enabled: true,
+      membershipEpoch: 3,
+      routeEpoch: 5,
+      leaseExpiresAt: now + 30_000,
+      primary: { id: "owner-edge", ownerPeerId: ownPeerId, creatorPreferred: true },
+      standbys: [],
+      forwarderIds: ["owner-edge"],
+      publisherAssignments: [{ peerId: ownPeerId, agentId: "owner-edge" }],
+      subscriberAssignments: [{ peerId: ownPeerId, agentId: "owner-edge" }],
+      federationLinks: [],
+      federationRoutes: [],
+      readiness: [{ agentId: "owner-edge", readyPeerIds: [] }],
+    }, new Set([ownPeerId]))).toBe(true);
+    const pc = FakePeerConnection.instances[0];
+    const channel = pc.dataChannels[0];
+    channel.open();
+    pc.signalingState = "have-local-offer";
+    const events: string[] = [];
+    let releaseAnswer!: () => void;
+    let markAnswerStarted!: () => void;
+    const answerBlocked = new Promise<void>((resolve) => { releaseAnswer = resolve; });
+    const answerStarted = new Promise<void>((resolve) => { markAnswerStarted = resolve; });
+    pc.setRemoteDescription = async (description: RTCSessionDescriptionInit): Promise<void> => {
+      events.push(`remote-${description.type}-start`);
+      if (description.type === "answer") {
+        markAnswerStarted();
+        await answerBlocked;
+        pc.signalingState = "stable";
+      } else {
+        pc.signalingState = "have-remote-offer";
+      }
+      pc.remoteDescription = description as RTCSessionDescription;
+      events.push(`remote-${description.type}-end`);
+    };
+    pc.setLocalDescription = async (description?: RTCSessionDescriptionInit): Promise<void> => {
+      if (description?.type === "rollback") {
+        events.push("rollback");
+        pc.signalingState = "stable";
+        return;
+      }
+      events.push("local-answer");
+      pc.localDescription = { type: "answer", sdp: "v=0\r\n" } as RTCSessionDescription;
+      pc.signalingState = "stable";
+    };
+
+    const answer = service.acceptSignal({
+      version: 1,
+      type: "media-agent-signal",
+      agentId: "owner-edge",
+      roomId: "room-123456",
+      routeEpoch: 5,
+      description: { type: "answer", sdp: "v=0\r\n" },
+    });
+    await answerStarted;
+    channel.receive(JSON.stringify({
+      version: 1,
+      type: "media-agent-negotiation-request",
+      routeEpoch: 5,
+      sequence: 1,
+    }));
+    await Promise.resolve();
+    expect(events).toEqual(["remote-answer-start"]);
+    expect(channel.sent).toEqual([]);
+
+    releaseAnswer();
+    await answer;
+    await vi.waitFor(() => expect(channel.sent).toHaveLength(1));
+    expect(JSON.parse(channel.sent[0])).toEqual({
+      version: 1,
+      type: "media-agent-negotiation-grant",
+      routeEpoch: 5,
+      sequence: 1,
+    });
+    await service.acceptSignal({
+      version: 1,
+      type: "media-agent-signal",
+      agentId: "owner-edge",
+      roomId: "room-123456",
+      routeEpoch: 5,
+      negotiationSequence: 1,
+      description: {
+        type: "offer",
+        sdp: "v=0\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\na=mid:0\r\n",
+      },
+    });
+    expect(events).toEqual([
+      "remote-answer-start",
+      "remote-answer-end",
+      "remote-offer-start",
+      "remote-offer-end",
+      "local-answer",
+    ]);
+  });
+
+  it("defers a browser negotiationneeded callback until the native offer answer is sent", async () => {
+    const { pc, channel } = activateSingleAgent();
+    channel.receive(JSON.stringify({
+      version: 1,
+      type: "media-agent-negotiation-request",
+      routeEpoch: 5,
+      sequence: 1,
+    }));
+    expect(channel.sent).toHaveLength(1);
+
+    const events: string[] = [];
+    let releaseAnswer!: () => void;
+    let markAnswerStarted!: () => void;
+    const answerBlocked = new Promise<void>((resolve) => { releaseAnswer = resolve; });
+    const answerStarted = new Promise<void>((resolve) => { markAnswerStarted = resolve; });
+    pc.setRemoteDescription = async (description: RTCSessionDescriptionInit): Promise<void> => {
+      events.push(`remote-${description.type}`);
+      pc.remoteDescription = description as RTCSessionDescription;
+      pc.signalingState = "have-remote-offer";
+    };
+    pc.setLocalDescription = async (): Promise<void> => {
+      if (pc.signalingState === "have-remote-offer") {
+        events.push("local-answer-start");
+        pc.localDescription = { type: "answer", sdp: "v=0\r\n" } as RTCSessionDescription;
+        pc.signalingState = "stable";
+        pc.onnegotiationneeded?.(new Event("negotiationneeded"));
+        markAnswerStarted();
+        await answerBlocked;
+        events.push("local-answer-end");
+        return;
+      }
+      events.push("local-offer");
+      pc.localDescription = { type: "offer", sdp: "v=0\r\n" } as RTCSessionDescription;
+      pc.signalingState = "have-local-offer";
+    };
+
+    const operation = service.acceptSignal({
+      version: 1,
+      type: "media-agent-signal",
+      agentId: "owner-edge",
+      roomId: "room-123456",
+      routeEpoch: 5,
+      negotiationSequence: 1,
+      description: {
+        type: "offer",
+        sdp: "v=0\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\na=mid:0\r\n",
+      },
+    });
+    await answerStarted;
+    await Promise.resolve();
+    expect(events).toEqual(["remote-offer", "local-answer-start"]);
+
+    releaseAnswer();
+    await operation;
+    await vi.waitFor(() => expect(events).toEqual([
+      "remote-offer",
+      "local-answer-start",
+      "local-answer-end",
+      "local-offer",
+    ]));
+    expect(sent.filter((message) => message["type"] === "media-agent-signal")
+      .map((message) => (message["description"] as RTCSessionDescriptionInit | undefined)?.type))
+      .toEqual(["answer", "offer"]);
+  });
+
+  it("rejects an agent offer that has no matching granted turn", async () => {
+    service.updateMembershipEpoch(3);
+    expect(service.applyRoute({
+      version: 3,
+      type: "media-agent-state",
+      enabled: true,
+      membershipEpoch: 3,
+      routeEpoch: 5,
+      leaseExpiresAt: now + 30_000,
+      primary: { id: "owner-edge", ownerPeerId: ownPeerId, creatorPreferred: true },
+      standbys: [],
+      forwarderIds: ["owner-edge"],
+      publisherAssignments: [{ peerId: ownPeerId, agentId: "owner-edge" }],
+      subscriberAssignments: [{ peerId: ownPeerId, agentId: "owner-edge" }],
+      federationLinks: [],
+      federationRoutes: [],
+      readiness: [{ agentId: "owner-edge", readyPeerIds: [] }],
+    }, new Set([ownPeerId]))).toBe(true);
+    const pc = FakePeerConnection.instances[0];
+    pc.signalingState = "have-local-offer";
+    const events: string[] = [];
+    pc.setRemoteDescription = async (description: RTCSessionDescriptionInit): Promise<void> => {
+      events.push(`remote-${description.type}`);
+      pc.remoteDescription = description as RTCSessionDescription;
+      pc.signalingState = description.type === "offer" ? "have-remote-offer" : "stable";
+    };
+    pc.setLocalDescription = async (description?: RTCSessionDescriptionInit): Promise<void> => {
+      events.push(description?.type || "auto");
+      pc.localDescription = { type: "answer", sdp: "v=0\r\n" } as RTCSessionDescription;
+      pc.signalingState = "stable";
+    };
+
+    await service.acceptSignal({
+      version: 1,
+      type: "media-agent-signal",
+      agentId: "owner-edge",
+      roomId: "room-123456",
+      routeEpoch: 5,
+      negotiationSequence: 1,
+      description: {
+        type: "offer",
+        sdp: "v=0\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\na=mid:0\r\n",
+      },
+    });
+    await service.acceptSignal({
+      version: 1,
+      type: "media-agent-signal",
+      agentId: "owner-edge",
+      roomId: "room-123456",
+      routeEpoch: 5,
+      candidate: { candidate: "candidate:1 1 UDP 1 192.0.2.1 45000 typ host" },
+    });
+    expect(events).toEqual([]);
+    expect(pc.candidates).toEqual([]);
+    expect(pc.connectionState).toBe("closed");
+    expect(service.status()).toBe("error");
+  });
+
+  it.each([
+    ["skipped sequence", JSON.stringify({
+      version: 1, type: "media-agent-negotiation-request", routeEpoch: 5, sequence: 2,
+    })],
+    ["wrong epoch", JSON.stringify({
+      version: 1, type: "media-agent-negotiation-request", routeEpoch: 6, sequence: 1,
+    })],
+    ["unknown field", JSON.stringify({
+      version: 1, type: "media-agent-negotiation-request", routeEpoch: 5, sequence: 1, authority: true,
+    })],
+    ["oversized payload", "x".repeat(257)],
+  ])("fails closed for an invalid agent control message: %s", (_label, raw) => {
+    const { pc, channel } = activateSingleAgent();
+
+    channel.receive(raw);
+
+    expect(pc.connectionState).toBe("closed");
+    expect(service.status()).toBe("error");
+  });
+
+  it("fails closed for a duplicate agent negotiation request", () => {
+    const { pc, channel } = activateSingleAgent();
+    const request = JSON.stringify({
+      version: 1, type: "media-agent-negotiation-request", routeEpoch: 5, sequence: 1,
+    });
+
+    channel.receive(request);
+    expect(channel.sent).toHaveLength(1);
+    channel.receive(request);
+
+    expect(pc.connectionState).toBe("closed");
+    expect(service.status()).toBe("error");
+  });
+
+  it("fails closed when the agent control rate exceeds its fixed window", () => {
+    const { pc, channel } = activateSingleAgent();
+
+    for (let sequence = 1; sequence <= 17; sequence += 1) {
+      channel.receive(JSON.stringify({
+        version: 1, type: "media-agent-negotiation-request", routeEpoch: 5, sequence,
+      }));
+    }
+
+    expect(channel.sent).toHaveLength(16);
+    expect(pc.connectionState).toBe("closed");
+    expect(service.status()).toBe("error");
+  });
+
+  it("expires an agent turn that was granted but never consumed", () => {
+    const { pc, channel } = activateSingleAgent();
+    channel.receive(JSON.stringify({
+      version: 1, type: "media-agent-negotiation-request", routeEpoch: 5, sequence: 1,
+    }));
+    expect(channel.sent).toHaveLength(1);
+
+    vi.advanceTimersByTime(4_999);
+    expect(pc.connectionState).not.toBe("closed");
+    vi.advanceTimersByTime(1);
+
+    expect(pc.connectionState).toBe("closed");
+    expect(service.status()).toBe("error");
   });
 
   it("quarantines an early inbound track until matching server authority arrives", () => {
@@ -665,6 +1052,17 @@ describe("blind media-agent browser adapter", () => {
     }) as unknown as MediaStreamTrack;
     const receiver = {} as RTCRtpReceiver;
     pc.signalingState = descriptionType === "answer" ? "have-local-offer" : "stable";
+    if (descriptionType === "offer") {
+      const channel = pc.dataChannels[0];
+      channel.open();
+      channel.receive(JSON.stringify({
+        version: 1,
+        type: "media-agent-negotiation-request",
+        routeEpoch: 5,
+        sequence: 1,
+      }));
+      expect(channel.sent).toHaveLength(1);
+    }
     pc.setRemoteDescription = async (description: RTCSessionDescriptionInit): Promise<void> => {
       pc.remoteDescription = description as RTCSessionDescription;
       pc.ontrack?.({
@@ -681,6 +1079,7 @@ describe("blind media-agent browser adapter", () => {
       agentId: "owner-edge",
       roomId: "room-123456",
       routeEpoch: 5,
+      ...(descriptionType === "offer" ? { negotiationSequence: 1 } : {}),
       description: {
         type: descriptionType,
         sdp: [
@@ -795,7 +1194,9 @@ describe("blind media-agent browser adapter", () => {
       keyId: "0123456789abcdef",
       baseKey: new Uint8Array(16),
     })).toBe(false);
-    expect(FakePeerConnection.instances[0].transceivers[0].sendEncodings?.map(({ rid }) => rid)).toEqual([
+    expect(FakePeerConnection.instances[0].transceivers.find((entry) => (
+      entry.sendEncodings?.some(({ rid }) => rid === "q")
+    ))?.sendEncodings?.map(({ rid }) => rid)).toEqual([
       "q", "h", "f",
     ]);
     expect(service.simulcastCapability()).toBe("available");
@@ -830,7 +1231,9 @@ describe("blind media-agent browser adapter", () => {
       keyId: "0123456789abcdef",
       baseKey: new Uint8Array(16),
     })).toBe(false);
-    expect(FakePeerConnection.instances[0].transceivers[0].sendEncodings?.map(({ rid }) => rid)).toEqual(["s"]);
+    expect(FakePeerConnection.instances[0].transceivers.find((entry) => (
+      entry.sendEncodings?.some(({ rid }) => rid === "s")
+    ))?.sendEncodings?.map(({ rid }) => rid)).toEqual(["s"]);
     expect(capture).not.toHaveBeenCalled();
   });
 

@@ -900,6 +900,7 @@ test("two Firefox peers retain direct adaptive mesh, SFrame, chat and camera", {
     firefoxUserPrefs: {
       "media.navigator.streams.fake": true,
       "media.navigator.permission.disabled": true,
+      "media.volume_scale": "0.0",
     },
   });
   const browserContext = await browser.newContext();
@@ -994,6 +995,7 @@ test("Chromium VP8 remains decodable in Firefox beyond SFrame counter 350", { ti
     firefoxUserPrefs: {
       "media.navigator.streams.fake": true,
       "media.navigator.permission.disabled": true,
+      "media.volume_scale": "0.0",
     },
   });
   const chromiumContext = await chromiumBrowser.newContext({ permissions: ["camera", "microphone"] });

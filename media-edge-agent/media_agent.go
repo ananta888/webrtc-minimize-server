@@ -57,8 +57,13 @@ type mediaPeer struct {
 	pendingCandidates   []webrtc.ICECandidateInit
 	pendingOfferSenders map[*webrtc.RTPSender]struct{}
 	senderNegotiated    map[*webrtc.RTPSender]bool
+	control             *webrtc.DataChannel
+	nextNegotiationSeq  int64
+	localNegotiationReq int64
+	localNegotiationAck int64
+	controlWindowStart  time.Time
+	controlMessages     int
 	makingOffer         bool
-	ignoreOffer         bool
 	needsNegotiation    bool
 	closed              bool
 }
@@ -367,6 +372,13 @@ func (r *mediaRoom) newPeer(peerID string) (*mediaPeer, error) {
 			peer.close()
 		}
 	})
+	pc.OnDataChannel(func(channel *webrtc.DataChannel) {
+		if channel.Label() != "media-agent-control" {
+			_ = channel.Close()
+			return
+		}
+		peer.attachNegotiationControl(channel)
+	})
 	pc.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) { r.acceptTrack(peer, track) })
 	return peer, nil
 }
@@ -378,9 +390,6 @@ func (p *mediaPeer) acceptSignal(message serverMessage) error {
 		return fmt.Errorf("peer connection closed")
 	}
 	if len(message.Candidate) > 0 {
-		if p.ignoreOffer {
-			return nil
-		}
 		if bytes.Equal(bytes.TrimSpace(message.Candidate), []byte("null")) {
 			return nil
 		}
@@ -388,23 +397,15 @@ func (p *mediaPeer) acceptSignal(message serverMessage) error {
 		if err := json.Unmarshal(message.Candidate, &candidate); err != nil {
 			return fmt.Errorf("invalid ICE candidate")
 		}
-		if p.pc.RemoteDescription() == nil {
-			if len(p.pendingCandidates) >= 256 {
-				return fmt.Errorf("candidate queue full")
-			}
-			p.pendingCandidates = append(p.pendingCandidates, candidate)
-			return nil
+		if err := addOrQueueRemoteICECandidate(p.pc, &p.pendingCandidates, candidate); err != nil {
+			return fmt.Errorf("apply or queue ICE candidate: %w", err)
 		}
-		return p.pc.AddICECandidate(candidate)
+		return nil
 	}
 	description := *message.Description
 	if description.Type == webrtc.SDPTypeOffer && p.pc.SignalingState() != webrtc.SignalingStateStable {
-		// The browser side is always polite. This native endpoint is therefore
-		// the impolite Perfect-Negotiation peer and keeps its outstanding offer.
-		p.ignoreOffer = true
-		return nil
+		return fmt.Errorf("unscheduled browser offer")
 	}
-	p.ignoreOffer = false
 	if err := p.pc.SetRemoteDescription(description); err != nil {
 		return fmt.Errorf("set remote description: %w", err)
 	}
@@ -416,12 +417,9 @@ func (p *mediaPeer) acceptSignal(message serverMessage) error {
 		}
 		p.pendingOfferSenders = nil
 	}
-	for _, candidate := range p.pendingCandidates {
-		if err := p.pc.AddICECandidate(candidate); err != nil {
-			return fmt.Errorf("apply queued candidate: %w", err)
-		}
+	if err := applyQueuedRemoteICECandidates(p.pc, &p.pendingCandidates); err != nil {
+		return fmt.Errorf("apply queued candidate: %w", err)
 	}
-	p.pendingCandidates = nil
 	if description.Type == webrtc.SDPTypeOffer {
 		answer, err := p.pc.CreateAnswer(nil)
 		if err != nil {
@@ -461,6 +459,29 @@ func (p *mediaPeer) negotiate() {
 		p.mu.Unlock()
 		return
 	}
+	if p.localNegotiationAck == 0 {
+		if p.control == nil || p.control.ReadyState() != webrtc.DataChannelStateOpen || p.localNegotiationReq != 0 {
+			p.mu.Unlock()
+			return
+		}
+		if p.nextNegotiationSeq >= maximumBrowserAgentNegotiationSequence {
+			p.mu.Unlock()
+			p.close()
+			return
+		}
+		p.nextNegotiationSeq++
+		sequence := p.nextNegotiationSeq
+		p.localNegotiationReq = sequence
+		p.mu.Unlock()
+		if err := p.sendNegotiationControl("media-agent-negotiation-request", sequence); err != nil {
+			p.close()
+			return
+		}
+		go p.expireNegotiationRequest(sequence)
+		return
+	}
+	sequence := p.localNegotiationAck
+	p.localNegotiationAck = 0
 	p.needsNegotiation = false
 	p.makingOffer = true
 	offer, err := p.pc.CreateOffer(nil)
@@ -484,7 +505,7 @@ func (p *mediaPeer) negotiate() {
 	}
 	err = p.room.agent.signal.send(map[string]any{
 		"type": "media-agent-signal", "roomId": p.room.id, "peerId": p.id,
-		"routeEpoch": p.room.routeEpoch, "description": offer,
+		"routeEpoch": p.room.routeEpoch, "negotiationSequence": sequence, "description": offer,
 	})
 	if err != nil {
 		p.needsNegotiation = true
@@ -573,6 +594,40 @@ func localSendingSenders(
 	return result
 }
 
+func remoteReceivingSenders(
+	pc *webrtc.PeerConnection,
+	description webrtc.SessionDescription,
+) map[*webrtc.RTPSender]struct{} {
+	result := make(map[*webrtc.RTPSender]struct{})
+	var parsed sdp.SessionDescription
+	if err := parsed.UnmarshalString(description.SDP); err != nil {
+		return result
+	}
+	sessionDirection := sdpDirection(parsed.Attributes)
+	receivingMIDs := make(map[string]bool)
+	for _, media := range parsed.MediaDescriptions {
+		mid, present := media.Attribute("mid")
+		if !present || mid == "" || media.MediaName.Port.Value == 0 {
+			continue
+		}
+		direction := sdpDirection(media.Attributes)
+		if direction == "" {
+			direction = sessionDirection
+		}
+		if direction == "" {
+			direction = "sendrecv"
+		}
+		receivingMIDs[mid] = direction == "sendrecv" || direction == "recvonly"
+	}
+	for _, transceiver := range pc.GetTransceivers() {
+		sender := transceiver.Sender()
+		if sender != nil && sender.Track() != nil && receivingMIDs[transceiver.Mid()] {
+			result[sender] = struct{}{}
+		}
+	}
+	return result
+}
+
 func sdpDirection(attributes []sdp.Attribute) string {
 	for _, attribute := range attributes {
 		switch attribute.Key {
@@ -593,6 +648,9 @@ func (p *mediaPeer) close() {
 	p.pendingCandidates = nil
 	p.pendingOfferSenders = nil
 	p.senderNegotiated = nil
+	p.control = nil
+	p.localNegotiationReq = 0
+	p.localNegotiationAck = 0
 	p.mu.Unlock()
 	_ = p.pc.Close()
 }

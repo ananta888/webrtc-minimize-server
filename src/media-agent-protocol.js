@@ -78,7 +78,9 @@ function candidate(value) {
 }
 
 function signal(value, recipientField) {
-  const allowed = new Set(["type", recipientField, "roomId", "routeEpoch", "description", "candidate"]);
+  const allowed = new Set([
+    "type", recipientField, "roomId", "routeEpoch", "description", "candidate", "negotiationSequence",
+  ]);
   if (Object.keys(value).some((key) => !allowed.has(key))) throw new ProtocolError("unknown_agent_signal_field");
   const recipient = String(value[recipientField] || "");
   if (recipientField === "peerId" && !PEER_ID_PATTERN.test(recipient)) throw new ProtocolError("invalid_agent_peer");
@@ -87,12 +89,26 @@ function signal(value, recipientField) {
   const hasDescription = Object.hasOwn(value, "description");
   const hasCandidate = Object.hasOwn(value, "candidate");
   if (hasDescription === hasCandidate) throw new ProtocolError("invalid_agent_signal");
+  const parsedDescription = hasDescription ? description(value.description) : null;
+  const hasNegotiationSequence = Object.hasOwn(value, "negotiationSequence");
+  const nativeOffer = recipientField === "peerId" && parsedDescription?.type === "offer";
+  if (hasNegotiationSequence !== nativeOffer) {
+    throw new ProtocolError("invalid_agent_negotiation_sequence");
+  }
   return Object.freeze({
     type: "media-agent-signal",
     [recipientField]: recipient,
     roomId: value.roomId,
     routeEpoch: integer(value.routeEpoch, "route_epoch", 1, Number.MAX_SAFE_INTEGER),
-    ...(hasDescription ? { description: description(value.description) } : { candidate: candidate(value.candidate) }),
+    ...(hasDescription ? { description: parsedDescription } : { candidate: candidate(value.candidate) }),
+    ...(nativeOffer ? {
+      negotiationSequence: integer(
+        value.negotiationSequence,
+        "negotiation_sequence",
+        1,
+        Number.MAX_SAFE_INTEGER,
+      ),
+    } : {}),
   });
 }
 

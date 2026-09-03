@@ -49,28 +49,39 @@ async function secureOutputDirectory(directory) {
 }
 
 async function login(page) {
-  const issuerOrigin = new URL(issuer).origin;
-  await page.goto(appOrigin);
-  await page.locator("#login").click();
-  try {
-    await page.waitForURL(`${issuerOrigin}/**`);
-  } catch (error) {
-    if (!String(error).includes("ERR_NETWORK_CHANGED")) throw error;
-    await page.waitForTimeout(500);
-    if (new URL(page.url()).origin !== issuerOrigin) {
-      await page.goto(appOrigin);
-      await page.locator("#login").click();
-      await page.waitForURL(`${issuerOrigin}/**`);
+  let lastFailure = "none";
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await page.goto(appOrigin, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      await page.waitForFunction(() => document.querySelector("#login") || document.querySelector("#logout"));
+      if (!(await page.locator("#logout").isVisible())) {
+        await page.locator("#login").click();
+        await page.waitForFunction(() => document.querySelector("#username") || document.querySelector("#logout"), null, {
+          timeout: 30_000,
+        });
+        if (await page.locator("#username").isVisible()) {
+          await page.locator("#username").fill(username);
+          await page.locator("#password").fill(password);
+          await page.locator("#kc-login").click();
+        }
+        await page.locator("#logout").waitFor({ timeout: 30_000 });
+      }
+      lastFailure = "none";
+      break;
+    } catch (error) {
+      lastFailure = error instanceof Error ? error.name : "unknown";
+      await page.waitForTimeout(500 * attempt);
     }
   }
-  await page.locator("#username").fill(username);
-  await page.locator("#password").fill(password);
-  await page.locator("#kc-login").click();
-  try {
-    await page.locator("#logout").waitFor({ timeout: 30_000 });
-  } catch (error) {
-    const diagnostic = (await page.locator("body").innerText()).slice(0, 1_500);
-    throw new Error(`OIDC browser return failed at ${page.url()}: ${diagnostic}`, { cause: error });
+  if (lastFailure !== "none") {
+    const location = await page.evaluate(() => `${window.location.origin}${window.location.pathname}`)
+      .catch(() => "unavailable");
+    const state = await page.evaluate(() => ({
+      loginVisible: Boolean(document.querySelector("#login")),
+      logoutVisible: Boolean(document.querySelector("#logout")),
+      keycloakFormVisible: Boolean(document.querySelector("#username")),
+    })).catch(() => ({ loginVisible: false, logoutVisible: false, keycloakFormVisible: false }));
+    throw new Error(`OIDC browser return failed: ${JSON.stringify({ location, state, lastFailure })}`);
   }
   assert.deepEqual(await page.evaluate(() => window.__captureCalls), [], "login must not invoke capture");
   await page.locator("#mesh-analysis-navigation").click();
@@ -166,7 +177,7 @@ try {
   });
   const page = await context.newPage();
   const pageErrors = [];
-  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("pageerror", (error) => pageErrors.push(error.name || "Error"));
   await login(page);
   if (action === "download") await downloadInstallers(page);
   if (action === "verify-online") await verifyAgentsOnline(page);

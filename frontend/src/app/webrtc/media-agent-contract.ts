@@ -82,7 +82,11 @@ export type MediaAgentSignal = Readonly<{
   agentId: string;
   roomId: string;
   routeEpoch: number;
-} & ({ description: RTCSessionDescriptionInit } | { candidate: RTCIceCandidateInit | null })>;
+} & (
+  { description: Readonly<{ type: "offer"; sdp: string }>; negotiationSequence: number }
+  | { description: Readonly<{ type: "answer"; sdp: string }> }
+  | { candidate: RTCIceCandidateInit | null }
+)>;
 
 function exact(value: Record<string, unknown>, fields: readonly string[]): boolean {
   return Object.keys(value).length === fields.length && fields.every((field) => Object.hasOwn(value, field));
@@ -337,9 +341,15 @@ export function validateMediaAgentSignal(raw: unknown): MediaAgentSignal | null 
   const value = raw as Record<string, unknown>;
   const hasDescription = Object.hasOwn(value, "description");
   const hasCandidate = Object.hasOwn(value, "candidate");
-  const payloadField = hasDescription ? "description" : "candidate";
+  const rawDescription = hasDescription && value["description"] && typeof value["description"] === "object"
+    && !Array.isArray(value["description"])
+    ? value["description"] as Record<string, unknown> : null;
+  const isOffer = rawDescription?.["type"] === "offer";
+  const payloadFields = hasDescription
+    ? ["description", ...(isOffer ? ["negotiationSequence"] : [])]
+    : ["candidate"];
   if (hasDescription === hasCandidate || !exact(value, [
-    "version", "type", "agentId", "roomId", "routeEpoch", payloadField,
+    "version", "type", "agentId", "roomId", "routeEpoch", ...payloadFields,
   ]) || value["version"] !== 1 || value["type"] !== "media-agent-signal"
     || !AGENT_ID.test(String(value["agentId"] || "")) || !ROOM_ID.test(String(value["roomId"] || ""))
     || !Number.isSafeInteger(value["routeEpoch"]) || Number(value["routeEpoch"]) < 1) return null;
@@ -351,15 +361,26 @@ export function validateMediaAgentSignal(raw: unknown): MediaAgentSignal | null 
     routeEpoch: Number(value["routeEpoch"]),
   };
   if (hasDescription) {
-    const rawDescription = value["description"];
-    if (!rawDescription || typeof rawDescription !== "object" || Array.isArray(rawDescription)) return null;
-    const description = rawDescription as Record<string, unknown>;
+    if (!rawDescription) return null;
+    const description = rawDescription;
     if (!exact(description, ["type", "sdp"]) || !new Set(["offer", "answer"]).has(String(description["type"] || ""))
       || typeof description["sdp"] !== "string" || description["sdp"].length > 80_000) return null;
-    return Object.freeze({ ...base, description: Object.freeze({
-      type: description["type"] as RTCSdpType,
+    const normalizedDescription = Object.freeze({
+      type: description["type"] as "offer" | "answer",
       sdp: description["sdp"],
-    }) });
+    });
+    if (normalizedDescription.type === "offer") {
+      if (!Number.isSafeInteger(value["negotiationSequence"]) || Number(value["negotiationSequence"]) < 1) return null;
+      return Object.freeze({
+        ...base,
+        description: normalizedDescription as Readonly<{ type: "offer"; sdp: string }>,
+        negotiationSequence: Number(value["negotiationSequence"]),
+      });
+    }
+    return Object.freeze({
+      ...base,
+      description: normalizedDescription as Readonly<{ type: "answer"; sdp: string }>,
+    });
   }
   if (value["candidate"] === null) return Object.freeze({ ...base, candidate: null });
   const rawCandidate = value["candidate"];

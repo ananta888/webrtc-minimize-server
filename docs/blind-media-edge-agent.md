@@ -149,6 +149,29 @@ Sender frei. Bis dahin werden Pakete nicht im Agenten gepuffert; der
 Direct-SFrame-Pfad bleibt autoritativ, und der periodische Keyframe-Request
 ermoeglicht danach einen frischen Decodereinstieg.
 
+Auch die Browser-Agent-Verbindung serialisiert native Offers, weil Pion kein
+SDP-Rollback anbietet. Der Browser erzeugt beim Verbindungsaufbau genau einen
+geordneten `media-agent-control`-DataChannel. Braucht der Agent ein Offer,
+sendet er dort einen monotonen, an die Route-Epoche gebundenen
+`media-agent-negotiation-request`; der Browser beantwortet ihn erst im
+stabilen Signaling-Zustand und nach einem bereits benoetigten eigenen Offer
+mit dem exakt passenden `grant`. Das folgende native Offer muss dieselbe
+Sequenz ueber die Control Plane tragen. Ein fehlender, doppelter,
+uebersprungener, verspaeteter oder epochenfremder Turn schliesst nur diese
+Agent-PeerConnection und laesst den Direct-SFrame-Fallback bestehen. Payloads
+sind auf 256 Bytes, 16 Nachrichten je zehn Sekunden, 64 KiB DataChannel-
+Backpressure und einen fuenfsekündigen Grant-Turn begrenzt; sie uebertragen
+weder Membership noch Publikations-, Layer- oder Schluesselautoritaet.
+
+SDP-Turn und Trickle-ICE koennen sich bei einem ICE-Restart zeitlich
+ueberholen. Deshalb ordnen Browser und Pion jeden Kandidaten mit vorhandenem
+`usernameFragment` der passenden `a=ice-ufrag`-Generation zu. Kandidaten fuer
+das noch verzoegerte naechste Offer bleiben in der bereits auf 256 Eintraege
+begrenzten Verbindungsqueue; nach Installation der passenden Description
+werden nur Ufrag-Treffer angewendet und alte Generationen verworfen. Legacy-
+Kandidaten ohne Fragment werden nur in der geordneten aktuellen Description
+angenommen. Die Ufrag-Zuordnung erteilt keinerlei Route- oder Peerrecht.
+
 Ein Egress-RTP-Track kann nach einer Neuverhandlung vor dem zugehoerigen
 autoritativen `media-agent-track-state` im Browser eintreffen. Er bleibt dann
 deaktiviert in einer auf 64 Eintraege und fuenf Sekunden begrenzten lokalen
@@ -248,7 +271,10 @@ Damit verbrauchen direkt erreichbare Browser-Agent-Paare keine vorsorglichen
 Coturn-Allokationen. Der native Pion-Agent erhaelt derzeit weiterhin die
 vollstaendige geschlossene ICE-Serverliste seiner kurzen Lease; dessen
 Gathering und die Coturn-`user-quota`/`total-quota` muessen deshalb in der
-Produktionskapazitaet beruecksichtigt werden.
+Produktionskapazitaet beruecksichtigt werden. Insbesondere muss `user-quota`
+alle gleichzeitig benoetigten PeerConnections desselben OIDC-Principals und
+`total-quota` die geplante Raum-/Agent-Last tragen; ein erfolgreicher
+Einzel-Allocationstest beweist keine Kapazitaet fuer 20 Teilnehmer.
 
 Ohne konfigurierte, authentisierte und vom Nutzer zugestimmte Media-Agenten
 zeigt die UI nur das bestehende Mesh und behauptet keine Fanout-Reduktion. Ein

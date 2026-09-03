@@ -211,14 +211,10 @@ func (f *federationPeer) acceptSignal(message serverMessage) error {
 		if err := json.Unmarshal(message.Candidate, &candidate); err != nil {
 			return fmt.Errorf("invalid federation ICE candidate")
 		}
-		if f.pc.RemoteDescription() == nil {
-			if len(f.pendingCandidates) >= 256 {
-				return fmt.Errorf("federation candidate queue full")
-			}
-			f.pendingCandidates = append(f.pendingCandidates, candidate)
-			return nil
+		if err := addOrQueueRemoteICECandidate(f.pc, &f.pendingCandidates, candidate); err != nil {
+			return fmt.Errorf("apply or queue federation ICE candidate: %w", err)
 		}
-		return f.pc.AddICECandidate(candidate)
+		return nil
 	}
 	description := *message.Description
 	if description.Type == webrtc.SDPTypeOffer {
@@ -237,20 +233,31 @@ func (f *federationPeer) acceptSignal(message serverMessage) error {
 	if err := f.pc.SetRemoteDescription(description); err != nil {
 		return fmt.Errorf("set federation remote description: %w", err)
 	}
-	for _, candidate := range f.pendingCandidates {
-		if err := f.pc.AddICECandidate(candidate); err != nil {
-			return err
-		}
+	if err := applyQueuedRemoteICECandidates(f.pc, &f.pendingCandidates); err != nil {
+		return fmt.Errorf("apply queued federation ICE candidate: %w", err)
 	}
-	f.pendingCandidates = nil
 	if description.Type == webrtc.SDPTypeAnswer {
+		acceptedSenders := remoteReceivingSenders(f.pc, description)
+		retryNegotiation := false
 		for key, pending := range f.pendingOfferSenders {
-			if f.senders[key] == pending && pending.active && pending.sender.Track() != nil {
+			if f.senders[key] != pending || !pending.active || pending.sender.Track() == nil {
+				continue
+			}
+			if _, accepted := acceptedSenders[pending.sender]; accepted {
 				pending.negotiated = true
 				go pending.layer.requestKeyframe()
+			} else {
+				pending.negotiated = false
+				retryNegotiation = true
 			}
 		}
 		f.pendingOfferSenders = nil
+		if retryNegotiation {
+			// The remote answer did not authorize an active outgoing m-line.
+			// Do not claim that its track is writable; a later serialized turn
+			// will advertise the still-active sender again.
+			f.needsNegotiation = true
+		}
 	}
 	if description.Type == webrtc.SDPTypeOffer {
 		answer, err := f.pc.CreateAnswer(nil)

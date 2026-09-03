@@ -24,6 +24,59 @@ func nextPeerOffer(t *testing.T, messages <-chan capturedControl) webrtc.Session
 	}
 }
 
+func nextPeerDescription(
+	t *testing.T,
+	messages <-chan capturedControl,
+	descriptionType webrtc.SDPType,
+) webrtc.SessionDescription {
+	t.Helper()
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case message := <-messages:
+			if message.Description != nil && message.Description.Type == descriptionType {
+				return *message.Description
+			}
+		case <-timer.C:
+			t.Fatalf("timed out waiting for native peer %s", descriptionType.String())
+		}
+	}
+}
+
+func setMediaPeerTestGrant(peer *mediaPeer, sequence int64) {
+	peer.mu.Lock()
+	peer.localNegotiationAck = sequence
+	peer.mu.Unlock()
+}
+
+func negotiateMediaPeerWithTestGrant(peer *mediaPeer, sequence int64) {
+	setMediaPeerTestGrant(peer, sequence)
+	peer.negotiate()
+}
+
+func TestBrowserAgentNegotiationControlIsClosedAndEpochBound(t *testing.T) {
+	valid := []byte(`{"version":1,"type":"media-agent-negotiation-grant","routeEpoch":7,"sequence":3}`)
+	message, err := decodeBrowserAgentNegotiationControl(valid)
+	if err != nil || message.Sequence != 3 || message.RouteEpoch != 7 {
+		t.Fatalf("valid negotiation grant rejected: %#v %v", message, err)
+	}
+	invalid := [][]byte{
+		{},
+		[]byte(`{"version":2,"type":"media-agent-negotiation-grant","routeEpoch":7,"sequence":3}`),
+		[]byte(`{"version":1,"type":"media-agent-negotiation-grant","routeEpoch":0,"sequence":3}`),
+		[]byte(`{"version":1,"type":"media-agent-negotiation-grant","routeEpoch":7,"sequence":0}`),
+		[]byte(`{"version":1,"type":"media-agent-negotiation-grant","routeEpoch":7,"sequence":3,"authority":true}`),
+		[]byte(`{"version":1,"type":"unknown","routeEpoch":7,"sequence":3}`),
+		[]byte(strings.Repeat("x", maximumBrowserAgentControlBytes+1)),
+	}
+	for _, raw := range invalid {
+		if _, err = decodeBrowserAgentNegotiationControl(raw); err == nil {
+			t.Fatalf("invalid browser-agent negotiation control accepted: %q", raw)
+		}
+	}
+}
+
 func TestMediaPeerRetriesNegotiationRequestedDuringOutstandingOffer(t *testing.T) {
 	cfg, err := loadConfig(environment(validEnvironment()))
 	if err != nil {
@@ -48,7 +101,7 @@ func TestMediaPeerRetriesNegotiationRequestedDuringOutstandingOffer(t *testing.T
 		t.Fatal(err)
 	}
 
-	peer.negotiate()
+	negotiateMediaPeerWithTestGrant(peer, 1)
 	firstOffer := nextPeerOffer(t, control.messages)
 	if strings.Contains(firstOffer.SDP, "m=video") {
 		t.Fatal("initial bootstrap offer unexpectedly contained video")
@@ -78,6 +131,7 @@ func TestMediaPeerRetriesNegotiationRequestedDuringOutstandingOffer(t *testing.T
 	if err = browser.SetLocalDescription(answer); err != nil {
 		t.Fatal(err)
 	}
+	setMediaPeerTestGrant(peer, 2)
 	if err = peer.acceptSignal(serverMessage{
 		Type: "peer-signal", RoomID: room.id, PeerID: peer.id, RouteEpoch: room.routeEpoch,
 		Description: &answer,
@@ -115,7 +169,7 @@ func TestMediaPeerCoalescesThreeForwardTracksBehindOutstandingOffer(t *testing.T
 		t.Fatal(err)
 	}
 
-	peer.negotiate()
+	negotiateMediaPeerWithTestGrant(peer, 1)
 	firstOffer := nextPeerOffer(t, control.messages)
 	tracks := []struct {
 		codec webrtc.RTPCodecCapability
@@ -149,6 +203,7 @@ func TestMediaPeerCoalescesThreeForwardTracksBehindOutstandingOffer(t *testing.T
 	if err = browser.SetLocalDescription(answer); err != nil {
 		t.Fatal(err)
 	}
+	setMediaPeerTestGrant(peer, 2)
 	if err = peer.acceptSignal(serverMessage{
 		Type: "peer-signal", RoomID: room.id, PeerID: peer.id, RouteEpoch: room.routeEpoch,
 		Description: &answer,
@@ -296,6 +351,52 @@ func TestLocalSendingSendersRejectsReceiveOnlyAnswer(t *testing.T) {
 	}
 	if _, present := localSendingSenders(native, answer)[nativeSender]; present {
 		t.Fatal("receive-only answer incorrectly authorized its local sender")
+	}
+}
+
+func TestRemoteReceivingSendersRequiresReceiveDirectionInAnswer(t *testing.T) {
+	native := newBrowserPeer(t, "0123456789abcdef")
+	nativeTrack, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000},
+		"native-camera", "native-stream",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativeSender, err := native.AddTrack(nativeTrack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offer, err := native.CreateOffer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = native.SetLocalDescription(offer); err != nil {
+		t.Fatal(err)
+	}
+
+	remote := newBrowserPeer(t, "fedcba9876543210")
+	if err = remote.SetRemoteDescription(offer); err != nil {
+		t.Fatal(err)
+	}
+	answer, err := remote.CreateAnswer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = remote.SetLocalDescription(answer); err != nil {
+		t.Fatal(err)
+	}
+	if _, present := remoteReceivingSenders(native, answer)[nativeSender]; !present {
+		t.Fatal("receive-only remote answer did not authorize its corresponding local sender")
+	}
+
+	rejected := answer
+	rejected.SDP = strings.Replace(answer.SDP, "a=recvonly", "a=inactive", 1)
+	if rejected.SDP == answer.SDP {
+		t.Fatal("test answer did not contain the expected receive-only media section")
+	}
+	if _, present := remoteReceivingSenders(native, rejected)[nativeSender]; present {
+		t.Fatal("inactive remote answer incorrectly authorized its corresponding local sender")
 	}
 }
 

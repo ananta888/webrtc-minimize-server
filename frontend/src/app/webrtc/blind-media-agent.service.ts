@@ -12,12 +12,17 @@ import {
   validateMediaAgentTakeoverRequest,
   validateMediaAgentTrackState,
 } from "./media-agent-contract";
+import { mediaAgentCandidateMatchesDescription } from "./media-agent-ice-generation";
 import { ServerMessage, SignalingService } from "./signaling.service";
 import { classifySelectedIcePath, ManagedPeer } from "./peer-connection-manager";
 import {
   MediaAgentRemoteTrackBinding,
   parseMediaAgentRemoteTrackBindings,
 } from "./media-agent-sdp";
+import {
+  encodeMediaAgentNegotiationControl,
+  parseMediaAgentNegotiationControl,
+} from "./media-agent-negotiation-control";
 
 export interface AvailableMediaAgent {
   readonly id: string;
@@ -72,7 +77,16 @@ interface MediaAgentCallbacks {
 interface AgentConnection extends ManagedPeer {
   readonly agentId: string;
   readonly pendingCandidates: Array<RTCIceCandidateInit | null>;
+  readonly controlChannel: RTCDataChannel;
+  signalQueue: Promise<void>;
   remoteTrackBindings: ReadonlyMap<string, MediaAgentRemoteTrackBinding>;
+  pendingAgentNegotiationRequest: number;
+  grantedAgentNegotiationSequence: number;
+  lastAgentNegotiationRequest: number;
+  negotiationGrantTimer: ReturnType<typeof setTimeout> | null;
+  controlWindowStartedAt: number;
+  controlMessageCount: number;
+  sdpOperationActive: boolean;
   connected: boolean;
 }
 
@@ -100,6 +114,10 @@ const MAX_PENDING_AGENT_TRACKS = 64;
 const PENDING_AGENT_TRACK_TTL_MS = 5_000;
 const ICE_RESTART_COOLDOWN_MS = 10_000;
 const ICE_TIER_EVENT_DEBOUNCE_MS = 1_000;
+const AGENT_NEGOTIATION_TURN_TIMEOUT_MS = 5_000;
+const AGENT_CONTROL_RATE_WINDOW_MS = 10_000;
+const MAX_AGENT_CONTROL_MESSAGES_PER_WINDOW = 16;
+const MAX_AGENT_CONTROL_BUFFERED_BYTES = 64 * 1024;
 
 @Injectable({ providedIn: "root" })
 export class BlindMediaAgentService {
@@ -271,18 +289,39 @@ export class BlindMediaAgentService {
     if (!signal || signal.roomId !== this.roomId || signal.routeEpoch !== this.routeEpoch()) return;
     const connection = this.connections.get(signal.agentId);
     if (!connection) return;
+    const operation = connection.signalQueue.then(async () => {
+      if (this.connections.get(signal.agentId) !== connection
+        || signal.routeEpoch !== this.routeEpoch()) return;
+      await this.applySignal(connection, signal);
+    });
+    connection.signalQueue = operation.catch(() => undefined);
     try {
-      const description = "description" in signal ? signal.description : undefined;
-      if (description) {
-        if (!new Set(["offer", "answer"]).has(description.type) || typeof description.sdp !== "string") return;
-        const remoteTrackBindings = parseMediaAgentRemoteTrackBindings(description.sdp);
-        if (!remoteTrackBindings) throw new Error("invalid_media_agent_sdp_binding");
-        const collision = description.type === "offer"
-          && (connection.makingOffer || connection.pc.signalingState !== "stable");
-        if (collision) {
-          connection.needsNegotiation = true;
-          await connection.pc.setLocalDescription({ type: "rollback" });
-        }
+      await operation;
+    } catch {
+      connection.settingRemoteAnswerPending = false;
+      this.failConnection(connection);
+    }
+  }
+
+  private async applySignal(
+    connection: AgentConnection,
+    signal: NonNullable<ReturnType<typeof validateMediaAgentSignal>>,
+  ): Promise<void> {
+    const description = "description" in signal ? signal.description : undefined;
+    if (description) {
+      const remoteTrackBindings = parseMediaAgentRemoteTrackBindings(description.sdp || "");
+      if (!remoteTrackBindings) throw new Error("invalid_media_agent_sdp_binding");
+      const collision = description.type === "offer"
+        && (connection.makingOffer || connection.pc.signalingState !== "stable");
+      const negotiationSequence = description.type === "offer" && "negotiationSequence" in signal
+        ? signal.negotiationSequence : 0;
+      if (description.type === "offer" && (collision
+        || connection.grantedAgentNegotiationSequence !== negotiationSequence)) {
+        throw new Error("ungranted_media_agent_offer");
+      }
+      if (description.type === "offer") this.consumeAgentNegotiationGrant(connection);
+      connection.sdpOperationActive = true;
+      try {
         connection.settingRemoteAnswerPending = description.type === "answer";
         const previousRemoteTrackBindings = connection.remoteTrackBindings;
         connection.remoteTrackBindings = remoteTrackBindings;
@@ -297,28 +336,27 @@ export class BlindMediaAgentService {
         }
         connection.settingRemoteAnswerPending = false;
         for (const candidate of connection.pendingCandidates.splice(0)) {
-          await connection.pc.addIceCandidate(candidate);
+          if (mediaAgentCandidateMatchesDescription(candidate, connection.pc.remoteDescription)) {
+            await connection.pc.addIceCandidate(candidate);
+          }
         }
         if (description.type === "offer") {
           await connection.pc.setLocalDescription();
           this.sendSignal(signal.agentId, { description: connection.pc.localDescription });
         }
-        if (connection.needsNegotiation && connection.pc.signalingState === "stable") {
-          void this.negotiate(connection);
-        }
-        return;
+      } finally {
+        connection.sdpOperationActive = false;
       }
-      const candidate = "candidate" in signal ? signal.candidate : null;
-      if (!connection.pc.remoteDescription) {
-        if (connection.pendingCandidates.length >= 256) throw new Error("media_agent_candidate_queue_full");
-        connection.pendingCandidates.push(candidate);
-        return;
-      }
-      await connection.pc.addIceCandidate(candidate);
-    } catch {
-      connection.settingRemoteAnswerPending = false;
-      this.status.set("error");
+      this.continueNegotiation(connection);
+      return;
     }
+    const candidate = "candidate" in signal ? signal.candidate : null;
+    if (!mediaAgentCandidateMatchesDescription(candidate, connection.pc.remoteDescription)) {
+      if (connection.pendingCandidates.length >= 256) throw new Error("media_agent_candidate_queue_full");
+      connection.pendingCandidates.push(candidate);
+      return;
+    }
+    await connection.pc.addIceCandidate(candidate);
   }
 
   applyTrackState(raw: unknown): void {
@@ -567,6 +605,7 @@ export class BlindMediaAgentService {
   private createConnection(agentId: string): void {
     if (!this.icePolicy) return;
     const pc = new RTCPeerConnection({ iceServers: [...cumulativeIceServers(this.icePolicy, 0)] });
+    const controlChannel = pc.createDataChannel("media-agent-control", { ordered: true });
     const connection: AgentConnection = {
       id: agentId,
       name: `Media-Agent ${agentId}`,
@@ -578,7 +617,7 @@ export class BlindMediaAgentService {
       makingOffer: false,
       ignoreOffer: false,
       settingRemoteAnswerPending: false,
-      polite: true,
+      polite: false,
       linkClass: "unknown",
       reportedLinkClass: "unknown",
       lastControlSequence: -1,
@@ -592,7 +631,16 @@ export class BlindMediaAgentService {
       lastIceRestartAt: 0,
       connected: false,
       pendingCandidates: [],
+      controlChannel,
+      signalQueue: Promise.resolve(),
       remoteTrackBindings: new Map(),
+      pendingAgentNegotiationRequest: 0,
+      grantedAgentNegotiationSequence: 0,
+      lastAgentNegotiationRequest: 0,
+      negotiationGrantTimer: null,
+      controlWindowStartedAt: Date.now(),
+      controlMessageCount: 0,
+      sdpOperationActive: false,
       needsNegotiation: false,
     };
     this.connections.set(agentId, connection);
@@ -626,7 +674,8 @@ export class BlindMediaAgentService {
     pc.oniceconnectionstatechange = () => this.handleConnectionState(connection);
     pc.onconnectionstatechange = () => this.handleConnectionState(connection);
     pc.onnegotiationneeded = () => void this.negotiate(connection);
-    pc.createDataChannel("media-agent-control", { ordered: true });
+    pc.ondatachannel = ({ channel }) => channel.close();
+    this.attachNegotiationControl(connection);
     this.scheduleIceFallback(connection);
     this.updateStatus();
   }
@@ -728,7 +777,9 @@ export class BlindMediaAgentService {
 
   private async negotiate(connection: AgentConnection): Promise<void> {
     connection.needsNegotiation = true;
-    if (connection.makingOffer || connection.pc.signalingState !== "stable") return;
+    if (connection.grantedAgentNegotiationSequence !== 0
+      || connection.sdpOperationActive || connection.makingOffer
+      || connection.pc.signalingState !== "stable") return;
     connection.needsNegotiation = false;
     connection.makingOffer = true;
     let offerCreated = false;
@@ -744,7 +795,91 @@ export class BlindMediaAgentService {
       if (offerCreated && connection.needsNegotiation && connection.pc.signalingState === "stable") {
         queueMicrotask(() => void this.negotiate(connection));
       }
+      this.continueNegotiation(connection);
     }
+  }
+
+  private attachNegotiationControl(connection: AgentConnection): void {
+    const channel = connection.controlChannel;
+    channel.binaryType = "arraybuffer";
+    channel.onmessage = ({ data }) => {
+      if (typeof data !== "string" || !this.acceptNegotiationControl(connection, data)) {
+        this.failConnection(connection);
+      }
+    };
+    channel.onopen = () => this.continueNegotiation(connection);
+    channel.onclose = () => {
+      if (this.connections.get(connection.agentId) === connection
+        && connection.pc.connectionState !== "closed") this.failConnection(connection);
+    };
+  }
+
+  private acceptNegotiationControl(connection: AgentConnection, raw: string): boolean {
+    const message = parseMediaAgentNegotiationControl(raw);
+    const now = Date.now();
+    if (now - connection.controlWindowStartedAt >= AGENT_CONTROL_RATE_WINDOW_MS) {
+      connection.controlWindowStartedAt = now;
+      connection.controlMessageCount = 0;
+    }
+    connection.controlMessageCount += 1;
+    if (!message || message.type !== "media-agent-negotiation-request"
+      || message.routeEpoch !== this.routeEpoch()
+      || message.sequence !== connection.lastAgentNegotiationRequest + 1
+      || connection.controlMessageCount > MAX_AGENT_CONTROL_MESSAGES_PER_WINDOW) return false;
+    connection.lastAgentNegotiationRequest = message.sequence;
+    connection.pendingAgentNegotiationRequest = message.sequence;
+    // A newer ordered request proves that the native endpoint did not consume
+    // the earlier grant. Supersede it before granting the new turn.
+    this.consumeAgentNegotiationGrant(connection);
+    this.continueNegotiation(connection);
+    return true;
+  }
+
+  private continueNegotiation(connection: AgentConnection): void {
+    if (this.connections.get(connection.agentId) !== connection
+      || connection.sdpOperationActive || connection.makingOffer
+      || connection.pc.signalingState !== "stable") return;
+    if (connection.needsNegotiation && connection.grantedAgentNegotiationSequence === 0) {
+      void this.negotiate(connection);
+      return;
+    }
+    if (connection.pendingAgentNegotiationRequest === 0
+      || connection.grantedAgentNegotiationSequence !== 0
+      || connection.controlChannel.readyState !== "open") return;
+    const sequence = connection.pendingAgentNegotiationRequest;
+    if (connection.controlChannel.bufferedAmount > MAX_AGENT_CONTROL_BUFFERED_BYTES) {
+      this.failConnection(connection);
+      return;
+    }
+    try {
+      connection.controlChannel.send(encodeMediaAgentNegotiationControl({
+        version: 1,
+        type: "media-agent-negotiation-grant",
+        routeEpoch: this.routeEpoch(),
+        sequence,
+      }));
+    } catch {
+      this.failConnection(connection);
+      return;
+    }
+    connection.pendingAgentNegotiationRequest = 0;
+    connection.grantedAgentNegotiationSequence = sequence;
+    connection.negotiationGrantTimer = setTimeout(() => {
+      if (connection.grantedAgentNegotiationSequence === sequence) this.failConnection(connection);
+    }, AGENT_NEGOTIATION_TURN_TIMEOUT_MS);
+  }
+
+  private consumeAgentNegotiationGrant(connection: AgentConnection): void {
+    if (connection.negotiationGrantTimer) clearTimeout(connection.negotiationGrantTimer);
+    connection.negotiationGrantTimer = null;
+    connection.grantedAgentNegotiationSequence = 0;
+  }
+
+  private failConnection(connection: AgentConnection): void {
+    if (this.connections.get(connection.agentId) !== connection) return;
+    this.status.set("error");
+    this.closeConnection(connection.agentId, true);
+    this.callbacks.connectionChanged();
   }
 
   private sendSignal(agentId: string, payload: object): void {
@@ -764,6 +899,10 @@ export class BlindMediaAgentService {
     if (!connection) return;
     this.connections.delete(agentId);
     this.clearIceFallback(connection);
+    this.consumeAgentNegotiationGrant(connection);
+    connection.controlChannel.onmessage = null;
+    connection.controlChannel.onopen = null;
+    connection.controlChannel.onclose = null;
     if (announce && connection.connected) {
       try {
         this.signaling.send({

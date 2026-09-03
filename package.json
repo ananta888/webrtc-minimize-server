@@ -13,6 +13,7 @@
     "test:frontend": "vitest run --config vitest.config.mjs",
     "test:infrastructure": "node scripts/live-infrastructure-gate.mjs",
     "test:media-agent-onboarding": "node scripts/live-media-agent-onboarding-gate.mjs",
+    "test:media-agent-room": "node scripts/live-media-agent-room-gate.mjs",
     "keycloak:client-config": "node scripts/keycloak-client-config.mjs",
     "test": "node --test",
     "todos:validate": "node scripts/validate-todos.mjs",

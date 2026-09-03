@@ -572,6 +572,30 @@ test("operator-bound media agent uses challenge auth, creator preference and epo
   assert.equal(answer.agentId, "owner-edge");
   assert.equal(answer.routeEpoch, route.routeEpoch);
 
+  agent.socket.send(JSON.stringify({
+    type: "media-agent-signal",
+    peerId: welcome.peerId,
+    roomId: room.roomId,
+    routeEpoch: route.routeEpoch,
+    negotiationSequence: 3,
+    description: { type: "offer", sdp: "v=0\r\n" },
+  }));
+  const grantedOffer = await browser.next((message) => (
+    message.type === "media-agent-signal" && message.description?.type === "offer"
+  ));
+  assert.equal(grantedOffer.negotiationSequence, 3);
+  assert.equal(grantedOffer.agentId, "owner-edge");
+
+  agent.socket.send(JSON.stringify({
+    type: "media-agent-signal",
+    peerId: welcome.peerId,
+    roomId: room.roomId,
+    routeEpoch: route.routeEpoch,
+    description: { type: "offer", sdp: "v=0\r\n" },
+  }));
+  assert.equal((await agent.next((message) => message.type === "agent-error")).code,
+    "invalid_agent_negotiation_sequence");
+
   browser.socket.send(JSON.stringify({
     type: "media-agent-peer-state",
     agentId: "owner-edge",
