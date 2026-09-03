@@ -385,7 +385,8 @@ Kosten und Einschränkungen:
 - Domain und Angular-UI hängen nicht von einem Gateway-, Player- oder
   Providerhersteller ab.
 
-Das folgende Threat Model (`TBP-003`) konkretisiert Angreifer, Retention,
-Missbrauchsfälle und testbare Mitigations. Die Capability-Matrix (`TBP-004`)
-entscheidet anschließend anhand versionierter Primärquellen, welche Adapter
-und Browserpfade tatsächlich aktiviert werden dürfen.
+Das [Broadcast-Threat-Model](../broadcast-threat-model.md) (`TBP-003`)
+konkretisiert Angreifer, Retention, Missbrauchsfälle und testbare Mitigations.
+Die Capability-Matrix (`TBP-004`) entscheidet anschließend anhand
+versionierter Primärquellen, welche Adapter und Browserpfade tatsächlich
+aktiviert werden dürfen.

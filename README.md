@@ -10,6 +10,8 @@ Die [verifizierte Broadcast-Ausgangsbasis](docs/broadcast-baseline-inventory.md)
 
 Die angenommene [Plane-ADR](docs/adr/0001-separated-interactive-broadcast-delivery-planes.md) trennt Control Plane, interaktiven SFrame-Raum, Own-Source-/Trusted-Program-Packager, Media-Gateway, Delivery-Provider und Viewer. Sie beschreibt insbesondere die Klartextgrenzen und hält Zuschauer vollständig außerhalb von Membership, Peer-Liste, 20er-Grenze und Mesh.
 
+Das verbindliche [Broadcast-Threat-Model](docs/broadcast-threat-model.md) trennt ehrliche SFrame-, Trusted-Program-, Transport-, private und öffentliche Security Claims. Es ordnet kompromittierte Packager/Gateways/Provider, Replay, das Erraten von Pfaden, Hotlinking, DoS, Metadaten, Retention und ungewolltes Recording konkreten fail-closed Negativtests zu.
+
 Die Hauptnavigation enthält außerdem eine [raumgebundene Mesh-Analyse](docs/mesh-analysis.md). Ihr interaktiver SVG-Graph zeigt Browser, Trusted Relays und native Media-Agenten sowie lokal gemessene beziehungsweise klar als Peer-Angabe markierte Kantenraten. Ein ausgewählter Knoten schlüsselt Upload und Download nach Audio, Kamera/Video, Bildschirmfreigabe und DataChannel auf. Direkt darunter liegen Inventar, Installation, Widerruf, Mehrfachauswahl, Raum-Consent und aktueller Routenzustand der eigenen Media-Agenten; der allgemeine Einstellungsbereich dupliziert diese Bedienung nicht. Die Telemetrie ist flüchtig, nur bei sichtbar geöffneter Analyse angefordert und niemals Membership- oder Routing-Autorität.
 
 ## Lokal starten
