@@ -12,6 +12,8 @@ Die angenommene [Plane-ADR](docs/adr/0001-separated-interactive-broadcast-delive
 
 Das verbindliche [Broadcast-Threat-Model](docs/broadcast-threat-model.md) trennt ehrliche SFrame-, Trusted-Program-, Transport-, private und öffentliche Security Claims. Es ordnet kompromittierte Packager/Gateways/Provider, Replay, das Erraten von Pfaden, Hotlinking, DoS, Metadaten, Retention und ungewolltes Recording konkreten fail-closed Negativtests zu.
 
+Die [versionierte Broadcast-Capability-Matrix](docs/broadcast-capability-matrix.md) trennt Upstream-Unterstützung von real geprüfter Produktreife. Sie pinnt Standards, Browser-/Mobilgrenzen, Player, Codecs und MediaMTX-/Cloudflare-/Native-Adapter; die geschlossene [JSON-Inventur](docs/broadcast-capability-matrix.v1.json) verhindert insbesondere falsche WHIP→LL-HLS-, Remux→Transcode- oder MoQ-Draft-Behauptungen.
+
 Die Hauptnavigation enthält außerdem eine [raumgebundene Mesh-Analyse](docs/mesh-analysis.md). Ihr interaktiver SVG-Graph zeigt Browser, Trusted Relays und native Media-Agenten sowie lokal gemessene beziehungsweise klar als Peer-Angabe markierte Kantenraten. Ein ausgewählter Knoten schlüsselt Upload und Download nach Audio, Kamera/Video, Bildschirmfreigabe und DataChannel auf. Direkt darunter liegen Inventar, Installation, Widerruf, Mehrfachauswahl, Raum-Consent und aktueller Routenzustand der eigenen Media-Agenten; der allgemeine Einstellungsbereich dupliziert diese Bedienung nicht. Die Telemetrie ist flüchtig, nur bei sichtbar geöffneter Analyse angefordert und niemals Membership- oder Routing-Autorität.
 
 ## Lokal starten

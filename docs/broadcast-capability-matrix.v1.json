@@ -1,0 +1,569 @@
+{
+  "version": 1,
+  "snapshotDate": "2026-09-03",
+  "evidencePolicy": {
+    "statusValues": [
+      "supported",
+      "degraded",
+      "experimental",
+      "unavailable"
+    ],
+    "statusMeaning": {
+      "supported": "Die genannte Capability ist durch die gepinnte Upstream-Referenz belegt; als productStatus nur nach einem reproduzierbaren Projektgate.",
+      "degraded": "Die Capability funktioniert nur mit dokumentierten Plattform-, Bedien-, Codec- oder Transporteinschraenkungen.",
+      "experimental": "Die Capability beruht auf einem Draft, einer Beta, einer instabilen API oder noch nicht bestandener Projektinteroperabilitaet.",
+      "unavailable": "Die Capability fehlt, ist inkompatibel oder bleibt im Projekt bis zu einem spaeteren Gate deaktiviert."
+    },
+    "productRule": "Upstream-Support allein aktiviert keine Produktfunktion. Jeder Adapter und jeder Browserpfad bleibt bis zu seinem realen Gate default-aus.",
+    "hardwareRule": "Hardwarebeschleunigung ist geraete-, betriebssystem-, treiber-, codec-, profil- und parameterabhaengig und muss zur Laufzeit ueber Media Capabilities oder native Encodertelemetrie geprueft werden.",
+    "legalRule": "Lizenzhinweise sind technische Betriebsrisiken und keine Rechtsberatung; konkrete Builds und Auslieferungsregionen benoetigen eine eigene Lizenzpruefung."
+  },
+  "standards": [
+    {
+      "id": "whip",
+      "version": "RFC 9725",
+      "kind": "ietf-rfc",
+      "published": "2025-03",
+      "expires": null,
+      "status": "supported",
+      "productStatus": "unavailable",
+      "sourceIds": ["SRC-WHIP-RFC9725"],
+      "note": "Stabiler Ingestvertrag; die Projektimplementierung folgt erst in TBP-011."
+    },
+    {
+      "id": "whep",
+      "version": "draft-ietf-wish-whep-04",
+      "kind": "ietf-internet-draft",
+      "published": "2026-06-22",
+      "expires": "2026-12-24",
+      "status": "experimental",
+      "productStatus": "unavailable",
+      "sourceIds": ["SRC-WHEP-DRAFT04"],
+      "note": "Aktiver Entwurf und deshalb kein verpflichtender Playback-Basispfad."
+    },
+    {
+      "id": "hls",
+      "version": "RFC 8216 plus Apple Authoring Specification",
+      "kind": "ietf-rfc-and-vendor-profile",
+      "published": "2017-08",
+      "expires": null,
+      "status": "supported",
+      "productStatus": "unavailable",
+      "sourceIds": ["SRC-HLS-RFC8216", "SRC-APPLE-HLS-AUTHORING"],
+      "note": "HLS ist der interoperable Fallback; fuer Apple-Zielgeraete gilt zusaetzlich das aktuelle Authoring-Profil."
+    },
+    {
+      "id": "ll-hls",
+      "version": "Apple LL-HLS documentation snapshot 2026-09-03",
+      "kind": "vendor-profile",
+      "published": null,
+      "expires": null,
+      "status": "supported",
+      "productStatus": "unavailable",
+      "sourceIds": ["SRC-APPLE-LLHLS"],
+      "note": "Geplanter Broadcast-Basispfad, aber noch ohne Projekt-Player-, Origin- oder Lastgate."
+    },
+    {
+      "id": "moqt",
+      "version": "draft-ietf-moq-transport-20",
+      "kind": "ietf-internet-draft",
+      "published": "2026-08-31",
+      "expires": "2027-03-04",
+      "status": "experimental",
+      "productStatus": "unavailable",
+      "sourceIds": ["SRC-MOQT-DRAFT20"],
+      "note": "Der optionale MoQ-Pfad muss die konkrete Draft-Version aushandeln und auf LL-HLS/HLS zurueckfallen."
+    },
+    {
+      "id": "loc",
+      "version": "draft-ietf-moq-loc-04",
+      "kind": "ietf-internet-draft",
+      "published": "2026-07-20",
+      "expires": "2027-01-21",
+      "status": "experimental",
+      "productStatus": "unavailable",
+      "sourceIds": ["SRC-MOQ-LOC-DRAFT04"],
+      "note": "Versioniertes Objekt-/Containerformat fuer spaetere MoQ-Adapter."
+    },
+    {
+      "id": "moq-secure-objects",
+      "version": "draft-ietf-moq-secure-objects-01",
+      "kind": "ietf-internet-draft",
+      "published": "2026-07-06",
+      "expires": "2027-01-07",
+      "status": "experimental",
+      "productStatus": "unavailable",
+      "sourceIds": ["SRC-MOQ-SECURE-OBJECTS-DRAFT01"],
+      "note": "Ersetzt den abgelaufenen individuellen Jennings-Entwurf; in keinem inventarisierten Adapter als vorhanden belegt."
+    },
+    {
+      "id": "sframe",
+      "version": "RFC 9605",
+      "kind": "ietf-rfc",
+      "published": "2024-08",
+      "expires": null,
+      "status": "supported",
+      "productStatus": "supported",
+      "sourceIds": ["SRC-SFRAME-RFC9605", "SRC-LOCAL-BASELINE"],
+      "note": "Im interaktiven Raum implementiert; wird nicht stillschweigend auf den bewusst entschluesselten Broadcast-Zweig uebertragen."
+    }
+  ],
+  "players": [
+    {
+      "id": "hls-js",
+      "version": "1.7.2",
+      "engine": "Media Source Extensions",
+      "upstreamStatus": "supported",
+      "productStatus": "unavailable",
+      "runtimeVerified": false,
+      "outputs": ["hls", "ll-hls"],
+      "sourceIds": ["SRC-HLSJS-RELEASE-1.7.2"],
+      "note": "Vorgesehener Nicht-Safari-Player; noch keine Projektabhaengigkeit und kein Browsergate."
+    },
+    {
+      "id": "safari-native-hls",
+      "version": "browser-managed",
+      "engine": "HTMLMediaElement native HLS",
+      "upstreamStatus": "supported",
+      "productStatus": "unavailable",
+      "runtimeVerified": false,
+      "outputs": ["hls", "ll-hls"],
+      "sourceIds": ["SRC-APPLE-HLS-AUTHORING", "SRC-APPLE-LLHLS"],
+      "note": "Die reale macOS-/iOS-Version wird erst im Geraetegate gepinnt; AAC plus H.264 ist der breite Kompatibilitaetsanker."
+    },
+    {
+      "id": "mediamtx-embedded-hls",
+      "version": "MediaMTX 1.20.1 with hls.js 1.7.0",
+      "engine": "MediaMTX embedded web player",
+      "upstreamStatus": "supported",
+      "productStatus": "unavailable",
+      "runtimeVerified": false,
+      "outputs": ["hls", "ll-hls"],
+      "sourceIds": ["SRC-MEDIAMTX-RELEASE-1.20.1", "SRC-MEDIAMTX-HLS"],
+      "note": "Nur Referenz-/Diagnoseplayer; das Produkt erhaelt einen eigenen isolierten Player-Port."
+    },
+    {
+      "id": "whep-browser-client",
+      "version": "draft-ietf-wish-whep-04",
+      "engine": "RTCPeerConnection plus fetch",
+      "upstreamStatus": "experimental",
+      "productStatus": "unavailable",
+      "runtimeVerified": false,
+      "outputs": ["whep"],
+      "sourceIds": ["SRC-WHEP-DRAFT04"],
+      "note": "Kein ausgewaehltes oder integriertes Playerpaket; WHEP bleibt ein optionaler Adapter."
+    },
+    {
+      "id": "mediamtx-moq-browser-demo",
+      "version": "MediaMTX 1.20.1 / MOQT draft-19 preference",
+      "engine": "WebTransport plus WebCodecs",
+      "upstreamStatus": "experimental",
+      "productStatus": "unavailable",
+      "runtimeVerified": false,
+      "outputs": ["moq"],
+      "sourceIds": ["SRC-MEDIAMTX-MOQ-PUBLISH", "SRC-MEDIAMTX-MOQ-READ"],
+      "note": "Draft-19-Demo ist nicht interoperabilitaetsgleich mit dem gepinnten MOQT draft-20."
+    }
+  ],
+  "browsers": [
+    {
+      "id": "chromium-desktop-linux",
+      "family": "Chromium",
+      "platform": "Linux desktop",
+      "testedVersion": "151.0.7922.34",
+      "compatibilityBasis": "Lokales interaktives Zwei-Browser-Gate plus Upstream-Kompatibilitaetsdaten",
+      "features": {
+        "captureAudioVideo": {"upstreamStatus": "supported", "productStatus": "supported", "runtimeVerified": true, "note": "Nur nach sichtbarem Nutzerklick."},
+        "screenVideo": {"upstreamStatus": "supported", "productStatus": "supported", "runtimeVerified": true, "note": "Expliziter getDisplayMedia-Lifecycle ist im bestehenden Meet geprueft."},
+        "systemAudio": {"upstreamStatus": "degraded", "productStatus": "degraded", "runtimeVerified": true, "note": "Unter Linux typischerweise Tab-Audio statt portabler Vollsystemaufnahme; Nutzerwahl bleibt erforderlich."},
+        "encodedTransforms": {"upstreamStatus": "supported", "productStatus": "supported", "runtimeVerified": true, "note": "Interaktiver SFrame-Pfad ist lokal geprueft; Broadcast nutzt einen getrennten, bewusst aktivierten Fork."},
+        "whipPublish": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "Im Browser implementierbar, im Projekt aber noch nicht vorhanden."},
+        "hlsPlayback": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "Benoetigt hls.js/MSE; noch nicht integriert."},
+        "llHlsPlayback": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "hls.js-Pfad und Latenzgate fehlen."},
+        "webTransport": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "API-Support beweist keine MOQT-Draft-Interoperabilitaet."},
+        "moqPublish": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "MediaMTX-Browserdemo benoetigt WebTransport, WebCodecs und MediaStreamTrackProcessor."},
+        "moqPlayback": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kein Projektplayer und Draft-19/20-Differenz."},
+        "audibleAutoplay": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "Ton benoetigt in der Regel Nutzeraktivierung; muted autoplay ist ein separater Fall."}
+      },
+      "sourceIds": ["SRC-LOCAL-BASELINE", "SRC-BCD-MEDIADEVICES", "SRC-BCD-ENCODED-TRANSFORM", "SRC-BCD-WEBTRANSPORT", "SRC-CHROME-AUTOPLAY"]
+    },
+    {
+      "id": "edge-desktop",
+      "family": "Edge Chromium",
+      "platform": "Desktop",
+      "testedVersion": null,
+      "compatibilityBasis": "Upstream-Kompatibilitaetsdaten; kein reales Projektgate",
+      "features": {
+        "captureAudioVideo": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Reales Edge-Gate fehlt."},
+        "screenVideo": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Desktop-Capture upstream vorhanden."},
+        "systemAudio": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "Quelle und Betriebssystem bestimmen, ob Tab-, Fenster- oder Systemaudio angeboten wird."},
+        "encodedTransforms": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Chromium-Familie; Projektgate fehlt."},
+        "whipPublish": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kein natives WHIP-Objekt und kein Projektadapter."},
+        "hlsPlayback": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "hls.js/MSE erforderlich."},
+        "llHlsPlayback": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "hls.js und Latenzgate fehlen."},
+        "webTransport": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kein MOQT-Nachweis."},
+        "moqPublish": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "Draft- und Gatewayinteroperabilitaet ungeprueft."},
+        "moqPlayback": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kein Projektplayer."},
+        "audibleAutoplay": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "Nutzeraktivierung einplanen."}
+      },
+      "sourceIds": ["SRC-BCD-MEDIADEVICES", "SRC-BCD-ENCODED-TRANSFORM", "SRC-BCD-WEBTRANSPORT", "SRC-CHROME-AUTOPLAY"]
+    },
+    {
+      "id": "firefox-desktop-linux",
+      "family": "Firefox",
+      "platform": "Linux desktop",
+      "testedVersion": "153.0",
+      "compatibilityBasis": "Lokales interaktives Zwei-Browser-Gate plus Upstream-Kompatibilitaetsdaten",
+      "features": {
+        "captureAudioVideo": {"upstreamStatus": "supported", "productStatus": "supported", "runtimeVerified": true, "note": "Nur nach sichtbarem Nutzerklick."},
+        "screenVideo": {"upstreamStatus": "supported", "productStatus": "supported", "runtimeVerified": true, "note": "Bestehender Screen-Lifecycle ist geprueft."},
+        "systemAudio": {"upstreamStatus": "unavailable", "productStatus": "unavailable", "runtimeVerified": true, "note": "getDisplayMedia-Audio wird laut Kompatibilitaetsmatrix nicht angeboten."},
+        "encodedTransforms": {"upstreamStatus": "supported", "productStatus": "supported", "runtimeVerified": true, "note": "Interaktiver SFrame-Test ist gruen."},
+        "whipPublish": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "Projektadapter fehlt."},
+        "hlsPlayback": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "hls.js/MSE statt nativem HLS."},
+        "llHlsPlayback": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "hls.js-Pfad ungeprueft."},
+        "webTransport": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "API vorhanden, MOQT ungeprueft."},
+        "moqPublish": {"upstreamStatus": "unavailable", "productStatus": "unavailable", "runtimeVerified": false, "note": "Der gepinnte MediaMTX-Browser-Publisher setzt MediaStreamTrackProcessor voraus und dokumentiert Chrome als Browserbasis."},
+        "moqPlayback": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "WebTransport vorhanden, aber kein Draft-/Playergate."},
+        "audibleAutoplay": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "Nutzeraktivierung einplanen."}
+      },
+      "sourceIds": ["SRC-LOCAL-BASELINE", "SRC-BCD-MEDIADEVICES", "SRC-BCD-ENCODED-TRANSFORM", "SRC-BCD-WEBTRANSPORT", "SRC-MEDIAMTX-MOQ-PUBLISH"]
+    },
+    {
+      "id": "safari-desktop",
+      "family": "Safari",
+      "platform": "macOS desktop",
+      "testedVersion": null,
+      "compatibilityBasis": "Apple-/Upstream-Dokumentation; kein reales Projektgate",
+      "features": {
+        "captureAudioVideo": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Reales Safari-Gate fehlt."},
+        "screenVideo": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Desktop-Screenvideo upstream vorhanden."},
+        "systemAudio": {"upstreamStatus": "unavailable", "productStatus": "unavailable", "runtimeVerified": false, "note": "Keine portable getDisplayMedia-Systemaudio-Capability belegt."},
+        "encodedTransforms": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Upstream ab Safari 15.4; Projektgate fehlt."},
+        "whipPublish": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "Projektadapter und Codec-Gate fehlen."},
+        "hlsPlayback": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Nativer HLS-Pfad; konkrete Authoring-/Codec-Ausgabe ungeprueft."},
+        "llHlsPlayback": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Nativer LL-HLS-Pfad; Projekt-Latenzgate fehlt."},
+        "webTransport": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kompatibilitaetsbasis Safari 26.4+, keine MOQT-Garantie."},
+        "moqPublish": {"upstreamStatus": "unavailable", "productStatus": "unavailable", "runtimeVerified": false, "note": "Der gepinnte MediaMTX-Browser-Publisher dokumentiert Chrome als Voraussetzung."},
+        "moqPlayback": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kein Draft-/Playergate."},
+        "audibleAutoplay": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "Audible Wiedergabe darf nicht ohne Nutzeraktion vorausgesetzt werden."}
+      },
+      "sourceIds": ["SRC-BCD-MEDIADEVICES", "SRC-BCD-ENCODED-TRANSFORM", "SRC-BCD-WEBTRANSPORT", "SRC-APPLE-HLS-AUTHORING", "SRC-WEBKIT-AUTOPLAY"]
+    },
+    {
+      "id": "chrome-android",
+      "family": "Chrome",
+      "platform": "Android",
+      "testedVersion": null,
+      "compatibilityBasis": "Upstream-Kompatibilitaetsdaten; kein reales Projektgate",
+      "features": {
+        "captureAudioVideo": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kamera/Mikrofon upstream, reales Geraetegate fehlt."},
+        "screenVideo": {"upstreamStatus": "unavailable", "productStatus": "unavailable", "runtimeVerified": false, "note": "getDisplayMedia ist in Chrome Android nicht als Webplattform-Capability belegt."},
+        "systemAudio": {"upstreamStatus": "unavailable", "productStatus": "unavailable", "runtimeVerified": false, "note": "Ohne Screen-Capture kein portabler Systemaudio-Pfad."},
+        "encodedTransforms": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kompatibilitaetsdaten spiegeln Desktop-Support; reales Geraetegate fehlt."},
+        "whipPublish": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kamera/Mikrofon prinzipiell nutzbar, Projektadapter fehlt."},
+        "hlsPlayback": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "hls.js/MSE-Pfad geraeteabhaengig und ungeprueft."},
+        "llHlsPlayback": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kein reales Latenz-/Geraetegate."},
+        "webTransport": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kein MOQT-Nachweis."},
+        "moqPublish": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "MediaStreamTrackProcessor/WebCodecs und Draft-Version muessen real geprueft werden."},
+        "moqPlayback": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kein Projektplayer."},
+        "audibleAutoplay": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "Nutzeraktivierung einplanen."}
+      },
+      "sourceIds": ["SRC-BCD-MEDIADEVICES", "SRC-BCD-ENCODED-TRANSFORM", "SRC-BCD-WEBTRANSPORT", "SRC-CHROME-AUTOPLAY"]
+    },
+    {
+      "id": "firefox-android",
+      "family": "Firefox",
+      "platform": "Android",
+      "testedVersion": null,
+      "compatibilityBasis": "Upstream-Kompatibilitaetsdaten; kein reales Projektgate",
+      "features": {
+        "captureAudioVideo": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Reales Geraetegate fehlt."},
+        "screenVideo": {"upstreamStatus": "unavailable", "productStatus": "unavailable", "runtimeVerified": false, "note": "getDisplayMedia nicht belegt."},
+        "systemAudio": {"upstreamStatus": "unavailable", "productStatus": "unavailable", "runtimeVerified": false, "note": "Nicht belegt."},
+        "encodedTransforms": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Upstream gespiegelt, reales Gate fehlt."},
+        "whipPublish": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "Projektadapter fehlt."},
+        "hlsPlayback": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "hls.js/MSE-Pfad ungeprueft."},
+        "llHlsPlayback": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kein Projektgate."},
+        "webTransport": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kein MOQT-Nachweis."},
+        "moqPublish": {"upstreamStatus": "unavailable", "productStatus": "unavailable", "runtimeVerified": false, "note": "Der gepinnte Browser-Publisher dokumentiert Chrome als Voraussetzung."},
+        "moqPlayback": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kein Draft-/Playergate."},
+        "audibleAutoplay": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "Nutzeraktivierung einplanen."}
+      },
+      "sourceIds": ["SRC-BCD-MEDIADEVICES", "SRC-BCD-ENCODED-TRANSFORM", "SRC-BCD-WEBTRANSPORT", "SRC-MEDIAMTX-MOQ-PUBLISH"]
+    },
+    {
+      "id": "safari-ios",
+      "family": "Safari",
+      "platform": "iOS/iPadOS",
+      "testedVersion": null,
+      "compatibilityBasis": "Apple-/Upstream-Dokumentation; kein reales Projektgate",
+      "features": {
+        "captureAudioVideo": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kamera/Mikrofon upstream, reales Geraetegate fehlt."},
+        "screenVideo": {"upstreamStatus": "unavailable", "productStatus": "unavailable", "runtimeVerified": false, "note": "Web-getDisplayMedia auf iOS nicht belegt."},
+        "systemAudio": {"upstreamStatus": "unavailable", "productStatus": "unavailable", "runtimeVerified": false, "note": "Ohne Screen-Capture kein portabler Systemaudio-Pfad."},
+        "encodedTransforms": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Upstream gespiegelt, reales Geraetegate fehlt."},
+        "whipPublish": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kamera/Mikrofon prinzipiell, Projektadapter fehlt."},
+        "hlsPlayback": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Nativer HLS-Pfad; H.264/AAC-Ausgabe und private Auth muessen real geprueft werden."},
+        "llHlsPlayback": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Nativer LL-HLS-Pfad ohne Projektgate."},
+        "webTransport": {"upstreamStatus": "supported", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kompatibilitaetsbasis Safari iOS 26.4+; Produktion benoetigt ein oeffentlich gueltiges Zertifikat."},
+        "moqPublish": {"upstreamStatus": "unavailable", "productStatus": "unavailable", "runtimeVerified": false, "note": "MediaMTX dokumentiert Chrome fuer Browserpublishing."},
+        "moqPlayback": {"upstreamStatus": "experimental", "productStatus": "unavailable", "runtimeVerified": false, "note": "Kein Draft-/Player-/Geraetegate."},
+        "audibleAutoplay": {"upstreamStatus": "degraded", "productStatus": "unavailable", "runtimeVerified": false, "note": "Audible Playback benoetigt eine sichtbare Nutzeraktion."}
+      },
+      "sourceIds": ["SRC-BCD-MEDIADEVICES", "SRC-BCD-ENCODED-TRANSFORM", "SRC-BCD-WEBTRANSPORT", "SRC-APPLE-HLS-AUTHORING", "SRC-WEBKIT-AUTOPLAY"]
+    }
+  ],
+  "codecs": [
+    {
+      "id": "opus",
+      "kind": "audio",
+      "browserWhipIngest": "supported",
+      "mediamtxWhipIngest": "supported",
+      "whipToHlsPassthrough": "supported",
+      "mediamtxTranscoding": "unavailable",
+      "safariHlsOutput": "degraded",
+      "baselineTranscoding": "required",
+      "hardwareAcceleration": "degraded",
+      "licensing": "IETF/WebRTC-Standardcodec; konkrete Bibliotheks- und Buildlizenzen bleiben zu pruefen.",
+      "operations": "MediaMTX kann Opus in HLS fuehren, Apple fordert fuer breite Stereo-Kompatibilitaet jedoch AAC; der Basispfad benoetigt deshalb Opus-zu-AAC in einem getrennten Transcoder.",
+      "sourceIds": ["SRC-WEBRTC-AUDIO-RFC7874", "SRC-MEDIAMTX-WHIP", "SRC-MEDIAMTX-HLS", "SRC-APPLE-HLS-AUTHORING"]
+    },
+    {
+      "id": "aac",
+      "kind": "audio",
+      "browserWhipIngest": "unavailable",
+      "mediamtxWhipIngest": "unavailable",
+      "whipToHlsPassthrough": "unavailable",
+      "mediamtxTranscoding": "unavailable",
+      "safariHlsOutput": "supported",
+      "baselineTranscoding": "not-required",
+      "hardwareAcceleration": "degraded",
+      "licensing": "Patent-/Codec-Lizenzlage haengt von Encoder, Build, Auslieferung und Region ab; vor Produktion gesondert pruefen.",
+      "operations": "AAC ist der breite Apple-HLS-Audioanker, kann aus dem Browser-WHIP-Pfad von MediaMTX aber nicht direkt angenommen werden; ein separater Encoder ist erforderlich.",
+      "sourceIds": ["SRC-MEDIAMTX-WHIP", "SRC-MEDIAMTX-HLS", "SRC-APPLE-HLS-AUTHORING"]
+    },
+    {
+      "id": "vp8",
+      "kind": "video",
+      "browserWhipIngest": "supported",
+      "mediamtxWhipIngest": "supported",
+      "whipToHlsPassthrough": "unavailable",
+      "mediamtxTranscoding": "unavailable",
+      "safariHlsOutput": "unavailable",
+      "baselineTranscoding": "required",
+      "hardwareAcceleration": "degraded",
+      "licensing": "Offener WebRTC-Codec; konkrete Implementierungs- und Distributionslizenzen pruefen.",
+      "operations": "VP8 ist ein WebRTC-Basiscodec, fehlt aber in der MediaMTX-HLS-Ausgabeliste und Apples HLS-Videoprofil; fuer den Basispfad nach H.264 transcodieren.",
+      "sourceIds": ["SRC-WEBRTC-VIDEO-RFC7742", "SRC-MEDIAMTX-WHIP", "SRC-MEDIAMTX-HLS", "SRC-APPLE-HLS-AUTHORING"]
+    },
+    {
+      "id": "vp9",
+      "kind": "video",
+      "browserWhipIngest": "degraded",
+      "mediamtxWhipIngest": "supported",
+      "whipToHlsPassthrough": "supported",
+      "mediamtxTranscoding": "unavailable",
+      "safariHlsOutput": "unavailable",
+      "baselineTranscoding": "required",
+      "hardwareAcceleration": "degraded",
+      "licensing": "Offener Codec; konkrete Implementierungs- und Distributionslizenzen pruefen.",
+      "operations": "MediaMTX kann VP9 zwischen WebRTC und HLS routen, Apple listet VP9 im Zielprofil jedoch nicht; breite Safari-Ausgabe braucht H.264.",
+      "sourceIds": ["SRC-MEDIAMTX-WHIP", "SRC-MEDIAMTX-HLS", "SRC-APPLE-HLS-AUTHORING", "SRC-MEDIA-CAPABILITIES"]
+    },
+    {
+      "id": "h264",
+      "kind": "video",
+      "browserWhipIngest": "supported",
+      "mediamtxWhipIngest": "supported",
+      "whipToHlsPassthrough": "degraded",
+      "mediamtxTranscoding": "unavailable",
+      "safariHlsOutput": "supported",
+      "baselineTranscoding": "conditional",
+      "hardwareAcceleration": "degraded",
+      "licensing": "Patent-/Codec-Lizenzlage und Encoderbedingungen vor produktiver Verteilung pruefen.",
+      "operations": "Breitester HLS-Videopfad. Passthrough ist nur bei kompatiblem Profil, Level, Parameter-Set- und GOP-/Keyframe-Verhalten moeglich; andernfalls getrennt neu codieren.",
+      "sourceIds": ["SRC-WEBRTC-VIDEO-RFC7742", "SRC-MEDIAMTX-WHIP", "SRC-MEDIAMTX-HLS", "SRC-APPLE-HLS-AUTHORING", "SRC-MEDIA-CAPABILITIES"]
+    },
+    {
+      "id": "av1",
+      "kind": "video",
+      "browserWhipIngest": "degraded",
+      "mediamtxWhipIngest": "supported",
+      "whipToHlsPassthrough": "supported",
+      "mediamtxTranscoding": "unavailable",
+      "safariHlsOutput": "degraded",
+      "baselineTranscoding": "required",
+      "hardwareAcceleration": "degraded",
+      "licensing": "AOMedia-Lizenzziel und moegliche Patentansprueche sind fuer konkreten Build und Region gesondert zu bewerten.",
+      "operations": "MediaMTX und aktuelles Apple-HLS listen AV1, reale Browser-/Geraeteabdeckung und Echtzeitencoderleistung sind aber nicht portabel; H.264-Fallback bleibt erforderlich.",
+      "sourceIds": ["SRC-MEDIAMTX-WHIP", "SRC-MEDIAMTX-HLS", "SRC-APPLE-HLS-AUTHORING", "SRC-MEDIA-CAPABILITIES"]
+    }
+  ],
+  "adapters": [
+    {
+      "id": "mediamtx-self-hosted",
+      "vendor": "bluenviron",
+      "version": "1.20.1",
+      "apiVersion": "Control API v3 bundled with 1.20.1",
+      "lifecycle": "stable-release-with-experimental-moq",
+      "productStatus": "unavailable",
+      "runtimeVerified": false,
+      "enabledByDefault": false,
+      "capabilities": {
+        "ingest": {"whip": true, "rtmps": true, "srt": true, "moq": true},
+        "output": {"hls": true, "llHls": true, "whep": true, "moq": true, "dash": false},
+        "auth": {"bearerHeader": true, "externalHttp": true, "jwt": true, "pathScoped": true, "shortLivedGrantNative": false},
+        "recording": {"available": true, "defaultEnabled": false, "requiredForLlHls": false},
+        "captions": {"webVttLive": false, "imsc1Live": false},
+        "e2ee": {"sframePassthroughProven": false, "moqSecureObjects": false},
+        "remux": true,
+        "transcoding": false
+      },
+      "constraints": [
+        "MediaMTX routet und remuxt kompatible Codecs, decodiert/encodiert aber nicht; FFmpeg, GStreamer oder ein Native-Packager ist fuer Codecwechsel erforderlich.",
+        "MOQT-Unterstuetzung bevorzugt draft-19 und ist damit nicht gleich dem gepinnten draft-20.",
+        "Control API und Metriken bleiben intern; Browser erhalten weder diese API noch Betreibercredentials.",
+        "Recording muss im Projektprofil explizit deaktiviert und mit einem Negativgate belegt werden."
+      ],
+      "sourceIds": ["SRC-MEDIAMTX-RELEASE-1.20.1", "SRC-MEDIAMTX-WHIP", "SRC-MEDIAMTX-HLS", "SRC-MEDIAMTX-MOQ-PUBLISH", "SRC-MEDIAMTX-MOQ-READ", "SRC-MEDIAMTX-AUTH", "SRC-MEDIAMTX-CONTROL", "SRC-MEDIAMTX-REENCODING"]
+    },
+    {
+      "id": "cloudflare-stream-webrtc",
+      "vendor": "Cloudflare",
+      "version": "service snapshot 2026-09-03",
+      "apiVersion": "Cloudflare API v4",
+      "lifecycle": "beta",
+      "productStatus": "unavailable",
+      "runtimeVerified": false,
+      "enabledByDefault": false,
+      "capabilities": {
+        "ingest": {"whip": true, "rtmps": false, "srt": false, "moq": false},
+        "output": {"hls": false, "llHls": false, "whep": true, "moq": false, "dash": false},
+        "auth": {"bearerHeader": false, "externalHttp": false, "jwt": false, "pathScoped": true, "shortLivedGrantNative": false},
+        "recording": {"available": false, "defaultEnabled": false, "requiredForLlHls": false},
+        "captions": {"webVttLive": false, "imsc1Live": false},
+        "e2ee": {"sframePassthroughProven": false, "moqSecureObjects": false},
+        "remux": false,
+        "transcoding": false
+      },
+      "constraints": [
+        "Der WebRTC-Betapfad gibt WHIP-Eingang ausschliesslich per WHEP aus; HLS, DASH, Recording, Simulcast und Viewermetriken sind laut Anbieterlimit nicht verfuegbar.",
+        "Die dokumentierten Protokollentwuerfe liegen hinter RFC 9725 beziehungsweise dem gepinnten WHEP-Draft; ein Interoperabilitaetsgate ist zwingend.",
+        "Provider- und Account-Credentials bleiben serverseitig und duerfen nie im Angular-Bundle erscheinen."
+      ],
+      "sourceIds": ["SRC-CLOUDFLARE-STREAM-API-V4", "SRC-CLOUDFLARE-WEBRTC"]
+    },
+    {
+      "id": "cloudflare-stream-live",
+      "vendor": "Cloudflare",
+      "version": "service snapshot 2026-09-03",
+      "apiVersion": "Cloudflare API v4",
+      "lifecycle": "general-service-with-ll-hls-beta",
+      "productStatus": "unavailable",
+      "runtimeVerified": false,
+      "enabledByDefault": false,
+      "capabilities": {
+        "ingest": {"whip": false, "rtmps": true, "srt": true, "moq": false},
+        "output": {"hls": true, "llHls": true, "whep": false, "moq": false, "dash": true},
+        "auth": {"bearerHeader": false, "externalHttp": false, "jwt": false, "pathScoped": true, "shortLivedGrantNative": false},
+        "recording": {"available": true, "defaultEnabled": false, "requiredForLlHls": true},
+        "captions": {"webVttLive": false, "imsc1Live": false},
+        "e2ee": {"sframePassthroughProven": false, "moqSecureObjects": false},
+        "remux": true,
+        "transcoding": true
+      },
+      "constraints": [
+        "Dieser klassische Live-Pfad ist getrennt vom WebRTC-Betapfad und nimmt fuer HLS/LL-HLS RTMPS oder SRT statt WHIP an.",
+        "Das dokumentierte LL-HLS-Beta-Setup verlangt automatic recording und kollidiert daher mit der Projektvorgabe Recording-default-aus.",
+        "H.264/AAC und Provider-Transcoding muessen als eigener vertrauenswuerdiger Broadcast-Zweig bewertet werden."
+      ],
+      "sourceIds": ["SRC-CLOUDFLARE-STREAM-API-V4", "SRC-CLOUDFLARE-LIVE"]
+    },
+    {
+      "id": "cloudflare-moq",
+      "vendor": "Cloudflare",
+      "version": "beta snapshot 2026-09-03",
+      "apiVersion": "Cloudflare API v4",
+      "lifecycle": "beta",
+      "productStatus": "unavailable",
+      "runtimeVerified": false,
+      "enabledByDefault": false,
+      "capabilities": {
+        "ingest": {"whip": false, "rtmps": false, "srt": false, "moq": true},
+        "output": {"hls": false, "llHls": false, "whep": false, "moq": true, "dash": false},
+        "auth": {"bearerHeader": false, "externalHttp": false, "jwt": false, "pathScoped": true, "shortLivedGrantNative": true},
+        "recording": {"available": false, "defaultEnabled": false, "requiredForLlHls": false},
+        "captions": {"webVttLive": false, "imsc1Live": false},
+        "e2ee": {"sframePassthroughProven": false, "moqSecureObjects": false},
+        "remux": false,
+        "transcoding": false
+      },
+      "constraints": [
+        "Der Dienst dokumentiert MOQT draft-14 und draft-16; draft-18 nur zum Testen und nicht den gepinnten draft-20.",
+        "Der Zugriffstoken liegt im URL-Pfad und kann in Access-Logs erscheinen; nur kurze, eng gebundene Tokens und redigierte Logs sind zulaessig.",
+        "Secure Objects ist in der geprueften Anbieterreferenz nicht belegt und bleibt false."
+      ],
+      "sourceIds": ["SRC-CLOUDFLARE-MOQ", "SRC-CLOUDFLARE-STREAM-API-V4"]
+    },
+    {
+      "id": "native-ffmpeg-packager",
+      "vendor": "project-owned-adapter",
+      "version": "not-selected",
+      "apiVersion": "broadcast-packager-port-v1-planned",
+      "lifecycle": "planned",
+      "productStatus": "unavailable",
+      "runtimeVerified": false,
+      "enabledByDefault": false,
+      "capabilities": {
+        "ingest": {"whip": false, "rtmps": false, "srt": false, "moq": false},
+        "output": {"hls": false, "llHls": false, "whep": false, "moq": false, "dash": false},
+        "auth": {"bearerHeader": false, "externalHttp": false, "jwt": false, "pathScoped": false, "shortLivedGrantNative": false},
+        "recording": {"available": false, "defaultEnabled": false, "requiredForLlHls": false},
+        "captions": {"webVttLive": false, "imsc1Live": false},
+        "e2ee": {"sframePassthroughProven": false, "moqSecureObjects": false},
+        "remux": false,
+        "transcoding": false
+      },
+      "constraints": [
+        "Dies ist nur der reservierte austauschbare Transcoder-/Packager-Port fuer TBP-015 und TBP-020; kein Binary, Build, Codec oder Lizenzpaket wurde ausgewaehlt.",
+        "Alle Capabilities bleiben false, bis reproduzierbarer Build, Runtime-Probe, Ressourcenlimit und Lizenzgate bestanden sind."
+      ],
+      "sourceIds": ["SRC-MEDIAMTX-REENCODING", "SRC-LOCAL-ADR"]
+    }
+  ],
+  "sources": [
+    {"id": "SRC-WHIP-RFC9725", "url": "https://www.rfc-editor.org/rfc/rfc9725.html", "retrieved": "2026-09-03"},
+    {"id": "SRC-WHEP-DRAFT04", "url": "https://datatracker.ietf.org/doc/draft-ietf-wish-whep/", "retrieved": "2026-09-03"},
+    {"id": "SRC-HLS-RFC8216", "url": "https://www.rfc-editor.org/rfc/rfc8216.html", "retrieved": "2026-09-03"},
+    {"id": "SRC-APPLE-HLS-AUTHORING", "url": "https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices/", "retrieved": "2026-09-03"},
+    {"id": "SRC-APPLE-LLHLS", "url": "https://developer.apple.com/documentation/http-live-streaming/enabling-low-latency-http-live-streaming-hls", "retrieved": "2026-09-03"},
+    {"id": "SRC-MOQT-DRAFT20", "url": "https://datatracker.ietf.org/doc/draft-ietf-moq-transport/", "retrieved": "2026-09-03"},
+    {"id": "SRC-MOQ-LOC-DRAFT04", "url": "https://datatracker.ietf.org/doc/draft-ietf-moq-loc/", "retrieved": "2026-09-03"},
+    {"id": "SRC-MOQ-SECURE-OBJECTS-DRAFT01", "url": "https://datatracker.ietf.org/doc/draft-ietf-moq-secure-objects/", "retrieved": "2026-09-03"},
+    {"id": "SRC-SFRAME-RFC9605", "url": "https://www.rfc-editor.org/rfc/rfc9605.html", "retrieved": "2026-09-03"},
+    {"id": "SRC-HLSJS-RELEASE-1.7.2", "url": "https://github.com/video-dev/hls.js/releases/tag/v1.7.2", "retrieved": "2026-09-03"},
+    {"id": "SRC-MEDIAMTX-RELEASE-1.20.1", "url": "https://github.com/bluenviron/mediamtx/releases/tag/v1.20.1", "retrieved": "2026-09-03"},
+    {"id": "SRC-MEDIAMTX-WHIP", "url": "https://mediamtx.org/docs/publish/webrtc-clients", "retrieved": "2026-09-03"},
+    {"id": "SRC-MEDIAMTX-HLS", "url": "https://mediamtx.org/docs/read/hls", "retrieved": "2026-09-03"},
+    {"id": "SRC-MEDIAMTX-MOQ-PUBLISH", "url": "https://mediamtx.org/docs/publish/moq-clients", "retrieved": "2026-09-03"},
+    {"id": "SRC-MEDIAMTX-MOQ-READ", "url": "https://mediamtx.org/docs/read/moq", "retrieved": "2026-09-03"},
+    {"id": "SRC-MEDIAMTX-AUTH", "url": "https://mediamtx.org/docs/features/authentication", "retrieved": "2026-09-03"},
+    {"id": "SRC-MEDIAMTX-CONTROL", "url": "https://mediamtx.org/docs/features/control-api", "retrieved": "2026-09-03"},
+    {"id": "SRC-MEDIAMTX-REENCODING", "url": "https://mediamtx.org/docs/features/remuxing-reencoding-compression", "retrieved": "2026-09-03"},
+    {"id": "SRC-CLOUDFLARE-STREAM-API-V4", "url": "https://developers.cloudflare.com/api/resources/stream/", "retrieved": "2026-09-03"},
+    {"id": "SRC-CLOUDFLARE-WEBRTC", "url": "https://developers.cloudflare.com/stream/webrtc-beta/", "retrieved": "2026-09-03"},
+    {"id": "SRC-CLOUDFLARE-LIVE", "url": "https://developers.cloudflare.com/stream/stream-live/start-stream-live/", "retrieved": "2026-09-03"},
+    {"id": "SRC-CLOUDFLARE-MOQ", "url": "https://developers.cloudflare.com/moq/", "retrieved": "2026-09-03"},
+    {"id": "SRC-BCD-MEDIADEVICES", "url": "https://github.com/mdn/browser-compat-data/blob/main/api/MediaDevices.json", "retrieved": "2026-09-03"},
+    {"id": "SRC-BCD-ENCODED-TRANSFORM", "url": "https://github.com/mdn/browser-compat-data/blob/main/api/RTCRtpScriptTransform.json", "retrieved": "2026-09-03"},
+    {"id": "SRC-BCD-WEBTRANSPORT", "url": "https://github.com/mdn/browser-compat-data/blob/main/api/WebTransport.json", "retrieved": "2026-09-03"},
+    {"id": "SRC-CHROME-AUTOPLAY", "url": "https://developer.chrome.com/blog/autoplay/", "retrieved": "2026-09-03"},
+    {"id": "SRC-WEBKIT-AUTOPLAY", "url": "https://webkit.org/blog/6784/new-video-policies-for-ios/", "retrieved": "2026-09-03"},
+    {"id": "SRC-MEDIA-CAPABILITIES", "url": "https://www.w3.org/TR/media-capabilities/", "retrieved": "2026-09-03"},
+    {"id": "SRC-WEBRTC-AUDIO-RFC7874", "url": "https://www.rfc-editor.org/rfc/rfc7874.html", "retrieved": "2026-09-03"},
+    {"id": "SRC-WEBRTC-VIDEO-RFC7742", "url": "https://www.rfc-editor.org/rfc/rfc7742.html", "retrieved": "2026-09-03"},
+    {"id": "SRC-LOCAL-BASELINE", "url": "./broadcast-baseline-inventory.md", "retrieved": "2026-09-03"},
+    {"id": "SRC-LOCAL-ADR", "url": "./adr/0001-separated-interactive-broadcast-delivery-planes.md", "retrieved": "2026-09-03"}
+  ]
+}
