@@ -351,10 +351,13 @@ aber weder Consent noch Agent-Authentisierung oder TURN fuer problematische
 Netze.
 
 Vor einem Rollout sind mindestens `go test -race ./...`, ein Image-Build sowie
-der reale Mehr-Browser-/Mehr-Agent-/NAT-Gate aus BME-006/BME-011 erforderlich.
-Der lokale Pion-Gate belegt individuelle Simulcast-Auswahl und einen direkten
-Zwei-Agenten-Pfad mit byte-identischem opaque Payload. Solange die echte
-Produktionsmatrix fehlt, ist die Implementierung nicht als garantierter
-20-Teilnehmer-QoS-Pfad zu beschreiben. Der Browser-Gate prueft unabhaengig
-davon Chromium→Firefox mit VP8 bis ueber SFrame-Counter 350 und verlangt nach
-dieser Grenze einen weiteren dekodierten Keyframe ohne Frame-Drops.
+der reale Mehr-Browser-/Mehr-Agent-/NAT-Gate erforderlich. BME-006 bestand
+diesen Produktionsgate mit sechs Browsern, Chromium und Firefox, zwei Agenten,
+Direct und All-TURN sowie Primary-Ausfall, Ersatzagent, Totalausfall und
+weiterlaufendem Direct-SFrame-Mesh. Der lokale Pion-Gate belegt zusaetzlich
+individuelle Simulcast-Auswahl und einen direkten Zwei-Agenten-Pfad mit
+byte-identischem opaque Payload. Diese Matrix ist trotzdem kein garantierter
+20-Teilnehmer-QoS-Nachweis. Der Browser-Gate prueft unabhaengig davon
+Chromium→Firefox mit VP8 bis ueber SFrame-Counter 350 und verlangt nach dieser
+Grenze einen weiteren dekodierten Keyframe ohne Frame-Drops. Die erweiterten
+Drain-, Netzpartition- und Single-Layer-Gates bleiben BME-011 zugeordnet.

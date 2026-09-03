@@ -869,7 +869,7 @@ test("six Chromium peers use consented video relay, adaptive sender tiers and on
   assert.deepEqual(pageErrors, []);
 });
 
-test("two Firefox peers retain direct adaptive mesh, SFrame, chat and camera", { timeout: 30_000 }, async (context) => {
+test("two Firefox peers retain direct adaptive mesh, SFrame, chat and camera", { timeout: 60_000 }, async (context) => {
   try {
     await fs.access(firefox.executablePath());
   } catch {

@@ -795,7 +795,11 @@ Das ist eine Kapazitaetsrechnung, kein 20-Teilnehmer-QoS-Nachweis. Die Agenten
 haben harte Room-/Peer-/Track-/Queue- und Eingangsbitrate-Grenzen; physischer
 Upload, Paketverluste, Codecverhalten und TURN koennen vorher begrenzen. Die
 aktuelle Zuordnung verteilt Publisherzahlen, nicht gemessene Egress-Bitraten.
-Der reale Mehrbrowser-/Mehragent-/NAT-Gate BME-006/BME-011 bleibt offen.
+Der reale BME-006-Gate bestand mit sechs Browsern, zwei Agenten, Chromium und
+Firefox sowie Direct und All-TURN inklusive Failover und Mesh-Rueckfall. Das
+belegt den Produktionspfad, aber weiterhin keine garantierte QoS fuer 20
+Teilnehmer. Die erweiterten Drain-, Netzpartition- und Single-Layer-Gates
+bleiben BME-011 zugeordnet.
 
 ### 9.7 TURN-Effekt
 
