@@ -12,10 +12,17 @@ test("interop evidence names every required platform without promoting unavailab
   assert.deepEqual(results.platforms.map(({ id }) => id), [
     "chromium-linux", "firefox-linux", "edge-desktop", "safari-desktop", "android", "ios",
   ]);
-  assert.equal(results.platforms.filter(({ publish }) => publish === "verified").length, 2);
-  for (const id of ["edge-desktop", "safari-desktop", "android", "ios"]) {
+  assert.equal(results.platforms.filter(({ publish }) => publish === "verified").length, 3);
+  for (const id of ["safari-desktop", "android", "ios"]) {
     assert.equal(results.platforms.find((platform) => platform.id === id).publish, "unverified");
   }
+});
+
+test("real Windows Edge evidence is distinct from bundled Chromium", () => {
+  const edge = results.platforms.find(({ id }) => id === "edge-desktop");
+  assert.equal(edge.publish, "verified");
+  assert.match(edge.engineVersion, /windows/);
+  assert.match(edge.evidence, /real Windows Edge/);
 });
 
 test("interop evidence keeps providers, WAN and perceptual quality honest", () => {

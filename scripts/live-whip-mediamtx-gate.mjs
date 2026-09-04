@@ -19,6 +19,7 @@ assert.ok(
     && new Set(["127.0.0.1", "::1", "localhost"]).has(parsedEndpoint.hostname),
   "WHIP_MEDIAMTX_ENDPOINT must be an explicit loopback HTTP test endpoint",
 );
+assert.ok(!(process.env.EDGE_EXECUTABLE_PATH && process.env.EDGE_CDP_ENDPOINT), "choose one Edge launch mode");
 
 const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "webrtc-whip-gate-"));
 const bundlePath = path.join(temporaryDirectory, "gate.js");
@@ -50,13 +51,26 @@ try {
   });
   const address = server.address();
   assert.ok(address && typeof address === "object");
-  for (const engine of [chromium, firefox]) {
-    const browser = await engine.launch({
-      headless: true,
-      ...(engine.name() === "firefox" ? {
-        firefoxUserPrefs: { "media.peerconnection.ice.obfuscate_host_addresses": false },
-      } : {}),
-    });
+  const engines = [
+    { label: "chromium", engine: chromium },
+    { label: "firefox", engine: firefox },
+    ...(process.env.EDGE_EXECUTABLE_PATH
+      ? [{ label: "edge", engine: chromium, executablePath: process.env.EDGE_EXECUTABLE_PATH }]
+      : []),
+    ...(process.env.EDGE_CDP_ENDPOINT
+      ? [{ label: "edge", engine: chromium, cdpEndpoint: process.env.EDGE_CDP_ENDPOINT }]
+      : []),
+  ];
+  for (const { label, engine, executablePath, cdpEndpoint } of engines) {
+    const browser = cdpEndpoint
+      ? await engine.connectOverCDP(cdpEndpoint)
+      : await engine.launch({
+        headless: true,
+        ...(executablePath ? { executablePath } : {}),
+        ...(label === "firefox" ? {
+          firefoxUserPrefs: { "media.peerconnection.ice.obfuscate_host_addresses": false },
+        } : {}),
+      });
     try {
       const page = await browser.newPage();
       await page.goto(`http://127.0.0.1:${address.port}/`, { waitUntil: "networkidle" });
@@ -64,7 +78,7 @@ try {
         const value = new URL(baseEndpoint);
         value.pathname = value.pathname.replace(/\/[^/]+\/whip$/, `/live-gate-${engineName}/whip`);
         window.__WHIP_GATE_ENDPOINT__ = value.href;
-      }, { baseEndpoint: endpoint, engineName: engine.name() });
+      }, { baseEndpoint: endpoint, engineName: label });
       await page.click("#run-whip-gate");
       await page.waitForFunction(() => Boolean(window.__whipGateResult), null, { timeout: 30_000 });
       const result = await page.evaluate(() => window.__whipGateResult);
@@ -74,7 +88,7 @@ try {
       assert.equal(result.switches, 4);
       assert.ok(result.minimumFramesAfterSwitch > 0, "video encoding froze during a source switch");
       assert.equal(result.trackStateBeforeCleanup, "live");
-      console.log(`PASS live MediaMTX 1.20.1 WHIP gate (${engine.name()}): POST/PATCH/ICE/DELETE, 4 replaceTrack switches with advancing frames; restart visibly unsupported`);
+      console.log(`PASS live MediaMTX 1.20.1 WHIP gate (${label}): POST/PATCH/ICE/DELETE, 4 replaceTrack switches with advancing frames; restart visibly unsupported`);
     } finally {
       await browser.close();
     }

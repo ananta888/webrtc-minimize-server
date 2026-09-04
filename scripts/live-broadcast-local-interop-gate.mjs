@@ -48,4 +48,4 @@ try {
   run("docker", [...compose, "down", "--remove-orphans"], environment, true);
 }
 
-console.log("PASS local broadcast interoperability gate: MediaMTX, native ABR, LL-HLS and Chromium/Firefox WHIP");
+console.log(`PASS local broadcast interoperability gate: MediaMTX, native ABR, LL-HLS and Chromium/Firefox${process.env.EDGE_CDP_ENDPOINT || process.env.EDGE_EXECUTABLE_PATH ? "/Edge" : ""} WHIP`);
