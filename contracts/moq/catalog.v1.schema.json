@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/moq/catalog.v1.schema.json",
+  "title": "MoQ catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "type", "tenantId", "programId", "programEpoch", "audienceId", "namespace", "catalogRevision", "tracks", "extensions", "createdAt", "expiresAt"],
+  "properties": {
+    "contractVersion": {"$ref": "common.v1.schema.json#/$defs/contractVersion"},
+    "type": {"const": "moq-catalog"},
+    "tenantId": {"$ref": "common.v1.schema.json#/$defs/tenantId"},
+    "programId": {"$ref": "common.v1.schema.json#/$defs/programId"},
+    "programEpoch": {"$ref": "common.v1.schema.json#/$defs/epoch"},
+    "audienceId": {"$ref": "common.v1.schema.json#/$defs/audienceId"},
+    "namespace": {"$ref": "common.v1.schema.json#/$defs/namespace"},
+    "catalogRevision": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "tracks": {
+      "type": "array", "minItems": 1, "maxItems": 32,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["trackName", "mediaKind", "codec", "renditionId", "priority", "maxObjectBytes"],
+        "properties": {
+          "trackName": {"$ref": "common.v1.schema.json#/$defs/trackName"},
+          "mediaKind": {"enum": ["audio", "video", "captions"]},
+          "codec": {"$ref": "common.v1.schema.json#/$defs/codec"},
+          "renditionId": {"$ref": "common.v1.schema.json#/$defs/renditionId"},
+          "priority": {"$ref": "common.v1.schema.json#/$defs/priority"},
+          "maxObjectBytes": {"type": "integer", "minimum": 1, "maximum": 1048576}
+        }
+      }
+    },
+    "extensions": {"type": "array", "maxItems": 2, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/extension"}},
+    "createdAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "expiresAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"}
+  }
+}

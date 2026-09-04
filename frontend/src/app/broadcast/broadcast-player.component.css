@@ -9,6 +9,12 @@ h2, p { margin: 0; }
 .stage { position: relative; display: grid; place-items: center; min-height: 14rem; overflow: hidden; border-radius: 1rem; background: #020617; }
 video { display: block; width: 100%; max-height: 72vh; background: #020617; }
 .primary-action, .player-message { position: absolute; display: grid; gap: .35rem; text-align: center; }
+.experimental-capability { border: 1px solid rgba(251,191,36,.35); border-radius: .8rem; padding: .65rem .8rem; background: rgba(120,53,15,.18); color: #fde68a; font-size: .78rem; }
+.experimental-capability summary { cursor: pointer; }
+.experimental-capability dl { display: grid; gap: .45rem; margin: .75rem 0 0; }
+.experimental-capability dl div { display: grid; grid-template-columns: minmax(7rem, auto) 1fr; gap: .65rem; }
+.experimental-capability dt { font-weight: 800; }
+.experimental-capability dd { margin: 0; color: #e2e8f0; }
 button, select { border: 1px solid rgba(148,163,184,.35); border-radius: .65rem; padding: .55rem .75rem; background: rgba(30,41,59,.92); color: inherit; }
 button { cursor: pointer; }
 .primary-action { border-color: #2dd4bf; background: #0f766e; font-weight: 800; }

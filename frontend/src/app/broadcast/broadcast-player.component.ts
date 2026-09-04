@@ -10,6 +10,7 @@ import {
 } from "@angular/core";
 
 import { BroadcastHlsPlayer, BroadcastPlayerSnapshot } from "./broadcast-hls-player";
+import { MOQ_UI_CAPABILITY_STATUS } from "./moq-capability-status";
 
 @Component({
   selector: "app-broadcast-player",
@@ -19,6 +20,7 @@ import { BroadcastHlsPlayer, BroadcastPlayerSnapshot } from "./broadcast-hls-pla
   styleUrl: "./broadcast-player.component.css",
 })
 export class BroadcastPlayerComponent implements OnDestroy {
+  readonly moqCapability = MOQ_UI_CAPABILITY_STATUS;
   readonly manifestUrl = input.required<string>();
   readonly title = input("Live-Broadcast");
   readonly closed = output<void>();

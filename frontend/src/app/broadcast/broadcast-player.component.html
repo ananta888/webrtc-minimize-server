@@ -15,6 +15,17 @@
     }
   </div>
 
+  <details class="experimental-capability">
+    <summary><strong>{{ moqCapability.label }}</strong> · Fallback {{ moqCapability.fallback }}</summary>
+    <dl>
+      <div><dt>Vertrag</dt><dd>{{ moqCapability.transportVersion }} · {{ moqCapability.locVersion }} · WebTransport {{ moqCapability.webTransportVersion }}</dd></div>
+      <div><dt>Browser</dt><dd>{{ moqCapability.browsers }}</dd></div>
+      <div><dt>MediaMTX</dt><dd>{{ moqCapability.mediaMtx }}</dd></div>
+      <div><dt>Cloudflare</dt><dd>{{ moqCapability.cloudflare }}</dd></div>
+      <div><dt>Secure Objects</dt><dd>{{ moqCapability.secureObjects }} ({{ moqCapability.secureObjectsVersion }})</dd></div>
+    </dl>
+  </details>
+
   <div class="controls" aria-label="Wiedergabesteuerung">
     <button type="button" (click)="setMuted(!muted())">{{ muted() ? 'Ton einschalten' : 'Stumm' }}</button>
     <label>Lautstärke <input type="range" min="0" max="1" step="0.05" [value]="volume()" (input)="setVolume($any($event.target).value)"></label>

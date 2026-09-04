@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/moq/capability.v1.schema.json",
+  "title": "MoQ capability v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "type", "tenantId", "programId", "programEpoch", "audienceId", "participantKind", "participantRef", "enabled", "transportVersions", "locVersions", "webTransportVersions", "secureObjectVersions", "codecs", "fallbackProtocols", "extensions", "maxCatalogBytes", "maxObjectBytes", "observedAt", "expiresAt"],
+  "properties": {
+    "contractVersion": {"$ref": "common.v1.schema.json#/$defs/contractVersion"},
+    "type": {"const": "moq-capability"},
+    "tenantId": {"$ref": "common.v1.schema.json#/$defs/tenantId"},
+    "programId": {"$ref": "common.v1.schema.json#/$defs/programId"},
+    "programEpoch": {"$ref": "common.v1.schema.json#/$defs/epoch"},
+    "audienceId": {"$ref": "common.v1.schema.json#/$defs/audienceId"},
+    "participantKind": {"enum": ["browser", "gateway", "provider"]},
+    "participantRef": {"$ref": "common.v1.schema.json#/$defs/participantRef"},
+    "enabled": {"type": "boolean"},
+    "transportVersions": {"type": "array", "maxItems": 5, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/moqtVersion"}},
+    "locVersions": {"type": "array", "maxItems": 2, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/locVersion"}},
+    "webTransportVersions": {"type": "array", "maxItems": 1, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/webTransportVersion"}},
+    "secureObjectVersions": {"type": "array", "maxItems": 1, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/secureObjectsVersion"}},
+    "codecs": {"type": "array", "maxItems": 6, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/codec"}},
+    "fallbackProtocols": {"type": "array", "maxItems": 2, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/fallbackProtocol"}},
+    "extensions": {"type": "array", "maxItems": 2, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/extension"}},
+    "maxCatalogBytes": {"type": "integer", "minimum": 1024, "maximum": 65536},
+    "maxObjectBytes": {"type": "integer", "minimum": 1024, "maximum": 1048576},
+    "observedAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "expiresAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"}
+  }
+}

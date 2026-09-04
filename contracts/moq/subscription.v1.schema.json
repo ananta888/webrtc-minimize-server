@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/moq/subscription.v1.schema.json",
+  "title": "MoQ subscription v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "type", "tenantId", "programId", "programEpoch", "audienceId", "namespace", "trackName", "filter", "codecPreferences", "renditionIds", "priority", "maxObjects", "createdAt", "expiresAt"],
+  "properties": {
+    "contractVersion": {"$ref": "common.v1.schema.json#/$defs/contractVersion"},
+    "type": {"const": "moq-subscription"},
+    "tenantId": {"$ref": "common.v1.schema.json#/$defs/tenantId"},
+    "programId": {"$ref": "common.v1.schema.json#/$defs/programId"},
+    "programEpoch": {"$ref": "common.v1.schema.json#/$defs/epoch"},
+    "audienceId": {"$ref": "common.v1.schema.json#/$defs/audienceId"},
+    "namespace": {"$ref": "common.v1.schema.json#/$defs/namespace"},
+    "trackName": {"$ref": "common.v1.schema.json#/$defs/trackName"},
+    "filter": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["mode"], "properties": {"mode": {"const": "latest-group"}}},
+        {"type": "object", "additionalProperties": false, "required": ["mode", "startGroup", "startObject"], "properties": {"mode": {"const": "absolute-start"}, "startGroup": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}, "startObject": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}}},
+        {"type": "object", "additionalProperties": false, "required": ["mode", "startGroup", "startObject", "endGroup", "endObject"], "properties": {"mode": {"const": "absolute-range"}, "startGroup": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}, "startObject": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}, "endGroup": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}, "endObject": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}}}
+      ]
+    },
+    "codecPreferences": {"type": "array", "minItems": 1, "maxItems": 6, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/codec"}},
+    "renditionIds": {"type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": {"$ref": "common.v1.schema.json#/$defs/renditionId"}},
+    "priority": {"$ref": "common.v1.schema.json#/$defs/priority"},
+    "maxObjects": {"type": "integer", "minimum": 1, "maximum": 256},
+    "createdAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"},
+    "expiresAt": {"$ref": "common.v1.schema.json#/$defs/timestamp"}
+  }
+}

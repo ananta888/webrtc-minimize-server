@@ -6,6 +6,12 @@ exakt gepinnte stabile `hls.js`-Version 1.7.2 über Media Source Extensions.
 Fehlt beides, wird sichtbar `broadcast_hls_unsupported` gemeldet. MoQ und WHEP
 werden dadurch nicht implizit aktiviert.
 
+Die Oberfläche nennt den [aktuellen MoQ-Vertragsstand](moq-contracts-and-negotiation.md)
+explizit als experimentell und deaktiviert. Sie zeigt MOQT draft-20, LOC
+draft-04, die inkompatiblen MediaMTX-/Cloudflare-Draftstände und LL-HLS/HLS als
+Fallback, statt vorhandenes WebTransport mit einem funktionierenden MoQ-Pfad
+gleichzusetzen.
+
 Ein Start erfolgt ausschließlich durch `BroadcastPlayerComponent.start()` nach
 dem sichtbaren Klick. Der Player fordert keine Capture-Berechtigung an. Ein
 Autoplay-Verbot wird als `awaiting-user` dargestellt. Mute, Lautstärke,
