@@ -305,10 +305,13 @@ test("two Chromium pages negotiate SFrame chat and media then clean every captur
   for (let index = 0; index < await ownSourceOptions.count(); index += 1) {
     await ownSourceOptions.nth(index).check();
   }
+  await ada.locator("#broadcast-audio-profile").selectOption("balanced");
+  assert.equal(await ada.locator("#broadcast-audio-monitoring").inputValue(), "off");
   assert.deepEqual(await ada.evaluate(() => window.__captureCalls), captureCallsBeforePreview);
   await ada.locator("#prepare-broadcast-preview").click();
   await ada.locator("#broadcast-preview").waitFor();
   await ada.locator("#broadcast-preview video").waitFor();
+  await ada.locator("#broadcast-program-audio-meter", { hasText: "balanced" }).waitFor();
   assert.equal(await ada.locator("#broadcast-preview .preview-tile").count(), 2);
   assert.equal(await ada.evaluate(() => {
     const originalIds = new Set(Object.keys(window.__localTracks));

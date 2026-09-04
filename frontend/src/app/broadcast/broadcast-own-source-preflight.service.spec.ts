@@ -6,6 +6,10 @@ import { VideoCapturePreferencesService } from "../webrtc/video-capture-preferen
 import { BroadcastAudioMeterFactory } from "./broadcast-audio-meter";
 import { BroadcastOwnSourceCaptureService } from "./broadcast-own-source-capture.service";
 import { BroadcastOwnSourcePreflightService } from "./broadcast-own-source-preflight.service";
+import {
+  TrustedAudioProgramBusFactory,
+  TrustedAudioProgramSettingsService,
+} from "./trusted-audio-program-bus";
 
 let sequence = 0;
 
@@ -82,8 +86,44 @@ function fixture(options: { failMeterCloseOnce?: boolean } = {}) {
       };
     }),
   };
-  const preflight = new BroadcastOwnSourcePreflightService(media, capture, meterFactory);
-  return { microphone, camera, getUserMedia, media, capture, meterFactory, closedMeters, preflight };
+  const closedProgramAudio: string[] = [];
+  const programAudioFactory: TrustedAudioProgramBusFactory = {
+    supported: true,
+    create: vi.fn(async (_program, inputs, profile, monitoringMode) => {
+      const output = track("audio", "program-output");
+      return {
+        outputSourceId: "src_programaudioaaaa",
+        stream: new FakeMediaStream([output]) as unknown as MediaStream,
+        track: output,
+        snapshot: () => ({
+          profileId: profile.profileId,
+          monitoringMode,
+          sampleRate: 48_000,
+          channelCount: profile.channelCount,
+          opusBitsPerSecond: profile.opusBitsPerSecond,
+          aacBitsPerSecond: profile.aacBitsPerSecond,
+          dtxRequested: profile.dtx,
+          fecRequested: profile.fec,
+          sourceLevels: Object.fromEntries(inputs.map(({ sourceId }) => [sourceId, 0.25])),
+          peakLevel: 0.25,
+        }),
+        setSourceMuted() {},
+        setSourceGain() {},
+        async close() { output.stop(); closedProgramAudio.push(output.id); },
+      };
+    }),
+  };
+  const preflight = new BroadcastOwnSourcePreflightService(
+    media,
+    capture,
+    meterFactory,
+    programAudioFactory,
+    new TrustedAudioProgramSettingsService(),
+  );
+  return {
+    microphone, camera, getUserMedia, media, capture, meterFactory, closedMeters,
+    closedProgramAudio, programAudioFactory, preflight,
+  };
 }
 
 describe("BroadcastOwnSourcePreflightService", () => {
@@ -132,6 +172,8 @@ describe("BroadcastOwnSourcePreflightService", () => {
     expect(context.preflight.previews()).toHaveLength(2);
     expect(context.capture.activeForks()).toHaveLength(2);
     expect(context.meterFactory.create).toHaveBeenCalledOnce();
+    expect(context.programAudioFactory.create).toHaveBeenCalledOnce();
+    expect(context.preflight.programAudio()).toMatchObject({ profileId: "speech", peakLevel: 0.25 });
     expect(Object.values(context.preflight.audioLevels())).toContain(0.42);
     expect(context.microphone.stop).not.toHaveBeenCalled();
     expect(context.camera.stop).not.toHaveBeenCalled();
@@ -142,6 +184,7 @@ describe("BroadcastOwnSourcePreflightService", () => {
     await context.preflight.stopPreview();
     expect(clones.every(({ stop }) => stop.mock.calls.length === 1)).toBe(true);
     expect(context.closedMeters).toHaveLength(1);
+    expect(context.closedProgramAudio).toEqual(["program-output"]);
     expect(context.microphone.stop).not.toHaveBeenCalled();
     expect(context.camera.stop).not.toHaveBeenCalled();
     expect(context.preflight.lifecycle()).toBe("idle");

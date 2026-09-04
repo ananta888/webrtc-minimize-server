@@ -3,6 +3,7 @@ import {
   MAX_ROOM_PARTICIPANTS,
   MIN_ROOM_PARTICIPANTS,
 } from "./room-limits.js";
+import net from "node:net";
 
 const DEFAULTS = Object.freeze({
   host: "0.0.0.0",
@@ -66,6 +67,8 @@ const DEFAULTS = Object.freeze({
   broadcastWhipIceGatheringTimeoutMs: 10_000,
   broadcastWhipConnectionTimeoutMs: 20_000,
   broadcastWhipRetryBudget: 1,
+  broadcastGatewayAuthEnabled: false,
+  broadcastGatewayAuthAddresses: ["127.0.0.1", "::1"],
 });
 
 const AUTH_MODES = new Set(["disabled", "optional", "required"]);
@@ -108,6 +111,15 @@ function parseTurnServers(raw) {
       ...(typeof entry.credential === "string" ? { credential: entry.credential } : {}),
     };
   });
+}
+
+function ipAddresses(raw, fallback) {
+  const values = String(raw === undefined ? fallback.join(",") : raw)
+    .split(",").map((value) => value.trim()).filter(Boolean);
+  if (values.length < 1 || values.length > 8 || values.some((value) => net.isIP(value) === 0)) {
+    throw new Error("BROADCAST_GATEWAY_AUTH_ADDRESSES must contain 1..8 IP addresses");
+  }
+  return [...new Set(values)];
 }
 
 function parseTurnUrls(value, name) {
@@ -567,5 +579,14 @@ export function loadConfig(env = process.env) {
       DEFAULTS.broadcastWhipRetryBudget,
       { minimum: 0, maximum: 2, name: "BROADCAST_WHIP_RETRY_BUDGET" },
     ),
+    broadcastGatewayAuthEnabled: booleanValue(
+      env.BROADCAST_GATEWAY_AUTH_ENABLED,
+      DEFAULTS.broadcastGatewayAuthEnabled,
+      "BROADCAST_GATEWAY_AUTH_ENABLED",
+    ),
+    broadcastGatewayAuthAddresses: Object.freeze(ipAddresses(
+      env.BROADCAST_GATEWAY_AUTH_ADDRESSES,
+      DEFAULTS.broadcastGatewayAuthAddresses,
+    )),
   });
 }

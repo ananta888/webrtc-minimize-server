@@ -1,4 +1,5 @@
 import { BroadcastBrowserPortError } from "./broadcast-ports";
+import { WhipAudioEncodingPolicy } from "./whip-contracts";
 
 export interface WhipIceCandidate {
   readonly candidate: string;
@@ -115,7 +116,46 @@ function validateMediaSections(
       || (!allowMissingRtcpMuxOnly && !has(section, "rtcp-mux-only")))) fail(code);
 }
 
-export function prepareWhipOffer(sdp: unknown, maximumBytes: number): string {
+function applyOpusPolicy(parsed: ParsedSdp, policy: WhipAudioEncodingPolicy): void {
+  if (!policy || policy.policyVersion !== 1
+    || !Number.isSafeInteger(policy.opusBitsPerSecond)
+    || policy.opusBitsPerSecond < 20_000 || policy.opusBitsPerSecond > 510_000
+    || (policy.channelCount !== 1 && policy.channelCount !== 2)
+    || typeof policy.dtx !== "boolean" || typeof policy.fec !== "boolean") {
+    fail("invalid_whip_audio_policy");
+  }
+  const section = parsed.sections.find(({ media }) => media === "audio");
+  if (!section) fail("whip_audio_policy_without_audio");
+  const opus = section.lines.map((line) => /^a=rtpmap:(\d+) opus\/48000(?:\/2)?$/i.exec(line))
+    .find((match) => match !== null);
+  if (!opus) fail("whip_opus_unavailable");
+  const payload = opus[1];
+  const prefix = `a=fmtp:${payload} `;
+  const index = section.lines.findIndex((line) => line.startsWith(prefix));
+  const values = new Map<string, string>();
+  if (index >= 0) {
+    for (const part of section.lines[index].slice(prefix.length).split(";")) {
+      const [key, value] = part.trim().split("=", 2);
+      if (key && value && /^[A-Za-z0-9_-]{1,32}$/.test(key) && /^[A-Za-z0-9_.-]{1,64}$/.test(value)) {
+        values.set(key.toLowerCase(), value);
+      }
+    }
+  }
+  values.set("maxaveragebitrate", String(policy.opusBitsPerSecond));
+  values.set("stereo", policy.channelCount === 2 ? "1" : "0");
+  values.set("sprop-stereo", policy.channelCount === 2 ? "1" : "0");
+  values.set("usedtx", policy.dtx ? "1" : "0");
+  values.set("useinbandfec", policy.fec ? "1" : "0");
+  const line = `${prefix}${[...values].map(([key, value]) => `${key}=${value}`).join(";")}`;
+  if (index >= 0) section.lines[index] = line;
+  else section.lines.push(line);
+}
+
+export function prepareWhipOffer(
+  sdp: unknown,
+  maximumBytes: number,
+  audioPolicy?: WhipAudioEncodingPolicy,
+): string {
   const parsed = parse(sdp, maximumBytes, "invalid_whip_offer_sdp");
   for (const section of parsed.sections) {
     if (!has(section, "rtcp-mux")) fail("invalid_whip_offer_sdp");
@@ -124,6 +164,7 @@ export function prepareWhipOffer(sdp: unknown, maximumBytes: number): string {
       section.lines.splice(index + 1, 0, "a=rtcp-mux-only");
     }
   }
+  if (audioPolicy) applyOpusPolicy(parsed, audioPolicy);
   validateBundle(parsed, "invalid_whip_offer_sdp");
   validateMediaSections(parsed, "sendonly", "invalid_whip_offer_sdp");
   const streamIds = parsed.sections.map((section) => attribute(section, "msid")?.split(/\s+/)[0] || "");

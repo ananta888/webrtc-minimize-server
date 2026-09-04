@@ -32,6 +32,7 @@ import { RoomAdmissionError, RoomFullError, RoomRegistry } from "./room-registry
 import { SessionTicketError, SessionTicketStore } from "./session-tickets.js";
 import { createMediaAgentIceServers } from "./media-agent-ice.js";
 import { createEdgeTurnCredentials, createTurnCredentials } from "./turn-credentials.js";
+import { MediaMtxExternalAuthError } from "./mediamtx-external-auth.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
@@ -293,6 +294,7 @@ function errorStatus(error) {
   if (error instanceof RoomDirectoryError) return error.status;
   if (error instanceof PairWorkspaceError) return error.status;
   if (error instanceof MediaAgentEnrollmentError || error instanceof MediaAgentInstallerError) return error.status;
+  if (error instanceof MediaMtxExternalAuthError) return error.status;
   if (error instanceof AuthenticationError) return 401;
   if (error instanceof ProtocolError || error instanceof DeviceProofError) return 400;
   return 500;
@@ -310,6 +312,7 @@ function createHttpHandler(config, registry, services) {
     mediaAgentEnrollmentStore,
     mediaAgentInstallerService,
     mediaAgentEvents,
+    mediaMtxExternalAuthService,
   } = services;
   return async (request, response) => {
     try {
@@ -324,6 +327,31 @@ function createHttpHandler(config, registry, services) {
       }
       if (request.method === "GET" && url.pathname === "/config") {
         sendJson(response, 200, publicRuntimeConfig(config, services), securityHeaders(config));
+        return;
+      }
+      if (url.pathname === "/internal/broadcast/mediamtx-auth") {
+        if (!config.broadcastGatewayAuthEnabled || !mediaMtxExternalAuthService) {
+          response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        if (request.method !== "POST") {
+          response.writeHead(405, { allow: "POST", "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        const remoteAddress = request.socket.remoteAddress || "";
+        if (request.headers.origin || url.search
+          || !config.broadcastGatewayAuthAddresses.includes(remoteAddress)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        const input = await readJsonBody(request);
+        await mediaMtxExternalAuthService.authorize(input);
+        response.writeHead(204, { "cache-control": "no-store" });
+        response.end();
         return;
       }
       const artifactMatch = url.pathname.match(/^\/downloads\/media-edge-agent\/([a-z0-9-]+)$/);
@@ -1358,6 +1386,10 @@ export function createAppServer(options = {}) {
     onRevoked: () => {},
     prune: () => mediaAgentEnrollmentStore?.prune(),
   };
+  const mediaMtxExternalAuthService = options.mediaMtxExternalAuthService || null;
+  if (config.broadcastGatewayAuthEnabled && !mediaMtxExternalAuthService) {
+    throw new Error("BROADCAST_GATEWAY_AUTH_ENABLED requires a MediaMTX external auth service");
+  }
   const services = {
     oidcVerifier,
     deviceProofVerifier,
@@ -1369,6 +1401,7 @@ export function createAppServer(options = {}) {
     mediaAgentEnrollmentStore,
     mediaAgentInstallerService,
     mediaAgentEvents,
+    mediaMtxExternalAuthService,
   };
   const server = http.createServer(createHttpHandler(config, registry, services));
   if (!options.workspaceStore && workspaceStore) server.on("close", () => workspaceStore.close());

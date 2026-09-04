@@ -168,6 +168,7 @@ export class BroadcastCoordinatorService implements OnDestroy {
       this.resources.composition = await this.composition.compose(
         plan.program,
         this.resources.forks,
+        consent,
         signal,
       );
       signal.throwIfAborted();

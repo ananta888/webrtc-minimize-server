@@ -52,7 +52,8 @@ describe("Room page information architecture", () => {
     expect(broadcastPreflight).toContain('id="broadcast-upload-estimate"');
     expect(broadcastPreflight).toContain('id="broadcast-e2ee-warning"');
     expect(broadcastPreflight).toContain("nicht SFrame-E2EE");
-    expect(broadcastPreflight).toContain("WHIP folgt in TBP-011");
+    expect(broadcastPreflight).toContain("Öffentliche Program-Orchestrierung noch nicht aktiviert");
+    expect(broadcastPreflight).toContain('id="broadcast-audio-policy"');
     expect(broadcastComponent).not.toContain("getUserMedia");
     expect(broadcastComponent).not.toContain("getDisplayMedia");
     expect(broadcastComponent).not.toContain("styleUrl");

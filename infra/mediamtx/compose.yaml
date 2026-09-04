@@ -1,0 +1,47 @@
+services:
+  broadcast-gateway:
+    profiles: ["broadcast-gateway"]
+    image: bluenviron/mediamtx:1.20.1@sha256:1b029d11049be75630e9b73bb0d5f47b08a7db4eaee89a80bf8f53bc40e56414
+    command: ["/etc/mediamtx/mediamtx.yml"]
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=65532,gid=65532
+    volumes:
+      - ./infra/mediamtx/mediamtx.yml:/etc/mediamtx/mediamtx.yml:ro
+    ports:
+      - "127.0.0.1:${MEDIAMTX_HLS_PORT:-18888}:8888/tcp"
+      - "127.0.0.1:${MEDIAMTX_WHIP_PORT:-18889}:8889/tcp"
+      - "127.0.0.1:${MEDIAMTX_ICE_PORT:-18189}:8189/udp"
+    expose:
+      - "9997"
+      - "9998"
+    networks:
+      broadcast-media:
+      broadcast-control:
+        ipv4_address: ${BROADCAST_GATEWAY_CONTROL_ADDRESS:-10.255.254.3}
+    healthcheck:
+      test: ["CMD", "/mediamtx", "--version"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 3s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+          pids: 128
+    stop_grace_period: 10s
+
+networks:
+  broadcast-media:
+  broadcast-control:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${BROADCAST_GATEWAY_CONTROL_SUBNET:-10.255.254.0/29}

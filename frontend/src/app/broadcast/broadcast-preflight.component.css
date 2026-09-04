@@ -101,6 +101,37 @@ app-broadcast-preflight .field {
   margin: 1rem 0;
 }
 
+app-broadcast-preflight .audio-policy {
+  display: grid;
+  gap: .65rem;
+  margin: 1rem 0;
+  border: 1px solid rgba(94, 224, 189, .22);
+  border-radius: .8rem;
+  padding: .85rem;
+}
+
+app-broadcast-preflight .audio-policy legend {
+  padding: 0 .35rem;
+  color: var(--mint, #5ee0bd);
+  font-weight: 750;
+}
+
+app-broadcast-preflight .audio-policy .field,
+app-broadcast-preflight .audio-policy .facts {
+  margin: 0;
+}
+
+app-broadcast-preflight .policy-note {
+  margin: 0;
+  color: var(--text-muted, #9aa8bf);
+  font-size: .86rem;
+  line-height: 1.45;
+}
+
+app-broadcast-preflight .facts.compact {
+  font-size: .85rem;
+}
+
 app-broadcast-preflight select {
   width: 100%;
 }
@@ -145,6 +176,26 @@ app-broadcast-preflight .preview-grid {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: .8rem;
   margin: 1rem 0;
+}
+
+app-broadcast-preflight .program-audio-meter {
+  display: grid;
+  grid-template-columns: minmax(12rem, .6fr) 1fr;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  border-radius: .8rem;
+  background: rgba(94, 224, 189, .08);
+  padding: .8rem;
+}
+
+app-broadcast-preflight .program-audio-meter div {
+  display: grid;
+  gap: .2rem;
+}
+
+app-broadcast-preflight .program-audio-meter meter {
+  width: 100%;
 }
 
 app-broadcast-preflight .preview-tile {

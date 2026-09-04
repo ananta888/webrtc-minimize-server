@@ -21,6 +21,14 @@ const ANSWER = [
   "a=recvonly", "a=rtcp-mux", "a=rtcp-mux-only", "a=rtpmap:96 VP8/90000", "",
 ].join("\r\n");
 
+const AUDIO_OFFER = [
+  "v=0", "o=- 1 1 IN IP4 127.0.0.1", "s=-", "t=0 0", "a=group:BUNDLE 0",
+  "m=audio 9 UDP/TLS/RTP/SAVPF 111", "c=IN IP4 0.0.0.0", "a=ice-ufrag:localA",
+  "a=ice-pwd:abcdefghijklmnopqrstuvwx", "a=setup:actpass", "a=mid:0",
+  "a=sendonly", "a=msid:program-stream audio-track", "a=rtcp-mux", "a=rtpmap:111 opus/48000/2",
+  "a=fmtp:111 minptime=10;useinbandfec=0", "",
+].join("\r\n");
+
 describe("WHIP SDP boundary", () => {
   it("enforces max-bundle sendonly/recvonly and adds the RFC-required rtcp-mux-only offer attribute", () => {
     const offer = prepareWhipOffer(OFFER, 64 * 1024);
@@ -50,6 +58,20 @@ describe("WHIP SDP boundary", () => {
       sdpMid: "other",
       sdpMLineIndex: 0,
     }], false, 8 * 1024)).toThrow("invalid_whip_ice_candidate");
+  });
+
+  it("applies a bounded Opus program profile without changing unrelated fmtp parameters", () => {
+    const offer = prepareWhipOffer(AUDIO_OFFER, 64 * 1024, {
+      policyVersion: 1, opusBitsPerSecond: 96_000, channelCount: 2, dtx: false, fec: true,
+      priority: "high", contentHint: "speech",
+    });
+    expect(offer).toContain(
+      "a=fmtp:111 minptime=10;useinbandfec=1;maxaveragebitrate=96000;stereo=1;sprop-stereo=1;usedtx=0\r\n",
+    );
+    expect(() => prepareWhipOffer(OFFER, 64 * 1024, {
+      policyVersion: 1, opusBitsPerSecond: 96_000, channelCount: 1, dtx: true, fec: true,
+      priority: "high", contentHint: "speech",
+    })).toThrow("whip_audio_policy_without_audio");
   });
 
   it("applies only ICE restart fields to the previous answer", () => {

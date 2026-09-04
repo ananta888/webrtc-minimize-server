@@ -1,0 +1,90 @@
+logLevel: warn
+logDestinations: [stdout]
+logStructured: true
+dumpPackets: false
+readTimeout: 10s
+writeTimeout: 10s
+writeQueueSize: 256
+udpMaxPayloadSize: 1200
+
+# This network-only policy is intentionally restricted to the loopback-bound
+# integration profile. TBP-018 replaces it with action/path/epoch grants before
+# any public gateway deployment.
+authMethod: internal
+authInternalUsers:
+  - user: any
+    ips: [127.0.0.1, "::1"]
+    permissions:
+      - action: api
+      - action: metrics
+  - user: any
+    ips: [172.16.0.0/12]
+    permissions:
+      - action: publish
+        path: "~^res_[A-Za-z0-9_-]{16,64}$"
+      - action: read
+        path: "~^res_[A-Za-z0-9_-]{16,64}$"
+      - action: playback
+        path: "~^res_[A-Za-z0-9_-]{16,64}$"
+
+api: true
+apiAddress: :9997
+apiEncryption: false
+apiAllowOrigins: []
+metrics: true
+metricsAddress: :9998
+metricsEncryption: false
+metricsAllowOrigins: []
+pprof: false
+playback: false
+
+rtsp: false
+rtmp: false
+srt: false
+moq: false
+
+hls: true
+hlsAddress: :8888
+hlsEncryption: false
+hlsAllowOrigins: ["http://127.0.0.1:8080", "https://webrtc.ananta.de"]
+hlsAlwaysRemux: false
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+hlsSegmentMaxSize: 20M
+hlsDirectory: ""
+hlsMuxerCloseAfter: 30s
+hlsCDNSecret: ""
+
+webrtc: true
+webrtcAddress: :8889
+webrtcEncryption: false
+webrtcAllowOrigins: ["http://127.0.0.1:8080", "https://webrtc.ananta.de"]
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: ""
+webrtcIPsFromInterfaces: false
+webrtcAdditionalHosts: [127.0.0.1]
+webrtcICEServers2: []
+webrtcSTUNGatherTimeout: 5s
+webrtcHandshakeTimeout: 10s
+webrtcTrackGatherTimeout: 2s
+
+pathDefaults:
+  source: publisher
+  sourceOnDemand: false
+  maxReaders: 100
+  overridePublisher: false
+  record: false
+  alwaysAvailable: false
+
+paths:
+  "~^res_[A-Za-z0-9_-]{16,64}$":
+    source: publisher
+    overridePublisher: false
+    record: false
+  all_others:
+    source: publisher
+    overridePublisher: false
+    maxReaders: 0
+    record: false

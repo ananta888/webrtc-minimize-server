@@ -1,0 +1,29 @@
+services:
+  webrtc:
+    environment:
+      BROADCAST_GATEWAY_AUTH_ENABLED: "true"
+      BROADCAST_GATEWAY_AUTH_ADDRESSES: ${BROADCAST_GATEWAY_CONTROL_ADDRESS:-10.255.254.3}
+    networks:
+      default:
+      broadcast-control:
+        ipv4_address: ${BROADCAST_WEB_CONTROL_ADDRESS:-10.255.254.2}
+
+  broadcast-gateway:
+    environment:
+      MTX_AUTHMETHOD: http
+      MTX_AUTHHTTPADDRESS: http://webrtc:8080/internal/broadcast/mediamtx-auth
+      MTX_AUTHHTTPEXCLUDE: '[{"action":"api"},{"action":"metrics"}]'
+    depends_on:
+      webrtc:
+        condition: service_started
+    networks:
+      broadcast-media:
+      broadcast-control:
+        ipv4_address: ${BROADCAST_GATEWAY_CONTROL_ADDRESS:-10.255.254.3}
+
+networks:
+  broadcast-control:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${BROADCAST_GATEWAY_CONTROL_SUBNET:-10.255.254.0/29}

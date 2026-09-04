@@ -14,6 +14,7 @@ import {
   mediaAgentSignatureMessage,
 } from "../src/media-agent-protocol.js";
 import { AuthenticationError } from "../src/oidc-verifier.js";
+import { MediaMtxExternalAuthError } from "../src/mediamtx-external-auth.js";
 
 async function startTestServer(overrides = {}, serverOptions = {}) {
   const config = {
@@ -218,6 +219,57 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
   assert.match(workerResponse.headers.get("content-security-policy"), /script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'/);
   assert.match(workerResponse.headers.get("content-security-policy"), /connect-src[^;]+blob:/);
   assert.match(await workerResponse.text(), /new RecognizerWorker\(\)/);
+});
+
+test("internal MediaMTX callback is default-deny, IP-bound and content-free", async (context) => {
+  const disabled = await startTestServer();
+  context.after(() => disabled.close());
+  assert.equal((await fetch(`${disabled.httpUrl}/internal/broadcast/mediamtx-auth`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+  })).status, 404);
+
+  const requests = [];
+  const service = {
+    async authorize(value) {
+      requests.push(value);
+      if (value.token === "denied-token-value") throw new MediaMtxExternalAuthError("inactive_broadcast_grant", 401);
+      return {};
+    },
+  };
+  const enabled = await startTestServer({
+    broadcastGatewayAuthEnabled: true,
+    broadcastGatewayAuthAddresses: ["127.0.0.1"],
+  }, { mediaMtxExternalAuthService: service });
+  context.after(() => enabled.close());
+  const body = {
+    user: "", password: "", token: "valid-synthetic-token", ip: "172.30.40.3",
+    action: "publish", path: "res_aaaaaaaaaaaaaaaa", protocol: "webrtc",
+    id: "6ba7b810-9dad-41d1-80b4-00c04fd430c8", query: "", userAgent: "MediaMTX/1.20.1",
+  };
+  const accepted = await fetch(`${enabled.httpUrl}/internal/broadcast/mediamtx-auth`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  });
+  assert.equal(accepted.status, 204);
+  assert.equal(await accepted.text(), "");
+  assert.deepEqual(requests, [body]);
+
+  assert.equal((await fetch(`${enabled.httpUrl}/internal/broadcast/mediamtx-auth`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: "https://evil.test" },
+    body: JSON.stringify(body),
+  })).status, 404);
+  assert.equal((await fetch(`${enabled.httpUrl}/internal/broadcast/mediamtx-auth`, {
+    method: "POST", headers: { "content-type": "text/plain" }, body: JSON.stringify(body),
+  })).status, 404);
+  assert.equal((await fetch(`${enabled.httpUrl}/internal/broadcast/mediamtx-auth?token=forbidden`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  })).status, 404);
+  const denied = await fetch(`${enabled.httpUrl}/internal/broadcast/mediamtx-auth`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...body, token: "denied-token-value" }),
+  });
+  assert.equal(denied.status, 401);
+  assert.deepEqual(await denied.json(), { error: "inactive_broadcast_grant" });
 });
 
 test("two room peers receive membership and target-bound signals", async (context) => {

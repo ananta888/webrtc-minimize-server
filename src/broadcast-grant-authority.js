@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { SignJWT, decodeProtectedHeader, jwtVerify } from "jose";
+import { SignJWT, decodeJwt, decodeProtectedHeader, jwtVerify } from "jose";
 
 import {
   BroadcastContractError,
@@ -24,6 +24,7 @@ export { BroadcastGrantError, broadcastGrantPathHash } from "./broadcast-grant-p
 
 const KEY_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const GRANT_ID_PATTERN = /^grt_[A-Za-z0-9_-]{16,64}$/;
+const GATEWAY_GRANT_KINDS = new Set(["publisher", "packager", "playback"]);
 
 const fail = broadcastGrantFail;
 
@@ -383,6 +384,50 @@ export class BroadcastGrantAuthority {
     }
     if (grant.singleUse) return this.#transition(record, "consumed", now);
     return grant;
+  }
+
+  async authorizeGatewayBearer(authorizationHeader, request, now = Date.now()) {
+    if (!request || typeof request !== "object" || Array.isArray(request)
+      || Object.keys(request).length !== 3
+      || Object.keys(request).some((field) => !new Set(["action", "path", "grantKinds"]).has(field))
+      || typeof request.action !== "string"
+      || !Array.isArray(request.grantKinds) || request.grantKinds.length < 1
+      || request.grantKinds.some((kind) => !GATEWAY_GRANT_KINDS.has(kind))) {
+      fail("invalid_broadcast_gateway_authorization", 400);
+    }
+    let token;
+    try {
+      token = bearerToken(authorizationHeader);
+    } catch {
+      fail("invalid_broadcast_authorization_header", 401);
+    }
+    if (!token || token.length > 8 * 1024) fail("broadcast_grant_required", 401);
+    let payload;
+    try {
+      payload = decodeJwt(token);
+    } catch {
+      fail("invalid_broadcast_grant", 401);
+    }
+    const record = this.#records.get(payload.jti);
+    if (!record || !request.grantKinds.includes(record.grant.grantKind)) {
+      fail("inactive_broadcast_grant", 401);
+    }
+    const grant = record.grant;
+    return this.authorizeBearer(authorizationHeader, {
+      audience: grant.tokenAudience,
+      action: request.action,
+      tenantId: grant.tenantId,
+      subjectRef: grant.issuerSubjectRef,
+      audienceRef: grant.audienceRef,
+      deviceRef: grant.deviceRef,
+      roomId: grant.roomId,
+      programId: grant.programId,
+      programRevision: record.programRevision,
+      programEpoch: grant.programEpoch,
+      resourceRef: grant.resourceRef,
+      path: request.path,
+      ...(grant.policyId ? { policyId: grant.policyId, policyRevision: grant.policyRevision } : {}),
+    }, now);
   }
 
   revokeGrant(grantId, now = Date.now()) {

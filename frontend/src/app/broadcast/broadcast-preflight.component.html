@@ -63,11 +63,33 @@
       <input id="broadcast-captions" type="checkbox" [checked]="preflight.includeCaptions()" [disabled]="!captionsActive()" (change)="preflight.setIncludeCaptions($any($event.target).checked)">
       <span><strong>Finalisierte Vosk-Untertitel einplanen</strong><small>{{ captionsActive() ? 'Lokale Erkennung ist aktiv; Übernahme folgt im Caption-Packaging-Schritt.' : 'Starte Vosk bewusst im Bereich Untertitel.' }}</small></span>
     </label>
+    <fieldset class="audio-policy" id="broadcast-audio-policy">
+      <legend>Audio-Programmbus</legend>
+      <label class="field">Strategie
+        <select id="broadcast-audio-profile" [value]="audioSettings.profileId()" (change)="setAudioProfile($any($event.target).value)">
+          <option value="speech">Sprache priorisieren · Mono · 64 kbit/s Opus</option>
+          <option value="balanced">Ausgewogen · Stereo · 96 kbit/s Opus</option>
+          <option value="music">Bildschirmton/Musik · Stereo · 160 kbit/s Opus</option>
+        </select>
+      </label>
+      <label class="field">Lokales Program-Monitoring
+        <select id="broadcast-audio-monitoring" [value]="audioSettings.monitoringMode()" (change)="setAudioMonitoring($any($event.target).value)">
+          <option value="off">Aus · sichere Echo-Voreinstellung</option>
+          <option value="headphones">Nur mit Kopfhörern</option>
+        </select>
+      </label>
+      <p class="policy-note">Mikrofon und Bildschirmton werden getrennt eingepegelt, Sprache kann Bildschirmton ducken und ein Limiter schützt den Ausgang vor Clipping. Raumwiedergabe und Talkback werden niemals in den Programmbus zurückgeführt. Monitoring über Lautsprecher kann ein Echo erzeugen.</p>
+      <dl class="facts compact">
+        <div><dt>Opus / AAC-Ziel</dt><dd>{{ audioSettings.profile().opusBitsPerSecond / 1000 }} / {{ audioSettings.profile().aacBitsPerSecond / 1000 }} kbit/s</dd></div>
+        <div><dt>Kanäle</dt><dd>{{ audioSettings.profile().channelCount }}</dd></div>
+        <div><dt>DTX / FEC</dt><dd>{{ audioSettings.profile().dtx ? 'anfordern' : 'aus' }} / {{ audioSettings.profile().fec ? 'anfordern' : 'aus' }}</dd></div>
+      </dl>
+    </fieldset>
     <dl class="facts">
       <div><dt>Codecprofil</dt><dd id="broadcast-codec-profile">{{ preflight.codecProfile() }}</dd></div>
       <div><dt>Geschätzter Upload</dt><dd id="broadcast-upload-estimate">{{ preflight.formatBitrate(preflight.estimatedUploadBitsPerSecond()) }}</dd></div>
       <div><dt>Vorschau</dt><dd>{{ preflight.previews().length ? preflight.previews().length + ' getrennte Track-Klone' : 'noch nicht erzeugt' }}</dd></div>
-      <div><dt>Auslieferung</dt><dd>Noch nicht aktiviert · WHIP folgt in TBP-011</dd></div>
+      <div><dt>Auslieferung</dt><dd>Öffentliche Program-Orchestrierung noch nicht aktiviert</dd></div>
     </dl>
     <div id="broadcast-e2ee-warning" class="trust-warning" role="note">
       <strong>Vertrauensgrenze: nicht SFrame-E2EE</strong>
@@ -88,6 +110,12 @@
 @if (preflight.previews().length) {
   <section id="broadcast-preview" class="panel preview-panel" aria-labelledby="broadcast-preview-heading">
     <div class="panel-title"><div><p class="eyebrow">3 · Lokale Vorschau</p><h2 id="broadcast-preview-heading">Genau diese Quellen würden gesendet</h2></div></div>
+    @if (preflight.programAudio(); as programAudio) {
+      <div id="broadcast-program-audio-meter" class="program-audio-meter">
+        <div><strong>Gemischter Programmausgang</strong><small>{{ programAudio.profileId }} · {{ programAudio.sampleRate }} Hz · {{ programAudio.channelCount }} Kanal</small></div>
+        <meter min="0" max="1" [value]="programAudio.peakLevel">{{ programAudio.peakLevel }}</meter>
+      </div>
+    }
     <div class="preview-grid">
       @for (preview of preflight.previews(); track preview.forkId) {
         <article class="preview-tile">

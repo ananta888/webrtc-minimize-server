@@ -222,11 +222,11 @@ test("publisher grant is OIDC-, membership-, device-, path-, action- and epoch-b
     (error) => error.code === "broadcast_device_proof_replayed",
   );
 
-  const authorized = await grants.authorizeBearer(
-    `Bearer ${issued.token}`,
-    expectation(issued, fixture),
-    NOW + 1_000,
-  );
+  const authorized = await grants.authorizeGatewayBearer(`Bearer ${issued.token}`, {
+    action: "whip:create",
+    path: `/broadcast/ingest/${RESOURCE_REF}`,
+    grantKinds: ["publisher", "packager"],
+  }, NOW + 1_000);
   assert.equal(authorized.status, "consumed");
   assert.equal(authorized.revision, 2);
   await assert.rejects(

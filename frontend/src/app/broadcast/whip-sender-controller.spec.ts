@@ -56,6 +56,23 @@ describe("WhipAdaptiveSenderController", () => {
     await audioController.apply();
     expect(audioSender.current().encodings[0].maxBitrate).toBe(48_000);
     expect(audioSender.current().encodings[0].priority).toBe("high");
+
+    const programAudio = track("audio");
+    const programSender = sender(programAudio);
+    const programController = new WhipAdaptiveSenderController({} as RTCPeerConnection, [{
+      descriptor: {
+        sourceId: "src_cccccccccccccccc", sourceKind: "program-audio", envelope: "clear-program-v1",
+        track: programAudio,
+        audioEncoding: {
+          policyVersion: 1, opusBitsPerSecond: 96_000, channelCount: 2, dtx: false, fec: true,
+          priority: "high", contentHint: "music",
+        },
+      },
+      sender: programSender as unknown as RTCRtpSender,
+    }]);
+    await programController.apply();
+    expect(programSender.current().encodings[0].maxBitrate).toBe(96_000);
+    expect(programAudio.contentHint).toBe("music");
   });
 
   it("requires sustained pressure and cooldown before reducing or recovering quality", async () => {

@@ -40,6 +40,8 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.deepEqual(config.broadcastWhipAudioCodecs, ["audio/opus"]);
   assert.deepEqual(config.broadcastWhipVideoCodecs, ["video/vp8", "video/h264"]);
   assert.equal(config.broadcastWhipRetryBudget, 1);
+  assert.equal(config.broadcastGatewayAuthEnabled, false);
+  assert.deepEqual(config.broadcastGatewayAuthAddresses, ["127.0.0.1", "::1"]);
 });
 
 test("loadConfig parses TURN configuration without preserving unknown fields", () => {
@@ -75,6 +77,9 @@ test("loadConfig rejects unsafe bounds and malformed public origins", () => {
   assert.throws(() => loadConfig({ BROADCAST_WHIP_AUDIO_CODECS: "video/vp8" }), /audio MIME/);
   assert.throws(() => loadConfig({ BROADCAST_WHIP_RETRY_BUDGET: "3" }), /between 0 and 2/);
   assert.throws(() => loadConfig({ BROADCAST_WHIP_PROFILE: "draft" }), /rfc9725 or mediamtx/);
+  assert.throws(() => loadConfig({ BROADCAST_GATEWAY_AUTH_ENABLED: "sometimes" }), /true or false/);
+  assert.throws(() => loadConfig({ BROADCAST_GATEWAY_AUTH_ADDRESSES: "gateway.local" }), /IP addresses/);
+  assert.throws(() => loadConfig({ BROADCAST_GATEWAY_AUTH_ADDRESSES: "" }), /IP addresses/);
   assert.throws(() => loadConfig({
     BROADCAST_WHIP_PROFILE: "mediamtx-1.20",
     BROADCAST_WHIP_SIMULCAST_ENABLED: "true",
@@ -87,6 +92,15 @@ test("loadConfig rejects unsafe bounds and malformed public origins", () => {
     () => loadConfig({ PEER_ROUTE_LEASE_MS: "30000", PEER_ROUTE_RENEW_MS: "30000" }),
     /shorter/,
   );
+});
+
+test("loadConfig accepts only explicit gateway callback source addresses", () => {
+  const config = loadConfig({
+    BROADCAST_GATEWAY_AUTH_ENABLED: "true",
+    BROADCAST_GATEWAY_AUTH_ADDRESSES: "172.30.40.3,2001:db8::10,172.30.40.3",
+  });
+  assert.equal(config.broadcastGatewayAuthEnabled, true);
+  assert.deepEqual(config.broadcastGatewayAuthAddresses, ["172.30.40.3", "2001:db8::10"]);
 });
 
 test("loadConfig accepts a bounded secret-free WHIP browser policy", () => {

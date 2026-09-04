@@ -7,6 +7,7 @@ import {
   TrustedDecryptConsentPanelComponent,
 } from "./trusted-decrypt-consent-panel.component";
 import { TrustedDecryptConsentView } from "./trusted-decrypt-key-lifecycle";
+import { TrustedAudioProgramSettingsService } from "./trusted-audio-program-bus";
 
 @Component({
   selector: "app-broadcast-preflight",
@@ -23,7 +24,10 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
   readonly authorizeTrustedSource = output<TrustedDecryptConsentCandidate>();
   readonly revokeTrustedSource = output<string>();
 
-  constructor(readonly preflight: BroadcastOwnSourcePreflightService) {}
+  constructor(
+    readonly preflight: BroadcastOwnSourcePreflightService,
+    readonly audioSettings: TrustedAudioProgramSettingsService,
+  ) {}
 
   ngOnInit(): void {
     this.preflight.setPanelVisible(true);
@@ -51,6 +55,27 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
       await this.preflight.stopPreview();
     } catch {
       // A retained cleanup handle can be retried with the same visible action.
+    }
+  }
+
+  async setAudioProfile(value: unknown): Promise<void> {
+    if (!this.audioSettings.setProfile(value)) return;
+    await this.refreshReadyAudioPreview();
+  }
+
+  async setAudioMonitoring(value: unknown): Promise<void> {
+    if (!this.audioSettings.setMonitoring(value, "user-action")) return;
+    await this.refreshReadyAudioPreview();
+  }
+
+  private async refreshReadyAudioPreview(): Promise<void> {
+    if (this.preflight.lifecycle() !== "ready"
+      || !this.preflight.selectedSources().some(({ kind }) => kind === "audio")) return;
+    try {
+      await this.preflight.stopPreview("audio-policy-changed");
+      await this.preflight.preparePreview("user-action");
+    } catch {
+      // The service exposes the bounded lifecycle error for the visible panel.
     }
   }
 }

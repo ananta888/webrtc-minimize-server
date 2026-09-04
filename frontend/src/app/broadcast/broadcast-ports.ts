@@ -76,6 +76,7 @@ export interface BroadcastCompositionPort {
   compose(
     program: BroadcastProgramRef,
     forks: readonly BroadcastCaptureForkHandle[],
+    consent: BroadcastConsentDecision,
     signal: AbortSignal,
   ): Promise<BroadcastCompositionHandle>;
   release(handle: BroadcastCompositionHandle): Promise<void>;

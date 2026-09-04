@@ -442,7 +442,8 @@ export class Rfc9725WhipTransport implements BroadcastPublicationTransport {
     try {
       active.peerConnection.restartIce();
       const offer = await active.peerConnection.createOffer({ iceRestart: true });
-      const prepared = prepareWhipOffer(offer.sdp, this.configuration.maximumSdpBytes);
+      const audioPolicy = active.media.tracks.find(({ sourceKind }) => sourceKind === "program-audio")?.audioEncoding;
+      const prepared = prepareWhipOffer(offer.sdp, this.configuration.maximumSdpBytes, audioPolicy);
       await active.peerConnection.setLocalDescription({ type: "offer", sdp: prepared });
       await waitForState(
         active.peerConnection,
@@ -532,8 +533,9 @@ export class Rfc9725WhipTransport implements BroadcastPublicationTransport {
         const descriptor = media.tracks.find((candidate) => candidate.track === track)!;
         bindings.push(Object.freeze({ descriptor, sender: this.addTrack(peerConnection, descriptor, stream) }));
       }
+      const audioPolicy = media.tracks.find(({ sourceKind }) => sourceKind === "program-audio")?.audioEncoding;
       const offer = await peerConnection.createOffer();
-      const preparedOffer = prepareWhipOffer(offer.sdp, this.configuration.maximumSdpBytes);
+      const preparedOffer = prepareWhipOffer(offer.sdp, this.configuration.maximumSdpBytes, audioPolicy);
       await peerConnection.setLocalDescription({ type: "offer", sdp: preparedOffer });
       if (!this.configuration.trickleIce) {
         await waitForState(peerConnection, "ice-gathering", this.configuration.iceGatheringTimeoutMs, signal);
@@ -541,6 +543,7 @@ export class Rfc9725WhipTransport implements BroadcastPublicationTransport {
       const localOffer = prepareWhipOffer(
         peerConnection.localDescription?.sdp || preparedOffer,
         this.configuration.maximumSdpBytes,
+        audioPolicy,
       );
       const result = await this.createSession(request, localOffer, signal);
       const response = result.response;

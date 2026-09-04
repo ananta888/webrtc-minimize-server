@@ -92,7 +92,7 @@ function fixture(options: {
     },
   };
   const composition: BroadcastCompositionPort = {
-    async compose(_program, forks, signal) {
+    async compose(_program, forks, _consent, signal) {
       events.push("compose");
       signal.throwIfAborted();
       return {

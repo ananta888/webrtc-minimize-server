@@ -15,6 +15,13 @@ import {
   BroadcastOwnSourceForkView,
 } from "./broadcast-own-source-capture.service";
 import { BroadcastBrowserPortError } from "./broadcast-ports";
+import {
+  TRUSTED_AUDIO_PROGRAM_BUS_FACTORY,
+  TrustedAudioProgramBusFactory,
+  TrustedAudioProgramHandle,
+  TrustedAudioProgramSettingsService,
+  TrustedAudioProgramSnapshot,
+} from "./trusted-audio-program-bus";
 
 export type BroadcastPreflightAudience = "private" | "unlisted" | "public";
 export type BroadcastPreflightLifecycle = "idle" | "preparing" | "ready" | "stopping" | "failed";
@@ -47,6 +54,7 @@ export class BroadcastOwnSourcePreflightService implements OnDestroy {
   readonly lifecycle = signal<BroadcastPreflightLifecycle>("idle");
   readonly previews = signal<readonly BroadcastPreviewView[]>([]);
   readonly audioLevels = signal<Readonly<Record<string, number>>>({});
+  readonly programAudio = signal<TrustedAudioProgramSnapshot | null>(null);
   readonly errorCode = signal("");
   readonly panelVisible = signal(false);
   readonly sources: Signal<readonly LocalOriginalMediaSourceView[]>;
@@ -58,12 +66,16 @@ export class BroadcastOwnSourcePreflightService implements OnDestroy {
   private controller: AbortController | null = null;
   private prepareTask: Promise<void> | null = null;
   private stopTask: Promise<void> | null = null;
+  private programAudioHandle: TrustedAudioProgramHandle | null = null;
+  private programAudioTimer = 0;
   private destroyed = false;
 
   constructor(
     private readonly media: MediaPublicationService,
     private readonly capture: BroadcastOwnSourceCaptureService,
     @Inject(BROADCAST_AUDIO_METER_FACTORY) private readonly meterFactory: BroadcastAudioMeterFactory,
+    @Inject(TRUSTED_AUDIO_PROGRAM_BUS_FACTORY) private readonly programAudioFactory: TrustedAudioProgramBusFactory,
+    private readonly audioSettings: TrustedAudioProgramSettingsService,
   ) {
     this.sources = this.media.localOriginalSources;
     this.selectedSources = computed(() => {
@@ -216,6 +228,25 @@ export class BroadcastOwnSourcePreflightService implements OnDestroy {
           signal.throwIfAborted();
         }
       }
+      const audioPreviews = previews.filter(({ kind }) => kind === "microphone" || kind === "screen-audio");
+      if (audioPreviews.length > 0 && this.programAudioFactory.supported) {
+        this.programAudioHandle = await this.programAudioFactory.create({
+          tenantId: "tn_localpreview0000",
+          roomId: "room-local-preview",
+          programId: "prg_localpreview000",
+          programRevision: revision,
+          programEpoch: Math.max(1, revision),
+        }, audioPreviews.map(({ sourceId, kind, stream }) => ({
+          sourceId,
+          sourceKind: kind as "microphone" | "screen-audio",
+          stream,
+        })), this.audioSettings.profile(), this.audioSettings.monitoringMode(), signal);
+        this.programAudio.set(this.programAudioHandle.snapshot());
+        this.programAudioTimer = window.setInterval(() => {
+          if (this.programAudioHandle) this.programAudio.set(this.programAudioHandle.snapshot());
+        }, 100);
+        signal.throwIfAborted();
+      }
       this.previews.set(Object.freeze(previews));
       this.lifecycle.set("ready");
     } catch (error) {
@@ -260,6 +291,17 @@ export class BroadcastOwnSourcePreflightService implements OnDestroy {
 
   private async cleanup(previews: readonly BroadcastPreviewView[]): Promise<void> {
     const errors: unknown[] = [];
+    window.clearInterval(this.programAudioTimer);
+    this.programAudioTimer = 0;
+    if (this.programAudioHandle) {
+      try {
+        await this.programAudioHandle.close();
+        this.programAudioHandle = null;
+        this.programAudio.set(null);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
     for (const preview of [...previews].reverse()) {
       const meter = this.meters.get(preview.forkId);
       if (meter) {

@@ -1,0 +1,40 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:bf1d9c86-9fa1-4ec1-9a3f-a6de3c7fc77c",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-09-04T00:00:00Z",
+    "component": {
+      "type": "application",
+      "name": "webrtc-minimize-server-mediamtx-adapter",
+      "version": "1"
+    }
+  },
+  "components": [
+    {
+      "type": "application",
+      "name": "mediamtx",
+      "group": "bluenviron",
+      "version": "1.20.1",
+      "purl": "pkg:docker/bluenviron/mediamtx@1.20.1?digest=sha256:1b029d11049be75630e9b73bb0d5f47b08a7db4eaee89a80bf8f53bc40e56414",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1b029d11049be75630e9b73bb0d5f47b08a7db4eaee89a80bf8f53bc40e56414"
+        }
+      ],
+      "licenses": [{ "license": { "id": "MIT" } }],
+      "externalReferences": [
+        {
+          "type": "release-notes",
+          "url": "https://github.com/bluenviron/mediamtx/releases/tag/v1.20.1"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/bluenviron/mediamtx/tree/v1.20.1"
+        }
+      ]
+    }
+  ]
+}

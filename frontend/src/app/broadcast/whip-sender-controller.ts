@@ -63,6 +63,7 @@ const SOURCE_ENVELOPES: Readonly<Record<WhipMediaTrackDescriptor["sourceKind"], 
   microphone: Object.freeze({ maximumBitrate: 48_000, priority: "high", contentHint: "speech" }),
   "screen-audio": Object.freeze({ maximumBitrate: 96_000, priority: "medium", contentHint: "speech" }),
   silence: Object.freeze({ maximumBitrate: 24_000, priority: "low", contentHint: "speech" }),
+  "program-audio": Object.freeze({ maximumBitrate: 160_000, priority: "high", contentHint: "speech" }),
   camera: Object.freeze({
     maximumBitrate: 1_200_000,
     maximumFramerate: 24,
@@ -85,6 +86,17 @@ const SOURCE_ENVELOPES: Readonly<Record<WhipMediaTrackDescriptor["sourceKind"], 
     contentHint: "detail",
   }),
 });
+
+function sourceEnvelope(descriptor: WhipMediaTrackDescriptor): SenderEnvelope {
+  if (descriptor.sourceKind !== "program-audio" || !descriptor.audioEncoding) {
+    return SOURCE_ENVELOPES[descriptor.sourceKind];
+  }
+  return Object.freeze({
+    maximumBitrate: descriptor.audioEncoding.opusBitsPerSecond,
+    priority: descriptor.audioEncoding.priority,
+    contentHint: descriptor.audioEncoding.contentHint,
+  });
+}
 
 export const DEFAULT_WHIP_SENDER_POLICY: WhipSenderPolicy = Object.freeze({
   policyVersion: 1,
@@ -323,7 +335,7 @@ export class WhipAdaptiveSenderController {
   }
 
   private async applyBinding(binding: WhipSenderBinding): Promise<boolean> {
-    const envelope = SOURCE_ENVELOPES[binding.descriptor.sourceKind];
+    const envelope = sourceEnvelope(binding.descriptor);
     try {
       binding.descriptor.track.contentHint = envelope.contentHint;
     } catch {
