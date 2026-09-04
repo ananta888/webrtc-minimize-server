@@ -35,12 +35,19 @@ func request(value *origin, method, path, authorization string) *httptest.Respon
 
 func TestOriginServesOnlyAuthorizedExactMediaPaths(t *testing.T) {
 	value, resource := testOrigin(t)
+	if err := os.WriteFile(filepath.Join(value.root, resource, "captions_live.vtt"), []byte("WEBVTT\n\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	response := request(value, http.MethodGet, "/"+resource+"/index.m3u8", "Bearer synthetic-test-token")
 	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "application/vnd.apple.mpegurl" || response.Body.String() != "#EXTM3U\n" {
 		t.Fatalf("unexpected origin response: code=%d type=%s body=%q", response.Code, response.Header().Get("Content-Type"), response.Body.String())
 	}
 	if response.Header().Get("Cache-Control") != "private, no-store, max-age=0" {
 		t.Fatal("origin response is cacheable")
+	}
+	caption := request(value, http.MethodGet, "/"+resource+"/captions_live.vtt", "Bearer synthetic-test-token")
+	if caption.Code != http.StatusOK || caption.Header().Get("Content-Type") != "text/vtt; charset=utf-8" {
+		t.Fatalf("caption output unavailable: code=%d type=%s", caption.Code, caption.Header().Get("Content-Type"))
 	}
 	for _, path := range []string{
 		"/" + resource + "/index.m3u8?token=secret",

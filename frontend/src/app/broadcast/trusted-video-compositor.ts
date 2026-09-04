@@ -32,6 +32,8 @@ export interface TrustedVideoOverlayPolicy {
   readonly showCaptions: boolean;
   readonly programTitle: string;
   readonly captionText: string;
+  readonly captionStyle: "high-contrast" | "subtle" | "large";
+  readonly captionPositionPercent: number;
 }
 
 export interface TrustedVideoInput {
@@ -137,7 +139,10 @@ export function normalizeTrustedVideoOverlay(value: TrustedVideoOverlayPolicy): 
   if (!value || value.policyVersion !== 1
     || typeof value.showSourceLabels !== "boolean"
     || typeof value.showProgramTitle !== "boolean"
-    || typeof value.showCaptions !== "boolean") fail("invalid_trusted_video_overlay");
+    || typeof value.showCaptions !== "boolean"
+    || !new Set(["high-contrast", "subtle", "large"]).has(value.captionStyle)
+    || !Number.isSafeInteger(value.captionPositionPercent)
+    || value.captionPositionPercent < 10 || value.captionPositionPercent > 95) fail("invalid_trusted_video_overlay");
   return Object.freeze({
     policyVersion: 1,
     showSourceLabels: value.showSourceLabels,
@@ -145,6 +150,8 @@ export function normalizeTrustedVideoOverlay(value: TrustedVideoOverlayPolicy): 
     showCaptions: value.showCaptions,
     programTitle: boundedText(value.programTitle, 100),
     captionText: boundedText(value.captionText, 240),
+    captionStyle: value.captionStyle,
+    captionPositionPercent: value.captionPositionPercent,
   });
 }
 
@@ -295,12 +302,16 @@ export class BrowserTrustedVideoCompositorFactory implements TrustedVideoComposi
           context.fillText(overlay.programTitle, 24, 43, canvas.width - 48);
         }
         if (overlay.showCaptions && overlay.captionText) {
-          context.fillStyle = "rgba(0,0,0,.78)";
-          context.fillRect(40, canvas.height - 100, canvas.width - 80, 72);
+          const large = overlay.captionStyle === "large";
+          const height = large ? 88 : 72;
+          const centerY = Math.round(canvas.height * overlay.captionPositionPercent / 100);
+          const top = Math.max(8, Math.min(canvas.height - height - 8, centerY - height / 2));
+          context.fillStyle = overlay.captionStyle === "subtle" ? "rgba(0,0,0,.52)" : "rgba(0,0,0,.82)";
+          context.fillRect(40, top, canvas.width - 80, height);
           context.fillStyle = "#fff";
-          context.font = "600 30px system-ui, sans-serif";
+          context.font = `${overlay.captionStyle === "subtle" ? "500" : "650"} ${large ? 38 : 30}px system-ui, sans-serif`;
           context.textAlign = "center";
-          context.fillText(overlay.captionText, canvas.width / 2, canvas.height - 47, canvas.width - 120);
+          context.fillText(overlay.captionText, canvas.width / 2, top + height - 20, canvas.width - 120);
           context.textAlign = "start";
         }
       };
@@ -435,6 +446,7 @@ export class TrustedVideoProgramSettingsService {
     return Object.freeze({
       policyVersion: 1, showSourceLabels: false, showProgramTitle: false,
       showCaptions: false, programTitle: "", captionText: "",
+      captionStyle: "high-contrast", captionPositionPercent: 88,
     });
   }
 }

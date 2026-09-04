@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { BroadcastCaptionSettingsService } from "./broadcast-caption-settings.service";
 
@@ -15,10 +15,15 @@ describe("BroadcastCaptionSettingsService", () => {
 
   it("accepts bounded language, delay, line, position and style updates", () => {
     const service = new BroadcastCaptionSettingsService();
+    const listener = vi.fn();
+    const unsubscribe = service.subscribe(listener);
     expect(service.patchSettings({ language: "en-US", delayMs: 1_200, maximumLineLength: 36,
       positionPercent: 82, style: "large" })).toBe(true);
     expect(service.settings()).toEqual(expect.objectContaining({ language: "en-US", delayMs: 1_200,
       maximumLineLength: 36, positionPercent: 82, style: "large" }));
+    expect(listener).toHaveBeenCalledWith(service.consent(), service.settings());
+    unsubscribe();
     expect(service.patchSettings({ delayMs: 9_000 })).toBe(false);
+    expect(listener).toHaveBeenCalledOnce();
   });
 });

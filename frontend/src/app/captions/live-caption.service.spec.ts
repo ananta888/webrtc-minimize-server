@@ -119,6 +119,8 @@ describe("LiveCaptionService", () => {
 
   it("feeds microphone PCM into Vosk and sends bounded partial and final updates", async () => {
     const test = fixture();
+    const emissions: Record<string, unknown>[] = [];
+    const unregister = test.service.registerEmissionListener((value) => emissions.push(value));
     expect(test.service.setShareWithRoom(true)).toBe(true);
     expect(await test.service.start("microphone")).toBe(true);
     const recognizer = test.recognizerFor("microphone");
@@ -146,6 +148,13 @@ describe("LiveCaptionService", () => {
       source: "microphone",
     }), true);
     expect(test.service.partialText()).toBe("");
+    expect(emissions).toHaveLength(3);
+    expect(emissions.at(-1)).toMatchObject({
+      source: "microphone", sourceEpoch: 1, revision: 2,
+      language: "de-DE", text: "guten morgen zusammen", final: true,
+    });
+    expect(emissions.at(-1)?.["capturedAtMs"]).toEqual(expect.any(Number));
+    unregister();
   });
 
   it("transcribes only an existing screen-audio track and keeps text local when selected", async () => {

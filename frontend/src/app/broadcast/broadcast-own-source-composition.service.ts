@@ -1,6 +1,7 @@
 import { Inject, Injectable, OnDestroy } from "@angular/core";
 
 import { BroadcastOwnSourceCaptureService } from "./broadcast-own-source-capture.service";
+import { BroadcastCaptionStyle } from "./broadcast-caption-packager";
 import {
   BroadcastBrowserPortError,
   BroadcastCaptureForkHandle,
@@ -170,6 +171,24 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
       throw new BroadcastBrowserPortError("unknown_broadcast_composition");
     }
     return owned.media;
+  }
+
+  setCaptionOverlay(
+    composition: BroadcastCompositionHandle,
+    text: string,
+    style: BroadcastCaptionStyle,
+    positionPercent: number,
+  ): boolean {
+    const owned = this.compositions.get(composition.compositionId);
+    if (!owned || !owned.videoCompositor || typeof text !== "string" || text.length > 240) return false;
+    owned.videoCompositor.setOverlay({
+      ...this.videoSettings.overlay(),
+      showCaptions: text.length > 0,
+      captionText: text,
+      captionStyle: style,
+      captionPositionPercent: positionPercent,
+    });
+    return true;
   }
 
   async release(handle: BroadcastCompositionHandle): Promise<void> {

@@ -1,10 +1,17 @@
 import { Injectable } from "@angular/core";
 
+import { LiveCaptionEmission, LiveCaptionService } from "../captions/live-caption.service";
 import { cumulativeIceServers } from "../webrtc/ice-policy";
 import { RoomSessionService } from "../webrtc/room-session.service";
 import { ServerMessage, SignalingService } from "../webrtc/signaling.service";
 import { BroadcastControlPlaneService, PreparedNativePackagerStart } from "./broadcast-control-plane.service";
 import { BroadcastOwnSourceCompositionService } from "./broadcast-own-source-composition.service";
+import {
+  BroadcastCaptionOutputPort,
+  BroadcastCaptionSegment,
+  BrowserBroadcastCaptionPackager,
+} from "./broadcast-caption-packager";
+import { BroadcastCaptionSettingsService } from "./broadcast-caption-settings.service";
 import { NativePackagerOnboardingService } from "./native-packager-onboarding.service";
 import {
   BroadcastBrowserPortError,
@@ -26,7 +33,22 @@ interface NativeSession {
   outputReady: Promise<void>;
   resolveOutput: () => void;
   rejectOutput: (error: unknown) => void;
+  captionChannel: RTCDataChannel | null;
+  captionPackager: BrowserBroadcastCaptionPackager | null;
+  captionSourceIds: Readonly<Record<LiveCaptionEmission["source"], string>>;
+  captionSourceEpochs: Record<LiveCaptionEmission["source"], number>;
+  pendingCaptionMessage: string | null;
+  unregisterCaptions: () => void;
   stopped: boolean;
+}
+
+const MAX_CAPTION_CHANNEL_BUFFER = 128 * 1024;
+const MAX_CAPTION_MESSAGE_BYTES = 70 * 1024;
+
+function captionSourceId(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return `src_${[...bytes].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function exactSignal(message: ServerMessage, assignment: PreparedNativePackagerStart): boolean {
@@ -71,6 +93,8 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
   constructor(
     private readonly control: BroadcastControlPlaneService,
     private readonly composition: BroadcastOwnSourceCompositionService,
+    private readonly captions: LiveCaptionService,
+    private readonly captionSettings: BroadcastCaptionSettingsService,
     private readonly onboarding: NativePackagerOnboardingService,
     private readonly room: RoomSessionService,
     private readonly signaling: SignalingService,
@@ -119,6 +143,11 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
     const native: NativeSession = {
       publicSession, assignment, pc, pendingCandidates: [], signalTask: Promise.resolve(), stopped: false,
       outputReady, resolveOutput, rejectOutput,
+      captionChannel: null, captionPackager: null,
+      captionSourceIds: Object.freeze({ microphone: captionSourceId(), "screen-audio": captionSourceId() }),
+      captionSourceEpochs: { microphone: 0, "screen-audio": 0 },
+      pendingCaptionMessage: null,
+      unregisterCaptions: () => undefined,
       unsubscribe: () => undefined,
     };
     native.unsubscribe = this.signaling.subscribe((message) => this.acceptSignal(native, message));
@@ -128,6 +157,7 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
       throw error;
     };
     try {
+      this.startCaptions(native, request);
       for (const descriptor of media.tracks) pc.addTrack(descriptor.track, media.stream);
       pc.onicecandidate = ({ candidate }) => {
         if (!native.stopped) this.sendSignal(assignment, { candidate: candidate?.toJSON() ?? null });
@@ -257,6 +287,83 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
     });
   }
 
+  private startCaptions(native: NativeSession, request: BroadcastPublicationRequest): void {
+    const consent = this.captionSettings.consent();
+    const channel = native.pc.createDataChannel("broadcast-captions-v1", { ordered: true });
+    channel.bufferedAmountLowThreshold = MAX_CAPTION_CHANNEL_BUFFER / 2;
+    channel.onopen = () => this.flushCaptionMessage(native);
+    channel.onbufferedamountlow = () => this.flushCaptionMessage(native);
+    native.captionChannel = channel;
+    const output: BroadcastCaptionOutputPort = {
+      setBurnIn: (text, style, positionPercent) => {
+        this.composition.setCaptionOverlay(request.composition, text, style, positionPercent);
+      },
+      clearBurnIn: () => {
+        this.composition.setCaptionOverlay(request.composition, "", "high-contrast", 88);
+      },
+      publishTextTrack: (segment) => this.queueCaptionSegment(native, segment),
+      revokeTextTrack: (discontinuitySequence) => this.queueCaptionMessage(native, {
+        operation: "revoke", discontinuitySequence,
+      }),
+    };
+    const packager = new BrowserBroadcastCaptionPackager(output);
+    if (!packager.begin(Date.now(), consent, this.captionSettings.settings())) {
+      throw new BroadcastBrowserPortError("invalid_broadcast_caption_settings");
+    }
+    native.captionPackager = packager;
+    const unregisterEmissions = this.captions.registerEmissionListener((emission) => {
+      if (native.stopped || native.captionPackager !== packager) return;
+      const previousEpoch = native.captionSourceEpochs[emission.source];
+      if (emission.sourceEpoch < previousEpoch) return;
+      if (emission.sourceEpoch > previousEpoch) {
+        if (previousEpoch > 0) packager.revokeSource(native.captionSourceIds[emission.source]);
+        native.captionSourceEpochs[emission.source] = emission.sourceEpoch;
+        if (!packager.authorizeSource(native.captionSourceIds[emission.source], emission.sourceEpoch)) return;
+      }
+      packager.ingest({
+        sourceId: native.captionSourceIds[emission.source], sourceEpoch: emission.sourceEpoch,
+        utteranceId: emission.utteranceId, revision: emission.revision, language: emission.language,
+        text: emission.text, final: emission.final, capturedAtMs: emission.capturedAtMs,
+      }, Date.now());
+    });
+    const unregisterSettings = this.captionSettings.subscribe((nextConsent, nextSettings) => {
+      if (!native.stopped && native.captionPackager === packager) {
+        packager.reconfigure(nextConsent, nextSettings);
+      }
+    });
+    native.unregisterCaptions = () => { unregisterSettings(); unregisterEmissions(); };
+  }
+
+  private queueCaptionSegment(native: NativeSession, segment: BroadcastCaptionSegment): void {
+    this.queueCaptionMessage(native, {
+      operation: "update", language: segment.language,
+      mediaSequence: segment.mediaSequence, discontinuitySequence: segment.discontinuitySequence,
+      startsAtMs: segment.startsAtMs, endsAtMs: segment.endsAtMs,
+      cueCount: segment.cueCount, body: segment.body,
+    });
+  }
+
+  private queueCaptionMessage(native: NativeSession, payload: Record<string, unknown>): void {
+    if (!native.captionChannel || native.stopped) return;
+    const serialized = JSON.stringify({
+      version: 1, type: "caption-segment", assignmentId: native.assignment.assignmentId,
+      programEpoch: native.assignment.programEpoch, fencingRevision: native.assignment.fencingRevision,
+      ...payload,
+    });
+    if (new TextEncoder().encode(serialized).byteLength > MAX_CAPTION_MESSAGE_BYTES) return;
+    native.pendingCaptionMessage = serialized;
+    this.flushCaptionMessage(native);
+  }
+
+  private flushCaptionMessage(native: NativeSession): void {
+    const channel = native.captionChannel;
+    if (!channel || channel.readyState !== "open" || !native.pendingCaptionMessage
+      || channel.bufferedAmount > MAX_CAPTION_CHANNEL_BUFFER) return;
+    const pending = native.pendingCaptionMessage;
+    native.pendingCaptionMessage = null;
+    try { channel.send(pending); } catch { native.pendingCaptionMessage = pending; }
+  }
+
   private waitForConnected(pc: RTCPeerConnection, signal: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => finish(new BroadcastBrowserPortError("native-packager-connection-timeout")), 20_000);
@@ -281,6 +388,17 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
     if (native.stopped) return;
     native.stopped = true;
     native.rejectOutput(new BroadcastBrowserPortError("native-packager-session-stopped"));
+    native.unregisterCaptions();
+    native.unregisterCaptions = () => undefined;
+    native.captionPackager?.close();
+    native.captionPackager = null;
+    if (native.captionChannel) {
+      native.captionChannel.onopen = null;
+      native.captionChannel.onbufferedamountlow = null;
+      native.captionChannel.close();
+      native.captionChannel = null;
+    }
+    native.pendingCaptionMessage = null;
     native.unsubscribe();
     native.pc.onicecandidate = null;
     native.pc.close();

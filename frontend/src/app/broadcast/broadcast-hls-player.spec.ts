@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BroadcastHlsPlayer } from "./broadcast-hls-player";
 
@@ -53,17 +53,23 @@ const fakeModule = {
 };
 
 describe("BroadcastHlsPlayer", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    Reflect.deleteProperty(URL, "createObjectURL");
+    Reflect.deleteProperty(URL, "revokeObjectURL");
+  });
   it("uses native HLS first and treats autoplay denial as a visible user-action state", async () => {
     const element = video(true);
     Object.defineProperty(element, "play", {
       value: vi.fn(async () => { throw new DOMException("denied", "NotAllowedError"); }),
     });
     const player = new BroadcastHlsPlayer();
-    await player.open(element, "https://webrtc.ananta.de/res_aaaaaaaaaaaaaaaa/index.m3u8", {
+    await player.open(element, "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8", {
       muted: false, volume: 0.7,
     }, new AbortController().signal);
     expect(player.snapshot()).toMatchObject({ engine: "native-hls", lifecycle: "awaiting-user" });
-    expect(element.src).toBe("https://webrtc.ananta.de/res_aaaaaaaaaaaaaaaa/index.m3u8");
+    expect(element.src).toBe(`${location.origin}/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8`);
     await player.destroy();
     expect(element.getAttribute("src")).toBeNull();
     expect(element.load).toHaveBeenCalled();
@@ -77,7 +83,7 @@ describe("BroadcastHlsPlayer", () => {
       (state) => states.push(state.lifecycle),
       async () => fakeModule as never,
     );
-    await player.open(element, "https://webrtc.ananta.de/res_bbbbbbbbbbbbbbbb/master.m3u8", {
+    await player.open(element, "/broadcast/play/res_bbbbbbbbbbbbbbbb/master.m3u8", {
       muted: true, volume: 1,
     }, new AbortController().signal);
     const hls = FakeHls.instances[0];
@@ -106,10 +112,10 @@ describe("BroadcastHlsPlayer", () => {
     const element = video(false);
     const player = new BroadcastHlsPlayer(() => undefined, async () => fakeModule as never);
     await expect(player.open(element,
-      "https://webrtc.ananta.de/res_aaaaaaaaaaaaaaaa/index.m3u8?access_token=secret",
+      "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8?access_token=secret",
       { muted: true, volume: 1 }, new AbortController().signal,
     )).rejects.toThrow("invalid_broadcast_manifest_url");
-    await player.open(element, "https://webrtc.ananta.de/res_cccccccccccccccc/index.m3u8", {
+    await player.open(element, "/broadcast/play/res_cccccccccccccccc/index.m3u8", {
       muted: true, volume: 1,
     }, new AbortController().signal);
     const hls = FakeHls.instances[0];
@@ -120,5 +126,28 @@ describe("BroadcastHlsPlayer", () => {
     expect(hls.startLoad).toHaveBeenCalledTimes(2);
     expect(player.snapshot()).toMatchObject({ lifecycle: "failed", recoveryCount: 2, errorCode: "broadcast_player_recovery_exhausted" });
     await player.destroy();
+  });
+
+  it("polls the same protected playback scope for bounded live WebVTT and revokes it on destroy", async () => {
+    const element = video(true);
+    const vtt = "WEBVTT\n\ncc-1\n00:00:01.000 --> 00:00:02.000\nHallo\n";
+    const fetchMock = vi.fn(async () => new Response(vtt, { status: 200, headers: { "content-type": "text/vtt; charset=utf-8" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:caption-live") });
+    const revoke = vi.fn();
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revoke });
+    const player = new BroadcastHlsPlayer();
+    await player.open(element, "/broadcast/play/res_dddddddddddddddd/index.m3u8", {
+      muted: true, volume: 1, captions: true,
+    }, new AbortController().signal);
+    await vi.waitFor(() => expect(element.querySelector("track[data-broadcast-player]")).not.toBeNull());
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${location.origin}/broadcast/play/res_dddddddddddddddd/captions_live.vtt`,
+      expect.objectContaining({ credentials: "same-origin", cache: "no-store", redirect: "error" }),
+    );
+    player.setCaptionsVisible(true);
+    await player.destroy();
+    expect(element.querySelector("track[data-broadcast-player]")).toBeNull();
+    expect(revoke).toHaveBeenCalledWith("blob:caption-live");
   });
 });

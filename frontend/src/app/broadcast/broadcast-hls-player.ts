@@ -54,8 +54,9 @@ function validateManifestUrl(value: string): string {
   }
   const localDevelopment = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
   if ((parsed.protocol !== "https:" && !(localDevelopment && parsed.protocol === "http:"))
+    || parsed.origin !== location.origin
     || parsed.username || parsed.password || parsed.hash || parsed.search
-    || !/^\/res_[A-Za-z0-9_-]{16,64}\/(?:index|master)\.m3u8$/.test(parsed.pathname)) {
+    || !/^\/broadcast\/play\/res_[A-Za-z0-9_-]{16,64}\/(?:index|master)\.m3u8$/.test(parsed.pathname)) {
     throw new BroadcastBrowserPortError("invalid_broadcast_manifest_url");
   }
   return parsed.href;
@@ -80,6 +81,12 @@ export class BroadcastHlsPlayer {
   private recoveries: number[] = [];
   private abortListener: (() => void) | null = null;
   private listeners: Array<readonly [keyof HTMLMediaElementEventMap, EventListener]> = [];
+  private captionPoll: ReturnType<typeof setInterval> | null = null;
+  private captionController: AbortController | null = null;
+  private captionTrack: HTMLTrackElement | null = null;
+  private captionObjectUrl = "";
+  private captionBody = "";
+  private captionsVisible = false;
   private readonly qualityPolicy = new BroadcastViewerQualityPolicy("auto");
 
   constructor(
@@ -92,7 +99,7 @@ export class BroadcastHlsPlayer {
   async open(
     video: HTMLVideoElement,
     manifestUrl: string,
-    options: Readonly<{ muted: boolean; volume: number }>,
+    options: Readonly<{ muted: boolean; volume: number; captions?: boolean }>,
     signal: AbortSignal,
   ): Promise<void> {
     if (this.video) throw new BroadcastBrowserPortError("broadcast_player_busy");
@@ -138,6 +145,7 @@ export class BroadcastHlsPlayer {
         hls.loadSource(source);
         this.update({ engine: "hls-js" });
       }
+      if (options.captions === true) this.startCaptionPolling(source);
       this.startWatchdog();
       await this.play();
     } catch (error) {
@@ -179,6 +187,11 @@ export class BroadcastHlsPlayer {
     if (this.video) this.video.volume = volume;
   }
 
+  setCaptionsVisible(visible: boolean): void {
+    this.captionsVisible = visible;
+    if (this.captionTrack?.track) this.captionTrack.track.mode = visible ? "showing" : "disabled";
+  }
+
   selectQuality(value: "auto" | number): void {
     if (value !== "auto" && (!Number.isSafeInteger(value) || value < 0)) {
       throw new BroadcastBrowserPortError("invalid_broadcast_player_quality");
@@ -218,6 +231,11 @@ export class BroadcastHlsPlayer {
     this.hls?.stopLoad();
     this.hls?.destroy();
     this.hls = null;
+    if (this.captionPoll) clearInterval(this.captionPoll);
+    this.captionPoll = null;
+    this.captionController?.abort(new DOMException("destroy", "AbortError"));
+    this.captionController = null;
+    this.clearCaptionTrack();
     for (const [event, listener] of this.listeners) video.removeEventListener(event, listener);
     this.listeners = [];
     for (const track of Array.from(video.querySelectorAll("track[data-broadcast-player]"))) track.remove();
@@ -243,6 +261,62 @@ export class BroadcastHlsPlayer {
     listen("waiting", () => { this.stalledSamples = Math.max(this.stalledSamples, 2); });
     listen("error", () => this.update({ lifecycle: "failed", errorCode: "broadcast_player_media_failed" }));
     listen("timeupdate", () => this.updateLiveEdge());
+  }
+
+  private startCaptionPolling(manifestUrl: string): void {
+    const url = new URL(manifestUrl);
+    url.pathname = url.pathname.replace(/\/(?:index|master)\.m3u8$/, "/captions_live.vtt");
+    const poll = async () => {
+      if (!this.video || this.captionController) return;
+      const controller = new AbortController();
+      this.captionController = controller;
+      try {
+        const response = await fetch(url.href, {
+          method: "GET", credentials: "same-origin", cache: "no-store", redirect: "error",
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          if (response.status === 404) this.clearCaptionTrack();
+          return;
+        }
+        if (response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "text/vtt") return;
+        const raw = await response.arrayBuffer();
+        if (raw.byteLength < 8 || raw.byteLength > 64 * 1024) return;
+        const body = new TextDecoder("utf-8", { fatal: true }).decode(raw);
+        if (!body.startsWith("WEBVTT\n\n") || body === this.captionBody || !this.video) return;
+        const nextUrl = URL.createObjectURL(new Blob([body], { type: "text/vtt" }));
+        const previousUrl = this.captionObjectUrl;
+        let track = this.captionTrack;
+        if (!track) {
+          track = document.createElement("track");
+          track.kind = "captions";
+          track.label = "Live-Untertitel";
+          track.srclang = "de";
+          track.dataset["broadcastPlayer"] = "true";
+          this.video.appendChild(track);
+          this.captionTrack = track;
+        }
+        track.src = nextUrl;
+        if (track.track) track.track.mode = this.captionsVisible ? "showing" : "disabled";
+        this.captionObjectUrl = nextUrl;
+        this.captionBody = body;
+        if (previousUrl) URL.revokeObjectURL(previousUrl);
+      } catch {
+        // Missing, revoked or temporarily unavailable captions do not fail media playback.
+      } finally {
+        if (this.captionController === controller) this.captionController = null;
+      }
+    };
+    void poll();
+    this.captionPoll = setInterval(() => { void poll(); }, 2_000);
+  }
+
+  private clearCaptionTrack(): void {
+    this.captionTrack?.remove();
+    this.captionTrack = null;
+    this.captionBody = "";
+    if (this.captionObjectUrl) URL.revokeObjectURL(this.captionObjectUrl);
+    this.captionObjectUrl = "";
   }
 
   private startWatchdog(): void {

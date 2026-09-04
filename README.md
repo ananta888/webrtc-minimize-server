@@ -24,7 +24,7 @@ Der [experimentelle MoQ-Player-Orchestrator](docs/moq-player-fallback.md) prüft
 
 Die [Secure-Objects-ADR](docs/adr/0002-moq-secure-objects-experimental.md) vergleicht den objektverschlüsselten Broadcast mit Raum-SFrame und hält Key Distribution, Metadaten, Cache, ABR, Rotation, Late Join und Revocation getrennt. Ein default-off AES-GCM/HKDF-Prototyp belegt Blind-Relay und Manipulationserkennung lokal, ist aber ausdrücklich weder vollständige Draft- noch Produktionsimplementierung.
 
-Das [Angular-Broadcast-Cockpit](docs/broadcast-cockpit.md) zeigt Quellen, Program-Audio/-Layout, Untertitel, Sichtbarkeit, Delivery, Packager, Qualität, Ressourcen und Trust-Grenze. Bestätigung, alle Live-/Fehlerzustände und ein dreiteiliger Kill-Switch sind als fail-closed Workflow getestet; der echte Sendestart bleibt bis zur Control-Plane-/Gateway-Verdrahtung sichtbar gesperrt.
+Das [Angular-Broadcast-Cockpit](docs/broadcast-cockpit.md) zeigt Quellen, Program-Audio/-Layout, Untertitel, Sichtbarkeit, Delivery, Packager, Qualität, Ressourcen und Trust-Grenze. Bestätigung, alle Live-/Fehlerzustände und ein dreiteiliger Kill-Switch sind als fail-closed Workflow getestet; der native Publisher-/HLS-Pfad ist opt-in aktiviert, während WHIP/MediaMTX und MoQ weiterhin capability-gesteuert deaktiviert bleiben.
 
 Die [Broadcast-Contracts v1](contracts/broadcast/README.md) definieren 13 geschlossene, herstellerneutrale Metadatenfamilien samt Fixtures und serverseitiger Scope-/Epoch-/Ablauf-/Transition-Grenze. Sie enthalten bewusst weder Medien noch Tokens, Secrets, SDP/ICE oder Caption-Text und sind noch an keinen produktiven Broadcast-Endpunkt angebunden.
 
@@ -48,10 +48,11 @@ Die [Native-Packager-Basis](docs/native-packager.md) validiert kurzlebige,
 owner-/tenant-/raumgebundene Capability-Reports, wendet CPU-/Upload-/Energie-
 Admission an und erzeugt eine begrenzte H.264/AAC-ABR-Leiter über eine
 shell-freie FFmpeg-Pipeline. Der installierbare Go-Agent besitzt inzwischen
-P-256-/WSS-Enrollment, Raumconsent, gefencete Assignments und einen real
-getesteten WebRTC-RTP-Eingang; die Verbindung dieses Eingangs mit FFmpeg und
-dem autorisierten Gateway-Publish bleibt offen und wird nicht als
-produktionsbereit dargestellt.
+P-256-/WSS-Enrollment, Raumconsent, gefencete Assignments, einen real
+getesteten WebRTC-RTP-Eingang und die H.264/AAC-FFmpeg-Ausgabe an den intern
+autorisierten HLS-Origin. Consentierte Vosk-Finals gelangen über einen
+separaten assignmentgebundenen DataChannel als atomisches WebVTT-Livefenster
+zum selben privaten Playback-Scope.
 
 Der [MediaMTX-Gateway-Adapter](docs/mediamtx-gateway-adapter.md) stellt ein getrenntes, opt-in lokales Integrationsprofil bereit. MediaMTX 1.20.1 ist per OCI-Digest fixiert; nur WHIP, LL-HLS, interne API/Metrics und ICE sind aktiv. Der Container besitzt kein Recording, läuft read-only und veröffentlicht seine Medienports ausschließlich auf Loopback. Das Profil ist keine öffentliche Produktionsfreigabe.
 

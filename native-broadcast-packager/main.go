@@ -377,7 +377,13 @@ func createWebRTCAPI() (*webrtc.API, error) {
 	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, registry); err != nil {
 		return nil, fmt.Errorf("register WebRTC interceptors: %w", err)
 	}
-	return webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(registry)), nil
+	settingEngine := webrtc.SettingEngine{}
+	settingEngine.SetSCTPMaxReceiveBufferSize(256 * 1024)
+	return webrtc.NewAPI(
+		webrtc.WithMediaEngine(mediaEngine),
+		webrtc.WithInterceptorRegistry(registry),
+		webrtc.WithSettingEngine(settingEngine),
+	), nil
 }
 
 type serverMessage struct {

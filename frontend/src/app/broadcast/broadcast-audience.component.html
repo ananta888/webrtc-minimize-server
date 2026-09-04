@@ -23,7 +23,7 @@
   @if (selected(); as program) {
     <section class="selected-program" aria-labelledby="selected-broadcast-heading">
       <div class="program-meta"><div><p class="eyebrow">{{ availability(program) }}</p><h3 id="selected-broadcast-heading">{{ program.title }}</h3></div><dl><div><dt>Besitzer</dt><dd>{{ owner(program) }}</dd></div><div><dt>Zuschauer</dt><dd>{{ program.viewerCount }} aggregiert</dd></div><div><dt>Modus</dt><dd>{{ latency(program) }}</dd></div><div><dt>Untertitel</dt><dd>{{ program.captions ? 'verfügbar' : 'nicht angeboten' }}</dd></div></dl></div>
-      <app-broadcast-player [manifestUrl]="manifestUrl()" [title]="program.title" (closed)="close()" />
+      <app-broadcast-player [manifestUrl]="manifestUrl()" [title]="program.title" [captionsAvailable]="program.captions" (closed)="close()" />
     </section>
   } @else {
     <div class="directory-sections">

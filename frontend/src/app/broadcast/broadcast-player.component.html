@@ -47,7 +47,7 @@
       </select>
     </label>
     <button type="button" (click)="pictureInPicture()">Bild-in-Bild</button>
-    <button id="broadcast-player-captions" type="button" [attr.aria-pressed]="captionsVisible()" (click)="setCaptionsVisible(!captionsVisible())">{{ captionsVisible() ? 'Untertitel aus' : 'Untertitel an' }}</button>
+    <button id="broadcast-player-captions" type="button" [disabled]="!captionsAvailable()" [attr.aria-pressed]="captionsVisible()" (click)="setCaptionsVisible(!captionsVisible())">{{ captionsVisible() ? 'Untertitel aus' : 'Untertitel an' }}</button>
     <button type="button" (click)="fullscreen()">Vollbild</button>
     <button type="button" (click)="stop()">Schließen</button>
   </div>

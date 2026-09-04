@@ -31,18 +31,24 @@ Fortschrittssamples, springt kontrolliert zur Live-Position und erlaubt
 höchstens zwei Recoveries in 30 Sekunden. Danach endet der Versuch sichtbar,
 statt bei weiterlaufendem Download unbeschränkt neu zu laden.
 
-Manifest-URLs sind auf HTTPS (HTTP nur localhost), opaque `res_`-Pfade und
-`index.m3u8`/`master.m3u8` begrenzt. Credentials, Fragment und jede Query werden
-verworfen. hls.js sendet nur Same-Site-Credentials; das konkrete HttpOnly-
-Cookie-/Proxy-Modell entsteht in TBP-022. Fehlerzustände enthalten nur lokale
+Manifest-URLs sind auf den exakten Same-Origin-Pfad
+`/broadcast/play/res_…/index.m3u8` beziehungsweise `master.m3u8` begrenzt.
+Credentials, Fragment und jede Query werden verworfen. hls.js sendet nur
+Same-Site-Credentials. Das konkrete HttpOnly-Cookie-/Proxy-Modell wird vom
+Playback-Gateway bereits durchgängig angewendet. Fehlerzustände enthalten nur lokale
 Codes und weder Program-ID, Resource-Pfad noch Gatewayantwort.
+
+Wenn das autorisierte Directory Untertitel ankündigt, lädt ein getrennter,
+begrenzter Poller ausschließlich `captions_live.vtt` aus demselben geschützten
+Resource-/Cookie-Scope. Er akzeptiert nur `text/vtt`, maximal 64 KiB und einen
+gültigen `WEBVTT`-Header, ersetzt den lokalen Blob-TextTrack nur bei Änderung
+und behandelt 404/Widerruf ohne Ausfall von Bild und Ton.
 
 Abort, Schließen, Tab-Hintergrund, Navigation und Component-Destroy stoppen
 Loads, zerstören hls.js, entfernen Listener und eigene Texttracks, pausieren das
 Video und löschen `src`. Nach Sichtbarkeitswechsel ist ein neuer lokaler Klick
 erforderlich.
 
-Noch nicht freigegeben sind die öffentliche Programmliste, private
-Manifest-/Part-Autorisierung, Live-WebVTT, Poster sowie reale Safari/iOS-,
-Android-, Chromium- und Firefox-Langzeitgates. Deshalb ist die Komponente noch
-nicht mit einem öffentlichen Gateway-Endpunkt verdrahtet.
+Noch nicht vollständig freigegeben sind Poster sowie reale Safari/iOS-,
+Android-, Chromium- und Firefox-Langzeitgates. Der native HLS-/WebVTT-Pfad ist
+verdrahtet; Provider- und MediaMTX-Captionadapter bleiben getrennte offene Gates.

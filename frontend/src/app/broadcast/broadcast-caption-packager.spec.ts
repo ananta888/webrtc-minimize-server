@@ -104,4 +104,19 @@ describe("BrowserBroadcastCaptionPackager", () => {
     expect(packager.snapshotForLateJoin(STARTED_AT + 3_100)).toBeNull();
     expect(output.revokeTextTrack).toHaveBeenLastCalledWith(1);
   });
+
+  it("applies live consent changes without replaying text from a disabled destination", () => {
+    const { packager, output } = fixture();
+    expect(packager.ingest(caption(), STARTED_AT + 2_100).accepted).toBe(true);
+    expect(packager.reconfigure({
+      ...DEFAULT_BROADCAST_CAPTION_CONSENT, broadcastBurnIn: false, broadcastTextTrack: false,
+    }, DEFAULT_BROADCAST_CAPTION_SETTINGS)).toBe(true);
+    expect(output.clearBurnIn).toHaveBeenCalled();
+    expect(output.revokeTextTrack).toHaveBeenLastCalledWith(1);
+    expect(packager.snapshotForLateJoin(STARTED_AT + 2_200)).toBeNull();
+    expect(packager.reconfigure({
+      ...DEFAULT_BROADCAST_CAPTION_CONSENT, broadcastTextTrack: true,
+    }, DEFAULT_BROADCAST_CAPTION_SETTINGS)).toBe(true);
+    expect(packager.snapshotForLateJoin(STARTED_AT + 2_300)).toBeNull();
+  });
 });

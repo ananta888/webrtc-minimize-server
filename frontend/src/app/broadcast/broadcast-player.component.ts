@@ -23,6 +23,7 @@ export class BroadcastPlayerComponent implements OnDestroy {
   readonly moqCapability = MOQ_UI_CAPABILITY_STATUS;
   readonly manifestUrl = input.required<string>();
   readonly title = input("Live-Broadcast");
+  readonly captionsAvailable = input(false);
   readonly closed = output<void>();
   readonly video = viewChild.required<ElementRef<HTMLVideoElement>>("video");
   readonly state = signal<BroadcastPlayerSnapshot>(new BroadcastHlsPlayer().snapshot());
@@ -44,7 +45,7 @@ export class BroadcastPlayerComponent implements OnDestroy {
     this.controller = new AbortController();
     try {
       await this.player.open(this.video().nativeElement, this.manifestUrl(), {
-        muted: this.muted(), volume: this.volume(),
+        muted: this.muted(), volume: this.volume(), captions: this.captionsAvailable(),
       }, this.controller.signal);
     } catch {
       // The player exposes only its bounded public error code in state.
@@ -81,11 +82,7 @@ export class BroadcastPlayerComponent implements OnDestroy {
 
   setCaptionsVisible(visible: boolean): void {
     this.captionsVisible.set(visible);
-    const tracks = this.video().nativeElement.textTracks;
-    for (let index = 0; index < tracks.length; index += 1) {
-      const track = tracks[index];
-      if (track?.kind === "subtitles" || track?.kind === "captions") track.mode = visible ? "showing" : "disabled";
-    }
+    this.player.setCaptionsVisible(visible);
   }
 
   async fullscreen(): Promise<void> {

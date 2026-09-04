@@ -66,6 +66,7 @@ describe("TrustedVideoProgramSettingsService", () => {
     expect(settings.overlay()).toEqual({
       policyVersion: 1, showSourceLabels: false, showProgramTitle: false,
       showCaptions: false, programTitle: "", captionText: "",
+      captionStyle: "high-contrast", captionPositionPercent: 88,
     });
     expect(() => normalizeTrustedVideoOverlay({
       ...settings.overlay(), showProgramTitle: true, programTitle: "bad\nmetadata",
@@ -101,6 +102,7 @@ describe("BrowserTrustedVideoCompositorFactory", () => {
     "single", {
       policyVersion: 1, showSourceLabels: false, showProgramTitle: false,
       showCaptions: false, programTitle: "", captionText: "",
+      captionStyle: "high-contrast", captionPositionPercent: 88,
     }, new AbortController().signal);
 
     expect(handle.track).toBe(outputTrack);

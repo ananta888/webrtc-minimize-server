@@ -103,6 +103,16 @@ VP8-RTP vom simulierten Browser bis zum nativen Receiver. Der Agent öffnet
 weiterhin keinen Listener: Host-ICE, optionale öffentliche STUN-URLs und die
 vom Browser erhaltenen kurzlebigen TURN-Credentials bestimmen den Pfad.
 
+Optional transportiert dieselbe PeerConnection einen einzigen geordneten
+`broadcast-captions-v1`-DataChannel. Er wird nur bei expliziter
+Broadcast-TextTrack-Freigabe angelegt. Nachrichten sind an Assignment,
+Program-Epoche und Fencing-Revision gebunden, auf 70 KiB begrenzt und werden
+mit einem geschlossenen Update-/Revoke-Schema geprüft. Der SCTP-Empfangspuffer
+ist auf 256 KiB begrenzt. Der Agent schreibt nur das aktuelle, maximal 64 KiB
+große WebVTT-Livefenster atomar unter die zugewiesene `res_`-Resource; weder
+Control Plane noch Blind-Agent sehen den Text. Burn-in verbleibt im
+Publisher-Compositor und wird als Bildinhalt mit dem Program-Video übertragen.
+
 Die Angular-Analyse bietet getrennte Installation, Status, Widerruf und eine
 ausdrückliche Raumfreigabe. Die Control Plane übernimmt eine vom Agenten
 gemeldete Raum-ID ausschließlich dann in die effektive Capability, wenn der

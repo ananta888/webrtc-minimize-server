@@ -27,6 +27,9 @@ type nativeMediaSession struct {
 	audioCodec webrtc.RTPCodecParameters
 	pipeline   *transcodePipeline
 	startTimer *time.Timer
+	captionMu  sync.Mutex
+	caption    *nativeCaptionMessage
+	captionSet atomic.Bool
 	bytes      atomic.Uint64
 	packets    atomic.Uint64
 }
@@ -67,6 +70,9 @@ func newNativeMediaSession(client *client, assignment *packagerAssignment) (*nat
 			return
 		}
 		go media.readTrack(track)
+	})
+	pc.OnDataChannel(func(channel *webrtc.DataChannel) {
+		media.attachCaptionChannel(channel)
 	})
 	return media, nil
 }
@@ -226,6 +232,7 @@ func (media *nativeMediaSession) startTranscode() {
 	}
 	media.pipeline = pipeline
 	media.pipelineMu.Unlock()
+	media.flushCaptionOutput()
 }
 
 func (media *nativeMediaSession) close() {

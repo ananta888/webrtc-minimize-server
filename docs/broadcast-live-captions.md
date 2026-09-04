@@ -1,8 +1,8 @@
 # Consentierte Live-Untertitel im Broadcast
 
-Stand: 2026-09-04. TBP-032 ist browserseitig umgesetzt, aber noch nicht an
-einen realen Broadcast-Programmlauf und das MediaMTX-Gateway angeschlossen.
-Die öffentliche Runtime bleibt deshalb deaktiviert.
+Stand: 2026-09-04. TBP-032 ist für den nativen Broadcast-Pfad durchgängig
+verdrahtet. Die ausstehenden physischen Browser-, Sprach- und Langzeitgates
+verhindern weiterhin eine uneingeschränkte Produktreife-Behauptung.
 
 ## Vier getrennte Entscheidungen
 
@@ -23,8 +23,10 @@ werden.
 ## Vertrauens- und Datengrenze
 
 `BrowserBroadcastCaptionPackager` läuft ausschließlich im ausdrücklich
-autorisierten Browser beziehungsweise späteren Trusted-Packager. Der Node-
-Server und Blind-Agenten besitzen keinen Eingang für Captiontext. Die
+autorisierten Publisher-Browser. Finalisierte WebVTT-Fenster laufen über den
+assignment-, Programmepoch- und Fencing-gebundenen, geordneten
+`broadcast-captions-v1`-DataChannel direkt zum gewählten nativen Packager.
+Der Node-Server und Blind-Agenten besitzen keinen Eingang für Captiontext. Die
 versionierten Control-Plane-Contracts enthalten weiterhin nur Sprache,
 Format, Zustand und opaque Referenzen, niemals Text.
 
@@ -35,11 +37,21 @@ Livefenster aufgenommen. Ein Segment enthält höchstens 32 Cues und 64 KiB.
 Es wird weder in Local Storage noch in einer Transkriptdatenbank abgelegt und
 darf nicht in allgemeine Logs oder Metriken gelangen.
 
+Der Agent akzeptiert höchstens einen Caption-DataChannel, 70 KiB pro Nachricht,
+64 KiB WebVTT und exakt geschlossene Update-/Revoke-Felder. Falsche Assignment-
+oder Epochwerte, unbekannte Felder, Binärnachrichten, alte Sequenzen und
+ungültige WebVTT-Payloads werden verworfen. Die aktuelle Live-Datei wird mit
+Modus `0600` atomar ausschließlich im gefenceten `res_`-Output ersetzt und bei
+Widerruf oder Programmende entfernt.
+
 Private WebVTT-Ressourcen verwenden denselben `/broadcast/play/res_…`-Pfad
 und damit dieselbe kurzlebige Secure-/HttpOnly-Playback-Session wie Manifest,
 Parts und Segmente. Es gibt keine separate öffentliche Caption-URL. Diese
-Servergrenze existiert bereits in der privaten Delivery-Policy; ihre reale
-Gateway-/Browser-Verifikation bleibt mit TBP-022 offen.
+Servergrenze wird bei jeder Caption-Abfrage erneut geprüft. Der Player pollt
+nur bei im Directory angebotenen Untertiteln alle zwei Sekunden genau
+`captions_live.vtt` im bestehenden Same-Site-Cookie-Scope, akzeptiert höchstens
+64 KiB `text/vtt`, hängt daraus einen lokalen Blob-TextTrack ein und widerruft
+Blob, Fetch und Timer beim Stop. Query-Tokens und fremde Origins sind verboten.
 
 ## Synchronisation und Widerruf
 
@@ -48,7 +60,9 @@ gebildet. Caption-Eingänge sind an Source-ID und Source-Epoch gebunden;
 veraltete, doppelte oder außerhalb des standardmäßigen 3.000-ms-
 Synchronitätsbudgets eintreffende Revisionen werden verworfen.
 
-Source-Wechsel, Pause/Resume, Handoff, Player-Resync und Widerruf beginnen
+Ein Neustart derselben Vosk-Quelle erhöht ihre lokale Source-Epoch, widerruft
+die vorherige Autorisierung und beginnt eine leere Generation. Pause/Resume,
+Handoff, Player-Resync und Widerruf beginnen ebenfalls
 eine neue Discontinuity-Generation. Dabei werden Partialtext, Cue-Fenster und
 Revisionsledger geleert. Ein Late Join erhält nur das begrenzte 30-Sekunden-
 Livefenster. Nach Source-Widerruf akzeptiert der Packager die alte Epoch nicht
@@ -61,18 +75,19 @@ Modell erst per Button. Sprache, optionales Sprecherlabel, Delay von 0 bis
 2.000 ms in der UI, Zeilenlänge 20 bis 80 Zeichen, vertikale Position und die
 Stile hoher Kontrast, dezent oder groß sind einstellbar. Das zugrunde liegende
 Policy-Objekt begrenzt Delay auf 5.000 ms und das Synchronitätsbudget auf 1.000
-bis 8.000 ms. Der Viewer kann ausgelieferte Caption-/Subtitle-Tracks über ein
+bis 8.000 ms. Burn-in aktualisiert den isolierten Canvas-Compositor unmittelbar
+und wendet den gewählten Stil sowie die Position an. Der Viewer kann
+ausgelieferte Caption-/Subtitle-Tracks über ein
 eigenes, mit `aria-pressed` ausgezeichnetes Bedienelement ein- und ausschalten.
 
 ## Offene Real-Gates
 
-- Verdrahtung finaler Vosk-Ergebnisse mit dem laufenden Trusted-Compositor und
-  WHIP-/LL-HLS-Packager,
-- echte WebVTT-Publikation über MediaMTX sowie Cookie-geschütztes Playback in
+- Cookie-geschütztes Playback in
   Safari, Chromium, Firefox und mobilen Browsern,
 - reale Mikrofon- und Bildschirmtonläufe in mindestens zwei Sprachen mit WER,
   End-to-caption-Delay, A/V-Sync, CPU, RAM und Mobile-Degradation,
 - Tastatur-, Kontrast-, Screenreader- und 60-Minuten-Handoff-/Resync-Test.
 
-Bis diese Gates grün sind, ist TBP-032 `partial` und die UI behauptet keine
-aktive öffentliche Caption-Auslieferung.
+Bis diese Gates grün sind, bleibt TBP-032 `partial`; die native
+Caption-Auslieferung ist implementiert, aber noch keine plattformübergreifende
+Qualitätsgarantie.

@@ -23,6 +23,19 @@ interface CaptionPipeline {
   partialText: string;
 }
 
+export interface LiveCaptionEmission {
+  readonly source: CaptionAudioSource;
+  readonly sourceEpoch: number;
+  readonly utteranceId: string;
+  readonly revision: number;
+  readonly language: string;
+  readonly text: string;
+  readonly final: boolean;
+  readonly capturedAtMs: number;
+}
+
+export type LiveCaptionEmissionListener = (emission: LiveCaptionEmission) => void;
+
 function storedBoolean(key: string, defaultValue: boolean): boolean {
   try {
     const value = localStorage.getItem(key);
@@ -67,6 +80,7 @@ export class LiveCaptionService {
   readonly partialText = computed(() => this.partialTexts()[this.selectedSource()]);
   private readonly pipelines = new Map<CaptionAudioSource, CaptionPipeline>();
   private readonly generations = new Map<CaptionAudioSource, number>();
+  private readonly emissionListeners = new Set<LiveCaptionEmissionListener>();
   private readonly unregisterMicrophoneListener: () => void;
   private readonly unregisterScreenAudioListener: () => void;
 
@@ -211,12 +225,18 @@ export class LiveCaptionService {
     this.partialTexts.set({ microphone: "", "screen-audio": "" });
   }
 
+  registerEmissionListener(listener: LiveCaptionEmissionListener): () => void {
+    this.emissionListeners.add(listener);
+    return () => this.emissionListeners.delete(listener);
+  }
+
   destroy(): void {
     this.stop();
     this.unregisterMicrophoneListener();
     this.unregisterScreenAudioListener();
     this.models.destroy();
     this.mesh.clearCaptions();
+    this.emissionListeners.clear();
   }
 
   private stopSource(source: CaptionAudioSource): void {
@@ -280,15 +300,28 @@ export class LiveCaptionService {
 
   private publish(pipeline: CaptionPipeline, text: string, final: boolean): void {
     if (!pipeline.currentUtteranceId) this.beginUtterance(pipeline);
-    const sent = this.mesh.sendCaption({
+    const emission = Object.freeze({
+      source: pipeline.source,
+      sourceEpoch: pipeline.generation,
       utteranceId: pipeline.currentUtteranceId,
       revision: pipeline.revision,
       language: this.models.selectedModel().languageTag,
       text,
       final,
-      source: pipeline.source,
+      capturedAtMs: Date.now(),
+    });
+    const sent = this.mesh.sendCaption({
+      utteranceId: emission.utteranceId,
+      revision: emission.revision,
+      language: emission.language,
+      text: emission.text,
+      final: emission.final,
+      source: emission.source,
     }, this.shareWithRoom());
     if (!sent) return;
+    for (const listener of this.emissionListeners) {
+      try { listener(emission); } catch { /* An optional local consumer cannot stop recognition. */ }
+    }
     pipeline.revision += 1;
     pipeline.lastSentAt = Date.now();
     pipeline.lastSentText = text;

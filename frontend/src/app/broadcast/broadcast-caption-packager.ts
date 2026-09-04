@@ -55,6 +55,7 @@ export interface BroadcastCaptionCue {
 
 export interface BroadcastCaptionSegment {
   readonly format: "webvtt";
+  readonly language: string;
   readonly mediaSequence: number;
   readonly discontinuitySequence: number;
   readonly startsAtMs: number;
@@ -200,6 +201,22 @@ export class BrowserBroadcastCaptionPackager {
     return true;
   }
 
+  reconfigure(consent: BroadcastCaptionConsent, settings: BroadcastCaptionSettings): boolean {
+    const normalizedConsent = normalizeBroadcastCaptionConsent(consent);
+    const normalizedSettings = normalizeBroadcastCaptionSettings(settings);
+    if (!normalizedConsent || !normalizedSettings || this.programStartedAtMs < 0) return false;
+    if (normalizedConsent.broadcastTextTrack !== this.consent.broadcastTextTrack) {
+      this.discontinuitySequence += 1;
+      this.cues = [];
+      this.revisions.clear();
+      this.output.revokeTextTrack(this.discontinuitySequence);
+    }
+    if (this.consent.broadcastBurnIn && !normalizedConsent.broadcastBurnIn) this.output.clearBurnIn();
+    this.consent = normalizedConsent;
+    this.settings = normalizedSettings;
+    return true;
+  }
+
   authorizeSource(sourceId: string, sourceEpoch: number): boolean {
     if (!SOURCE_ID.test(sourceId) || !Number.isSafeInteger(sourceEpoch) || sourceEpoch < 1) return false;
     this.authorizedSources.set(sourceId, sourceEpoch);
@@ -296,6 +313,7 @@ export class BrowserBroadcastCaptionPackager {
     }
     return Object.freeze({
       format: "webvtt",
+      language: selected.at(-1)?.language ?? this.settings.language,
       mediaSequence: this.mediaSequence++,
       discontinuitySequence: this.discontinuitySequence,
       startsAtMs: selected[0]?.startMs ?? 0,
