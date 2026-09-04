@@ -1,18 +1,27 @@
-import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, input } from "@angular/core";
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, input, output } from "@angular/core";
 
 import { MediaStreamDirective } from "../shared/media-stream.directive";
 import { BroadcastOwnSourcePreflightService } from "./broadcast-own-source-preflight.service";
+import {
+  TrustedDecryptConsentCandidate,
+  TrustedDecryptConsentPanelComponent,
+} from "./trusted-decrypt-consent-panel.component";
+import { TrustedDecryptConsentView } from "./trusted-decrypt-key-lifecycle";
 
 @Component({
   selector: "app-broadcast-preflight",
   standalone: true,
-  imports: [MediaStreamDirective],
+  imports: [MediaStreamDirective, TrustedDecryptConsentPanelComponent],
   templateUrl: "./broadcast-preflight.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BroadcastPreflightComponent implements OnInit, OnDestroy {
   readonly joined = input(false);
   readonly captionsActive = input(false);
+  readonly trustedConsentCandidates = input<readonly TrustedDecryptConsentCandidate[]>([]);
+  readonly trustedConsents = input<readonly TrustedDecryptConsentView[]>([]);
+  readonly authorizeTrustedSource = output<TrustedDecryptConsentCandidate>();
+  readonly revokeTrustedSource = output<string>();
 
   constructor(readonly preflight: BroadcastOwnSourcePreflightService) {}
 

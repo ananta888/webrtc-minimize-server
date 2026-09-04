@@ -102,8 +102,9 @@ Audit-Ereignisse enthalten nur pseudonyme Consent-, Subject-, Packager-,
 Device-, Source-, Room-/Program- und Epoch-Referenzen, Zweck, Status,
 Zeitstempel und einen begrenzten Reason-Code. Sie enthalten niemals Schlüssel,
 JWK-Privatmaterial, Envelope-Ciphertext, Token, Room-Code, Namen, SDP/ICE,
-Caption-Text oder Medienmetadaten. Die spätere UI-/HTTP-Verdrahtung muss diesen
-Vertrag übernehmen; sie ist in diesem Stand noch nicht als öffentliche
+Caption-Text oder Medienmetadaten. Die Angular-Ansicht und die serverseitige
+Autoritätsgrenze setzen diesen Vertrag um. Die spätere Program-Orchestrierung
+muss beide Ports verbinden; sie ist in diesem Stand noch nicht als öffentliche
 Produktfähigkeit aktiviert.
 
 ## Verifikation und Grenzen
@@ -115,6 +116,6 @@ Room-/Program-Epoch-Drift, anderer Quelle, anderer Medienart, anderem Zweck,
 abgelaufenem Consent, unbekannten Feldern und nachträglicher Quellenerweiterung.
 
 Das ist die Schlüssel- und Consent-Grenze für spätere Trusted-Program-Arbeit.
-Eine serverseitige Consent-HTTP-Route, echte Remote-Source-Auswahl und die
-gerenderte Zustimmungsansicht folgen in ihren jeweiligen Control-/UX-Tracks;
-bis dahin kann kein öffentlicher Broadcast diese Fähigkeit aktivieren.
+Echte Remote-Source-Auswahl, Program-Komposition und Gateway-Publikation folgen
+in ihren jeweiligen Tracks; bis dahin kann kein öffentlicher Broadcast diese
+Fähigkeit aktivieren.

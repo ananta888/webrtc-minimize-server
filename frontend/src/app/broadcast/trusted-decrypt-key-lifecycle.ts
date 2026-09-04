@@ -19,6 +19,7 @@ export interface TrustedDecryptConsent {
   readonly sourceId: string;
   readonly sourceKind: TrustedDecryptSourceKind;
   readonly purpose: "broadcast-program";
+  readonly status: "active";
   readonly grantedAt: number;
   readonly expiresAt: number;
 }
@@ -166,7 +167,7 @@ function validPublicJwk(value: unknown): value is Readonly<JsonWebKey> {
 const CONSENT_FIELDS = [
   "version", "type", "trigger", "consentId", "tenantId", "roomId", "roomEpoch", "programId",
   "programEpoch", "grantorSubjectRef", "granteePackagerRef", "granteeDeviceRef", "sourceId",
-  "sourceKind", "purpose", "grantedAt", "expiresAt",
+  "sourceKind", "purpose", "status", "grantedAt", "expiresAt",
 ] as const;
 
 export function parseTrustedDecryptConsent(raw: unknown, now = Date.now()): TrustedDecryptConsent {
@@ -181,7 +182,8 @@ export function parseTrustedDecryptConsent(raw: unknown, now = Date.now()): Trus
     || !DEVICE_REF.test(String(value["granteeDeviceRef"] || ""))
     || !SOURCE_ID.test(String(value["sourceId"] || ""))
     || !SOURCE_KINDS.has(value["sourceKind"] as TrustedDecryptSourceKind)
-    || value["purpose"] !== "broadcast-program" || !Number.isSafeInteger(value["grantedAt"])
+    || value["purpose"] !== "broadcast-program" || value["status"] !== "active"
+    || !Number.isSafeInteger(value["grantedAt"])
     || !Number.isSafeInteger(value["expiresAt"]) || Number(value["grantedAt"]) > now + MAX_CLOCK_SKEW_MS
     || Number(value["expiresAt"]) <= now
     || Number(value["expiresAt"]) - Number(value["grantedAt"]) > MAX_CONSENT_TTL_MS) {

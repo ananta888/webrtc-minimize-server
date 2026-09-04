@@ -1,0 +1,39 @@
+<section id="trusted-decrypt-consent" class="trusted-consent" aria-labelledby="trusted-consent-heading">
+  <div class="trusted-consent__heading">
+    <div>
+      <p class="eyebrow">Fremde Quellen · einzeln freigeben</p>
+      <h2 id="trusted-consent-heading">Trusted-Packager-Zugriff</h2>
+    </div>
+    <span>{{ consents().length }} aktiv</span>
+  </div>
+  <p class="trusted-consent__warning" role="note">
+    Der angezeigte Packager kann ausschließlich die ausdrücklich bestätigte Quelle entschlüsseln und für dieses Programm verarbeiten. Das ist für diese Quelle keine Raum-E2EE mehr.
+  </p>
+
+  @for (candidate of candidates(); track candidate.requestId) {
+    <article class="trusted-consent__card">
+      <div>
+        <strong>{{ candidate.sourceLabel }} · {{ sourceKindLabel(candidate.sourceKind) }}</strong>
+        <span>Programm: {{ candidate.programTitle }}</span>
+        <span>Packager: {{ candidate.packagerLabel }}</span>
+        <span>Gerät: {{ candidate.deviceLabel }}</span>
+        <span>Zweck: Live-Broadcast · Ablauf: {{ candidate.expiresAt | date:'shortTime' }}</span>
+      </div>
+      <button type="button" class="button primary" (click)="approve(candidate)">Diese eine Quelle freigeben</button>
+    </article>
+  } @empty {
+    <p class="empty">Keine serverautorisierte Trusted-Packager-Anfrage für eine fremde Quelle vorhanden.</p>
+  }
+
+  @for (consent of consents(); track consent.consentId) {
+    <article class="trusted-consent__card trusted-consent__card--active">
+      <div>
+        <strong>{{ sourceKindLabel(consent.sourceKind) }} · {{ consent.state === 'active' ? 'Schlüssel aktiv' : 'wartet auf Schlüssel' }}</strong>
+        <span>Quelle: {{ consent.sourceId }}</span>
+        <span>Packager: {{ consent.granteePackagerRef }}</span>
+        <span>Gerät: {{ consent.granteeDeviceRef }}</span>
+      </div>
+      <button type="button" class="button secondary" (click)="revoke(consent.consentId)">Freigabe widerrufen</button>
+    </article>
+  }
+</section>

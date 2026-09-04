@@ -27,6 +27,7 @@ function consent(overrides: Partial<TrustedDecryptConsent> = {}): TrustedDecrypt
     sourceId: "src_aaaaaaaaaaaaaaaa",
     sourceKind: "camera",
     purpose: "broadcast-program",
+    status: "active",
     grantedAt: NOW - 1_000,
     expiresAt: NOW + 120_000,
     ...overrides,

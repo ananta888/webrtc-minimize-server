@@ -463,10 +463,10 @@
     {
       "id": "TBP-013",
       "title": "Quellengebundenen Trusted-Decrypt-Consent und Schlüssel-Lifecycle entwerfen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 45,
+      "progress_percent": 100,
       "depends_on": ["TBP-003", "TBP-005", "TBP-006", "TBP-007", "TBP-008"],
       "acceptance_criteria": [
         "Jeder Publisher muss pro Program, Packager-Gerät, Medienart, Source-ID, Zweck, Ablauf und Room-Epoch sichtbar zustimmen; Gruppenersteller- oder Agentstatus allein erteilt keine Entschlüsselungsberechtigung.",
@@ -479,10 +479,10 @@
     {
       "id": "TBP-014",
       "title": "Trusted-Audio-Programmbus mit Echo-, Pegel- und Sprachpriorität bauen",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 1,
       "depends_on": ["TBP-010", "TBP-013"],
       "acceptance_criteria": [
         "Der Packager mischt nur autorisierte Mikrofon-, Systemaudio- und optional freigegebene Remotequellen in einen getrennten Programmbus; lokales Monitoring speist nicht erneut in Mikrofon oder Screen-Audio ein.",
@@ -954,20 +954,20 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 27, "in_progress": 1, "partial": 0, "blocked": 0, "done": 12 },
-    "progress_percent_done": 30,
+    "by_status": { "todo": 26, "in_progress": 1, "partial": 0, "blocked": 0, "done": 13 },
+    "progress_percent_done": 32.5,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
-    "critical_path": { "total": 36, "done": 12, "remaining": 24 },
+    "critical_path": { "total": 36, "done": 13, "remaining": 23 },
     "milestones": { "total": 10, "todo": 6, "in_progress": 1, "blocked": 0, "done": 3 }
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 27,
+    "todo_remaining": 26,
     "in_progress": 1,
     "partial": 0,
     "blocked": 0,
-    "done": 12
+    "done": 13
   },
   "summary_notes": [
     "Der Track wurde am 2026-09-03 nach Abschluss des Blind-Media-Agent-Tracks angenommen. TBP-001 inventarisiert zuerst den verifizierten Ist-Zustand; vor dieser Bestandsaufnahme beginnt kein Broadcast-Medienpfad.",
@@ -987,7 +987,7 @@
     "TBP-010 ist mit einem sichtbaren Angular-Preflight und einem revisionsgebundenen Own-Source-Capture-Port abgeschlossen. Ausschliesslich die vom MediaPublicationService besessenen lokalen Originaltracks koennen vor dem SFrame-Sendertransform geklont werden; Remotequellen sind fuer den Port unerreichbar. Panel, Deep Link, Visibility- oder Storage-State, Checkboxen und Remotesignale erzeugen weder Capture noch Klone. Erst der lokale Preview-Klick erzeugt getrennte Kamera-, Mikrofon-, Bildschirm- oder Bildschirmton-Klone; Stop, Quellenende, Sessionwechsel, Leave, Logout, pagehide und Destroy entfernen Klone, AudioNodes, Animation-Loop und Kontext, ohne die Raumfreigabe zu beenden. Der Preflight zeigt lokale Video-/Pegelvorschau, private/unlisted/public, Caption-Status, ehrlichen noch nicht ausgehandelten Codecstatus, begrenzte Uploadschaetzung und die nicht-SFrame-E2EE-Trust-Grenze. Die nach dem ersten Deployment entdeckte CSP-Regression ist behoben: Die auf app-broadcast-preflight begrenzten Regeln werden als externes Produktions-Stylesheet ausgeliefert; Chromium und Firefox prueften zweispaltiges Grid, Panel-Padding, null Inline-Styles und null Konsolenfehler gegen den echten Node-Server mit produktiver CSP. Der wiederholte volle npm-run-check-Gate bestand am 2026-09-04 mit 196 Angular-Tests, Produktions-Build und 133 Node-/Browser-/Integrationstests; Chromium-/Firefox-Medienpfade und Counter-350 blieben gruen, der credential-gebundene Live-Infrastrukturgate sichtbar uebersprungen. TBP-011 beginnt mit dem RFC-9725-WHIP-Transport.",
     "TBP-011 ist mit einem begrenzten RFC-9725-Browsertransport, einer Own-Source-Composition und einer secret-freien Runtime-Policy abgeschlossen. POST application/sdp, Location-Resource, Trickle-ICE-PATCH, starker ETag-ICE-Restart und DELETE fordern jeweils frische, aktions- und pfadgebundene Bearer-Grants; HTTPS-/Redirect-Allowlist, CORS, Content-Type, Antwort-/SDP-/ICE-/Kandidatenlimits, getrennte Timeouts, explizites Retry-Budget, Abort, Idempotenz und sichtbare connected/degraded/failed/stopped-Zustaende sind fail-closed getestet. Das strikte rfc9725-Profil bleibt unveraendert; das getrennte mediamtx-1.20-Profil toleriert nur das real beobachtete Wildcard-ETag und die fehlende rtcp-mux-only-Answer und meldet ICE-Restart deshalb ehrlich unsupported. Der reale Gate gegen das per Digest gepinnte MediaMTX 1.20.1 bestand in Chromium und Firefox mit POST, PATCH, ICE-Verbindung und DELETE. Der volle npm-run-check-Gate bestand am 2026-09-04 mit 216 Angular-Tests, Produktions-Build und 134 Node-/Browser-/Integrationstests einschliesslich Firefox und Counter-350; die credential-gebundenen Keycloak-/TURN- und opt-in MediaMTX-Gates blieben im Vollgate sichtbar uebersprungen. Die oeffentliche Grant-/UI-Anbindung bleibt ehrlich deaktiviert; TBP-012 beginnt mit festen Media-Sections, Quellenwechseln und adaptiver Sendersteuerung.",
     "TBP-012 ist mit festen, vor dem Offer erzeugten Audio-/Video-Media-Sections und einer geschlossenen clear-program-v1-Quellenzuordnung abgeschlossen. Kompatible Kamera-, Bildschirm-, Slate-, Mikrofon-, Bildschirmton- und Stille-Wechsel verwenden replaceTrack; eine veraenderte Track-Kind-Menge fuehrt ueber DELETE und einen frischen POST zu einer neuen WHIP-Resource. Source-Ende bleibt sichtbar degraded und startet weder Capture noch Ersatz. Quellenprofile begrenzen Content-Hint, Prioritaet, Bitrate, FPS und Degradation Preference; optionales Kamera-Simulcast besitzt drei geschlossene RID-Layer und bleibt fuer das nicht interoperabilitaetsbelegte mediamtx-1.20-Profil fail-closed deaktiviert. Die zweisekuendliche Stats-Steuerung verwendet Packet Loss, RTT, Encode-Zeit, Upload-Headroom und fortschreitende Frames mit Drei-/Fuenf-Sample-Hysterese und zehn Sekunden Cooldown. Der deterministische Gate durchlief 360 Samples, sechs Quellenwechsel, eine Netzwerkunterbrechung und mehr als 350 fortschreitende Frame-Samples; der reale MediaMTX-1.20.1-Gate bestand in Chromium und Firefox mit vier replaceTrack-Wechseln und nach jedem Wechsel steigenden framesEncoded-Werten. Der volle npm-run-check-Gate bestand am 2026-09-04 mit 224 Angular-Tests, Produktions-Build und 134 Node-/Browser-/Integrationstests einschliesslich Firefox und Counter-350; externe Keycloak-/TURN- und opt-in MediaMTX-Gates blieben im Vollgate sichtbar uebersprungen. Meilenstein TBP-M03 ist abgeschlossen; TBP-013 beginnt mit quellengebundenem Trusted-Decrypt-Consent und Schluessel-Lifecycle.",
-    "TBP-013 ist zu 45 Prozent umgesetzt. Der Browser-Dataplane-Vertrag bindet eine sichtbare User-Action pro einzelner Source-ID und Medienart an Tenant, Room-/Program-Epoch, Zweck, Packager und dessen konkretes Geraet. Pro Consent erzeugt der Packager einen nicht exportierbaren ephemeren P-256-ECDH-Schluessel; AES-GCM authentifiziert alle Bindungen und verpackt das 16-Byte-SFrame-Basismaterial fuer hoechstens 60 Sekunden. Sieben fokussierte Tests belegen Zielgeraetbindung, Buffer-Zeroing, Replay-/Tamper-/Cross-Room-/Epoch-/Source-/Purpose-Ablehnung, automatische Ablauf-/Handoff-/Leave-/Destroy-Bereinigung, inhaltsfreie Auditprojektion und den verschluesselten Transport ueber einen blinden Overlay-Zwischenpeer. Der volle npm-run-check-Gate bestand am 2026-09-04 mit 231 Angular-Tests, Produktions-Build und 134 Node-/Browser-/Integrationstests einschliesslich Firefox und Counter-350; externe Keycloak-/TURN- und opt-in MediaMTX-Gates blieben sichtbar uebersprungen. docs/trusted-decrypt-consent.md definiert Control-/Data-Plane, UI und Audit. Fuer done fehlen noch die serverautorisierte Consent-Route samt aktueller Membership-/Lease-/Device-Pruefung sowie ihre echte Angular-Zustimmungsansicht; die oeffentliche Produktfaehigkeit bleibt deaktiviert.",
+    "TBP-013 ist mit einer serverseitigen, zustandsbesitzenden TrustedDecryptConsentAuthority, einem zielgebundenen Browser-Key-Lifecycle und einer sichtbaren Angular-Zustimmungsansicht abgeschlossen. Die Authority prueft vor jeder einzelnen Quellenfreigabe OIDC-Tenant/Subject, aktive Membership und eigene aktive Source, Room-/Program-Epoch, Programzustand, registriertes und autorisiertes Zielgeraet sowie den aktuellen nicht abgelaufenen Packager-Lease. Request-Idempotenz, konkurrierende Source-Freigaben, Handoff, Ablauf, Epoch-Drift und ownergebundener Widerruf sind fail-closed; ein begrenztes Audit enthaelt nur pseudonyme Bindungen und keine Schluessel oder Inhalte. Pro Consent erzeugt der Packager einen nicht exportierbaren ephemeren P-256-ECDH-Schluessel; AES-GCM authentifiziert Quelle, Medienart, Zweck, Zielgeraet und alle Epochen und verpackt das SFrame-Basismaterial fuer hoechstens 60 Sekunden. Der Browser ueberschreibt temporaere Key-Buffer und entfernt Worker-Kontexte bei Ablauf, Widerruf, Handoff, Leave und Destroy. Die UI nennt Quelle, Programm, Packager, Geraet, Zweck, Ablauf und E2EE-Verlust und emittiert Authorize/Revoke nur nach dem konkreten lokalen Klick. Neun fokussierte Angular- und vier Node-Tests decken Replay, falsches Ziel, manipulierten Consent, Cross-Room, alte Epoch, Source-Erweiterung, Blind-Overlay, Cleanup und Audit ab. Der volle npm-run-check-Gate bestand am 2026-09-04 mit 233 Angular-Tests, Produktions-Build und 138 Node-/Browser-/Integrationstests einschliesslich Firefox und Counter-350; externe Keycloak-/TURN- und opt-in MediaMTX-Gates blieben sichtbar uebersprungen. Die oeffentliche Program-Orchestrierung bleibt bis zu den spaeteren Broadcast-Tracks deaktiviert; TBP-014 beginnt mit dem getrennten Trusted-Audio-Programmbus.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }
