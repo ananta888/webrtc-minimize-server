@@ -37,6 +37,7 @@ import { createEdgeTurnCredentials, createTurnCredentials } from "./turn-credent
 import { MediaMtxExternalAuthError } from "./mediamtx-external-auth.js";
 import { BroadcastHlsProxyError } from "./broadcast-hls-proxy.js";
 import { BroadcastPlaybackSessionError } from "./broadcast-playback-session-store.js";
+import { BroadcastAbuseGuard } from "./broadcast-admission-control.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
@@ -319,6 +320,7 @@ function createHttpHandler(config, registry, services) {
     mediaAgentEvents,
     mediaMtxExternalAuthService,
     broadcastHlsProxy,
+    broadcastAbuseGuard,
   } = services;
   return async (request, response) => {
     try {
@@ -351,6 +353,14 @@ function createHttpHandler(config, registry, services) {
           || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
           response.writeHead(404, { "cache-control": "no-store" });
           response.end();
+          return;
+        }
+        if (broadcastAbuseGuard && !broadcastAbuseGuard.allow({
+          action: "credential-attempt", actorRef: request.socket.remoteAddress || "unknown-address",
+        })) {
+          sendJson(response, 429, { error: "broadcast_temporarily_unavailable" }, {
+            "retry-after": "60", ...securityHeaders(config),
+          });
           return;
         }
         const input = await readJsonBody(request);
@@ -395,6 +405,14 @@ function createHttpHandler(config, registry, services) {
           response.end();
           return;
         }
+        if (broadcastAbuseGuard && !broadcastAbuseGuard.allow({
+          action: "playback-probe", actorRef: request.socket.remoteAddress || "unknown-address",
+        })) {
+          sendJson(response, 429, { error: "broadcast_temporarily_unavailable" }, {
+            "retry-after": "60", ...securityHeaders(config),
+          });
+          return;
+        }
         const result = await broadcastHlsProxy.fetchMedia({
           cookieHeader: request.headers.cookie || "",
           method: request.method || "",
@@ -425,6 +443,13 @@ function createHttpHandler(config, registry, services) {
           || !config.broadcastGatewayAuthAddresses.includes(remoteAddress)
           || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
           response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        if (broadcastAbuseGuard && !broadcastAbuseGuard.allow({
+          action: "credential-attempt", actorRef: request.socket.remoteAddress || "unknown-address",
+        })) {
+          response.writeHead(429, { "cache-control": "no-store", "retry-after": "60" });
           response.end();
           return;
         }
@@ -1468,6 +1493,9 @@ export function createAppServer(options = {}) {
   };
   const mediaMtxExternalAuthService = options.mediaMtxExternalAuthService || null;
   const broadcastHlsProxy = options.broadcastHlsProxy || null;
+  const ownsBroadcastAbuseGuard = !options.broadcastAbuseGuard && Boolean(broadcastHlsProxy || mediaMtxExternalAuthService);
+  const broadcastAbuseGuard = options.broadcastAbuseGuard || (ownsBroadcastAbuseGuard
+    ? new BroadcastAbuseGuard({ key: crypto.randomBytes(32) }) : null);
   if (config.broadcastGatewayAuthEnabled && !mediaMtxExternalAuthService) {
     throw new Error("BROADCAST_GATEWAY_AUTH_ENABLED requires a MediaMTX external auth service");
   }
@@ -1484,12 +1512,14 @@ export function createAppServer(options = {}) {
     mediaAgentEvents,
     mediaMtxExternalAuthService,
     broadcastHlsProxy,
+    broadcastAbuseGuard,
   };
   const server = http.createServer(createHttpHandler(config, registry, services));
   if (!options.workspaceStore && workspaceStore) server.on("close", () => workspaceStore.close());
   if (!options.mediaAgentEnrollmentStore && mediaAgentEnrollmentStore) {
     server.on("close", () => mediaAgentEnrollmentStore.close());
   }
+  if (ownsBroadcastAbuseGuard) server.on("close", () => broadcastAbuseGuard.destroy());
   const signaling = configureSignaling(
     server, config, registry, ticketStore, directory, mediaAgents, mediaAgentEvents,
   );
@@ -1504,6 +1534,7 @@ export function createAppServer(options = {}) {
     mediaAgents,
     mediaAgentEnrollmentStore,
     mediaAgentInstallerService,
+    broadcastAbuseGuard,
   };
 }
 

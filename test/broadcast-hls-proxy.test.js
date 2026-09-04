@@ -9,6 +9,7 @@ function proxy(status = 200, contentType = "application/vnd.apple.mpegurl") {
     create: async (value) => value,
     close: () => null,
     authorize: async () => ({
+      sessionId: "pbs_aaaaaaaaaaaaaaaaaaaaaaaa",
       upstreamPath: "/res_aaaaaaaaaaaaaaaa/index.m3u8?_HLS_msn=2",
       authorizationHeader: "Bearer secret-never-returned",
       cacheControl: "private, no-store, max-age=0",
@@ -44,4 +45,40 @@ test("HLS proxy bounds range, redirects, content type, size and private misses",
   await assert.rejects(proxy(401).value.fetchMedia({ method: "GET", range: "" }), /not_found/);
   await assert.rejects(proxy(500).value.fetchMedia({ method: "GET", range: "" }), /gateway_unavailable/);
   await assert.rejects(proxy(200, "text/html").value.fetchMedia({ method: "GET", range: "" }), /invalid_response/);
+});
+
+test("HLS proxy bounds concurrent slow viewers and releases capacity on cancellation", async () => {
+  const sessions = {
+    create: async (value) => value,
+    close: () => null,
+    authorize: async () => ({
+      sessionId: "pbs_aaaaaaaaaaaaaaaaaaaaaaaa",
+      upstreamPath: "/res_aaaaaaaaaaaaaaaa/live.m4s",
+      authorizationHeader: "Bearer secret-never-returned",
+      cacheControl: "private, no-store, max-age=0",
+    }),
+  };
+  const fetchImpl = async () => new Response(new ReadableStream({ start() {} }), {
+    headers: { "content-type": "video/mp4" },
+  });
+  const value = new BroadcastHlsProxy({
+    sessions,
+    gatewayOrigin: "http://broadcast-gateway:8888",
+    fetchImpl,
+    maximumConcurrentRequests: 1,
+    maximumConcurrentPerSession: 1,
+    idleTimeoutMs: 1_000,
+    streamTimeoutMs: 2_000,
+  });
+  const input = {
+    method: "GET", resourceRef: "res_aaaaaaaaaaaaaaaa", file: "live.m4s",
+    query: "", cookieHeader: "cookie", origin: "https://webrtc.ananta.de", range: "",
+  };
+  const first = await value.fetchMedia(input);
+  await assert.rejects(value.fetchMedia(input), (error) => (
+    error.code === "broadcast_playback_temporarily_unavailable" && error.status === 429
+  ));
+  await first.body.cancel();
+  const afterCancel = await value.fetchMedia(input);
+  await afterCancel.body.cancel();
 });
