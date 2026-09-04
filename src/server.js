@@ -43,10 +43,23 @@ import {
 import { BroadcastAbuseGuard } from "./broadcast-admission-control.js";
 import { BroadcastHealthRegistry } from "./broadcast-observability.js";
 import { BroadcastRuntimeError, BroadcastRuntimeRegistry } from "./broadcast-runtime-registry.js";
-import { broadcastTenantRef } from "./broadcast-identifiers.js";
+import { broadcastSubjectRef, broadcastTenantRef } from "./broadcast-identifiers.js";
 import { BroadcastAudienceError } from "./broadcast-action-policy.js";
 import { BroadcastGrantAuthority, BroadcastGrantError } from "./broadcast-grant-authority.js";
 import { BroadcastDeviceProofError } from "./broadcast-device-proof.js";
+import {
+  NativePackagerEnrollmentError,
+  NativePackagerEnrollmentStore,
+} from "./native-packager-enrollment-store.js";
+import {
+  NativePackagerControlError,
+  NativePackagerControlRegistry,
+  parseNativePackagerMessage,
+} from "./native-packager-control.js";
+import {
+  NativePackagerInstallerError,
+  NativePackagerInstallerService,
+} from "./native-packager-installers.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
@@ -68,6 +81,7 @@ const CURSOR_REQUEST_FIELDS = new Set(["sequence"]);
 const PRESENCE_REQUEST_FIELDS = new Set(["state", "documentId", "line", "column", "leaseId", "epoch", "ttlMs"]);
 const ROLE_REQUEST_FIELDS = new Set(["principal", "role", "expectedRevision"]);
 const MEDIA_AGENT_ENROLLMENT_FIELDS = new Set(["label", "target"]);
+const NATIVE_PACKAGER_ENROLLMENT_FIELDS = new Set(["label", "target"]);
 
 function sendJson(response, statusCode, body, extraHeaders = {}) {
   const payload = Buffer.from(JSON.stringify(body));
@@ -158,6 +172,12 @@ function publicRuntimeConfig(config, services = {}) {
       maxStandbys: config.mediaAgentMaxStandbys,
       minimumParticipants: config.mediaAgentMinParticipants,
       shardMinParticipants: config.mediaAgentShardMinParticipants,
+    },
+    nativePackagers: {
+      selfService: config.nativePackagerSelfServiceEnabled,
+      configured: Boolean(services.nativePackagers?.configured),
+      endpoint: config.nativePackagerSelfServiceEnabled ? "/native-packager" : "",
+      targets: services.nativePackagerInstallerService?.availableTargets() || [],
     },
     broadcast: {
       whip: {
@@ -308,6 +328,8 @@ function errorStatus(error) {
   if (error instanceof RoomDirectoryError) return error.status;
   if (error instanceof PairWorkspaceError) return error.status;
   if (error instanceof MediaAgentEnrollmentError || error instanceof MediaAgentInstallerError) return error.status;
+  if (error instanceof NativePackagerEnrollmentError || error instanceof NativePackagerControlError
+    || error instanceof NativePackagerInstallerError) return error.status;
   if (error instanceof MediaMtxExternalAuthError) return error.status;
   if (error instanceof BroadcastHlsProxyError || error instanceof BroadcastPlaybackSessionError) return error.status;
   if (error instanceof BroadcastRuntimeError) return error.status;
@@ -330,6 +352,9 @@ function createHttpHandler(config, registry, services) {
     mediaAgentEnrollmentStore,
     mediaAgentInstallerService,
     mediaAgentEvents,
+    nativePackagers,
+    nativePackagerEnrollmentStore,
+    nativePackagerInstallerService,
     mediaMtxExternalAuthService,
     broadcastHlsProxy,
     broadcastAbuseGuard,
@@ -349,6 +374,130 @@ function createHttpHandler(config, registry, services) {
       }
       if (request.method === "GET" && url.pathname === "/config") {
         sendJson(response, 200, publicRuntimeConfig(config, services), securityHeaders(config));
+        return;
+      }
+      const nativePackagerArtifactMatch = url.pathname.match(
+        /^\/downloads\/native-packager\/([a-z0-9-]+)$/,
+      );
+      if (nativePackagerArtifactMatch && request.method === "GET") {
+        if (!config.nativePackagerSelfServiceEnabled || !nativePackagerInstallerService) {
+          throw new NativePackagerInstallerError("native_packager_artifact_unavailable", 404);
+        }
+        const artifact = nativePackagerInstallerService.artifact(nativePackagerArtifactMatch[1]);
+        const file = await fs.open(artifact.filename, "r");
+        const stat = await file.stat();
+        if (!stat.isFile() || stat.size !== artifact.size) {
+          await file.close();
+          throw new NativePackagerInstallerError("native_packager_artifact_unavailable", 503);
+        }
+        response.writeHead(200, {
+          "content-type": "application/octet-stream",
+          "content-length": artifact.size,
+          "content-disposition": `attachment; filename="${artifact.artifact}"`,
+          "cache-control": "public, max-age=300, immutable",
+          "x-content-sha256": artifact.sha256,
+          ...securityHeaders(config),
+        });
+        const stream = file.createReadStream();
+        stream.on("error", () => response.destroy());
+        stream.pipe(response);
+        return;
+      }
+      if (url.pathname === "/api/native-packagers" && request.method === "GET") {
+        if (url.search || !config.nativePackagerSelfServiceEnabled || !nativePackagerEnrollmentStore) {
+          throw new NativePackagerEnrollmentError("native_packager_self_service_disabled", 404);
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const ownerPrincipal = principalFor(identity);
+        const registrations = new Map(nativePackagerEnrollmentStore.list(ownerPrincipal)
+          .map((item) => [item.id, item]));
+        sendJson(response, 200, {
+          packagers: nativePackagers.list(ownerPrincipal).map((item) => ({
+            ...registrations.get(item.id),
+            ...item,
+          })),
+        }, securityHeaders(config));
+        return;
+      }
+      if (url.pathname === "/api/native-packagers/enrollments" && request.method === "POST") {
+        if (!config.nativePackagerSelfServiceEnabled || !nativePackagerEnrollmentStore
+          || !nativePackagerInstallerService || url.search
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          throw new NativePackagerEnrollmentError("native_packager_self_service_disabled", 404);
+        }
+        if (!requestOriginAllowed(request, config)) throw new ProtocolError("origin_denied");
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const input = await readJsonBody(request);
+        assertAllowedKeys(input, NATIVE_PACKAGER_ENROLLMENT_FIELDS);
+        const target = nativePackagerInstallerService.target(input.target);
+        const enrollment = nativePackagerEnrollmentStore.createEnrollment({
+          ownerPrincipal: principalFor(identity),
+          label: input.label,
+          platform: target.platform,
+        });
+        const installer = nativePackagerInstallerService.installer({
+          enrollment,
+          targetId: target.id,
+          publicOrigin: config.publicOrigin,
+        });
+        sendJson(response, 201, {
+          packagerId: enrollment.packagerId,
+          expiresAt: enrollment.expiresAt,
+          target: installer.target,
+          filename: installer.filename,
+          artifactSha256: installer.artifactSha256,
+          artifactBytes: installer.artifactBytes,
+          installer: installer.content,
+        }, securityHeaders(config));
+        return;
+      }
+      const nativePackagerConsentMatch = url.pathname.match(
+        /^\/api\/native-packagers\/(pkr_[A-Za-z0-9_-]{16,64})\/room-consents\/([A-Za-z0-9_-]{4,64})$/,
+      );
+      if (nativePackagerConsentMatch && request.method === "PUT") {
+        if (!config.nativePackagerSelfServiceEnabled || url.search
+          || !requestOriginAllowed(request, config)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          throw new NativePackagerEnrollmentError("native_packager_self_service_disabled", 404);
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const input = await readJsonBody(request);
+        assertAllowedKeys(input, new Set(["enabled"]));
+        if (!registry.membersForPrincipal(principalFor(identity))
+          .some(({ roomId }) => roomId === nativePackagerConsentMatch[2])) {
+          throw new NativePackagerControlError("native_packager_room_membership_required", 403);
+        }
+        const consent = nativePackagers.consent(
+          principalFor(identity),
+          nativePackagerConsentMatch[1],
+          nativePackagerConsentMatch[2],
+          input.enabled,
+        );
+        safeSend(nativePackagers.socketFor(nativePackagerConsentMatch[1]),
+          nativePackagers.consentState(nativePackagerConsentMatch[1]));
+        sendJson(response, 200, consent, securityHeaders(config));
+        return;
+      }
+      const nativePackagerMatch = url.pathname.match(
+        /^\/api\/native-packagers\/(pkr_[A-Za-z0-9_-]{16,64})$/,
+      );
+      if (nativePackagerMatch && request.method === "DELETE") {
+        if (!config.nativePackagerSelfServiceEnabled || !nativePackagerEnrollmentStore
+          || url.search || !requestOriginAllowed(request, config)) {
+          throw new NativePackagerEnrollmentError("native_packager_self_service_disabled", 404);
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const revoked = nativePackagers.revoke(principalFor(identity), nativePackagerMatch[1]);
+        revoked.socket?.close(1008, "native_packager_revoked");
+        sendJson(response, 200, {
+          packagerId: revoked.packagerId,
+          revokedAt: revoked.revokedAt,
+        }, securityHeaders(config));
+        return;
+      }
+      if (url.pathname.startsWith("/api/native-packagers/")) {
+        response.writeHead(404, { "cache-control": "no-store" });
+        response.end();
         return;
       }
       if (request.method === "GET" && url.pathname === "/readyz") {
@@ -981,9 +1130,11 @@ function configureSignaling(
   mediaAgents,
   mediaAgentEvents,
   broadcastRuntime,
+  nativePackagers,
 ) {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
   const mediaAgentWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
+  const nativePackagerWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   const roomEpochs = new Map();
   const mediaAgentTracks = new Map();
   const mediaAgentTrackRouteEpochs = new Map();
@@ -1108,6 +1259,20 @@ function configureSignaling(
       }
       mediaAgentWebSocketServer.handleUpgrade(request, socket, head, (webSocket) => {
         mediaAgentWebSocketServer.emit("connection", webSocket, request);
+      });
+      return;
+    }
+    if (url.pathname === "/native-packager") {
+      if (!nativePackagers.configured && !nativePackagers.enrollmentEnabled) {
+        rejectUpgrade(socket, 403, "native_packagers_disabled");
+        return;
+      }
+      if (request.headers.origin || url.search || url.hash) {
+        rejectUpgrade(socket, 403, "native_packager_origin_denied");
+        return;
+      }
+      nativePackagerWebSocketServer.handleUpgrade(request, socket, head, (webSocket) => {
+        nativePackagerWebSocketServer.emit("connection", webSocket, request);
       });
       return;
     }
@@ -1627,8 +1792,82 @@ function configureSignaling(
     socket.on("error", disconnect);
   });
 
+  nativePackagerWebSocketServer.on("connection", (socket) => {
+    socket.isAlive = true;
+    let authenticated = false;
+    safeSend(socket, nativePackagers.issueChallenge(socket));
+    const timeout = setTimeout(() => {
+      if (!authenticated) socket.close(1008, "native_packager_authentication_timeout");
+    }, 31_000);
+    timeout.unref();
+    socket.on("pong", () => { socket.isAlive = true; });
+    socket.on("message", (raw, isBinary) => {
+      try {
+        if (isBinary) throw new NativePackagerControlError("binary_native_packager_control_unsupported");
+        const message = parseNativePackagerMessage(raw);
+        if (!authenticated) {
+          if (message.type === "enroll") {
+            const result = nativePackagers.enroll(socket, message);
+            clearTimeout(timeout);
+            safeSend(socket, { version: 1, type: "packager-enrolled", packagerId: result.id,
+              keyFingerprint: result.keyFingerprint });
+            setImmediate(() => socket.close(1000, "native_packager_enrolled"));
+            return;
+          }
+          if (message.type !== "authenticate") {
+            throw new NativePackagerControlError("native_packager_authentication_required", 403);
+          }
+          const result = nativePackagers.authenticate(socket, message);
+          authenticated = true;
+          clearTimeout(timeout);
+          result.replacedSocket?.close(1008, "native_packager_connection_replaced");
+          safeSend(socket, { version: 1, type: "packager-authenticated", packagerId: result.id });
+          safeSend(socket, nativePackagers.consentState(result.id));
+          return;
+        }
+        const connection = nativePackagers.connection(socket);
+        if (!connection || message.type === "authenticate" || message.type === "enroll") {
+          throw new NativePackagerControlError("native_packager_already_authenticated", 403);
+        }
+        if (!nativePackagers.allowMessage(socket)) {
+          throw new NativePackagerControlError("native_packager_rate_limited", 429);
+        }
+        if (message.type === "capability") {
+          const separator = connection.ownerPrincipal.lastIndexOf("|");
+          const identity = {
+            issuer: connection.ownerPrincipal.slice(0, separator),
+            subject: connection.ownerPrincipal.slice(separator + 1),
+          };
+          nativePackagers.setCapability(socket, message.capability, {
+            tenantId: broadcastTenantRef(identity.issuer),
+            ownerSubjectRef: broadcastSubjectRef(identity),
+          });
+          safeSend(socket, { version: 1, type: "capability-accepted", observedAt: Date.now() });
+          return;
+        }
+        if (message.type === "heartbeat") {
+          nativePackagers.heartbeat(socket, message);
+          return;
+        }
+        throw new NativePackagerControlError("unknown_native_packager_message");
+      } catch (error) {
+        const code = error instanceof NativePackagerControlError ? error.code : "invalid_native_packager_message";
+        safeSend(socket, { version: 1, type: "packager-error", code });
+        socket.close(1008, code);
+      }
+    });
+    socket.on("close", () => {
+      clearTimeout(timeout);
+      nativePackagers.disconnect(socket);
+    });
+  });
+
   const heartbeat = setInterval(() => {
-    for (const socket of [...webSocketServer.clients, ...mediaAgentWebSocketServer.clients]) {
+    for (const socket of [
+      ...webSocketServer.clients,
+      ...mediaAgentWebSocketServer.clients,
+      ...nativePackagerWebSocketServer.clients,
+    ]) {
       if (!socket.isAlive) {
         socket.terminate();
         continue;
@@ -1655,8 +1894,9 @@ function configureSignaling(
     clearInterval(leaseRenewal);
     clearInterval(mediaAgentRenewal);
     for (const socket of mediaAgentWebSocketServer.clients) socket.terminate();
+    for (const socket of nativePackagerWebSocketServer.clients) socket.terminate();
   });
-  return { webSocketServer, mediaAgentWebSocketServer };
+  return { webSocketServer, mediaAgentWebSocketServer, nativePackagerWebSocketServer };
 }
 
 export function createAppServer(options = {}) {
@@ -1694,6 +1934,19 @@ export function createAppServer(options = {}) {
     shardMinParticipants: config.mediaAgentShardMinParticipants,
     takeoverTtlMs: config.mediaAgentTakeoverTtlMs,
     enrollmentStore: mediaAgentEnrollmentStore,
+  });
+  const nativePackagerEnrollmentStore = options.nativePackagerEnrollmentStore
+    || (config.nativePackagerSelfServiceEnabled ? new NativePackagerEnrollmentStore({
+      filename: config.nativePackagerRegistrationDb,
+      ttlMs: config.nativePackagerEnrollmentTtlMs,
+      maximumPerPrincipal: config.nativePackagerMaxPerPrincipal,
+    }) : null);
+  const nativePackagerInstallerService = options.nativePackagerInstallerService
+    || (config.nativePackagerSelfServiceEnabled
+      ? new NativePackagerInstallerService({ directory: config.nativePackagerArtifactDir }) : null);
+  const nativePackagers = options.nativePackagers || new NativePackagerControlRegistry({
+    enrollmentStore: nativePackagerEnrollmentStore,
+    definitions: nativePackagerEnrollmentStore?.definitions() || [],
   });
   const workspaceStore = options.workspaceStore || (config.pairWorkspaceEnabled
     ? new PairWorkspaceStore({ filename: config.pairWorkspaceDb }) : null);
@@ -1772,6 +2025,9 @@ export function createAppServer(options = {}) {
     mediaAgentEnrollmentStore,
     mediaAgentInstallerService,
     mediaAgentEvents,
+    nativePackagers,
+    nativePackagerEnrollmentStore,
+    nativePackagerInstallerService,
     mediaMtxExternalAuthService,
     broadcastHlsProxy,
     broadcastAbuseGuard,
@@ -1785,9 +2041,13 @@ export function createAppServer(options = {}) {
   if (!options.mediaAgentEnrollmentStore && mediaAgentEnrollmentStore) {
     server.on("close", () => mediaAgentEnrollmentStore.close());
   }
+  if (!options.nativePackagerEnrollmentStore && nativePackagerEnrollmentStore) {
+    server.on("close", () => nativePackagerEnrollmentStore.close());
+  }
   if (ownsBroadcastAbuseGuard) server.on("close", () => broadcastAbuseGuard.destroy());
   const signaling = configureSignaling(
     server, config, registry, ticketStore, directory, mediaAgents, mediaAgentEvents, broadcastRuntime,
+    nativePackagers,
   );
   return {
     server,
@@ -1800,6 +2060,9 @@ export function createAppServer(options = {}) {
     mediaAgents,
     mediaAgentEnrollmentStore,
     mediaAgentInstallerService,
+    nativePackagers,
+    nativePackagerEnrollmentStore,
+    nativePackagerInstallerService,
     broadcastAbuseGuard,
     broadcastHealthRegistry,
     broadcastRuntime,

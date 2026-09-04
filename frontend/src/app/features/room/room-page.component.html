@@ -777,6 +777,47 @@
             </section>
           }
 
+          @if (activeSection() === 'analysis' && config.value()?.nativePackagers?.selfService) {
+            <section id="native-packager-analysis-panel" class="surface settings-card media-agent-card" aria-labelledby="native-packager-heading">
+              <div class="surface-heading"><span class="feature-icon violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h16v12H4zM8 10h8M8 14h5"/></svg></span><div><p class="eyebrow">Getrennte freiwillige Rolle</p><h2 id="native-packager-heading">Trusted Broadcast-Packager</h2></div></div>
+              <p>Dieser Agent ist nicht der blinde Media-Relay. Nur der Trusted-Packager darf nach einer eigenen Raumfreigabe ein bewusst gewähltes Broadcast-Programm decodieren und als begrenzte H.264/AAC-Leiter transcodieren. Der Browser-Packager bleibt unabhängig verfügbar.</p>
+              <ul class="agent-benefits">
+                <li><strong>Kein offener Port:</strong> Der Daemon verbindet sich ausschließlich ausgehend über WSS.</li>
+                <li><strong>Doppelte Freigabe:</strong> Konto-Consent und lokale Agent-Bereitschaft müssen denselben Raum nennen.</li>
+                <li><strong>Begrenzt:</strong> FFmpeg ≥ 6, maximal drei Renditions, CPU-/Upload-/Energieklassen und harte Prozessgrenzen.</li>
+              </ul>
+              @if (!auth.authenticated()) {
+                <div class="agent-signin-callout"><p>Die Geräteidentität wird an dein Keycloak-Konto gebunden.</p><button class="button primary" type="button" (click)="auth.login('/?section=analysis')">Anmelden &amp; Packager installieren</button></div>
+              } @else if (config.value()!.nativePackagers.targets.length === 0) {
+                <p class="agent-risk">Auf diesem Server ist momentan kein prüfbares Packager-Artefakt verfügbar.</p>
+              } @else {
+                <form class="agent-installer-form" (submit)="$event.preventDefault(); downloadNativePackagerInstaller()">
+                  <label>Packager-Name<input id="native-packager-label" maxlength="48" [ngModel]="nativePackagerLabel()" (ngModelChange)="nativePackagerLabel.set($event)" name="nativePackagerLabel"></label>
+                  <label>Betriebssystem<select id="native-packager-target" [ngModel]="nativePackagerTarget()" (ngModelChange)="nativePackagerTarget.set($event)" name="nativePackagerTarget">@for (target of config.value()!.nativePackagers.targets; track target.id) { <option [value]="target.id">{{ target.label }}</option> }</select></label>
+                  <button id="download-native-packager-installer" class="button primary wide" type="submit" [disabled]="nativePackagerOnboarding.busy() || !nativePackagerTarget() || !nativePackagerLabel().trim()">Installationsdatei erstellen</button>
+                </form>
+                <p class="agent-risk">Der Download ist SHA-256-gebunden, aber derzeit nicht mit einem kommerziellen Windows-/Apple-Code-Signing-Zertifikat signiert. FFmpeg 6 oder neuer muss lokal installiert sein. Der Installer verändert keine Firewallregel.</p>
+                @if (nativePackagerOnboarding.pending(); as pending) {
+                  <section class="agent-install-steps" aria-live="polite"><div><span>1</span><p><strong>{{ pending.filename }} ausführen</strong><small>Das einmalige Enrollment läuft nach zehn Minuten ab.</small></p></div><div><span>2</span><p><strong>Hier aktualisieren</strong><small>Erst danach erscheint der P-256-gebundene Rechner unten.</small></p></div></section>
+                }
+              }
+              <div class="owned-agent-heading"><div><p class="eyebrow">An dein Konto gebunden</p><h3>Meine Broadcast-Packager</h3></div><button class="text-action" type="button" [disabled]="nativePackagerOnboarding.busy()" (click)="nativePackagerOnboarding.load()">Aktualisieren</button></div>
+              <div class="owned-agent-list">
+                @for (packager of nativePackagerOnboarding.packagers(); track packager.id) {
+                  <article class="owned-agent" [class.revoked]="packager.revokedAt">
+                    <span class="agent-status-dot" [class.online]="packager.online" aria-hidden="true"></span>
+                    <div><strong>{{ packager.label }}</strong><small>{{ nativePackagerPlatformLabel(packager.platform) }} · {{ packager.online ? 'online' : (packager.revokedAt ? 'widerrufen' : 'offline') }}</small><code>{{ packager.id }}</code><small>FFmpeg {{ packager.capability?.ffmpegVersion || 'noch nicht gemeldet' }} · {{ packager.capability?.maximumRenditions || 0 }} Rendition(s)</small></div>
+                    @if (!packager.revokedAt) {
+                      <label class="agent-consent"><input type="checkbox" [disabled]="!session.joined() || !packager.online || nativePackagerOnboarding.busy()" [ngModel]="session.joined() && packager.consentedRoomIds.includes(session.roomId())" (ngModelChange)="setNativePackagerRoomConsent(packager.id, $event)"><span><strong>Für diesen Raum</strong><small>Bewusster, jederzeit widerrufbarer Trusted-Consent.</small></span></label>
+                      <button class="button ghost compact" type="button" [disabled]="nativePackagerOnboarding.busy()" (click)="revokeNativePackager(packager.id)">Widerrufen</button>
+                    }
+                  </article>
+                } @empty { <p class="hint">Noch kein Native-Packager registriert.</p> }
+              </div>
+              <p class="hint">Eine Raumfreigabe startet weder Kamera noch Mikrofon und wählt den Agenten nicht automatisch als Writer. Programmauswahl, Quellenconsents und Writer-Lease bleiben separate Schritte der Broadcast-Regie.</p>
+            </section>
+          }
+
           @if (activeSection() === 'settings') {
           <section class="surface settings-card">
             <div class="surface-heading"><span class="feature-icon violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-5"/></svg></span><div><p class="eyebrow">Sicherheitsstatus</p><h2>Identität &amp; Transport</h2></div></div>

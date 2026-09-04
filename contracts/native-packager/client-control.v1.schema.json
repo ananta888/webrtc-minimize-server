@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/client-control.v1.schema.json",
+  "title": "Native packager client control v1",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "type", "packagerId", "enrollmentToken", "timestamp", "publicKey", "proof"],
+      "properties": {
+        "version": { "const": 1 }, "type": { "const": "enroll" },
+        "packagerId": { "$ref": "#/$defs/packagerId" }, "enrollmentToken": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+        "timestamp": { "type": "integer", "minimum": 1 }, "publicKey": { "$ref": "#/$defs/publicKey" }, "proof": { "$ref": "#/$defs/proof" }
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "type", "packagerId", "timestamp", "proof"],
+      "properties": { "version": { "const": 1 }, "type": { "const": "authenticate" }, "packagerId": { "$ref": "#/$defs/packagerId" }, "timestamp": { "type": "integer", "minimum": 1 }, "proof": { "$ref": "#/$defs/proof" } }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "type", "capability"],
+      "properties": { "version": { "const": 1 }, "type": { "const": "capability" }, "capability": { "$ref": "#/$defs/capability" } }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "type", "assignmentId", "programEpoch", "state", "observedAt"],
+      "properties": {
+        "version": { "const": 1 }, "type": { "const": "heartbeat" }, "assignmentId": { "type": "string", "pattern": "^(?:|asn_[A-Za-z0-9_-]{16,64})$" },
+        "programEpoch": { "type": "integer", "minimum": 0 }, "state": { "enum": ["idle", "starting", "running", "degraded", "draining", "failed"] }, "observedAt": { "type": "integer", "minimum": 1 }
+      }
+    }
+  ],
+  "$defs": {
+    "packagerId": { "type": "string", "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$" },
+    "proof": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$" },
+    "publicKey": { "type": "object", "additionalProperties": false, "required": ["kty", "crv", "x", "y", "ext"], "properties": { "kty": { "const": "EC" }, "crv": { "const": "P-256" }, "x": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }, "y": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }, "ext": { "const": true } } },
+    "capability": {
+      "type": "object", "additionalProperties": false,
+      "required": ["capabilityVersion", "agentId", "tenantId", "ownerSubjectRef", "deviceRef", "agentVersion", "ffmpegVersion", "videoEncoders", "audioEncoders", "hardwareClass", "cpuClass", "gpuClass", "uploadClass", "energyClass", "health", "maximumRenditions", "maximumPixelsPerSecond", "consentedRoomIds", "observedAt", "expiresAt"],
+      "properties": {
+        "capabilityVersion": { "const": 1 }, "agentId": { "$ref": "#/$defs/packagerId" },
+        "tenantId": { "type": "string", "pattern": "^tn_[A-Za-z0-9_-]{16,64}$" }, "ownerSubjectRef": { "type": "string", "pattern": "^sub_[A-Za-z0-9_-]{16,64}$" }, "deviceRef": { "type": "string", "pattern": "^dev_[A-Za-z0-9_-]{16,64}$" },
+        "agentVersion": { "type": "string", "pattern": "^[A-Za-z0-9._+-]{1,64}$" }, "ffmpegVersion": { "type": "string", "pattern": "^[A-Za-z0-9._+-]{1,64}$" },
+        "videoEncoders": { "type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": { "enum": ["libx264", "h264_nvenc", "h264_vaapi", "h264_videotoolbox"] } },
+        "audioEncoders": { "type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": { "const": "aac" } },
+        "hardwareClass": { "enum": ["small", "medium", "large"] }, "cpuClass": { "enum": ["low", "medium", "high"] }, "gpuClass": { "enum": ["none", "integrated", "dedicated"] },
+        "uploadClass": { "enum": ["under-5mbit", "5-15mbit", "over-15mbit"] }, "energyClass": { "enum": ["battery", "ac-limited", "ac"] }, "health": { "enum": ["healthy", "degraded", "draining"] },
+        "maximumRenditions": { "type": "integer", "minimum": 1, "maximum": 3 }, "maximumPixelsPerSecond": { "type": "integer", "minimum": 2304000, "maximum": 373248000 },
+        "consentedRoomIds": { "type": "array", "maxItems": 20, "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Za-z0-9_-]{4,64}$" } },
+        "observedAt": { "type": "integer", "minimum": 1 }, "expiresAt": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

@@ -35,6 +35,11 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.equal(config.mediaAgentSelfServiceEnabled, false);
   assert.equal(config.mediaAgentEnrollmentTtlMs, 600_000);
   assert.equal(config.mediaAgentMaxPerPrincipal, 3);
+  assert.equal(config.nativePackagerSelfServiceEnabled, false);
+  assert.equal(config.nativePackagerRegistrationDb, "data/native-packager-registrations.sqlite");
+  assert.equal(config.nativePackagerArtifactDir, "native-packager-downloads");
+  assert.equal(config.nativePackagerEnrollmentTtlMs, 600_000);
+  assert.equal(config.nativePackagerMaxPerPrincipal, 3);
   assert.equal(config.broadcastWhipEndpoint, "");
   assert.equal(config.broadcastWhipResourceBase, "");
   assert.equal(config.broadcastWhipProfile, "rfc9725");
@@ -78,6 +83,7 @@ test("loadConfig rejects unsafe bounds and malformed public origins", () => {
   assert.throws(() => loadConfig({ PEER_EDGE_FALLBACK_MS: "500" }), /between 1000 and 30000/);
   assert.throws(() => loadConfig({ MEDIA_AGENT_RATE_LIMIT: "2001" }), /between 60 and 2000/);
   assert.throws(() => loadConfig({ MEDIA_AGENT_SELF_SERVICE_ENABLED: "true" }), /requires OIDC/);
+  assert.throws(() => loadConfig({ NATIVE_PACKAGER_SELF_SERVICE_ENABLED: "true" }), /requires required OIDC/);
   assert.throws(() => loadConfig({ BROADCAST_WHIP_ENDPOINT: "http://media.example/live/whip" }), /HTTPS URL/);
   assert.throws(() => loadConfig({ BROADCAST_WHIP_ENDPOINT: "https://media.example/live/whip?token=secret" }), /query/);
   assert.throws(() => loadConfig({ BROADCAST_WHIP_RESOURCE_BASE: "http://media.example/ingest" }), /HTTPS URL/);

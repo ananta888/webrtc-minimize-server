@@ -1,5 +1,7 @@
 import { Injectable, signal } from "@angular/core";
 
+import type { NativePackagerTarget } from "../broadcast/native-packager-onboarding.service";
+
 export type AuthMode = "disabled" | "optional" | "required";
 
 export interface RuntimeConfig {
@@ -26,6 +28,12 @@ export interface RuntimeConfig {
     maxStandbys: number;
     minimumParticipants: number;
     shardMinParticipants: number;
+  }>;
+  readonly nativePackagers: Readonly<{
+    configured: boolean;
+    selfService: boolean;
+    endpoint: string;
+    targets: readonly NativePackagerTarget[];
   }>;
   readonly broadcast: Readonly<{
     whip: Readonly<{
@@ -182,6 +190,14 @@ export class RuntimeConfigService {
       || !Number.isSafeInteger(config.mediaAgents.shardMinParticipants)
       || config.mediaAgents.shardMinParticipants < 3
       || config.mediaAgents.shardMinParticipants > 20
+      || !config.nativePackagers || typeof config.nativePackagers.configured !== "boolean"
+      || typeof config.nativePackagers.selfService !== "boolean"
+      || config.nativePackagers.endpoint !== (config.nativePackagers.selfService ? "/native-packager" : "")
+      || !Array.isArray(config.nativePackagers.targets) || config.nativePackagers.targets.length > 5
+      || config.nativePackagers.targets.some((target) => !target || typeof target !== "object"
+        || !/^(?:linux|macos|windows)-(?:amd64|arm64)$/.test(target.id)
+        || !new Set(["linux", "macos", "windows"]).has(target.platform)
+        || typeof target.label !== "string" || target.label.length < 1 || target.label.length > 64)
       || !validWhipRuntime(config)) throw new Error("runtime_config_invalid");
     this.value.set(config);
     return config;

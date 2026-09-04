@@ -1,6 +1,6 @@
 import path from "node:path";
 
-const ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
+const ID = /^(?:pkr_[A-Za-z0-9_-]{16,64}|[a-z0-9][a-z0-9-]{0,31})$/;
 const TENANT = /^tn_[A-Za-z0-9_-]{16,64}$/;
 const SUBJECT = /^sub_[A-Za-z0-9_-]{16,64}$/;
 const ROOM = /^[A-Za-z0-9_-]{4,64}$/;

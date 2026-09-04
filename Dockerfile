@@ -25,6 +25,16 @@ RUN CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="-s -w" -
 RUN CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o /out/media-edge-agent-macos-arm64 .
 RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/media-edge-agent-windows-amd64.exe .
 
+WORKDIR /native-packager
+COPY native-broadcast-packager/go.mod native-broadcast-packager/go.sum ./
+RUN go mod download
+COPY native-broadcast-packager ./
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/native-broadcast-packager-linux-amd64 .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o /out/native-broadcast-packager-linux-arm64 .
+RUN CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/native-broadcast-packager-macos-amd64 .
+RUN CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o /out/native-broadcast-packager-macos-arm64 .
+RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/native-broadcast-packager-windows-amd64.exe .
+
 FROM node:22-alpine
 ARG SOURCE_REVISION=unknown
 LABEL org.opencontainers.image.source="https://github.com/ananta888/webrtc-minimize-server" \
@@ -36,6 +46,7 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY package.json ./
 COPY --from=build /app/dist ./dist
 COPY --from=media-agent-artifacts /out ./media-agent-downloads
+RUN mkdir -p ./native-packager-downloads && mv ./media-agent-downloads/native-broadcast-packager-* ./native-packager-downloads/
 COPY src ./src
 COPY contracts ./contracts
 RUN mkdir -p /app/data && chown node:node /app/data

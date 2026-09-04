@@ -3,6 +3,10 @@ import { FormsModule } from "@angular/forms";
 
 import { OidcAuthService } from "../../auth/oidc-auth.service";
 import { BroadcastOwnSourcePreflightService } from "../../broadcast/broadcast-own-source-preflight.service";
+import {
+  NativePackagerOnboardingService,
+  NativePackagerPlatform,
+} from "../../broadcast/native-packager-onboarding.service";
 import { BroadcastPreflightComponent } from "../../broadcast/broadcast-preflight.component";
 import {
   BrowserWhipBroadcastRuntimeService,
@@ -101,6 +105,8 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   readonly workspaceTitle = signal("Pair Dev Workspace");
   readonly mediaAgentLabel = signal("Mein Rechner");
   readonly mediaAgentTarget = signal("");
+  readonly nativePackagerLabel = signal("Mein Broadcast-Rechner");
+  readonly nativePackagerTarget = signal("");
   readonly connectionLabel = computed(() => {
     if (this.session.joined()) return "Signaling verbunden";
     if (this.signaling.status() === "connecting") return "Verbindung wird aufgebaut";
@@ -142,6 +148,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     || this.captions.error()
     || this.captionModels.error()
     || this.mediaAgentOnboarding.error()
+    || this.nativePackagerOnboarding.error()
     || this.auth.error()
   ));
   private directoryRefreshHandle: ReturnType<typeof setInterval> | null = null;
@@ -159,6 +166,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     readonly auth: OidcAuthService,
     readonly device: DeviceIdentityService,
     readonly mediaAgentOnboarding: MediaAgentOnboardingService,
+    readonly nativePackagerOnboarding: NativePackagerOnboardingService,
     readonly signaling: SignalingService,
     readonly session: RoomSessionService,
     readonly mesh: PeerMeshService,
@@ -192,11 +200,17 @@ export class RoomPageComponent implements OnInit, OnDestroy {
       if (runtime.mediaAgents.selfService) {
         this.mediaAgentTarget.set(this.mediaAgentOnboarding.suggestedTarget(runtime.mediaAgents.targets));
       }
+      if (runtime.nativePackagers.selfService) {
+        this.nativePackagerTarget.set(this.nativePackagerOnboarding.suggestedTarget(runtime.nativePackagers.targets));
+      }
       this.ready.set(true);
       await Promise.all([
         this.directory.load(),
         this.auth.authenticated() && (runtime.mediaAgents.selfService || runtime.mediaAgents.configured)
           ? this.mediaAgentOnboarding.load()
+          : Promise.resolve(),
+        this.auth.authenticated() && runtime.nativePackagers.selfService
+          ? this.nativePackagerOnboarding.load()
           : Promise.resolve(),
         this.auth.authenticated() && this.config.value()?.pairWorkspaceEnabled
           ? this.workspaces.loadList()
@@ -208,6 +222,9 @@ export class RoomPageComponent implements OnInit, OnDestroy {
         if (this.auth.authenticated()
           && (this.config.value()?.mediaAgents.selfService || this.config.value()?.mediaAgents.configured)) {
           void this.mediaAgentOnboarding.load();
+        }
+        if (this.auth.authenticated() && this.config.value()?.nativePackagers.selfService) {
+          void this.nativePackagerOnboarding.load();
         }
       }, 15_000);
     } catch (error) {
@@ -310,6 +327,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     this.activeSection.set("rooms");
     this.directory.clearOwnRooms();
     this.mediaAgentOnboarding.clear();
+    this.nativePackagerOnboarding.clear();
     await this.auth.logout();
   }
 
@@ -529,6 +547,35 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     } catch (error) {
       this.pageError.set(error instanceof Error ? error.message : "Media-Agent konnte nicht widerrufen werden");
     }
+  }
+
+  async downloadNativePackagerInstaller(): Promise<void> {
+    this.clearMessages();
+    const target = this.nativePackagerTarget();
+    const label = this.nativePackagerLabel().trim();
+    if (!target || !label) { this.pageError.set("Bitte wähle ein System und gib dem Packager einen Namen."); return; }
+    try {
+      await this.nativePackagerOnboarding.downloadInstaller(target, label);
+      this.notice.set("Native-Packager-Installer erstellt. Führe ihn innerhalb von zehn Minuten bewusst aus.");
+    } catch (error) { this.pageError.set(error instanceof Error ? error.message : "Packager-Installer konnte nicht erstellt werden"); }
+  }
+
+  async setNativePackagerRoomConsent(packagerId: string, enabled: boolean): Promise<void> {
+    if (!this.session.joined()) { this.pageError.set("Betritt zuerst den Raum."); return; }
+    try {
+      await this.nativePackagerOnboarding.setRoomConsent(packagerId, this.session.roomId(), enabled);
+      this.notice.set(enabled ? "Native-Packager für diesen Raum freigegeben." : "Native-Packager-Freigabe widerrufen.");
+    } catch (error) { this.pageError.set(error instanceof Error ? error.message : "Raumfreigabe fehlgeschlagen"); }
+  }
+
+  async revokeNativePackager(packagerId: string): Promise<void> {
+    if (!window.confirm("Diesen Trusted-Packager widerrufen? Seine Control-Verbindung wird sofort beendet.")) return;
+    try { await this.nativePackagerOnboarding.revoke(packagerId); this.notice.set("Native-Packager widerrufen."); }
+    catch (error) { this.pageError.set(error instanceof Error ? error.message : "Native-Packager konnte nicht widerrufen werden"); }
+  }
+
+  nativePackagerPlatformLabel(platform: NativePackagerPlatform): string {
+    return ({ linux: "Linux", macos: "macOS", windows: "Windows" })[platform];
   }
 
   mediaAgentPlatformLabel(platform: MediaAgentPlatform): string {

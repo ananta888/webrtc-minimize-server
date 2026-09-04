@@ -171,6 +171,12 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
       minimumParticipants: 3,
       shardMinParticipants: 6,
     },
+    nativePackagers: {
+      selfService: false,
+      configured: false,
+      endpoint: "",
+      targets: [],
+    },
     broadcast: {
       whip: {
         configurationVersion: 1,

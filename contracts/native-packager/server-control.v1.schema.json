@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/server-control.v1.schema.json",
+  "title": "Native packager server control v1",
+  "oneOf": [
+    { "type": "object", "additionalProperties": false, "required": ["version", "type", "nonce", "expiresAt"], "properties": { "version": { "const": 1 }, "type": { "const": "packager-challenge" }, "nonce": { "type": "string", "pattern": "^[A-Za-z0-9_-]{32}$" }, "expiresAt": { "type": "integer", "minimum": 1 } } },
+    { "type": "object", "additionalProperties": false, "required": ["version", "type", "packagerId"], "properties": { "version": { "const": 1 }, "type": { "enum": ["packager-enrolled", "packager-authenticated"] }, "packagerId": { "$ref": "#/$defs/packagerId" }, "keyFingerprint": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" } } },
+    { "type": "object", "additionalProperties": false, "required": ["version", "type", "roomIds"], "properties": { "version": { "const": 1 }, "type": { "const": "room-consent-sync" }, "roomIds": { "type": "array", "maxItems": 20, "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Za-z0-9_-]{4,64}$" } } } },
+    { "type": "object", "additionalProperties": false, "required": ["version", "type", "observedAt"], "properties": { "version": { "const": 1 }, "type": { "const": "capability-accepted" }, "observedAt": { "type": "integer", "minimum": 1 } } },
+    { "type": "object", "additionalProperties": false, "required": ["version", "type", "code"], "properties": { "version": { "const": 1 }, "type": { "const": "packager-error" }, "code": { "type": "string", "pattern": "^[a-z][a-z0-9_]{2,80}$" } } }
+  ],
+  "$defs": { "packagerId": { "type": "string", "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$" } }
+}

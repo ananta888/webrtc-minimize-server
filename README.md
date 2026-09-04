@@ -242,6 +242,9 @@ Die öffentliche Voreinstellung steht in `.env.example`, das getrennte localhost
 - `MEDIA_AGENT_REGISTRATION_DB`: persistenter SQLite-Pfad für öffentliche Agent-Schlüssel, Besitzerbindung und gehashte Einmaltickets; Default im Compose-Volume ist `/app/data/media-agent-registrations.sqlite`.
 - `MEDIA_AGENT_ARTIFACT_DIR`: Verzeichnis der reproduzierbar gebauten Linux-, macOS- und Windows-Binärdateien. Nur tatsächlich vorhandene Ziele erscheinen im Browser.
 - `MEDIA_AGENT_ENROLLMENT_TTL_MS`, `MEDIA_AGENT_MAX_PER_PRINCIPAL`, `MEDIA_AGENT_ENROLLMENT_RATE_LIMIT`: Ablaufzeit, aktive Gerätequote und stündliche Enrollment-Grenze.
+- `NATIVE_PACKAGER_SELF_SERVICE_ENABLED`: aktiviert die strikt getrennte Trusted-Broadcast-Packager-Installation nur bei Required-OIDC und HTTPS. Die Rolle ist kein Blind-Relay.
+- `NATIVE_PACKAGER_REGISTRATION_DB`, `NATIVE_PACKAGER_ARTIFACT_DIR`: P-256-Registrierung und Verzeichnis der SHA-256-gebundenen plattformspezifischen Artefakte.
+- `NATIVE_PACKAGER_ENROLLMENT_TTL_MS`, `NATIVE_PACKAGER_MAX_PER_PRINCIPAL`: Ablauf des Einmaltickets und kontobezogene Gerätequote. Raumfreigaben bleiben flüchtig und default-aus.
 - `PAIR_WORKSPACE_ENABLED`, `PAIR_WORKSPACE_DB`: optionaler persistenter Pair-Workspace und Pfad seines SQLite-Volumes.
 
 Beispiel für einen externen Coturn-Dienst:

@@ -1,6 +1,6 @@
 # Freiwilliger Native-Packager
 
-## Implementierte Policy- und Pipeline-Basis
+## Implementierte Policy-, Enrollment- und Pipeline-Basis
 
 Der Native-Packager ist eine getrennte, explizit aktivierte Trusted-Rolle und
 nicht der vorhandene blinde Media-Agent. Sein Capability-Report ist geschlossen,
@@ -38,6 +38,37 @@ den ausschließlich unterhalb der validierten `res_`-Resource erzeugten Output.
 Beobachter erhalten nur Zustand, Encoder, Byte-/Drop-Zähler und niemals
 Medieninhalt oder FFmpeg-Argumente.
 
+Der eigenständige Go-Daemon unter `native-broadcast-packager/` ist eine andere
+Binärdatei, Identität und WebSocket-Route als der blinde Relay-Agent. Er öffnet
+keinen Listener und benötigt keine Portfreigabe. Beim ersten Start registriert
+er einen lokal mit Modus `0600` abgelegten, nicht über das Protokoll
+exportierten P-256-Private-Key über ein zehn Minuten gültiges Einmalticket.
+Danach authentisiert er jede WSS-Verbindung mit einer frischen Challenge,
+prüft lokal FFmpeg ab Version 6 sowie `libx264` und AAC und meldet nur die
+begrenzten Capability-Klassen aus dem Contract.
+
+Die Angular-Analyse bietet getrennte Installation, Status, Widerruf und eine
+ausdrückliche Raumfreigabe. Die Control Plane übernimmt eine vom Agenten
+gemeldete Raum-ID ausschließlich dann in die effektive Capability, wenn der
+exakte OIDC-Kontoinhaber in einer aktiven Membership denselben Raum freigegeben
+hat. Raumfreigaben sind absichtlich flüchtig und nach Serverneustart aus. Eine
+Freigabe startet keine Capture-API und wählt keinen Writer automatisch.
+
+Das Image baut reproduzierbar mit Go 1.24 statische Artefakte für Linux
+amd64/arm64, macOS amd64/arm64 und Windows amd64. Nur vorhandene Artefakte
+werden angeboten. Der heruntergeladene Installer bindet den exakten SHA-256-
+Hash ein, entfernt das Einmalticket nach Enrollment und installiert einen
+Benutzerdienst. Der Linux-Dienst setzt unter anderem `NoNewPrivileges`,
+`ProtectSystem=strict`, eine begrenzte beschreibbare Root und Ressourcenlimits.
+Der Agent benötigt nur ausgehendes HTTPS/WSS; Installer verändern keine
+Firewall. Ein Uninstaller wird im privaten Agent-Verzeichnis abgelegt.
+
+SHA-256 macht den über genau diese TLS-Session geladenen Build prüfbar, ersetzt
+aber keine Publisher-Signatur. Windows Authenticode und Apple Developer ID sind
+noch nicht vorhanden und die UI weist ausdrücklich darauf hin. Private Keys
+werden derzeit als benutzerlesbare Datei mit Modus `0600` gespeichert; eine
+Keychain-/TPM-Anbindung bleibt ein Hardening-Schritt.
+
 Capability und Live-Gate akzeptieren jetzt tatsächlich nur FFmpeg ab Major 6;
 eine bloß vorhandene ältere Binärdatei reicht nicht mehr. Neben dem lokalen
 FFmpeg-6.1.1-Lauf bestand derselbe synthetische Drei-Rendition-Gate auf
@@ -56,10 +87,13 @@ RUN_LIVE_NATIVE_PACKAGER=1 npm run test:native-packager
 
 ## Ehrlich offene Punkte
 
-Noch nicht vorhanden sind der installierbare eigenständige Daemon um den nun
-getesteten Supervisor, signierte
-Release-Artefakte, Keychain/Keystore-Anbindung, Control-Plane-Enrollment,
-WHIP-Empfang, MediaMTX-Publish, Temperaturmessung, Hardware-Fallback nach einem
-realen Encoderfehler sowie OS-spezifische Sandbox-/Firewall-/Update-
-Deinstallationspfade. Der Browser-Packager bleibt unabhängig verfügbar und die
-UI wählt Native nicht automatisch. TBP-016 bleibt deshalb `partial`.
+Der Daemon authentisiert sich, prüft seine lokale Encoderbasis und synchronisiert
+Raumconsent, nimmt aber noch keine produktive Programmzuweisung entgegen. Der
+bereits getestete Node-Supervisor und der Go-Control-Daemon müssen dafür in
+einen einzelnen Assignment-Lifecycle mit kurzlebigem Packager-Grant,
+WHIP/WHEP- oder gleichwertigem Ingest und einem autorisierten Gateway-Publish
+zusammengeführt werden. Ebenso offen bleiben Temperaturmessung, ein realer
+Hardwarefehler-Gate, Publisher-signierte Release-Artefakte, Keychain/TPM,
+Update-Rollback sowie echte Windows-/macOS-Installationsgates. Deshalb bleibt
+TBP-016 trotz des jetzt installierbaren Control-Agenten `in_progress`; die UI
+wählt Native nie stillschweigend, und der Browser-Packager bleibt verfügbar.

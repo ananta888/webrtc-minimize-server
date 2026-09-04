@@ -57,6 +57,11 @@ const DEFAULTS = Object.freeze({
   mediaAgentEnrollmentTtlMs: 10 * 60 * 1000,
   mediaAgentMaxPerPrincipal: 3,
   mediaAgentEnrollmentRateLimit: 5,
+  nativePackagerSelfServiceEnabled: false,
+  nativePackagerRegistrationDb: "data/native-packager-registrations.sqlite",
+  nativePackagerArtifactDir: "native-packager-downloads",
+  nativePackagerEnrollmentTtlMs: 10 * 60 * 1000,
+  nativePackagerMaxPerPrincipal: 3,
   broadcastWhipEndpoint: "",
   broadcastWhipResourceBase: "",
   broadcastWhipProfile: "rfc9725",
@@ -402,6 +407,24 @@ export function loadConfig(env = process.env) {
   if (mediaAgentSelfServiceEnabled && (!mediaAgentRegistrationDb || !mediaAgentArtifactDir)) {
     throw new Error("media-agent self service requires registration DB and artifact directory paths");
   }
+  const nativePackagerSelfServiceEnabled = booleanValue(
+    env.NATIVE_PACKAGER_SELF_SERVICE_ENABLED,
+    DEFAULTS.nativePackagerSelfServiceEnabled,
+    "NATIVE_PACKAGER_SELF_SERVICE_ENABLED",
+  );
+  if (nativePackagerSelfServiceEnabled && (authMode !== "required"
+    || !publicOrigin || new URL(publicOrigin).protocol !== "https:")) {
+    throw new Error("NATIVE_PACKAGER_SELF_SERVICE_ENABLED requires required OIDC and an HTTPS PUBLIC_ORIGIN");
+  }
+  const nativePackagerRegistrationDb = String(
+    env.NATIVE_PACKAGER_REGISTRATION_DB || DEFAULTS.nativePackagerRegistrationDb,
+  ).trim();
+  const nativePackagerArtifactDir = String(
+    env.NATIVE_PACKAGER_ARTIFACT_DIR || DEFAULTS.nativePackagerArtifactDir,
+  ).trim();
+  if (nativePackagerSelfServiceEnabled && (!nativePackagerRegistrationDb || !nativePackagerArtifactDir)) {
+    throw new Error("native-packager self service requires registration DB and artifact directory paths");
+  }
   const broadcastWhipEndpoint = httpsWhipEndpoint(
     env.BROADCAST_WHIP_ENDPOINT || DEFAULTS.broadcastWhipEndpoint,
   );
@@ -590,6 +613,19 @@ export function loadConfig(env = process.env) {
       env.MEDIA_AGENT_ENROLLMENT_RATE_LIMIT,
       DEFAULTS.mediaAgentEnrollmentRateLimit,
       { minimum: 1, maximum: 20, name: "MEDIA_AGENT_ENROLLMENT_RATE_LIMIT" },
+    ),
+    nativePackagerSelfServiceEnabled,
+    nativePackagerRegistrationDb,
+    nativePackagerArtifactDir,
+    nativePackagerEnrollmentTtlMs: boundedInteger(
+      env.NATIVE_PACKAGER_ENROLLMENT_TTL_MS,
+      DEFAULTS.nativePackagerEnrollmentTtlMs,
+      { minimum: 60_000, maximum: 30 * 60_000, name: "NATIVE_PACKAGER_ENROLLMENT_TTL_MS" },
+    ),
+    nativePackagerMaxPerPrincipal: boundedInteger(
+      env.NATIVE_PACKAGER_MAX_PER_PRINCIPAL,
+      DEFAULTS.nativePackagerMaxPerPrincipal,
+      { minimum: 1, maximum: 5, name: "NATIVE_PACKAGER_MAX_PER_PRINCIPAL" },
     ),
     broadcastWhipEndpoint,
     broadcastWhipResourceBase,
