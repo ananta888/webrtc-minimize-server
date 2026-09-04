@@ -27,6 +27,19 @@
       "hostPackageInstalled": false
     }
   ],
+  "nativePackagerProvisioning": {
+    "environment": "minipc-ananta-linux-amd64",
+    "execution": "persistent-hardened-compose-agent",
+    "ffmpeg": "6.1.2",
+    "status": "verified-lan-host",
+    "registration": "operator-signed-proof-of-possession",
+    "accountBinding": "verified-from-active-owned-agent",
+    "challengeAuthentication": "verified-before-and-after-container-restart",
+    "privateKeyMode": "0600-agent-volume-only",
+    "inboundPorts": 0,
+    "roomConsent": "explicit-user-action-required",
+    "mediaIngress": "unverified-physical"
+  },
   "interactiveMeet": {
     "participants": 20,
     "admissionAndIsolation": "verified-deterministic",
