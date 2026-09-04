@@ -699,6 +699,24 @@
                 </section>
               }
 
+              @if (auth.authenticated() && mediaAgentOnboarding.operatorAgents().length > 0) {
+                <section id="operator-media-agents" class="agent-onboarding" aria-labelledby="operator-media-agents-heading">
+                  <div class="owned-agent-heading">
+                    <div><p class="eyebrow">An dein Konto gebunden</p><h3 id="operator-media-agents-heading">Vom Betreiber bereitgestellt</h3></div>
+                    <button class="text-action" type="button" [disabled]="mediaAgentOnboarding.busy()" (click)="mediaAgentOnboarding.load()">Aktualisieren</button>
+                  </div>
+                  <p class="hint">Diese Agenten wurden auf deiner Infrastruktur fest konfiguriert. Sie sind hier sichtbar, werden aber weiterhin erst unten durch deine ausdrückliche Zustimmung für den aktuellen Raum aktiviert.</p>
+                  <div class="owned-agent-list">
+                    @for (agent of mediaAgentOnboarding.operatorAgents(); track agent.id) {
+                      <article class="owned-agent">
+                        <span class="agent-status-dot" [class.online]="agent.online" aria-hidden="true"></span>
+                        <div><strong>{{ agent.id }}</strong><small>Operatorverwaltet · {{ agent.online ? 'online' : 'offline' }}</small><code>{{ agent.id }}</code><small>Widerruf nur über die Serverkonfiguration</small></div>
+                      </article>
+                    }
+                  </div>
+                </section>
+              }
+
               <section class="agent-room-use" aria-labelledby="agent-room-use-heading">
                 <div><p class="eyebrow">Je Raum getrennt</p><h3 id="agent-room-use-heading">Im aktuellen Raum verwenden</h3></div>
                 <p>Ein online gemeldeter Agent wird erst nach deiner ausdrücklichen Raumzustimmung eingeplant. Membership, Routen, Epochen und kurze Leases bleiben ausschließlich bei der Control Plane.</p>

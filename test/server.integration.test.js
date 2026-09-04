@@ -944,6 +944,11 @@ test("OIDC owner downloads, enrolls, authenticates and revokes a self-service me
     mediaAgentSelfServiceEnabled: true,
     mediaAgentRegistrationDb: path.join(directory, "registrations.sqlite"),
     mediaAgentArtifactDir: directory,
+    mediaAgents: [{
+      id: "minipc-edge",
+      ownerPrincipal: `${issuer}|owner`,
+      sharedSecret: "operator-agent-secret-material-32-characters",
+    }],
   }, { oidcVerifier });
   context.after(async () => {
     await app.close();
@@ -1051,6 +1056,11 @@ test("OIDC owner downloads, enrolls, authenticates and revokes a self-service me
     online: true,
     revokedAt: 0,
   }]);
+  assert.deepEqual(ownerList.operatorAgents, [{ id: "minipc-edge", online: false }]);
+  const otherList = await fetch(`${app.httpUrl}/api/media-agents`, {
+    headers: { authorization: "Bearer other-token" },
+  }).then((response) => response.json());
+  assert.deepEqual(otherList.operatorAgents, []);
 
   const forbiddenRevocation = await fetch(`${app.httpUrl}/api/media-agents/${enrollment.agentId}`, {
     method: "DELETE",

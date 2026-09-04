@@ -110,7 +110,10 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   readonly authRequired = computed(() => this.config.value()?.auth.mode === "required");
   readonly canEnter = computed(() => this.ready() && (!this.authRequired() || this.auth.authenticated()));
   readonly canOwnRooms = computed(() => this.auth.authenticated());
-  readonly ownMediaAgentOnline = computed(() => this.mediaAgentOnboarding.agents().some((agent) => agent.online));
+  readonly ownMediaAgentOnline = computed(() => (
+    this.mediaAgentOnboarding.agents().some((agent) => agent.online)
+    || this.mediaAgentOnboarding.operatorAgents().some((agent) => agent.online)
+  ));
   readonly broadcastActive = computed(() => this.broadcastPreflight.lifecycle() === "ready"
     || new Set(["starting", "running", "degraded", "reconnecting", "handing_over", "stopping"])
       .has(this.broadcastPublisher.coordinator.programState.value().lifecycle));
@@ -192,7 +195,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
       this.ready.set(true);
       await Promise.all([
         this.directory.load(),
-        this.auth.authenticated() && runtime.mediaAgents.selfService
+        this.auth.authenticated() && (runtime.mediaAgents.selfService || runtime.mediaAgents.configured)
           ? this.mediaAgentOnboarding.load()
           : Promise.resolve(),
         this.auth.authenticated() && this.config.value()?.pairWorkspaceEnabled
@@ -202,7 +205,8 @@ export class RoomPageComponent implements OnInit, OnDestroy {
       this.directoryRefreshHandle = setInterval(() => {
         if (document.visibilityState !== "visible") return;
         void this.directory.load();
-        if (this.auth.authenticated() && this.config.value()?.mediaAgents.selfService) {
+        if (this.auth.authenticated()
+          && (this.config.value()?.mediaAgents.selfService || this.config.value()?.mediaAgents.configured)) {
           void this.mediaAgentOnboarding.load();
         }
       }, 15_000);

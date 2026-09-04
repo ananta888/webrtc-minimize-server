@@ -33,7 +33,10 @@ describe("MediaAgentOnboardingService", () => {
   });
 
   it("lists only closed owner-bound agent contracts without triggering a download", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ agents: [agent] }), {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      agents: [agent],
+      operatorAgents: [{ id: "minipc-edge", online: true }],
+    }), {
       status: 200,
       headers: { "content-type": "application/json" },
     }));
@@ -41,7 +44,19 @@ describe("MediaAgentOnboardingService", () => {
     const service = new MediaAgentOnboardingService(auth as never);
     await service.load();
     expect(service.agents()).toEqual([agent]);
+    expect(service.operatorAgents()).toEqual([{ id: "minipc-edge", online: true }]);
     expect(click).not.toHaveBeenCalled();
+  });
+
+  it("rejects widened or malformed operator projections", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      agents: [],
+      operatorAgents: [{ id: "minipc-edge", online: true, owner: "leaked" }],
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    const service = new MediaAgentOnboardingService(auth as never);
+    await service.load();
+    expect(service.operatorAgents()).toEqual([]);
+    expect(service.error()).toBe("media_agent_list_invalid");
   });
 
   it("downloads an installer only from the explicit method and keeps no ticket in state", async () => {
@@ -78,7 +93,10 @@ describe("MediaAgentOnboardingService", () => {
   it("revokes only an exact generated agent id", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response(JSON.stringify({ agentId: agent.id, revokedAt: Date.now() }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ agents: [{ ...agent, online: false, revokedAt: Date.now() }] }), { status: 200 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        agents: [{ ...agent, online: false, revokedAt: Date.now() }],
+        operatorAgents: [],
+      }), { status: 200 }));
     const service = new MediaAgentOnboardingService(auth as never);
     await service.revoke(agent.id);
     expect(fetchMock.mock.calls[0][0]).toBe(`/api/media-agents/${agent.id}`);

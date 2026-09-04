@@ -21,6 +21,11 @@ export interface OwnedMediaAgent {
   readonly online: boolean;
 }
 
+export interface OperatorMediaAgent {
+  readonly id: string;
+  readonly online: boolean;
+}
+
 export interface PendingMediaAgentInstallation {
   readonly agentId: string;
   readonly filename: string;
@@ -36,6 +41,7 @@ interface InstallerResponse extends PendingMediaAgentInstallation {
 }
 
 const AGENT_ID_PATTERN = /^edge-[a-f0-9]{16}$/;
+const OPERATOR_AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const TARGET_ID_PATTERN = /^(?:linux|macos|windows)-(?:amd64|arm64)$/;
 const FINGERPRINT_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
@@ -51,6 +57,20 @@ function parseAgent(value: unknown): OwnedMediaAgent {
     || !Number.isSafeInteger(agent.revokedAt) || Number(agent.revokedAt) < 0
     || typeof agent.online !== "boolean") throw new Error("media_agent_list_invalid");
   return agent as OwnedMediaAgent;
+}
+
+function parseOperatorAgent(value: unknown): OperatorMediaAgent {
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || Object.keys(value).length !== 2
+    || !Object.hasOwn(value, "id") || !Object.hasOwn(value, "online")) {
+    throw new Error("media_agent_list_invalid");
+  }
+  const agent = value as Partial<OperatorMediaAgent>;
+  const id = String(agent.id || "");
+  if (!OPERATOR_AGENT_ID_PATTERN.test(id) || typeof agent.online !== "boolean") {
+    throw new Error("media_agent_list_invalid");
+  }
+  return Object.freeze({ id, online: agent.online });
 }
 
 function parseInstaller(value: unknown, requestedTarget: string): InstallerResponse {
@@ -73,6 +93,7 @@ function parseInstaller(value: unknown, requestedTarget: string): InstallerRespo
 @Injectable({ providedIn: "root" })
 export class MediaAgentOnboardingService {
   readonly agents = signal<readonly OwnedMediaAgent[]>([]);
+  readonly operatorAgents = signal<readonly OperatorMediaAgent[]>([]);
   readonly pending = signal<PendingMediaAgentInstallation | null>(null);
   readonly busy = signal(false);
   readonly error = signal("");
@@ -90,6 +111,7 @@ export class MediaAgentOnboardingService {
 
   clear(): void {
     this.agents.set([]);
+    this.operatorAgents.set([]);
     this.pending.set(null);
     this.error.set("");
   }
@@ -99,11 +121,16 @@ export class MediaAgentOnboardingService {
     this.error.set("");
     try {
       const response = await fetch("/api/media-agents", { headers: this.auth.authorizationHeader() });
-      const body = await response.json() as { agents?: unknown[]; error?: string };
+      const body = await response.json() as { agents?: unknown[]; operatorAgents?: unknown[]; error?: string };
       if (!response.ok) throw new Error(body.error || "media_agent_list_failed");
-      if (!Array.isArray(body.agents)) throw new Error("media_agent_list_invalid");
+      if (!Array.isArray(body.agents) || !Array.isArray(body.operatorAgents)) {
+        throw new Error("media_agent_list_invalid");
+      }
       this.agents.set(body.agents.map(parseAgent));
+      this.operatorAgents.set(body.operatorAgents.map(parseOperatorAgent));
     } catch (error) {
+      this.agents.set([]);
+      this.operatorAgents.set([]);
       this.error.set(error instanceof Error ? error.message : "media_agent_list_failed");
     } finally {
       this.busy.set(false);

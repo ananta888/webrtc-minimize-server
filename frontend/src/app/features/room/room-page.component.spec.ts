@@ -105,6 +105,10 @@ describe("Room page information architecture", () => {
     expect(template).toContain("auth.login('/?section=analysis')");
     expect(template).not.toContain("auth.login('/?section=settings')");
     expect(template).toContain('id="media-agent-onboarding"');
+    expect(template).toContain('id="operator-media-agents"');
+    expect(template).toContain("mediaAgentOnboarding.operatorAgents()");
+    expect(template).toContain("Operatorverwaltet");
+    expect(template).toContain("Widerruf nur über die Serverkonfiguration");
     expect(template).toContain('id="media-agent-select"');
     expect(template).toContain('id="media-agent-consent"');
     expect(template).toContain('id="media-agent-primary"');

@@ -1,0 +1,59 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "operator-media-agent-visibility",
+  "purpose": "Kontoeigene operatorseitig konfigurierte Blind-Media-Agenten neben Self-Service-Installationen sichtbar machen, ohne Verwaltungsrechte oder Raumconsent auszuweiten.",
+  "goal": "Die Analyse unterscheidet installierte und operatorverwaltete Agenten, zeigt deren Onlinezustand und lässt nur widerrufbare Self-Service-Agenten widerrufen.",
+  "status": "done",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "OMAV-M1",
+      "title": "Geschlossene Owner-Projektion und Analyse-UI",
+      "task_ids": ["OMAV-001"],
+      "status": "done"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "OMAV-001",
+      "title": "Operator-Agenten kontogebunden in der Analyse anzeigen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "GET /api/media-agents liefert Self-Service-Registrierungen und operatorseitige Definitionen in getrennten geschlossenen Arrays ausschließlich für den exakt authentisierten Principal.",
+        "Die Angular-Analyse zeigt operatorverwaltete Agenten mit Onlinezustand und Kennzeichnung, bietet für sie aber keinen irreführenden Widerruf oder Installer-Lifecycle an.",
+        "Die bestehende raumgebundene Mehrfachauswahl und Zustimmung bleibt die einzige Aktivierung; Laden der Anzeige löst weder Capture noch Consent aus.",
+        "Server-, Parser- und UI-Regressionstests sowie npm run todos:validate und npm run check bestehen."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["OMAV-001"],
+  "tasks_status_summary": {
+    "total": 1,
+    "by_status": {"todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 1},
+    "progress_percent_done": 100,
+    "by_priority": {"P0": 0, "P1": 1, "P2": 0, "P3": 0},
+    "by_risk": {"low": 0, "medium": 1, "high": 0, "critical": 0},
+    "critical_path": {"total": 1, "done": 1, "remaining": 0},
+    "milestones": {"total": 1, "todo": 0, "in_progress": 0, "blocked": 0, "done": 1}
+  },
+  "progress_summary": {
+    "state": "done",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 1
+  },
+  "summary_notes": [
+    "Der Mini-PC-Agent minipc-edge ist am 2026-09-04 nach dem Deployment nachweislich erneut authentisiert, erschien aber nicht in der bisherigen SQLite-basierten Self-Service-Liste.",
+    "Die ownergebundene API trennt nun Self-Service- und operatorverwaltete Projektionen. Die Analyse kennzeichnet minipc-edge ohne Widerrufsschaltfläche; Raumaktivierung bleibt ausschließlich die vorhandene explizite Mehrfachauswahl mit Consent. Fokussierte Server-, Parser- und UI-Tests bestehen."
+  ]
+}

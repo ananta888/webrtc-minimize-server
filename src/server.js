@@ -677,17 +677,21 @@ function createHttpHandler(config, registry, services) {
         return;
       }
       if (url.pathname === "/api/media-agents" && request.method === "GET") {
-        if (!config.mediaAgentSelfServiceEnabled || !mediaAgentEnrollmentStore) {
+        if ((!config.mediaAgentSelfServiceEnabled || !mediaAgentEnrollmentStore) && !mediaAgents.configured) {
           throw new MediaAgentEnrollmentError("media_agent_self_service_disabled", 404);
         }
         const identity = await authenticateRequest(request, config, oidcVerifier);
         if (!identity) throw new AuthenticationError("authentication_required");
         const principal = principalFor(identity);
+        const agents = mediaAgentEnrollmentStore ? mediaAgentEnrollmentStore.list(principal) : [];
+        const selfServiceIds = new Set(agents.map(({ id }) => id));
         sendJson(response, 200, {
-          agents: mediaAgentEnrollmentStore.list(principal).map((agent) => ({
+          agents: agents.map((agent) => ({
             ...agent,
             online: !agent.revokedAt && Boolean(mediaAgents.socketForAgent(agent.id)),
           })),
+          operatorAgents: mediaAgents.configuredForPrincipal(principal)
+            .filter(({ id }) => !selfServiceIds.has(id)),
         }, securityHeaders(config));
         return;
       }
