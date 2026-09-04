@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "observedAt": "2026-09-04",
+  "environment": {"os":"Linux/WSL2","docker":"29.4.3","ffmpeg":"6.1.1","mediamtx":"1.20.1","playwright":"1.62.1"},
+  "platforms": [
+    {"id":"chromium-linux","engineVersion":"151","publish":"verified","playback":"unit-only","privateAuth":"verified-local","captions":"verified-room","autoplay":"verified-room","stop":"verified","evidence":"live WHIP source-switch and browser E2E"},
+    {"id":"firefox-linux","engineVersion":"153","publish":"verified","playback":"unit-only","privateAuth":"verified-local","captions":"verified-room","autoplay":"verified-room","stop":"verified","evidence":"live WHIP source-switch, SFrame and Vosk E2E"},
+    {"id":"edge-desktop","engineVersion":"unavailable","publish":"unverified","playback":"unverified","privateAuth":"unverified","captions":"unverified","autoplay":"unverified","stop":"unverified","evidence":"no Microsoft Edge binary in test environment"},
+    {"id":"safari-desktop","engineVersion":"unavailable","publish":"unverified","playback":"unverified","privateAuth":"unverified","captions":"unverified","autoplay":"unverified","stop":"unverified","evidence":"requires real macOS Safari"},
+    {"id":"android","engineVersion":"unavailable","publish":"unverified","playback":"unverified","privateAuth":"unverified","captions":"unverified","autoplay":"unverified","stop":"unverified","evidence":"requires physical Android device"},
+    {"id":"ios","engineVersion":"unavailable","publish":"unverified","playback":"unverified","privateAuth":"unverified","captions":"unverified","autoplay":"unverified","stop":"unverified","evidence":"requires physical iOS device"}
+  ],
+  "networkProfiles": [
+    {"id":"loopback-docker-udp-tcp","status":"verified","evidence":"WHIP ICE plus LL-HLS"},
+    {"id":"lan-wlan","status":"unverified","evidence":"physical two-device broadcast gate not run"},
+    {"id":"mobile-nat-network-switch","status":"unverified","evidence":"physical mobile device and carrier required"},
+    {"id":"loss-bandwidth-drop","status":"unit-only","evidence":"bounded adaptation policy; no real shaped broadcast run"},
+    {"id":"blocked-udp-quic","status":"unverified","evidence":"MoQ disabled and WAN firewall gate not run"}
+  ],
+  "adapters": [
+    {"id":"mediamtx-1.20","status":"verified-local","evidence":"pinned adapter, WHIP Chromium/Firefox, LL-HLS lifecycle"},
+    {"id":"native-ffmpeg-6.1","status":"verified-local","evidence":"three aligned H.264/AAC renditions"},
+    {"id":"cloudflare-stream","status":"unavailable","evidence":"no production adapter or credentials"},
+    {"id":"moq-draft20","status":"experimental","evidence":"contract/player prototype only"}
+  ],
+  "quality": [
+    {"id":"room-video-freeze","status":"verified-automated","evidence":"cross-browser VP8 decode beyond SFrame counter 350 and advancing frames"},
+    {"id":"broadcast-source-switch-freeze","status":"verified-automated","evidence":"four replaceTrack switches with positive encoded frame deltas"},
+    {"id":"screen-audio-echo","status":"policy-tested","evidence":"screen audio default-off and separately revocable; no acoustic perception lab"},
+    {"id":"av-caption-sync-text","status":"unverified-physical","evidence":"requires rendered-media and human/device measurements"}
+  ]
+}

@@ -61,7 +61,13 @@ test("MediaMTX LL-HLS live gate enables RTSP only on an explicit loopback test o
   assert.equal(gateway.environment.MTX_RTSP, "true");
   assert.equal(gateway.environment.MTX_RTSPADDRESS, ":8554");
   assert.equal(gateway.environment.MTX_PROTOCOLS, "tcp");
-  assert.deepEqual(gateway.ports, ["127.0.0.1:${MEDIAMTX_TEST_RTSP_PORT:-18554}:8554/tcp"]);
+  assert.equal(gateway.environment.MTX_WEBRTCALLOWORIGINS, "*");
+  assert.equal(gateway.environment.MTX_WEBRTCLOCALTCPADDRESS, ":8189");
+  assert.equal(gateway.environment.MTX_AUTHINTERNALUSERS_0_USER, "live-gate");
+  assert.deepEqual(gateway.ports, [
+    "127.0.0.1:${MEDIAMTX_TEST_RTSP_PORT:-18554}:8554/tcp",
+    "127.0.0.1:${MEDIAMTX_ICE_PORT:-18189}:8189/tcp",
+  ]);
   assert.doesNotMatch(overlayText, /(?:token|password|secret)\s*:/i);
 });
 

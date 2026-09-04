@@ -51,14 +51,24 @@ try {
   const address = server.address();
   assert.ok(address && typeof address === "object");
   for (const engine of [chromium, firefox]) {
-    const browser = await engine.launch({ headless: true });
+    const browser = await engine.launch({
+      headless: true,
+      ...(engine.name() === "firefox" ? {
+        firefoxUserPrefs: { "media.peerconnection.ice.obfuscate_host_addresses": false },
+      } : {}),
+    });
     try {
       const page = await browser.newPage();
       await page.goto(`http://127.0.0.1:${address.port}/`, { waitUntil: "networkidle" });
+      await page.evaluate(({ baseEndpoint, engineName }) => {
+        const value = new URL(baseEndpoint);
+        value.pathname = value.pathname.replace(/\/[^/]+\/whip$/, `/live-gate-${engineName}/whip`);
+        window.__WHIP_GATE_ENDPOINT__ = value.href;
+      }, { baseEndpoint: endpoint, engineName: engine.name() });
       await page.click("#run-whip-gate");
       await page.waitForFunction(() => Boolean(window.__whipGateResult), null, { timeout: 30_000 });
       const result = await page.evaluate(() => window.__whipGateResult);
-      assert.equal(result.connected, true);
+      assert.equal(result.connected, true, JSON.stringify(result));
       assert.equal(result.stopped, true);
       assert.equal(result.restartError, "whip_ice_restart_unsupported");
       assert.equal(result.switches, 4);

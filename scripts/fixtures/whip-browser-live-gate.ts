@@ -101,7 +101,7 @@ button.addEventListener("click", async () => {
     authorization: {
       authorize: async () => ({
         authorizationVersion: 1,
-        accessToken: "live-gate-bearer-not-a-production-secret",
+        accessToken: "live-gate:live-password",
         expiresAt: Date.now() + 60_000,
       }),
     },

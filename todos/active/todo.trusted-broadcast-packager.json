@@ -866,10 +866,10 @@
     {
       "id": "TBP-038",
       "title": "Reale Browser-, Geräte-, Netzwerk- und Provider-Interoperabilität nachweisen",
-      "status": "todo",
+      "status": "partial",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 55,
       "depends_on": ["TBP-011", "TBP-012", "TBP-019", "TBP-020", "TBP-021", "TBP-027", "TBP-029", "TBP-031", "TBP-032", "TBP-037"],
       "acceptance_criteria": [
         "Mindestens Chromium/Edge, Firefox, Safari Desktop, Android und iOS werden mit dokumentierten Versionen für Publish soweit unterstützt, natives/hls.js Playback, private Auth, Captions, Autoplay und Stop getestet.",
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 3, "in_progress": 0, "partial": 21, "blocked": 0, "done": 16 },
+    "by_status": { "todo": 2, "in_progress": 0, "partial": 22, "blocked": 0, "done": 16 },
     "progress_percent_done": 40,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -963,9 +963,9 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 3,
+    "todo_remaining": 2,
     "in_progress": 0,
-    "partial": 21,
+    "partial": 22,
     "blocked": 0,
     "done": 16
   },
@@ -1012,6 +1012,7 @@
     "TBP-035 ist zu 70 Prozent umgesetzt. Ein geschlossener BroadcastFailoverCoordinator ergaenzt je Programm und Rolle genau einen kurzlebigen Writer, monotone Fencing-Revisionen, gesunde Mehrheitsquorum-Heartbeats, feste Grace-/Recovery-Zeiten und eine stabile Prioritaets-/Ref-Reihenfolge. Freiwillige Standbys bleiben access none; nur ein frischer approved- oder preauthorized-Consent erlaubt die Promotion und erst dann Quellen-/Decrypt- beziehungsweise Gateway-Zugriff. Packager-, Browser-, Gateway-, Host-, Netzwerk- und Providerfehler werden getrennt klassifiziert; eine sichere Uebernahme fordert Discontinuity plus Player-Restart, waehrend Quellenverlust, fehlender autorisierter Standby oder Deadline einen sichtbaren Stop ausloest. Der streng validierte Recovery-Snapshot enthaelt nur Scope, Fences, Pseudonyme, Zeiten, Fehlerklasse und eine auf 256 Eintraege begrenzte Outbox, nie Medien, Keys oder Transcripts. Ein deterministischer Chaos-Test beendet Packager und Gateway, belegt alte-Fence-Ablehnung, genau einen Nachfolger je Rolle und Rueckkehr im Zeitbudget. Offen bleiben verteilter Lease-Store, produktive Orchestrierungsverdrahtung sowie reale Prozess-/Gateway-/Host-Kills und gemessene Player-Unterbrechung; deshalb bleibt der Task partial und Broadcast deaktiviert.",
     "TBP-036 ist zu 75 Prozent umgesetzt. ADR 0003 legt Mini-PC/Caddy fuer die Control Plane, getrenntes Oracle-OIDC/TURN und private Gateway-/Packager-/Origin-Netze fest; Broadcast und MoQ bleiben default-aus. Eine versionierte Default-deny-Portmatrix oeffnet Node 8080, WHIP/HLS und Gateway-Admin nie oeffentlich und bindet TURN/MoQ-Ports an aktive Capabilities. Das Produktions-Compose-Profil entfernt Hostports und nutzt read-only Root, tmpfs, null Capabilities, no-new-privileges, PID-/CPU-/RAM-/Log-Limits und Readiness. TURN-, Edge-TURN- und statische Agent-Secrets koennen aus begrenzten Dateien gelesen werden; direkte plus dateibasierte Werte scheitern fail-closed. CI erzeugt SBOM und Build-Provenance. Der Release-Runner baut Git-SHA-Images, merkt den vorherigen Digest, prueft Docker-Readiness sowie extern HTTPS, Health, Config, OIDC/SFrame, CSP und Angular und rollt bei Fehler automatisch zurueck. Offen bleiben erzwungene Host-Egress-Allowlist, externer Keycloak-/TURN-/Playback-/MoQ-Smoke mit Produktions-Testidentitaet sowie ein real provozierter Rollback unter Last; deshalb bleibt der Task partial.",
     "TBP-037 ist abgeschlossen. Eine versionierte Coverage-Matrix bindet positive und negative Suites fuer alle Schemas, Transitions, Idempotenz/Fencing, Grants/Scopes/Replay, Visibility/Origin/Rollen, Consent/Keys, Capabilities/Codecs/Adapter, Oversize/Rate-Limit/Unknown-Message/Disconnect, Browser-No-Capture, Leakage und externe Infrastruktur an existierende Dateien. Der Browser-Gate prueft Broadcast-Panel, gespeicherte Praeferenzen, Refresh, Viewer-Deep-Link, Join und Peer-Signale ohne implizites Capture vor dem sichtbaren Klick. Feste synthetische Token-, Secret-, Private-Key-, Room-, SDP-, ICE- und Caption-Canaries werden streamend und budgetiert in Angular-Bundle, Agent-Artefakten und CI-OCI-Image sowie nach serverseitiger Injektion in Responses, Header, Fehlerseiten und normalen Logs gesucht; Symlinks und Scanbomben scheitern fail-closed. npm run check enthaelt den Gate. Lokal fehlendes Image und nicht konfigurierte externe Keycloak-/TURN-/Gateway-/Packager-Gates werden mit konkretem Grund sichtbar als SKIP und nie als bestanden ausgegeben.",
+    "TBP-038 ist zu 55 Prozent umgesetzt. Ein reproduzierbarer lokaler Interop-Runner prueft den gepinnten MediaMTX-Adapter, Native-FFmpeg-ABR, LL-HLS und WHIP in Chromium 151 sowie Firefox 153. Real bestanden sind POST/PATCH/ICE/DELETE, vier replaceTrack-Wechsel mit weiterlaufenden Frames, sichtbares unsupported fuer MediaMTX-ICE-Restart, drei H.264/AAC-Renditions sowie LL-HLS-Version/Blocking-Reload/200-ms-Parts/Late-Join/Restart/Cleanup. Das Testprofil korrigiert testisoliert CORS, synthetische Internal-Auth, gleiche Host-/Container-ICE-Ports und Firefox-mDNS, ohne das sichere Gatewayprofil zu lockern. Eine geschlossene Ergebnismatrix haelt Edge-Binary, macOS Safari, Android/iOS, natives Safari-HLS, Mobilfunk/NAT/Netzwechsel, WAN-Loss, blockiertes UDP/QUIC, Provider sowie akustische und visuelle Wahrnehmung ehrlich unverified/unavailable/experimental. Diese realen Geraete-, Netz- und Providergates fehlen weiterhin; deshalb bleibt der Task partial und eine oeffentliche Broadcast-Freigabe ausgeschlossen.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }
