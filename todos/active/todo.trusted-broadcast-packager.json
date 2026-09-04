@@ -833,10 +833,10 @@
     {
       "id": "TBP-036",
       "title": "Produktionsdeployment, Netzwerk, Secrets und Rollback härten",
-      "status": "todo",
+      "status": "partial",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 75,
       "depends_on": ["TBP-017", "TBP-018", "TBP-022", "TBP-033", "TBP-034", "TBP-035"],
       "acceptance_criteria": [
         "Eine Deployment-ADR wählt Host/Region für Control Plane, Gateway, Packager, Origin und optionale Provider anhand Upload, Latenz, CPU/GPU, Kosten, Datenschutz und Ausfallradius.",
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 5, "in_progress": 0, "partial": 20, "blocked": 0, "done": 15 },
+    "by_status": { "todo": 4, "in_progress": 0, "partial": 21, "blocked": 0, "done": 15 },
     "progress_percent_done": 37.5,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -963,9 +963,9 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 5,
+    "todo_remaining": 4,
     "in_progress": 0,
-    "partial": 20,
+    "partial": 21,
     "blocked": 0,
     "done": 15
   },
@@ -1010,6 +1010,7 @@
     "TBP-033 ist zu 70 Prozent umgesetzt. Ein geschlossener idempotenter BroadcastAdmissionController prueft vor Lease-Allokation Request-/Message-Groesse, aktive Programme je Deployment/Tenant/Principal/Gateway, Quellen, Renditions, Encoder, Queue-Items/-Bytes, fluechtigen Speicher, Segmentfenster, Viewer, Egress, Laufzeit und Start-Flapping. Oeffentliche Limitfehler bleiben einheitlich, waehrend Operatoren eine HMAC-pseudonymisierte BCAST-Diagnosereferenz erhalten. Eine BoundedBroadcastQueue verwirft bei Realtime-/Caption-Ueberlauf nur stale aelteste Arbeit und fuehrt Control-/Delivery-Ueberlauf deterministisch von degrade zu stop. Der private HLS-Proxy begrenzt globale und sitzungsbezogene Parallelstreams, Body, Idle- und Gesamtlaufzeit und gibt Slots bei Ende, Cancel oder Fehler genau einmal frei. HMAC-Buckets begrenzen Playback-Probes, Credentials, Katalog, Start/Stop und Viewer-Heartbeats ohne rohe Actorwerte; Payloadbudget prueft Expansion und Catalogzahl gegen JSON-/Archivbomben. Ein Isolationstest weist nach 1.000 abgewiesenen Broadcast-Starts weiterhin 20er-Room-Limit und TURN-Credentials nach. Offen bleiben Composition-Root-/Native-Encoder-/Provider-Verdrahtung, clusterweit transaktionale Quoten sowie reale Bot-, WAN-, Slowloris- und gemeinsame SFrame/MediaMTX-Lastgates; daher bleibt der Task partial.",
     "TBP-034 ist zu 65 Prozent umgesetzt. Ein inhaltsfreies BroadcastMetricRegistry definiert 18 geschlossene Metrikfamilien fuer Program-State/Transition, WHIP, Ingest/Egress, Frames/Keyframes/Drops, Encoderzeit, Segmente/Parts, Viewerklassen, Start/End-to-glass/Rebuffer/A-V-Sync, Caption-Delay, CPU/RAM/Disk, Quoten, Failover und Error Budget. Pro Metrik sind ausschliesslich feste Enum-Labels erlaubt; Histogramme behalten nur Count, Summe und feste Buckets, die Gesamtzahl der Serien und Purge sind begrenzt. Synthetische Token-, Caption-, Room-, SDP/ICE- und IP-Canaries werden als Label abgewiesen. Der neue /readyz-Pfad trennt Control Plane, Trusted Packager, Gateway, Origin/CDN und optionales MoQ; optionale Broadcast-/MoQ-Ausfaelle machen das Meet nicht ungesund. Ein versioniertes Operator-Dashboard beschreibt Panels, Sampling, privaten Export, 14-/90-Tage-Retention und zehn Alertcodes mit vorhandenen Runbooks. Offen bleiben echte Instrumentierung der Program-Orchestrierung, geschuetzter Collector/Dashboard-Import, Alarmzustellung/Zugriffsaudit und reale SLO-/Lastmessungen; deshalb bleibt der Task partial und runtimeVerified false.",
     "TBP-035 ist zu 70 Prozent umgesetzt. Ein geschlossener BroadcastFailoverCoordinator ergaenzt je Programm und Rolle genau einen kurzlebigen Writer, monotone Fencing-Revisionen, gesunde Mehrheitsquorum-Heartbeats, feste Grace-/Recovery-Zeiten und eine stabile Prioritaets-/Ref-Reihenfolge. Freiwillige Standbys bleiben access none; nur ein frischer approved- oder preauthorized-Consent erlaubt die Promotion und erst dann Quellen-/Decrypt- beziehungsweise Gateway-Zugriff. Packager-, Browser-, Gateway-, Host-, Netzwerk- und Providerfehler werden getrennt klassifiziert; eine sichere Uebernahme fordert Discontinuity plus Player-Restart, waehrend Quellenverlust, fehlender autorisierter Standby oder Deadline einen sichtbaren Stop ausloest. Der streng validierte Recovery-Snapshot enthaelt nur Scope, Fences, Pseudonyme, Zeiten, Fehlerklasse und eine auf 256 Eintraege begrenzte Outbox, nie Medien, Keys oder Transcripts. Ein deterministischer Chaos-Test beendet Packager und Gateway, belegt alte-Fence-Ablehnung, genau einen Nachfolger je Rolle und Rueckkehr im Zeitbudget. Offen bleiben verteilter Lease-Store, produktive Orchestrierungsverdrahtung sowie reale Prozess-/Gateway-/Host-Kills und gemessene Player-Unterbrechung; deshalb bleibt der Task partial und Broadcast deaktiviert.",
+    "TBP-036 ist zu 75 Prozent umgesetzt. ADR 0003 legt Mini-PC/Caddy fuer die Control Plane, getrenntes Oracle-OIDC/TURN und private Gateway-/Packager-/Origin-Netze fest; Broadcast und MoQ bleiben default-aus. Eine versionierte Default-deny-Portmatrix oeffnet Node 8080, WHIP/HLS und Gateway-Admin nie oeffentlich und bindet TURN/MoQ-Ports an aktive Capabilities. Das Produktions-Compose-Profil entfernt Hostports und nutzt read-only Root, tmpfs, null Capabilities, no-new-privileges, PID-/CPU-/RAM-/Log-Limits und Readiness. TURN-, Edge-TURN- und statische Agent-Secrets koennen aus begrenzten Dateien gelesen werden; direkte plus dateibasierte Werte scheitern fail-closed. CI erzeugt SBOM und Build-Provenance. Der Release-Runner baut Git-SHA-Images, merkt den vorherigen Digest, prueft Docker-Readiness sowie extern HTTPS, Health, Config, OIDC/SFrame, CSP und Angular und rollt bei Fehler automatisch zurueck. Offen bleiben erzwungene Host-Egress-Allowlist, externer Keycloak-/TURN-/Playback-/MoQ-Smoke mit Produktions-Testidentitaet sowie ein real provozierter Rollback unter Last; deshalb bleibt der Task partial.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }

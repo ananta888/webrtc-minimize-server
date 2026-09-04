@@ -26,6 +26,10 @@ RUN CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -
 RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/media-edge-agent-windows-amd64.exe .
 
 FROM node:22-alpine
+ARG SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.source="https://github.com/ananta888/webrtc-minimize-server" \
+      org.opencontainers.image.revision="${SOURCE_REVISION}" \
+      org.opencontainers.image.licenses="BSD-3-Clause"
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules

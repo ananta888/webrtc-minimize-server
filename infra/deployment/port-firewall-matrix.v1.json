@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "defaultPolicy": "deny",
+  "entries": [
+    {"component":"caddy","direction":"inbound","transport":"tcp","ports":"443","source":"internet-or-lan-policy","requiredWhen":"public HTTPS/WSS enabled","public":true},
+    {"component":"caddy","direction":"inbound","transport":"tcp","ports":"80","source":"internet-or-lan-policy","requiredWhen":"ACME HTTP redirect/challenge enabled","public":true},
+    {"component":"webrtc-control","direction":"inbound","transport":"tcp","ports":"8080","source":"reverse-proxy network only","requiredWhen":"always","public":false},
+    {"component":"webrtc-control","direction":"outbound","transport":"tcp","ports":"443","source":"OIDC JWKS and explicitly configured adapters","requiredWhen":"OIDC or remote adapter enabled","public":false},
+    {"component":"coturn","direction":"inbound","transport":"udp,tcp","ports":"3478","source":"internet-or-lan-policy","requiredWhen":"TURN enabled","public":true},
+    {"component":"coturn","direction":"inbound","transport":"tcp","ports":"5349","source":"internet-or-lan-policy","requiredWhen":"TURN TLS enabled","public":true},
+    {"component":"coturn","direction":"inbound","transport":"udp","ports":"49160-49200","source":"internet-or-lan-policy","requiredWhen":"TURN relay enabled","public":true},
+    {"component":"mediamtx-whip","direction":"inbound","transport":"tcp","ports":"8889","source":"trusted packager network only","requiredWhen":"broadcast gateway enabled","public":false},
+    {"component":"mediamtx-ice","direction":"inbound","transport":"udp","ports":"8189","source":"trusted packager network only","requiredWhen":"WHIP WebRTC ingest enabled","public":false},
+    {"component":"mediamtx-hls","direction":"inbound","transport":"tcp","ports":"8888","source":"control/proxy network only","requiredWhen":"LL-HLS enabled","public":false},
+    {"component":"mediamtx-admin","direction":"inbound","transport":"tcp","ports":"9997-9998","source":"private control/observability network only","requiredWhen":"gateway admin or metrics enabled","public":false},
+    {"component":"moq","direction":"inbound","transport":"udp","ports":"443","source":"internet-or-lan-policy","requiredWhen":"runtime-verified MoQ explicitly enabled","public":true}
+  ]
+}

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import { loadConfig } from "../src/config.js";
@@ -204,6 +207,44 @@ test("loadConfig accepts explicit OIDC and ephemeral TURN settings", () => {
   assert.deepEqual(config.turnUrls, [
     "turn:turn.example:3478?transport=udp", "turns:turn.example:5349",
   ]);
+});
+
+test("loadConfig reads production secrets from bounded files without ambiguous fallback", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "webrtc-secrets-"));
+  const turnFile = path.join(directory, "turn");
+  const edgeFile = path.join(directory, "edge-turn.json");
+  const agentsFile = path.join(directory, "agents.json");
+  writeFileSync(turnFile, "0123456789abcdef0123456789abcdef\n", { mode: 0o600 });
+  writeFileSync(edgeFile, JSON.stringify([{
+    id: "minipc",
+    urls: ["turn:minipc.example:3478?transport=udp"],
+    sharedSecret: "abcdef0123456789abcdef0123456789",
+    realm: "webrtc.example",
+  }]), { mode: 0o600 });
+  writeFileSync(agentsFile, JSON.stringify([{
+    id: "minipc",
+    ownerPrincipal: "https://identity.example/realms/ananta|owner",
+    sharedSecret: "abcdef0123456789abcdef0123456789",
+  }]), { mode: 0o600 });
+
+  const config = loadConfig({
+    TURN_URLS: "turn:turn.example:3478?transport=udp",
+    TURN_SHARED_SECRET_FILE: turnFile,
+    EDGE_TURN_SERVERS_JSON_FILE: edgeFile,
+    MEDIA_EDGE_AGENTS_JSON_FILE: agentsFile,
+  });
+  assert.equal(config.turnSharedSecret, "0123456789abcdef0123456789abcdef");
+  assert.equal(config.edgeTurnServers[0].id, "minipc");
+  assert.equal(config.mediaAgents[0].id, "minipc");
+  assert.throws(() => loadConfig({
+    TURN_URLS: "turn:turn.example:3478",
+    TURN_SHARED_SECRET: "direct",
+    TURN_SHARED_SECRET_FILE: turnFile,
+  }), /cannot be configured together/);
+  assert.throws(() => loadConfig({
+    TURN_URLS: "turn:turn.example:3478",
+    TURN_SHARED_SECRET_FILE: path.join(directory, "missing"),
+  }), /cannot be read/);
 });
 
 test("loadConfig enables bounded HTTPS media-agent self service explicitly", () => {

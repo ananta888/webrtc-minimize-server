@@ -4,6 +4,7 @@ import {
   MIN_ROOM_PARTICIPANTS,
 } from "./room-limits.js";
 import net from "node:net";
+import { readFileSync, statSync } from "node:fs";
 
 const DEFAULTS = Object.freeze({
   host: "0.0.0.0",
@@ -76,6 +77,34 @@ const MEDIA_E2EE_MODES = new Set(["disabled", "preferred", "required"]);
 const OIDC_ALGORITHMS = Object.freeze(["RS256", "ES256", "RS384", "RS512"]);
 const EDGE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const PRINCIPAL_PATTERN = /^https?:\/\/[^\s|]+\|[^\s|]{1,255}$/;
+const MAX_SECRET_FILE_BYTES = 64 * 1024;
+
+function environmentOrFile(env, name) {
+  const direct = env[name];
+  const fileName = env[`${name}_FILE`];
+  if (direct !== undefined && direct !== "" && fileName !== undefined && fileName !== "") {
+    throw new Error(`${name} and ${name}_FILE cannot be configured together`);
+  }
+  if (fileName === undefined || fileName === "") return direct;
+  const path = String(fileName);
+  let stat;
+  try {
+    stat = statSync(path);
+  } catch {
+    throw new Error(`${name}_FILE cannot be read`);
+  }
+  if (!stat.isFile() || stat.size < 1 || stat.size > MAX_SECRET_FILE_BYTES) {
+    throw new Error(`${name}_FILE must be a non-empty regular file up to ${MAX_SECRET_FILE_BYTES} bytes`);
+  }
+  let value;
+  try {
+    value = readFileSync(path, "utf8").replace(/\r?\n$/, "");
+  } catch {
+    throw new Error(`${name}_FILE cannot be read`);
+  }
+  if (!value || value.includes("\0")) throw new Error(`${name}_FILE contains invalid data`);
+  return value;
+}
 
 function boundedInteger(value, fallback, { minimum, maximum, name }) {
   if (value === undefined || value === "") return fallback;
@@ -311,11 +340,11 @@ export function loadConfig(env = process.env) {
   if (turnUrls.some((url) => !/^turns?:/i.test(url))) {
     throw new Error("TURN_URLS entries must use turn: or turns:");
   }
-  const turnSharedSecret = String(env.TURN_SHARED_SECRET || DEFAULTS.turnSharedSecret);
+  const turnSharedSecret = String(environmentOrFile(env, "TURN_SHARED_SECRET") || DEFAULTS.turnSharedSecret);
   if ((turnUrls.length > 0) !== Boolean(turnSharedSecret)) {
     throw new Error("TURN_URLS and TURN_SHARED_SECRET must be configured together");
   }
-  const edgeTurnServers = parseEdgeTurnServers(env.EDGE_TURN_SERVERS_JSON);
+  const edgeTurnServers = parseEdgeTurnServers(environmentOrFile(env, "EDGE_TURN_SERVERS_JSON"));
   const peerEdgeFallbackMs = boundedInteger(env.PEER_EDGE_FALLBACK_MS, DEFAULTS.peerEdgeFallbackMs, {
     minimum: 1_000, maximum: 30_000, name: "PEER_EDGE_FALLBACK_MS",
   });
@@ -339,7 +368,7 @@ export function loadConfig(env = process.env) {
   if (mediaE2eeMode === "required" && !peerDataOverlayEnabled) {
     throw new Error("MEDIA_E2EE_MODE=required requires PEER_DATA_OVERLAY_ENABLED=true for key delivery");
   }
-  const mediaAgents = parseMediaAgents(env.MEDIA_EDGE_AGENTS_JSON);
+  const mediaAgents = parseMediaAgents(environmentOrFile(env, "MEDIA_EDGE_AGENTS_JSON"));
   const mediaAgentLeaseMs = boundedInteger(env.MEDIA_AGENT_LEASE_MS, DEFAULTS.mediaAgentLeaseMs, {
     minimum: 15_000, maximum: 120_000, name: "MEDIA_AGENT_LEASE_MS",
   });

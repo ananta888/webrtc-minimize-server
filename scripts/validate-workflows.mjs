@@ -33,7 +33,7 @@ for (const workflowName of workflowNames) {
   }
   for (const [jobName, job] of Object.entries(workflow.jobs)) {
     for (const step of job.steps || []) {
-      if (step.uses && !/^actions\/(?:checkout|setup-node)@[0-9a-f]{40}$/.test(step.uses)) {
+      if (step.uses && !/^actions\/(?:checkout|setup-node|upload-artifact)@[0-9a-f]{40}$/.test(step.uses)) {
         throw new Error(`${workflowName}: ${jobName} uses an unpinned or unapproved action: ${step.uses}`);
       }
     }

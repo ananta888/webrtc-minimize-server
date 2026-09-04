@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "environment": "production",
+  "controlPlane": {"placement":"Mini-PC behind Caddy","failureRadius":"single LAN host","broadcastIndependent":true},
+  "identity": {"placement":"existing Oracle host","transport":"HTTPS","separateFailureRadius":true},
+  "turn": {"placement":"Oracle and optional owner devices","credentials":"short-lived REST","tlsPreferred":true},
+  "broadcast": {
+    "enabledByDefault": false,
+    "gatewayPlacement":"dedicated private network near packager/origin",
+    "packagerPlacement":"explicitly consented owner device or isolated native host",
+    "originPlacement":"gateway-local initially; CDN adapter only after privacy and cost gate",
+    "moq":"disabled until runtime/browser/security verification"
+  },
+  "secrets": {
+    "source":"root-readable host files or orchestrator secret mount",
+    "supportedFileVariables":["TURN_SHARED_SECRET_FILE","EDGE_TURN_SERVERS_JSON_FILE","MEDIA_EDGE_AGENTS_JSON_FILE"],
+    "rotation":"replace mount atomically, recreate service, revoke old grants and verify readiness",
+    "forbiddenLocations":["git","container image","Angular bundle","logs","backups without encryption"]
+  },
+  "container": {"readOnlyRoot":true,"noNewPrivileges":true,"capabilities":"none","boundedPids":256,"boundedLogs":true},
+  "egressAllowlist":["configured OIDC issuer/JWKS","configured STUN/TURN","explicit WHIP redirect origins","package registries only during isolated build"],
+  "release": {"strategy":"immutable candidate image plus health-gated atomic recreate","automaticRollback":true,"contractCompatibility":"v1 additive and unknown-field fail-closed"},
+  "retention": {"workspaceVolumes":"operator backup policy","broadcastMedia":"none by default","metrics":"14d operational, 90d aggregate"}
+}

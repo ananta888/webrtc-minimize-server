@@ -35,6 +35,15 @@ jobs:
         run: npx playwright install --with-deps chromium firefox
       - name: Run todo, unit, integration and browser gates
         run: npm run check
+      - name: Generate production dependency SBOM
+        run: npm sbom --omit=dev --sbom-format cyclonedx > webrtc-minimize-server.cdx.json
+      - name: Upload SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: webrtc-minimize-server-sbom
+          path: webrtc-minimize-server.cdx.json
+          if-no-files-found: error
+          retention-days: 30
 
   docker:
     name: Docker build
@@ -49,7 +58,7 @@ jobs:
           docker compose config --quiet
           docker compose --profile local --env-file .env.local.example config --quiet
       - name: Build production image
-        run: docker build --tag webrtc-minimize-server:ci .
+        run: docker buildx build --build-arg SOURCE_REVISION=${{ github.sha }} --provenance=mode=max --sbom=true --load --tag webrtc-minimize-server:ci .
 
   media-agent:
     name: Blind media agent

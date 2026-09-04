@@ -66,7 +66,7 @@ services:
     volumes:
       - pair-workspaces:/app/data
     ports:
-      - "${PORT:-8080}:8080"
+      - "${WEBRTC_BIND_ADDRESS:-127.0.0.1}:${PORT:-8080}:8080"
 
   keycloak:
     profiles: ["local"]
