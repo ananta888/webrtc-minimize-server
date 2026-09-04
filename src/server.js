@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 
@@ -33,6 +35,8 @@ import { SessionTicketError, SessionTicketStore } from "./session-tickets.js";
 import { createMediaAgentIceServers } from "./media-agent-ice.js";
 import { createEdgeTurnCredentials, createTurnCredentials } from "./turn-credentials.js";
 import { MediaMtxExternalAuthError } from "./mediamtx-external-auth.js";
+import { BroadcastHlsProxyError } from "./broadcast-hls-proxy.js";
+import { BroadcastPlaybackSessionError } from "./broadcast-playback-session-store.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
@@ -295,6 +299,7 @@ function errorStatus(error) {
   if (error instanceof PairWorkspaceError) return error.status;
   if (error instanceof MediaAgentEnrollmentError || error instanceof MediaAgentInstallerError) return error.status;
   if (error instanceof MediaMtxExternalAuthError) return error.status;
+  if (error instanceof BroadcastHlsProxyError || error instanceof BroadcastPlaybackSessionError) return error.status;
   if (error instanceof AuthenticationError) return 401;
   if (error instanceof ProtocolError || error instanceof DeviceProofError) return 400;
   return 500;
@@ -313,6 +318,7 @@ function createHttpHandler(config, registry, services) {
     mediaAgentInstallerService,
     mediaAgentEvents,
     mediaMtxExternalAuthService,
+    broadcastHlsProxy,
   } = services;
   return async (request, response) => {
     try {
@@ -327,6 +333,80 @@ function createHttpHandler(config, registry, services) {
       }
       if (request.method === "GET" && url.pathname === "/config") {
         sendJson(response, 200, publicRuntimeConfig(config, services), securityHeaders(config));
+        return;
+      }
+      if (url.pathname === "/api/broadcast/playback-sessions") {
+        if (!broadcastHlsProxy) {
+          response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        if (request.method !== "POST") {
+          response.writeHead(405, { allow: "POST", "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        const origin = request.headers.origin || "";
+        if (url.search || origin !== config.publicOrigin
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        const input = await readJsonBody(request);
+        assertAllowedKeys(input, new Set(["resourceRef"]));
+        const session = await broadcastHlsProxy.createSession({
+          authorizationHeader: request.headers.authorization || "",
+          resourceRef: input.resourceRef,
+          origin,
+        });
+        sendJson(response, 201, {
+          playbackSessionId: session.playbackSessionId,
+          manifestUrl: session.manifestUrl,
+          expiresAt: session.expiresAt,
+        }, { "set-cookie": session.setCookie, ...securityHeaders(config) });
+        return;
+      }
+      const playbackSessionMatch = url.pathname.match(/^\/api\/broadcast\/playback-sessions\/(pbs_[A-Za-z0-9_-]{24,64})$/);
+      if (playbackSessionMatch) {
+        if (!broadcastHlsProxy) {
+          response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        if (request.method !== "DELETE") {
+          response.writeHead(405, { allow: "DELETE", "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        const expiredCookie = broadcastHlsProxy.closeSession({
+          sessionId: playbackSessionMatch[1],
+          cookieHeader: request.headers.cookie || "",
+          origin: request.headers.origin || "",
+        });
+        response.writeHead(204, { "cache-control": "no-store", "set-cookie": expiredCookie, ...securityHeaders(config) });
+        response.end();
+        return;
+      }
+      const broadcastMediaMatch = url.pathname.match(/^\/broadcast\/play\/(res_[A-Za-z0-9_-]{16,64})\/([^/]{1,128})$/);
+      if (broadcastMediaMatch) {
+        if (!broadcastHlsProxy) {
+          response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        const result = await broadcastHlsProxy.fetchMedia({
+          cookieHeader: request.headers.cookie || "",
+          method: request.method || "",
+          resourceRef: broadcastMediaMatch[1],
+          file: broadcastMediaMatch[2],
+          query: url.search,
+          origin: request.headers.origin || "",
+          range: request.headers.range || "",
+        });
+        response.writeHead(result.status, { ...result.headers, ...securityHeaders(config) });
+        if (!result.body || request.method === "HEAD") response.end();
+        else await pipeline(Readable.fromWeb(result.body), response);
         return;
       }
       if (url.pathname === "/internal/broadcast/mediamtx-auth") {
@@ -1387,6 +1467,7 @@ export function createAppServer(options = {}) {
     prune: () => mediaAgentEnrollmentStore?.prune(),
   };
   const mediaMtxExternalAuthService = options.mediaMtxExternalAuthService || null;
+  const broadcastHlsProxy = options.broadcastHlsProxy || null;
   if (config.broadcastGatewayAuthEnabled && !mediaMtxExternalAuthService) {
     throw new Error("BROADCAST_GATEWAY_AUTH_ENABLED requires a MediaMTX external auth service");
   }
@@ -1402,6 +1483,7 @@ export function createAppServer(options = {}) {
     mediaAgentInstallerService,
     mediaAgentEvents,
     mediaMtxExternalAuthService,
+    broadcastHlsProxy,
   };
   const server = http.createServer(createHttpHandler(config, registry, services));
   if (!options.workspaceStore && workspaceStore) server.on("close", () => workspaceStore.close());

@@ -50,6 +50,12 @@ gepinnte hls.js capability-gesteuert, begrenzt Stall-Recovery und räumt bei
 Stop, Navigation und Sichtbarkeitswechsel vollständig auf. Er bleibt bis zur
 privaten Delivery-Autorisierung vom öffentlichen Gateway getrennt.
 
+Die [private Broadcast-Auslieferung](docs/broadcast-private-delivery.md)
+tauscht Playback-Grants gegen pfadgebundene Secure-/HttpOnly-Cookies, prüft
+Manifest und jedes Medienobjekt erneut und proxyfiziert nur zu einer festen
+internen Gateway-Origin. Die Runtime-Aktivierung bleibt bis zur
+Program-Orchestrierung default-aus.
+
 Die Hauptnavigation enthält außerdem eine [raumgebundene Mesh-Analyse](docs/mesh-analysis.md). Ihr interaktiver SVG-Graph zeigt Browser, Trusted Relays und native Media-Agenten sowie lokal gemessene beziehungsweise klar als Peer-Angabe markierte Kantenraten. Ein ausgewählter Knoten schlüsselt Upload und Download nach Audio, Kamera/Video, Bildschirmfreigabe und DataChannel auf. Direkt darunter liegen Inventar, Installation, Widerruf, Mehrfachauswahl, Raum-Consent und aktueller Routenzustand der eigenen Media-Agenten; der allgemeine Einstellungsbereich dupliziert diese Bedienung nicht. Die Telemetrie ist flüchtig, nur bei sichtbar geöffneter Analyse angefordert und niemals Membership- oder Routing-Autorität.
 
 ## Lokal starten

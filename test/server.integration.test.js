@@ -15,6 +15,7 @@ import {
 } from "../src/media-agent-protocol.js";
 import { AuthenticationError } from "../src/oidc-verifier.js";
 import { MediaMtxExternalAuthError } from "../src/mediamtx-external-auth.js";
+import { BroadcastHlsProxyError } from "../src/broadcast-hls-proxy.js";
 
 async function startTestServer(overrides = {}, serverOptions = {}) {
   const config = {
@@ -270,6 +271,72 @@ test("internal MediaMTX callback is default-deny, IP-bound and content-free", as
   });
   assert.equal(denied.status, 401);
   assert.deepEqual(await denied.json(), { error: "inactive_broadcast_grant" });
+});
+
+test("private broadcast delivery exchanges a bearer for HttpOnly cookie and proxies only scoped media", async (context) => {
+  const calls = [];
+  const broadcastHlsProxy = {
+    async createSession(input) {
+      calls.push({ kind: "create", input });
+      if (input.authorizationHeader !== "Bearer playback-grant") {
+        throw new BroadcastHlsProxyError("broadcast_playback_not_found", 404);
+      }
+      return {
+        playbackSessionId: "pbs_aaaaaaaaaaaaaaaaaaaaaaaa",
+        manifestUrl: "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8",
+        expiresAt: Date.now() + 60_000,
+        setCookie: "__Secure-webrtc-broadcast-aaaaaaaaaaaa=pbs_aaaaaaaaaaaaaaaaaaaaaaaa; Path=/broadcast/play/res_aaaaaaaaaaaaaaaa/; Max-Age=60; Secure; HttpOnly; SameSite=Strict",
+      };
+    },
+    async fetchMedia(input) {
+      calls.push({ kind: "media", input });
+      return {
+        status: 200,
+        headers: { "content-type": "application/vnd.apple.mpegurl", "cache-control": "private, no-store" },
+        body: new Response("#EXTM3U\n").body,
+      };
+    },
+    closeSession(input) {
+      calls.push({ kind: "close", input });
+      return "__Secure-webrtc-broadcast-aaaaaaaaaaaa=; Path=/broadcast/play/res_aaaaaaaaaaaaaaaa/; Max-Age=0; Secure; HttpOnly; SameSite=Strict";
+    },
+  };
+  const app = await startTestServer({ publicOrigin: "https://webrtc.ananta.de" }, { broadcastHlsProxy });
+  context.after(() => app.close());
+
+  const opened = await fetch(`${app.httpUrl}/api/broadcast/playback-sessions`, {
+    method: "POST",
+    headers: {
+      authorization: "Bearer playback-grant", "content-type": "application/json",
+      origin: "https://webrtc.ananta.de",
+    },
+    body: JSON.stringify({ resourceRef: "res_aaaaaaaaaaaaaaaa" }),
+  });
+  assert.equal(opened.status, 201);
+  assert.match(opened.headers.get("set-cookie"), /HttpOnly; SameSite=Strict/);
+  const session = await opened.json();
+  assert.doesNotMatch(session.manifestUrl, /token|grant/i);
+  const cookie = opened.headers.get("set-cookie").split(";", 1)[0];
+  const manifest = await fetch(`${app.httpUrl}${session.manifestUrl}?_HLS_msn=3`, {
+    headers: { cookie, origin: "https://webrtc.ananta.de" },
+  });
+  assert.equal(manifest.status, 200);
+  assert.equal(await manifest.text(), "#EXTM3U\n");
+  assert.equal(manifest.headers.get("cache-control"), "private, no-store");
+
+  const closed = await fetch(`${app.httpUrl}/api/broadcast/playback-sessions/${session.playbackSessionId}`, {
+    method: "DELETE", headers: { cookie, origin: "https://webrtc.ananta.de" },
+  });
+  assert.equal(closed.status, 204);
+  assert.match(closed.headers.get("set-cookie"), /Max-Age=0/);
+  assert.equal(calls[1].input.query, "?_HLS_msn=3");
+  assert.equal(calls[2].input.cookieHeader, cookie);
+
+  assert.equal((await fetch(`${app.httpUrl}/api/broadcast/playback-sessions`, {
+    method: "POST",
+    headers: { authorization: "Bearer playback-grant", "content-type": "application/json", origin: "https://evil.test" },
+    body: JSON.stringify({ resourceRef: "res_aaaaaaaaaaaaaaaa" }),
+  })).status, 404);
 });
 
 test("two room peers receive membership and target-bound signals", async (context) => {

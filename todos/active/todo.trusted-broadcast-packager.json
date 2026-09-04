@@ -608,10 +608,10 @@
     {
       "id": "TBP-022",
       "title": "Private Manifest-, Segment- und Part-Auslieferung durchgängig autorisieren",
-      "status": "in_progress",
+      "status": "partial",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 1,
+      "progress_percent": 60,
       "depends_on": ["TBP-006", "TBP-007", "TBP-008", "TBP-018", "TBP-021"],
       "acceptance_criteria": [
         "Das ausgewählte Verfahren schützt Master-/Media-Playlists, Initialisierungssegmente, Segmente, Parts, Preload Hints, Untertitel und Keys konsistent; der Schutz endet nicht nach dem ersten Manifest.",
@@ -624,10 +624,10 @@
     {
       "id": "TBP-023",
       "title": "Origin-, CDN- und Standard-HLS-Skalierungsprofile implementieren",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 1,
       "depends_on": ["TBP-019", "TBP-021", "TBP-022"],
       "acceptance_criteria": [
         "Ein gemessenes Origin-LL-HLS-Profil definiert maximale gleichzeitige Viewer, Requests pro Sekunde, Egress, offene Blocking-Reloads, CPU/RAM und erwartete Latenz pro Hostklasse.",
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 18, "in_progress": 1, "partial": 7, "blocked": 0, "done": 14 },
+    "by_status": { "todo": 17, "in_progress": 1, "partial": 8, "blocked": 0, "done": 14 },
     "progress_percent_done": 35,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -963,9 +963,9 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 18,
+    "todo_remaining": 17,
     "in_progress": 1,
-    "partial": 7,
+    "partial": 8,
     "blocked": 0,
     "done": 14
   },
@@ -996,6 +996,7 @@
     "TBP-019 ist zu 55 Prozent umgesetzt. Das gepinnte MediaMTX-Profil authoriert H.264/AAC als LL-HLS v10 mit Blocking Reload, 200-ms-Parts, Zwei-Sekunden-Segmenten und einem auf sieben Segmente begrenzten In-Memory-Fenster; Keyframes sind im realen Gate auf dieselben zwei Sekunden ausgerichtet. Ein test-only RTSP/TCP-Overlay bindet nur Loopback und veraendert den produktiv weiterhin deaktivierten RTSP-Eingang nicht. Der reale Docker-/FFmpeg-Gate prueft verspaeteten Einstieg, abrufbare fMP4-Initialisierung und unabhaengige Parts, Publisher-Stop, Muxer-Cleanup, Neustart mit neuer Initialisierung und erneutes Cleanup. Recording und HLS-Verzeichnis bleiben aus. Offen sind explizite Discontinuity bei laufendem Source-Wechsel, gemessene End-to-glass-/A/V-/Rebuffer-Metriken, Netzwechsel sowie der 60-Minuten-Lauf mit Safari/iOS, Chromium, Firefox und Android. TBP-020 beginnt mit der davon unabhaengigen Codec- und Admission-Policy.",
     "TBP-020 ist zu 70 Prozent umgesetzt. Das geschlossene h264-aac-720p-v1-Pilotprofil definiert drei 360p/540p/720p-Renditions mit FPS, Bitraten, H.264 Main Level 3.1, yuv420p, AAC-LC, 48-kHz-Stereo und gemeinsamem Zwei-Sekunden-Keyframe-/Segmentraster. Eine reine Delivery-Policy trennt Browser-Single-WHIP, ausgehandeltes Browser-Simulcast, Gateway-Passthrough und Native-ABR und verhindert insbesondere erfundene HLS-ABR-Leitern aus Single-Layer- oder MediaMTX-Transcode-Annahmen. Der operatorseitige Capacity-Ledger reserviert CPU, RAM, Encoder-/GPU-Slots und Egress atomar, reduziert bei Knappheit high vor medium, lehnt unter low kontrolliert ab und bindet idempotente Leases an Admission, Programm und Epoche. Der reale FFmpeg-Gate erzeugt weiterhin alle drei H.264/AAC-fMP4-Varianten. Offen sind reale Browser-/Mobilwiedergabe, VMAF/SSIM oder begruendete Golden-Alternativen, Screen-Text, Lautheit/A/V-Sync und echter Hardware-/Thermal-Fallback. TBP-021 beginnt mit dem davon getrennten capability-gesteuerten Player.",
     "TBP-021 ist zu 75 Prozent umgesetzt. BroadcastHlsPlayer waehlt natives HLS oder die exakt gepinnte stabile hls.js-Version 1.7.2 anhand echter Capability-Checks und aktiviert weder MoQ noch WHEP implizit. Der sichtbare Component-Start ist die einzige Startaktion; Autoplay-Blockade, Mute, Lautstaerke, Auto-/manuelle hls.js-Rendition, Vollbild, Picture-in-Picture, Live-Abstand und Fehler sind sichtbar. Ein begrenzter Watchdog erkennt eingefrorene Zeit trotz aktivem Medium, springt zur Live-Position und erlaubt zwei Recoveries in 30 Sekunden. HTTPS-/localhost-Manifestpfade sind geschlossen und Query-/Credential-/Fragment-URLs fail-closed. Abort, Stop, Sichtbarkeitswechsel und Destroy entfernen Loader, Listener, Timer, Texttracks und Media-src. Offen sind die echte Endpoint-/Directory-Verdrahtung, Poster/Live-WebVTT und reale Desktop-/Mobil-Langzeitgates; deshalb wird die Komponente noch nicht oeffentlich gerendert. TBP-022 beginnt mit der durchgaengigen privaten Delivery-Autorisierung.",
+    "TBP-022 ist zu 60 Prozent umgesetzt. Ein fluechtiger serverseitiger Session-Store tauscht den kurzlebigen Playback-Bearer einmalig gegen eine zufaellige, resource-pfadgebundene Secure-/HttpOnly-/SameSite-Strict-Cookie-Session. Manifest, Initsegment, Part, Segment, WebVTT und Key werden bei jedem GET/HEAD erneut gegen den gespeicherten Grant, Aktion, Resource, Pfad, Ablauf und Widerruf geprueft; unberechtigte Varianten liefern einheitlich 404. Nur geschlossene LL-HLS- und MediaMTX-Session-Queries sind erlaubt. Ein fester Streaming-Proxy verweigert Redirects, fremde Ziele, unbekannte Content-Types, ungueltige Ranges und mehr als 24 MiB, entfernt Upstream-Auth und setzt private no-store/CORP/nosniff-Header. POST-/DELETE-Serverrouten und ein Angular-Exchange-Client sind implementiert und negativ getestet, die normale Runtime instanziiert sie aber mangels fertiger Program-Orchestrierung noch nicht. Offen sind reales Safari-/hls.js-Cookie-Playback, Caddy-Rate-Policy, Logout-/Program-Ende-Verdrahtung, Rotation und die getrennte Public-Policy. TBP-023 beginnt mit messbaren Origin-/CDN-Skalierungsprofilen.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }
