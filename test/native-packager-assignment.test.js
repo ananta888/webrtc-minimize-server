@@ -139,6 +139,43 @@ test("assignment status rejects stale fences and follows a closed lifecycle", ()
   assert.equal(assignments.activeForProgram(request().programId), null);
 });
 
+test("only the fenced output-ready status exposes an internal resource binding", () => {
+  const assignments = registry();
+  const admission = admitNativePackager(capability(), request(), NOW);
+  assignments.prepare(OWNER, PACKAGER, admission, {
+    leaseId: "lea_aaaaaaaaaaaaaaaa", fencingRevision: 9, expiresAt: NOW + 60_000,
+  }, PUBLISHER, NOW);
+  const status = (state, reasonCode) => ({
+    version: 1, type: "assignment-status", assignmentId: "asn_aaaaaaaaaaaaaaaa",
+    programEpoch: 7, fencingRevision: 9, state, reasonCode, observedAt: NOW + 1,
+  });
+  assignments.acknowledge(PACKAGER, status("ready", "CAPABILITY_READY"), NOW + 1);
+  assignments.acknowledge(PACKAGER, status("starting", "MEDIA_STARTING"), NOW + 1);
+  assert.throws(() => assignments.readyOutput(PACKAGER, status("running", "OUTPUT_READY"), NOW + 1), /stale/);
+  assignments.acknowledge(PACKAGER, status("running", "OUTPUT_READY"), NOW + 1);
+  assert.deepEqual(assignments.readyOutput(PACKAGER, status("running", "OUTPUT_READY"), NOW + 1), {
+    resourceRef: "res_aaaaaaaaaaaaaaaa", programId: "prg_aaaaaaaaaaaaaaaa",
+    packagerId: PACKAGER, fencingRevision: 9,
+  });
+});
+
+test("authenticated packager heartbeats renew only the current fenced assignment", () => {
+  const assignments = registry();
+  const admission = admitNativePackager(capability(), request(), NOW);
+  assignments.prepare(OWNER, PACKAGER, admission, {
+    leaseId: "lea_aaaaaaaaaaaaaaaa", fencingRevision: 9, expiresAt: NOW + 60_000,
+  }, PUBLISHER, NOW);
+  const renewed = assignments.renew(PACKAGER, NOW + 30_000);
+  assert.equal(renewed.snapshot.expiresAt, NOW + 90_000);
+  assert.deepEqual(renewed.command, {
+    version: 1, type: "assignment-renew", assignmentId: "asn_aaaaaaaaaaaaaaaa",
+    programEpoch: 7, fencingRevision: 9, expiresAt: NOW + 90_000,
+  });
+  assert.equal(renewed.resourceRef, "res_aaaaaaaaaaaaaaaa");
+  assert.throws(() => assignments.renew("invalid", NOW), /invalid_native_packager_assignment_renewal/);
+  assert.equal(assignments.renew(PACKAGER, NOW + 90_001), null);
+});
+
 test("offline, self-expanded admission, disconnect and lease expiry fail closed", () => {
   assert.throws(() => registry({ id: PACKAGER, online: false, capability: capability() })
     .admit(OWNER, PACKAGER, request(), NOW), /native_packager_offline/);

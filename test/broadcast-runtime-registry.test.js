@@ -360,3 +360,47 @@ test("native publisher preparation commits only after bounded admission and inst
     sourceIds: ["src_gggggggggggggggg"], requestedRenditions: 2, allowHardwareAcceleration: false,
   }, () => ({}), NOW), /already_started/);
 });
+
+test("native output becomes live only for the assigned fresh writer fence", () => {
+  const owner = identity("owner", "Ada");
+  const runtime = new BroadcastRuntimeRegistry({
+    grantAuthority: authority(), clock: () => NOW,
+    programIdFactory: () => "prg_hhhhhhhhhhhhhhhh",
+    policyIdFactory: () => "pol_hhhhhhhhhhhhhhhh",
+    resourceIdFactory: () => "res_hhhhhhhhhhhhhhhh",
+    leaseIdFactory: () => "lea_hhhhhhhhhhhhhhhh",
+  });
+  const member = {
+    principal: `${owner.issuer}|${owner.subject}`, roomId: "room-alpha", creator: true,
+    deviceFingerprint: "a".repeat(43),
+  };
+  const created = runtime.createProgram(owner, member, {
+    requestVersion: 1, roomId: member.roomId, title: "Native", visibility: "private",
+  }, NOW);
+  const packagerId = "pkr_hhhhhhhhhhhhhhhh";
+  const prepared = runtime.prepareNativePublisher(owner, member, created.control.programId, {
+    requestVersion: 1, trigger: "user-action", packagerId,
+    sourceIds: ["src_hhhhhhhhhhhhhhhh"], requestedRenditions: 2, allowHardwareAcceleration: false,
+  }, (request) => ({
+    admissionVersion: 1, agentId: packagerId, roomId: request.roomId,
+    programId: request.programId, programEpoch: request.programEpoch, resourceRef: request.resourceRef,
+    videoEncoder: "libx264", softwareFallback: "libx264", audioEncoder: "aac",
+    profileId: "h264-aac-720p-v1", renditions: [], maximumQueueFrames: 60,
+    keyframeIntervalSeconds: 2,
+  }), NOW);
+  assert.throws(() => runtime.markNativeOutputReady(
+    "res_hhhhhhhhhhhhhhhh", packagerId, prepared.lease.fencingRevision + 1, NOW + 1,
+  ), /stale_broadcast_packager_output/);
+  const live = runtime.markNativeOutputReady(
+    "res_hhhhhhhhhhhhhhhh", packagerId, prepared.lease.fencingRevision, NOW + 1,
+  );
+  assert.equal(live.availability, "live");
+  const renewed = runtime.renewNativeOutput(
+    "res_hhhhhhhhhhhhhhhh", packagerId, prepared.lease.fencingRevision, NOW + 90_000, NOW + 30_000,
+  );
+  assert.equal(renewed.availability, "live");
+  assert.throws(() => runtime.renewNativeOutput(
+    "res_hhhhhhhhhhhhhhhh", "pkr_xxxxxxxxxxxxxxxx", prepared.lease.fencingRevision,
+    NOW + 120_000, NOW + 60_000,
+  ), /stale_broadcast_lease_renewal/);
+});

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,7 +21,12 @@ type nativeMediaSession struct {
 	pc         *webrtc.PeerConnection
 	signalMu   sync.Mutex
 	pending    []webrtc.ICECandidateInit
-	closed     bool
+	closed     atomic.Bool
+	pipelineMu sync.Mutex
+	videoCodec webrtc.RTPCodecParameters
+	audioCodec webrtc.RTPCodecParameters
+	pipeline   *transcodePipeline
+	startTimer *time.Timer
 	bytes      atomic.Uint64
 	packets    atomic.Uint64
 }
@@ -56,6 +62,10 @@ func newNativeMediaSession(client *client, assignment *packagerAssignment) (*nat
 		}
 	})
 	pc.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		if err := media.registerTrack(track); err != nil {
+			_ = client.transitionAssignment(assignment, "failed", "UNSUPPORTED_INGRESS_CODEC")
+			return
+		}
 		go media.readTrack(track)
 	})
 	return media, nil
@@ -73,10 +83,10 @@ func (media *nativeMediaSession) signalMessage(kind string, payload any) map[str
 func (media *nativeMediaSession) handle(message serverMessage) error {
 	media.signalMu.Lock()
 	defer media.signalMu.Unlock()
-	if media.closed || message.AssignmentID != media.assignment.AssignmentID ||
+	if media.closed.Load() || message.AssignmentID != media.assignment.AssignmentID ||
 		message.PublisherPeerID != media.assignment.PublisherPeerID ||
 		message.ProgramEpoch != media.assignment.ProgramEpoch ||
-		message.FencingRevision != media.assignment.FencingRevision || time.Now().UnixMilli() >= media.assignment.ExpiresAt {
+		message.FencingRevision != media.assignment.FencingRevision || time.Now().UnixMilli() >= media.assignment.expiresAt.Load() {
 		return errors.New("stale assignment media signal")
 	}
 	if message.Description != nil {
@@ -138,7 +148,6 @@ func (media *nativeMediaSession) readTrack(track *webrtc.TrackRemote) {
 	if track.Kind() != webrtc.RTPCodecTypeAudio && track.Kind() != webrtc.RTPCodecTypeVideo {
 		return
 	}
-	_ = media.client.transitionAssignment(media.assignment, "running", "MEDIA_RECEIVING")
 	for {
 		packet, _, err := track.ReadRTP()
 		if err != nil {
@@ -146,18 +155,98 @@ func (media *nativeMediaSession) readTrack(track *webrtc.TrackRemote) {
 		}
 		media.packets.Add(1)
 		media.bytes.Add(uint64(packet.MarshalSize()))
+		media.pipelineMu.Lock()
+		pipeline := media.pipeline
+		media.pipelineMu.Unlock()
+		if pipeline != nil {
+			if err = pipeline.write(track.Kind(), packet); err != nil {
+				_ = media.client.transitionAssignment(media.assignment, "failed", "TRANSCODE_INPUT_FAILED")
+				return
+			}
+		}
 	}
+}
+
+func (media *nativeMediaSession) registerTrack(track *webrtc.TrackRemote) error {
+	codec := track.Codec()
+	if track.Kind() != webrtc.RTPCodecTypeVideo && track.Kind() != webrtc.RTPCodecTypeAudio {
+		return errors.New("unsupported native media kind")
+	}
+	if track.Kind() == webrtc.RTPCodecTypeVideo && !strings.EqualFold(codec.MimeType, webrtc.MimeTypeVP8) {
+		return errors.New("unsupported native video codec")
+	}
+	if track.Kind() == webrtc.RTPCodecTypeAudio && !strings.EqualFold(codec.MimeType, webrtc.MimeTypeOpus) {
+		return errors.New("unsupported native audio codec")
+	}
+	media.pipelineMu.Lock()
+	defer media.pipelineMu.Unlock()
+	if media.closed.Load() {
+		return errors.New("native media closed")
+	}
+	if track.Kind() == webrtc.RTPCodecTypeVideo {
+		if media.videoCodec.MimeType != "" {
+			return errors.New("duplicate native video track")
+		}
+		media.videoCodec = codec
+	} else {
+		if media.audioCodec.MimeType != "" {
+			return errors.New("duplicate native audio track")
+		}
+		media.audioCodec = codec
+	}
+	if media.startTimer == nil {
+		media.startTimer = time.AfterFunc(750*time.Millisecond, media.startTranscode)
+	}
+	return nil
+}
+
+func (media *nativeMediaSession) startTranscode() {
+	media.pipelineMu.Lock()
+	if media.closed.Load() || media.pipeline != nil {
+		media.pipelineMu.Unlock()
+		return
+	}
+	videoCodec := media.videoCodec
+	audioCodec := media.audioCodec
+	media.pipelineMu.Unlock()
+	pipeline, err := startTranscodePipeline(media.client.cfg, media.assignment, videoCodec, audioCodec, func() {
+		_ = media.client.transitionAssignment(media.assignment, "running", "OUTPUT_READY")
+	}, func() {
+		_ = media.client.transitionAssignment(media.assignment, "failed", "TRANSCODE_FAILED")
+	})
+	if err != nil {
+		_ = media.client.transitionAssignment(media.assignment, "failed", "TRANSCODE_START_FAILED")
+		return
+	}
+	media.pipelineMu.Lock()
+	if media.closed.Load() {
+		media.pipelineMu.Unlock()
+		pipeline.close()
+		return
+	}
+	media.pipeline = pipeline
+	media.pipelineMu.Unlock()
 }
 
 func (media *nativeMediaSession) close() {
 	media.signalMu.Lock()
-	defer media.signalMu.Unlock()
-	if media.closed {
+	if media.closed.Swap(true) {
+		media.signalMu.Unlock()
 		return
 	}
-	media.closed = true
 	media.pending = nil
 	_ = media.pc.Close()
+	media.signalMu.Unlock()
+	media.pipelineMu.Lock()
+	if media.startTimer != nil {
+		media.startTimer.Stop()
+	}
+	pipeline := media.pipeline
+	media.pipeline = nil
+	media.pipelineMu.Unlock()
+	if pipeline != nil {
+		pipeline.close()
+	}
 }
 
 func (c *client) handleAssignmentSignal(message serverMessage) error {

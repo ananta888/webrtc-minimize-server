@@ -35,12 +35,25 @@ RUN CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="-s -w" -
 RUN CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o /out/native-broadcast-packager-macos-arm64 .
 RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/native-broadcast-packager-windows-amd64.exe .
 
+WORKDIR /broadcast-origin
+COPY broadcast-hls-origin/go.mod ./
+COPY broadcast-hls-origin ./
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/broadcast-hls-origin .
+
+FROM scratch AS broadcast-hls-origin-runtime
+COPY --from=media-agent-artifacts /out/broadcast-hls-origin /broadcast-hls-origin
+USER 10001:10001
+ENV BROADCAST_ORIGIN_ROOT=/var/lib/ananta-broadcast-output \
+    BROADCAST_ORIGIN_ADDRESS=:8081
+EXPOSE 8081
+ENTRYPOINT ["/broadcast-hls-origin"]
+
 FROM alpine:3.22 AS native-packager-runtime
 RUN apk add --no-cache ca-certificates ffmpeg \
     && addgroup -g 10001 -S packager \
     && adduser -u 10001 -S -D -H -G packager packager \
-    && mkdir -p /var/lib/ananta-native-packager \
-    && chown packager:packager /var/lib/ananta-native-packager \
+    && mkdir -p /var/lib/ananta-native-packager /var/lib/ananta-broadcast-output \
+    && chown packager:packager /var/lib/ananta-native-packager /var/lib/ananta-broadcast-output \
     && ffmpeg -hide_banner -version | grep -Eq '^ffmpeg version (n)?([6-9]|[1-9][0-9])\.'
 COPY --from=media-agent-artifacts /out/native-broadcast-packager-linux-amd64 /usr/local/bin/native-broadcast-packager
 USER packager

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"sync/atomic"
 	"time"
 )
 
@@ -42,7 +43,7 @@ type packagerAssignment struct {
 	FencingRevision int
 	ResourceRef     string
 	Profile         assignmentProfile
-	ExpiresAt       int64
+	expiresAt       atomic.Int64
 	State           string
 	Media           *nativeMediaSession
 }
@@ -73,12 +74,14 @@ func validAssignmentPrepare(message serverMessage, now time.Time) bool {
 }
 
 func assignmentFrom(message serverMessage) *packagerAssignment {
-	return &packagerAssignment{
+	assignment := &packagerAssignment{
 		AssignmentID: message.AssignmentID, RoomID: message.RoomID, ProgramID: message.ProgramID,
 		PublisherPeerID: message.PublisherPeerID,
 		ProgramEpoch:    message.ProgramEpoch, LeaseID: message.LeaseID, FencingRevision: message.FencingRevision,
-		ResourceRef: message.ResourceRef, Profile: message.Profile, ExpiresAt: message.ExpiresAt, State: "ready",
+		ResourceRef: message.ResourceRef, Profile: message.Profile, State: "ready",
 	}
+	assignment.expiresAt.Store(message.ExpiresAt)
+	return assignment
 }
 
 func sameAssignment(left *packagerAssignment, right serverMessage) bool {
@@ -91,7 +94,7 @@ func sameAssignment(left *packagerAssignment, right serverMessage) bool {
 		left.ProgramID == right.ProgramID && left.ProgramEpoch == right.ProgramEpoch &&
 		left.PublisherPeerID == right.PublisherPeerID &&
 		left.LeaseID == right.LeaseID && left.FencingRevision == right.FencingRevision &&
-		left.ResourceRef == right.ResourceRef && left.ExpiresAt == right.ExpiresAt && bytes.Equal(leftJSON, rightJSON)
+		left.ResourceRef == right.ResourceRef && left.expiresAt.Load() == right.ExpiresAt && bytes.Equal(leftJSON, rightJSON)
 }
 
 func allowedServerFields(messageType string) map[string]bool {
@@ -111,6 +114,10 @@ func allowedServerFields(messageType string) map[string]bool {
 		"assignment-stop": {
 			"version": true, "type": true, "assignmentId": true, "programEpoch": true,
 			"fencingRevision": true, "reasonCode": true,
+		},
+		"assignment-renew": {
+			"version": true, "type": true, "assignmentId": true, "programEpoch": true,
+			"fencingRevision": true, "expiresAt": true,
 		},
 		"assignment-peer-signal": {
 			"version": true, "type": true, "assignmentId": true, "publisherPeerId": true,
@@ -166,6 +173,23 @@ func (c *client) assignmentStatus(assignment *packagerAssignment, state, reasonC
 	}
 }
 
+func (c *client) renewAssignment(message serverMessage, now time.Time) error {
+	if !assignmentIDPattern.MatchString(message.AssignmentID) || message.ProgramEpoch < 1 || message.FencingRevision < 1 ||
+		message.ExpiresAt <= now.UnixMilli() || message.ExpiresAt > now.Add(2*time.Minute).UnixMilli() {
+		return errors.New("invalid assignment renewal")
+	}
+	c.assignmentMu.Lock()
+	defer c.assignmentMu.Unlock()
+	assignment := c.assignment
+	if assignment == nil || assignment.AssignmentID != message.AssignmentID ||
+		assignment.ProgramEpoch != message.ProgramEpoch || assignment.FencingRevision != message.FencingRevision ||
+		assignment.expiresAt.Load() <= now.UnixMilli() {
+		return errors.New("stale assignment renewal")
+	}
+	assignment.expiresAt.Store(message.ExpiresAt)
+	return nil
+}
+
 func (c *client) prepareAssignment(message serverMessage, now time.Time) error {
 	if !validAssignmentPrepare(message, now) {
 		return errors.New("invalid assignment prepare")
@@ -216,7 +240,7 @@ func (c *client) stopAssignment(message serverMessage) error {
 func (c *client) expireAssignment(now time.Time) error {
 	c.assignmentMu.Lock()
 	assignment := c.assignment
-	if assignment == nil || assignment.ExpiresAt > now.UnixMilli() {
+	if assignment == nil || assignment.expiresAt.Load() > now.UnixMilli() {
 		c.assignmentMu.Unlock()
 		return nil
 	}

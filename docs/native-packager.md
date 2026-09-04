@@ -77,7 +77,12 @@ frischen Capability. Assignment, Programm und Writer-Lease sind an
 Daemon akzeptiert nur den geschlossenen H.264/AAC-Profilvertrag, lehnt zweite
 oder alte Assignments ab und quittiert `ready`, `starting`, `running`,
 `degraded`, `draining`, `stopped` oder `failed` über eine separate
-Statusnachricht. Disconnect und Lease-Ablauf schließen die Pion-
+Statusnachricht. `running` mit `OUTPUT_READY` wird erst gesendet, nachdem das
+Master-Manifest und alle vereinbarten Rendition-Manifeste tatsächlich sichtbar
+sind. Während einer aktiven Verbindung verlängert nur ein frisch
+authentisierter Agent-Heartbeat die 60-Sekunden-Assignment-Lease. Das
+geschlossene `assignment-renew` übernimmt weder neue Quellen noch eine neue
+Fence. Disconnect und Lease-Ablauf schließen die Pion-
 `RTCPeerConnection` lokal; die Control Plane sendet zusätzlich einen
 epoch-/fencinggebundenen Stop und verwirft danach die Zuordnung.
 
@@ -89,8 +94,8 @@ Answer und Trickle-ICE laufen als getrennte, größenbegrenzte
 WSS; sie tragen keine OIDC-Tokens, Grants oder neue Autorität und werden nicht
 geloggt. Beide Seiten prüfen Assignment, Publisher-Peer, Program-Epoche und
 Fencing-Revision. Der Agent akzeptiert ausschließlich ein Offer, begrenzt die
-ICE-Warteschlange auf 128 Einträge und meldet `running` erst nach tatsächlich
-empfangenem Audio-/Video-RTP. Ein echter Pion-Integrationstest überträgt dafür
+ICE-Warteschlange auf 128 Einträge und meldet den Medieneingang getrennt vom
+fertigen Output. Ein echter Pion-Integrationstest überträgt dafür
 VP8-RTP vom simulierten Browser bis zum nativen Receiver. Der Agent öffnet
 weiterhin keinen Listener: Host-ICE, optionale öffentliche STUN-URLs und die
 vom Browser erhaltenen kurzlebigen TURN-Credentials bestimmen den Pfad.
@@ -134,17 +139,38 @@ Playlists, H.264/AAC, unabhängige Segmente und sauberes Ende:
 RUN_LIVE_NATIVE_PACKAGER=1 npm run test:native-packager
 ```
 
+Der produktive Agent nimmt ausschließlich VP8/Opus-RTP über lokale, vererbte
+Pipes an. Pro Assignment startet er FFmpeg ohne Shell und ohne Netzwerkziel,
+erzeugt eine admission-kontrollierte H.264-Main/AAC-Leiter mit gemeinsamen
+Zwei-Sekunden-GOPs, maximal sieben fMP4-Segmenten und bounded RTP-Queues und
+löscht die `res_`-Ausgabe bei Stop. Ein separater statischer
+`broadcast-hls-origin` liest dasselbe Volume ausschließlich read-only, verlangt
+die bereits von der Node-Control-Plane geprüfte Bearer-Grenze und akzeptiert
+nur geschlossene Manifest-, Init-, Segment- und WebVTT-Dateinamen. Beide
+Container besitzen keine Host-Ports; nur der Node-Proxy ist mit dem internen
+Origin-Netz verbunden. Nach einem Prozessneustart entfernt der Agent verwaiste
+`res_`-Verzeichnisse, ohne Identität oder andere Dateien anzufassen.
+
+Der zusätzliche reale Gate benötigt FFmpeg 6+:
+
+```bash
+RUN_LIVE_NATIVE_TRANSCODE=1 go test ./native-broadcast-packager -run TestLiveVP8ToH264AACPipeline -v
+```
+
+Er speist einen viersekündigen VP8-RTP-Strom in die echte Pipeline, prüft zwei
+H.264/AAC-Renditions und das ABR-Master-Manifest, verlangt den
+`OUTPUT_READY`-Callback und bestätigt das Löschen des flüchtigen Outputs.
+
 ## Ehrlich offene Punkte
 
-Der Daemon authentisiert sich, prüft seine lokale Encoderbasis, synchronisiert
-Raumconsent und besitzt nun den gefenceten WebRTC-RTP-Eingang. `ready` bedeutet
-weiterhin nur, dass dieser Eingang vorbereitet ist; erst `running` belegt ein
-empfangenes RTP-Paket. Noch nicht implementiert ist die Übergabe der empfangenen
-RTP-Tracks an die bereits getestete FFmpeg-Transcode-/ABR-Pipeline sowie der
-kurzlebig autorisierte Publish vom Agenten zum Gateway. Deshalb erzeugt der
-aktuelle Agent noch keine LL-HLS-Ausgabe. Ebenso offen bleiben Temperaturmessung, ein realer
+Der Daemon besitzt nun den gefenceten WebRTC-RTP-Eingang, die echte
+FFmpeg-Transcode-/ABR-Pipeline und den intern autorisierten HLS-Origin. Diese
+native Ausgabe ist absichtlich normales, kurzes fMP4-HLS und wird nicht als
+Apple-LL-HLS ausgegeben; der vorhandene MediaMTX-WHIP-Pfad bleibt der getrennte
+LL-HLS-Adapter. Offen bleiben Temperaturmessung, ein realer
 Hardwarefehler-Gate, Publisher-signierte Release-Artefakte, Keychain/TPM,
-Update-Rollback sowie echte Windows-/macOS-Installationsgates. Deshalb bleibt
+Update-Rollback, mehrere Stunden Soak sowie echte Windows-/macOS- und mobile
+Player-Gates. Deshalb bleibt
 TBP-016 `in_progress`; die UI zeigt nur online/gesund/raumconsentierte eigene
 Packager, verlangt eine explizite Auswahl und fällt nicht stillschweigend von
 Browser auf Native zurück.

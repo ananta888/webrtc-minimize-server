@@ -43,8 +43,15 @@ if (!dockerfile.includes("USER node") || !dockerfile.includes("org.opencontainer
 for (const ignored of [".env", ".git", "node_modules", "dist"]) {
   if (!dockerignore.split(/\r?\n/).includes(ignored)) throw new Error(`Docker context must ignore ${ignored}`);
 }
-for (const required of ["git status --porcelain", "previous-image", "--no-build --wait", "rollback", "production-smoke-gate.mjs"]) {
+for (const required of [
+  "git status --porcelain", "previous-image", "--no-build --wait", "rollback",
+  "production-smoke-gate.mjs", "ensure-broadcast-signing-key.mjs",
+  "native-broadcast-deployment-enabled.mjs", "--profile native-packager",
+]) {
   if (!deploy.includes(required)) throw new Error(`safe deploy gate missing: ${required}`);
+}
+if (!compose.includes("/run/secrets/broadcast-signing-private-key.pem:ro")) {
+  throw new Error("broadcast signing key must be mounted read-only from deployment state");
 }
 for (const required of ["/healthz", "/readyz", "/config", "auth?.mode", "mediaE2ee?.mode", "content-security-policy"]) {
   if (!smoke.includes(required)) throw new Error(`external smoke assertion missing: ${required}`);

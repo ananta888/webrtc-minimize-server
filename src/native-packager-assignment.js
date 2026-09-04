@@ -9,6 +9,7 @@ const REASON = /^[A-Z][A-Z0-9_]{1,63}$/;
 const PEER = /^[a-f0-9]{16}$/;
 const ACTIVE_STATES = new Set(["preparing", "ready", "starting", "running", "degraded", "draining"]);
 const REPORTED_STATES = new Set(["ready", "starting", "running", "degraded", "draining", "stopped", "failed"]);
+const ASSIGNMENT_LEASE_MS = 60_000;
 
 export class NativePackagerAssignmentError extends Error {
   constructor(code, status = 400) {
@@ -169,6 +170,49 @@ export class NativePackagerAssignmentRegistry {
     record.updatedAt = now;
     if (!ACTIVE_STATES.has(record.state)) this.#releaseIndexes(record);
     return snapshot(record);
+  }
+
+  readyOutput(packagerId, value, now = Date.now()) {
+    if (!PACKAGER.test(packagerId || "") || !ASSIGNMENT.test(value?.assignmentId || "")
+      || value?.state !== "running" || value?.reasonCode !== "OUTPUT_READY"
+      || !Number.isSafeInteger(value?.programEpoch) || !Number.isSafeInteger(value?.fencingRevision)) {
+      fail("invalid_native_packager_output_status");
+    }
+    const record = this.#assignments.get(value.assignmentId);
+    if (!record || record.packagerId !== packagerId || record.state !== "running"
+      || record.reasonCode !== "OUTPUT_READY" || record.expiresAt <= now
+      || record.programEpoch !== value.programEpoch
+      || record.fencingRevision !== value.fencingRevision) {
+      fail("stale_native_packager_output_status", 409);
+    }
+    return Object.freeze({
+      resourceRef: record.resourceRef,
+      programId: record.programId,
+      packagerId: record.packagerId,
+      fencingRevision: record.fencingRevision,
+    });
+  }
+
+  renew(packagerId, now = Date.now()) {
+    if (!PACKAGER.test(packagerId || "") || !Number.isSafeInteger(now)) {
+      fail("invalid_native_packager_assignment_renewal");
+    }
+    const record = this.#byPackager.get(packagerId);
+    if (!record || !ACTIVE_STATES.has(record.state) || record.expiresAt <= now) return null;
+    record.expiresAt = now + ASSIGNMENT_LEASE_MS;
+    record.updatedAt = now;
+    return Object.freeze({
+      snapshot: snapshot(record),
+      resourceRef: record.resourceRef,
+      command: Object.freeze({
+        version: 1,
+        type: "assignment-renew",
+        assignmentId: record.assignmentId,
+        programEpoch: record.programEpoch,
+        fencingRevision: record.fencingRevision,
+        expiresAt: record.expiresAt,
+      }),
+    });
   }
 
   stop(ownerPrincipal, packagerId, assignmentId, reasonCode = "OWNER_STOP", now = Date.now()) {

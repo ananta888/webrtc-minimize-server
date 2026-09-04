@@ -41,10 +41,10 @@ var enrollmentTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 var ffmpegVersionPattern = regexp.MustCompile(`(?m)^ffmpeg version\s+(?:n)?([0-9]+)\.([0-9]+)`)
 
 type config struct {
-	controlURL, packagerID, identityFile, enrollmentToken, ffmpegPath string
-	energyClass, uploadClass                                          string
-	maximumRenditions, maximumPixelsPerSecond                         int
-	stunURLs                                                          []string
+	controlURL, packagerID, identityFile, enrollmentToken, ffmpegPath, outputRoot string
+	energyClass, uploadClass                                                      string
+	maximumRenditions, maximumPixelsPerSecond                                     int
+	stunURLs                                                                      []string
 }
 
 func loadConfig(getenv func(string) string) (config, error) {
@@ -61,6 +61,10 @@ func loadConfig(getenv func(string) string) (config, error) {
 	identityFile := strings.TrimSpace(getenv("NATIVE_PACKAGER_IDENTITY_FILE"))
 	if identityFile == "" || strings.ContainsAny(identityFile, "\x00\r\n") {
 		return config{}, errors.New("NATIVE_PACKAGER_IDENTITY_FILE is required")
+	}
+	outputRoot := defaultValue(getenv("NATIVE_PACKAGER_OUTPUT_ROOT"), "/tmp/ananta-native-packager")
+	if !filepath.IsAbs(outputRoot) || filepath.Clean(outputRoot) == string(filepath.Separator) || strings.ContainsAny(outputRoot, "\x00\r\n") {
+		return config{}, errors.New("NATIVE_PACKAGER_OUTPUT_ROOT must be absolute")
 	}
 	token := strings.TrimSpace(getenv("NATIVE_PACKAGER_ENROLLMENT_TOKEN"))
 	if token != "" && !enrollmentTokenPattern.MatchString(token) {
@@ -88,7 +92,7 @@ func loadConfig(getenv func(string) string) (config, error) {
 	}
 	return config{
 		controlURL: rawURL, packagerID: id, identityFile: identityFile, enrollmentToken: token,
-		ffmpegPath: defaultValue(getenv("NATIVE_PACKAGER_FFMPEG"), "ffmpeg"), energyClass: energy,
+		ffmpegPath: defaultValue(getenv("NATIVE_PACKAGER_FFMPEG"), "ffmpeg"), outputRoot: filepath.Clean(outputRoot), energyClass: energy,
 		uploadClass: upload, maximumRenditions: renditions, maximumPixelsPerSecond: pixels, stunURLs: stunURLs,
 	}, nil
 }
@@ -348,8 +352,26 @@ func hardwareClass() string {
 
 func createWebRTCAPI() (*webrtc.API, error) {
 	mediaEngine := &webrtc.MediaEngine{}
-	if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
-		return nil, fmt.Errorf("register WebRTC codecs: %w", err)
+	if err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2,
+			SDPFmtpLine: "minptime=10;useinbandfec=1",
+		},
+		PayloadType: 111,
+	}, webrtc.RTPCodecTypeAudio); err != nil {
+		return nil, fmt.Errorf("register WebRTC audio codec: %w", err)
+	}
+	if err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeVP8, ClockRate: 90000,
+			RTCPFeedback: []webrtc.RTCPFeedback{
+				{Type: "goog-remb"}, {Type: "ccm", Parameter: "fir"},
+				{Type: "nack"}, {Type: "nack", Parameter: "pli"},
+			},
+		},
+		PayloadType: 96,
+	}, webrtc.RTPCodecTypeVideo); err != nil {
+		return nil, fmt.Errorf("register WebRTC video codec: %w", err)
 	}
 	registry := &interceptor.Registry{}
 	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, registry); err != nil {
@@ -540,6 +562,10 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 			if err = c.stopAssignment(message); err != nil {
 				return err
 			}
+		case "assignment-renew":
+			if err = c.renewAssignment(message, time.Now()); err != nil {
+				return err
+			}
 		case "assignment-peer-signal":
 			if err = c.handleAssignmentSignal(message); err != nil {
 				return err
@@ -584,6 +610,9 @@ func main() {
 	cancel()
 	if err != nil {
 		log.Fatal(err)
+	}
+	if err = cleanOutputRoot(cfg.outputRoot); err != nil {
+		log.Fatal("native packager output unavailable")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

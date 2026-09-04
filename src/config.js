@@ -62,6 +62,7 @@ const DEFAULTS = Object.freeze({
   nativePackagerArtifactDir: "native-packager-downloads",
   nativePackagerEnrollmentTtlMs: 10 * 60 * 1000,
   nativePackagerMaxPerPrincipal: 3,
+  broadcastNativeOutputEnabled: false,
   broadcastWhipEndpoint: "",
   broadcastWhipResourceBase: "",
   broadcastWhipProfile: "rfc9725",
@@ -428,6 +429,11 @@ export function loadConfig(env = process.env) {
   const broadcastWhipEndpoint = httpsWhipEndpoint(
     env.BROADCAST_WHIP_ENDPOINT || DEFAULTS.broadcastWhipEndpoint,
   );
+  const broadcastNativeOutputEnabled = booleanValue(
+    env.BROADCAST_NATIVE_OUTPUT_ENABLED,
+    DEFAULTS.broadcastNativeOutputEnabled,
+    "BROADCAST_NATIVE_OUTPUT_ENABLED",
+  );
   const broadcastWhipResourceBase = httpsWhipEndpoint(
     env.BROADCAST_WHIP_RESOURCE_BASE || DEFAULTS.broadcastWhipResourceBase,
   );
@@ -627,6 +633,7 @@ export function loadConfig(env = process.env) {
       DEFAULTS.nativePackagerMaxPerPrincipal,
       { minimum: 1, maximum: 5, name: "NATIVE_PACKAGER_MAX_PER_PRINCIPAL" },
     ),
+    broadcastNativeOutputEnabled,
     broadcastWhipEndpoint,
     broadcastWhipResourceBase,
     broadcastWhipProfile,

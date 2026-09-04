@@ -55,6 +55,7 @@ services:
       PAIR_WORKSPACE_ENABLED: ${PAIR_WORKSPACE_ENABLED:-true}
       PAIR_WORKSPACE_DB: ${PAIR_WORKSPACE_DB:-/app/data/pair-workspaces.sqlite}
       ACTIVE_SPEAKER_LIMIT: ${ACTIVE_SPEAKER_LIMIT:-5}
+      BROADCAST_NATIVE_OUTPUT_ENABLED: ${BROADCAST_NATIVE_OUTPUT_ENABLED:-false}
       BROADCAST_WHIP_ENDPOINT: ${BROADCAST_WHIP_ENDPOINT:-}
       BROADCAST_WHIP_RESOURCE_BASE: ${BROADCAST_WHIP_RESOURCE_BASE:-}
       BROADCAST_WHIP_PROFILE: ${BROADCAST_WHIP_PROFILE:-rfc9725}
@@ -74,6 +75,9 @@ services:
       BROADCAST_SIGNING_KEY_ID: ${BROADCAST_SIGNING_KEY_ID:-broadcast-control-1}
     volumes:
       - pair-workspaces:/app/data
+    networks:
+      default:
+      broadcast-origin:
     ports:
       - "${WEBRTC_BIND_ADDRESS:-127.0.0.1}:${PORT:-8080}:8080"
 
@@ -88,6 +92,7 @@ services:
       NATIVE_PACKAGER_CONTROL_URL: ${NATIVE_PACKAGER_CONTROL_URL:-wss://webrtc.ananta.de/native-packager}
       NATIVE_PACKAGER_ID: ${NATIVE_PACKAGER_ID:-}
       NATIVE_PACKAGER_IDENTITY_FILE: /var/lib/ananta-native-packager/identity.pem
+      NATIVE_PACKAGER_OUTPUT_ROOT: /var/lib/ananta-broadcast-output
       NATIVE_PACKAGER_STUN_URLS: ${NATIVE_PACKAGER_STUN_URLS:-}
       NATIVE_PACKAGER_LABEL: ${NATIVE_PACKAGER_LABEL:-Mini-PC Broadcast-Packager}
       NATIVE_PACKAGER_PLATFORM: linux
@@ -97,12 +102,16 @@ services:
       NATIVE_PACKAGER_MAX_PIXELS_PER_SECOND: ${NATIVE_PACKAGER_MAX_PIXELS_PER_SECOND:-27648000}
     volumes:
       - native-packager-state:/var/lib/ananta-native-packager
+      - native-broadcast-output:/var/lib/ananta-broadcast-output
+    networks:
+      default:
+      broadcast-origin:
     read_only: true
     cap_drop: ["ALL"]
     security_opt:
       - no-new-privileges:true
     tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=32m,uid=10001,gid=10001
+      - /tmp:rw,noexec,nosuid,nodev,size=128m,uid=10001,gid=10001
     pids_limit: 256
     deploy:
       resources:
@@ -116,6 +125,47 @@ services:
         max-size: 10m
         max-file: "3"
     stop_grace_period: 20s
+
+  broadcast-hls-origin:
+    profiles: ["native-packager"]
+    build:
+      context: .
+      target: broadcast-hls-origin-runtime
+    image: ${BROADCAST_HLS_ORIGIN_IMAGE:-webrtc-minimize-server-broadcast-hls-origin:local}
+    restart: unless-stopped
+    depends_on:
+      native-packager:
+        condition: service_started
+    environment:
+      BROADCAST_ORIGIN_ROOT: /var/lib/ananta-broadcast-output
+      BROADCAST_ORIGIN_ADDRESS: :8081
+    volumes:
+      - native-broadcast-output:/var/lib/ananta-broadcast-output:ro
+    networks:
+      broadcast-origin:
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD", "/broadcast-hls-origin", "healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 3s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+          pids: 64
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+    stop_grace_period: 10s
 
   keycloak:
     profiles: ["local"]
@@ -171,3 +221,8 @@ services:
 volumes:
   pair-workspaces:
   native-packager-state:
+  native-broadcast-output:
+
+networks:
+  broadcast-origin:
+    internal: true

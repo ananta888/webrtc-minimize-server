@@ -181,7 +181,11 @@ function publicRuntimeConfig(config, services = {}) {
     nativePackagers: {
       selfService: config.nativePackagerSelfServiceEnabled,
       configured: Boolean(services.nativePackagers?.configured),
-      publicationEnabled: Boolean(config.nativePackagerSelfServiceEnabled && services.broadcastRuntime),
+      publicationEnabled: Boolean(
+        config.nativePackagerSelfServiceEnabled
+        && config.broadcastNativeOutputEnabled
+        && services.broadcastRuntime,
+      ),
       endpoint: config.nativePackagerSelfServiceEnabled ? "/native-packager" : "",
       targets: services.nativePackagerInstallerService?.availableTargets() || [],
     },
@@ -1997,10 +2001,28 @@ function configureSignaling(
         }
         if (message.type === "heartbeat") {
           nativePackagers.heartbeat(socket, message);
+          const renewal = nativePackagerAssignments.renew(connection.id);
+          if (renewal) {
+            broadcastRuntime?.renewNativeOutput(
+              renewal.resourceRef,
+              renewal.snapshot.packagerId,
+              renewal.snapshot.fencingRevision,
+              renewal.snapshot.expiresAt,
+            );
+            if (!safeSend(socket, renewal.command)) {
+              throw new NativePackagerAssignmentError("native_packager_renewal_delivery_failed", 503);
+            }
+          }
           return;
         }
         if (message.type === "assignment-status") {
           nativePackagerAssignments.acknowledge(connection.id, message);
+          if (message.state === "running" && message.reasonCode === "OUTPUT_READY") {
+            const output = nativePackagerAssignments.readyOutput(connection.id, message);
+            broadcastRuntime.markNativeOutputReady(
+              output.resourceRef, output.packagerId, output.fencingRevision,
+            );
+          }
           return;
         }
         if (message.type === "assignment-signal") {
@@ -2141,13 +2163,16 @@ export function createAppServer(options = {}) {
     prune: () => mediaAgentEnrollmentStore?.prune(),
   };
   let broadcastGrantAuthority = options.broadcastGrantAuthority || null;
-  if (config.broadcastWhipEndpoint && !broadcastGrantAuthority && !options.broadcastRuntime) {
+  if ((config.broadcastWhipEndpoint || config.broadcastNativeOutputEnabled)
+    && !broadcastGrantAuthority && !options.broadcastRuntime) {
     if (config.authMode !== "required" || !config.publicOrigin
       || new URL(config.publicOrigin).protocol !== "https:"
-      || !config.broadcastGatewayAuthEnabled || !config.broadcastGatewayOrigin
-      || !config.broadcastSigningPrivateKey || !config.broadcastWhipResourceBase) {
+      || !config.broadcastGatewayOrigin || !config.broadcastSigningPrivateKey
+      || (config.broadcastWhipEndpoint && (
+        !config.broadcastGatewayAuthEnabled || !config.broadcastWhipResourceBase
+      ))) {
       throw new Error(
-        "BROADCAST_WHIP_ENDPOINT requires required OIDC, HTTPS PUBLIC_ORIGIN, gateway auth/origin, resource base and a signing private key",
+        "broadcast output requires required OIDC, HTTPS PUBLIC_ORIGIN, gateway origin and a signing private key; WHIP also requires gateway auth and a resource base",
       );
     }
     let privateKey;

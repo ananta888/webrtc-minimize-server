@@ -37,6 +37,40 @@ export {
   validateBroadcastProgramMachine,
 } from "./broadcast-program-model.js";
 
+export function renewBroadcastWriterLeases(stateValue, {
+  holderRef, fencingRevision, expiresAt,
+}, now = Date.now()) {
+  const state = validateBroadcastProgramMachine(stateValue);
+  if (!/^pkr_[A-Za-z0-9_-]{16,64}$/.test(holderRef || "")
+    || !Number.isSafeInteger(fencingRevision) || fencingRevision < 1
+    || !Number.isSafeInteger(expiresAt) || expiresAt <= now || expiresAt > now + 120_000
+    || new Set(["stopping", "stopped", "failed"]).has(state.program?.state)) {
+    fail("invalid_broadcast_lease_renewal");
+  }
+  const packager = activeWriter(state, "packager-writer");
+  if (!packager || packager.holderRef !== holderRef
+    || packager.fencingRevision !== fencingRevision || packager.expiresAt <= now) {
+    fail("stale_broadcast_lease_renewal");
+  }
+  const writerLeases = state.writerLeases.map((current) => {
+    if (current.status !== "active") return current;
+    let renewed;
+    try {
+      renewed = validateBroadcastContract({
+        ...current,
+        revision: current.revision + 1,
+        renewedAt: now,
+        expiresAt,
+      }, contractContext(state.scope, state.epochs.broadcast, true), now);
+    } catch (error) {
+      if (error instanceof BroadcastContractError) fail(error.code);
+      throw error;
+    }
+    return renewed;
+  });
+  return validateBroadcastProgramMachine({ ...state, writerLeases });
+}
+
 function assertScope(state, command) {
   for (const field of ["tenantId", "roomId", "programId"]) {
     if (state.scope[field] !== command[field]) fail("broadcast_command_scope_mismatch");

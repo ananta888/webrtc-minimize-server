@@ -94,3 +94,37 @@ func TestAssignmentExpiresLocallyAndClosesMedia(t *testing.T) {
 		t.Fatalf("expired assignment remained active: %#v", status)
 	}
 }
+
+func TestAssignmentRenewalExtendsOnlyTheCurrentFence(t *testing.T) {
+	now := time.Now()
+	message := assignmentMessage(now)
+	assignment := assignmentFrom(message)
+	packager := &client{assignment: assignment}
+	renewal := serverMessage{
+		Version: 1, Type: "assignment-renew", AssignmentID: message.AssignmentID,
+		ProgramEpoch: message.ProgramEpoch, FencingRevision: message.FencingRevision,
+		ExpiresAt: now.Add(90 * time.Second).UnixMilli(),
+	}
+	if err := packager.renewAssignment(renewal, now); err != nil {
+		t.Fatal(err)
+	}
+	if assignment.expiresAt.Load() != renewal.ExpiresAt {
+		t.Fatal("assignment expiry was not renewed")
+	}
+	stale := renewal
+	stale.FencingRevision--
+	if err := packager.renewAssignment(stale, now); err == nil {
+		t.Fatal("stale assignment fence was renewed")
+	}
+	raw, err := json.Marshal(map[string]any{
+		"version": renewal.Version, "type": renewal.Type, "assignmentId": renewal.AssignmentID,
+		"programEpoch": renewal.ProgramEpoch, "fencingRevision": renewal.FencingRevision,
+		"expiresAt": renewal.ExpiresAt,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = decodeServerMessage(raw); err != nil {
+		t.Fatalf("closed renewal message rejected: %v", err)
+	}
+}

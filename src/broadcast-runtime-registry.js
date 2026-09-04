@@ -15,6 +15,7 @@ import { validateBroadcastContract } from "./broadcast-contracts.js";
 import {
   applyBroadcastProgramCommand,
   initializeBroadcastProgramMachine,
+  renewBroadcastWriterLeases,
 } from "./broadcast-program-machine.js";
 import { validateBroadcastProgramMachine } from "./broadcast-program-model.js";
 
@@ -761,6 +762,64 @@ export class BroadcastRuntimeRegistry {
     machine = applyBroadcastProgramCommand(machine, command(machine, "advance", {
       toState: "live",
     }), now).state;
+    return entry(this.#synchronizeRecord(key, record, machine, now));
+  }
+
+  markNativeOutputReady(resourceRef, packagerId, fencingRevision, now = this.#clock()) {
+    if (!RESOURCE.test(resourceRef || "") || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(packagerId || "")
+      || !Number.isSafeInteger(fencingRevision) || fencingRevision < 1) unavailable();
+    const found = [...this.#records.entries()].find(([, record]) => record.resourceRef === resourceRef);
+    if (!found) unavailable();
+    const [key, record] = found;
+    let machine = record.snapshot.machine;
+    if (machine.program.state === "live") return entry(record);
+    if (machine.program.state !== "preparing") fail("broadcast_program_not_preparing", 409);
+    const packagerLease = machine.writerLeases.find(({ role }) => role === "packager-writer");
+    if (!packagerLease || packagerLease.holderRef !== packagerId
+      || packagerLease.fencingRevision !== fencingRevision || packagerLease.expiresAt <= now) {
+      fail("stale_broadcast_packager_output", 409);
+    }
+    machine = applyBroadcastProgramCommand(machine, command(machine, "advance", {
+      toState: "awaiting_consent",
+    }), now).state;
+    const gatewayLease = {
+      contractVersion: 1,
+      type: "lease",
+      tenantId: machine.scope.tenantId,
+      holderRef: `pkr_${crypto.createHash("sha256").update(`origin\0${resourceRef}`).digest("base64url").slice(0, 24)}`,
+      roomId: machine.scope.roomId,
+      programId: machine.scope.programId,
+      leaseId: `lea_${crypto.randomBytes(18).toString("base64url")}`,
+      revision: 1,
+      programEpoch: machine.epochs.broadcast,
+      role: "gateway-writer",
+      status: "active",
+      fencingRevision: machine.epochs.lease + 1,
+      acquiredAt: now,
+      renewedAt: now,
+      expiresAt: Math.min(packagerLease.expiresAt, now + 60_000),
+    };
+    machine = applyBroadcastProgramCommand(machine, command(machine, "handoff", {
+      expectedLeaseEpoch: machine.epochs.lease,
+      lease: gatewayLease,
+    }), now).state;
+    machine = applyBroadcastProgramCommand(machine, command(machine, "advance", {
+      toState: "publishing",
+    }), now).state;
+    machine = applyBroadcastProgramCommand(machine, command(machine, "advance", {
+      toState: "live",
+    }), now).state;
+    return entry(this.#synchronizeRecord(key, record, machine, now));
+  }
+
+  renewNativeOutput(resourceRef, packagerId, fencingRevision, expiresAt, now = this.#clock()) {
+    if (!RESOURCE.test(resourceRef || "")) unavailable();
+    const found = [...this.#records.entries()].find(([, record]) => record.resourceRef === resourceRef);
+    if (!found) unavailable();
+    const [key, record] = found;
+    const machine = renewBroadcastWriterLeases(record.snapshot.machine, {
+      holderRef: packagerId, fencingRevision, expiresAt,
+    }, now);
     return entry(this.#synchronizeRecord(key, record, machine, now));
   }
 

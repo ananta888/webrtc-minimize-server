@@ -514,7 +514,7 @@
       "status": "in_progress",
       "priority": "P1",
       "risk": "critical",
-      "progress_percent": 90,
+      "progress_percent": 95,
       "depends_on": ["TBP-004", "TBP-005", "TBP-006", "TBP-013", "TBP-014", "TBP-015"],
       "acceptance_criteria": [
         "Der native Agent ist eine getrennte, freiwillige Rolle mit signiertem/prüfbarem Build, eindeutiger Geräteidentität, konto-/tenantgebundener Registrierung und pro Raum ausdrücklich aktivierter Packager-Capability.",
@@ -547,7 +547,7 @@
       "status": "partial",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 75,
+      "progress_percent": 85,
       "depends_on": ["TBP-006", "TBP-007", "TBP-008", "TBP-017"],
       "acceptance_criteria": [
         "MediaMTX-Control-API und Metrics sind nicht öffentlich erreichbar, benötigen intern Auth/Netzwerkpolicy und akzeptieren nur den minimalen orchestrierenden Dienst; Browser sprechen ausschließlich freigegebene Media-/Playback-Endpunkte an.",
@@ -563,7 +563,7 @@
       "status": "partial",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 55,
+      "progress_percent": 65,
       "depends_on": ["TBP-011", "TBP-017", "TBP-018"],
       "acceptance_criteria": [
         "LL-HLS-Konfiguration definiert Segment-/Part-Dauer, Keyframe-Abstand, Playlistfenster, Blocking Reload, Part Hold Back, Timeouts und maximale In-Memory-Dauer auf Basis gemessener Playerkompatibilität.",
@@ -579,7 +579,7 @@
       "status": "partial",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 70,
+      "progress_percent": 80,
       "depends_on": ["TBP-004", "TBP-016", "TBP-017", "TBP-019"],
       "acceptance_criteria": [
         "Mindestens ein nachweislich kompatibles Pilotprofil und eine abgestufte Ziel-Rendition-Leiter definieren Codec, Level/Profile, Auflösung, FPS, Bitrate, GOP/Keyframes, Audioformat und Kanalzahl.",
@@ -820,7 +820,7 @@
       "status": "partial",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 70,
+      "progress_percent": 78,
       "depends_on": ["TBP-006", "TBP-007", "TBP-008", "TBP-016", "TBP-017", "TBP-019", "TBP-023"],
       "acceptance_criteria": [
         "Pro Program existiert genau ein gefenceter aktiver Packager-Writer; Lease-TTL, Heartbeat, Quorum-/Healthsignal, Standby, Grace Period und Takeover-Reihenfolge sind deterministisch.",
@@ -836,7 +836,7 @@
       "status": "partial",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 75,
+      "progress_percent": 82,
       "depends_on": ["TBP-017", "TBP-018", "TBP-022", "TBP-033", "TBP-034", "TBP-035"],
       "acceptance_criteria": [
         "Eine Deployment-ADR wählt Host/Region für Control Plane, Gateway, Packager, Origin und optionale Provider anhand Upload, Latenz, CPU/GPU, Kosten, Datenschutz und Ausfallradius.",
@@ -1017,6 +1017,7 @@
     "TBP-040 ist zu 70 Prozent umgesetzt. Ein konsolidiertes Produktionsarchitektur-Dokument zeigt Plane-, Sequenz-, Trust-/Key- und Failover-Datenfluesse und verweist auf die versionierten Port-, Codec-, Player- und Caption-Grenzen. Nutzerhilfe erklaert Own Source, Trusted Program, Raum-SFrame, Sichtbarkeit, Consent, Untertitel, Datenverbrauch, Latenz, Stop und aktuelle Einschraenkungen. Ein Lifecycle-/Security-Runbook deckt Provisionierung, Health, Alarme, Quoten/Kosten, Rotation, Incident, Providerausfall, Takeover, Purge, Rollback und Ausserbetriebnahme ab. Das maschinenlesbare Privacy-/Security-Review haelt Datenklassen, Nicht-Retention, Backupgrenzen, SBOM, Leakage, Dependency-Audit mit null bekannten Production-Vulnerabilities und Produktionslizenzen fest. Eine validierte vierstufige Rollout-Policy bindet disabled, internal, private-selected und public an reale Gates und einen fuenfteiligen Kill-Switch; Produktion bleibt fail-closed auf disabled und publicReady false. Offen sind die realen Geraete-/WAN-/Provider-/Mehrstunden-/Incident-Gates und deshalb auch interner, privater und oeffentlicher Rollout; der Task bleibt ehrlich partial.",
     "TBP-018, TBP-022, TBP-029 und TBP-031 wurden am 2026-09-04 gemeinsam weitergefuehrt. Die regulaere Serverinstanz erzeugt bei vollstaendiger expliziter Konfiguration nun BroadcastGrantAuthority, BroadcastRuntimeRegistry, MediaMTX-External-Auth, private Playback-Sessions und HLS-Proxy; ohne WHIP-Endpunkt bleiben alle neuen APIs und der Angular-Start default-deny. Public/Mine, Program-Create, gerätegebundene Publisher-/Playback-Einmal-Challenges, dynamische Resource-URLs, Visibility und Stop sind als geschlossene OIDC-HTTP-Grenzen verdrahtet. Der raumgebundene Angular-Workflow preautorisiert die exakte Programrevision vor jedem Capture-Fork, startet nur nach Preview plus sichtbarer Trust-Bestaetigung, zeigt alle Lifecycle-Zustaende, kann einen laufenden Start abbrechen und versucht WHIP-Cleanup sowie serverseitigen Revoke unabhaengig. Signaling-Abgang stoppt nur Programme, die an denselben attestierten Publisher-Browser und Raum gebunden sind. Directory/Playback verwenden reale Projections und P-256-Nachweise ohne Room-Membership. Lokal bestanden fokussierte Angular-, Runtime- und Serverintegrationstests sowie Produktions-/Entwicklungsbuild. Offen bleiben der isolierte reale Gateway-/Caddy-Pfad, operatorseitiger Stream-Kill, Visibility-Rekonfiguration, Refresh/Handoff, physische Browser-/Mobil-/Accessibility- und Langzeitgates; die oeffentliche Produktionsruntime bleibt deshalb deaktiviert.",
     "TBP-016 wurde am 2026-09-04 auf 90 Prozent weitergefuehrt. Zusaetzlich zum epochgefenceten, backpressure-begrenzten NativePackagerSupervisor existiert ein strikt getrennter Go-Agent mit eigener P-256-Identitaet, WSS-Challenge-Authentisierung, FFmpeg-/Encoder-Probe und kurzlebiger geschlossener Capability. Konto-/Tenantbindung stammt aus der Registrierung; Raumconsent wird nur als Schnittmenge mit einer aktiven Membership desselben OIDC-Kontoinhabers wirksam. Der Assignment-Pfad prueft sichtbaren user-action, aktuelle Owner-Membership, exakte Browser-Geraetebindung, Raumconsent, Capability und Rendition-Budgets vor einem packager-writer-Lease. Browser und Agent handeln danach eine eigene DTLS-SRTP-Verbindung ueber assignment-, Peer-, Programmepoch- und fencinggebundene SDP-/ICE-Frames aus; der Agent akzeptiert nur ein Offer, begrenzt ICE auf 128 Eintraege und meldet running erst nach einem empfangenen RTP-Paket. Ein echter Pion-Integrationstest uebertraegt VP8-RTP bis zum Agenten. Ablauf, Stop und Control-Disconnect schliessen die PeerConnection lokal; die Control Plane sendet beim Lease-Ablauf zusaetzlich einen gefenceten Stop. Angular bietet ausschliesslich online/gesund/raumconsentierte eigene Packager zur expliziten Auswahl an und benutzt die kurzlebigen Session-ICE-Server; Native wird nie automatisch gewaehlt. Das Produktionsimage baut SHA-256-gebundene Artefakte fuer Linux amd64/arm64, macOS amd64/arm64 und Windows amd64; Installer setzen optionale STUN-Konfiguration, entfernen Einmaltickets, aendern keine Firewall und richten getrennte Benutzer-Autostarts ein. Eine zusaetzliche lokale Operator-Provisionierung registriert einen vom Agenten signierten Public-Key-Nachweis dauerhaft ueber dieselbe Registrierungsdomaene, ohne Nutzerpasswort, langlebiges OIDC-Token oder Private-Key-Export. Ein unprivilegiertes, read-only Compose-Profil mit FFmpeg, Ressourcenlimits, persistentem Identitaetsvolume und Restart-Policy deckt dauerhaft betriebene Linux-amd64-Rechner ab; konkrete Raumfreigaben bleiben weiterhin fluechtige explizite Nutzeraktionen. Dieser Pfad ist auf minipc.ananta.de real provisioniert: Kontobindung wurde aus dem aktiven eigenen Agenten edge-64ff7cec4a50104e uebernommen, der Container authentisierte sich vor und nach einem Neustart, der Private Key blieb mit Modus 0600 im Agent-Volume und es existiert keine eingehende Portbindung. Der physische Medien-/Gateway-Pfad ist damit noch nicht bewiesen. Offen bleiben die Uebergabe des empfangenen RTP an die FFmpeg-Transcode-/ABR-Pipeline, kurzlebiger Gateway-Publish, Temperatur-/Hardwarefehler-Gates, TPM/Keychain, Publisher-Signaturen und echte Windows-/macOS-Gates; deshalb bleibt TBP-016 in_progress und Broadcast produktiv deaktiviert.",
+    "TBP-016, TBP-018, TBP-019, TBP-020, TBP-035 und TBP-036 wurden am 2026-09-04 weitergefuehrt. Der native Go-Agent uebergibt den assignmentgebundenen VP8-/Opus-RTP-Eingang nun ohne Shell oder Netzwerkziel an eine echte FFmpeg-6+-Pipeline, begrenzt Audio-/Videoqueues vor der Allokation und erzeugt eine admission-kontrollierte H.264-Main/AAC-fMP4-ABR-Leiter mit gemeinsamem Zwei-Sekunden-GOP und sieben Segmenten. Erst ein wirklich vorhandenes Master- plus Rendition-Manifest erzeugt OUTPUT_READY; nur die aktuelle Packager-ID und Fencing-Revision darf das Program live setzen. Authentisierte Agent-Heartbeats erneuern Assignment sowie Packager-/Origin-Leases ohne neue Quellen oder Autoritaet. Ein eigener read-only Origin-Container bedient ueber ein internes Netz und den bestehenden Playback-Grant-Proxy nur geschlossene res_-Manifest-/Init-/Segment-/WebVTT-Pfade, besitzt keinen Hostport, folgt keinen Symlinks und erbt keine Capture- oder Room-Rechte. Startup und Stop loeschen ausschliesslich fluechtige res_-Ausgaben. Der reale FFmpeg-Gate wandelte vier Sekunden VP8 in zwei H.264/AAC-Renditions um, beobachtete OUTPUT_READY ohne Queue-Drops und bestaetigte Cleanup. Diese native Ausgabe ist bewusst kurzes fMP4-HLS und kein behauptetes Apple-LL-HLS; MediaMTX bleibt der getrennte WHIP/LL-HLS-Adapter. Offen bleiben insbesondere Temperatur-/Hardwarefehler, Release-Signaturen/TPM, echte mobile und Desktop-OS-Playergates, Mehrstunden-Soak, CDN/Provider, produktives Multi-Packager-Takeover und externer Playback-Smoke; daher bleiben die Tasks partial beziehungsweise TBP-016 in_progress und das neue BROADCAST_NATIVE_OUTPUT_ENABLED default false.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }

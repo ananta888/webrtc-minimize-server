@@ -11,6 +11,8 @@ compose_files="-f compose.yaml -f infra/reverse-proxy/compose.caddy-network.yaml
 
 cd "$project_dir"
 mkdir -p "$state_dir"
+node scripts/ensure-broadcast-signing-key.mjs "$state_dir/secrets/broadcast-signing-private-key.pem"
+native_broadcast=$(node scripts/native-broadcast-deployment-enabled.mjs)
 
 smoke() {
   attempts=0
@@ -53,6 +55,10 @@ case "$action" in
     fi
     revision=$(git rev-parse --verify HEAD)
     candidate="webrtc-minimize-server:${revision}"
+    if [ "$native_broadcast" = "enabled" ]; then
+      docker compose $compose_files --profile native-packager build native-packager broadcast-hls-origin
+      docker compose $compose_files --profile native-packager up -d --wait native-packager broadcast-hls-origin
+    fi
     current_container=$(docker compose $compose_files ps -q webrtc 2>/dev/null || true)
     if [ -n "$current_container" ]; then
       docker inspect --format '{{.Image}}' "$current_container" > "$previous_file"
