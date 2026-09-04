@@ -850,10 +850,10 @@
     {
       "id": "TBP-037",
       "title": "Umfassende Contract-, Domain-, Security- und Negativtests automatisieren",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["TBP-005", "TBP-006", "TBP-007", "TBP-008", "TBP-011", "TBP-018", "TBP-022", "TBP-033"],
       "acceptance_criteria": [
         "Tests decken alle Schemas, State-Transitions, Idempotency, Lease-Fencing, Grants, Visibility, Consent, Capability-Negotiation, Adapter und Cleanup mit positiven und negativen Fixtures ab.",
@@ -954,20 +954,20 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 4, "in_progress": 0, "partial": 21, "blocked": 0, "done": 15 },
-    "progress_percent_done": 37.5,
+    "by_status": { "todo": 3, "in_progress": 0, "partial": 21, "blocked": 0, "done": 16 },
+    "progress_percent_done": 40,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
-    "critical_path": { "total": 36, "done": 14, "remaining": 22 },
+    "critical_path": { "total": 36, "done": 15, "remaining": 21 },
     "milestones": { "total": 10, "todo": 3, "in_progress": 4, "blocked": 0, "done": 3 }
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 4,
+    "todo_remaining": 3,
     "in_progress": 0,
     "partial": 21,
     "blocked": 0,
-    "done": 15
+    "done": 16
   },
   "summary_notes": [
     "Der Track wurde am 2026-09-03 nach Abschluss des Blind-Media-Agent-Tracks angenommen. TBP-001 inventarisiert zuerst den verifizierten Ist-Zustand; vor dieser Bestandsaufnahme beginnt kein Broadcast-Medienpfad.",
@@ -1011,6 +1011,7 @@
     "TBP-034 ist zu 65 Prozent umgesetzt. Ein inhaltsfreies BroadcastMetricRegistry definiert 18 geschlossene Metrikfamilien fuer Program-State/Transition, WHIP, Ingest/Egress, Frames/Keyframes/Drops, Encoderzeit, Segmente/Parts, Viewerklassen, Start/End-to-glass/Rebuffer/A-V-Sync, Caption-Delay, CPU/RAM/Disk, Quoten, Failover und Error Budget. Pro Metrik sind ausschliesslich feste Enum-Labels erlaubt; Histogramme behalten nur Count, Summe und feste Buckets, die Gesamtzahl der Serien und Purge sind begrenzt. Synthetische Token-, Caption-, Room-, SDP/ICE- und IP-Canaries werden als Label abgewiesen. Der neue /readyz-Pfad trennt Control Plane, Trusted Packager, Gateway, Origin/CDN und optionales MoQ; optionale Broadcast-/MoQ-Ausfaelle machen das Meet nicht ungesund. Ein versioniertes Operator-Dashboard beschreibt Panels, Sampling, privaten Export, 14-/90-Tage-Retention und zehn Alertcodes mit vorhandenen Runbooks. Offen bleiben echte Instrumentierung der Program-Orchestrierung, geschuetzter Collector/Dashboard-Import, Alarmzustellung/Zugriffsaudit und reale SLO-/Lastmessungen; deshalb bleibt der Task partial und runtimeVerified false.",
     "TBP-035 ist zu 70 Prozent umgesetzt. Ein geschlossener BroadcastFailoverCoordinator ergaenzt je Programm und Rolle genau einen kurzlebigen Writer, monotone Fencing-Revisionen, gesunde Mehrheitsquorum-Heartbeats, feste Grace-/Recovery-Zeiten und eine stabile Prioritaets-/Ref-Reihenfolge. Freiwillige Standbys bleiben access none; nur ein frischer approved- oder preauthorized-Consent erlaubt die Promotion und erst dann Quellen-/Decrypt- beziehungsweise Gateway-Zugriff. Packager-, Browser-, Gateway-, Host-, Netzwerk- und Providerfehler werden getrennt klassifiziert; eine sichere Uebernahme fordert Discontinuity plus Player-Restart, waehrend Quellenverlust, fehlender autorisierter Standby oder Deadline einen sichtbaren Stop ausloest. Der streng validierte Recovery-Snapshot enthaelt nur Scope, Fences, Pseudonyme, Zeiten, Fehlerklasse und eine auf 256 Eintraege begrenzte Outbox, nie Medien, Keys oder Transcripts. Ein deterministischer Chaos-Test beendet Packager und Gateway, belegt alte-Fence-Ablehnung, genau einen Nachfolger je Rolle und Rueckkehr im Zeitbudget. Offen bleiben verteilter Lease-Store, produktive Orchestrierungsverdrahtung sowie reale Prozess-/Gateway-/Host-Kills und gemessene Player-Unterbrechung; deshalb bleibt der Task partial und Broadcast deaktiviert.",
     "TBP-036 ist zu 75 Prozent umgesetzt. ADR 0003 legt Mini-PC/Caddy fuer die Control Plane, getrenntes Oracle-OIDC/TURN und private Gateway-/Packager-/Origin-Netze fest; Broadcast und MoQ bleiben default-aus. Eine versionierte Default-deny-Portmatrix oeffnet Node 8080, WHIP/HLS und Gateway-Admin nie oeffentlich und bindet TURN/MoQ-Ports an aktive Capabilities. Das Produktions-Compose-Profil entfernt Hostports und nutzt read-only Root, tmpfs, null Capabilities, no-new-privileges, PID-/CPU-/RAM-/Log-Limits und Readiness. TURN-, Edge-TURN- und statische Agent-Secrets koennen aus begrenzten Dateien gelesen werden; direkte plus dateibasierte Werte scheitern fail-closed. CI erzeugt SBOM und Build-Provenance. Der Release-Runner baut Git-SHA-Images, merkt den vorherigen Digest, prueft Docker-Readiness sowie extern HTTPS, Health, Config, OIDC/SFrame, CSP und Angular und rollt bei Fehler automatisch zurueck. Offen bleiben erzwungene Host-Egress-Allowlist, externer Keycloak-/TURN-/Playback-/MoQ-Smoke mit Produktions-Testidentitaet sowie ein real provozierter Rollback unter Last; deshalb bleibt der Task partial.",
+    "TBP-037 ist abgeschlossen. Eine versionierte Coverage-Matrix bindet positive und negative Suites fuer alle Schemas, Transitions, Idempotenz/Fencing, Grants/Scopes/Replay, Visibility/Origin/Rollen, Consent/Keys, Capabilities/Codecs/Adapter, Oversize/Rate-Limit/Unknown-Message/Disconnect, Browser-No-Capture, Leakage und externe Infrastruktur an existierende Dateien. Der Browser-Gate prueft Broadcast-Panel, gespeicherte Praeferenzen, Refresh, Viewer-Deep-Link, Join und Peer-Signale ohne implizites Capture vor dem sichtbaren Klick. Feste synthetische Token-, Secret-, Private-Key-, Room-, SDP-, ICE- und Caption-Canaries werden streamend und budgetiert in Angular-Bundle, Agent-Artefakten und CI-OCI-Image sowie nach serverseitiger Injektion in Responses, Header, Fehlerseiten und normalen Logs gesucht; Symlinks und Scanbomben scheitern fail-closed. npm run check enthaelt den Gate. Lokal fehlendes Image und nicht konfigurierte externe Keycloak-/TURN-/Gateway-/Packager-Gates werden mit konkretem Grund sichtbar als SKIP und nie als bestanden ausgegeben.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }

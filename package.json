@@ -24,9 +24,10 @@
     "test": "node --test",
     "todos:validate": "node scripts/validate-todos.mjs",
     "deployment:validate": "node scripts/validate-production-deployment.mjs",
+    "security:leakage": "node scripts/broadcast-leakage-gate.mjs",
     "sbom:production": "npm sbom --omit=dev --sbom-format cyclonedx",
     "workflows:validate": "node scripts/validate-workflows.mjs",
-    "check": "npm run todos:validate && npm run workflows:validate && npm run deployment:validate && npm run typecheck:broadcast && npm run test:frontend && npm run build && npm test && npm run test:infrastructure"
+    "check": "npm run todos:validate && npm run workflows:validate && npm run deployment:validate && npm run typecheck:broadcast && npm run test:frontend && npm run build && npm run security:leakage && npm test && npm run test:infrastructure"
   },
   "engines": {
     "node": ">=22.5"

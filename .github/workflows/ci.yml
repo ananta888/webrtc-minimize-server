@@ -59,6 +59,10 @@ jobs:
           docker compose --profile local --env-file .env.local.example config --quiet
       - name: Build production image
         run: docker buildx build --build-arg SOURCE_REVISION=${{ github.sha }} --provenance=mode=max --sbom=true --load --tag webrtc-minimize-server:ci .
+      - name: Scan image archive for synthetic leakage canaries
+        run: |
+          docker save --output /tmp/webrtc-minimize-server.tar webrtc-minimize-server:ci
+          BROADCAST_IMAGE_ARCHIVE=/tmp/webrtc-minimize-server.tar node scripts/broadcast-leakage-gate.mjs
 
   media-agent:
     name: Blind media agent

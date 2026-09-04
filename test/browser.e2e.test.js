@@ -130,6 +130,22 @@ test("two Chromium pages negotiate SFrame chat and media then clean every captur
   await ada.locator("#broadcast-preflight-heading").waitFor();
   assert.deepEqual(await ada.evaluate(() => window.__captureCalls), []);
   assert.match(await ada.locator("app-broadcast-preflight").textContent(), /Tritt zuerst einem Raum bei/);
+  await ada.evaluate(() => {
+    sessionStorage.setItem("broadcast-autostart", "true");
+    localStorage.setItem("webrtc-caption-share-v1", "true");
+    localStorage.setItem("webrtc-video-capture-preferences-v1", JSON.stringify({
+      version: 1,
+      camera: { resolution: "360p", frameRate: 5 },
+      screen: { resolution: "480p", frameRate: 10 },
+      screenAudioEnabled: false,
+    }));
+  });
+  await ada.reload();
+  await ada.locator("#broadcast-preflight-heading").waitFor();
+  assert.deepEqual(await ada.evaluate(() => window.__captureCalls), []);
+  await ada.goto(`${origin}/?section=broadcast&program=prg_aaaaaaaaaaaaaaaa`);
+  await ada.locator("#broadcast-preflight-heading").waitFor();
+  assert.deepEqual(await ada.evaluate(() => window.__captureCalls), []);
   await ada.locator(".nav-item", { hasText: "Räume" }).click();
   await ada.locator(".nav-item", { hasText: "Einstellungen" }).click();
   await ada.locator("#camera-resolution").selectOption("360p");

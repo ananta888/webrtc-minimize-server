@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "suites": [
+    {"area":"schemas-and-fixtures","positive":true,"negative":true,"files":["test/broadcast-contracts.test.js","test/moq-contracts.test.js"]},
+    {"area":"state-idempotency-fencing-cleanup","positive":true,"negative":true,"files":["test/broadcast-program-machine.test.js","test/broadcast-failover-coordinator.test.js"]},
+    {"area":"grants-scope-expiry-replay","positive":true,"negative":true,"files":["test/broadcast-grant-authority.test.js","test/broadcast-playback-session-store.test.js"]},
+    {"area":"visibility-origin-and-roles","positive":true,"negative":true,"files":["test/broadcast-audience-registry.test.js","frontend/src/app/broadcast/broadcast-directory.service.spec.ts"]},
+    {"area":"consent-and-key-lifecycle","positive":true,"negative":true,"files":["test/trusted-decrypt-consent-authority.test.js","frontend/src/app/broadcast/trusted-decrypt-key-lifecycle.spec.ts"]},
+    {"area":"capability-codec-and-adapters","positive":true,"negative":true,"files":["test/broadcast-capability-matrix.test.js","test/native-packager-policy.test.js","test/mediamtx-adapter.test.js","test/moq-adapters.test.js"]},
+    {"area":"oversize-rate-limit-message-and-disconnect","positive":true,"negative":true,"files":["test/broadcast-admission-control.test.js","test/broadcast-overload-isolation.test.js","test/server.integration.test.js"]},
+    {"area":"browser-no-implicit-capture","positive":true,"negative":true,"files":["test/browser.e2e.test.js","frontend/src/app/broadcast/broadcast-own-source-preflight.service.spec.ts"]},
+    {"area":"leakage-responses-bundles-images-artifacts","positive":true,"negative":true,"files":["test/broadcast-leakage.test.js","scripts/broadcast-leakage-gate.mjs"]},
+    {"area":"external-infrastructure-visible-skips","positive":true,"negative":false,"files":["scripts/live-infrastructure-gate.mjs","scripts/live-mediamtx-adapter-gate.mjs","scripts/live-whip-mediamtx-gate.mjs","scripts/live-native-packager-gate.mjs","scripts/live-mediamtx-llhls-gate.mjs"]}
+  ]
+}
