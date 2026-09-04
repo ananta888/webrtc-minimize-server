@@ -1,40 +1,40 @@
-:host {
+app-broadcast-preflight {
   display: block;
 }
 
-.broadcast-heading,
-.panel-title,
-.source-option,
-.caption-option,
-.actions {
+app-broadcast-preflight .broadcast-heading,
+app-broadcast-preflight .panel-title,
+app-broadcast-preflight .source-option,
+app-broadcast-preflight .caption-option,
+app-broadcast-preflight .actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
 }
 
-.broadcast-heading {
+app-broadcast-preflight .broadcast-heading {
   margin-bottom: 1.25rem;
   align-items: flex-start;
 }
 
-h1,
-h2,
-p {
+app-broadcast-preflight h1,
+app-broadcast-preflight h2,
+app-broadcast-preflight p {
   margin-top: 0;
 }
 
-h1 {
+app-broadcast-preflight h1 {
   margin-bottom: .45rem;
   font-size: clamp(1.8rem, 4vw, 3rem);
 }
 
-h2 {
+app-broadcast-preflight h2 {
   margin-bottom: 0;
   font-size: 1.1rem;
 }
 
-.eyebrow {
+app-broadcast-preflight .eyebrow {
   margin-bottom: .35rem;
   color: var(--mint, #5ee0bd);
   font-size: .72rem;
@@ -43,7 +43,7 @@ h2 {
   text-transform: uppercase;
 }
 
-.status {
+app-broadcast-preflight .status {
   border: 1px solid rgba(255, 255, 255, .15);
   border-radius: 999px;
   padding: .45rem .75rem;
@@ -51,103 +51,103 @@ h2 {
   text-transform: uppercase;
 }
 
-.status[data-state="ready"] {
+app-broadcast-preflight .status[data-state="ready"] {
   border-color: rgba(94, 224, 189, .5);
   color: var(--mint, #5ee0bd);
 }
 
-.preflight-grid {
+app-broadcast-preflight .preflight-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 }
 
-.panel {
+app-broadcast-preflight .panel {
   border: 1px solid rgba(255, 255, 255, .1);
   border-radius: 1.1rem;
   background: rgba(18, 25, 42, .8);
   padding: 1.2rem;
 }
 
-.source-list {
+app-broadcast-preflight .source-list {
   display: grid;
   gap: .65rem;
   margin: 1rem 0;
 }
 
-.source-option,
-.caption-option {
+app-broadcast-preflight .source-option,
+app-broadcast-preflight .caption-option {
   justify-content: flex-start;
   border: 1px solid rgba(255, 255, 255, .1);
   border-radius: .8rem;
   padding: .8rem;
 }
 
-.source-option span,
-.caption-option span {
+app-broadcast-preflight .source-option span,
+app-broadcast-preflight .caption-option span {
   display: grid;
   gap: .2rem;
 }
 
-small,
-.empty,
-.preview-note {
+app-broadcast-preflight small,
+app-broadcast-preflight .empty,
+app-broadcast-preflight .preview-note {
   color: var(--text-muted, #9aa8bf);
 }
 
-.field {
+app-broadcast-preflight .field {
   display: grid;
   gap: .4rem;
   margin: 1rem 0;
 }
 
-select {
+app-broadcast-preflight select {
   width: 100%;
 }
 
-.facts {
+app-broadcast-preflight .facts {
   display: grid;
   gap: .55rem;
   margin: 1rem 0;
 }
 
-.facts div {
+app-broadcast-preflight .facts div {
   display: grid;
   grid-template-columns: minmax(7rem, .45fr) 1fr;
   gap: 1rem;
 }
 
-.facts dt {
+app-broadcast-preflight .facts dt {
   color: var(--text-muted, #9aa8bf);
 }
 
-.facts dd {
+app-broadcast-preflight .facts dd {
   margin: 0;
 }
 
-.trust-warning {
+app-broadcast-preflight .trust-warning {
   border-left: 3px solid #f5a65b;
   border-radius: .4rem;
   background: rgba(245, 166, 91, .09);
   padding: .85rem 1rem;
 }
 
-.trust-warning p {
+app-broadcast-preflight .trust-warning p {
   margin: .35rem 0 0;
 }
 
-.preview-panel {
+app-broadcast-preflight .preview-panel {
   margin-top: 1rem;
 }
 
-.preview-grid {
+app-broadcast-preflight .preview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: .8rem;
   margin: 1rem 0;
 }
 
-.preview-tile {
+app-broadcast-preflight .preview-tile {
   display: grid;
   gap: .65rem;
   border-radius: .8rem;
@@ -155,7 +155,7 @@ select {
   padding: .75rem;
 }
 
-.preview-tile video {
+app-broadcast-preflight .preview-tile video {
   width: 100%;
   aspect-ratio: 16 / 9;
   border-radius: .55rem;
@@ -163,7 +163,7 @@ select {
   object-fit: contain;
 }
 
-.audio-preview {
+app-broadcast-preflight .audio-preview {
   display: grid;
   grid-template-columns: auto 1fr;
   align-items: center;
@@ -171,20 +171,20 @@ select {
   min-height: 4rem;
 }
 
-.audio-preview meter {
+app-broadcast-preflight .audio-preview meter {
   width: 100%;
 }
 
-.error {
+app-broadcast-preflight .error {
   color: #ff9e9e;
 }
 
 @media (max-width: 850px) {
-  .preflight-grid {
+  app-broadcast-preflight .preflight-grid {
     grid-template-columns: 1fr;
   }
 
-  .broadcast-heading {
+  app-broadcast-preflight .broadcast-heading {
     flex-direction: column;
   }
 }

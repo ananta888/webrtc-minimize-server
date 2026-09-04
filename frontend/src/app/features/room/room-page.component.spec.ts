@@ -9,6 +9,8 @@ const captionService = readFileSync("frontend/src/app/captions/live-caption.serv
 const captionCatalog = readFileSync("frontend/src/app/captions/vosk-model-catalog.ts", "utf8");
 const broadcastPreflight = readFileSync("frontend/src/app/broadcast/broadcast-preflight.component.html", "utf8");
 const broadcastComponent = readFileSync("frontend/src/app/broadcast/broadcast-preflight.component.ts", "utf8");
+const broadcastStyles = readFileSync("frontend/src/app/broadcast/broadcast-preflight.component.css", "utf8");
+const angularConfiguration = JSON.parse(readFileSync("angular.json", "utf8"));
 
 describe("Room page information architecture", () => {
   it("links the top-right GitHub icon to this repository without reusing the app tab", () => {
@@ -53,6 +55,10 @@ describe("Room page information architecture", () => {
     expect(broadcastPreflight).toContain("WHIP folgt in TBP-011");
     expect(broadcastComponent).not.toContain("getUserMedia");
     expect(broadcastComponent).not.toContain("getDisplayMedia");
+    expect(broadcastComponent).not.toContain("styleUrl");
+    expect(angularConfiguration.projects["webrtc-client"].architect.build.options.styles)
+      .toContain("frontend/src/app/broadcast/broadcast-preflight.component.css");
+    expect(broadcastStyles).toContain("app-broadcast-preflight .preflight-grid");
     expect(component).toContain('window.addEventListener("pagehide", this.pageHide)');
     expect(component).toContain("this.broadcastPreflight.resetForSession()");
   });

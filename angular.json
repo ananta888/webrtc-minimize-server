@@ -19,7 +19,8 @@
             "tsConfig": "frontend/tsconfig.app.json",
             "styles": [
               "frontend/src/styles.css",
-              "frontend/src/app/mesh-analysis/mesh-analysis.component.css"
+              "frontend/src/app/mesh-analysis/mesh-analysis.component.css",
+              "frontend/src/app/broadcast/broadcast-preflight.component.css"
             ],
             "assets": [
               {

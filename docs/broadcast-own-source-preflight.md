@@ -1,6 +1,6 @@
 # Own-Source-Broadcast-Preflight
 
-Stand: 2026-09-03, Implementierungsstufe `TBP-010`.
+Stand: 2026-09-04, Implementierungsstufe `TBP-010`.
 
 Die Angular-Anwendung besitzt jetzt einen sichtbaren Bereich `Broadcast` für
 die lokale Vorbereitung eigener Quellen. Der Bereich sendet noch keine Medien
@@ -84,3 +84,10 @@ Playwright-Gates in Chromium und Firefox prüfen zusätzlich:
 - Source-Auswahl und Preview ohne zusätzliche Browserberechtigung,
 - einen vom Raumtrack verschiedenen Video-Klon,
 - Stop des Preview-Klons bei weiter laufendem Original- und SFrame-Raumpfad.
+
+Die Komponentenregeln werden als externes, im Produktions-Build referenziertes
+Stylesheet ausgeliefert. Sie sind auf `app-broadcast-preflight` begrenzt und
+benötigen weder Inline-Styles noch eine Lockerung der produktiven CSP. Ein
+lokaler Produktionsserver-Gate prüft in Chromium und Firefox den externen
+Stylesheet-Link, das zweispaltige Grid, Panel-Padding und eine leere
+Browser-Fehlerkonsole.

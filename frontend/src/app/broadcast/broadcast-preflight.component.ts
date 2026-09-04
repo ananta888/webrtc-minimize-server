@@ -8,7 +8,6 @@ import { BroadcastOwnSourcePreflightService } from "./broadcast-own-source-prefl
   standalone: true,
   imports: [MediaStreamDirective],
   templateUrl: "./broadcast-preflight.component.html",
-  styleUrl: "./broadcast-preflight.component.css",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BroadcastPreflightComponent implements OnInit, OnDestroy {
