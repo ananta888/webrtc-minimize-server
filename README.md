@@ -56,6 +56,16 @@ Manifest und jedes Medienobjekt erneut und proxyfiziert nur zu einer festen
 internen Gateway-Origin. Die Runtime-Aktivierung bleibt bis zur
 Program-Orchestrierung default-aus.
 
+Die [Origin-/CDN-Profile](docs/broadcast-delivery-profiles.md) halten den ersten
+reproduzierbaren 20-Viewer-LL-HLS-Lastwert fest und verweigern jede ungemessene
+Hochrechnung. CDN bleibt bis zu Origin-Auth-, Purge-, Shielding- und
+Providergates unavailable.
+
+Die [Broadcast-Budgets und SLOs](docs/broadcast-budgets-and-slos.md) begrenzen
+Viewer, Egress, Encoder, Dauer und Kosten pro Deployment, Tenant und Principal,
+ohne eine globale Raumanzahl einzuführen. Viewerzählung bleibt kurzlebig und
+kommt ohne IP- oder Gerätefingerprinting aus.
+
 Die Hauptnavigation enthält außerdem eine [raumgebundene Mesh-Analyse](docs/mesh-analysis.md). Ihr interaktiver SVG-Graph zeigt Browser, Trusted Relays und native Media-Agenten sowie lokal gemessene beziehungsweise klar als Peer-Angabe markierte Kantenraten. Ein ausgewählter Knoten schlüsselt Upload und Download nach Audio, Kamera/Video, Bildschirmfreigabe und DataChannel auf. Direkt darunter liegen Inventar, Installation, Widerruf, Mehrfachauswahl, Raum-Consent und aktueller Routenzustand der eigenen Media-Agenten; der allgemeine Einstellungsbereich dupliziert diese Bedienung nicht. Die Telemetrie ist flüchtig, nur bei sichtbar geöffneter Analyse angefordert und niemals Membership- oder Routing-Autorität.
 
 ## Lokal starten

@@ -624,10 +624,10 @@
     {
       "id": "TBP-023",
       "title": "Origin-, CDN- und Standard-HLS-Skalierungsprofile implementieren",
-      "status": "in_progress",
+      "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 1,
+      "progress_percent": 55,
       "depends_on": ["TBP-019", "TBP-021", "TBP-022"],
       "acceptance_criteria": [
         "Ein gemessenes Origin-LL-HLS-Profil definiert maximale gleichzeitige Viewer, Requests pro Sekunde, Egress, offene Blocking-Reloads, CPU/RAM und erwartete Latenz pro Hostklasse.",
@@ -640,10 +640,10 @@
     {
       "id": "TBP-024",
       "title": "Kapazitäts-, Kosten- und Qualitätsbudgets für große Reichweite operationalisieren",
-      "status": "todo",
+      "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 55,
       "depends_on": ["TBP-004", "TBP-020", "TBP-023"],
       "acceptance_criteria": [
         "Konfigurierbare Budgets begrenzen Viewer, Egress, Encoder-Minuten, Transcode-Slots, Providerkosten und Programmdauer pro Tenant/Principal/Deployment, ohne eine feste globale Room-Anzahl in die Domain einzuführen.",
@@ -656,10 +656,10 @@
     {
       "id": "TBP-025",
       "title": "Versionierte MoQ-/LOC-Contracts und Capability-Negotiation ergänzen",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 1,
       "depends_on": ["TBP-004", "TBP-005", "TBP-006"],
       "acceptance_criteria": [
         "Contracts pinnen MoQT-, LOC-, WebTransport- und gegebenenfalls Secure-Objects-Versionen und behandeln inkompatible Draftstände als unavailable statt durch stilles Downgrade.",
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 17, "in_progress": 1, "partial": 8, "blocked": 0, "done": 14 },
+    "by_status": { "todo": 15, "in_progress": 1, "partial": 10, "blocked": 0, "done": 14 },
     "progress_percent_done": 35,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -963,9 +963,9 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 17,
+    "todo_remaining": 15,
     "in_progress": 1,
-    "partial": 8,
+    "partial": 10,
     "blocked": 0,
     "done": 14
   },
@@ -997,6 +997,8 @@
     "TBP-020 ist zu 70 Prozent umgesetzt. Das geschlossene h264-aac-720p-v1-Pilotprofil definiert drei 360p/540p/720p-Renditions mit FPS, Bitraten, H.264 Main Level 3.1, yuv420p, AAC-LC, 48-kHz-Stereo und gemeinsamem Zwei-Sekunden-Keyframe-/Segmentraster. Eine reine Delivery-Policy trennt Browser-Single-WHIP, ausgehandeltes Browser-Simulcast, Gateway-Passthrough und Native-ABR und verhindert insbesondere erfundene HLS-ABR-Leitern aus Single-Layer- oder MediaMTX-Transcode-Annahmen. Der operatorseitige Capacity-Ledger reserviert CPU, RAM, Encoder-/GPU-Slots und Egress atomar, reduziert bei Knappheit high vor medium, lehnt unter low kontrolliert ab und bindet idempotente Leases an Admission, Programm und Epoche. Der reale FFmpeg-Gate erzeugt weiterhin alle drei H.264/AAC-fMP4-Varianten. Offen sind reale Browser-/Mobilwiedergabe, VMAF/SSIM oder begruendete Golden-Alternativen, Screen-Text, Lautheit/A/V-Sync und echter Hardware-/Thermal-Fallback. TBP-021 beginnt mit dem davon getrennten capability-gesteuerten Player.",
     "TBP-021 ist zu 75 Prozent umgesetzt. BroadcastHlsPlayer waehlt natives HLS oder die exakt gepinnte stabile hls.js-Version 1.7.2 anhand echter Capability-Checks und aktiviert weder MoQ noch WHEP implizit. Der sichtbare Component-Start ist die einzige Startaktion; Autoplay-Blockade, Mute, Lautstaerke, Auto-/manuelle hls.js-Rendition, Vollbild, Picture-in-Picture, Live-Abstand und Fehler sind sichtbar. Ein begrenzter Watchdog erkennt eingefrorene Zeit trotz aktivem Medium, springt zur Live-Position und erlaubt zwei Recoveries in 30 Sekunden. HTTPS-/localhost-Manifestpfade sind geschlossen und Query-/Credential-/Fragment-URLs fail-closed. Abort, Stop, Sichtbarkeitswechsel und Destroy entfernen Loader, Listener, Timer, Texttracks und Media-src. Offen sind die echte Endpoint-/Directory-Verdrahtung, Poster/Live-WebVTT und reale Desktop-/Mobil-Langzeitgates; deshalb wird die Komponente noch nicht oeffentlich gerendert. TBP-022 beginnt mit der durchgaengigen privaten Delivery-Autorisierung.",
     "TBP-022 ist zu 60 Prozent umgesetzt. Ein fluechtiger serverseitiger Session-Store tauscht den kurzlebigen Playback-Bearer einmalig gegen eine zufaellige, resource-pfadgebundene Secure-/HttpOnly-/SameSite-Strict-Cookie-Session. Manifest, Initsegment, Part, Segment, WebVTT und Key werden bei jedem GET/HEAD erneut gegen den gespeicherten Grant, Aktion, Resource, Pfad, Ablauf und Widerruf geprueft; unberechtigte Varianten liefern einheitlich 404. Nur geschlossene LL-HLS- und MediaMTX-Session-Queries sind erlaubt. Ein fester Streaming-Proxy verweigert Redirects, fremde Ziele, unbekannte Content-Types, ungueltige Ranges und mehr als 24 MiB, entfernt Upstream-Auth und setzt private no-store/CORP/nosniff-Header. POST-/DELETE-Serverrouten und ein Angular-Exchange-Client sind implementiert und negativ getestet, die normale Runtime instanziiert sie aber mangels fertiger Program-Orchestrierung noch nicht. Offen sind reales Safari-/hls.js-Cookie-Playback, Caddy-Rate-Policy, Logout-/Program-Ende-Verdrahtung, Rotation und die getrennte Public-Policy. TBP-023 beginnt mit messbaren Origin-/CDN-Skalierungsprofilen.",
+    "TBP-023 ist zu 55 Prozent umgesetzt. Ein reproduzierbarer Docker-/FFmpeg-Gate mass auf der dokumentierten x86_64-Entwicklungs-Hostklasse 20 parallele LL-HLS-Viewer ueber 15 Sekunden mit 20 gleichzeitig offenen Blocking-Reloads, 2762 Requests beziehungsweise 184,13/s, 86,94 Mbit/s, 6,6 ms Request-p95, 1,61 Prozent MediaMTX-CPU, 46,33 MiB RAM und null Fehlern. origin-llhls-x86-dev-v1 begrenzt deshalb auf exakt diese 20 Viewer mit harten 200-Request-/100-Mbit-/20-Blocking-Budgets und behauptet weder Mini-PC- noch End-to-glass-Kapazitaet. Das getrennte, weiterhin runtime-unverified cdn-standard-hls-v1 ist public-only und erst nach Origin-Auth, Host-/Path-Allowlist, Shielding, Purge, Health und Viewergrenze waehlbar; Cache-Key und Purge binden Resource und Program-Epoche, private Delivery bleibt no-store. Profilwechsel ist als sichtbarer Kurzrestart modelliert, Provider-Fallback nur innerhalb der Origin-Grenze. Offen sind konkreter Provider, Caddy/Secrets, Purge-/Shield-/Fallback-Lasttest sowie Mini-PC-/WAN-/Browser-Langzeitwerte. TBP-024 beginnt mit tenantgebundenen Kapazitaets-, Kosten- und SLO-Budgets.",
+    "TBP-024 ist zu 55 Prozent umgesetzt. Eine geschlossene Admission-Policy prueft geplante Viewer-Sessions, Egress, Encoder-Slots/-Minuten, Programmdauer und Kosten getrennt auf Deployment-, Tenant- und Principal-Ebene; es gibt weiterhin keine globale Raumzahl. Ab 80 Prozent werden Soft-Warnungen und eine nachvollziehbare origin-small/cdn-medium/cdn-large-Preflightklasse geliefert, Hard-Limits verweigern scope-/metrikgebunden. Der datensparsame ViewerCounter dedupliziert kurzlebige Playback-Sessions ueber keyed HMAC ohne IP, User-Agent, OIDC-Subject oder Geraetefingerprint und entfernt abgelaufene Leases. Origin- und CDN-SLOs definieren Messfenster, Start-/End-to-glass-/Caption-p95, Rebuffering, Verfuegbarkeit, Abbruchquote und 30-Tage-Fehlerbudget, bleiben aber ehrlich runtime-unverified. Offen sind transaktionale persistente Usage-Zaehlung, echte Providerpreise/Monatsperioden, UI/Alerting und reproduzierbare Browserlast je Host/Region/Codec/Rendition. TBP-025 beginnt mit versionierten MoQ-/LOC-Contracts.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }
