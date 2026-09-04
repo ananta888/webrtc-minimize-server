@@ -11,14 +11,19 @@ describe("BroadcastPreflightComponent audio policy", () => {
     expect(template).toContain('id="broadcast-packager-profile"');
     expect(template).toContain('id="broadcast-cpu-estimate"');
     expect(template).toContain('id="broadcast-start-summary"');
-    expect(template).toContain('id="broadcast-start-disabled"');
+    expect(template).toContain('id="broadcast-start"');
+    expect(template).toContain('id="broadcast-stop"');
+    expect(template).toContain('(click)="startBroadcast()"');
+    expect(template).toContain('[disabled]="!canStart()"');
     expect(template).toContain("Blind-Media-Agenten sind keine Trusted Packager");
-    expect(template).toContain("Sendestart noch nicht mit der Control Plane verbunden");
+    expect(template).toContain("Broadcast ist sicher deaktiviert");
     expect(template).toContain("<app-broadcast-moderation-panel");
     expect(template).toContain('[connected]="false"');
     expect(template).toContain("<app-broadcast-audience");
-    expect(template).toContain('[enabled]="false"');
+    expect(template).toContain('[enabled]="enabled()"');
     expect(component).toContain("estimatedCpuClass");
+    expect(component).toContain("window.confirm");
+    expect(component).toContain("this.publisher.start");
   });
 
   it("exposes bounded speech, balanced and music profiles plus an echo-safe monitor default", () => {

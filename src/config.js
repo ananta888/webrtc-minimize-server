@@ -58,6 +58,7 @@ const DEFAULTS = Object.freeze({
   mediaAgentMaxPerPrincipal: 3,
   mediaAgentEnrollmentRateLimit: 5,
   broadcastWhipEndpoint: "",
+  broadcastWhipResourceBase: "",
   broadcastWhipProfile: "rfc9725",
   broadcastWhipRedirectOrigins: [],
   broadcastWhipTrickleIce: true,
@@ -70,6 +71,9 @@ const DEFAULTS = Object.freeze({
   broadcastWhipRetryBudget: 1,
   broadcastGatewayAuthEnabled: false,
   broadcastGatewayAuthAddresses: ["127.0.0.1", "::1"],
+  broadcastGatewayOrigin: "",
+  broadcastSigningPrivateKey: "",
+  broadcastSigningKeyId: "broadcast-control-1",
 });
 
 const AUTH_MODES = new Set(["disabled", "optional", "required"]);
@@ -401,6 +405,22 @@ export function loadConfig(env = process.env) {
   const broadcastWhipEndpoint = httpsWhipEndpoint(
     env.BROADCAST_WHIP_ENDPOINT || DEFAULTS.broadcastWhipEndpoint,
   );
+  const broadcastWhipResourceBase = httpsWhipEndpoint(
+    env.BROADCAST_WHIP_RESOURCE_BASE || DEFAULTS.broadcastWhipResourceBase,
+  );
+  const broadcastGatewayOrigin = httpOrigin(
+    env.BROADCAST_GATEWAY_ORIGIN || DEFAULTS.broadcastGatewayOrigin,
+    "BROADCAST_GATEWAY_ORIGIN",
+  );
+  const broadcastSigningPrivateKey = String(
+    environmentOrFile(env, "BROADCAST_SIGNING_PRIVATE_KEY") || DEFAULTS.broadcastSigningPrivateKey,
+  );
+  const broadcastSigningKeyId = String(
+    env.BROADCAST_SIGNING_KEY_ID || DEFAULTS.broadcastSigningKeyId,
+  ).trim();
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(broadcastSigningKeyId)) {
+    throw new Error("BROADCAST_SIGNING_KEY_ID must contain 1-64 URL-safe characters");
+  }
   const broadcastWhipProfile = String(
     env.BROADCAST_WHIP_PROFILE || DEFAULTS.broadcastWhipProfile,
   ).toLowerCase();
@@ -572,6 +592,7 @@ export function loadConfig(env = process.env) {
       { minimum: 1, maximum: 20, name: "MEDIA_AGENT_ENROLLMENT_RATE_LIMIT" },
     ),
     broadcastWhipEndpoint,
+    broadcastWhipResourceBase,
     broadcastWhipProfile,
     broadcastWhipRedirectOrigins: Object.freeze(broadcastWhipRedirectOrigins),
     broadcastWhipTrickleIce,
@@ -617,5 +638,8 @@ export function loadConfig(env = process.env) {
       env.BROADCAST_GATEWAY_AUTH_ADDRESSES,
       DEFAULTS.broadcastGatewayAuthAddresses,
     )),
+    broadcastGatewayOrigin,
+    broadcastSigningPrivateKey,
+    broadcastSigningKeyId,
   });
 }

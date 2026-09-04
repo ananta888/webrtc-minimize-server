@@ -19,6 +19,7 @@ export interface WhipAuthorization {
   readonly authorizationVersion: 1;
   readonly accessToken: string;
   readonly expiresAt: number;
+  readonly resourceUrl?: string;
 }
 
 export interface WhipAuthorizationPort {
@@ -252,9 +253,9 @@ export function normalizeWhipRuntimeConfiguration(
 export function normalizeWhipAuthorization(value: unknown, now = Date.now()): WhipAuthorization {
   if (!value || typeof value !== "object" || Array.isArray(value)) fail("invalid_whip_authorization");
   const authorization = value as Record<string, unknown>;
-  if (Object.keys(authorization).length !== 3
+  if (Object.keys(authorization).length < 3 || Object.keys(authorization).length > 4
     || Object.keys(authorization).some((field) => !new Set([
-      "authorizationVersion", "accessToken", "expiresAt",
+      "authorizationVersion", "accessToken", "expiresAt", "resourceUrl",
     ]).has(field))
     || authorization["authorizationVersion"] !== 1
     || typeof authorization["accessToken"] !== "string"
@@ -262,13 +263,19 @@ export function normalizeWhipAuthorization(value: unknown, now = Date.now()): Wh
     || TOKEN_CONTROL.test(authorization["accessToken"])
     || !Number.isSafeInteger(authorization["expiresAt"])
     || Number(authorization["expiresAt"]) <= now + 1_000
-    || Number(authorization["expiresAt"]) > now + 5 * 60_000) {
+    || Number(authorization["expiresAt"]) > now + 5 * 60_000
+    || (authorization["resourceUrl"] !== undefined
+      && typeof authorization["resourceUrl"] !== "string")) {
     fail("invalid_whip_authorization");
   }
+  if (authorization["resourceUrl"] !== undefined) normalizeHttpsUrl(authorization["resourceUrl"]);
   return Object.freeze({
     authorizationVersion: 1,
     accessToken: authorization["accessToken"],
     expiresAt: Number(authorization["expiresAt"]),
+    ...(authorization["resourceUrl"] === undefined ? {} : {
+      resourceUrl: String(authorization["resourceUrl"]),
+    }),
   });
 }
 

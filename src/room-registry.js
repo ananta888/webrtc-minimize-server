@@ -117,6 +117,17 @@ export class RoomRegistry {
     return room ? [...room.peers.values()] : [];
   }
 
+  membersForPrincipal(principal) {
+    if (typeof principal !== "string" || principal.length < 1) return [];
+    const result = [];
+    for (const room of this.#rooms.values()) {
+      for (const peer of room.peers.values()) {
+        if (peer.principal === principal) result.push(peer);
+      }
+    }
+    return result;
+  }
+
   setRelayConsent(peer, enabled, now = Date.now()) {
     const room = this.#rooms.get(peer.roomId);
     if (!room || room.peers.get(peer.id) !== peer) throw new RoomAdmissionError("peer_not_joined");

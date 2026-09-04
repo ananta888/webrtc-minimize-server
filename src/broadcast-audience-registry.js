@@ -331,6 +331,37 @@ export class BroadcastAudienceRegistry {
     return snapshot(record);
   }
 
+  synchronize(value, now = Date.now()) {
+    timestamp(now);
+    const input = cloneInput(value, "invalid_broadcast_audience_synchronization");
+    assertClosed(input, REGISTER_FIELDS, "invalid_broadcast_audience_synchronization");
+    if (!input.machine || !input.policy) {
+      broadcastAudienceFail("invalid_broadcast_audience_synchronization", 400);
+    }
+    const machine = validateBroadcastProgramMachine(input.machine);
+    if (!machine.program) broadcastAudienceFail("broadcast_program_not_created", 409);
+    const key = recordKey(machine.scope.tenantId, machine.scope.programId);
+    const current = this.#records.get(key);
+    if (!current) broadcastAudienceFail("broadcast_program_not_registered", 404);
+    if (machine.scope.ownerSubjectRef !== current.machine.scope.ownerSubjectRef
+      || machine.scope.roomId !== current.machine.scope.roomId
+      || machine.program.revision < current.machine.program.revision
+      || machine.epochs.broadcast < current.machine.epochs.broadcast) {
+      broadcastAudienceFail("stale_broadcast_synchronization", 409);
+    }
+    const policy = checkedPolicy(input.policy, machine.program, now);
+    if (policy.revision < current.policy.revision) {
+      broadcastAudienceFail("stale_broadcast_policy_revision", 409);
+    }
+    const record = {
+      machine,
+      policy,
+      viewerSubjectRefs: normalizeViewerSubjects(input.authorizedViewerSubjectRefs || []),
+    };
+    this.#records.set(key, record);
+    return snapshot(record);
+  }
+
   authorizeAction(tenantId, programId, actor, action, context = {}) {
     const record = this.#records.get(recordKey(tenantId, programId));
     if (!record) broadcastAudienceFail("broadcast_program_not_registered", 404);

@@ -34,11 +34,19 @@ import { RoomAdmissionError, RoomFullError, RoomRegistry } from "./room-registry
 import { SessionTicketError, SessionTicketStore } from "./session-tickets.js";
 import { createMediaAgentIceServers } from "./media-agent-ice.js";
 import { createEdgeTurnCredentials, createTurnCredentials } from "./turn-credentials.js";
-import { MediaMtxExternalAuthError } from "./mediamtx-external-auth.js";
-import { BroadcastHlsProxyError } from "./broadcast-hls-proxy.js";
-import { BroadcastPlaybackSessionError } from "./broadcast-playback-session-store.js";
+import { MediaMtxExternalAuthError, MediaMtxExternalAuthService } from "./mediamtx-external-auth.js";
+import { BroadcastHlsProxy, BroadcastHlsProxyError } from "./broadcast-hls-proxy.js";
+import {
+  BroadcastPlaybackSessionError,
+  BroadcastPlaybackSessionStore,
+} from "./broadcast-playback-session-store.js";
 import { BroadcastAbuseGuard } from "./broadcast-admission-control.js";
 import { BroadcastHealthRegistry } from "./broadcast-observability.js";
+import { BroadcastRuntimeError, BroadcastRuntimeRegistry } from "./broadcast-runtime-registry.js";
+import { broadcastTenantRef } from "./broadcast-identifiers.js";
+import { BroadcastAudienceError } from "./broadcast-action-policy.js";
+import { BroadcastGrantAuthority, BroadcastGrantError } from "./broadcast-grant-authority.js";
+import { BroadcastDeviceProofError } from "./broadcast-device-proof.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
@@ -155,7 +163,7 @@ function publicRuntimeConfig(config, services = {}) {
       whip: {
         configurationVersion: 1,
         compatibilityProfile: config.broadcastWhipProfile,
-        enabled: Boolean(config.broadcastWhipEndpoint),
+        enabled: Boolean(config.broadcastWhipEndpoint && services.broadcastRuntime),
         endpointUrl: config.broadcastWhipEndpoint,
         allowedRedirectOrigins: config.broadcastWhipRedirectOrigins,
         trickleIce: config.broadcastWhipTrickleIce,
@@ -302,6 +310,9 @@ function errorStatus(error) {
   if (error instanceof MediaAgentEnrollmentError || error instanceof MediaAgentInstallerError) return error.status;
   if (error instanceof MediaMtxExternalAuthError) return error.status;
   if (error instanceof BroadcastHlsProxyError || error instanceof BroadcastPlaybackSessionError) return error.status;
+  if (error instanceof BroadcastRuntimeError) return error.status;
+  if (error instanceof BroadcastAudienceError || error instanceof BroadcastGrantError) return error.status;
+  if (error instanceof BroadcastDeviceProofError) return 400;
   if (error instanceof AuthenticationError) return 401;
   if (error instanceof ProtocolError || error instanceof DeviceProofError) return 400;
   return 500;
@@ -323,6 +334,7 @@ function createHttpHandler(config, registry, services) {
     broadcastHlsProxy,
     broadcastAbuseGuard,
     broadcastHealthRegistry,
+    broadcastRuntime,
   } = services;
   return async (request, response) => {
     try {
@@ -346,6 +358,175 @@ function createHttpHandler(config, registry, services) {
         });
         const readiness = broadcastHealthRegistry.snapshot(observedAt);
         sendJson(response, readiness.status === "ok" ? 200 : 503, readiness, securityHeaders(config));
+        return;
+      }
+      if (url.pathname === "/api/broadcasts/public") {
+        if (!broadcastRuntime || request.method !== "GET" || url.search) {
+          response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        sendJson(response, 200, {
+          programs: broadcastRuntime.listPublic(broadcastTenantRef(config.oidcIssuer)),
+        }, securityHeaders(config));
+        return;
+      }
+      if (url.pathname === "/api/broadcasts/mine") {
+        if (!broadcastRuntime || request.method !== "GET" || url.search) {
+          response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        sendJson(response, 200, broadcastRuntime.listMine(identity), securityHeaders(config));
+        return;
+      }
+      if (url.pathname === "/api/broadcasts") {
+        if (!broadcastRuntime || request.method !== "POST" || url.search
+          || !requestOriginAllowed(request, config)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const input = await readJsonBody(request);
+        const member = registry.membersForPrincipal(principalFor(identity)).find(
+          (candidate) => candidate.roomId === String(input.roomId || ""),
+        );
+        const created = broadcastRuntime.createProgram(identity, member, input);
+        sendJson(response, 201, created, securityHeaders(config));
+        return;
+      }
+      const broadcastPublisherChallengeMatch = url.pathname.match(
+        /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/publisher-challenges$/,
+      );
+      if (broadcastPublisherChallengeMatch) {
+        if (!broadcastRuntime || request.method !== "POST" || url.search
+          || !requestOriginAllowed(request, config)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const input = await readJsonBody(request);
+        assertAllowedKeys(input, new Set(["requestVersion", "action", "sourceIds", "deviceFingerprint"]));
+        if (!/^[A-Za-z0-9_-]{43}$/.test(input.deviceFingerprint || "")) {
+          throw new BroadcastRuntimeError("invalid_broadcast_device_fingerprint");
+        }
+        const activeMember = registry.membersForPrincipal(principalFor(identity))
+          .find((candidate) => candidate.deviceFingerprint === input.deviceFingerprint);
+        const challenge = broadcastRuntime.createPublisherChallenge(
+          identity,
+          activeMember,
+          broadcastPublisherChallengeMatch[1],
+          { requestVersion: input.requestVersion, action: input.action, sourceIds: input.sourceIds },
+        );
+        sendJson(response, 201, challenge, securityHeaders(config));
+        return;
+      }
+      const broadcastPublisherAuthorizationMatch = url.pathname.match(
+        /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/publisher-authorizations$/,
+      );
+      if (broadcastPublisherAuthorizationMatch) {
+        if (!broadcastRuntime || request.method !== "POST" || url.search
+          || !requestOriginAllowed(request, config)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const input = await readJsonBody(request);
+        const authorization = await broadcastRuntime.authorizePublisher(identity, input);
+        if (authorization.program.programId !== broadcastPublisherAuthorizationMatch[1]) {
+          throw new BroadcastRuntimeError("broadcast_not_available", 404);
+        }
+        const { action, ...publicAuthorization } = authorization;
+        sendJson(response, 201, {
+          ...publicAuthorization,
+          ...(action === "whip:create" ? {
+            resourceUrl: `${config.broadcastWhipResourceBase}/${authorization.resourceRef}/whip`,
+          } : {}),
+        }, securityHeaders(config));
+        return;
+      }
+      const broadcastPlaybackChallengeMatch = url.pathname.match(
+        /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/playback-challenges$/,
+      );
+      if (broadcastPlaybackChallengeMatch) {
+        if (!broadcastRuntime || request.method !== "POST" || url.search
+          || !requestOriginAllowed(request, config)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        const input = await readJsonBody(request);
+        assertAllowedKeys(input, new Set(["requestVersion"]));
+        if (input.requestVersion !== 1) throw new BroadcastRuntimeError("invalid_broadcast_playback_challenge");
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const challenge = await broadcastRuntime.createPlaybackChallenge(
+          identity,
+          broadcastPlaybackChallengeMatch[1],
+        );
+        sendJson(response, 201, challenge, securityHeaders(config));
+        return;
+      }
+      const broadcastPlaybackMatch = url.pathname.match(
+        /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/playback$/,
+      );
+      if (broadcastPlaybackMatch) {
+        if (!broadcastRuntime || request.method !== "POST" || url.search
+          || !requestOriginAllowed(request, config)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const input = await readJsonBody(request);
+        const bootstrap = await broadcastRuntime.authorizePlayback(identity, input);
+        if (bootstrap.program.programId !== broadcastPlaybackMatch[1]) {
+          throw new BroadcastRuntimeError("broadcast_not_available", 404);
+        }
+        sendJson(response, 201, bootstrap, securityHeaders(config));
+        return;
+      }
+      const broadcastProgramMatch = url.pathname.match(
+        /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})$/,
+      );
+      if (broadcastProgramMatch && request.method === "PATCH") {
+        if (!broadcastRuntime || url.search || !requestOriginAllowed(request, config)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const updated = broadcastRuntime.changeVisibility(
+          identity,
+          broadcastProgramMatch[1],
+          await readJsonBody(request),
+        );
+        sendJson(response, 200, { program: updated }, securityHeaders(config));
+        return;
+      }
+      if (broadcastProgramMatch && request.method === "DELETE") {
+        if (!broadcastRuntime || url.search || !requestOriginAllowed(request, config)) {
+          response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const stopped = broadcastRuntime.stopProgram(identity, broadcastProgramMatch[1]);
+        sendJson(response, 200, { program: stopped }, securityHeaders(config));
+        return;
+      }
+      if (url.pathname.startsWith("/api/broadcasts/")) {
+        response.writeHead(404, { "cache-control": "no-store" });
+        response.end();
         return;
       }
       if (url.pathname === "/api/broadcast/playback-sessions") {
@@ -787,7 +968,16 @@ function rejectUpgrade(socket, statusCode, message) {
   );
 }
 
-function configureSignaling(server, config, registry, ticketStore, directory, mediaAgents, mediaAgentEvents) {
+function configureSignaling(
+  server,
+  config,
+  registry,
+  ticketStore,
+  directory,
+  mediaAgents,
+  mediaAgentEvents,
+  broadcastRuntime,
+) {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
   const mediaAgentWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
   const roomEpochs = new Map();
@@ -961,6 +1151,12 @@ function configureSignaling(server, config, registry, ticketStore, directory, me
     const leave = () => {
       if (left) return;
       left = true;
+      try {
+        broadcastRuntime?.stopProgramsForMember?.(peer);
+      } catch {
+        // Broadcast teardown is independently lease-bounded and must never retain
+        // the participant in the room when its optional runtime is unhealthy.
+      }
       relayHealth.leave(peer.roomId, peer.id);
       mediaAgents.leavePeer(peer);
       for (const recipient of registry.leave(peer)) {
@@ -1502,8 +1698,58 @@ export function createAppServer(options = {}) {
     onRevoked: () => {},
     prune: () => mediaAgentEnrollmentStore?.prune(),
   };
-  const mediaMtxExternalAuthService = options.mediaMtxExternalAuthService || null;
-  const broadcastHlsProxy = options.broadcastHlsProxy || null;
+  let broadcastGrantAuthority = options.broadcastGrantAuthority || null;
+  if (config.broadcastWhipEndpoint && !broadcastGrantAuthority && !options.broadcastRuntime) {
+    if (config.authMode !== "required" || !config.publicOrigin
+      || new URL(config.publicOrigin).protocol !== "https:"
+      || !config.broadcastGatewayAuthEnabled || !config.broadcastGatewayOrigin
+      || !config.broadcastSigningPrivateKey || !config.broadcastWhipResourceBase) {
+      throw new Error(
+        "BROADCAST_WHIP_ENDPOINT requires required OIDC, HTTPS PUBLIC_ORIGIN, gateway auth/origin, resource base and a signing private key",
+      );
+    }
+    let privateKey;
+    try { privateKey = crypto.createPrivateKey(config.broadcastSigningPrivateKey); } catch {
+      throw new Error("BROADCAST_SIGNING_PRIVATE_KEY is not a valid private key");
+    }
+    if (privateKey.asymmetricKeyType !== "ec"
+      || privateKey.asymmetricKeyDetails?.namedCurve !== "prime256v1") {
+      throw new Error("BROADCAST_SIGNING_PRIVATE_KEY must be a P-256 private key");
+    }
+    broadcastGrantAuthority = new BroadcastGrantAuthority({
+      issuer: `${config.publicOrigin}/broadcast-grants`,
+      oidcIssuer: config.oidcIssuer,
+      oidcAudience: config.oidcAudience,
+      oidcAlgorithms: config.oidcAlgorithms,
+      signingKeys: [{
+        kid: config.broadcastSigningKeyId,
+        privateKey,
+        publicKey: crypto.createPublicKey(privateKey),
+      }],
+    });
+  }
+  const broadcastRuntime = options.broadcastRuntime || (broadcastGrantAuthority
+    ? new BroadcastRuntimeRegistry({ grantAuthority: broadcastGrantAuthority }) : null);
+  const mediaMtxExternalAuthService = options.mediaMtxExternalAuthService
+    || (broadcastGrantAuthority && config.broadcastGatewayAuthEnabled
+      ? new MediaMtxExternalAuthService({
+        authority: broadcastGrantAuthority,
+        onAuthorized: ({ request, now }) => {
+          if (request.action === "publish") broadcastRuntime.markPublished(request.path, now);
+        },
+      }) : null);
+  const broadcastPlaybackSessions = options.broadcastPlaybackSessions
+    || (broadcastGrantAuthority && config.broadcastGatewayOrigin
+      ? new BroadcastPlaybackSessionStore({
+        authority: broadcastGrantAuthority,
+        publicOrigin: config.publicOrigin,
+      }) : null);
+  const broadcastHlsProxy = options.broadcastHlsProxy
+    || (broadcastPlaybackSessions && config.broadcastGatewayOrigin
+      ? new BroadcastHlsProxy({
+        sessions: broadcastPlaybackSessions,
+        gatewayOrigin: config.broadcastGatewayOrigin,
+      }) : null);
   const ownsBroadcastAbuseGuard = !options.broadcastAbuseGuard && Boolean(broadcastHlsProxy || mediaMtxExternalAuthService);
   const broadcastAbuseGuard = options.broadcastAbuseGuard || (ownsBroadcastAbuseGuard
     ? new BroadcastAbuseGuard({ key: crypto.randomBytes(32) }) : null);
@@ -1526,6 +1772,9 @@ export function createAppServer(options = {}) {
     broadcastHlsProxy,
     broadcastAbuseGuard,
     broadcastHealthRegistry,
+    broadcastRuntime,
+    broadcastGrantAuthority,
+    broadcastPlaybackSessions,
   };
   const server = http.createServer(createHttpHandler(config, registry, services));
   if (!options.workspaceStore && workspaceStore) server.on("close", () => workspaceStore.close());
@@ -1534,7 +1783,7 @@ export function createAppServer(options = {}) {
   }
   if (ownsBroadcastAbuseGuard) server.on("close", () => broadcastAbuseGuard.destroy());
   const signaling = configureSignaling(
-    server, config, registry, ticketStore, directory, mediaAgents, mediaAgentEvents,
+    server, config, registry, ticketStore, directory, mediaAgents, mediaAgentEvents, broadcastRuntime,
   );
   return {
     server,
@@ -1549,6 +1798,9 @@ export function createAppServer(options = {}) {
     mediaAgentInstallerService,
     broadcastAbuseGuard,
     broadcastHealthRegistry,
+    broadcastRuntime,
+    broadcastGrantAuthority,
+    broadcastPlaybackSessions,
   };
 }
 

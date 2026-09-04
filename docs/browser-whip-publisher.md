@@ -5,10 +5,11 @@ Stand: 2026-09-04, Implementierungsstufe `TBP-011`.
 Der Browser besitzt einen echten, hinter einem kleinen Publication-Port
 liegenden WHIP-Transport. Er kann genau einen bereits bewusst vorbereiteten
 Own-Source-Program-Stream mit höchstens einer Audio- und einer Videospur an
-einen geprüften Endpunkt senden. Die produktive Runtime lässt den Endpunkt
-default-aus; eine UI-Aktion und die öffentliche Control-Plane-Anbindung für
-Grants folgen in späteren Tracks. Das Vorhandensein des Adapters startet daher
-weder Capture noch eine Publikation.
+einen geprüften Endpunkt senden. UI und Control Plane sind inzwischen über eine
+vor dem Capture abgeschlossene, gerätegebundene Einmal-Challenge verbunden.
+Die produktive Runtime lässt den Endpunkt weiterhin default-aus. Das
+Vorhandensein des Adapters, ein Deep Link oder das Öffnen des Panels startet
+daher weder Capture noch eine Publikation.
 
 ## RFC-9725-Ablauf
 
@@ -92,14 +93,15 @@ stoppen und den im Kompatibilitätsprofil nicht verfügbaren ICE-Restart sichtba
 melden. Ohne das Opt-in meldet `npm run check` den Infrastrukturtest als
 `SKIP`, nicht als bestandenen Live-Test.
 
-## Noch nicht als Produktfähigkeit behauptet
+## Noch nicht als Produktionsfähigkeit behauptet
 
-Der Adapter und der reale Protokollgate sind vorhanden. Der öffentliche
-Broadcast bleibt trotzdem deaktiviert, bis mindestens die aktionsgebundene
-Grant-HTTP-Grenze, Program-Orchestrierung, der isolierte Gatewaybetrieb,
-Ausgabe/Playback und die sichtbare Start-/Stop-UI angeschlossen und separat
-verifiziert wurden. Simulcast ist im Runtime-Schema vorbereitet, aber noch
-absichtlich `enabled: false`. Feste Media-Sections, sichere Quellenwechsel und
-die gedämpfte Sendersteuerung sind inzwischen in
+Adapter, aktionsgebundene Grant-HTTP-Grenze, In-Memory-Program-Orchestrierung,
+Ausgabe-/Playback-API und sichtbare Start-/Stop-UI sind vorhanden. Der
+öffentliche Broadcast bleibt trotzdem deaktiviert, bis der isolierte
+Gatewaybetrieb, CORS, Widerruf, LL-HLS-Ausgabe und Browser-/Geräte-Soaks im
+echten Deployment gemeinsam verifiziert wurden. Simulcast ist im
+Runtime-Schema vorbereitet und nur mit einem kompatiblen Gatewayprofil
+aktivierbar. Feste Media-Sections, sichere Quellenwechsel und die gedämpfte
+Sendersteuerung sind in
 [TBP-012](whip-source-switching-adaptation.md) beschrieben; öffentlich nutzbar
-werden sie erst mit der späteren Grant-, Gateway- und UI-Anbindung.
+werden sie erst nach dem Produktionsgate.

@@ -547,7 +547,7 @@
       "status": "partial",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 65,
+      "progress_percent": 75,
       "depends_on": ["TBP-006", "TBP-007", "TBP-008", "TBP-017"],
       "acceptance_criteria": [
         "MediaMTX-Control-API und Metrics sind nicht öffentlich erreichbar, benötigen intern Auth/Netzwerkpolicy und akzeptieren nur den minimalen orchestrierenden Dienst; Browser sprechen ausschließlich freigegebene Media-/Playback-Endpunkte an.",
@@ -611,7 +611,7 @@
       "status": "partial",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 60,
+      "progress_percent": 70,
       "depends_on": ["TBP-006", "TBP-007", "TBP-008", "TBP-018", "TBP-021"],
       "acceptance_criteria": [
         "Das ausgewählte Verfahren schützt Master-/Media-Playlists, Initialisierungssegmente, Segmente, Parts, Preload Hints, Untertitel und Keys konsistent; der Schutz endet nicht nach dem ersten Manifest.",
@@ -720,10 +720,10 @@
     {
       "id": "TBP-029",
       "title": "Angular-Broadcast-Cockpit mit explizitem Preflight, Live-State und Kill-Switch bauen",
-      "status": "partial",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 65,
+      "progress_percent": 85,
       "depends_on": ["TBP-007", "TBP-008", "TBP-009", "TBP-010", "TBP-011"],
       "acceptance_criteria": [
         "Das bestehende Menü erhält einen klaren Broadcast-Bereich für Quelle, Preview, Programlayout, Audio, Untertitel, Sichtbarkeit, Delivery-Profil, Packager, Qualitätsprofil und geschätzte Ressourcen.",
@@ -755,7 +755,7 @@
       "status": "partial",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 70,
+      "progress_percent": 80,
       "depends_on": ["TBP-007", "TBP-008", "TBP-021", "TBP-022", "TBP-029"],
       "acceptance_criteria": [
         "Eine übersichtliche Ansicht trennt live öffentliche Programme, berechtigte private Programme, eigene Programme und beendete/unerreichbare Zustände ohne private Enumeration.",
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 0, "in_progress": 0, "partial": 24, "blocked": 0, "done": 16 },
+    "by_status": { "todo": 0, "in_progress": 1, "partial": 23, "blocked": 0, "done": 16 },
     "progress_percent_done": 40,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -964,8 +964,8 @@
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 0,
-    "partial": 24,
+    "in_progress": 1,
+    "partial": 23,
     "blocked": 0,
     "done": 16
   },
@@ -1015,6 +1015,7 @@
     "TBP-038 ist zu 60 Prozent umgesetzt. Ein reproduzierbarer lokaler Interop-Runner prueft den gepinnten MediaMTX-Adapter, Native-FFmpeg-ABR, LL-HLS und WHIP in Chromium 151, Firefox 153 sowie optional einem echten Windows Edge ueber eine kurzlebige lokale CDP-Bridge. Edge 152.0.4191.53 bestand real POST/PATCH/ICE/DELETE und vier replaceTrack-Wechsel mit weiterlaufenden Frames. Ebenfalls bestanden sind das sichtbare unsupported fuer MediaMTX-ICE-Restart, drei H.264/AAC-Renditions sowie LL-HLS-Version/Blocking-Reload/200-ms-Parts/Late-Join/Restart/Cleanup. Das Testprofil korrigiert testisoliert CORS, synthetische Internal-Auth, gleiche Host-/Container-ICE-Ports und Firefox-mDNS, ohne das sichere Gatewayprofil zu lockern. macOS Safari, Android/iOS, natives Safari-HLS, Mobilfunk/NAT/Netzwechsel, WAN-Loss, blockiertes UDP/QUIC, Provider sowie akustische und visuelle Wahrnehmung bleiben ehrlich unverified/unavailable/experimental. Diese realen Geraete-, Netz- und Providergates fehlen weiterhin; deshalb bleibt der Task partial und eine oeffentliche Broadcast-Freigabe ausgeschlossen.",
     "TBP-039 ist zu 55 Prozent umgesetzt. Ein versioniertes Profil definiert ohne unbelegte Produktobergrenze den 20-Personen-Raum, 5/20/50-Origin-Stufen, spaetere CDN-Rampen, ein mindestens vierstuendiges Release-Soak, alle geforderten Ereignisse/Messgroessen, neun Chaosklassen, feste lokale Budgets und zunaechst leere Preisinputs. Der reale Matrix-Runner bestand alle drei LL-HLS-Stufen ohne Fehler; bei 50 Viewern wurden 431,20 Requests/s, 13,94 ms p95, 204,63 Mbit/s, 3,23 Prozent Gateway-CPU und 66,62 MiB RAM gemessen. Der 20-Personen-Raum und Broadcast-Isolation sind deterministisch gruen. Ein realer FFmpeg-Gate misst SSIM 0,993941 bei 2,7719 Mbit/s und 7,864-facher Echtzeit. Fencing, Packager-/Gateway-Uebernahme, abgelaufene Grants und Split-Brain-Abwehr sind deterministisch, Publisher-Restart und Muxer-Cleanup lokal getestet. Offen bleiben der mehrstuendige Soak, reales Vorher/Waehrend/Nachher-Meet, weitere reale Chaosfehler, WAN/CDN/Provider, Packet-Loss/QP/Rebuffer/OCR/Sync/subjektive Qualitaet und belastbare Providerpreise; deshalb bleibt der Task partial und es werden weder Kosten noch Kapazitaetsgarantien erfunden.",
     "TBP-040 ist zu 70 Prozent umgesetzt. Ein konsolidiertes Produktionsarchitektur-Dokument zeigt Plane-, Sequenz-, Trust-/Key- und Failover-Datenfluesse und verweist auf die versionierten Port-, Codec-, Player- und Caption-Grenzen. Nutzerhilfe erklaert Own Source, Trusted Program, Raum-SFrame, Sichtbarkeit, Consent, Untertitel, Datenverbrauch, Latenz, Stop und aktuelle Einschraenkungen. Ein Lifecycle-/Security-Runbook deckt Provisionierung, Health, Alarme, Quoten/Kosten, Rotation, Incident, Providerausfall, Takeover, Purge, Rollback und Ausserbetriebnahme ab. Das maschinenlesbare Privacy-/Security-Review haelt Datenklassen, Nicht-Retention, Backupgrenzen, SBOM, Leakage, Dependency-Audit mit null bekannten Production-Vulnerabilities und Produktionslizenzen fest. Eine validierte vierstufige Rollout-Policy bindet disabled, internal, private-selected und public an reale Gates und einen fuenfteiligen Kill-Switch; Produktion bleibt fail-closed auf disabled und publicReady false. Offen sind die realen Geraete-/WAN-/Provider-/Mehrstunden-/Incident-Gates und deshalb auch interner, privater und oeffentlicher Rollout; der Task bleibt ehrlich partial.",
+    "TBP-018, TBP-022, TBP-029 und TBP-031 wurden am 2026-09-04 gemeinsam weitergefuehrt. Die regulaere Serverinstanz erzeugt bei vollstaendiger expliziter Konfiguration nun BroadcastGrantAuthority, BroadcastRuntimeRegistry, MediaMTX-External-Auth, private Playback-Sessions und HLS-Proxy; ohne WHIP-Endpunkt bleiben alle neuen APIs und der Angular-Start default-deny. Public/Mine, Program-Create, gerätegebundene Publisher-/Playback-Einmal-Challenges, dynamische Resource-URLs, Visibility und Stop sind als geschlossene OIDC-HTTP-Grenzen verdrahtet. Der raumgebundene Angular-Workflow preautorisiert die exakte Programrevision vor jedem Capture-Fork, startet nur nach Preview plus sichtbarer Trust-Bestaetigung, zeigt alle Lifecycle-Zustaende, kann einen laufenden Start abbrechen und versucht WHIP-Cleanup sowie serverseitigen Revoke unabhaengig. Signaling-Abgang stoppt nur Programme, die an denselben attestierten Publisher-Browser und Raum gebunden sind. Directory/Playback verwenden reale Projections und P-256-Nachweise ohne Room-Membership. Lokal bestanden fokussierte Angular-, Runtime- und Serverintegrationstests sowie Produktions-/Entwicklungsbuild. Offen bleiben der isolierte reale Gateway-/Caddy-Pfad, operatorseitiger Stream-Kill, Visibility-Rekonfiguration, Refresh/Handoff, physische Browser-/Mobil-/Accessibility- und Langzeitgates; die oeffentliche Produktionsruntime bleibt deshalb deaktiviert.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }

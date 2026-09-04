@@ -47,7 +47,7 @@
         <button id="broadcast-navigation" type="button" class="nav-item" [class.active]="activeSection() === 'broadcast'" [attr.aria-current]="activeSection() === 'broadcast' ? 'page' : null" (click)="show('broadcast')">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8a6 6 0 000 8M5 5a10 10 0 000 14M16 8a6 6 0 010 8M19 5a10 10 0 010 14"/><circle cx="12" cy="12" r="2"/></svg>
           <span>Broadcast</span>
-          @if (broadcastPreflight.lifecycle() === 'ready') { <span class="nav-live" aria-label="Broadcast-Vorschau aktiv"></span> }
+          @if (broadcastActive()) { <span class="nav-live" aria-label="Broadcast aktiv"></span> }
         </button>
         <button id="captions-navigation" type="button" class="nav-item" [class.active]="activeSection() === 'captions'" [attr.aria-current]="activeSection() === 'captions' ? 'page' : null" (click)="show('captions')">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 10a3 3 0 10-6 2 3 3 0 006 2M20 10a3 3 0 10-6 2 3 3 0 006 2"/></svg>
@@ -384,8 +384,11 @@
 
       @if (activeSection() === 'broadcast') {
         <app-broadcast-preflight
+          [enabled]="config.value()?.broadcast?.whip?.enabled === true"
           [joined]="session.joined()"
           [authenticated]="auth.authenticated()"
+          [roomId]="session.roomId()"
+          [roomCreator]="session.roomCreator()"
           [captionsActive]="captions.active()"
           (loginRequested)="auth.login('/?section=broadcast')"
         />

@@ -52,7 +52,8 @@ describe("Room page information architecture", () => {
     expect(broadcastPreflight).toContain('id="broadcast-upload-estimate"');
     expect(broadcastPreflight).toContain('id="broadcast-e2ee-warning"');
     expect(broadcastPreflight).toContain("nicht SFrame-E2EE");
-    expect(broadcastPreflight).toContain("Öffentliche Program-Orchestrierung noch nicht aktiviert");
+    expect(broadcastPreflight).toContain('id="broadcast-start"');
+    expect(broadcastPreflight).toContain("Broadcast ist sicher deaktiviert");
     expect(broadcastPreflight).toContain('id="broadcast-audio-policy"');
     expect(broadcastComponent).not.toContain("getUserMedia");
     expect(broadcastComponent).not.toContain("getDisplayMedia");
@@ -61,7 +62,7 @@ describe("Room page information architecture", () => {
       .toContain("frontend/src/app/broadcast/broadcast-preflight.component.css");
     expect(broadcastStyles).toContain("app-broadcast-preflight .preflight-grid");
     expect(component).toContain('window.addEventListener("pagehide", this.pageHide)');
-    expect(component).toContain("this.broadcastPreflight.resetForSession()");
+    expect(component).toContain("this.broadcastPublisher.resetForSession()");
   });
 
   it("offers explicit local Vosk captions and a directly loadable fixed model catalog", () => {

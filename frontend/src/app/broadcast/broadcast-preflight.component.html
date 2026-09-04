@@ -53,7 +53,7 @@
   <section class="panel" aria-labelledby="broadcast-policy-heading">
     <div class="panel-title"><div><p class="eyebrow">2 · Publikum und Ausgabe</p><h2 id="broadcast-policy-heading">Preflight</h2></div></div>
     <label class="field">Zielpublikum
-      <select id="broadcast-audience" [value]="preflight.audience()" (change)="preflight.setAudience($any($event.target).value)">
+      <select id="broadcast-audience" [value]="preflight.audience()" [disabled]="controlBusy()" (change)="setAudience($any($event.target).value)">
         <option value="private">Privat · nur Berechtigte</option>
         <option value="unlisted">Nicht gelistet · nur mit Link</option>
         <option value="public">Öffentlich · im Broadcast-Verzeichnis</option>
@@ -193,7 +193,7 @@
       <div><dt>Delivery-Profil</dt><dd id="broadcast-delivery-summary">Origin LL-HLS · kurze Unterbrechung bei späterem Profilwechsel</dd></div>
       <div><dt>Packager</dt><dd id="broadcast-packager-summary">Dieser Browser · Own Source</dd></div>
       <div><dt>Vorschau</dt><dd>{{ preflight.previews().length ? preflight.previews().length + ' getrennte Track-Klone' : 'noch nicht erzeugt' }}</dd></div>
-      <div><dt>Auslieferung</dt><dd>Öffentliche Program-Orchestrierung noch nicht aktiviert</dd></div>
+      <div><dt>Auslieferung</dt><dd>{{ enabled() ? 'Control Plane verbunden · Startfreigabe noch erforderlich' : 'Produktionsschalter deaktiviert' }}</dd></div>
     </dl>
     <div id="broadcast-e2ee-warning" class="trust-warning" role="note">
       <strong>Vertrauensgrenze: nicht SFrame-E2EE</strong>
@@ -207,7 +207,21 @@
         <div><dt>Raumpfad</dt><dd>SFrame-E2EE bleibt getrennt</dd></div>
         <div><dt>Broadcast</dt><dd>Packager und Gateway verarbeiten nur das bestätigte Programm</dd></div>
       </dl>
-      <button id="broadcast-start-disabled" class="button primary wide" type="button" disabled>Sendestart noch nicht mit der Control Plane verbunden</button>
+      <label class="field">Titel der Sendung
+        <input id="broadcast-program-title" maxlength="80" [value]="programTitle()" [disabled]="controlBusy()" (input)="setProgramTitle($any($event.target).value)">
+      </label>
+      @if (!roomCreator() && joined()) {
+        <p class="policy-note">Nur der aktuelle Ersteller dieses Raums darf den Broadcast-Zweig starten.</p>
+      }
+      @if (activeProgramId() || programState().lifecycle === 'starting' || programState().lifecycle === 'running' || programState().lifecycle === 'degraded' || programState().lifecycle === 'reconnecting' || programState().lifecycle === 'handing_over' || programState().lifecycle === 'stopping') {
+        <button id="broadcast-stop" class="button danger wide" type="button" [disabled]="!canStop()" (click)="stopBroadcast()">Sendung sofort stoppen</button>
+      } @else {
+        <button id="broadcast-start" class="button primary wide" type="button" [disabled]="!canStart()" (click)="startBroadcast()">{{ enabled() ? (controlBusy() ? 'Start wird autorisiert…' : 'Programm anlegen und Start bestätigen') : 'Broadcast ist sicher deaktiviert' }}</button>
+      }
+      @if (programState().program; as program) {
+        <p class="policy-note">Programm {{ program.programId }} · Zustand {{ programState().lifecycle }} · Epoche {{ program.programEpoch }}</p>
+      }
+      @if (controlError()) { <p class="error" role="alert">{{ controlError() }}</p> }
     </details>
   </section>
 </section>
@@ -224,7 +238,7 @@
 <app-broadcast-moderation-panel [connected]="false" />
 
 <app-broadcast-audience
-  [enabled]="false"
+  [enabled]="enabled()"
   [authenticated]="authenticated()"
   (loginRequested)="loginRequested.emit()"
 />

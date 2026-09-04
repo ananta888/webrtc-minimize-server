@@ -55,6 +55,7 @@ const REQUEST_FIELDS = new Set([
 const AUTHORIZATION_FIELDS = new Set([
   "identity",
   "membership",
+  "audience",
   "grantee",
   "program",
   "consents",
@@ -224,6 +225,18 @@ function normalizeMembership(value, refs, roomId, kind) {
   return value;
 }
 
+function normalizeAudience(value, refs, roomId) {
+  assertClosed(value, new Set([
+    "active", "tenantId", "roomId", "subjectRef", "principal", "role", "deviceFingerprint",
+  ]), "invalid_broadcast_audience_projection");
+  if (value.active !== true || value.tenantId !== refs.tenantId || value.roomId !== roomId
+    || value.subjectRef !== refs.subjectRef || value.principal !== refs.principal
+    || value.role !== "viewer" || !/^[A-Za-z0-9_-]{43}$/.test(value.deviceFingerprint || "")) {
+    broadcastGrantFail("invalid_broadcast_audience_projection");
+  }
+  return value;
+}
+
 function normalizeGrantee(value, request, subjectRef) {
   assertClosed(value, new Set([
     "authorized", "audienceRef", "ownerSubjectRef", "deviceFingerprint",
@@ -290,7 +303,15 @@ export function authorizeBroadcastGrantRequest(request, authorization, config, n
     subjectRef: broadcastSubjectRef(identity),
     principal: oidcPrincipal(identity),
   });
-  const membership = normalizeMembership(context.membership, refs, request.roomId, request.kind);
+  const audience = request.kind === "playback" && context.audience
+    ? normalizeAudience(context.audience, refs, request.roomId)
+    : null;
+  const membership = audience
+    ? audience
+    : normalizeMembership(context.membership, refs, request.roomId, request.kind);
+  if (request.kind !== "playback" && context.audience !== undefined && context.audience !== null) {
+    broadcastGrantFail("unexpected_broadcast_audience_projection", 400);
+  }
   const grantee = normalizeGrantee(context.grantee, request, refs.subjectRef);
   const program = checkedContract(context.program, {
     tenantId: refs.tenantId,

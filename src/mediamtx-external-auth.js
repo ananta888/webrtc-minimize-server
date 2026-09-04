@@ -53,6 +53,7 @@ export class MediaMtxExternalAuthService {
   #now;
   #maximumPerWindow;
   #windowMs;
+  #onAuthorized;
 
   constructor(options) {
     if (!options?.authority || typeof options.authority.authorizeGatewayBearer !== "function") {
@@ -63,8 +64,10 @@ export class MediaMtxExternalAuthService {
     this.#now = options.now || Date.now;
     this.#maximumPerWindow = options.maximumPerWindow ?? 120;
     this.#windowMs = options.windowMs ?? 10_000;
+    this.#onAuthorized = options.onAuthorized || (() => undefined);
     if (!Number.isSafeInteger(this.#maximumPerWindow) || this.#maximumPerWindow < 1
-      || !Number.isSafeInteger(this.#windowMs) || this.#windowMs < 1_000) {
+      || !Number.isSafeInteger(this.#windowMs) || this.#windowMs < 1_000
+      || typeof this.#onAuthorized !== "function") {
       fail("invalid_mediamtx_auth_configuration", 500);
     }
   }
@@ -87,11 +90,13 @@ export class MediaMtxExternalAuthService {
       : `/broadcast/play/${request.path}`;
     try {
       if (request.action === "publish") {
-        return await this.#authority.authorizeGatewayBearer(`Bearer ${request.token}`, {
+        const grant = await this.#authority.authorizeGatewayBearer(`Bearer ${request.token}`, {
           action: "whip:create",
           path,
           grantKinds: ["publisher", "packager"],
         }, now);
+        await this.#onAuthorized(Object.freeze({ request, grant, now }));
+        return grant;
       }
       if (request.protocol === "webrtc") {
         return await this.#authority.authorizeGatewayBearer(`Bearer ${request.token}`, {

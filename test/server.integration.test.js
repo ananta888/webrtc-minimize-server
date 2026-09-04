@@ -347,6 +347,141 @@ test("private broadcast delivery exchanges a bearer for HttpOnly cookie and prox
   })).status, 404);
 });
 
+test("broadcast directory and device challenge APIs are default-deny and use verified identities", async (context) => {
+  const disabled = await startTestServer();
+  context.after(() => disabled.close());
+  assert.equal((await fetch(`${disabled.httpUrl}/api/broadcasts/public`)).status, 404);
+
+  const calls = [];
+  const program = {
+    directoryVersion: 1,
+    programId: "prg_aaaaaaaaaaaaaaaa",
+    title: "Pilot",
+    ownerLabel: "Ada",
+    ownerVisibility: "shown",
+    visibility: "public",
+    availability: "live",
+    viewerCount: 0,
+    latencyMode: "ll-hls",
+    captions: false,
+    programEpoch: 1,
+    policyRevision: 1,
+    playback: "grant-required",
+  };
+  const identity = {
+    issuer: "https://identity.example/realms/ananta",
+    subject: "owner",
+    audience: "webrtc-room-server",
+    algorithm: "RS256",
+    issuedAt: Date.now() - 1_000,
+    expiresAt: Date.now() + 60_000,
+    displayName: "Ada",
+  };
+  const runtime = {
+    listPublic(tenantId) { calls.push(["public", tenantId]); return [program]; },
+    listMine(actual) { calls.push(["mine", actual]); return { authorized: [], owned: [program] }; },
+    async createPlaybackChallenge(actual, programId) {
+      calls.push(["challenge", actual, programId]);
+      return { challengeVersion: 1, challengeId: `bpc_${"a".repeat(24)}`, proofContext: {}, expiresAt: Date.now() + 30_000 };
+    },
+    async authorizePlayback(actual, input) {
+      calls.push(["playback", actual, input]);
+      return {
+        bootstrapVersion: 1, program, resourceRef: "res_aaaaaaaaaaaaaaaa",
+        playbackGrant: "test-grant-not-logged", expiresAt: Date.now() + 30_000,
+      };
+    },
+    changeVisibility(actual, programId, input) {
+      calls.push(["visibility", actual, programId, input]);
+      return { ...program, visibility: input.visibility };
+    },
+    stopProgram(actual, programId) {
+      calls.push(["stop", actual, programId]);
+      return { ...program, availability: "ended" };
+    },
+  };
+  const enabled = await startTestServer({
+    authMode: "required",
+    oidcIssuer: identity.issuer,
+    oidcAudience: identity.audience,
+    oidcClientId: "webrtc-browser",
+  }, {
+    broadcastRuntime: runtime,
+    oidcVerifier: { async verify(token) {
+      if (token !== "access-token") throw new AuthenticationError("invalid_access_token");
+      return identity;
+    } },
+  });
+  context.after(() => enabled.close());
+
+  const publicResponse = await fetch(`${enabled.httpUrl}/api/broadcasts/public`);
+  assert.equal(publicResponse.status, 200);
+  assert.deepEqual(await publicResponse.json(), { programs: [program] });
+  assert.equal((await fetch(`${enabled.httpUrl}/api/broadcasts/mine`)).status, 401);
+  const headers = { authorization: "Bearer access-token", "content-type": "application/json", origin: enabled.httpUrl };
+  const mine = await fetch(`${enabled.httpUrl}/api/broadcasts/mine`, { headers });
+  assert.equal(mine.status, 200);
+  assert.deepEqual(await mine.json(), { authorized: [], owned: [program] });
+
+  const challenge = await fetch(`${enabled.httpUrl}/api/broadcasts/${program.programId}/playback-challenges`, {
+    method: "POST", headers, body: JSON.stringify({ requestVersion: 1 }),
+  });
+  assert.equal(challenge.status, 201);
+  const challengeBody = await challenge.json();
+  const playback = await fetch(`${enabled.httpUrl}/api/broadcasts/${program.programId}/playback`, {
+    method: "POST", headers, body: JSON.stringify({
+      requestVersion: 1,
+      challengeId: challengeBody.challengeId,
+      deviceProof: { test: true },
+    }),
+  });
+  assert.equal(playback.status, 201);
+  assert.equal((await playback.json()).resourceRef, "res_aaaaaaaaaaaaaaaa");
+  const visibility = await fetch(`${enabled.httpUrl}/api/broadcasts/${program.programId}`, {
+    method: "PATCH", headers, body: JSON.stringify({ requestVersion: 1, visibility: "unlisted" }),
+  });
+  assert.equal(visibility.status, 200);
+  assert.equal((await visibility.json()).program.visibility, "unlisted");
+  const stop = await fetch(`${enabled.httpUrl}/api/broadcasts/${program.programId}`, {
+    method: "DELETE", headers,
+  });
+  assert.equal(stop.status, 200);
+  assert.equal((await stop.json()).program.availability, "ended");
+  assert.equal(calls.map(([kind]) => kind).join(","), "public,mine,challenge,playback,visibility,stop");
+  assert.equal((await fetch(`${enabled.httpUrl}/api/broadcasts/${program.programId}/playback-challenges`, {
+    method: "POST",
+    headers: { ...headers, origin: "https://evil.test" },
+    body: JSON.stringify({ requestVersion: 1 }),
+  })).status, 404);
+});
+
+test("explicit complete broadcast configuration wires grants, directory, gateway auth and HLS proxy", async (context) => {
+  const signing = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const app = await startTestServer({
+    publicOrigin: "https://webrtc.example",
+    authMode: "required",
+    oidcIssuer: "https://identity.example/realms/ananta",
+    oidcAudience: "webrtc-room-server",
+    oidcClientId: "webrtc-browser",
+    oidcJwksUrl: "https://identity.example/realms/ananta/certs",
+    broadcastWhipEndpoint: "https://webrtc.example/broadcast/ingest/pilot/whip",
+    broadcastWhipResourceBase: "https://webrtc.example/broadcast/ingest",
+    broadcastGatewayAuthEnabled: true,
+    broadcastGatewayAuthAddresses: ["127.0.0.1"],
+    broadcastGatewayOrigin: "http://127.0.0.1:18888",
+    broadcastSigningPrivateKey: signing.privateKey.export({ type: "pkcs8", format: "pem" }),
+    broadcastSigningKeyId: "integration-key",
+  });
+  context.after(() => app.close());
+  assert.ok(app.broadcastGrantAuthority);
+  assert.ok(app.broadcastRuntime);
+  assert.ok(app.broadcastPlaybackSessions);
+  assert.ok(app.broadcastAbuseGuard);
+  const runtime = await fetch(`${app.httpUrl}/config`).then((response) => response.json());
+  assert.equal(runtime.broadcast.whip.enabled, true);
+  assert.equal(runtime.broadcast.whip.endpointUrl, "https://webrtc.example/broadcast/ingest/pilot/whip");
+});
+
 test("two room peers receive membership and target-bound signals", async (context) => {
   const app = await startTestServer();
   context.after(() => app.close());

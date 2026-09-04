@@ -1,6 +1,10 @@
 import { Injectable, signal } from "@angular/core";
 
 import { OidcAuthService } from "../auth/oidc-auth.service";
+import {
+  BroadcastGrantProofContext,
+  DeviceIdentityService,
+} from "../identity/device-identity.service";
 
 export type BroadcastDirectoryAvailability = "live" | "degraded" | "ended" | "offline";
 export type BroadcastDirectoryVisibility = "private" | "unlisted" | "public";
@@ -33,12 +37,13 @@ export interface BroadcastPlaybackBootstrap {
 type DirectoryLifecycle = "idle" | "loading" | "ready" | "failed";
 const PROGRAM = /^prg_[A-Za-z0-9_-]{16,64}$/;
 const RESOURCE = /^res_[A-Za-z0-9_-]{16,64}$/;
+const CHALLENGE = /^bpc_[A-Za-z0-9_-]{24,64}$/;
 const FIELDS = new Set([
   "directoryVersion", "programId", "title", "ownerLabel", "ownerVisibility", "visibility",
   "availability", "viewerCount", "latencyMode", "captions", "programEpoch", "policyRevision", "playback",
 ]);
 
-function parseEntry(value: unknown): BroadcastDirectoryEntry {
+export function parseBroadcastDirectoryEntry(value: unknown): BroadcastDirectoryEntry {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid_broadcast_directory_response");
   const entry = value as Record<string, unknown>;
   if (Object.keys(entry).length !== FIELDS.size || Object.keys(entry).some((field) => !FIELDS.has(field))
@@ -64,7 +69,7 @@ function parseEntry(value: unknown): BroadcastDirectoryEntry {
 
 function parseList(value: unknown, visibility?: "public"): readonly BroadcastDirectoryEntry[] {
   if (!Array.isArray(value) || value.length > 100) throw new Error("invalid_broadcast_directory_response");
-  const entries = value.map(parseEntry);
+  const entries = value.map(parseBroadcastDirectoryEntry);
   if (new Set(entries.map(({ programId }) => programId)).size !== entries.length
     || (visibility && entries.some((entry) => entry.visibility !== visibility
       || !new Set(["live", "degraded"]).has(entry.availability)))) {
@@ -87,7 +92,10 @@ export class BroadcastDirectoryService {
   readonly errorCode = signal("");
   private controller: AbortController | null = null;
 
-  constructor(private readonly auth: OidcAuthService) {}
+  constructor(
+    private readonly auth: OidcAuthService,
+    private readonly device: DeviceIdentityService,
+  ) {}
 
   async load(authenticated: boolean): Promise<void> {
     this.controller?.abort(new DOMException("refresh", "AbortError"));
@@ -147,14 +155,48 @@ export class BroadcastDirectoryService {
 
   async authorize(programId: string, signal: AbortSignal): Promise<BroadcastPlaybackBootstrap> {
     if (!PROGRAM.test(programId)) throw new Error("broadcast_not_available");
+    const challengeResponse = await fetch(
+      `/api/broadcasts/${encodeURIComponent(programId)}/playback-challenges`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
+        credentials: "same-origin",
+        redirect: "error",
+        signal,
+        body: JSON.stringify({ requestVersion: 1 }),
+      },
+    );
+    if (challengeResponse.status === 401) throw new Error("broadcast_directory_sign_in_required");
+    if (challengeResponse.status === 404 || challengeResponse.status === 403) {
+      throw new Error("broadcast_not_available");
+    }
+    if (!challengeResponse.ok) throw new Error("broadcast_playback_authorization_failed");
+    const challenge = await responseJson(challengeResponse) as Record<string, unknown>;
+    if (!challenge || typeof challenge !== "object" || Array.isArray(challenge)
+      || Object.keys(challenge).length !== 4
+      || challenge["challengeVersion"] !== 1
+      || !CHALLENGE.test(String(challenge["challengeId"] || ""))
+      || !Number.isSafeInteger(challenge["expiresAt"]) || Number(challenge["expiresAt"]) <= Date.now()
+      || !challenge["proofContext"] || typeof challenge["proofContext"] !== "object"
+      || Array.isArray(challenge["proofContext"])) {
+      throw new Error("invalid_broadcast_playback_challenge");
+    }
+    const deviceProof = await this.device.createBroadcastGrantProof(
+      challenge["proofContext"] as BroadcastGrantProofContext,
+    );
+    signal.throwIfAborted();
     const response = await fetch(`/api/broadcasts/${encodeURIComponent(programId)}/playback`, {
       method: "POST",
       headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
       credentials: "same-origin",
       redirect: "error",
       signal,
-      body: JSON.stringify({ requestVersion: 1 }),
+      body: JSON.stringify({
+        requestVersion: 1,
+        challengeId: challenge["challengeId"],
+        deviceProof,
+      }),
     });
+    if (response.status === 401) throw new Error("broadcast_directory_sign_in_required");
     if (response.status === 404 || response.status === 403) throw new Error("broadcast_not_available");
     if (response.status === 410) throw new Error("broadcast_ended");
     if (response.status === 503) throw new Error("broadcast_offline");
@@ -171,7 +213,7 @@ export class BroadcastDirectoryService {
       || !Number.isSafeInteger(value["expiresAt"]) || Number(value["expiresAt"]) <= Date.now()) {
       throw new Error("invalid_broadcast_playback_bootstrap");
     }
-    const program = parseEntry(value["program"]);
+    const program = parseBroadcastDirectoryEntry(value["program"]);
     if (program.programId !== programId || !new Set(["live", "degraded"]).has(program.availability)) {
       throw new Error("invalid_broadcast_playback_bootstrap");
     }

@@ -8,9 +8,12 @@ Packager und zeigt Upload-/CPU-Schätzung sowie die Trust-Grenze.
 Der einzig auswählbare Pilot ist derzeit **dieser Browser als Own-Source-
 Packager → Origin LL-HLS**. CDN, nativer Packager und MoQ sind sichtbar, aber
 deaktiviert. Blind-Media-Agenten werden nicht als Trusted Packager angeboten.
-Der Sendestart selbst bleibt sichtbar gesperrt, solange Program-Control-Plane,
-Grant-Ausgabe und Runtime-Gateway nicht vollständig verdrahtet sind. Das ist
-eine Sicherheitsgrenze und kein UI-Platzhalter, der umgangen werden darf.
+Der Sendestart ist inzwischen mit Program-Control-Plane, gerätegebundener
+Einmal-Challenge, kurzlebigem Publisher-Grant und dem Browser-WHIP-Adapter
+verdrahtet. Er bleibt dennoch solange technisch gesperrt, wie
+`broadcast.whip.enabled` in der validierten öffentlichen Runtime `false` ist.
+Das Produktionsprofil aktiviert ihn erst bei vollständiger OIDC-, Gateway-,
+Resource-Base- und P-256-Signing-Konfiguration.
 
 ## Workflow-Grundlage
 
@@ -31,16 +34,19 @@ idle → starting → running ↔ degraded/reconnecting/handing_over
 ```
 
 `stopped` bleibt mit Grund sichtbar, bis ein neuer expliziter Start beginnt.
-Ein Kill-Switch ruft unabhängig voneinander Publication-Stop, Grant-Revoke und
-lokales Source-Cleanup auf. Auch wenn ein Schritt fehlschlägt, werden die
-anderen versucht; ein Teilfehler endet sichtbar in `failed` und kann nicht als
-erfolgreicher Stop erscheinen.
+Der sichtbare Kill-Switch bricht auch einen noch laufenden Start ab und versucht
+unabhängig voneinander WHIP-Stop, serverseitigen Grant-Revoke und lokales
+Source-Cleanup. Ein normaler Raum-Leave wartet darauf. Zusätzlich bindet die
+Control Plane das Programm an den konkret attestierten Publisher-Browser und
+stoppt es bei dessen Signaling-Abgang fail-closed; Gateway-Idle-Timeout und ein
+späterer operatorseitiger Stream-Kill bleiben davon getrennte Schutzschichten.
 
-## Noch offene Runtime-Grenze
+## Noch offene Produktionsgrenze
 
-Der Workflow besitzt bewusst nur einen kleinen Action-Port. Seine produktive
-Implementierung muss die bestehende Broadcast-State-Machine, kurzlebige Grants,
-WHIP/Native-Packager und Preview-Forks verbinden. Vorher bleibt der Startbutton
-deaktiviert. Ebenfalls offen sind reale Refresh-/Reconnect-/Handoff-Gates,
-serverseitige Kill-Switch-Verifikation und ein barrierefreier Tastatur-/Screen-
-Reader-Test im ausgelieferten Cockpit.
+Der Browserpfad verbindet State-Machine, OIDC, nicht exportierbare
+P-256-Geräteidentität, Preview-Forks, Composition und WHIP. Nicht abgeschlossen
+sind der native Packager, operatorseitiger MediaMTX-Stream-Kill, echte
+Visibility-Rekonfiguration am Gateway, Refresh-/Reconnect-/Handoff-Gates sowie
+ein barrierefreier Tastatur-/Screen-Reader-Test im ausgelieferten Cockpit. Bis
+diese externen Gates bestanden sind, bleibt der Schalter in der
+Produktionsumgebung aus.

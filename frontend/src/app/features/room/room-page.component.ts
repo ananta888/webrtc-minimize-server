@@ -4,6 +4,24 @@ import { FormsModule } from "@angular/forms";
 import { OidcAuthService } from "../../auth/oidc-auth.service";
 import { BroadcastOwnSourcePreflightService } from "../../broadcast/broadcast-own-source-preflight.service";
 import { BroadcastPreflightComponent } from "../../broadcast/broadcast-preflight.component";
+import {
+  BrowserWhipBroadcastRuntimeService,
+  ExplicitBroadcastConsentService,
+} from "../../broadcast/broadcast-browser-runtime.service";
+import { BroadcastCoordinatorService } from "../../broadcast/broadcast-coordinator.service";
+import { BroadcastDeliveryCapabilityService } from "../../broadcast/broadcast-delivery-capability.service";
+import { BroadcastOwnSourceCaptureService } from "../../broadcast/broadcast-own-source-capture.service";
+import { BroadcastOwnSourceCompositionService } from "../../broadcast/broadcast-own-source-composition.service";
+import {
+  BROADCAST_CAPTURE_FORK_PORT,
+  BROADCAST_COMPOSITION_PORT,
+  BROADCAST_CONSENT_PORT,
+  BROADCAST_PUBLICATION_ADAPTERS,
+  BROADCAST_STATS_PORT,
+} from "../../broadcast/broadcast-ports";
+import { BroadcastProgramStateService } from "../../broadcast/broadcast-program-state.service";
+import { BroadcastPublisherWorkflowService } from "../../broadcast/broadcast-publisher-workflow.service";
+import { BroadcastSourceSelectionService } from "../../broadcast/broadcast-source-selection.service";
 import { LiveCaptionService } from "../../captions/live-caption.service";
 import { formatModelSize } from "../../captions/vosk-model-catalog";
 import { VoskModelManagerService } from "../../captions/vosk-model-manager.service";
@@ -51,6 +69,22 @@ type AppSection = "rooms" | "live" | "broadcast" | "captions" | "analysis" | "ch
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: "./room-page.component.html",
+  providers: [
+    BroadcastCoordinatorService,
+    BroadcastDeliveryCapabilityService,
+    BroadcastProgramStateService,
+    BroadcastPublisherWorkflowService,
+    BroadcastSourceSelectionService,
+    { provide: BROADCAST_CONSENT_PORT, useExisting: ExplicitBroadcastConsentService },
+    { provide: BROADCAST_CAPTURE_FORK_PORT, useExisting: BroadcastOwnSourceCaptureService },
+    { provide: BROADCAST_COMPOSITION_PORT, useExisting: BroadcastOwnSourceCompositionService },
+    {
+      provide: BROADCAST_PUBLICATION_ADAPTERS,
+      useFactory: (adapter: BrowserWhipBroadcastRuntimeService) => Object.freeze([adapter]),
+      deps: [BrowserWhipBroadcastRuntimeService],
+    },
+    { provide: BROADCAST_STATS_PORT, useExisting: BrowserWhipBroadcastRuntimeService },
+  ],
 })
 export class RoomPageComponent implements OnInit, OnDestroy {
   readonly ready = signal(false);
@@ -77,6 +111,9 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   readonly canEnter = computed(() => this.ready() && (!this.authRequired() || this.auth.authenticated()));
   readonly canOwnRooms = computed(() => this.auth.authenticated());
   readonly ownMediaAgentOnline = computed(() => this.mediaAgentOnboarding.agents().some((agent) => agent.online));
+  readonly broadcastActive = computed(() => this.broadcastPreflight.lifecycle() === "ready"
+    || new Set(["starting", "running", "degraded", "reconnecting", "handing_over", "stopping"])
+      .has(this.broadcastPublisher.coordinator.programState.value().lifecycle));
   readonly filteredCaptionModels = computed(() => {
     const query = this.captionModelSearch().trim().toLocaleLowerCase("de-DE");
     if (!query) return this.captionModels.models;
@@ -125,6 +162,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     readonly mediaAgents: BlindMediaAgentService,
     readonly media: MediaPublicationService,
     readonly broadcastPreflight: BroadcastOwnSourcePreflightService,
+    readonly broadcastPublisher: BroadcastPublisherWorkflowService,
     readonly captions: LiveCaptionService,
     readonly captionModels: VoskModelManagerService,
     readonly mediaStrategy: MediaStrategyService,
@@ -250,8 +288,8 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     });
   }
 
-  leave(): void {
-    void this.resetBroadcastPreflight();
+  async leave(): Promise<void> {
+    await this.resetBroadcastPreflight();
     this.captions.stop();
     this.media.stopAll();
     this.session.leave();
@@ -569,7 +607,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
 
   private async resetBroadcastPreflight(): Promise<void> {
     try {
-      await this.broadcastPreflight.resetForSession();
+      await this.broadcastPublisher.resetForSession();
     } catch (error) {
       this.pageError.set(error instanceof Error ? error.message : "broadcast_preview_cleanup_failed");
     }

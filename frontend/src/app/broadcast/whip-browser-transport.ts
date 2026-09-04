@@ -766,13 +766,16 @@ export class Rfc9725WhipTransport implements BroadcastPublicationTransport {
     init: RequestInit,
     signal: AbortSignal,
   ): Promise<HttpResult> {
-    const target = assertWhipResourceUrl(resourceUrl, this.configuration);
+    let target = assertWhipResourceUrl(resourceUrl, this.configuration);
     const authorization = normalizeWhipAuthorization(await this.dependencies.authorization.authorize({
       requestVersion: 1,
       program,
       action,
       resourceUrl: target.href,
     }, signal), this.now());
+    if (authorization.resourceUrl) {
+      target = assertWhipResourceUrl(authorization.resourceUrl, this.configuration);
+    }
     signal.throwIfAborted();
     const timeoutController = new AbortController();
     const timeout = setTimeout(() => timeoutController.abort(new DOMException("Timeout", "AbortError")),

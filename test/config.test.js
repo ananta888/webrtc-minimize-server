@@ -36,6 +36,7 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.equal(config.mediaAgentEnrollmentTtlMs, 600_000);
   assert.equal(config.mediaAgentMaxPerPrincipal, 3);
   assert.equal(config.broadcastWhipEndpoint, "");
+  assert.equal(config.broadcastWhipResourceBase, "");
   assert.equal(config.broadcastWhipProfile, "rfc9725");
   assert.deepEqual(config.broadcastWhipRedirectOrigins, []);
   assert.equal(config.broadcastWhipTrickleIce, true);
@@ -45,6 +46,9 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.equal(config.broadcastWhipRetryBudget, 1);
   assert.equal(config.broadcastGatewayAuthEnabled, false);
   assert.deepEqual(config.broadcastGatewayAuthAddresses, ["127.0.0.1", "::1"]);
+  assert.equal(config.broadcastGatewayOrigin, "");
+  assert.equal(config.broadcastSigningPrivateKey, "");
+  assert.equal(config.broadcastSigningKeyId, "broadcast-control-1");
 });
 
 test("loadConfig parses TURN configuration without preserving unknown fields", () => {
@@ -76,6 +80,7 @@ test("loadConfig rejects unsafe bounds and malformed public origins", () => {
   assert.throws(() => loadConfig({ MEDIA_AGENT_SELF_SERVICE_ENABLED: "true" }), /requires OIDC/);
   assert.throws(() => loadConfig({ BROADCAST_WHIP_ENDPOINT: "http://media.example/live/whip" }), /HTTPS URL/);
   assert.throws(() => loadConfig({ BROADCAST_WHIP_ENDPOINT: "https://media.example/live/whip?token=secret" }), /query/);
+  assert.throws(() => loadConfig({ BROADCAST_WHIP_RESOURCE_BASE: "http://media.example/ingest" }), /HTTPS URL/);
   assert.throws(() => loadConfig({ BROADCAST_WHIP_REDIRECT_ORIGINS: "https://edge.example/path" }), /HTTPS origins/);
   assert.throws(() => loadConfig({ BROADCAST_WHIP_AUDIO_CODECS: "video/vp8" }), /audio MIME/);
   assert.throws(() => loadConfig({ BROADCAST_WHIP_RETRY_BUDGET: "3" }), /between 0 and 2/);
@@ -83,6 +88,8 @@ test("loadConfig rejects unsafe bounds and malformed public origins", () => {
   assert.throws(() => loadConfig({ BROADCAST_GATEWAY_AUTH_ENABLED: "sometimes" }), /true or false/);
   assert.throws(() => loadConfig({ BROADCAST_GATEWAY_AUTH_ADDRESSES: "gateway.local" }), /IP addresses/);
   assert.throws(() => loadConfig({ BROADCAST_GATEWAY_AUTH_ADDRESSES: "" }), /IP addresses/);
+  assert.throws(() => loadConfig({ BROADCAST_GATEWAY_ORIGIN: "https://gateway.example/hls" }), /origin without a path/);
+  assert.throws(() => loadConfig({ BROADCAST_SIGNING_KEY_ID: "bad key id" }), /URL-safe/);
   assert.throws(() => loadConfig({
     BROADCAST_WHIP_PROFILE: "mediamtx-1.20",
     BROADCAST_WHIP_SIMULCAST_ENABLED: "true",
@@ -109,6 +116,7 @@ test("loadConfig accepts only explicit gateway callback source addresses", () =>
 test("loadConfig accepts a bounded secret-free WHIP browser policy", () => {
   const config = loadConfig({
     BROADCAST_WHIP_ENDPOINT: "https://media.example/live/whip/",
+    BROADCAST_WHIP_RESOURCE_BASE: "https://media.example/broadcast/ingest/",
     BROADCAST_WHIP_PROFILE: "rfc9725",
     BROADCAST_WHIP_REDIRECT_ORIGINS: "https://edge-a.example,https://edge-b.example",
     BROADCAST_WHIP_TRICKLE_ICE: "false",
@@ -121,6 +129,7 @@ test("loadConfig accepts a bounded secret-free WHIP browser policy", () => {
     BROADCAST_WHIP_RETRY_BUDGET: "2",
   });
   assert.equal(config.broadcastWhipEndpoint, "https://media.example/live/whip");
+  assert.equal(config.broadcastWhipResourceBase, "https://media.example/broadcast/ingest");
   assert.equal(config.broadcastWhipProfile, "rfc9725");
   assert.deepEqual(config.broadcastWhipRedirectOrigins, ["https://edge-a.example", "https://edge-b.example"]);
   assert.equal(config.broadcastWhipTrickleIce, false);
