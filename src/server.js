@@ -38,6 +38,7 @@ import { MediaMtxExternalAuthError } from "./mediamtx-external-auth.js";
 import { BroadcastHlsProxyError } from "./broadcast-hls-proxy.js";
 import { BroadcastPlaybackSessionError } from "./broadcast-playback-session-store.js";
 import { BroadcastAbuseGuard } from "./broadcast-admission-control.js";
+import { BroadcastHealthRegistry } from "./broadcast-observability.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
@@ -321,6 +322,7 @@ function createHttpHandler(config, registry, services) {
     mediaMtxExternalAuthService,
     broadcastHlsProxy,
     broadcastAbuseGuard,
+    broadcastHealthRegistry,
   } = services;
   return async (request, response) => {
     try {
@@ -335,6 +337,15 @@ function createHttpHandler(config, registry, services) {
       }
       if (request.method === "GET" && url.pathname === "/config") {
         sendJson(response, 200, publicRuntimeConfig(config, services), securityHeaders(config));
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/readyz") {
+        const observedAt = Date.now();
+        broadcastHealthRegistry.update({
+          component: "control-plane", status: "healthy", reasonCode: "READY", observedAt,
+        });
+        const readiness = broadcastHealthRegistry.snapshot(observedAt);
+        sendJson(response, readiness.status === "ok" ? 200 : 503, readiness, securityHeaders(config));
         return;
       }
       if (url.pathname === "/api/broadcast/playback-sessions") {
@@ -1496,6 +1507,7 @@ export function createAppServer(options = {}) {
   const ownsBroadcastAbuseGuard = !options.broadcastAbuseGuard && Boolean(broadcastHlsProxy || mediaMtxExternalAuthService);
   const broadcastAbuseGuard = options.broadcastAbuseGuard || (ownsBroadcastAbuseGuard
     ? new BroadcastAbuseGuard({ key: crypto.randomBytes(32) }) : null);
+  const broadcastHealthRegistry = options.broadcastHealthRegistry || new BroadcastHealthRegistry();
   if (config.broadcastGatewayAuthEnabled && !mediaMtxExternalAuthService) {
     throw new Error("BROADCAST_GATEWAY_AUTH_ENABLED requires a MediaMTX external auth service");
   }
@@ -1513,6 +1525,7 @@ export function createAppServer(options = {}) {
     mediaMtxExternalAuthService,
     broadcastHlsProxy,
     broadcastAbuseGuard,
+    broadcastHealthRegistry,
   };
   const server = http.createServer(createHttpHandler(config, registry, services));
   if (!options.workspaceStore && workspaceStore) server.on("close", () => workspaceStore.close());
@@ -1535,6 +1548,7 @@ export function createAppServer(options = {}) {
     mediaAgentEnrollmentStore,
     mediaAgentInstallerService,
     broadcastAbuseGuard,
+    broadcastHealthRegistry,
   };
 }
 

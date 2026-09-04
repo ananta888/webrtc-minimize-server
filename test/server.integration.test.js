@@ -137,6 +137,14 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
 
   const health = await fetch(`${app.httpUrl}/healthz`).then((response) => response.json());
   assert.deepEqual(health, { status: "ok", rooms: 0, participants: 0 });
+  const readiness = await fetch(`${app.httpUrl}/readyz`).then((response) => response.json());
+  assert.deepEqual(readiness, {
+    status: "ok", controlPlane: "ready", broadcast: "disabled",
+    dependencies: {
+      "trusted-packager": "disabled", "media-gateway": "disabled",
+      "origin-cdn": "disabled", "moq-adapter": "disabled",
+    },
+  });
 
   const configResponse = await fetch(`${app.httpUrl}/config`);
   assert.deepEqual(await configResponse.json(), {

@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "title": "WebRTC Broadcast Operations",
+  "runtime_verified": false,
+  "access_role": "broadcast-operator",
+  "export_target": "operator-private-metrics",
+  "sampling": {
+    "counters_and_gauges": "15s",
+    "viewer_experience": "10_percent_sessions",
+    "errors_and_failovers": "100_percent_content_free"
+  },
+  "retention": {
+    "high_resolution_days": 14,
+    "aggregate_days": 90,
+    "raw_media_or_caption_content": "never"
+  },
+  "panels": [
+    { "id": "program-state", "metrics": ["broadcast_program_state", "broadcast_program_transition_seconds"] },
+    { "id": "ingest-and-encoding", "metrics": ["broadcast_whip_sessions", "broadcast_ingest_bits_per_second", "broadcast_frames_total", "broadcast_encoder_seconds_total"] },
+    { "id": "delivery", "metrics": ["broadcast_delivery_objects_total", "broadcast_egress_bits_per_second", "broadcast_viewers"] },
+    { "id": "viewer-experience", "metrics": ["broadcast_player_start_seconds", "broadcast_end_to_glass_seconds", "broadcast_rebuffer_ratio", "broadcast_av_sync_offset_seconds", "broadcast_caption_delay_seconds"] },
+    { "id": "capacity-and-cost", "metrics": ["broadcast_resource_utilization_ratio", "broadcast_quota_ratio"] },
+    { "id": "recovery-and-budget", "metrics": ["broadcast_failovers_total", "broadcast_error_budget_remaining_ratio"] }
+  ],
+  "alerts": [
+    { "code": "BROADCAST_START_SLO", "runbook": "/docs/runbooks/broadcast-start-latency.md" },
+    { "code": "BROADCAST_END_TO_GLASS_SLO", "runbook": "/docs/runbooks/broadcast-latency.md" },
+    { "code": "BROADCAST_REBUFFER_SLO", "runbook": "/docs/runbooks/broadcast-player.md" },
+    { "code": "BROADCAST_AVAILABILITY_SLO", "runbook": "/docs/runbooks/broadcast-availability.md" },
+    { "code": "BROADCAST_CAPTION_SLO", "runbook": "/docs/runbooks/broadcast-captions.md" },
+    { "code": "BROADCAST_ABORT_SLO", "runbook": "/docs/runbooks/broadcast-availability.md" },
+    { "code": "BROADCAST_RESOURCE_PRESSURE", "runbook": "/docs/runbooks/broadcast-capacity.md" },
+    { "code": "BROADCAST_QUOTA_PRESSURE", "runbook": "/docs/runbooks/broadcast-capacity.md" },
+    { "code": "BROADCAST_ERROR_BUDGET_LOW", "runbook": "/docs/runbooks/broadcast-error-budget.md" },
+    { "code": "BROADCAST_FAILOVER_SLOW", "runbook": "/docs/runbooks/broadcast-failover.md" }
+  ]
+}
