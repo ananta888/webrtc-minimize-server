@@ -1,7 +1,7 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund
 COPY angular.json tsconfig.json ./
 COPY frontend ./frontend
 COPY scripts/extract-vosk-worker.mjs ./scripts/extract-vosk-worker.mjs
@@ -11,7 +11,7 @@ RUN npm run build
 FROM node:22-alpine AS dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
 FROM golang:1.24-alpine AS media-agent-artifacts
 WORKDIR /src
