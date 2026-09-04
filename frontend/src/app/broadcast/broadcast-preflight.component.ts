@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, input, output, signal } from "@angular/core";
 
 import { MediaStreamDirective } from "../shared/media-stream.directive";
+import { BroadcastModerationPanelComponent } from "./broadcast-moderation-panel.component";
 import { BroadcastOwnSourcePreflightService } from "./broadcast-own-source-preflight.service";
 import {
   TrustedDecryptConsentCandidate,
@@ -13,7 +14,7 @@ import { TrustedVideoProgramSettingsService } from "./trusted-video-compositor";
 @Component({
   selector: "app-broadcast-preflight",
   standalone: true,
-  imports: [MediaStreamDirective, TrustedDecryptConsentPanelComponent],
+  imports: [MediaStreamDirective, TrustedDecryptConsentPanelComponent, BroadcastModerationPanelComponent],
   templateUrl: "./broadcast-preflight.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

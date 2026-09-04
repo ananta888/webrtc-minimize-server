@@ -14,6 +14,8 @@ describe("BroadcastPreflightComponent audio policy", () => {
     expect(template).toContain('id="broadcast-start-disabled"');
     expect(template).toContain("Blind-Media-Agenten sind keine Trusted Packager");
     expect(template).toContain("Sendestart noch nicht mit der Control Plane verbunden");
+    expect(template).toContain("<app-broadcast-moderation-panel");
+    expect(template).toContain('[connected]="false"');
     expect(component).toContain("estimatedCpuClass");
   });
 

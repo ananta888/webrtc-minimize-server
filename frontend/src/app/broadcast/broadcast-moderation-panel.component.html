@@ -1,0 +1,75 @@
+<section id="broadcast-moderation-panel" class="moderation-panel" aria-labelledby="broadcast-moderation-heading">
+  <div class="moderation-heading">
+    <div><p class="eyebrow">Live-Regie</p><h2 id="broadcast-moderation-heading">Quellen, Packager und Übergabe</h2></div>
+    <span class="connection-state" [class.connected]="connected()">{{ connected() ? 'Control Plane verbunden' : 'Noch nicht verbunden' }}</span>
+  </div>
+  <p class="trust-note">Nur ausdrücklich consentierte Broadcast-Quellen erscheinen hier. Blind-Media-Agenten sind keine Trusted Packager und können nicht ausgewählt werden.</p>
+
+  @if (conflictCode()) {
+    <p id="broadcast-moderation-conflict" class="conflict" role="alert">Der Programmstand hat sich geändert ({{ conflictCode() }}). Aktualisiere die Ansicht und bestätige erneut.</p>
+  }
+
+  <div class="moderation-columns">
+    <section aria-labelledby="moderation-sources-heading">
+      <h3 id="moderation-sources-heading">Quellen und Consent</h3>
+      <div class="moderation-list">
+        @for (source of sources(); track source.sourceId) {
+          <article class="moderation-row">
+            <div><strong>{{ source.ownerLabel }} · {{ source.sourceLabel }}</strong><small>{{ source.kind }} · {{ source.state }} · Consent {{ source.consentState }}</small></div>
+            <div class="row-actions">
+              @if (source.state === 'requested' && canModerate()) {
+                <button type="button" [disabled]="!connected() || busy()" (click)="requestSource(source)">Erneut anfragen</button>
+              }
+              @if (source.state === 'active' || source.state === 'selected') {
+                <button type="button" class="danger" [disabled]="!connected() || busy() || (!source.ownedByCurrentUser && !canModerate())" (click)="removeSource(source)">{{ source.ownedByCurrentUser ? 'Meine Quelle sofort widerrufen' : 'Aus Programm entfernen' }}</button>
+              }
+            </div>
+          </article>
+        } @empty {
+          <p class="empty">Noch keine autorisierte Broadcast-Quelle. Eine Anfrage startet niemals selbst Kamera, Mikrofon oder Bildschirm.</p>
+        }
+      </div>
+      <label>Programmlayout
+        <select id="broadcast-moderation-layout" [value]="layout()" [disabled]="!connected() || !canModerate() || busy()" (change)="layout.set($any($event.target).value)">
+          <option value="single">Einzelquelle</option><option value="screen-presenter">Bildschirm + Presenter</option>
+          <option value="side-by-side">Nebeneinander</option><option value="active-speaker">Aktiver Sprecher</option>
+          <option value="grid">Raster</option><option value="waiting-slate">Sicheres Wartebild</option><option value="end-slate">Endbild</option>
+        </select>
+      </label>
+      <button id="broadcast-layout-request" type="button" [disabled]="!connected() || !canModerate() || busy()" (click)="requestLayout()">Layoutänderung prüfen</button>
+    </section>
+
+    <section aria-labelledby="moderation-packagers-heading">
+      <h3 id="moderation-packagers-heading">Eigene Trusted Packager</h3>
+      <fieldset class="packager-list" [disabled]="!connected() || !canModerate() || busy()">
+        <legend>Ein aktiver Writer · bis zu zwei schlüssellose Standbys</legend>
+        @for (agent of packagers(); track agent.agentId) {
+          <article class="packager-row">
+            <label><input type="radio" name="broadcast-primary-packager" [value]="agent.agentId" [checked]="primaryAgentId() === agent.agentId" [disabled]="!agent.online || !agent.eligible" (change)="selectPrimary(agent.agentId)"> <span><strong>{{ agent.label }}</strong><small>{{ agent.healthLabel }} · {{ agent.uploadLabel }} · {{ agent.energyLabel }}</small></span></label>
+            <label><input type="checkbox" [checked]="isStandby(agent.agentId)" [disabled]="agent.agentId === primaryAgentId() || !agent.online || !agent.eligible || (!isStandby(agent.agentId) && standbyLimitReached())" (change)="toggleStandby(agent.agentId, $any($event.target).checked)"> Standby ohne Decrypt-Schlüssel</label>
+            @if (live() && agent.agentId !== activePackagerId() && agent.online && agent.eligible) {
+              <button type="button" (click)="requestHandoff(agent.agentId)">Übergabe hierhin prüfen</button>
+            }
+          </article>
+        } @empty {
+          <p class="empty">Kein consentierter Native-Packager verfügbar. Die installierten blinden Relay-Agenten werden hier absichtlich nicht angeboten.</p>
+        }
+      </fieldset>
+      <button id="broadcast-packager-request" type="button" [disabled]="!connected() || !canModerate() || busy() || !primaryAgentId()" (click)="requestPackagerSelection()">Packager-Auswahl prüfen</button>
+    </section>
+  </div>
+
+  <button id="broadcast-moderation-stop" class="kill" type="button" [disabled]="!connected() || !live() || !canModerate() || busy()" (click)="requestStop()">Sendung vollständig beenden</button>
+
+  @if (confirmation(); as pending) {
+    <section id="broadcast-moderation-confirmation" class="confirmation" role="dialog" aria-modal="true" aria-labelledby="broadcast-confirmation-heading" aria-describedby="broadcast-confirmation-consequence">
+      <h3 id="broadcast-confirmation-heading">{{ pending.heading }}</h3>
+      <p><strong>Ziel:</strong> {{ pending.targetLabel }}</p>
+      <p id="broadcast-confirmation-consequence">{{ pending.consequence }}</p>
+      <div class="row-actions">
+        <button type="button" [disabled]="busy()" (click)="cancel()">Abbrechen</button>
+        <button id="broadcast-confirm-action" class="danger" type="button" [disabled]="busy()" (click)="confirm(pending.confirmationId)">Bewusst bestätigen</button>
+      </div>
+    </section>
+  }
+</section>
