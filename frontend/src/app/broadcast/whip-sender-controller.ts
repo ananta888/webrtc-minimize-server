@@ -78,6 +78,13 @@ const SOURCE_ENVELOPES: Readonly<Record<WhipMediaTrackDescriptor["sourceKind"], 
     priority: "high",
     contentHint: "detail",
   }),
+  "program-video": Object.freeze({
+    maximumBitrate: 4_000_000,
+    maximumFramerate: 30,
+    degradationPreference: "balanced",
+    priority: "high",
+    contentHint: "detail",
+  }),
   slate: Object.freeze({
     maximumBitrate: 180_000,
     maximumFramerate: 2,

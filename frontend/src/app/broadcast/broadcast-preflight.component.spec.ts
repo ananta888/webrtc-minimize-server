@@ -23,4 +23,16 @@ describe("BroadcastPreflightComponent audio policy", () => {
     expect(component).not.toContain("getUserMedia");
     expect(component).not.toContain("getDisplayMedia");
   });
+
+  it("offers every bounded compositor layout and fixed output profile", () => {
+    expect(template).toContain('id="broadcast-video-layout"');
+    for (const layout of ["single", "screen-presenter", "side-by-side", "active-speaker", "grid", "waiting-slate", "end-slate"]) {
+      expect(template).toContain(`<option value="${layout}">`);
+    }
+    expect(template).toContain('id="broadcast-video-profile"');
+    for (const profile of ["bandwidth", "balanced", "screen-text", "quality"]) {
+      expect(template).toContain(`<option value="${profile}">`);
+    }
+    expect(template).toContain("Titel, Namen und Untertitel bleiben standardmäßig aus");
+  });
 });

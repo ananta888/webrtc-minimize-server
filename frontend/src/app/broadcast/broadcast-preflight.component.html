@@ -85,6 +85,34 @@
         <div><dt>DTX / FEC</dt><dd>{{ audioSettings.profile().dtx ? 'anfordern' : 'aus' }} / {{ audioSettings.profile().fec ? 'anfordern' : 'aus' }}</dd></div>
       </dl>
     </fieldset>
+    <fieldset class="audio-policy video-policy" id="broadcast-video-policy">
+      <legend>Video-Programmbild</legend>
+      <label class="field">Layout
+        <select id="broadcast-video-layout" [value]="videoSettings.layout()" (change)="setVideoLayout($any($event.target).value)">
+          <option value="single">Einzelquelle</option>
+          <option value="screen-presenter">Bildschirm + Presenter</option>
+          <option value="side-by-side">Nebeneinander</option>
+          <option value="active-speaker">Aktiver Sprecher</option>
+          <option value="grid">Raster</option>
+          <option value="waiting-slate">Wartebild</option>
+          <option value="end-slate">Endbild</option>
+        </select>
+      </label>
+      <label class="field">Ausgabeprofil
+        <select id="broadcast-video-profile" [value]="videoSettings.profileId()" (change)="setVideoProfile($any($event.target).value)">
+          <option value="bandwidth">Bandbreite · 960 × 540 · 12 FPS</option>
+          <option value="balanced">Ausgewogen · 1280 × 720 · 24 FPS</option>
+          <option value="screen-text">Bildschirmtext · 1920 × 1080 · 15 FPS</option>
+          <option value="quality">Qualität · 1920 × 1080 · 30 FPS</option>
+        </select>
+      </label>
+      <p class="policy-note">Der Compositor arbeitet nur auf getrennten Broadcast-Klonen. Bildschirmtext bleibt vollständig sichtbar; Kameras werden nie kleiner als die Profil-Untergrenze. Titel, Namen und Untertitel bleiben standardmäßig aus.</p>
+      <dl class="facts compact">
+        <div><dt>Geometrie</dt><dd>{{ videoSettings.profile().width }} × {{ videoSettings.profile().height }}</dd></div>
+        <div><dt>Bildrate</dt><dd>{{ videoSettings.profile().framesPerSecond }} FPS</dd></div>
+        <div><dt>Fit</dt><dd>Bildschirm {{ videoSettings.profile().screenFit }} · Kamera {{ videoSettings.profile().cameraFit }}</dd></div>
+      </dl>
+    </fieldset>
     <dl class="facts">
       <div><dt>Codecprofil</dt><dd id="broadcast-codec-profile">{{ preflight.codecProfile() }}</dd></div>
       <div><dt>Geschätzter Upload</dt><dd id="broadcast-upload-estimate">{{ preflight.formatBitrate(preflight.estimatedUploadBitsPerSecond()) }}</dd></div>

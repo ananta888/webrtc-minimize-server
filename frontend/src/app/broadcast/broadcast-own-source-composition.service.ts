@@ -16,11 +16,18 @@ import {
   TrustedAudioProgramSettingsService,
 } from "./trusted-audio-program-bus";
 import { WhipMediaStreamPort, WhipResolvedMedia } from "./whip-contracts";
+import {
+  TRUSTED_VIDEO_COMPOSITOR_FACTORY,
+  TrustedVideoCompositorFactory,
+  TrustedVideoCompositorHandle,
+  TrustedVideoProgramSettingsService,
+} from "./trusted-video-compositor";
 
 interface OwnedComposition {
   readonly handle: BroadcastCompositionHandle;
   readonly media: WhipResolvedMedia;
   readonly audioBus: TrustedAudioProgramHandle | null;
+  readonly videoCompositor: TrustedVideoCompositorHandle | null;
 }
 
 function compositionId(): string {
@@ -39,6 +46,8 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
     private readonly capture: BroadcastOwnSourceCaptureService,
     @Inject(TRUSTED_AUDIO_PROGRAM_BUS_FACTORY) private readonly audioBusFactory: TrustedAudioProgramBusFactory,
     private readonly audioSettings: TrustedAudioProgramSettingsService,
+    @Inject(TRUSTED_VIDEO_COMPOSITOR_FACTORY) private readonly videoCompositorFactory: TrustedVideoCompositorFactory,
+    private readonly videoSettings: TrustedVideoProgramSettingsService,
   ) {}
 
   async compose(
@@ -67,12 +76,13 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
       }
       return { fork, sourceStream, track: sourceTracks[0] };
     });
-    if (resolved.filter(({ track }) => track.kind === "video").length > 1
-      || resolved.some(({ track }) => track.kind !== "audio" && track.kind !== "video")) {
+    if (resolved.some(({ track }) => track.kind !== "audio" && track.kind !== "video")) {
       throw new BroadcastBrowserPortError("broadcast_composition_required");
     }
     const audioInputs = resolved.filter(({ track }) => track.kind === "audio");
     let audioBus: TrustedAudioProgramHandle | null = null;
+    let videoCompositor: TrustedVideoCompositorHandle | null = null;
+    try {
     if (audioInputs.length > 0) {
       audioBus = await this.audioBusFactory.create(
         _program,
@@ -87,13 +97,28 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
       );
       signal.throwIfAborted();
     }
-    const video = resolved.find(({ track }) => track.kind === "video");
+    const videoInputs = resolved.filter(({ track }) => track.kind === "video");
+    if (videoInputs.length > 0) {
+      videoCompositor = await this.videoCompositorFactory.create(
+        _program,
+        videoInputs.map(({ fork, sourceStream }) => ({
+          sourceId: fork.sourceId,
+          sourceKind: fork.kind as "camera" | "screen",
+          stream: sourceStream,
+        })),
+        this.videoSettings.profile(),
+        this.videoSettings.layout(),
+        this.videoSettings.overlay(),
+        signal,
+      );
+      signal.throwIfAborted();
+    }
     const descriptors = [
-      ...(video ? [{
-        sourceId: video.fork.sourceId,
-        sourceKind: video.fork.kind,
+      ...(videoCompositor ? [{
+        sourceId: videoCompositor.outputSourceId,
+        sourceKind: "program-video" as const,
         envelope: "clear-program-v1" as const,
-        track: video.track,
+        track: videoCompositor.track,
       }] : []),
       ...(audioBus ? [{
         sourceId: audioBus.outputSourceId,
@@ -118,6 +143,7 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
     this.compositions.set(handle.compositionId, Object.freeze({
       handle,
       audioBus,
+      videoCompositor,
       media: Object.freeze({
         stream: new MediaStream(descriptors.map(({ track }) => track)),
         tracks: Object.freeze(descriptors.map((descriptor) => Object.freeze(descriptor))),
@@ -126,9 +152,14 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
     if (signal.aborted) {
       this.compositions.delete(handle.compositionId);
       await audioBus?.close();
+      await videoCompositor?.close();
       signal.throwIfAborted();
     }
     return handle;
+    } catch (error) {
+      await Promise.allSettled([audioBus?.close(), videoCompositor?.close()].filter(Boolean) as Promise<void>[]);
+      throw error;
+    }
   }
 
   async resolve(composition: BroadcastCompositionHandle, signal: AbortSignal): Promise<WhipResolvedMedia> {
@@ -149,12 +180,15 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
       throw new BroadcastBrowserPortError("invalid_broadcast_composition_handle");
     }
     this.compositions.delete(handle.compositionId);
-    await owned.audioBus?.close();
+    await Promise.all([owned.audioBus?.close(), owned.videoCompositor?.close()]);
   }
 
   ngOnDestroy(): void {
     this.destroyed = true;
-    for (const owned of this.compositions.values()) void owned.audioBus?.close();
+    for (const owned of this.compositions.values()) {
+      void owned.audioBus?.close();
+      void owned.videoCompositor?.close();
+    }
     this.compositions.clear();
   }
 }

@@ -25,7 +25,7 @@ export interface WhipAuthorizationPort {
   authorize(request: WhipAuthorizationRequest, signal: AbortSignal): Promise<WhipAuthorization>;
 }
 
-export type WhipSyntheticSourceKind = "silence" | "slate" | "program-audio";
+export type WhipSyntheticSourceKind = "silence" | "slate" | "program-audio" | "program-video";
 export type WhipSourceKind = BroadcastSourceKind | WhipSyntheticSourceKind;
 
 export interface WhipAudioEncodingPolicy {
@@ -96,7 +96,7 @@ const TOKEN_CONTROL = /[\u0000-\u001f\u007f]/;
 const MIME_TYPE = /^(?:audio|video)\/[A-Za-z0-9!#$&^_.+-]{1,64}$/;
 const SOURCE_ID = /^src_[A-Za-z0-9_-]{16,64}$/;
 const SOURCE_KINDS = new Set<WhipSourceKind>([
-  "microphone", "camera", "screen", "screen-audio", "silence", "slate", "program-audio",
+  "microphone", "camera", "screen", "screen-audio", "silence", "slate", "program-audio", "program-video",
 ]);
 
 function fail(code: string): never {

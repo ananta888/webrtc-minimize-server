@@ -8,6 +8,7 @@ import {
 } from "./trusted-decrypt-consent-panel.component";
 import { TrustedDecryptConsentView } from "./trusted-decrypt-key-lifecycle";
 import { TrustedAudioProgramSettingsService } from "./trusted-audio-program-bus";
+import { TrustedVideoProgramSettingsService } from "./trusted-video-compositor";
 
 @Component({
   selector: "app-broadcast-preflight",
@@ -27,6 +28,7 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
   constructor(
     readonly preflight: BroadcastOwnSourcePreflightService,
     readonly audioSettings: TrustedAudioProgramSettingsService,
+    readonly videoSettings: TrustedVideoProgramSettingsService,
   ) {}
 
   ngOnInit(): void {
@@ -68,9 +70,23 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
     await this.refreshReadyAudioPreview();
   }
 
+  async setVideoProfile(value: unknown): Promise<void> {
+    if (!this.videoSettings.setProfile(value)) return;
+    await this.refreshReadyPreview("video");
+  }
+
+  async setVideoLayout(value: unknown): Promise<void> {
+    if (!this.videoSettings.setLayout(value)) return;
+    await this.refreshReadyPreview("video");
+  }
+
   private async refreshReadyAudioPreview(): Promise<void> {
+    await this.refreshReadyPreview("audio");
+  }
+
+  private async refreshReadyPreview(kind: "audio" | "video"): Promise<void> {
     if (this.preflight.lifecycle() !== "ready"
-      || !this.preflight.selectedSources().some(({ kind }) => kind === "audio")) return;
+      || !this.preflight.selectedSources().some((source) => source.kind === kind)) return;
     try {
       await this.preflight.stopPreview("audio-policy-changed");
       await this.preflight.preparePreview("user-action");

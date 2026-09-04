@@ -116,6 +116,14 @@ app-broadcast-preflight .audio-policy legend {
   font-weight: 750;
 }
 
+app-broadcast-preflight .video-policy {
+  border-color: rgba(121, 184, 255, .25);
+}
+
+app-broadcast-preflight .video-policy legend {
+  color: #79b8ff;
+}
+
 app-broadcast-preflight .audio-policy .field,
 app-broadcast-preflight .audio-policy .facts {
   margin: 0;

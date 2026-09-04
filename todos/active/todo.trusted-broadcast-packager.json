@@ -495,10 +495,10 @@
     {
       "id": "TBP-015",
       "title": "Trusted-Video-Compositor für Kamera, Bildschirm, Layout und Slate entwickeln",
-      "status": "todo",
+      "status": "partial",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 70,
       "depends_on": ["TBP-010", "TBP-013", "TBP-014"],
       "acceptance_criteria": [
         "Der Compositor nimmt nur consentierte Quellen auf und unterstützt mindestens Single Source, Screen plus Presenter, Side-by-Side, Active Speaker, Grid, Waiting Slate und End Slate.",
@@ -511,10 +511,10 @@
     {
       "id": "TBP-016",
       "title": "Installierbaren Native-Packager mit Transcoding, ABR und Geräte-Capabilities ergänzen",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "P1",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 1,
       "depends_on": ["TBP-004", "TBP-005", "TBP-006", "TBP-013", "TBP-014", "TBP-015"],
       "acceptance_criteria": [
         "Der native Agent ist eine getrennte, freiwillige Rolle mit signiertem/prüfbarem Build, eindeutiger Geräteidentität, konto-/tenantgebundener Registrierung und pro Raum ausdrücklich aktivierter Packager-Capability.",
@@ -544,7 +544,7 @@
     {
       "id": "TBP-018",
       "title": "Gateway-, Control- und Media-Pfade mit Least Privilege isolieren",
-      "status": "in_progress",
+      "status": "partial",
       "priority": "P0",
       "risk": "critical",
       "progress_percent": 65,
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 24, "in_progress": 1, "partial": 1, "blocked": 0, "done": 14 },
+    "by_status": { "todo": 22, "in_progress": 1, "partial": 3, "blocked": 0, "done": 14 },
     "progress_percent_done": 35,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -963,9 +963,9 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 24,
+    "todo_remaining": 22,
     "in_progress": 1,
-    "partial": 1,
+    "partial": 3,
     "blocked": 0,
     "done": 14
   },
@@ -991,6 +991,7 @@
     "TBP-014 ist zu 90 Prozent umgesetzt und bleibt wegen des noch ausstehenden physischen Akustik-/Lippensynchronitaetsgates partial. Der Browser mischt bis zu vier exakt consent-gebundene Mikrofon- und Bildschirmton-Forks ueber getrennte Gain-, Meter- und Ducking-Zweige, Summierung und Limiter in genau einen Programmausgang. Raumwiedergabe und Talkback besitzen keinen Rueckweg; Monitoring ist default-aus und nur nach lokaler Auswahl als Kopfhoererpfad aktiv. Sprache, Ausgewogen und Musik konfigurieren Opus-/AAC-Ziele, Kanaele, DTX/FEC-Anforderung, Content-Hint, Senderprioritaet, Gain und Ducking. WHIP bindet die Opus-Parameter im SDP und RTCRtpSender begrenzt die Bitrate. Quellenende, Abort, Stop und Destroy entfernen Timer, Nodes, Track und AudioContext. 21 fokussierte Bus-/Preflight-/Composition-/SDP-/Sender-/UI-Tests und ein echter Chromium-Zwei-Peer-Lauf gegen den Produktionsbuild sind gruen. Nicht als bestanden behauptet ist der geforderte reale Kopfhoerer-/Lautsprecher-Test mit gleichzeitigem Mikrofon, Bildschirmton, zweitem physischen Geraet, Echo-, Pegel- und Lippensynchronitaetsmessung. Waehrend dieses Gate offen bleibt, beginnt der davon unabhaengige TBP-017-MediaMTX-Track.",
     "TBP-017 ist mit einem getrennten opt-in MediaMTX-Integrationsprofil abgeschlossen. Das Multi-Arch-Image bluenviron/mediamtx 1.20.1 ist auf OCI-Digest sha256:1b029d11049be75630e9b73bb0d5f47b08a7db4eaee89a80bf8f53bc40e56414 fixiert; CycloneDX-Inventar, MIT-Lizenz und Upstream-Referenzen sind versioniert. Nur WHIP/WebRTC, LL-HLS, UDP-ICE sowie interne Control-API und Metrics sind aktiv; RTSP, RTMP, SRT, MoQ, pprof, Playback-Archiv und Recording sind aus. Pfade sind auf nicht erratbare res_-IDs begrenzt und an die vorhandene serverseitige Grant-Policy anschliessbar. HLS/WHIP/ICE binden nur an Loopback, API/Metrics haben kein Host-Mapping. Der Container laeuft als UID 65532 ohne Capabilities, read-only, no-new-privileges, mit kleinem tmpfs und CPU-/RAM-/PID-Grenzen. Der reale Docker-Gate startete und stoppte das isolierte Profil, pruefte Image/Health, Portbindung, unbekannter-Pfad-401 und gueltiger-offline-Pfad-404. Das Profil bleibt bis zur aktions-, pfad- und epochgebundenen TBP-018-Autorisierung aus dem oeffentlichen Deployment ausgeschlossen.",
     "TBP-018 ist zu 65 Prozent umgesetzt. Der interne, standardmaessig deaktivierte MediaMTX-Callback akzeptiert nur POST mit JSON ohne Browser-Origin oder Query von einer exakt konfigurierten Gateway-IP. Der geschlossene MediaMTX-Contract verwirft unbekannte Felder, Basic-Credentials, Query-Tokens, ungueltige IPs, Protokolle und Resource-Pfade und bildet Publish, WHEP sowie HLS auf die vorhandenen kurzlebigen Grant-Aktionen ab. Signatur, autoritativer Grant-Datensatz, Program-Epoch, Status, Ablauf, Audience, Aktion und Pfad werden erneut geprueft; Rate-Limit und inhaltsfreie Antworten sind aktiv. Das sichere Compose-Overlay trennt Control- und Media-Netz und bindet beide Dienste an feste interne Adressen. Unit-, Integrations-, Negativ- und Compose-Strukturtests sind gruen. Ein beim ersten Deployment entdeckter fehlender Runtime-Copy der von der neuen Servergrenze importierten JSON-Schemas ist behoben und durch einen Docker-Runtime-Asset-Test regressionsgeschuetzt. Offen bleiben die Program-Orchestrierung als Composition-Root, produktive Reverse-Proxy-Methoden-/Rate-Regeln, Secret-/Key-Rotation und ein echter Publish/Read/Widerruf-Live-Gate; deshalb wird das Overlay noch nicht oeffentlich gestartet.",
+    "TBP-015 ist zu 70 Prozent umgesetzt und bleibt wegen der ausstehenden Real- und Langzeitgates partial. Ein getrennter Canvas-Compositor nimmt bis zu vier consentierte Broadcast-Video-Forks auf und erzeugt genau einen stabilen program-video-Ausgang. Einzelquelle, Bildschirm plus Presenter, Side-by-Side, Active Speaker, Grid, Waiting Slate und End Slate sowie vier feste Geometrie-/FPS-Profile sind implementiert. Bildschirm nutzt contain fuer Textlesbarkeit, Kamera cover mit Thumbnail-Untergrenze; versteckte Tabs und Render-Backpressure senken die FPS begrenzt. Quellenende degradiert zum reduzierten Layout oder neutralen Slate, Stop/Abort/Destroy loesen Timer, DOM-Medien und Ausgangstrack. Titel, Namen und Captions sind default-aus und nur ueber eine geschlossene, begrenzte Overlay-Policy moeglich. Sechs Compositor- sowie Composition-, Contract-, Sender- und UI-Tests sind gruen. Offen sind automatische VAD-Kopplung, OffscreenCanvas-/Worker-Auslagerung, echte visuelle Golden-Gates und der 60-Minuten-A/V-/CPU-/Memory-/Freeze-Lauf. TBP-016 beginnt mit dem getrennten freiwilligen Native-Packager.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }
