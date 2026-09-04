@@ -57,12 +57,17 @@ jobs:
         run: |
           docker compose config --quiet
           docker compose --profile local --env-file .env.local.example config --quiet
-      - name: Build production image
-        run: docker buildx build --build-arg SOURCE_REVISION=${{ github.sha }} --provenance=mode=max --sbom=true --load --tag webrtc-minimize-server:ci .
-      - name: Scan image archive for synthetic leakage canaries
+      - name: Create attestation-capable BuildKit builder
         run: |
-          docker save --output /tmp/webrtc-minimize-server.tar webrtc-minimize-server:ci
-          BROADCAST_IMAGE_ARCHIVE=/tmp/webrtc-minimize-server.tar node scripts/broadcast-leakage-gate.mjs
+          docker buildx create --driver docker-container --name webrtc-ci-builder --use
+          docker buildx inspect --bootstrap
+      - name: Build production OCI archive with provenance and SBOM
+        run: |
+          docker buildx build --build-arg SOURCE_REVISION=${{ github.sha }} \
+            --provenance=mode=max --sbom=true \
+            --output type=oci,dest=/tmp/webrtc-minimize-server.oci.tar .
+      - name: Scan OCI archive for synthetic leakage canaries
+        run: BROADCAST_IMAGE_ARCHIVE=/tmp/webrtc-minimize-server.oci.tar node scripts/broadcast-leakage-gate.mjs
 
   media-agent:
     name: Blind media agent

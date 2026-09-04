@@ -69,8 +69,17 @@ func TestNativeMediaReceivesBrowserRTP(t *testing.T) {
 	})
 
 	var signalingFailed atomic.Bool
+	stopSignaling := make(chan struct{})
+	signalingDone := make(chan struct{})
 	go func() {
-		for message := range outgoing {
+		defer close(signalingDone)
+		for {
+			var message map[string]any
+			select {
+			case message = <-outgoing:
+			case <-stopSignaling:
+				return
+			}
 			if message["type"] != "assignment-signal" {
 				continue
 			}
@@ -86,7 +95,10 @@ func TestNativeMediaReceivesBrowserRTP(t *testing.T) {
 			}
 		}
 	}()
-	defer close(outgoing)
+	defer func() {
+		close(stopSignaling)
+		<-signalingDone
+	}()
 
 	offer, err := browser.CreateOffer(nil)
 	if err != nil {
