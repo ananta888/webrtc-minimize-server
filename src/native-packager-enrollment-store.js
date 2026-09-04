@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 const PACKAGER_ID = /^pkr_[A-Za-z0-9_-]{16,64}$/;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const COORDINATE = /^[A-Za-z0-9_-]{43}$/;
+const PROOF = /^[A-Za-z0-9_-]{86}$/;
 const PLATFORMS = new Set(["linux", "macos", "windows"]);
 
 export class NativePackagerEnrollmentError extends Error {
@@ -54,6 +55,52 @@ export function normalizeNativePackagerPublicKey(value) {
     fail("invalid_native_packager_public_key");
   }
   return Object.freeze({ kty: "EC", crv: "P-256", x: value.x, y: value.y, ext: true });
+}
+
+export function nativePackagerOperatorProvisioningMessage({
+  packagerId, ownerPrincipal, label: displayLabel, platform: os, publicKey,
+}) {
+  return [
+    "native-packager-operator-provision-v1",
+    packagerId,
+    ownerPrincipal,
+    displayLabel,
+    os,
+    publicKey.x,
+    publicKey.y,
+  ].join("\n");
+}
+
+function normalizeOperatorProvisioning(value) {
+  const fields = new Set([
+    "version", "type", "packagerId", "ownerPrincipal", "label", "platform", "publicKey", "proof",
+  ]);
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || Object.keys(value).length !== fields.size
+    || Object.keys(value).some((field) => !fields.has(field))
+    || value.version !== 1 || value.type !== "native-packager-operator-provisioning"
+    || !PACKAGER_ID.test(value.packagerId || "") || !PROOF.test(value.proof || "")) {
+    fail("invalid_native_packager_operator_provisioning");
+  }
+  return Object.freeze({
+    packagerId: value.packagerId,
+    ownerPrincipal: principal(value.ownerPrincipal),
+    label: label(value.label),
+    platform: platform(value.platform),
+    publicKey: normalizeNativePackagerPublicKey(value.publicKey),
+    proof: value.proof,
+  });
+}
+
+function verifyOperatorProvisioning(value) {
+  try {
+    return crypto.verify("sha256", Buffer.from(nativePackagerOperatorProvisioningMessage(value)), {
+      key: crypto.createPublicKey({ key: value.publicKey, format: "jwk" }),
+      dsaEncoding: "ieee-p1363",
+    }, Buffer.from(value.proof, "base64url"));
+  } catch {
+    return false;
+  }
 }
 
 function row(value) {
@@ -150,6 +197,35 @@ export class NativePackagerEnrollmentStore {
       label: enrollment.label,
       platform: enrollment.platform,
       publicKey: key,
+      keyFingerprint,
+    });
+  }
+
+  completeOperatorProvisioning(manifest, now = Date.now()) {
+    const value = normalizeOperatorProvisioning(manifest);
+    if (!verifyOperatorProvisioning(value)) fail("invalid_native_packager_operator_proof", 403);
+    const registered = Number(this.#database.prepare(`
+      SELECT COUNT(*) AS count FROM native_packager_registrations
+      WHERE owner_principal = ? AND revoked_at IS NULL
+    `).get(value.ownerPrincipal).count);
+    if (registered >= this.#maximum) fail("native_packager_quota_reached", 409);
+    const keyFingerprint = digest(`P-256\0${value.publicKey.x}\0${value.publicKey.y}`);
+    try {
+      this.#database.prepare(`
+        INSERT INTO native_packager_registrations
+          (packager_id, owner_principal, label, platform, public_key_json, key_fingerprint, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(value.packagerId, value.ownerPrincipal, value.label, value.platform,
+        JSON.stringify(value.publicKey), keyFingerprint, now);
+    } catch {
+      fail("native_packager_registration_conflict", 409);
+    }
+    return Object.freeze({
+      id: value.packagerId,
+      ownerPrincipal: value.ownerPrincipal,
+      label: value.label,
+      platform: value.platform,
+      publicKey: value.publicKey,
       keyFingerprint,
     });
   }

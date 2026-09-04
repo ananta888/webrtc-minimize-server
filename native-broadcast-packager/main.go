@@ -34,7 +34,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-const agentVersion = "0.3.0"
+const agentVersion = "0.4.0"
 
 var packagerIDPattern = regexp.MustCompile(`^pkr_[A-Za-z0-9_-]{16,64}$`)
 var enrollmentTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
@@ -242,6 +242,53 @@ func authMessage(id, nonce string, timestamp int64) string {
 }
 func enrollMessage(id, nonce string, timestamp int64, token string, key publicKey) string {
 	return fmt.Sprintf("native-packager-enroll-v1\n%s\n%s\n%d\n%s\n%s\n%s", id, nonce, timestamp, token, key.X, key.Y)
+}
+func operatorProvisioningMessage(id, owner, label, platform string, key publicKey) string {
+	return fmt.Sprintf("native-packager-operator-provision-v1\n%s\n%s\n%s\n%s\n%s\n%s",
+		id, owner, label, platform, key.X, key.Y)
+}
+
+type operatorProvisioningManifest struct {
+	Version        int       `json:"version"`
+	Type           string    `json:"type"`
+	PackagerID     string    `json:"packagerId"`
+	OwnerPrincipal string    `json:"ownerPrincipal"`
+	Label          string    `json:"label"`
+	Platform       string    `json:"platform"`
+	PublicKey      publicKey `json:"publicKey"`
+	Proof          string    `json:"proof"`
+}
+
+func normalizeOperatorOwner(raw string) (string, error) {
+	owner := strings.TrimSpace(raw)
+	separator := strings.LastIndex(owner, "|")
+	if len(owner) > 1024 || separator < 1 || separator == len(owner)-1 || strings.ContainsAny(owner, "\x00\r\n") {
+		return "", errors.New("invalid native-packager owner principal")
+	}
+	return owner, nil
+}
+
+func createOperatorProvisioningManifest(cfg config, identity *identity, ownerRaw, labelRaw, platformRaw string) (operatorProvisioningManifest, error) {
+	owner, err := normalizeOperatorOwner(ownerRaw)
+	if err != nil {
+		return operatorProvisioningManifest{}, err
+	}
+	label := strings.Join(strings.Fields(labelRaw), " ")
+	if len(label) < 1 || len(label) > 48 || strings.ContainsAny(label, "\x00\r\n") {
+		return operatorProvisioningManifest{}, errors.New("invalid native-packager label")
+	}
+	platform := strings.ToLower(strings.TrimSpace(platformRaw))
+	if !oneOf(platform, "linux", "macos", "windows") {
+		return operatorProvisioningManifest{}, errors.New("invalid native-packager platform")
+	}
+	proof, err := identity.sign(operatorProvisioningMessage(cfg.packagerID, owner, label, platform, identity.publicKey))
+	if err != nil {
+		return operatorProvisioningManifest{}, err
+	}
+	return operatorProvisioningManifest{
+		Version: 1, Type: "native-packager-operator-provisioning", PackagerID: cfg.packagerID,
+		OwnerPrincipal: owner, Label: label, Platform: platform, PublicKey: identity.publicKey, Proof: proof,
+	}, nil
 }
 
 type ffmpegCapability struct {
@@ -514,6 +561,24 @@ func main() {
 	if err != nil {
 		log.Fatal("identity unavailable")
 	}
+	if len(os.Args) == 2 && os.Args[1] == "operator-manifest" {
+		owner, readErr := os.ReadFile("/dev/stdin")
+		if readErr != nil || len(owner) < 2 || len(owner) > 2048 {
+			log.Fatal("owner principal unavailable")
+		}
+		manifest, manifestErr := createOperatorProvisioningManifest(
+			cfg, identity, string(owner), os.Getenv("NATIVE_PACKAGER_LABEL"), os.Getenv("NATIVE_PACKAGER_PLATFORM"),
+		)
+		if manifestErr != nil {
+			log.Fatal(manifestErr)
+		}
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetEscapeHTML(false)
+		if err = encoder.Encode(manifest); err != nil {
+			log.Fatal("operator manifest unavailable")
+		}
+		return
+	}
 	probeContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	capability, err := probeFFmpeg(probeContext, cfg.ffmpegPath)
 	cancel()
@@ -538,7 +603,7 @@ func main() {
 		return
 	}
 	if len(os.Args) != 1 {
-		log.Fatal("usage: native-broadcast-packager [enroll]")
+		log.Fatal("usage: native-broadcast-packager [enroll|operator-manifest]")
 	}
 	backoff := time.Second
 	for ctx.Err() == nil {

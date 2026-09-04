@@ -35,6 +35,21 @@ RUN CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="-s -w" -
 RUN CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o /out/native-broadcast-packager-macos-arm64 .
 RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/native-broadcast-packager-windows-amd64.exe .
 
+FROM alpine:3.22 AS native-packager-runtime
+RUN apk add --no-cache ca-certificates ffmpeg \
+    && addgroup -g 10001 -S packager \
+    && adduser -u 10001 -S -D -H -G packager packager \
+    && mkdir -p /var/lib/ananta-native-packager \
+    && chown packager:packager /var/lib/ananta-native-packager \
+    && ffmpeg -hide_banner -version | grep -Eq '^ffmpeg version (n)?([6-9]|[1-9][0-9])\.'
+COPY --from=media-agent-artifacts /out/native-broadcast-packager-linux-amd64 /usr/local/bin/native-broadcast-packager
+USER packager
+ENV NATIVE_PACKAGER_CONTROL_URL=wss://webrtc.ananta.de/native-packager \
+    NATIVE_PACKAGER_IDENTITY_FILE=/var/lib/ananta-native-packager/identity.pem \
+    NATIVE_PACKAGER_PLATFORM=linux \
+    NATIVE_PACKAGER_LABEL="Mini-PC Broadcast-Packager"
+ENTRYPOINT ["/usr/local/bin/native-broadcast-packager"]
+
 FROM node:22-alpine
 ARG SOURCE_REVISION=unknown
 LABEL org.opencontainers.image.source="https://github.com/ananta888/webrtc-minimize-server" \

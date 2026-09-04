@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"strings"
 	"testing"
 )
 
@@ -62,5 +63,29 @@ func TestAuthMessageMatchesP1363Signature(t *testing.T) {
 	s.FillBytes(proof[32:])
 	if len(base64.RawURLEncoding.EncodeToString(proof)) != 86 {
 		t.Fatal("unexpected P1363 proof length")
+	}
+}
+
+func TestOperatorManifestIsBoundToOwnerAndPublicKey(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config{packagerID: "pkr_0123456789abcdef"}
+	manifest, err := createOperatorProvisioningManifest(cfg, identityFromKey(key),
+		"https://identity.test/realms/ananta|owner\n", "  Mini-PC   Broadcast-Packager ", "LINUX")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.OwnerPrincipal != "https://identity.test/realms/ananta|owner" || manifest.Label != "Mini-PC Broadcast-Packager" || manifest.Platform != "linux" {
+		t.Fatalf("unexpected normalized manifest: %#v", manifest)
+	}
+	if len(manifest.Proof) != 86 || !strings.HasPrefix(operatorProvisioningMessage(
+		manifest.PackagerID, manifest.OwnerPrincipal, manifest.Label, manifest.Platform, manifest.PublicKey,
+	), "native-packager-operator-provision-v1\n") {
+		t.Fatal("operator proof or canonical message is invalid")
+	}
+	if _, err = createOperatorProvisioningManifest(cfg, identityFromKey(key), "issuer|owner", "Mini-PC", "android"); err == nil {
+		t.Fatal("unsupported operator platform accepted")
 	}
 }

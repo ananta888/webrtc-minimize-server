@@ -47,6 +47,28 @@ Danach authentisiert er jede WSS-Verbindung mit einer frischen Challenge,
 prüft lokal FFmpeg ab Version 6 sowie `libx264` und AAC und meldet nur die
 begrenzten Capability-Klassen aus dem Contract.
 
+Für dauerhaft betriebene, operatorverwaltete Rechner gibt es zusätzlich eine
+offline provisionierbare Registrierung ohne Benutzerpasswort und ohne
+langfristiges OIDC-Token. Der Agent erzeugt seinen P-256-Private-Key innerhalb
+seines persistenten lokalen Volumes und gibt über `operator-manifest` nur einen
+geschlossenen, mit diesem Schlüssel signierten Registrierungsnachweis aus. Das
+lokale Administrationstool
+`node src/native-packager-operator-provision.js DATABASE_FILE` prüft Proof of
+Possession, Konto-/Plattformbindung, Schema, Quota und Duplikate, bevor es die
+normale Registrierungsdomäne verwendet. Danach authentisiert sich der Agent wie
+jeder selbst installierte Packager ausschließlich über frische WSS-Challenges.
+Ein Widerruf durch den Kontoinhaber bleibt endgültig; derselbe Nachweis kann die
+widerrufene ID nicht reaktivieren.
+
+Das Compose-Profil `native-packager` stellt dafür einen eingehend portlosen,
+read-only laufenden Container mit FFmpeg 6+, eigener unprivilegierter UID,
+gelöschten Linux-Capabilities, PID-/CPU-/RAM-Limits und einem einzigen
+persistenten Identitätsvolume bereit. `restart: unless-stopped` macht den
+Agenten nach Host- oder Docker-Neustarts wieder erreichbar. Die einmalige
+operatorseitige Zuordnung ersetzt nur den interaktiven Installationsschritt:
+Die Freigabe eines konkreten Raums bleibt absichtlich flüchtig und erfordert
+weiterhin einen sichtbaren Klick des angemeldeten Kontoinhabers in der Web-App.
+
 Die Control Plane kann genau eine kurzlebige Assignment-Vorbereitung
 pro Packager und Programm ausgeben. Sie entsteht nur aus einem sichtbaren
 `user-action`, aktueller Owner-Membership, wirksamem Raumconsent und einer
@@ -92,8 +114,9 @@ Firewall. Ein Uninstaller wird im privaten Agent-Verzeichnis abgelegt.
 SHA-256 macht den über genau diese TLS-Session geladenen Build prüfbar, ersetzt
 aber keine Publisher-Signatur. Windows Authenticode und Apple Developer ID sind
 noch nicht vorhanden und die UI weist ausdrücklich darauf hin. Private Keys
-werden derzeit als benutzerlesbare Datei mit Modus `0600` gespeichert; eine
-Keychain-/TPM-Anbindung bleibt ein Hardening-Schritt.
+werden derzeit als nur für den jeweiligen unprivilegierten Benutzer lesbare
+Datei mit Modus `0600` gespeichert; eine Keychain-/TPM-Anbindung bleibt ein
+Hardening-Schritt.
 
 Capability und Live-Gate akzeptieren jetzt tatsächlich nur FFmpeg ab Major 6;
 eine bloß vorhandene ältere Binärdatei reicht nicht mehr. Neben dem lokalen
