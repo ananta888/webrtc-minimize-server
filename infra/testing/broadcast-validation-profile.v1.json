@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "productViewerMaximum": null,
+  "viewerMaximumStatement": "No viewer maximum is guaranteed until production CDN and provider gates have measured it.",
+  "interactiveMeet": {
+    "participants": 20,
+    "evidenceCommand": "node --test test/server.integration.test.js test/broadcast-overload-isolation.test.js",
+    "requiredPhases": ["before-broadcast", "during-broadcast", "after-broadcast"]
+  },
+  "originTiers": [
+    { "id": "smoke-5", "viewers": 5, "durationMs": 15000 },
+    { "id": "room-scale-20", "viewers": 20, "durationMs": 15000 },
+    { "id": "origin-stress-50", "viewers": 50, "durationMs": 30000 }
+  ],
+  "cdnTiers": [
+    { "id": "cdn-smoke", "viewers": 20 },
+    { "id": "cdn-ramp", "viewers": 100 },
+    { "id": "cdn-capacity-discovery", "viewers": null }
+  ],
+  "soak": {
+    "releaseDurationMs": 14400000,
+    "sampleIntervalMs": 5000,
+    "requiredEvents": [
+      "source-switch",
+      "layout-switch",
+      "rendition-switch",
+      "caption-cue",
+      "late-join",
+      "network-fault",
+      "explicit-stop"
+    ],
+    "requiredMeasurements": [
+      "memory",
+      "handles",
+      "cpu",
+      "gpu",
+      "disk",
+      "egress",
+      "freeze",
+      "drift",
+      "cleanup"
+    ]
+  },
+  "chaosScenarios": [
+    "packager-crash",
+    "gateway-restart",
+    "control-plane-restart",
+    "provider-failure",
+    "dns-failure",
+    "tls-failure",
+    "expired-grant",
+    "network-partition",
+    "split-brain-attempt"
+  ],
+  "budgets": {
+    "originErrorRatioMax": 0,
+    "originP95RequestLatencyMsMax": 2500,
+    "recoveryDeadlineMsMax": 20000,
+    "cleanupDeadlineMsMax": 40000,
+    "ssimAllMin": 0.95
+  },
+  "costInputs": {
+    "computeCurrencyPerHour": null,
+    "gpuCurrencyPerHour": null,
+    "egressCurrencyPerGb": null,
+    "cdnCurrencyPerGb": null,
+    "observabilityCurrencyPerGb": null,
+    "storageCurrencyPerGbMonth": null
+  }
+}

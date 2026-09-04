@@ -21,6 +21,8 @@
     "test:media-agent-onboarding": "node scripts/live-media-agent-onboarding-gate.mjs",
     "test:media-agent-room": "node scripts/live-media-agent-room-gate.mjs",
     "test:interop:local": "node scripts/live-broadcast-local-interop-gate.mjs",
+    "test:quality:local": "node scripts/live-broadcast-quality-gate.mjs",
+    "test:load:local": "node scripts/live-broadcast-load-matrix-gate.mjs",
     "keycloak:client-config": "node scripts/keycloak-client-config.mjs",
     "test": "node --test",
     "todos:validate": "node scripts/validate-todos.mjs",

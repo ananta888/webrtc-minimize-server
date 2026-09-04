@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "observedAt": "2026-09-04",
+  "environment": {
+    "class": "local-linux-wsl2",
+    "gateway": "mediamtx-1.20.1",
+    "ffmpeg": "6.1.1"
+  },
+  "interactiveMeet": {
+    "participants": 20,
+    "admissionAndIsolation": "verified-deterministic",
+    "beforeDuringAfterLatency": "unverified-live",
+    "evidence": [
+      "test/server.integration.test.js",
+      "test/broadcast-overload-isolation.test.js"
+    ]
+  },
+  "originRuns": [
+    {
+      "profile": "smoke-5",
+      "status": "verified-local",
+      "viewers": 5,
+      "durationMs": 15000,
+      "requests": 588,
+      "requestsPerSecond": 39.2,
+      "bytes": 34786074,
+      "egressMegabitsPerSecond": 18.55,
+      "p95RequestLatencyMs": 6.09,
+      "errors": 0,
+      "completedViewers": 5,
+      "concurrentBlockingReloads": 5,
+      "gatewayCpuPercent": 3.2,
+      "gatewayMemoryMiB": 41.8,
+      "gatewayPids": 8
+    },
+    {
+      "profile": "room-scale-20",
+      "status": "verified-local",
+      "viewers": 20,
+      "durationMs": 15000,
+      "requests": 2750,
+      "requestsPerSecond": 183.33,
+      "bytes": 162477510,
+      "egressMegabitsPerSecond": 86.65,
+      "p95RequestLatencyMs": 6.39,
+      "errors": 0,
+      "completedViewers": 20,
+      "concurrentBlockingReloads": 20,
+      "gatewayCpuPercent": 2.7,
+      "gatewayMemoryMiB": 47.32,
+      "gatewayPids": 9
+    },
+    {
+      "profile": "origin-stress-50",
+      "status": "verified-local",
+      "viewers": 50,
+      "durationMs": 30000,
+      "requests": 12936,
+      "requestsPerSecond": 431.2,
+      "bytes": 767354128,
+      "egressMegabitsPerSecond": 204.63,
+      "p95RequestLatencyMs": 13.94,
+      "errors": 0,
+      "completedViewers": 50,
+      "concurrentBlockingReloads": 50,
+      "gatewayCpuPercent": 3.23,
+      "gatewayMemoryMiB": 66.62,
+      "gatewayPids": 9
+    }
+  ],
+  "cdnRuns": [
+    {
+      "profile": "cdn-smoke",
+      "status": "unavailable",
+      "reason": "No CDN adapter, test tenant or provider credentials are configured."
+    }
+  ],
+  "soak": {
+    "releaseDurationMs": 14400000,
+    "status": "not-executed",
+    "longestObservedDurationMs": 15000,
+    "reason": "The mandatory multi-hour run has not been executed in this environment."
+  },
+  "chaos": [
+    { "scenario": "packager-crash", "status": "verified-deterministic-and-local-restart" },
+    { "scenario": "gateway-restart", "status": "verified-deterministic" },
+    { "scenario": "control-plane-restart", "status": "unverified-live" },
+    { "scenario": "provider-failure", "status": "unavailable" },
+    { "scenario": "dns-failure", "status": "unverified-live" },
+    { "scenario": "tls-failure", "status": "unverified-live" },
+    { "scenario": "expired-grant", "status": "verified-deterministic" },
+    { "scenario": "network-partition", "status": "unverified-live" },
+    { "scenario": "split-brain-attempt", "status": "verified-deterministic" }
+  ],
+  "quality": {
+    "status": "partial-local",
+    "fixture": "testsrc2-1280x720-30fps-5s-libx264-crf23",
+    "encodedBytes": 1732412,
+    "encodedMegabitsPerSecond": 2.7719,
+    "encodeDurationMs": 635.84,
+    "realtimeFactor": 7.864,
+    "ssim": { "y": 0.992917, "u": 0.995233, "v": 0.996746, "all": 0.993941 },
+    "packetLoss": "unverified-live",
+    "encoderQpAndTime": "unverified-profiled",
+    "rebuffering": "unverified-player",
+    "screenText": "unverified-ocr",
+    "avSync": "unverified-physical",
+    "captionSync": "unverified-physical",
+    "subjectiveSample": "unverified-physical"
+  },
+  "cost": {
+    "status": "measurement-only-no-price-claim",
+    "measuredProfiles": [
+      { "viewers": 5, "egressMegabitsPerSecond": 18.55, "gatewayCpuPercent": 3.2, "gatewayMemoryMiB": 41.8 },
+      { "viewers": 20, "egressMegabitsPerSecond": 86.65, "gatewayCpuPercent": 2.7, "gatewayMemoryMiB": 47.32 },
+      { "viewers": 50, "egressMegabitsPerSecond": 204.63, "gatewayCpuPercent": 3.23, "gatewayMemoryMiB": 66.62 }
+    ],
+    "compute": "rate-unavailable",
+    "gpu": "not-used-local",
+    "egress": "rate-unavailable",
+    "cdnProvider": "unavailable",
+    "observability": "rate-unavailable",
+    "storage": "ephemeral-no-persistent-media"
+  }
+}

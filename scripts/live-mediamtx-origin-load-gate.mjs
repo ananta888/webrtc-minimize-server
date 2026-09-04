@@ -11,7 +11,7 @@ const resource = "res_loadtestaaaaaaaa";
 const viewerCount = Number(process.env.MEDIAMTX_LOAD_VIEWERS || 20);
 const durationMs = Number(process.env.MEDIAMTX_LOAD_DURATION_MS || 15_000);
 assert.ok(Number.isSafeInteger(viewerCount) && viewerCount >= 1 && viewerCount <= 100);
-assert.ok(Number.isSafeInteger(durationMs) && durationMs >= 5_000 && durationMs <= 300_000);
+assert.ok(Number.isSafeInteger(durationMs) && durationMs >= 5_000 && durationMs <= 21_600_000);
 const compose = [
   "compose", "--project-directory", ".", "-p", project,
   "-f", "infra/mediamtx/compose.yaml", "-f", "infra/mediamtx/compose.live-test.yaml",
