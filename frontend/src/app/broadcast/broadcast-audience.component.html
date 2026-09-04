@@ -1,0 +1,59 @@
+<section id="broadcast-audience" class="audience" aria-labelledby="broadcast-audience-heading">
+  <header class="audience-heading">
+    <div><p class="eyebrow">Zuschauen ohne Raumbeitritt</p><h2 id="broadcast-audience-heading">Live-Programme</h2><p>Öffentliche Zuschauer werden nicht Teil des WebRTC-Raums, der Peer-Liste oder des SFrame-Schlüsselkreises.</p></div>
+    <button type="button" [disabled]="!enabled() || directory.lifecycle() === 'loading'" (click)="refresh()">Aktualisieren</button>
+  </header>
+
+  @if (!enabled()) {
+    <p id="broadcast-audience-disabled" class="state-note">Das sichere Zuschauer-API ist noch nicht mit der öffentlichen Runtime verbunden. Es werden keine Beispielprogramme oder erfundenen Viewerzahlen angezeigt.</p>
+  } @else if (directory.lifecycle() === 'loading') {
+    <p class="state-note" role="status">Broadcast-Verzeichnis wird geladen…</p>
+  } @else if (directory.lifecycle() === 'failed') {
+    <div class="state-note error" role="alert"><strong>Verzeichnis nicht erreichbar</strong><span>{{ directory.errorCode() }}</span><button type="button" (click)="refresh()">Erneut versuchen</button></div>
+  }
+
+  @if (openError()) {
+    <p id="broadcast-open-error" class="state-note error" role="alert">{{ openError() }}. Private oder unbekannte Programme werden nicht unterschieden.</p>
+  }
+
+  @if (deepLinkProgramId() && !selected()) {
+    <p id="broadcast-deep-link-state" class="state-note">Deep Link erkannt. Wähle das passende sichtbare oder berechtigte Programm bewusst zum Start aus.</p>
+  }
+
+  @if (selected(); as program) {
+    <section class="selected-program" aria-labelledby="selected-broadcast-heading">
+      <div class="program-meta"><div><p class="eyebrow">{{ availability(program) }}</p><h3 id="selected-broadcast-heading">{{ program.title }}</h3></div><dl><div><dt>Besitzer</dt><dd>{{ owner(program) }}</dd></div><div><dt>Zuschauer</dt><dd>{{ program.viewerCount }} aggregiert</dd></div><div><dt>Modus</dt><dd>{{ latency(program) }}</dd></div><div><dt>Untertitel</dt><dd>{{ program.captions ? 'verfügbar' : 'nicht angeboten' }}</dd></div></dl></div>
+      <app-broadcast-player [manifestUrl]="manifestUrl()" [title]="program.title" (closed)="close()" />
+    </section>
+  } @else {
+    <div class="directory-sections">
+      <section aria-labelledby="public-broadcasts-heading">
+        <h3 id="public-broadcasts-heading">Öffentlich live</h3>
+        <div class="program-grid">
+          @for (program of directory.publicPrograms(); track program.programId) { <ng-container [ngTemplateOutlet]="programCard" [ngTemplateOutletContext]="{ $implicit: program }" /> } @empty { <p class="empty">Keine öffentlichen Live-Programme.</p> }
+        </div>
+      </section>
+      <section aria-labelledby="private-broadcasts-heading">
+        <h3 id="private-broadcasts-heading">Für mich freigegeben</h3>
+        @if (!authenticated()) { <p class="empty">Private Programme erscheinen erst nach OIDC-Anmeldung.</p><button type="button" (click)="loginRequested.emit()">Bei Keycloak anmelden</button> }
+        <div class="program-grid">
+          @for (program of directory.privatePrograms(); track program.programId) { <ng-container [ngTemplateOutlet]="programCard" [ngTemplateOutletContext]="{ $implicit: program }" /> } @empty { @if (authenticated()) { <p class="empty">Keine freigegebenen Live-Programme.</p> } }
+        </div>
+      </section>
+      <section aria-labelledby="own-broadcasts-heading"><h3 id="own-broadcasts-heading">Meine Programme</h3><div class="program-grid">
+        @for (program of directory.ownPrograms(); track program.programId) { <ng-container [ngTemplateOutlet]="programCard" [ngTemplateOutletContext]="{ $implicit: program }" /> } @empty { <p class="empty">Keine eigenen Live-Programme.</p> }
+      </div></section>
+      <section aria-labelledby="ended-broadcasts-heading"><h3 id="ended-broadcasts-heading">Beendet oder nicht erreichbar</h3><div class="program-grid ended">
+        @for (program of directory.endedPrograms(); track program.programId) { <article class="program-card unavailable"><div><span>{{ availability(program) }}</span><h4>{{ program.title }}</h4></div><p>{{ owner(program) }}</p><button type="button" disabled>Nicht verfügbar</button></article> } @empty { <p class="empty">Keine beendeten Einträge.</p> }
+      </div></section>
+    </div>
+  }
+</section>
+
+<ng-template #programCard let-program>
+  <article class="program-card" [class.highlighted]="deepLinkProgramId() === program.programId">
+    <div><span>{{ availability(program) }}</span><h4>{{ program.title }}</h4></div>
+    <dl><div><dt>Besitzer</dt><dd>{{ owner(program) }}</dd></div><div><dt>Zuschauer</dt><dd>{{ program.viewerCount }} aggregiert</dd></div><div><dt>Pfad</dt><dd>{{ latency(program) }}</dd></div><div><dt>Untertitel</dt><dd>{{ program.captions ? 'ja' : 'nein' }}</dd></div></dl>
+    <button type="button" [disabled]="opening()" (click)="open(program)">{{ opening() ? 'Wird autorisiert…' : 'Zuschauen' }}</button>
+  </article>
+</ng-template>

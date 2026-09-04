@@ -383,7 +383,12 @@
       }
 
       @if (activeSection() === 'broadcast') {
-        <app-broadcast-preflight [joined]="session.joined()" [captionsActive]="captions.active()" />
+        <app-broadcast-preflight
+          [joined]="session.joined()"
+          [authenticated]="auth.authenticated()"
+          [captionsActive]="captions.active()"
+          (loginRequested)="auth.login('/?section=broadcast')"
+        />
       }
 
       @if (activeSection() === 'chat') {

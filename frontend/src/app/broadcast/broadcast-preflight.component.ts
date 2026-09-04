@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, input, output, signal } from "@angular/core";
 
 import { MediaStreamDirective } from "../shared/media-stream.directive";
+import { BroadcastAudienceComponent } from "./broadcast-audience.component";
 import { BroadcastModerationPanelComponent } from "./broadcast-moderation-panel.component";
 import { BroadcastOwnSourcePreflightService } from "./broadcast-own-source-preflight.service";
 import {
@@ -14,17 +15,19 @@ import { TrustedVideoProgramSettingsService } from "./trusted-video-compositor";
 @Component({
   selector: "app-broadcast-preflight",
   standalone: true,
-  imports: [MediaStreamDirective, TrustedDecryptConsentPanelComponent, BroadcastModerationPanelComponent],
+  imports: [MediaStreamDirective, TrustedDecryptConsentPanelComponent, BroadcastModerationPanelComponent, BroadcastAudienceComponent],
   templateUrl: "./broadcast-preflight.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BroadcastPreflightComponent implements OnInit, OnDestroy {
   readonly joined = input(false);
+  readonly authenticated = input(false);
   readonly captionsActive = input(false);
   readonly trustedConsentCandidates = input<readonly TrustedDecryptConsentCandidate[]>([]);
   readonly trustedConsents = input<readonly TrustedDecryptConsentView[]>([]);
   readonly authorizeTrustedSource = output<TrustedDecryptConsentCandidate>();
   readonly revokeTrustedSource = output<string>();
+  readonly loginRequested = output<void>();
   readonly deliveryProfile = signal<"origin-llhls">("origin-llhls");
   readonly packagerProfile = signal<"this-browser">("this-browser");
   readonly estimatedCpuClass = computed(() => {

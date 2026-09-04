@@ -16,6 +16,8 @@ describe("BroadcastPreflightComponent audio policy", () => {
     expect(template).toContain("Sendestart noch nicht mit der Control Plane verbunden");
     expect(template).toContain("<app-broadcast-moderation-panel");
     expect(template).toContain('[connected]="false"');
+    expect(template).toContain("<app-broadcast-audience");
+    expect(template).toContain('[enabled]="false"');
     expect(component).toContain("estimatedCpuClass");
   });
 

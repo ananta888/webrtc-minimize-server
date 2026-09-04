@@ -37,6 +37,15 @@
         }
       </select>
     </label>
+    <label>Empfangsstrategie
+      <select id="broadcast-viewer-quality-mode" [value]="state().adaptiveMode" (change)="setAdaptiveMode($any($event.target).value)" [disabled]="state().engine === 'native-hls'">
+        <option value="auto">Auto · Netz, Buffer und Decoder</option>
+        <option value="data-saver">Datensparen · höchstens 360p</option>
+        <option value="low">Niedrig · höchstens 360p</option>
+        <option value="medium">Mittel · höchstens 540p</option>
+        <option value="high">Hoch · beste verfügbare Stufe</option>
+      </select>
+    </label>
     <button type="button" (click)="pictureInPicture()">Bild-in-Bild</button>
     <button type="button" (click)="fullscreen()">Vollbild</button>
     <button type="button" (click)="stop()">Schließen</button>
@@ -46,5 +55,6 @@
     <span>{{ state().engine || 'Engine wird beim Start gewählt' }}</span>
     <span>Live-Abstand: {{ state().liveEdgeDistanceSeconds === null ? '–' : state().liveEdgeDistanceSeconds!.toFixed(1) + ' s' }}</span>
     @if (state().recoveryCount) { <span>Resync: {{ state().recoveryCount }}/2</span> }
+    <span>Qualitätsgrund: {{ state().adaptationReason }}</span>
   </footer>
 </section>

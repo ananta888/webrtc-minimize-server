@@ -26,6 +26,8 @@ class FakeHls {
   ];
   readonly handlers = new Map<string, Array<(...args: unknown[]) => void>>();
   currentLevel = -1;
+  nextLevel = -1;
+  bandwidthEstimate = 8_000_000;
   liveSyncPosition: number | null = 10;
   attached: HTMLMediaElement | null = null;
   source = "";
@@ -83,8 +85,16 @@ describe("BroadcastHlsPlayer", () => {
     expect(player.snapshot().qualities.map(({ label }) => label)).toEqual(["360p", "720p"]);
     player.selectQuality(1);
     expect(hls.currentLevel).toBe(1);
+    player.adaptQuality({ sampledAt: 20_000, bandwidthEstimateBitsPerSecond: 100_000,
+      bufferSeconds: 0, decodedFrames: 50, droppedFrames: 50, lowPowerMode: true });
+    expect(hls.nextLevel).toBe(-1);
     player.selectQuality("auto");
     expect(hls.currentLevel).toBe(-1);
+    player.setAdaptiveMode("data-saver");
+    player.adaptQuality({ sampledAt: 20_000, bandwidthEstimateBitsPerSecond: 8_000_000,
+      bufferSeconds: 8, decodedFrames: 300, droppedFrames: 0, lowPowerMode: false });
+    expect(hls.nextLevel).toBe(0);
+    expect(player.snapshot()).toMatchObject({ adaptiveMode: "data-saver", adaptationReason: "data-saver" });
     expect(states).toContain("playing");
     await player.destroy();
     expect(hls.stopLoad).toHaveBeenCalledOnce();

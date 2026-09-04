@@ -2,6 +2,11 @@ import type Hls from "hls.js";
 import type { ErrorData, HlsConfig, Level } from "hls.js";
 
 import { BroadcastBrowserPortError } from "./broadcast-ports";
+import {
+  BroadcastViewerQualityMode,
+  BroadcastViewerQualityPolicy,
+  BroadcastViewerQualitySample,
+} from "./broadcast-viewer-quality-policy";
 
 export type BroadcastPlayerLifecycle = "idle" | "loading" | "awaiting-user" | "playing" | "recovering" | "ended" | "failed";
 export type BroadcastPlayerEngine = "native-hls" | "hls-js";
@@ -18,6 +23,8 @@ export interface BroadcastPlayerSnapshot {
   readonly engine: BroadcastPlayerEngine | null;
   readonly qualities: readonly BroadcastPlayerQuality[];
   readonly selectedQuality: "auto" | number;
+  readonly adaptiveMode: BroadcastViewerQualityMode;
+  readonly adaptationReason: string;
   readonly liveEdgeDistanceSeconds: number | null;
   readonly recoveryCount: number;
   readonly errorCode: string;
@@ -31,6 +38,8 @@ const initialSnapshot = (): BroadcastPlayerSnapshot => Object.freeze({
   engine: null,
   qualities: Object.freeze([]),
   selectedQuality: "auto",
+  adaptiveMode: "auto",
+  adaptationReason: "stable",
   liveEdgeDistanceSeconds: null,
   recoveryCount: 0,
   errorCode: "",
@@ -71,6 +80,7 @@ export class BroadcastHlsPlayer {
   private recoveries: number[] = [];
   private abortListener: (() => void) | null = null;
   private listeners: Array<readonly [keyof HTMLMediaElementEventMap, EventListener]> = [];
+  private readonly qualityPolicy = new BroadcastViewerQualityPolicy("auto");
 
   constructor(
     private readonly onState: (snapshot: BroadcastPlayerSnapshot) => void = () => undefined,
@@ -184,6 +194,22 @@ export class BroadcastHlsPlayer {
     this.update({ selectedQuality: value });
   }
 
+  setAdaptiveMode(mode: BroadcastViewerQualityMode): void {
+    this.qualityPolicy.setMode(mode);
+    if (this.hls) this.hls.currentLevel = -1;
+    this.update({ adaptiveMode: mode, selectedQuality: "auto" });
+  }
+
+  adaptQuality(sample = this.qualitySample()): void {
+    if (!this.hls || this.snapshotValue.qualities.length < 1
+      || this.snapshotValue.selectedQuality !== "auto") return;
+    const decision = this.qualityPolicy.evaluate(this.snapshotValue.qualities, sample);
+    if (decision.changed || this.snapshotValue.adaptiveMode !== "auto") {
+      this.hls.nextLevel = decision.targetIndex;
+    }
+    this.update({ adaptationReason: decision.reason });
+  }
+
   async destroy(): Promise<void> {
     const video = this.video;
     if (!video) return;
@@ -227,6 +253,7 @@ export class BroadcastHlsPlayer {
       else this.stalledSamples = 0;
       this.lastTime = video.currentTime;
       this.updateLiveEdge();
+      this.adaptQuality();
       if (this.stalledSamples >= 3) this.recover("stall");
     }, 2_000);
   }
@@ -269,6 +296,26 @@ export class BroadcastHlsPlayer {
 
   private publicError(error: unknown): string {
     return error instanceof BroadcastBrowserPortError ? error.code : "broadcast_player_open_failed";
+  }
+
+  private qualitySample(): BroadcastViewerQualitySample {
+    const video = this.video;
+    const quality = video?.getVideoPlaybackQuality?.();
+    const bufferedEnd = video?.buffered.length ? video.buffered.end(video.buffered.length - 1) : video?.currentTime || 0;
+    const connection = (navigator as Navigator & {
+      connection?: { readonly saveData?: boolean; readonly downlink?: number };
+    }).connection;
+    const hlsBandwidth = Number((this.hls as unknown as { bandwidthEstimate?: number } | null)?.bandwidthEstimate || 0);
+    const connectionBandwidth = Number(connection?.downlink || 0) * 1_000_000;
+    return {
+      sampledAt: Date.now(),
+      bandwidthEstimateBitsPerSecond: Number.isFinite(hlsBandwidth) && hlsBandwidth > 0
+        ? hlsBandwidth : Number.isFinite(connectionBandwidth) ? connectionBandwidth : 0,
+      bufferSeconds: Math.max(0, bufferedEnd - (video?.currentTime || 0)),
+      decodedFrames: Math.max(0, Math.round(quality?.totalVideoFrames || 0)),
+      droppedFrames: Math.max(0, Math.round(quality?.droppedVideoFrames || 0)),
+      lowPowerMode: Boolean(connection?.saveData),
+    };
   }
 
   private update(change: Partial<BroadcastPlayerSnapshot>): void {

@@ -73,6 +73,11 @@ export class BroadcastPlayerComponent implements OnDestroy {
     this.player.selectQuality(value === "auto" ? "auto" : Number(value));
   }
 
+  setAdaptiveMode(value: string): void {
+    if (!new Set(["auto", "data-saver", "low", "medium", "high"]).has(value)) return;
+    this.player.setAdaptiveMode(value as "auto" | "data-saver" | "low" | "medium" | "high");
+  }
+
   async fullscreen(): Promise<void> {
     const element = this.video().nativeElement;
     if (element.requestFullscreen) await element.requestFullscreen();

@@ -167,6 +167,12 @@
 
 <app-broadcast-moderation-panel [connected]="false" />
 
+<app-broadcast-audience
+  [enabled]="false"
+  [authenticated]="authenticated()"
+  (loginRequested)="loginRequested.emit()"
+/>
+
 @if (preflight.previews().length) {
   <section id="broadcast-preview" class="panel preview-panel" aria-labelledby="broadcast-preview-heading">
     <div class="panel-title"><div><p class="eyebrow">3 · Lokale Vorschau</p><h2 id="broadcast-preview-heading">Genau diese Quellen würden gesendet</h2></div></div>
