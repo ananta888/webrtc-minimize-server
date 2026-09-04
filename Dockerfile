@@ -33,6 +33,7 @@ COPY package.json ./
 COPY --from=build /app/dist ./dist
 COPY --from=media-agent-artifacts /out ./media-agent-downloads
 COPY src ./src
+COPY contracts ./contracts
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 EXPOSE 8080
