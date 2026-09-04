@@ -688,10 +688,10 @@
     {
       "id": "TBP-027",
       "title": "MoQ-Playerpfad mit automatischem LL-HLS-Fallback verifizieren",
-      "status": "todo",
+      "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 70,
       "depends_on": ["TBP-021", "TBP-022", "TBP-025", "TBP-026"],
       "acceptance_criteria": [
         "Der Player wählt MoQ nur bei kompatiblem Secure Context, WebTransport-/Codec-Support, gemeinsamer Draftversion, erfolgreicher Autorisierung und erreichbarem QUIC-Pfad.",
@@ -704,10 +704,10 @@
     {
       "id": "TBP-028",
       "title": "MoQ Secure Objects und verschlüsselten Broadcast als getrennte Forschungsstufe evaluieren",
-      "status": "todo",
+      "status": "partial",
       "priority": "P2",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 80,
       "depends_on": ["TBP-003", "TBP-006", "TBP-025", "TBP-027"],
       "acceptance_criteria": [
         "Eine ADR bewertet Secure Objects gegen bestehendes SFrame hinsichtlich Schlüsselverteilung, Catalog-Schutz, Metadatenleckage, Relay-Cachebarkeit, Random Access, ABR, Rotation, Widerruf und Browserimplementierbarkeit.",
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 14, "in_progress": 0, "partial": 11, "blocked": 0, "done": 15 },
+    "by_status": { "todo": 12, "in_progress": 0, "partial": 13, "blocked": 0, "done": 15 },
     "progress_percent_done": 37.5,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -963,9 +963,9 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 14,
+    "todo_remaining": 12,
     "in_progress": 0,
-    "partial": 11,
+    "partial": 13,
     "blocked": 0,
     "done": 15
   },
@@ -1001,6 +1001,8 @@
     "TBP-024 ist zu 55 Prozent umgesetzt. Eine geschlossene Admission-Policy prueft geplante Viewer-Sessions, Egress, Encoder-Slots/-Minuten, Programmdauer und Kosten getrennt auf Deployment-, Tenant- und Principal-Ebene; es gibt weiterhin keine globale Raumzahl. Ab 80 Prozent werden Soft-Warnungen und eine nachvollziehbare origin-small/cdn-medium/cdn-large-Preflightklasse geliefert, Hard-Limits verweigern scope-/metrikgebunden. Der datensparsame ViewerCounter dedupliziert kurzlebige Playback-Sessions ueber keyed HMAC ohne IP, User-Agent, OIDC-Subject oder Geraetefingerprint und entfernt abgelaufene Leases. Origin- und CDN-SLOs definieren Messfenster, Start-/End-to-glass-/Caption-p95, Rebuffering, Verfuegbarkeit, Abbruchquote und 30-Tage-Fehlerbudget, bleiben aber ehrlich runtime-unverified. Offen sind transaktionale persistente Usage-Zaehlung, echte Providerpreise/Monatsperioden, UI/Alerting und reproduzierbare Browserlast je Host/Region/Codec/Rendition. TBP-025 beginnt mit versionierten MoQ-/LOC-Contracts.",
     "TBP-025 ist mit vier geschlossenen MoQ-v1-Metadatenvertraegen und fail-closed Capability-Negotiation abgeschlossen. MOQT draft-20, LOC draft-04 und WebTransport RFC 9297 sind exakt gepinnt; Secure Objects draft-01 bleibt deaktiviert. Catalog, Track, Group, Object, Codec, Rendition, Prioritaet, Ablauf und Subscription-Filter sind hart begrenzt sowie an Tenant, Program, Epoch, Audience und den daraus abgeleiteten Namespace gebunden. Browser, Gateway und Provider muessen gemeinsam kompatibel sein; MediaMTX draft-19 und Cloudflare draft-14/draft-16 fallen vor dem Transfer ohne Scope-Erweiterung auf LL-HLS/HLS zurueck. Unit- und Angular-Tests pruefen Unknown Fields/Extensions, Oversize, Digest, stale Epoch, Cross-Program und die sichtbare Experimental-Kennzeichnung. TBP-026 beginnt mit kleinen austauschbaren MoQ-Adapterports; ein echter MoQ-Medienpfad ist weiterhin nicht aktiviert.",
     "TBP-026 ist zu 70 Prozent umgesetzt. Eine kleine MoQ-Registry tauscht Gateway-/Provideradapter ueber Capability, Publish, Subscribe und idempotentes Close aus, ohne Broadcast-Reducer oder Angular zu kennen; ein funktionaler Adapter ist strikt test-only. MediaMTX 1.20.1 meldet ehrlich draft-19, Cloudflare MoQ draft-14/draft-16 und beide verweigern Runtimeoperationen statt Erfolg zu simulieren; Cloudflare Stream bleibt eine getrennte Rolle. Eine serverseitige Credential-Grenze bindet Provider, Environment, Tenant, Aktion, Ablauf und Quote, ueberschreibt Secrets bei Rotation/Destroy, besitzt Kill-Switch und ein auf 256 inhaltsfreie Eintraege begrenztes Audit. HTTPS-Ziele werden gegen exakte Host-/Path-Allowlisten geprueft und verweigern Userinfo, Query, Fragment, IP-Literale und Traversal; Rueckgaben duerfen keine URLs oder Credentials enthalten. Offen bleiben ein upstream-kompatibler draft-20-Adapter, kurzlebige reale Providertokens, Container-Egress-/DNS-Rebinding-Schutz sowie Rotation-/Quota-/Leak-Gates gegen einen echten Dienst; deshalb bleibt der Task partial und MoQ deaktiviert.",
+    "TBP-027 ist zu 70 Prozent umgesetzt. Ein getrennter Angular-MoQ-Player-Orchestrator akzeptiert nur geschlossene user-action-Plaene und prueft Scope, draft-20/draft-04/RFC-9297-Pins, Playback-Autorisierung, Secure Context, WebTransport, Decoder und bestaetigte QUIC-Session. Auto ist Standard, hls-only und diagnose-moq sind explizite Diagnosemodi. Handshake-, Auth-, Codec-, Relay-, Netzwerk- und Stallfehler koennen nur innerhalb von zehn Sekunden einmal wechseln; vor HLS wird MoQ abgebrochen und geschlossen, fehlende Autorisierung faellt ueberhaupt nicht zurueck. Join-/End-to-glass-Zeit, Rebuffering, Objektverlust, verworfene Gruppen, Decode-Backpressure, Bytes und Fallbackzahl bleiben getrennte inhaltsfreie Metriken. Neun Tests decken Auswahl, sechs Fehlerklassen, fehlende Browsercapabilities, Auth-Grenze, Metriken, Budget, Scope/Draft/Unknown Fields und Abort-Cleanup ab. Offen sind die Verdrahtung mit echtem HLS-/MoQ-Adapter, sichtbare Diagnosebedienung und reale Gates in zwei kompatiblen Browserkontexten sowie mit blockiertem UDP/QUIC; wegen fehlendem draft-20-Upstream bleibt MoQ deaktiviert und der Task partial.",
+    "TBP-028 ist zu 80 Prozent umgesetzt. ADR 0002 vergleicht SFrame und Secure Objects fuer Trust-Ende, Metadaten, Relay-Cache, Random Access, ABR, Rotation, Revocation, Late Join und Browserimplementierung und entscheidet eine getrennte default-off-Forschungsstufe. Ein lokaler, ausdruecklich nicht wire-konformer Prototyp pinnt draft-01 sowie AES_128_GCM_SHA256_128, leitet Key/Salt per HKDF aus Full Track Name, Suite und Key ID ab, bildet den Nonce aus Group64/Object32 und authentisiert Prioritaet sowie immutable Properties; Payload/private Properties bleiben fuer die kopierende Relayfunktion Ciphertext. Sechs Tests pruefen Roundtrip, falschen Key, Manipulation, Nonce-Reuse, Replay, Rotation, Late Join, Revocation, Device-Loss, Objectbreite, Invocation-Limit und default-off. Die ADR trennt Quell-SFrame vom neuen Programmschluessel nach Trusted Composition und haelt Keys aus URL, Gateway, CDN und Logs. Offen bleiben standardkonformer Wire-/Catalog-/Key-Package-Pfad, nicht exportierbare Browser-ECDH-Schluessel, aktuelle externe Testvektoren, MLS/KMS-Entscheidung, reale Browser-/Relaytests und unabhaengige Security-Review; deshalb bleiben Task und Capability partial/deaktiviert.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }

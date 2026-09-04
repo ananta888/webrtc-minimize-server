@@ -18,6 +18,10 @@ Die [MoQ-Vertrags- und Negotiation-Grenze](docs/moq-contracts-and-negotiation.md
 
 Die [austauschbare MoQ-Adaptergrenze](docs/moq-adapter-boundary.md) hält MediaMTX und Cloudflare als getrennte, derzeit draft-inkompatible Adapter default-aus. Eine serverseitige Host-/Path-Allowlist und Credential-Grenze erzwingt Tenant, Environment, Ablauf, Quoten, Rotation, Kill-Switch und inhaltsfreies Audit.
 
+Der [experimentelle MoQ-Player-Orchestrator](docs/moq-player-fallback.md) prüft vor einer QUIC-Session Scope, Drafts, Playback-Autorisierung, Secure Context, WebTransport und Codec. Fehler wechseln höchstens einmal und erst nach vollständigem MoQ-Cleanup auf HLS; der echte Browser-/Providerpfad bleibt mangels kompatiblem Draft-20-Adapter deaktiviert.
+
+Die [Secure-Objects-ADR](docs/adr/0002-moq-secure-objects-experimental.md) vergleicht den objektverschlüsselten Broadcast mit Raum-SFrame und hält Key Distribution, Metadaten, Cache, ABR, Rotation, Late Join und Revocation getrennt. Ein default-off AES-GCM/HKDF-Prototyp belegt Blind-Relay und Manipulationserkennung lokal, ist aber ausdrücklich weder vollständige Draft- noch Produktionsimplementierung.
+
 Die [Broadcast-Contracts v1](contracts/broadcast/README.md) definieren 13 geschlossene, herstellerneutrale Metadatenfamilien samt Fixtures und serverseitiger Scope-/Epoch-/Ablauf-/Transition-Grenze. Sie enthalten bewusst weder Medien noch Tokens, Secrets, SDP/ICE oder Caption-Text und sind noch an keinen produktiven Broadcast-Endpunkt angebunden.
 
 Die reine [Broadcast-State-Machine](docs/broadcast-state-machine.md) ergänzt idempotente Create-/Start-/Quellenwechsel-/Handoff-/Revoke-/Stop-/Retry-Kommandos, fünf unabhängige Epochen sowie ablaufendes Packager-/Gateway-Fencing. Sie erzeugt nur Control-Plane-Effekte und ist weiterhin nicht an einen produktiven Medienpfad angeschlossen.

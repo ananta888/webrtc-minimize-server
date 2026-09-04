@@ -10,7 +10,7 @@ export const MOQ_UI_CAPABILITY_STATUS = Object.freeze({
   browsers: "WebTransport vorhanden; MoQ-Interoperabilität noch nicht verifiziert",
   mediaMtx: "1.20.1 bevorzugt MOQT draft-19 und ist inkompatibel",
   cloudflare: "Beta dokumentiert draft-14/draft-16 und ist inkompatibel",
-  secureObjects: "nicht implementiert und nicht als Broadcast-E2EE freigegeben",
+  secureObjects: "nur isolierter Prototyp; nicht integriert und nicht als Broadcast-E2EE freigegeben",
 });
 
 export type MoqUiCapabilityStatus = typeof MOQ_UI_CAPABILITY_STATUS;

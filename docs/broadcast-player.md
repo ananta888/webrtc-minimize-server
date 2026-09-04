@@ -12,6 +12,12 @@ draft-04, die inkompatiblen MediaMTX-/Cloudflare-Draftstände und LL-HLS/HLS als
 Fallback, statt vorhandenes WebTransport mit einem funktionierenden MoQ-Pfad
 gleichzusetzen.
 
+Der getrennte [experimentelle MoQ-Player-Orchestrator](moq-player-fallback.md)
+prüft bereits Scope, Pins, Autorisierung, Secure Context, WebTransport, Codec
+und bestätigte QUIC-Öffnung. Seine sequenzielle Einmal-Fallback- und
+Telemetrielogik ist getestet, bleibt aber bis zu einem kompatiblen Adapter und
+realen Browser-/Netzwerkgates von dieser öffentlichen HLS-Komponente getrennt.
+
 Ein Start erfolgt ausschließlich durch `BroadcastPlayerComponent.start()` nach
 dem sichtbaren Klick. Der Player fordert keine Capture-Berechtigung an. Ein
 Autoplay-Verbot wird als `awaiting-user` dargestellt. Mute, Lautstärke,

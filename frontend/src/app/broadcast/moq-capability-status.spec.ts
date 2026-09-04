@@ -15,6 +15,6 @@ describe("MOQ_UI_CAPABILITY_STATUS", () => {
     });
     expect(MOQ_UI_CAPABILITY_STATUS.mediaMtx).toContain("draft-19");
     expect(MOQ_UI_CAPABILITY_STATUS.cloudflare).toContain("draft-14/draft-16");
-    expect(MOQ_UI_CAPABILITY_STATUS.secureObjects).not.toContain("aktiv");
+    expect(MOQ_UI_CAPABILITY_STATUS.secureObjects).toContain("nicht integriert");
   });
 });
