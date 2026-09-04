@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -241,6 +242,86 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
   assert.match(workerResponse.headers.get("content-security-policy"), /script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'/);
   assert.match(workerResponse.headers.get("content-security-policy"), /connect-src[^;]+blob:/);
   assert.match(await workerResponse.text(), /new RecognizerWorker\(\)/);
+});
+
+test("native broadcast readiness probes both the authenticated packager and internal origin", async (context) => {
+  const now = Date.now();
+  const ownerPrincipal = "issuer|owner";
+  const packagerId = "pkr_0123456789abcdef";
+  const keys = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const nativePackagers = new NativePackagerControlRegistry({ definitions: [{
+    id: packagerId,
+    ownerPrincipal,
+    label: "Packager",
+    platform: "linux",
+    publicKey: { ...keys.publicKey.export({ format: "jwk" }), ext: true },
+    keyFingerprint: "A".repeat(43),
+  }] });
+  const socket = {};
+  const challenge = nativePackagers.issueChallenge(socket, now);
+  nativePackagers.authenticate(socket, {
+    version: 1,
+    type: "authenticate",
+    packagerId,
+    timestamp: now,
+    proof: crypto.sign("sha256", Buffer.from(nativePackagerAuthMessage(packagerId, challenge.nonce, now)), {
+      key: keys.privateKey, dsaEncoding: "ieee-p1363",
+    }).toString("base64url"),
+  }, now);
+  nativePackagers.setCapability(socket, {
+    capabilityVersion: 1,
+    agentId: packagerId,
+    tenantId: "tn_0123456789abcdef",
+    ownerSubjectRef: "sub_0123456789abcdef",
+    deviceRef: "dev_0123456789abcdef",
+    agentVersion: "1.0.0",
+    ffmpegVersion: "6.1.1",
+    videoEncoders: ["libx264"],
+    audioEncoders: ["aac"],
+    hardwareClass: "medium",
+    cpuClass: "medium",
+    gpuClass: "integrated",
+    uploadClass: "5-15mbit",
+    energyClass: "ac",
+    health: "healthy",
+    maximumRenditions: 2,
+    maximumPixelsPerSecond: 1280 * 720 * 30,
+    consentedRoomIds: [],
+    observedAt: now,
+    expiresAt: now + 30_000,
+  }, { tenantId: "tn_0123456789abcdef", ownerSubjectRef: "sub_0123456789abcdef" }, now);
+
+  const origin = http.createServer((request, response) => {
+    if (request.method === "GET" && request.url === "/healthz") response.writeHead(204).end();
+    else response.writeHead(404).end();
+  });
+  await new Promise((resolve, reject) => {
+    origin.once("error", reject);
+    origin.listen(0, "127.0.0.1", resolve);
+  });
+  let originOpen = true;
+  context.after(async () => {
+    if (originOpen) await new Promise((resolve) => origin.close(resolve));
+  });
+  const gatewayOrigin = `http://127.0.0.1:${origin.address().port}`;
+  const app = await startTestServer({
+    broadcastNativeOutputEnabled: true,
+    broadcastGatewayOrigin: gatewayOrigin,
+    nativePackagerSelfServiceEnabled: true,
+  }, { nativePackagers, broadcastRuntime: {} });
+  context.after(() => app.close());
+
+  const ready = await fetch(`${app.httpUrl}/readyz`).then((response) => response.json());
+  assert.equal(ready.broadcast, "ready");
+  assert.equal(ready.dependencies["trusted-packager"], "healthy");
+  assert.equal(ready.dependencies["origin-cdn"], "healthy");
+
+  await new Promise((resolve) => origin.close(resolve));
+  originOpen = false;
+  const degraded = await fetch(`${app.httpUrl}/readyz`).then((response) => response.json());
+  assert.equal(degraded.status, "ok");
+  assert.equal(degraded.broadcast, "degraded");
+  assert.equal(degraded.dependencies["origin-cdn"], "unavailable");
 });
 
 test("internal MediaMTX callback is default-deny, IP-bound and content-free", async (context) => {

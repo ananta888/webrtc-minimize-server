@@ -68,6 +68,22 @@ test("readiness separates meet-critical control from optional broadcast and MoQ 
   assert.equal(health.snapshot(now + 1).status, "unavailable");
 });
 
+test("readiness accepts a healthy native packager and origin without a media gateway", () => {
+  const health = new BroadcastHealthRegistry({ staleAfterMs: 30_000 });
+  const now = Date.now();
+  health.update({ component: "trusted-packager", status: "healthy", reasonCode: "NATIVE_READY", observedAt: now });
+  health.update({ component: "origin-cdn", status: "healthy", reasonCode: "NATIVE_ORIGIN_READY", observedAt: now });
+  assert.deepEqual(health.snapshot(now), {
+    status: "ok",
+    controlPlane: "ready",
+    broadcast: "ready",
+    dependencies: {
+      "trusted-packager": "healthy", "media-gateway": "disabled",
+      "origin-cdn": "healthy", "moq-adapter": "disabled",
+    },
+  });
+});
+
 test("alert thresholds map to fixed severity and repository runbooks", () => {
   const alerts = evaluateBroadcastAlerts({
     profile: "origin", startP95Ms: 3_500, endToGlassP95Ms: 6_000, rebufferRatio: 0.03,

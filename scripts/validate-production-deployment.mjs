@@ -47,13 +47,17 @@ for (const required of [
   "git status --porcelain", "previous-image", "--no-build --wait", "rollback",
   "production-smoke-gate.mjs", "ensure-broadcast-signing-key.mjs",
   "native-broadcast-deployment-enabled.mjs", "--profile native-packager",
+  "EXPECT_NATIVE_BROADCAST",
 ]) {
   if (!deploy.includes(required)) throw new Error(`safe deploy gate missing: ${required}`);
 }
 if (!compose.includes("/run/secrets/broadcast-signing-private-key.pem:ro")) {
   throw new Error("broadcast signing key must be mounted read-only from deployment state");
 }
-for (const required of ["/healthz", "/readyz", "/config", "auth?.mode", "mediaE2ee?.mode", "content-security-policy"]) {
+for (const required of [
+  "/healthz", "/readyz", "/config", "auth?.mode", "mediaE2ee?.mode", "content-security-policy",
+  "native broadcast dependencies are not ready",
+]) {
   if (!smoke.includes(required)) throw new Error(`external smoke assertion missing: ${required}`);
 }
 for (const productionFile of [compose, JSON.stringify(policy), JSON.stringify(ports)]) {

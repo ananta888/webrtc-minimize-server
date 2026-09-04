@@ -173,8 +173,9 @@ export class BroadcastHealthRegistry {
     }));
     const control = components.find(({ component }) => component === "control-plane");
     const requiredBroadcast = components.filter(({ component }) => ["trusted-packager", "media-gateway", "origin-cdn"].includes(component));
-    const broadcast = requiredBroadcast.every(({ status }) => status === "disabled") ? "disabled"
-      : requiredBroadcast.every(({ status }) => status === "healthy") ? "ready" : "degraded";
+    const enabledBroadcast = requiredBroadcast.filter(({ status }) => status !== "disabled");
+    const broadcast = enabledBroadcast.length === 0 ? "disabled"
+      : enabledBroadcast.every(({ status }) => status === "healthy") ? "ready" : "degraded";
     return Object.freeze({
       status: control?.status === "healthy" ? "ok" : "unavailable",
       controlPlane: control?.status === "healthy" ? "ready" : "unavailable",

@@ -293,8 +293,13 @@ test("adapter inventory is closed, default-off and denies unsupported protocol c
       "sourceIds",
     ], `adapter ${adapter.id}`);
     assert.ok(statuses.has(adapter.productStatus));
-    assert.equal(adapter.productStatus, "unavailable");
-    assert.equal(adapter.runtimeVerified, false);
+    if (adapter.id === "native-ffmpeg-packager") {
+      assert.equal(adapter.productStatus, "experimental");
+      assert.equal(adapter.runtimeVerified, true);
+    } else {
+      assert.equal(adapter.productStatus, "unavailable");
+      assert.equal(adapter.runtimeVerified, false);
+    }
     assert.equal(adapter.enabledByDefault, false);
     assert.ok(adapter.constraints.length > 0);
     assertClosedKeys(adapter.capabilities, [
@@ -371,18 +376,13 @@ test("adapter inventory is closed, default-off and denies unsupported protocol c
   assert.equal(cloudflareMoq.capabilities.output.moq, true);
   assert.equal(cloudflareMoq.capabilities.output.hls, false);
 
-  const plannedNative = adapters.get("native-ffmpeg-packager");
-  assert.equal(plannedNative.version, "not-selected");
-  const plannedClaims = [
-    ...Object.values(plannedNative.capabilities.ingest),
-    ...Object.values(plannedNative.capabilities.output),
-    ...Object.values(plannedNative.capabilities.auth),
-    ...Object.values(plannedNative.capabilities.recording),
-    ...Object.values(plannedNative.capabilities.captions),
-    ...Object.values(plannedNative.capabilities.e2ee),
-    plannedNative.capabilities.remux,
-    plannedNative.capabilities.transcoding,
-  ];
-  assert.equal(plannedClaims.every((value) => value === false), true,
-    "planned native adapter cannot advertise capabilities before a build/runtime gate");
+  const native = adapters.get("native-ffmpeg-packager");
+  assert.equal(native.version, "0.1.0 / FFmpeg >=6");
+  assert.equal(native.capabilities.output.hls, true);
+  assert.equal(native.capabilities.output.llHls, false);
+  assert.equal(native.capabilities.transcoding, true);
+  assert.equal(native.capabilities.auth.bearerHeader, true);
+  assert.equal(native.capabilities.auth.pathScoped, true);
+  assert.equal(native.capabilities.recording.available, false);
+  assert.equal(native.capabilities.e2ee.sframePassthroughProven, false);
 });

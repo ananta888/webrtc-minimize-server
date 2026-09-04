@@ -166,12 +166,15 @@ Access-Logs erscheinen. Deshalb wären kurze, programm-/actiongebundene Tokens,
 vollständige Log-Redaktion und ein Draft-Gate Pflicht. Secure Objects ist in
 der geprüften Anbieterreferenz nicht belegt.
 
-### Reservierter Native-Packager
+### Nativer FFmpeg-Packager
 
-`native-ffmpeg-packager` ist nur eine geplante Adapter-ID. Solange kein Binary,
-reproduzierbarer Build, Codec-/Lizenzsatz, Ressourcenlimit und Runtime-Gate
-existiert, bleiben **alle** maschinenlesbaren Capabilities `false`. Das
-verhindert, dass eine Architekturzeichnung schon als vorhandene Funktion gilt.
+`native-ffmpeg-packager` besitzt einen reproduzierbaren Go-Build, einen
+FFmpeg-6+-Runtime-Gate, feste CPU-/RAM-/Queue-Grenzen und einen lokal real
+geprüften VP8-/Opus-WebRTC-zu-H.264-/AAC-fMP4-HLS-Pfad. Der interne Origin
+verlangt die kurzlebige, pfadgebundene Playback-Autorisierung der Control Plane.
+Der Adapter bleibt `experimental` und standardmäßig aus: Er erzeugt kurzes HLS,
+aber weder Apple-LL-HLS-Parts noch WHEP, MoQ, Recording oder SFrame-Passthrough.
+Echte Safari-/Mobil-, WAN-, Mehrstunden- und Failover-Gates stehen noch aus.
 
 ## Aktivierungsfolgen
 

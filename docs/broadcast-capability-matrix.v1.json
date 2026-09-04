@@ -509,25 +509,26 @@
     {
       "id": "native-ffmpeg-packager",
       "vendor": "project-owned-adapter",
-      "version": "not-selected",
-      "apiVersion": "broadcast-packager-port-v1-planned",
-      "lifecycle": "planned",
-      "productStatus": "unavailable",
-      "runtimeVerified": false,
+      "version": "0.1.0 / FFmpeg >=6",
+      "apiVersion": "native-packager-control-v1",
+      "lifecycle": "experimental-pilot",
+      "productStatus": "experimental",
+      "runtimeVerified": true,
       "enabledByDefault": false,
       "capabilities": {
         "ingest": {"whip": false, "rtmps": false, "srt": false, "moq": false},
-        "output": {"hls": false, "llHls": false, "whep": false, "moq": false, "dash": false},
-        "auth": {"bearerHeader": false, "externalHttp": false, "jwt": false, "pathScoped": false, "shortLivedGrantNative": false},
+        "output": {"hls": true, "llHls": false, "whep": false, "moq": false, "dash": false},
+        "auth": {"bearerHeader": true, "externalHttp": false, "jwt": false, "pathScoped": true, "shortLivedGrantNative": true},
         "recording": {"available": false, "defaultEnabled": false, "requiredForLlHls": false},
         "captions": {"webVttLive": false, "imsc1Live": false},
         "e2ee": {"sframePassthroughProven": false, "moqSecureObjects": false},
         "remux": false,
-        "transcoding": false
+        "transcoding": true
       },
       "constraints": [
-        "Dies ist nur der reservierte austauschbare Transcoder-/Packager-Port fuer TBP-015 und TBP-020; kein Binary, Build, Codec oder Lizenzpaket wurde ausgewaehlt.",
-        "Alle Capabilities bleiben false, bis reproduzierbarer Build, Runtime-Probe, Ressourcenlimit und Lizenzgate bestanden sind."
+        "Der eigene Pion-/FFmpeg-Pfad nimmt assignment- und fencegebunden nur VP8/Opus an und erzeugt H.264 Main/AAC-LC als kurzes fMP4-HLS; dies ist kein Apple-LL-HLS-Nachweis.",
+        "Build, Lizenzgate, Ressourcenlimits und lokaler Runtime-Gate sind bestanden; physische Safari-/Mobil-, WAN-, Mehrstunden- und produktive Failover-Gates fehlen weiterhin.",
+        "Die Capability bleibt standardmaessig aus und wird nur mit explizitem BROADCAST_NATIVE_OUTPUT_ENABLED sowie einem registrierten, gesunden Trusted-Packager angeboten."
       ],
       "sourceIds": ["SRC-MEDIAMTX-REENCODING", "SRC-LOCAL-ADR"]
     }

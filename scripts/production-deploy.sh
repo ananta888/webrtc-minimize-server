@@ -17,7 +17,8 @@ native_broadcast=$(node scripts/native-broadcast-deployment-enabled.mjs)
 smoke() {
   attempts=0
   while [ "$attempts" -lt 12 ]; do
-    if PRODUCTION_ORIGIN="$production_origin" node scripts/production-smoke-gate.mjs; then
+    if PRODUCTION_ORIGIN="$production_origin" EXPECT_NATIVE_BROADCAST="$native_broadcast" \
+      node scripts/production-smoke-gate.mjs; then
       return 0
     fi
     attempts=$((attempts + 1))

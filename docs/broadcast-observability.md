@@ -28,8 +28,11 @@ Control Plane, Trusted Packager, Media-Gateway, Origin/CDN und optionalen MoQ-
 Adapter. Ein deaktivierter oder ausgefallener optionaler MoQ-Adapter macht das
 Meet nicht ungesund. Nur ein nicht bereiter Control-Plane-Prozess setzt den
 Gesamtstatus auf `unavailable`; Broadcast kann unabhängig `disabled`, `ready`
-oder `degraded` sein. Beobachtungen nach 30 Sekunden ohne Erneuerung gelten als
-stale.
+oder `degraded` sein. Bei aktiviertem Native-Pfad prüft `/readyz` eine frische,
+gesunde Agent-Capability und den internen Origin über einen auf zwei Sekunden
+begrenzten Health-Request. Ein nicht verwendeter Media-Gateway-Pfad bleibt
+`disabled` und verschlechtert den gesunden Native-Pfad nicht. Beobachtungen nach
+30 Sekunden ohne Erneuerung gelten als stale.
 
 ## Dashboard, Alarmierung und Datenschutz
 

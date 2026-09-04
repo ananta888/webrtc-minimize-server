@@ -569,6 +569,28 @@ function createHttpHandler(config, registry, services) {
         broadcastHealthRegistry.update({
           component: "control-plane", status: "healthy", reasonCode: "READY", observedAt,
         });
+        if (config.broadcastNativeOutputEnabled) {
+          broadcastHealthRegistry.update({
+            component: "trusted-packager", ...nativePackagers.readiness(observedAt), observedAt,
+          });
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 2_000);
+          let originHealthy = false;
+          try {
+            const originResponse = await fetch(new URL("/healthz", config.broadcastGatewayOrigin), {
+              method: "GET", redirect: "error", signal: controller.signal,
+            });
+            originHealthy = originResponse.status === 204;
+            await originResponse.body?.cancel();
+          } catch { /* fail closed as an unavailable optional dependency */ }
+          finally { clearTimeout(timeout); }
+          broadcastHealthRegistry.update({
+            component: "origin-cdn",
+            status: originHealthy ? "healthy" : "unavailable",
+            reasonCode: originHealthy ? "NATIVE_ORIGIN_READY" : "NATIVE_ORIGIN_FAILED",
+            observedAt,
+          });
+        }
         const readiness = broadcastHealthRegistry.snapshot(observedAt);
         sendJson(response, readiness.status === "ok" ? 200 : 503, readiness, securityHeaders(config));
         return;

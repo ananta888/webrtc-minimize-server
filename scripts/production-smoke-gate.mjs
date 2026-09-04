@@ -31,8 +31,22 @@ if (readiness.status !== "ok" || readiness.controlPlane !== "ready") {
 const configResponse = await get("/config", "application/json");
 const config = await configResponse.json();
 if (config.auth?.mode !== "required" || config.mediaE2ee?.mode !== "required"
-  || config.maxRoomParticipants !== 20 || typeof config.broadcast?.whip?.enabled !== "boolean") {
+  || config.maxRoomParticipants !== 20 || typeof config.broadcast?.whip?.enabled !== "boolean"
+  || typeof config.nativePackagers?.publicationEnabled !== "boolean") {
   throw new Error("unsafe or incompatible production runtime configuration");
+}
+const expectedNative = String(process.env.EXPECT_NATIVE_BROADCAST || "");
+if (expectedNative && !["enabled", "disabled"].includes(expectedNative)) {
+  throw new Error("EXPECT_NATIVE_BROADCAST must be enabled or disabled");
+}
+const nativeEnabled = config.nativePackagers.publicationEnabled;
+if (expectedNative && (expectedNative === "enabled") !== nativeEnabled) {
+  throw new Error("native broadcast deployment does not match its expected state");
+}
+if (nativeEnabled && (readiness.broadcast !== "ready"
+  || readiness.dependencies?.["trusted-packager"] !== "healthy"
+  || readiness.dependencies?.["origin-cdn"] !== "healthy")) {
+  throw new Error("native broadcast dependencies are not ready");
 }
 const page = await get("/", "text/html");
 if (!String(page.headers.get("content-security-policy") || "").includes("default-src 'self'")) {
@@ -47,4 +61,5 @@ process.stdout.write(JSON.stringify({
   controlPlane: readiness.controlPlane,
   broadcast: readiness.broadcast,
   broadcastWhipEnabled: config.broadcast.whip.enabled,
+  broadcastNativeEnabled: nativeEnabled,
 }) + "\n");

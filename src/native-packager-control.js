@@ -129,6 +129,25 @@ export class NativePackagerControlRegistry {
   get configured() { return this.#packagers.size > 0; }
   get enrollmentEnabled() { return Boolean(this.#store); }
 
+  readiness(now = Date.now()) {
+    const active = [...this.#packagers.values()].filter((packager) => (
+      packager.socket
+      && now - packager.lastSeen <= 60_000
+      && packager.capability
+      && packager.capability.expiresAt >= now
+    ));
+    if (active.some(({ capability }) => capability.health === "healthy")) {
+      return Object.freeze({ status: "healthy", reasonCode: "NATIVE_READY" });
+    }
+    if (active.length > 0) {
+      return Object.freeze({ status: "degraded", reasonCode: "NATIVE_DEGRADED" });
+    }
+    return Object.freeze({
+      status: this.configured ? "unavailable" : "disabled",
+      reasonCode: this.configured ? "NATIVE_OFFLINE" : "NOT_CONFIGURED",
+    });
+  }
+
   issueChallenge(socket, now = Date.now()) {
     const challenge = Object.freeze({ nonce: crypto.randomBytes(24).toString("base64url"), expiresAt: now + AUTH_WINDOW_MS });
     this.#challenges.set(socket, challenge);

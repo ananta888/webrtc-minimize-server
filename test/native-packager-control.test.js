@@ -72,6 +72,12 @@ test("native packager control enrolls and authenticates a device-bound identity"
   registry.authenticate(socket, parseNativePackagerMessage(JSON.stringify(authentication)), now + 1);
   assert.equal(registry.connection(socket).ownerPrincipal, ownerPrincipal);
   assert.equal(registry.list(ownerPrincipal, now + 1)[0].online, true);
+  assert.deepEqual(registry.readiness(now + 1), { status: "unavailable", reasonCode: "NATIVE_OFFLINE" });
+  registry.setCapability(socket, capability(enrollment.packagerId, now + 2), {
+    tenantId: "tn_0123456789abcdef", ownerSubjectRef: "sub_0123456789abcdef",
+  }, now + 2);
+  assert.deepEqual(registry.readiness(now + 2), { status: "healthy", reasonCode: "NATIVE_READY" });
+  assert.deepEqual(registry.readiness(now + 60_003), { status: "unavailable", reasonCode: "NATIVE_OFFLINE" });
   assert.equal(registry.allowMessage(socket, now + 2, { limit: 1 }), true);
   assert.equal(registry.allowMessage(socket, now + 3, { limit: 1 }), false);
   store.close();
