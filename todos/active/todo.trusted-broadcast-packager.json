@@ -672,10 +672,10 @@
     {
       "id": "TBP-026",
       "title": "Austauschbare MediaMTX- und Provider-MoQ-Adapter implementieren",
-      "status": "todo",
+      "status": "partial",
       "priority": "P1",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 70,
       "depends_on": ["TBP-006", "TBP-007", "TBP-017", "TBP-025"],
       "acceptance_criteria": [
         "Ein kleiner MoQ-Publish/Subscribe-Port trennt Domain und UI von MediaMTX-, Cloudflare- oder anderen Provider-APIs; Adapter geben versionierte Capabilities und Einschränkungen ehrlich zurück.",
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 15, "in_progress": 0, "partial": 10, "blocked": 0, "done": 15 },
+    "by_status": { "todo": 14, "in_progress": 0, "partial": 11, "blocked": 0, "done": 15 },
     "progress_percent_done": 37.5,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -963,9 +963,9 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 15,
+    "todo_remaining": 14,
     "in_progress": 0,
-    "partial": 10,
+    "partial": 11,
     "blocked": 0,
     "done": 15
   },
@@ -1000,6 +1000,7 @@
     "TBP-023 ist zu 55 Prozent umgesetzt. Ein reproduzierbarer Docker-/FFmpeg-Gate mass auf der dokumentierten x86_64-Entwicklungs-Hostklasse 20 parallele LL-HLS-Viewer ueber 15 Sekunden mit 20 gleichzeitig offenen Blocking-Reloads, 2762 Requests beziehungsweise 184,13/s, 86,94 Mbit/s, 6,6 ms Request-p95, 1,61 Prozent MediaMTX-CPU, 46,33 MiB RAM und null Fehlern. origin-llhls-x86-dev-v1 begrenzt deshalb auf exakt diese 20 Viewer mit harten 200-Request-/100-Mbit-/20-Blocking-Budgets und behauptet weder Mini-PC- noch End-to-glass-Kapazitaet. Das getrennte, weiterhin runtime-unverified cdn-standard-hls-v1 ist public-only und erst nach Origin-Auth, Host-/Path-Allowlist, Shielding, Purge, Health und Viewergrenze waehlbar; Cache-Key und Purge binden Resource und Program-Epoche, private Delivery bleibt no-store. Profilwechsel ist als sichtbarer Kurzrestart modelliert, Provider-Fallback nur innerhalb der Origin-Grenze. Offen sind konkreter Provider, Caddy/Secrets, Purge-/Shield-/Fallback-Lasttest sowie Mini-PC-/WAN-/Browser-Langzeitwerte. TBP-024 beginnt mit tenantgebundenen Kapazitaets-, Kosten- und SLO-Budgets.",
     "TBP-024 ist zu 55 Prozent umgesetzt. Eine geschlossene Admission-Policy prueft geplante Viewer-Sessions, Egress, Encoder-Slots/-Minuten, Programmdauer und Kosten getrennt auf Deployment-, Tenant- und Principal-Ebene; es gibt weiterhin keine globale Raumzahl. Ab 80 Prozent werden Soft-Warnungen und eine nachvollziehbare origin-small/cdn-medium/cdn-large-Preflightklasse geliefert, Hard-Limits verweigern scope-/metrikgebunden. Der datensparsame ViewerCounter dedupliziert kurzlebige Playback-Sessions ueber keyed HMAC ohne IP, User-Agent, OIDC-Subject oder Geraetefingerprint und entfernt abgelaufene Leases. Origin- und CDN-SLOs definieren Messfenster, Start-/End-to-glass-/Caption-p95, Rebuffering, Verfuegbarkeit, Abbruchquote und 30-Tage-Fehlerbudget, bleiben aber ehrlich runtime-unverified. Offen sind transaktionale persistente Usage-Zaehlung, echte Providerpreise/Monatsperioden, UI/Alerting und reproduzierbare Browserlast je Host/Region/Codec/Rendition. TBP-025 beginnt mit versionierten MoQ-/LOC-Contracts.",
     "TBP-025 ist mit vier geschlossenen MoQ-v1-Metadatenvertraegen und fail-closed Capability-Negotiation abgeschlossen. MOQT draft-20, LOC draft-04 und WebTransport RFC 9297 sind exakt gepinnt; Secure Objects draft-01 bleibt deaktiviert. Catalog, Track, Group, Object, Codec, Rendition, Prioritaet, Ablauf und Subscription-Filter sind hart begrenzt sowie an Tenant, Program, Epoch, Audience und den daraus abgeleiteten Namespace gebunden. Browser, Gateway und Provider muessen gemeinsam kompatibel sein; MediaMTX draft-19 und Cloudflare draft-14/draft-16 fallen vor dem Transfer ohne Scope-Erweiterung auf LL-HLS/HLS zurueck. Unit- und Angular-Tests pruefen Unknown Fields/Extensions, Oversize, Digest, stale Epoch, Cross-Program und die sichtbare Experimental-Kennzeichnung. TBP-026 beginnt mit kleinen austauschbaren MoQ-Adapterports; ein echter MoQ-Medienpfad ist weiterhin nicht aktiviert.",
+    "TBP-026 ist zu 70 Prozent umgesetzt. Eine kleine MoQ-Registry tauscht Gateway-/Provideradapter ueber Capability, Publish, Subscribe und idempotentes Close aus, ohne Broadcast-Reducer oder Angular zu kennen; ein funktionaler Adapter ist strikt test-only. MediaMTX 1.20.1 meldet ehrlich draft-19, Cloudflare MoQ draft-14/draft-16 und beide verweigern Runtimeoperationen statt Erfolg zu simulieren; Cloudflare Stream bleibt eine getrennte Rolle. Eine serverseitige Credential-Grenze bindet Provider, Environment, Tenant, Aktion, Ablauf und Quote, ueberschreibt Secrets bei Rotation/Destroy, besitzt Kill-Switch und ein auf 256 inhaltsfreie Eintraege begrenztes Audit. HTTPS-Ziele werden gegen exakte Host-/Path-Allowlisten geprueft und verweigern Userinfo, Query, Fragment, IP-Literale und Traversal; Rueckgaben duerfen keine URLs oder Credentials enthalten. Offen bleiben ein upstream-kompatibler draft-20-Adapter, kurzlebige reale Providertokens, Container-Egress-/DNS-Rebinding-Schutz sowie Rotation-/Quota-/Leak-Gates gegen einen echten Dienst; deshalb bleibt der Task partial und MoQ deaktiviert.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }

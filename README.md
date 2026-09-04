@@ -16,6 +16,8 @@ Die [versionierte Broadcast-Capability-Matrix](docs/broadcast-capability-matrix.
 
 Die [MoQ-Vertrags- und Negotiation-Grenze](docs/moq-contracts-and-negotiation.md) pinnt MOQT draft-20, LOC draft-04 und WebTransport RFC 9297, begrenzt Catalog/Object/Subscription und fällt bei jedem bekannten Draft-Mismatch scopegleich auf LL-HLS/HLS zurück. Der echte MoQ-Transport bleibt bis zu Browser-, Gateway- und QUIC-Gates deaktiviert.
 
+Die [austauschbare MoQ-Adaptergrenze](docs/moq-adapter-boundary.md) hält MediaMTX und Cloudflare als getrennte, derzeit draft-inkompatible Adapter default-aus. Eine serverseitige Host-/Path-Allowlist und Credential-Grenze erzwingt Tenant, Environment, Ablauf, Quoten, Rotation, Kill-Switch und inhaltsfreies Audit.
+
 Die [Broadcast-Contracts v1](contracts/broadcast/README.md) definieren 13 geschlossene, herstellerneutrale Metadatenfamilien samt Fixtures und serverseitiger Scope-/Epoch-/Ablauf-/Transition-Grenze. Sie enthalten bewusst weder Medien noch Tokens, Secrets, SDP/ICE oder Caption-Text und sind noch an keinen produktiven Broadcast-Endpunkt angebunden.
 
 Die reine [Broadcast-State-Machine](docs/broadcast-state-machine.md) ergänzt idempotente Create-/Start-/Quellenwechsel-/Handoff-/Revoke-/Stop-/Retry-Kommandos, fünf unabhängige Epochen sowie ablaufendes Packager-/Gateway-Fencing. Sie erzeugt nur Control-Plane-Effekte und ist weiterhin nicht an einen produktiven Medienpfad angeschlossen.
