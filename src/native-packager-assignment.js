@@ -6,6 +6,7 @@ const PACKAGER = /^pkr_[A-Za-z0-9_-]{16,64}$/;
 const ASSIGNMENT = /^asn_[A-Za-z0-9_-]{16,64}$/;
 const LEASE = /^lea_[A-Za-z0-9_-]{16,64}$/;
 const REASON = /^[A-Z][A-Z0-9_]{1,63}$/;
+const PEER = /^[a-f0-9]{16}$/;
 const ACTIVE_STATES = new Set(["preparing", "ready", "starting", "running", "degraded", "draining"]);
 const REPORTED_STATES = new Set(["ready", "starting", "running", "degraded", "draining", "stopped", "failed"]);
 
@@ -74,11 +75,12 @@ export class NativePackagerAssignmentRegistry {
     return admitNativePackager(packager.capability, request, now);
   }
 
-  prepare(ownerPrincipal, packagerId, admissionValue, leaseValue, now = Date.now()) {
+  prepare(ownerPrincipal, packagerId, admissionValue, leaseValue, publisherPeerId, now = Date.now()) {
     const admission = clone(admissionValue);
     const lease = clone(leaseValue);
     exact(lease, new Set(["leaseId", "fencingRevision", "expiresAt"]));
-    if (!PACKAGER.test(packagerId || "") || !LEASE.test(lease.leaseId || "")
+    if (!PACKAGER.test(packagerId || "") || !PEER.test(publisherPeerId || "")
+      || !LEASE.test(lease.leaseId || "")
       || !Number.isSafeInteger(lease.fencingRevision) || lease.fencingRevision < 1
       || !Number.isSafeInteger(lease.expiresAt) || lease.expiresAt <= now || lease.expiresAt > now + 120_000) {
       fail("invalid_native_packager_assignment");
@@ -114,6 +116,7 @@ export class NativePackagerAssignmentRegistry {
       assignmentId,
       packagerId,
       ownerPrincipal,
+      publisherPeerId,
       roomId: admission.roomId,
       programId: admission.programId,
       programEpoch: admission.programEpoch,
@@ -214,6 +217,22 @@ export class NativePackagerAssignmentRegistry {
     return record && ACTIVE_STATES.has(record.state) ? snapshot(record) : null;
   }
 
+  authorizeBrowserSignal(peer, message, now = Date.now()) {
+    const record = this.#signalRecord(message, now);
+    if (!peer || record.ownerPrincipal !== peer.principal || record.roomId !== peer.roomId
+      || record.publisherPeerId !== peer.id || record.packagerId !== message.packagerId
+      || record.programId !== message.programId) {
+      fail("stale_native_packager_signal", 409);
+    }
+    return snapshot(record);
+  }
+
+  authorizePackagerSignal(packagerId, message, now = Date.now()) {
+    const record = this.#signalRecord(message, now);
+    if (record.packagerId !== packagerId) fail("stale_native_packager_signal", 409);
+    return Object.freeze({ ...snapshot(record), publisherPeerId: record.publisherPeerId });
+  }
+
   list(ownerPrincipal) {
     return Object.freeze([...this.#assignments.values()]
       .filter((record) => record.ownerPrincipal === ownerPrincipal)
@@ -225,11 +244,23 @@ export class NativePackagerAssignmentRegistry {
     if (typeof onExpired !== "function") fail("invalid_native_packager_assignment_prune", 500);
     for (const record of this.#assignments.values()) {
       if (ACTIVE_STATES.has(record.state) && record.expiresAt <= now) {
-        record.state = "failed";
-        record.reasonCode = "LEASE_EXPIRED";
-        record.updatedAt = now;
-        this.#releaseIndexes(record);
-        onExpired(record.ownerPrincipal, snapshot(record));
+        if (record.state !== "draining" || record.reasonCode !== "LEASE_EXPIRED") {
+          record.state = "draining";
+          record.reasonCode = "LEASE_EXPIRED";
+          record.updatedAt = now;
+          onExpired(record.ownerPrincipal, snapshot(record), Object.freeze({
+            version: 1,
+            type: "assignment-stop",
+            assignmentId: record.assignmentId,
+            programEpoch: record.programEpoch,
+            fencingRevision: record.fencingRevision,
+            reasonCode: "LEASE_EXPIRED",
+          }));
+        } else if (record.updatedAt <= now - 30_000) {
+          record.state = "failed";
+          record.updatedAt = now;
+          this.#releaseIndexes(record);
+        }
       }
       if (!ACTIVE_STATES.has(record.state) && record.updatedAt <= now - 60 * 60_000) {
         this.#assignments.delete(record.assignmentId);
@@ -248,6 +279,7 @@ export class NativePackagerAssignmentRegistry {
       leaseId: record.leaseId,
       fencingRevision: record.fencingRevision,
       resourceRef: record.resourceRef,
+      publisherPeerId: record.publisherPeerId,
       profile: Object.freeze({
         profileId: record.admission.profileId,
         maximumQueueFrames: record.admission.maximumQueueFrames,
@@ -268,5 +300,15 @@ export class NativePackagerAssignmentRegistry {
   #releaseIndexes(record) {
     if (this.#byPackager.get(record.packagerId) === record) this.#byPackager.delete(record.packagerId);
     if (this.#byProgram.get(record.programId) === record) this.#byProgram.delete(record.programId);
+  }
+
+  #signalRecord(message, now) {
+    const record = this.#assignments.get(message?.assignmentId);
+    if (!record || !ACTIVE_STATES.has(record.state) || record.expiresAt <= now
+      || record.programEpoch !== message.programEpoch
+      || record.fencingRevision !== message.fencingRevision) {
+      fail("stale_native_packager_signal", 409);
+    }
+    return record;
   }
 }

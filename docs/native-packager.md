@@ -47,16 +47,31 @@ Danach authentisiert er jede WSS-Verbindung mit einer frischen Challenge,
 prüft lokal FFmpeg ab Version 6 sowie `libx264` und AAC und meldet nur die
 begrenzten Capability-Klassen aus dem Contract.
 
-Die Control Plane kann inzwischen genau eine kurzlebige Assignment-Vorbereitung
+Die Control Plane kann genau eine kurzlebige Assignment-Vorbereitung
 pro Packager und Programm ausgeben. Sie entsteht nur aus einem sichtbaren
 `user-action`, aktueller Owner-Membership, wirksamem Raumconsent und einer
 frischen Capability. Assignment, Programm und Writer-Lease sind an
 `programEpoch`, `leaseId` und eine monotone `fencingRevision` gebunden. Der
 Daemon akzeptiert nur den geschlossenen H.264/AAC-Profilvertrag, lehnt zweite
-oder alte Assignments ab und quittiert `ready`, `draining`, `stopped` oder
-`failed` über eine separate Statusnachricht. Disconnect und Lease-Ablauf
-entziehen die aktive Zuordnung. Weder diese WSS-Steuerung noch ihr HTTP-Start
-transportiert Medien, SDP/ICE, OIDC-Tokens oder Decrypt-Schlüssel.
+oder alte Assignments ab und quittiert `ready`, `starting`, `running`,
+`degraded`, `draining`, `stopped` oder `failed` über eine separate
+Statusnachricht. Disconnect und Lease-Ablauf schließen die Pion-
+`RTCPeerConnection` lokal; die Control Plane sendet zusätzlich einen
+epoch-/fencinggebundenen Stop und verwirft danach die Zuordnung.
+
+Nach der Vorbereitung baut der Browser eine eigene, assignmentgebundene
+WebRTC-Verbindung zum ausgewählten Packager auf. Nur die vor dem SFrame-Pfad
+bewusst gewählte Broadcast-Komposition wird als DTLS-SRTP übertragen. Offer,
+Answer und Trickle-ICE laufen als getrennte, größenbegrenzte
+`native-packager-signal`-/`assignment-peer-signal`-Frames über das bestehende
+WSS; sie tragen keine OIDC-Tokens, Grants oder neue Autorität und werden nicht
+geloggt. Beide Seiten prüfen Assignment, Publisher-Peer, Program-Epoche und
+Fencing-Revision. Der Agent akzeptiert ausschließlich ein Offer, begrenzt die
+ICE-Warteschlange auf 128 Einträge und meldet `running` erst nach tatsächlich
+empfangenem Audio-/Video-RTP. Ein echter Pion-Integrationstest überträgt dafür
+VP8-RTP vom simulierten Browser bis zum nativen Receiver. Der Agent öffnet
+weiterhin keinen Listener: Host-ICE, optionale öffentliche STUN-URLs und die
+vom Browser erhaltenen kurzlebigen TURN-Credentials bestimmen den Pfad.
 
 Die Angular-Analyse bietet getrennte Installation, Status, Widerruf und eine
 ausdrückliche Raumfreigabe. Die Control Plane übernimmt eine vom Agenten
@@ -99,12 +114,14 @@ RUN_LIVE_NATIVE_PACKAGER=1 npm run test:native-packager
 ## Ehrlich offene Punkte
 
 Der Daemon authentisiert sich, prüft seine lokale Encoderbasis, synchronisiert
-Raumconsent und nimmt die gefencete Vorbereitung einer Programmzuweisung
-entgegen. `ready` bedeutet ausdrücklich noch nicht, dass Medien fließen. Der
-bereits getestete Node-Supervisor und der Go-Control-Daemon müssen noch über
-einen tatsächlichen WebRTC-Medieneingang, einen kurzlebigen Packager-Grant und
-einen autorisierten Gateway-Publish zusammengeführt werden. Ebenso offen bleiben Temperaturmessung, ein realer
+Raumconsent und besitzt nun den gefenceten WebRTC-RTP-Eingang. `ready` bedeutet
+weiterhin nur, dass dieser Eingang vorbereitet ist; erst `running` belegt ein
+empfangenes RTP-Paket. Noch nicht implementiert ist die Übergabe der empfangenen
+RTP-Tracks an die bereits getestete FFmpeg-Transcode-/ABR-Pipeline sowie der
+kurzlebig autorisierte Publish vom Agenten zum Gateway. Deshalb erzeugt der
+aktuelle Agent noch keine LL-HLS-Ausgabe. Ebenso offen bleiben Temperaturmessung, ein realer
 Hardwarefehler-Gate, Publisher-signierte Release-Artefakte, Keychain/TPM,
 Update-Rollback sowie echte Windows-/macOS-Installationsgates. Deshalb bleibt
-TBP-016 trotz des jetzt installierbaren Control-Agenten `in_progress`; die UI
-wählt Native nie stillschweigend, und der Browser-Packager bleibt verfügbar.
+TBP-016 `in_progress`; die UI zeigt nur online/gesund/raumconsentierte eigene
+Packager, verlangt eine explizite Auswahl und fällt nicht stillschweigend von
+Browser auf Native zurück.

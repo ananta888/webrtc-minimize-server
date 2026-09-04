@@ -26,6 +26,9 @@ describe("NativePackagerOnboardingService", () => {
     await service.load();
     expect(service.packagers()[0]).toMatchObject({ label: "Mini-PC", online: true });
     expect(service.assignments()[0]).toMatchObject({ state: "ready", renditionIds: ["low", "medium"] });
+    expect(service.eligible("room-1234")).toHaveLength(1);
+    expect(service.select("pkr_0123456789abcdef")).toBe(true);
+    expect(service.selectedPackagerId()).toBe("pkr_0123456789abcdef");
   });
 
   it("sends room consent only to the exact encoded resource", async () => {

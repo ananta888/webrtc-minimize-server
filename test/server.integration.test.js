@@ -180,6 +180,7 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
     nativePackagers: {
       selfService: false,
       configured: false,
+      publicationEnabled: false,
       endpoint: "",
       targets: [],
     },
@@ -1732,8 +1733,34 @@ test("native packager assignment is owner-, room-, device- and fence-bound end t
   assert.equal(prepare.assignmentId, assignmentBody.assignment.assignmentId);
   assert.equal(prepare.roomId, room.roomId);
   assert.equal(prepare.programId, program.control.programId);
+  assert.equal(prepare.publisherPeerId, welcome.peerId);
   assert.equal(Object.hasOwn(prepare, "accessToken"), false);
   assert.equal(Object.hasOwn(prepare, "sdp"), false);
+
+  browser.socket.send(JSON.stringify({
+    version: 1,
+    type: "native-packager-signal",
+    packagerId,
+    assignmentId: prepare.assignmentId,
+    programId: prepare.programId,
+    programEpoch: prepare.programEpoch,
+    fencingRevision: prepare.fencingRevision,
+    description: { type: "offer", sdp: "v=0\r\n" },
+  }));
+  const relayedOffer = await agent.next((message) => message.type === "assignment-peer-signal");
+  assert.equal(relayedOffer.publisherPeerId, welcome.peerId);
+  assert.equal(relayedOffer.description.type, "offer");
+  agent.socket.send(JSON.stringify({
+    version: 1,
+    type: "assignment-signal",
+    assignmentId: prepare.assignmentId,
+    programEpoch: prepare.programEpoch,
+    fencingRevision: prepare.fencingRevision,
+    description: { type: "answer", sdp: "v=0\r\n" },
+  }));
+  const relayedAnswer = await browser.next((message) => message.type === "native-packager-signal");
+  assert.equal(relayedAnswer.packagerId, packagerId);
+  assert.equal(relayedAnswer.description.type, "answer");
 
   agent.socket.send(JSON.stringify({
     version: 1,

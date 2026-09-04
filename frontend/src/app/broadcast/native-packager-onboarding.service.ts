@@ -88,12 +88,25 @@ export class NativePackagerOnboardingService {
   readonly packagers = signal<readonly OwnedNativePackager[]>([]);
   readonly assignments = signal<readonly NativePackagerAssignmentView[]>([]);
   readonly pending = signal<PendingNativePackagerInstallation | null>(null);
+  readonly selectedPackagerId = signal("");
   readonly busy = signal(false);
   readonly error = signal("");
 
   constructor(private readonly auth: OidcAuthService) {}
 
-  clear(): void { this.packagers.set([]); this.assignments.set([]); this.pending.set(null); this.error.set(""); }
+  clear(): void { this.packagers.set([]); this.assignments.set([]); this.pending.set(null); this.selectedPackagerId.set(""); this.error.set(""); }
+
+  select(packagerId: unknown): boolean {
+    const value = typeof packagerId === "string" ? packagerId : "";
+    if (value && !PACKAGER_ID.test(value)) return false;
+    this.selectedPackagerId.set(value);
+    return true;
+  }
+
+  eligible(roomId: string): readonly OwnedNativePackager[] {
+    return this.packagers().filter((packager) => packager.online && packager.revokedAt === 0
+      && packager.capability?.health === "healthy" && packager.consentedRoomIds.includes(roomId));
+  }
 
   suggestedTarget(targets: readonly NativePackagerTarget[]): string {
     const platform = String(navigator.platform || "").toLowerCase();
@@ -112,6 +125,8 @@ export class NativePackagerOnboardingService {
       if (!response.ok || !Array.isArray(body.packagers) || !Array.isArray(body.assignments)) throw new Error(body.error || "native_packager_list_failed");
       this.packagers.set(body.packagers.map(parsePackager));
       this.assignments.set(body.assignments.map(parseAssignment));
+      const current = this.selectedPackagerId();
+      if (current && !this.packagers().some(({ id }) => id === current)) this.selectedPackagerId.set("");
     } catch (error) {
       this.packagers.set([]); this.assignments.set([]); this.error.set(error instanceof Error ? error.message : "native_packager_list_failed");
     } finally { this.busy.set(false); }

@@ -33,7 +33,7 @@ function endpoints(publicOrigin) {
   return { origin: origin.origin, controlUrl: control.href };
 }
 
-function posix({ enrollment, target, sha256, artifactUrl, controlUrl }) {
+function posix({ enrollment, target, sha256, artifactUrl, controlUrl, stunUrls }) {
   const root = "$HOME/.local/share/ananta-native-packager";
   const service = `ananta-native-packager-${enrollment.packagerId}`;
   const launcher = `run-${enrollment.packagerId}`;
@@ -61,6 +61,7 @@ function posix({ enrollment, target, sha256, artifactUrl, controlUrl }) {
     `export NATIVE_PACKAGER_CONTROL_URL=${quote(controlUrl)}`,
     `export NATIVE_PACKAGER_ID=${quote(enrollment.packagerId)}`,
     `export NATIVE_PACKAGER_IDENTITY_FILE="${root}/${identity}"`,
+    `export NATIVE_PACKAGER_STUN_URLS=${quote(stunUrls.join(","))}`,
     `exec "${root}/native-broadcast-packager"`, "ANANTA_PACKAGER_LAUNCHER", `chmod 700 "$packager_root/${launcher}"`,
     `cat > "$packager_root/${uninstall}" <<'ANANTA_PACKAGER_UNINSTALL'`, "#!/bin/sh", "set -eu",
   ];
@@ -96,7 +97,7 @@ function posix({ enrollment, target, sha256, artifactUrl, controlUrl }) {
   return lines.join("\n");
 }
 
-function windows({ enrollment, sha256, artifactUrl, controlUrl }) {
+function windows({ enrollment, sha256, artifactUrl, controlUrl, stunUrls }) {
   const id = enrollment.packagerId;
   return [
     "$ErrorActionPreference = 'Stop'", "$ProgressPreference = 'SilentlyContinue'",
@@ -110,6 +111,7 @@ function windows({ enrollment, sha256, artifactUrl, controlUrl }) {
     `$launcher = Join-Path $root ${psQuote(`run-${id}.ps1`)}`, "$launcherContent = @'",
     `$env:NATIVE_PACKAGER_CONTROL_URL = ${psQuote(controlUrl)}`, `$env:NATIVE_PACKAGER_ID = ${psQuote(id)}`,
     `$env:NATIVE_PACKAGER_IDENTITY_FILE = Join-Path $env:LOCALAPPDATA ${psQuote(`Ananta\\NativePackager\\identity-${id}.pem`)}`,
+    `$env:NATIVE_PACKAGER_STUN_URLS = ${psQuote(stunUrls.join(","))}`,
     "& (Join-Path $env:LOCALAPPDATA 'Ananta\\NativePackager\\native-broadcast-packager.exe')", "'@", "Set-Content -Encoding UTF8 -Path $launcher -Value $launcherContent",
     "$startup = Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs\\Startup'", `$startupFile = Join-Path $startup ${psQuote(`ananta-native-packager-${id}.cmd`)}`,
     `$startupContent = ${psQuote(`@start "" /min powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\\Ananta\\NativePackager\\run-${id}.ps1"`)}`,
@@ -135,10 +137,15 @@ export class NativePackagerInstallerService {
   availableTargets() { return TARGETS.filter(({ id }) => this.#artifacts.has(id)).map(({ id, platform, label }) => Object.freeze({ id, platform, label })); }
   target(id) { const target = this.#artifacts.get(String(id || "")); if (!target) throw new NativePackagerInstallerError("native_packager_artifact_unavailable", 409); return target; }
   artifact(id) { return this.target(id); }
-  installer({ enrollment, targetId, publicOrigin }) {
+  installer({ enrollment, targetId, publicOrigin, stunUrls = [] }) {
     const target = this.target(targetId); if (target.platform !== enrollment.platform) throw new NativePackagerInstallerError("invalid_native_packager_platform");
     const { origin, controlUrl } = endpoints(publicOrigin); const artifactUrl = `${origin}/downloads/native-packager/${target.id}`;
-    const input = { enrollment, target, sha256: target.sha256, artifactUrl, controlUrl };
+    if (!Array.isArray(stunUrls) || stunUrls.length > 8
+      || stunUrls.some((value) => typeof value !== "string" || !/^stuns?:[^\s,]{1,500}$/.test(value))) {
+      throw new NativePackagerInstallerError("invalid_native_packager_stun_configuration", 500);
+    }
+    const input = { enrollment, target, sha256: target.sha256, artifactUrl, controlUrl,
+      stunUrls: Object.freeze([...new Set(stunUrls)]) };
     return Object.freeze({ target: target.id, filename: target.installer, artifactSha256: target.sha256,
       artifactBytes: target.size, content: target.platform === "windows" ? windows(input) : posix(input) });
   }

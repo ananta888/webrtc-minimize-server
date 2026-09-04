@@ -19,6 +19,7 @@ export const SERVER_MESSAGE_VERSIONS = Object.freeze({
   "media-agent-signal": 1,
   "media-agent-track-state": 2,
   "media-agent-subscription-state": 2,
+  "native-packager-signal": 1,
   "overlay-key": 1,
   error: 1,
 } satisfies Readonly<Record<string, number>>);
@@ -38,6 +39,7 @@ export class SignalingService {
   readonly lastError = signal("");
   private socket: WebSocket | null = null;
   private handler: ((message: ServerMessage) => void) | null = null;
+  private readonly subscribers = new Set<(message: ServerMessage) => void>();
 
   connect(path: string, handler: (message: ServerMessage) => void, onClose?: () => void): void {
     this.close();
@@ -55,6 +57,7 @@ export class SignalingService {
           return;
         }
         this.handler?.(message);
+        for (const subscriber of this.subscribers) subscriber(message);
       } catch {
         this.lastError.set("invalid_server_message");
       }
@@ -74,6 +77,11 @@ export class SignalingService {
   send(message: object): void {
     if (this.socket?.readyState !== WebSocket.OPEN) throw new Error("signaling_not_connected");
     this.socket.send(JSON.stringify(message));
+  }
+
+  subscribe(handler: (message: ServerMessage) => void): () => void {
+    this.subscribers.add(handler);
+    return () => this.subscribers.delete(handler);
   }
 
   leave(): void {

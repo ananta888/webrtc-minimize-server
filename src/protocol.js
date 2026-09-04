@@ -7,6 +7,9 @@ const SOURCES = new Set(["microphone", "camera", "screen", "screen-audio"]);
 const BATTERY_STATES = new Set(["critical", "limited", "mains", "unknown"]);
 const NETWORK_STATES = new Set(["constrained", "normal", "fast", "unknown"]);
 const BASE64URL_COORDINATE = /^[A-Za-z0-9_-]{40,64}$/;
+const NATIVE_PACKAGER_ID_PATTERN = /^pkr_[A-Za-z0-9_-]{16,64}$/;
+const NATIVE_ASSIGNMENT_ID_PATTERN = /^asn_[A-Za-z0-9_-]{16,64}$/;
+const BROADCAST_PROGRAM_ID_PATTERN = /^prg_[A-Za-z0-9_-]{16,64}$/;
 
 function hasOnlyKeys(value, keys) {
   return Object.keys(value).every((key) => keys.has(key));
@@ -74,7 +77,7 @@ function requireRecipient(value) {
   return value.to;
 }
 
-function validateDescription(description) {
+export function validateDescription(description) {
   if (!description || typeof description !== "object" || Array.isArray(description)) {
     throw new ProtocolError("invalid_description");
   }
@@ -87,7 +90,7 @@ function validateDescription(description) {
   return { type: description.type, ...(description.sdp ? { sdp: description.sdp } : {}) };
 }
 
-function validateCandidate(candidate) {
+export function validateCandidate(candidate) {
   if (candidate === null) return null;
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
     throw new ProtocolError("invalid_candidate");
@@ -123,6 +126,32 @@ export function parseClientMessage(raw) {
     return Object.freeze({
       type: "signal",
       to,
+      ...(hasDescription
+        ? { description: validateDescription(value.description) }
+        : { candidate: validateCandidate(value.candidate) }),
+    });
+  }
+  if (value.type === "native-packager-signal") {
+    const allowed = new Set([
+      "version", "type", "packagerId", "assignmentId", "programId", "programEpoch",
+      "fencingRevision", "description", "candidate",
+    ]);
+    const hasDescription = Object.hasOwn(value, "description");
+    const hasCandidate = Object.hasOwn(value, "candidate");
+    if (!hasOnlyKeys(value, allowed) || value.version !== 1 || hasDescription === hasCandidate
+      || !NATIVE_PACKAGER_ID_PATTERN.test(value.packagerId || "")
+      || !NATIVE_ASSIGNMENT_ID_PATTERN.test(value.assignmentId || "")
+      || !BROADCAST_PROGRAM_ID_PATTERN.test(value.programId || "")) {
+      throw new ProtocolError("invalid_native_packager_signal");
+    }
+    return Object.freeze({
+      version: 1,
+      type: value.type,
+      packagerId: value.packagerId,
+      assignmentId: value.assignmentId,
+      programId: value.programId,
+      programEpoch: requireInteger(value.programEpoch, "native_program_epoch", 1, Number.MAX_SAFE_INTEGER),
+      fencingRevision: requireInteger(value.fencingRevision, "native_fencing_revision", 1, Number.MAX_SAFE_INTEGER),
       ...(hasDescription
         ? { description: validateDescription(value.description) }
         : { candidate: validateCandidate(value.candidate) }),

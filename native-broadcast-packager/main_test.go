@@ -29,6 +29,23 @@ func TestConfigRequiresExactSecureOutboundEndpoint(t *testing.T) {
 	}
 }
 
+func TestConfigAcceptsOnlyBoundedSTUNURLs(t *testing.T) {
+	valid, err := parseStunURLs("stun:stun.example.test:3478,stuns:stun.example.test:5349")
+	if err != nil || len(valid) != 2 {
+		t.Fatalf("valid STUN URLs rejected: %v", err)
+	}
+	for _, raw := range []string{
+		"turn:turn.example.test:3478",
+		"stun:stun.example.test:3478?token=secret",
+		"stun:",
+		"stun:stun.example.test:3478,stun:stun.example.test:3478",
+	} {
+		if _, err = parseStunURLs(raw); err == nil {
+			t.Fatalf("invalid STUN URL accepted: %s", raw)
+		}
+	}
+}
+
 func TestAuthMessageMatchesP1363Signature(t *testing.T) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {

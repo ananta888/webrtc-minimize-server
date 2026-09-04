@@ -34,14 +34,39 @@
     },
     {
       "type": "object", "additionalProperties": false,
-      "required": ["version", "type", "assignmentId", "roomId", "programId", "programEpoch", "leaseId", "fencingRevision", "resourceRef", "profile", "expiresAt"],
+      "required": ["version", "type", "assignmentId", "roomId", "programId", "publisherPeerId", "programEpoch", "leaseId", "fencingRevision", "resourceRef", "profile", "expiresAt"],
       "properties": {
         "version": { "const": 1 }, "type": { "const": "assignment-prepare" }, "assignmentId": { "$ref": "#/$defs/assignmentId" },
         "roomId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{4,64}$" }, "programId": { "type": "string", "pattern": "^prg_[A-Za-z0-9_-]{16,64}$" },
+        "publisherPeerId": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
         "programEpoch": { "type": "integer", "minimum": 1 }, "leaseId": { "type": "string", "pattern": "^lea_[A-Za-z0-9_-]{16,64}$" },
         "fencingRevision": { "type": "integer", "minimum": 1 }, "resourceRef": { "type": "string", "pattern": "^res_[A-Za-z0-9_-]{16,64}$" },
         "profile": { "$ref": "#/$defs/profile" }, "expiresAt": { "type": "integer", "minimum": 1 }
       }
+    },
+    {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["version", "type", "assignmentId", "publisherPeerId", "programEpoch", "fencingRevision", "description"],
+          "properties": {
+            "version": { "const": 1 }, "type": { "const": "assignment-peer-signal" },
+            "assignmentId": { "$ref": "#/$defs/assignmentId" }, "publisherPeerId": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
+            "programEpoch": { "type": "integer", "minimum": 1 }, "fencingRevision": { "type": "integer", "minimum": 1 },
+            "description": { "$ref": "#/$defs/description" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["version", "type", "assignmentId", "publisherPeerId", "programEpoch", "fencingRevision", "candidate"],
+          "properties": {
+            "version": { "const": 1 }, "type": { "const": "assignment-peer-signal" },
+            "assignmentId": { "$ref": "#/$defs/assignmentId" }, "publisherPeerId": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
+            "programEpoch": { "type": "integer", "minimum": 1 }, "fencingRevision": { "type": "integer", "minimum": 1 },
+            "candidate": { "$ref": "#/$defs/candidate" }
+          }
+        }
+      ]
     },
     {
       "type": "object", "additionalProperties": false,
@@ -61,6 +86,22 @@
   "$defs": {
     "packagerId": { "type": "string", "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$" },
     "assignmentId": { "type": "string", "pattern": "^asn_[A-Za-z0-9_-]{16,64}$" },
+    "description": {
+      "type": "object", "additionalProperties": false, "required": ["type", "sdp"],
+      "properties": { "type": { "enum": ["offer", "answer"] }, "sdp": { "type": "string", "maxLength": 80000 } }
+    },
+    "candidate": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object", "additionalProperties": false, "required": ["candidate"],
+          "properties": {
+            "candidate": { "type": "string", "maxLength": 4096 }, "sdpMid": { "type": "string", "maxLength": 64 },
+            "sdpMLineIndex": { "type": "integer", "minimum": 0 }, "usernameFragment": { "type": "string", "maxLength": 256 }
+          }
+        }
+      ]
+    },
     "profile": {
       "type": "object", "additionalProperties": false,
       "required": ["profileId", "maximumQueueFrames", "keyframeIntervalSeconds", "renditions"],

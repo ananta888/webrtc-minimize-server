@@ -8,6 +8,7 @@ import { BroadcastCaptionDestination, BroadcastCaptionSettingsService } from "./
 import { BroadcastModerationPanelComponent } from "./broadcast-moderation-panel.component";
 import { BroadcastOwnSourcePreflightService } from "./broadcast-own-source-preflight.service";
 import { BroadcastPublisherWorkflowService } from "./broadcast-publisher-workflow.service";
+import { NativePackagerOnboardingService } from "./native-packager-onboarding.service";
 import {
   TrustedDecryptConsentCandidate,
   TrustedDecryptConsentPanelComponent,
@@ -25,6 +26,8 @@ import { TrustedVideoProgramSettingsService } from "./trusted-video-compositor";
 })
 export class BroadcastPreflightComponent implements OnInit, OnDestroy {
   readonly enabled = input(false);
+  readonly browserPublisherEnabled = input(false);
+  readonly nativePublisherEnabled = input(false);
   readonly joined = input(false);
   readonly authenticated = input(false);
   readonly roomId = input("");
@@ -36,15 +39,22 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
   readonly revokeTrustedSource = output<string>();
   readonly loginRequested = output<void>();
   readonly deliveryProfile = signal<"origin-llhls">("origin-llhls");
-  readonly packagerProfile = signal<"this-browser">("this-browser");
+  readonly packagerProfile = signal<"this-browser" | "native-agent">("this-browser");
   readonly programTitle = signal("Meine Live-Sendung");
   readonly controlError = this.publisher.errorCode;
   readonly controlBusy = this.publisher.busy;
   readonly activeProgramId = this.publisher.activeProgramId;
   readonly programState = computed(() => this.publisher.coordinator.programState.value());
+  readonly eligibleNativePackagers = computed(() => this.nativePackagers.eligible(this.roomId()));
+  readonly selectedNativePackager = computed(() => this.eligibleNativePackagers()
+    .find(({ id }) => id === this.nativePackagers.selectedPackagerId()) || null);
+  readonly packagerReady = computed(() => this.packagerProfile() === "this-browser"
+    ? this.browserPublisherEnabled()
+    : this.nativePublisherEnabled() && Boolean(this.selectedNativePackager()));
   readonly canStart = computed(() => this.enabled() && this.joined() && this.authenticated()
     && this.roomCreator() && this.preflight.lifecycle() === "ready"
     && this.preflight.selectedSourceIds().length > 0
+    && this.packagerReady()
     && !this.controlBusy()
     && !new Set(["starting", "running", "degraded", "reconnecting", "handing_over", "stopping"])
       .has(this.programState().lifecycle));
@@ -63,6 +73,7 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
     readonly captionModels: VoskModelManagerService,
     private readonly captions: LiveCaptionService,
     readonly publisher: BroadcastPublisherWorkflowService,
+    readonly nativePackagers: NativePackagerOnboardingService,
   ) {}
 
   ngOnInit(): void {
@@ -123,8 +134,25 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
         title,
         visibility: this.preflight.audience(),
         sourceIds: Object.freeze([...this.preflight.selectedSourceIds()]),
+        adapterId: this.packagerProfile() === "native-agent" ? "native-bridge" : "whip-browser",
+        ...(this.packagerProfile() === "native-agent" && this.selectedNativePackager() ? {
+          packagerId: this.selectedNativePackager()!.id,
+          requestedRenditions: Math.min(3, this.selectedNativePackager()!.capability?.maximumRenditions || 1),
+        } : {}),
       });
     } catch { /* The workflow publishes a bounded visible error code. */ }
+  }
+
+  setPackagerProfile(value: unknown): void {
+    if (value === "this-browser") {
+      this.packagerProfile.set(value);
+      return;
+    }
+    if (typeof value !== "string" || !value.startsWith("native:")) return;
+    const packagerId = value.slice(7);
+    if (!this.eligibleNativePackagers().some(({ id }) => id === packagerId)
+      || !this.nativePackagers.select(packagerId)) return;
+    this.packagerProfile.set("native-agent");
   }
 
   async stopBroadcast(): Promise<void> {

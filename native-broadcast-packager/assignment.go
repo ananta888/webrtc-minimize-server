@@ -14,6 +14,7 @@ var programIDPattern = regexp.MustCompile(`^prg_[A-Za-z0-9_-]{16,64}$`)
 var leaseIDPattern = regexp.MustCompile(`^lea_[A-Za-z0-9_-]{16,64}$`)
 var resourceIDPattern = regexp.MustCompile(`^res_[A-Za-z0-9_-]{16,64}$`)
 var reasonCodePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{1,63}$`)
+var peerIDPattern = regexp.MustCompile(`^[a-f0-9]{16}$`)
 
 type assignmentRendition struct {
 	ID                 string `json:"id"`
@@ -35,6 +36,7 @@ type packagerAssignment struct {
 	AssignmentID    string
 	RoomID          string
 	ProgramID       string
+	PublisherPeerID string
 	ProgramEpoch    int
 	LeaseID         string
 	FencingRevision int
@@ -42,11 +44,12 @@ type packagerAssignment struct {
 	Profile         assignmentProfile
 	ExpiresAt       int64
 	State           string
+	Media           *nativeMediaSession
 }
 
 func validAssignmentPrepare(message serverMessage, now time.Time) bool {
 	if !assignmentIDPattern.MatchString(message.AssignmentID) || !roomIDPattern.MatchString(message.RoomID) ||
-		!programIDPattern.MatchString(message.ProgramID) || message.ProgramEpoch < 1 ||
+		!programIDPattern.MatchString(message.ProgramID) || !peerIDPattern.MatchString(message.PublisherPeerID) || message.ProgramEpoch < 1 ||
 		!leaseIDPattern.MatchString(message.LeaseID) || message.FencingRevision < 1 ||
 		!resourceIDPattern.MatchString(message.ResourceRef) || message.ExpiresAt <= now.UnixMilli() ||
 		message.ExpiresAt > now.Add(2*time.Minute).UnixMilli() || message.Profile.ProfileID != "h264-aac-720p-v1" ||
@@ -72,7 +75,8 @@ func validAssignmentPrepare(message serverMessage, now time.Time) bool {
 func assignmentFrom(message serverMessage) *packagerAssignment {
 	return &packagerAssignment{
 		AssignmentID: message.AssignmentID, RoomID: message.RoomID, ProgramID: message.ProgramID,
-		ProgramEpoch: message.ProgramEpoch, LeaseID: message.LeaseID, FencingRevision: message.FencingRevision,
+		PublisherPeerID: message.PublisherPeerID,
+		ProgramEpoch:    message.ProgramEpoch, LeaseID: message.LeaseID, FencingRevision: message.FencingRevision,
 		ResourceRef: message.ResourceRef, Profile: message.Profile, ExpiresAt: message.ExpiresAt, State: "ready",
 	}
 }
@@ -85,6 +89,7 @@ func sameAssignment(left *packagerAssignment, right serverMessage) bool {
 	rightJSON, _ := json.Marshal(right.Profile)
 	return left.AssignmentID == right.AssignmentID && left.RoomID == right.RoomID &&
 		left.ProgramID == right.ProgramID && left.ProgramEpoch == right.ProgramEpoch &&
+		left.PublisherPeerID == right.PublisherPeerID &&
 		left.LeaseID == right.LeaseID && left.FencingRevision == right.FencingRevision &&
 		left.ResourceRef == right.ResourceRef && left.ExpiresAt == right.ExpiresAt && bytes.Equal(leftJSON, rightJSON)
 }
@@ -99,12 +104,17 @@ func allowedServerFields(messageType string) map[string]bool {
 		"packager-error":         {"version": true, "type": true, "code": true},
 		"assignment-prepare": {
 			"version": true, "type": true, "assignmentId": true, "roomId": true, "programId": true,
-			"programEpoch": true, "leaseId": true, "fencingRevision": true, "resourceRef": true,
+			"publisherPeerId": true,
+			"programEpoch":    true, "leaseId": true, "fencingRevision": true, "resourceRef": true,
 			"profile": true, "expiresAt": true,
 		},
 		"assignment-stop": {
 			"version": true, "type": true, "assignmentId": true, "programEpoch": true,
 			"fencingRevision": true, "reasonCode": true,
+		},
+		"assignment-peer-signal": {
+			"version": true, "type": true, "assignmentId": true, "publisherPeerId": true,
+			"programEpoch": true, "fencingRevision": true, "description": true, "candidate": true,
 		},
 	}
 	return common[messageType]
@@ -127,6 +137,17 @@ func decodeServerMessage(raw []byte) (serverMessage, error) {
 		if !allowed[field] {
 			return serverMessage{}, errors.New("unknown control message field")
 		}
+	}
+	if messageType == "assignment-peer-signal" {
+		_, hasDescription := fields["description"]
+		_, hasCandidate := fields["candidate"]
+		if hasDescription == hasCandidate {
+			return serverMessage{}, errors.New("invalid assignment peer signal")
+		}
+		delete(allowed, map[bool]string{true: "candidate", false: "description"}[hasDescription])
+	}
+	if len(fields) != len(allowed) {
+		return serverMessage{}, errors.New("invalid control message fields")
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -157,7 +178,13 @@ func (c *client) prepareAssignment(message serverMessage, now time.Time) error {
 		}
 		return c.send(c.assignmentStatus(c.assignment, c.assignment.State, "CAPABILITY_READY"))
 	}
-	c.assignment = assignmentFrom(message)
+	assignment := assignmentFrom(message)
+	media, err := newNativeMediaSession(c, assignment)
+	if err != nil {
+		return err
+	}
+	assignment.Media = media
+	c.assignment = assignment
 	return c.send(c.assignmentStatus(c.assignment, "ready", "CAPABILITY_READY"))
 }
 
@@ -167,18 +194,39 @@ func (c *client) stopAssignment(message serverMessage) error {
 		return errors.New("invalid assignment stop")
 	}
 	c.assignmentMu.Lock()
-	defer c.assignmentMu.Unlock()
 	if c.assignment == nil {
+		c.assignmentMu.Unlock()
 		return errors.New("assignment not found")
 	}
 	if c.assignment.AssignmentID != message.AssignmentID || c.assignment.ProgramEpoch != message.ProgramEpoch ||
 		c.assignment.FencingRevision != message.FencingRevision {
+		c.assignmentMu.Unlock()
 		return errors.New("stale assignment stop")
 	}
-	c.assignment.State = "stopped"
-	status := c.assignmentStatus(c.assignment, "stopped", "STOP_COMPLETE")
+	assignment := c.assignment
+	assignment.State = "stopped"
 	c.assignment = nil
-	return c.send(status)
+	c.assignmentMu.Unlock()
+	if assignment.Media != nil {
+		assignment.Media.close()
+	}
+	return c.send(c.assignmentStatus(assignment, "stopped", "STOP_COMPLETE"))
+}
+
+func (c *client) expireAssignment(now time.Time) error {
+	c.assignmentMu.Lock()
+	assignment := c.assignment
+	if assignment == nil || assignment.ExpiresAt > now.UnixMilli() {
+		c.assignmentMu.Unlock()
+		return nil
+	}
+	c.assignment = nil
+	assignment.State = "failed"
+	c.assignmentMu.Unlock()
+	if assignment.Media != nil {
+		assignment.Media.close()
+	}
+	return c.send(c.assignmentStatus(assignment, "failed", "LEASE_EXPIRED"))
 }
 
 func (c *client) heartbeatMessage() map[string]any {

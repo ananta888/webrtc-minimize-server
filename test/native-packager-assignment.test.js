@@ -10,6 +10,7 @@ import { admitNativePackager } from "../src/native-packager-policy.js";
 const NOW = 1_800_000_000_000;
 const OWNER = "https://identity.example/realms/ananta|owner";
 const PACKAGER = "pkr_aaaaaaaaaaaaaaaa";
+const PUBLISHER = "0123456789abcdef";
 
 function capability(overrides = {}) {
   return {
@@ -71,18 +72,33 @@ test("assignment preparation is owner-, consent-, capability- and lease-fenced",
     leaseId: "lea_aaaaaaaaaaaaaaaa",
     fencingRevision: 9,
     expiresAt: NOW + 60_000,
-  }, NOW);
+  }, PUBLISHER, NOW);
 
   assert.deepEqual(prepared.snapshot.renditionIds, ["low", "medium", "high"]);
   assert.equal(prepared.snapshot.state, "preparing");
   assert.equal(prepared.command.type, "assignment-prepare");
+  assert.equal(prepared.command.publisherPeerId, PUBLISHER);
   assert.equal(prepared.command.profile.maximumQueueFrames, 60);
   assert.equal(prepared.command.profile.renditions[2].videoBitsPerSecond, 2_400_000);
   assert.deepEqual(assignments.activeForProgram(request().programId), prepared.snapshot);
+  const signal = {
+    packagerId: PACKAGER,
+    assignmentId: prepared.snapshot.assignmentId,
+    programId: prepared.snapshot.programId,
+    programEpoch: prepared.snapshot.programEpoch,
+    fencingRevision: prepared.snapshot.fencingRevision,
+  };
+  assert.equal(assignments.authorizeBrowserSignal({
+    id: PUBLISHER, principal: OWNER, roomId: "room-alpha",
+  }, signal, NOW).assignmentId, prepared.snapshot.assignmentId);
+  assert.equal(assignments.authorizePackagerSignal(PACKAGER, signal, NOW).publisherPeerId, PUBLISHER);
+  assert.throws(() => assignments.authorizeBrowserSignal({
+    id: "fedcba9876543210", principal: OWNER, roomId: "room-alpha",
+  }, signal, NOW), /stale_native_packager_signal/);
   assert.throws(
     () => assignments.prepare(OWNER, PACKAGER, admission, {
       leaseId: "lea_bbbbbbbbbbbbbbbb", fencingRevision: 10, expiresAt: NOW + 60_000,
-    }, NOW),
+    }, PUBLISHER, NOW),
     (error) => error instanceof NativePackagerAssignmentError && error.code === "native_packager_assignment_conflict",
   );
 });
@@ -92,7 +108,7 @@ test("assignment status rejects stale fences and follows a closed lifecycle", ()
   const admission = admitNativePackager(capability(), request(), NOW);
   assignments.prepare(OWNER, PACKAGER, admission, {
     leaseId: "lea_aaaaaaaaaaaaaaaa", fencingRevision: 9, expiresAt: NOW + 60_000,
-  }, NOW);
+  }, PUBLISHER, NOW);
   const status = (state, reasonCode, overrides = {}) => ({
     version: 1,
     type: "assignment-status",
@@ -132,12 +148,12 @@ test("offline, self-expanded admission, disconnect and lease expiry fail closed"
   assert.throws(() => assignments.prepare(OWNER, PACKAGER, {
     ...admission,
     renditions: [...admission.renditions, { ...admission.renditions[0], id: "invented" }],
-  }, { leaseId: "lea_aaaaaaaaaaaaaaaa", fencingRevision: 9, expiresAt: NOW + 60_000 }, NOW),
+  }, { leaseId: "lea_aaaaaaaaaaaaaaaa", fencingRevision: 9, expiresAt: NOW + 60_000 }, PUBLISHER, NOW),
   /invalid_native_packager_request|native_packager_admission_mismatch/);
 
   assignments.prepare(OWNER, PACKAGER, admission, {
     leaseId: "lea_aaaaaaaaaaaaaaaa", fencingRevision: 9, expiresAt: NOW + 1_000,
-  }, NOW);
+  }, PUBLISHER, NOW);
   assert.equal(assignments.activeForPackager(PACKAGER)?.assignmentId, "asn_aaaaaaaaaaaaaaaa");
   assert.equal(assignments.failPackager(PACKAGER).state, "failed");
   assert.equal(assignments.activeForPackager(PACKAGER), null);
@@ -145,10 +161,15 @@ test("offline, self-expanded admission, disconnect and lease expiry fail closed"
   const expiring = registry();
   expiring.prepare(OWNER, PACKAGER, admission, {
     leaseId: "lea_bbbbbbbbbbbbbbbb", fencingRevision: 10, expiresAt: NOW + 1_000,
-  }, NOW);
+  }, PUBLISHER, NOW);
   const expired = [];
-  expiring.prune(NOW + 1_001, (owner, assignment) => expired.push({ owner, assignment }));
+  expiring.prune(NOW + 1_001, (owner, assignment, command) => expired.push({ owner, assignment, command }));
   assert.equal(expired[0].owner, OWNER);
   assert.equal(expired[0].assignment.assignmentId, "asn_aaaaaaaaaaaaaaaa");
+  assert.equal(expired[0].assignment.state, "draining");
+  assert.equal(expired[0].command.reasonCode, "LEASE_EXPIRED");
   assert.equal(expiring.list(OWNER)[0].reasonCode, "LEASE_EXPIRED");
+  expiring.prune(NOW + 31_002);
+  assert.equal(expiring.activeForPackager(PACKAGER), null);
+  assert.equal(expiring.list(OWNER)[0].state, "failed");
 });

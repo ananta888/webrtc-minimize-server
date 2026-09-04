@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -29,9 +30,11 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/pion/interceptor"
+	"github.com/pion/webrtc/v4"
 )
 
-const agentVersion = "0.2.0"
+const agentVersion = "0.3.0"
 
 var packagerIDPattern = regexp.MustCompile(`^pkr_[A-Za-z0-9_-]{16,64}$`)
 var enrollmentTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
@@ -41,6 +44,7 @@ type config struct {
 	controlURL, packagerID, identityFile, enrollmentToken, ffmpegPath string
 	energyClass, uploadClass                                          string
 	maximumRenditions, maximumPixelsPerSecond                         int
+	stunURLs                                                          []string
 }
 
 func loadConfig(getenv func(string) string) (config, error) {
@@ -78,7 +82,38 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if err != nil {
 		return config{}, err
 	}
-	return config{rawURL, id, identityFile, token, defaultValue(getenv("NATIVE_PACKAGER_FFMPEG"), "ffmpeg"), energy, upload, renditions, pixels}, nil
+	stunURLs, err := parseStunURLs(getenv("NATIVE_PACKAGER_STUN_URLS"))
+	if err != nil {
+		return config{}, err
+	}
+	return config{
+		controlURL: rawURL, packagerID: id, identityFile: identityFile, enrollmentToken: token,
+		ffmpegPath: defaultValue(getenv("NATIVE_PACKAGER_FFMPEG"), "ffmpeg"), energyClass: energy,
+		uploadClass: upload, maximumRenditions: renditions, maximumPixelsPerSecond: pixels, stunURLs: stunURLs,
+	}, nil
+}
+
+func parseStunURLs(raw string) ([]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	if len(parts) > 8 {
+		return nil, errors.New("NATIVE_PACKAGER_STUN_URLS exceeds 8 entries")
+	}
+	result := make([]string, 0, len(parts))
+	seen := map[string]bool{}
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		parsed, err := url.Parse(value)
+		if err != nil || parsed == nil || (parsed.Scheme != "stun" && parsed.Scheme != "stuns") ||
+			(parsed.Host == "" && parsed.Opaque == "") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || seen[value] {
+			return nil, errors.New("NATIVE_PACKAGER_STUN_URLS contains an invalid URL")
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	return result, nil
 }
 
 func defaultValue(value, fallback string) string {
@@ -264,25 +299,40 @@ func hardwareClass() string {
 	return "small"
 }
 
+func createWebRTCAPI() (*webrtc.API, error) {
+	mediaEngine := &webrtc.MediaEngine{}
+	if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
+		return nil, fmt.Errorf("register WebRTC codecs: %w", err)
+	}
+	registry := &interceptor.Registry{}
+	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, registry); err != nil {
+		return nil, fmt.Errorf("register WebRTC interceptors: %w", err)
+	}
+	return webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(registry)), nil
+}
+
 type serverMessage struct {
-	Version         int               `json:"version"`
-	Type            string            `json:"type"`
-	Nonce           string            `json:"nonce,omitempty"`
-	PackagerID      string            `json:"packagerId,omitempty"`
-	KeyFingerprint  string            `json:"keyFingerprint,omitempty"`
-	Code            string            `json:"code,omitempty"`
-	ExpiresAt       int64             `json:"expiresAt,omitempty"`
-	ObservedAt      int64             `json:"observedAt,omitempty"`
-	RoomIDs         []string          `json:"roomIds,omitempty"`
-	AssignmentID    string            `json:"assignmentId,omitempty"`
-	RoomID          string            `json:"roomId,omitempty"`
-	ProgramID       string            `json:"programId,omitempty"`
-	ProgramEpoch    int               `json:"programEpoch,omitempty"`
-	LeaseID         string            `json:"leaseId,omitempty"`
-	FencingRevision int               `json:"fencingRevision,omitempty"`
-	ResourceRef     string            `json:"resourceRef,omitempty"`
-	ReasonCode      string            `json:"reasonCode,omitempty"`
-	Profile         assignmentProfile `json:"profile,omitempty"`
+	Version         int                        `json:"version"`
+	Type            string                     `json:"type"`
+	Nonce           string                     `json:"nonce,omitempty"`
+	PackagerID      string                     `json:"packagerId,omitempty"`
+	KeyFingerprint  string                     `json:"keyFingerprint,omitempty"`
+	Code            string                     `json:"code,omitempty"`
+	ExpiresAt       int64                      `json:"expiresAt,omitempty"`
+	ObservedAt      int64                      `json:"observedAt,omitempty"`
+	RoomIDs         []string                   `json:"roomIds,omitempty"`
+	AssignmentID    string                     `json:"assignmentId,omitempty"`
+	RoomID          string                     `json:"roomId,omitempty"`
+	ProgramID       string                     `json:"programId,omitempty"`
+	ProgramEpoch    int                        `json:"programEpoch,omitempty"`
+	LeaseID         string                     `json:"leaseId,omitempty"`
+	FencingRevision int                        `json:"fencingRevision,omitempty"`
+	ResourceRef     string                     `json:"resourceRef,omitempty"`
+	ReasonCode      string                     `json:"reasonCode,omitempty"`
+	Profile         assignmentProfile          `json:"profile,omitempty"`
+	PublisherPeerID string                     `json:"publisherPeerId,omitempty"`
+	Description     *webrtc.SessionDescription `json:"description,omitempty"`
+	Candidate       json.RawMessage            `json:"candidate,omitempty"`
 }
 
 type client struct {
@@ -295,9 +345,14 @@ type client struct {
 	rooms        []string
 	assignmentMu sync.Mutex
 	assignment   *packagerAssignment
+	api          *webrtc.API
+	sendOverride func(any) error
 }
 
 func (c *client) send(value any) error {
+	if c.sendOverride != nil {
+		return c.sendOverride(value)
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.connection == nil {
@@ -326,6 +381,7 @@ func (c *client) capabilityMessage() map[string]any {
 }
 
 func (c *client) connect(ctx context.Context, enroll bool) error {
+	defer c.closeAssignmentMedia()
 	dialer := websocket.Dialer{HandshakeTimeout: 15 * time.Second, EnableCompression: false, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
 	connection, response, err := dialer.DialContext(ctx, c.cfg.controlURL, http.Header{})
 	if err != nil {
@@ -335,7 +391,7 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 		return errors.New("control connection failed")
 	}
 	defer connection.Close()
-	connection.SetReadLimit(64 * 1024)
+	connection.SetReadLimit(96 * 1024)
 	c.mu.Lock()
 	c.connection = connection
 	c.mu.Unlock()
@@ -398,6 +454,7 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 			case <-periodicDone:
 				return
 			case <-ticker.C:
+				_ = c.expireAssignment(time.Now())
 				_ = c.send(c.capabilityMessage())
 				_ = c.send(c.heartbeatMessage())
 			}
@@ -436,6 +493,10 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 			if err = c.stopAssignment(message); err != nil {
 				return err
 			}
+		case "assignment-peer-signal":
+			if err = c.handleAssignmentSignal(message); err != nil {
+				return err
+			}
 		case "packager-error":
 			return fmt.Errorf("control rejected message: %s", message.Code)
 		default:
@@ -461,7 +522,11 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	client := &client{cfg: cfg, identity: identity, capability: capability}
+	api, err := createWebRTCAPI()
+	if err != nil {
+		log.Fatal(err)
+	}
+	client := &client{cfg: cfg, identity: identity, capability: capability, api: api}
 	if len(os.Args) == 2 && os.Args[1] == "enroll" {
 		if cfg.enrollmentToken == "" {
 			log.Fatal("enrollment token required")

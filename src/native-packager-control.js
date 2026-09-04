@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { normalizeNativePackagerCapability } from "./native-packager-policy.js";
+import { validateCandidate, validateDescription } from "./protocol.js";
 
 const PACKAGER_ID = /^pkr_[A-Za-z0-9_-]{16,64}$/;
 const ROOM_ID = /^[A-Za-z0-9_-]{4,64}$/;
@@ -82,6 +83,31 @@ export function parseNativePackagerMessage(raw) {
       || !/^[A-Z][A-Z0-9_]{1,63}$/.test(value.reasonCode || "")
       || !Number.isSafeInteger(value.observedAt)) fail("invalid_native_packager_assignment_status");
     return Object.freeze(value);
+  }
+  if (value?.type === "assignment-signal") {
+    const common = new Set([
+      "version", "type", "assignmentId", "programEpoch", "fencingRevision", "description", "candidate",
+    ]);
+    const hasDescription = Object.hasOwn(value, "description");
+    const hasCandidate = Object.hasOwn(value, "candidate");
+    if (!exact(value, new Set([...common].filter((field) => (
+      field !== (hasDescription ? "candidate" : "description")
+    )))) || value.version !== 1 || hasDescription === hasCandidate
+      || !/^asn_[A-Za-z0-9_-]{16,64}$/.test(value.assignmentId || "")
+      || !Number.isSafeInteger(value.programEpoch) || value.programEpoch < 1
+      || !Number.isSafeInteger(value.fencingRevision) || value.fencingRevision < 1) {
+      fail("invalid_native_packager_signal");
+    }
+    return Object.freeze({
+      version: 1,
+      type: value.type,
+      assignmentId: value.assignmentId,
+      programEpoch: value.programEpoch,
+      fencingRevision: value.fencingRevision,
+      ...(hasDescription
+        ? { description: validateDescription(value.description) }
+        : { candidate: validateCandidate(value.candidate) }),
+    });
   }
   fail("unknown_native_packager_message");
 }

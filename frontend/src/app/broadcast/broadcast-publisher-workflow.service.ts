@@ -13,6 +13,9 @@ export interface BroadcastPublisherStartRequest {
   readonly title: string;
   readonly visibility: BroadcastPreflightAudience;
   readonly sourceIds: readonly string[];
+  readonly adapterId?: "whip-browser" | "native-bridge";
+  readonly packagerId?: string;
+  readonly requestedRenditions?: number;
 }
 
 function sessionInstanceId(): string {
@@ -108,7 +111,19 @@ export class BroadcastPublisherWorkflowService {
       );
       programId = created.programId;
       this.activeProgramId.set(programId);
-      const prepared = await this.control.prepareStart(created, request.sourceIds, signal);
+      const adapterId = request.adapterId || "whip-browser";
+      if (adapterId !== "whip-browser" && adapterId !== "native-bridge") {
+        throw new BroadcastBrowserPortError("invalid_broadcast_adapter");
+      }
+      const prepared = adapterId === "native-bridge"
+        ? await this.control.prepareNativeStart(
+          created,
+          request.sourceIds,
+          request.packagerId || "",
+          request.requestedRenditions || 1,
+          signal,
+        )
+        : await this.control.prepareStart(created, request.sourceIds, signal);
       const sources = this.media.localOriginalSources()
         .filter(({ sourceId }) => request.sourceIds.includes(sourceId))
         .map((source) => Object.freeze({
@@ -135,7 +150,7 @@ export class BroadcastPublisherWorkflowService {
           sources,
         },
         sourceIds: request.sourceIds,
-        adapterId: "whip-browser",
+        adapterId,
       });
     } catch (error) {
       if (programId) {

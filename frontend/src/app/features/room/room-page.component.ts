@@ -26,6 +26,8 @@ import {
 import { BroadcastProgramStateService } from "../../broadcast/broadcast-program-state.service";
 import { BroadcastPublisherWorkflowService } from "../../broadcast/broadcast-publisher-workflow.service";
 import { BroadcastSourceSelectionService } from "../../broadcast/broadcast-source-selection.service";
+import { BroadcastStatsRouterService } from "../../broadcast/broadcast-stats-router.service";
+import { NativePackagerBroadcastRuntimeService } from "../../broadcast/native-packager-broadcast-runtime.service";
 import { LiveCaptionService } from "../../captions/live-caption.service";
 import { formatModelSize } from "../../captions/vosk-model-catalog";
 import { VoskModelManagerService } from "../../captions/vosk-model-manager.service";
@@ -79,15 +81,16 @@ type AppSection = "rooms" | "live" | "broadcast" | "captions" | "analysis" | "ch
     BroadcastProgramStateService,
     BroadcastPublisherWorkflowService,
     BroadcastSourceSelectionService,
+    BroadcastStatsRouterService,
     { provide: BROADCAST_CONSENT_PORT, useExisting: ExplicitBroadcastConsentService },
     { provide: BROADCAST_CAPTURE_FORK_PORT, useExisting: BroadcastOwnSourceCaptureService },
     { provide: BROADCAST_COMPOSITION_PORT, useExisting: BroadcastOwnSourceCompositionService },
     {
       provide: BROADCAST_PUBLICATION_ADAPTERS,
-      useFactory: (adapter: BrowserWhipBroadcastRuntimeService) => Object.freeze([adapter]),
-      deps: [BrowserWhipBroadcastRuntimeService],
+      useFactory: (whip: BrowserWhipBroadcastRuntimeService, native: NativePackagerBroadcastRuntimeService) => Object.freeze([whip, native]),
+      deps: [BrowserWhipBroadcastRuntimeService, NativePackagerBroadcastRuntimeService],
     },
-    { provide: BROADCAST_STATS_PORT, useExisting: BrowserWhipBroadcastRuntimeService },
+    { provide: BROADCAST_STATS_PORT, useExisting: BroadcastStatsRouterService },
   ],
 })
 export class RoomPageComponent implements OnInit, OnDestroy {

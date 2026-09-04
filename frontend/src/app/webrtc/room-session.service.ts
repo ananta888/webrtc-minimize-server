@@ -29,6 +29,7 @@ export class RoomSessionService {
   readonly workspaceId = signal("");
   readonly workspaceRole = signal<"owner" | "editor" | "viewer" | "">("");
   readonly roomCreator = signal(false);
+  readonly icePolicy = signal<IceTierPolicy | null>(null);
   private workspaceInvite = "";
 
   constructor(
@@ -95,12 +96,14 @@ export class RoomSessionService {
         + (this.workspaceInvite ? `&workspaceInvite=${encodeURIComponent(this.workspaceInvite)}` : ""));
       this.workspaceId.set(body.workspace?.workspaceId || "");
       this.workspaceRole.set(body.workspace?.role || "");
+      this.icePolicy.set(icePolicy);
       this.signaling.connect(
         body.signalingPath,
         (message) => this.handleMessage(message, icePolicy),
         () => {
           this.mesh.close();
           this.joined.set(false);
+          this.icePolicy.set(null);
         },
       );
     } catch (error) {
@@ -114,6 +117,7 @@ export class RoomSessionService {
     this.workspaceId.set("");
     this.workspaceRole.set("");
     this.roomCreator.set(false);
+    this.icePolicy.set(null);
     let cleanupFailed = false;
     try {
       this.signaling.leave();

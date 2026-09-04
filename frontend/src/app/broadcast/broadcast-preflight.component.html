@@ -129,12 +129,15 @@
         </select>
       </label>
       <label class="field">Trusted Packager
-        <select id="broadcast-packager-profile" [value]="packagerProfile()">
-          <option value="this-browser">Dieser Browser · nur eigene Originalquellen</option>
-          <option value="native-agent" disabled>Nativer Packager · Runtime noch nicht verbunden</option>
+        <select id="broadcast-packager-profile" [value]="packagerProfile() === 'native-agent' ? 'native:' + nativePackagers.selectedPackagerId() : 'this-browser'" (change)="setPackagerProfile($any($event.target).value)">
+          <option value="this-browser" [disabled]="!browserPublisherEnabled()">Dieser Browser · nur eigene Originalquellen</option>
+          @for (packager of eligibleNativePackagers(); track packager.id) {
+            <option [value]="'native:' + packager.id" [disabled]="!nativePublisherEnabled()">{{ packager.label }} · {{ packager.capability?.maximumRenditions || 1 }} Rendition(s)</option>
+          }
         </select>
       </label>
-      <p class="policy-note">Blind-Media-Agenten sind keine Trusted Packager und erhalten keine Decrypt-Schlüssel. Mehrfachauswahl und Handoff werden erst nach der getrennten Agent-Autorisierung freigeschaltet.</p>
+      @if (!browserPublisherEnabled() && eligibleNativePackagers().length === 0) { <p class="agent-risk">Kein publikationsfähiger Packager ist für diesen Raum verfügbar.</p> }
+      <p class="policy-note">Blind-Media-Agenten sind keine Trusted Packager und erhalten keine Decrypt-Schlüssel. Ein nativer Packager erscheint nur, wenn er online, gesund, an dein Konto gebunden und ausdrücklich für diesen Raum freigegeben ist.</p>
     </fieldset>
     <fieldset class="audio-policy" id="broadcast-audio-policy">
       <legend>Audio-Programmbus</legend>
@@ -191,7 +194,7 @@
       <div><dt>Geschätzter Upload</dt><dd id="broadcast-upload-estimate">{{ preflight.formatBitrate(preflight.estimatedUploadBitsPerSecond()) }}</dd></div>
       <div><dt>Geschätzte CPU-Klasse</dt><dd id="broadcast-cpu-estimate">{{ estimatedCpuClass() }}</dd></div>
       <div><dt>Delivery-Profil</dt><dd id="broadcast-delivery-summary">Origin LL-HLS · kurze Unterbrechung bei späterem Profilwechsel</dd></div>
-      <div><dt>Packager</dt><dd id="broadcast-packager-summary">Dieser Browser · Own Source</dd></div>
+      <div><dt>Packager</dt><dd id="broadcast-packager-summary">{{ packagerProfile() === 'native-agent' ? (selectedNativePackager()?.label || 'nicht verfügbar') : 'Dieser Browser · Own Source' }}</dd></div>
       <div><dt>Vorschau</dt><dd>{{ preflight.previews().length ? preflight.previews().length + ' getrennte Track-Klone' : 'noch nicht erzeugt' }}</dd></div>
       <div><dt>Auslieferung</dt><dd>{{ enabled() ? 'Control Plane verbunden · Startfreigabe noch erforderlich' : 'Produktionsschalter deaktiviert' }}</dd></div>
     </dl>

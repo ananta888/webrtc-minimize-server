@@ -32,6 +32,7 @@ export interface RuntimeConfig {
   readonly nativePackagers: Readonly<{
     configured: boolean;
     selfService: boolean;
+    publicationEnabled: boolean;
     endpoint: string;
     targets: readonly NativePackagerTarget[];
   }>;
@@ -192,6 +193,8 @@ export class RuntimeConfigService {
       || config.mediaAgents.shardMinParticipants > 20
       || !config.nativePackagers || typeof config.nativePackagers.configured !== "boolean"
       || typeof config.nativePackagers.selfService !== "boolean"
+      || typeof config.nativePackagers.publicationEnabled !== "boolean"
+      || (config.nativePackagers.publicationEnabled && !config.nativePackagers.selfService)
       || config.nativePackagers.endpoint !== (config.nativePackagers.selfService ? "/native-packager" : "")
       || !Array.isArray(config.nativePackagers.targets) || config.nativePackagers.targets.length > 5
       || config.nativePackagers.targets.some((target) => !target || typeof target !== "object"

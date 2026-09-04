@@ -18,6 +18,17 @@ const PROGRAM = /^prg_[A-Za-z0-9_-]{16,64}$/;
 const RESOURCE = /^res_[A-Za-z0-9_-]{16,64}$/;
 const CHALLENGE = /^bpc_[A-Za-z0-9_-]{24,64}$/;
 const SOURCE = /^src_[A-Za-z0-9_-]{16,64}$/;
+const PACKAGER = /^pkr_[A-Za-z0-9_-]{16,64}$/;
+const ASSIGNMENT = /^asn_[A-Za-z0-9_-]{16,64}$/;
+
+export interface PreparedNativePackagerStart {
+  readonly assignmentId: string;
+  readonly packagerId: string;
+  readonly programId: string;
+  readonly programEpoch: number;
+  readonly fencingRevision: number;
+  readonly expiresAt: number;
+}
 
 async function json(response: Response, code: string): Promise<Record<string, unknown>> {
   let value: unknown;
@@ -66,6 +77,7 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
     program: BroadcastProgramRef;
     authorization: WhipAuthorization;
   }>>();
+  private readonly preparedNative = new Map<string, PreparedNativePackagerStart>();
 
   constructor(
     private readonly auth: OidcAuthService,
@@ -116,6 +128,87 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
       authorization: exchanged.authorization,
     }));
     return Object.freeze({ program: exchanged.program, ownerSubjectRef: exchanged.subjectRef });
+  }
+
+  async prepareNativeStart(
+    program: BroadcastProgramRef,
+    sourceIds: readonly string[],
+    packagerId: string,
+    requestedRenditions: number,
+    signal: AbortSignal,
+  ): Promise<Readonly<{ program: BroadcastProgramRef; ownerSubjectRef: string }>> {
+    const fingerprint = this.device.fingerprint();
+    if (!PROGRAM.test(program.programId) || !PACKAGER.test(packagerId) || !fingerprint
+      || !Array.isArray(sourceIds) || sourceIds.length < 1 || sourceIds.length > 4
+      || new Set(sourceIds).size !== sourceIds.length || sourceIds.some((sourceId) => !SOURCE.test(sourceId))
+      || !Number.isSafeInteger(requestedRenditions) || requestedRenditions < 1 || requestedRenditions > 3) {
+      throw new BroadcastBrowserPortError("invalid_native_packager_publication_request");
+    }
+    const response = await fetch(`/api/broadcasts/${encodeURIComponent(program.programId)}/native-assignments`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
+      credentials: "same-origin",
+      redirect: "error",
+      signal,
+      body: JSON.stringify({
+        requestVersion: 1,
+        trigger: "user-action",
+        packagerId,
+        sourceIds,
+        requestedRenditions,
+        allowHardwareAcceleration: true,
+        deviceFingerprint: fingerprint,
+      }),
+    });
+    if (!response.ok) throw requestError(response, "native_packager_assignment_failed");
+    const value = await json(response, "invalid_native_packager_assignment_response");
+    if (Object.keys(value).length !== 3 || !value["assignment"] || !value["program"]
+      || !/^sub_[A-Za-z0-9_-]{16,64}$/.test(String(value["ownerSubjectRef"] || ""))) {
+      throw new BroadcastBrowserPortError("invalid_native_packager_assignment_response");
+    }
+    const returnedProgram = programRef(value["program"]);
+    const assignment = value["assignment"] as Record<string, unknown>;
+    const assignmentFields = new Set([
+      "assignmentId", "packagerId", "roomId", "programId", "programEpoch", "fencingRevision",
+      "profileId", "renditionIds", "state", "reasonCode", "createdAt", "updatedAt", "expiresAt",
+    ]);
+    if (!assignment || typeof assignment !== "object" || Array.isArray(assignment)
+      || Object.keys(assignment).length !== assignmentFields.size
+      || Object.keys(assignment).some((field) => !assignmentFields.has(field))
+      || !ASSIGNMENT.test(String(assignment["assignmentId"] || ""))
+      || assignment["packagerId"] !== packagerId || assignment["programId"] !== returnedProgram.programId
+      || assignment["roomId"] !== returnedProgram.roomId
+      || assignment["programEpoch"] !== returnedProgram.programEpoch
+      || !Number.isSafeInteger(assignment["fencingRevision"]) || Number(assignment["fencingRevision"]) < 1
+      || !Number.isSafeInteger(assignment["expiresAt"]) || Number(assignment["expiresAt"]) <= Date.now()) {
+      throw new BroadcastBrowserPortError("invalid_native_packager_assignment_response");
+    }
+    this.preparedNative.set(returnedProgram.programId, Object.freeze({
+      assignmentId: String(assignment["assignmentId"]),
+      packagerId,
+      programId: returnedProgram.programId,
+      programEpoch: returnedProgram.programEpoch,
+      fencingRevision: Number(assignment["fencingRevision"]),
+      expiresAt: Number(assignment["expiresAt"]),
+    }));
+    return Object.freeze({ program: returnedProgram, ownerSubjectRef: String(value["ownerSubjectRef"]) });
+  }
+
+  takePreparedNative(program: BroadcastProgramRef): PreparedNativePackagerStart {
+    const prepared = this.preparedNative.get(program.programId);
+    this.preparedNative.delete(program.programId);
+    if (!prepared || prepared.programEpoch !== program.programEpoch || prepared.expiresAt <= Date.now()) {
+      throw new BroadcastBrowserPortError("native_packager_assignment_required");
+    }
+    return prepared;
+  }
+
+  async stopNativeAssignment(assignment: PreparedNativePackagerStart, signal: AbortSignal): Promise<void> {
+    const response = await fetch(
+      `/api/native-packagers/${encodeURIComponent(assignment.packagerId)}/assignments/${encodeURIComponent(assignment.assignmentId)}`,
+      { method: "DELETE", headers: this.auth.authorizationHeader(), credentials: "same-origin", redirect: "error", signal },
+    );
+    if (!response.ok) throw requestError(response, "native_packager_assignment_stop_failed");
   }
 
   async authorize(request: WhipAuthorizationRequest, signal: AbortSignal): Promise<WhipAuthorization> {
@@ -274,9 +367,11 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
     if (programId) {
       this.sourceIds.delete(programId);
       this.preparedCreates.delete(programId);
+      this.preparedNative.delete(programId);
     } else {
       this.sourceIds.clear();
       this.preparedCreates.clear();
+      this.preparedNative.clear();
     }
   }
 }

@@ -47,8 +47,11 @@ Der [Trusted-Video-Compositor](docs/trusted-video-compositor.md) erzeugt aus con
 Die [Native-Packager-Basis](docs/native-packager.md) validiert kurzlebige,
 owner-/tenant-/raumgebundene Capability-Reports, wendet CPU-/Upload-/Energie-
 Admission an und erzeugt eine begrenzte H.264/AAC-ABR-Leiter über eine
-shell-freie FFmpeg-Pipeline. Installation und Control-Plane-Anbindung bleiben
-noch offen und werden nicht als einsatzbereit dargestellt.
+shell-freie FFmpeg-Pipeline. Der installierbare Go-Agent besitzt inzwischen
+P-256-/WSS-Enrollment, Raumconsent, gefencete Assignments und einen real
+getesteten WebRTC-RTP-Eingang; die Verbindung dieses Eingangs mit FFmpeg und
+dem autorisierten Gateway-Publish bleibt offen und wird nicht als
+produktionsbereit dargestellt.
 
 Der [MediaMTX-Gateway-Adapter](docs/mediamtx-gateway-adapter.md) stellt ein getrenntes, opt-in lokales Integrationsprofil bereit. MediaMTX 1.20.1 ist per OCI-Digest fixiert; nur WHIP, LL-HLS, interne API/Metrics und ICE sind aktiv. Der Container besitzt kein Recording, läuft read-only und veröffentlicht seine Medienports ausschließlich auf Loopback. Das Profil ist keine öffentliche Produktionsfreigabe.
 

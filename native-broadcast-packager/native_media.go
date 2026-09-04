@@ -1,0 +1,215 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/pion/webrtc/v4"
+)
+
+const maximumPendingNativeCandidates = 128
+
+type nativeMediaSession struct {
+	client     *client
+	assignment *packagerAssignment
+	pc         *webrtc.PeerConnection
+	signalMu   sync.Mutex
+	pending    []webrtc.ICECandidateInit
+	closed     bool
+	bytes      atomic.Uint64
+	packets    atomic.Uint64
+}
+
+func newNativeMediaSession(client *client, assignment *packagerAssignment) (*nativeMediaSession, error) {
+	if client == nil || client.api == nil || assignment == nil {
+		return nil, errors.New("native media configuration unavailable")
+	}
+	configuration := webrtc.Configuration{}
+	if len(client.cfg.stunURLs) > 0 {
+		configuration.ICEServers = []webrtc.ICEServer{{URLs: append([]string(nil), client.cfg.stunURLs...)}}
+	}
+	pc, err := client.api.NewPeerConnection(configuration)
+	if err != nil {
+		return nil, fmt.Errorf("create native media connection: %w", err)
+	}
+	media := &nativeMediaSession{client: client, assignment: assignment, pc: pc}
+	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		value := any(nil)
+		if candidate != nil {
+			value = candidate.ToJSON()
+		}
+		_ = client.send(media.signalMessage("candidate", value))
+	})
+	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		switch state {
+		case webrtc.PeerConnectionStateConnected:
+			_ = client.transitionAssignment(assignment, "starting", "MEDIA_CONNECTED")
+		case webrtc.PeerConnectionStateDisconnected:
+			_ = client.transitionAssignment(assignment, "degraded", "MEDIA_DISCONNECTED")
+		case webrtc.PeerConnectionStateFailed:
+			_ = client.transitionAssignment(assignment, "failed", "MEDIA_CONNECTION_FAILED")
+		}
+	})
+	pc.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		go media.readTrack(track)
+	})
+	return media, nil
+}
+
+func (media *nativeMediaSession) signalMessage(kind string, payload any) map[string]any {
+	message := map[string]any{
+		"version": 1, "type": "assignment-signal", "assignmentId": media.assignment.AssignmentID,
+		"programEpoch": media.assignment.ProgramEpoch, "fencingRevision": media.assignment.FencingRevision,
+	}
+	message[kind] = payload
+	return message
+}
+
+func (media *nativeMediaSession) handle(message serverMessage) error {
+	media.signalMu.Lock()
+	defer media.signalMu.Unlock()
+	if media.closed || message.AssignmentID != media.assignment.AssignmentID ||
+		message.PublisherPeerID != media.assignment.PublisherPeerID ||
+		message.ProgramEpoch != media.assignment.ProgramEpoch ||
+		message.FencingRevision != media.assignment.FencingRevision || time.Now().UnixMilli() >= media.assignment.ExpiresAt {
+		return errors.New("stale assignment media signal")
+	}
+	if message.Description != nil {
+		if message.Description.Type != webrtc.SDPTypeOffer || len(message.Description.SDP) > 80000 || media.pc.SignalingState() != webrtc.SignalingStateStable {
+			return errors.New("invalid assignment media offer")
+		}
+		if err := media.pc.SetRemoteDescription(*message.Description); err != nil {
+			return fmt.Errorf("apply assignment media offer: %w", err)
+		}
+		for _, candidate := range media.pending {
+			if err := media.pc.AddICECandidate(candidate); err != nil {
+				return fmt.Errorf("apply pending assignment candidate: %w", err)
+			}
+		}
+		media.pending = nil
+		answer, err := media.pc.CreateAnswer(nil)
+		if err != nil {
+			return fmt.Errorf("create assignment media answer: %w", err)
+		}
+		if err = media.pc.SetLocalDescription(answer); err != nil {
+			return fmt.Errorf("apply assignment media answer: %w", err)
+		}
+		return media.client.send(media.signalMessage("description", media.pc.LocalDescription()))
+	}
+	candidate, err := decodeNativeCandidate(message.Candidate)
+	if err != nil {
+		return err
+	}
+	if media.pc.RemoteDescription() == nil {
+		if len(media.pending) >= maximumPendingNativeCandidates {
+			return errors.New("assignment candidate queue full")
+		}
+		media.pending = append(media.pending, candidate)
+		return nil
+	}
+	if err = media.pc.AddICECandidate(candidate); err != nil {
+		return fmt.Errorf("apply assignment candidate: %w", err)
+	}
+	return nil
+}
+
+func decodeNativeCandidate(raw json.RawMessage) (webrtc.ICECandidateInit, error) {
+	if len(raw) == 0 || len(raw) > 4096+512 {
+		return webrtc.ICECandidateInit{}, errors.New("invalid assignment candidate")
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return webrtc.ICECandidateInit{}, nil
+	}
+	var candidate webrtc.ICECandidateInit
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&candidate); err != nil || len(candidate.Candidate) > 4096 {
+		return webrtc.ICECandidateInit{}, errors.New("invalid assignment candidate")
+	}
+	return candidate, nil
+}
+
+func (media *nativeMediaSession) readTrack(track *webrtc.TrackRemote) {
+	if track.Kind() != webrtc.RTPCodecTypeAudio && track.Kind() != webrtc.RTPCodecTypeVideo {
+		return
+	}
+	_ = media.client.transitionAssignment(media.assignment, "running", "MEDIA_RECEIVING")
+	for {
+		packet, _, err := track.ReadRTP()
+		if err != nil {
+			return
+		}
+		media.packets.Add(1)
+		media.bytes.Add(uint64(packet.MarshalSize()))
+	}
+}
+
+func (media *nativeMediaSession) close() {
+	media.signalMu.Lock()
+	defer media.signalMu.Unlock()
+	if media.closed {
+		return
+	}
+	media.closed = true
+	media.pending = nil
+	_ = media.pc.Close()
+}
+
+func (c *client) handleAssignmentSignal(message serverMessage) error {
+	c.assignmentMu.Lock()
+	assignment := c.assignment
+	c.assignmentMu.Unlock()
+	if assignment == nil || assignment.Media == nil {
+		return errors.New("assignment media unavailable")
+	}
+	return assignment.Media.handle(message)
+}
+
+func (c *client) transitionAssignment(assignment *packagerAssignment, state, reasonCode string) error {
+	c.assignmentMu.Lock()
+	if c.assignment != assignment || assignment == nil {
+		c.assignmentMu.Unlock()
+		return nil
+	}
+	current := assignment.State
+	if current == state {
+		c.assignmentMu.Unlock()
+		return nil
+	}
+	if state == "running" && current == "ready" {
+		assignment.State = "starting"
+		c.assignmentMu.Unlock()
+		if err := c.send(c.assignmentStatus(assignment, "starting", "MEDIA_CONNECTED")); err != nil {
+			return err
+		}
+		return c.transitionAssignment(assignment, state, reasonCode)
+	}
+	allowed := map[string]map[string]bool{
+		"ready":    {"starting": true, "failed": true},
+		"starting": {"running": true, "degraded": true, "failed": true},
+		"running":  {"degraded": true, "failed": true},
+		"degraded": {"running": true, "failed": true},
+	}
+	if !allowed[current][state] {
+		c.assignmentMu.Unlock()
+		return nil
+	}
+	assignment.State = state
+	c.assignmentMu.Unlock()
+	return c.send(c.assignmentStatus(assignment, state, reasonCode))
+}
+
+func (c *client) closeAssignmentMedia() {
+	c.assignmentMu.Lock()
+	assignment := c.assignment
+	c.assignment = nil
+	c.assignmentMu.Unlock()
+	if assignment != nil && assignment.Media != nil {
+		assignment.Media.close()
+	}
+}

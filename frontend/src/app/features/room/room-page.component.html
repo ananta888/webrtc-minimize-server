@@ -384,7 +384,9 @@
 
       @if (activeSection() === 'broadcast') {
         <app-broadcast-preflight
-          [enabled]="config.value()?.broadcast?.whip?.enabled === true"
+          [enabled]="config.value()?.broadcast?.whip?.enabled === true || config.value()?.nativePackagers?.publicationEnabled === true"
+          [browserPublisherEnabled]="config.value()?.broadcast?.whip?.enabled === true"
+          [nativePublisherEnabled]="config.value()?.nativePackagers?.publicationEnabled === true"
           [joined]="session.joined()"
           [authenticated]="auth.authenticated()"
           [roomId]="session.roomId()"

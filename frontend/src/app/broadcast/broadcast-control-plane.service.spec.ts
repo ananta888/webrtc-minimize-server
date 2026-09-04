@@ -101,4 +101,30 @@ describe("BroadcastControlPlaneService", () => {
       code: "broadcast_start_authorization_required",
     });
   });
+
+  it("prepares and consumes one device- and fence-bound native assignment", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(json({
+      assignment: {
+        assignmentId: "asn_0123456789abcdef", packagerId: "pkr_0123456789abcdef",
+        roomId: program.roomId, programId: program.programId, programEpoch: 2, fencingRevision: 3,
+        profileId: "h264-aac-720p-v1", renditionIds: ["low"], state: "preparing",
+        reasonCode: "AWAITING_AGENT", createdAt: Date.now(), updatedAt: Date.now(), expiresAt: Date.now() + 30_000,
+      },
+      program: { ...program, programRevision: 3, programEpoch: 2 },
+      ownerSubjectRef: "sub_cccccccccccccccc",
+    }));
+    const service = new BroadcastControlPlaneService(
+      { authorizationHeader: () => ({ Authorization: "Bearer oidc" }) } as never,
+      { fingerprint: () => "f".repeat(43) } as never,
+    );
+    const prepared = await service.prepareNativeStart(program, ["src_aaaaaaaaaaaaaaaa"],
+      "pkr_0123456789abcdef", 1, new AbortController().signal);
+    expect(prepared.program.programEpoch).toBe(2);
+    expect(service.takePreparedNative(prepared.program)).toMatchObject({
+      assignmentId: "asn_0123456789abcdef", fencingRevision: 3,
+    });
+    expect(() => service.takePreparedNative(prepared.program)).toThrow("native_packager_assignment_required");
+    const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(body).toMatchObject({ trigger: "user-action", deviceFingerprint: "f".repeat(43) });
+  });
 });

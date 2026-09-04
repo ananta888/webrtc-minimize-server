@@ -9,7 +9,7 @@ import (
 func assignmentMessage(now time.Time) serverMessage {
 	return serverMessage{
 		Version: 1, Type: "assignment-prepare", AssignmentID: "asn_0123456789abcdef",
-		RoomID: "room-alpha", ProgramID: "prg_0123456789abcdef", ProgramEpoch: 2,
+		RoomID: "room-alpha", ProgramID: "prg_0123456789abcdef", PublisherPeerID: "0123456789abcdef", ProgramEpoch: 2,
 		LeaseID: "lea_0123456789abcdef", FencingRevision: 3, ResourceRef: "res_0123456789abcdef",
 		ExpiresAt: now.Add(time.Minute).UnixMilli(),
 		Profile: assignmentProfile{
@@ -49,7 +49,7 @@ func TestControlMessagesAreClosedPerType(t *testing.T) {
 	message := assignmentMessage(now)
 	raw, err := json.Marshal(map[string]any{
 		"version": message.Version, "type": message.Type, "assignmentId": message.AssignmentID,
-		"roomId": message.RoomID, "programId": message.ProgramID, "programEpoch": message.ProgramEpoch,
+		"roomId": message.RoomID, "programId": message.ProgramID, "publisherPeerId": message.PublisherPeerID, "programEpoch": message.ProgramEpoch,
 		"leaseId": message.LeaseID, "fencingRevision": message.FencingRevision,
 		"resourceRef": message.ResourceRef, "profile": message.Profile, "expiresAt": message.ExpiresAt,
 	})
@@ -75,5 +75,22 @@ func TestPreparedAssignmentHeartbeatDoesNotClaimMediaStarted(t *testing.T) {
 	heartbeat := packager.heartbeatMessage()
 	if heartbeat["state"] != "ready" || heartbeat["assignmentId"] != message.AssignmentID {
 		t.Fatalf("prepared assignment heartbeat widened its state: %#v", heartbeat)
+	}
+}
+
+func TestAssignmentExpiresLocallyAndClosesMedia(t *testing.T) {
+	message := assignmentMessage(time.Now())
+	message.ExpiresAt = time.Now().Add(-time.Millisecond).UnixMilli()
+	assignment := assignmentFrom(message)
+	var status map[string]any
+	packager := &client{assignment: assignment, sendOverride: func(value any) error {
+		status, _ = value.(map[string]any)
+		return nil
+	}}
+	if err := packager.expireAssignment(time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if packager.assignment != nil || status["state"] != "failed" || status["reasonCode"] != "LEASE_EXPIRED" {
+		t.Fatalf("expired assignment remained active: %#v", status)
 	}
 }

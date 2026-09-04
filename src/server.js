@@ -181,6 +181,7 @@ function publicRuntimeConfig(config, services = {}) {
     nativePackagers: {
       selfService: config.nativePackagerSelfServiceEnabled,
       configured: Boolean(services.nativePackagers?.configured),
+      publicationEnabled: Boolean(config.nativePackagerSelfServiceEnabled && services.broadcastRuntime),
       endpoint: config.nativePackagerSelfServiceEnabled ? "/native-packager" : "",
       targets: services.nativePackagerInstallerService?.availableTargets() || [],
     },
@@ -460,6 +461,7 @@ function createHttpHandler(config, registry, services) {
           enrollment,
           targetId: target.id,
           publicOrigin: config.publicOrigin,
+          stunUrls: config.stunUrls,
         });
         sendJson(response, 201, {
           packagerId: enrollment.packagerId,
@@ -710,6 +712,7 @@ function createHttpHandler(config, registry, services) {
             input.packagerId,
             preparedProgram.admission,
             preparedProgram.lease,
+            activeMember.id,
           );
           if (!safeSend(nativePackagers.socketFor(input.packagerId), assignment.command)) {
             throw new NativePackagerAssignmentError("native_packager_offline", 503);
@@ -722,6 +725,7 @@ function createHttpHandler(config, registry, services) {
         sendJson(response, 201, {
           assignment: assignment.snapshot,
           program: preparedProgram.program,
+          ownerSubjectRef: broadcastSubjectRef(identity),
         }, securityHeaders(config));
         return;
       }
@@ -1513,6 +1517,21 @@ function configureSignaling(
           });
           return;
         }
+        if (message.type === "native-packager-signal") {
+          nativePackagerAssignments.authorizeBrowserSignal(peer, message);
+          const packagerSocket = nativePackagers.socketFor(message.packagerId);
+          if (!packagerSocket) throw new ProtocolError("native_packager_unavailable");
+          safeSend(packagerSocket, {
+            version: 1,
+            type: "assignment-peer-signal",
+            assignmentId: message.assignmentId,
+            publisherPeerId: peer.id,
+            programEpoch: message.programEpoch,
+            fencingRevision: message.fencingRevision,
+            ...(message.description ? { description: message.description } : { candidate: message.candidate }),
+          });
+          return;
+        }
         if (message.type === "media-state") {
           registry.setMediaState(peer, message);
           if (!message.active && mediaAgents.removePublisherSource(peer.roomId, peer.id, message.source)) {
@@ -1984,6 +2003,23 @@ function configureSignaling(
           nativePackagerAssignments.acknowledge(connection.id, message);
           return;
         }
+        if (message.type === "assignment-signal") {
+          const assignment = nativePackagerAssignments.authorizePackagerSignal(connection.id, message);
+          const publisher = registry.members(assignment.roomId)
+            .find((candidate) => candidate.id === assignment.publisherPeerId);
+          if (!publisher) throw new NativePackagerAssignmentError("native_packager_publisher_unavailable", 409);
+          safeSend(publisher.socket, {
+            version: 1,
+            type: "native-packager-signal",
+            packagerId: assignment.packagerId,
+            assignmentId: assignment.assignmentId,
+            programId: assignment.programId,
+            programEpoch: assignment.programEpoch,
+            fencingRevision: assignment.fencingRevision,
+            ...(message.description ? { description: message.description } : { candidate: message.candidate }),
+          });
+          return;
+        }
         throw new NativePackagerControlError("unknown_native_packager_message");
       } catch (error) {
         const code = error instanceof NativePackagerControlError || error instanceof NativePackagerAssignmentError
@@ -2022,7 +2058,8 @@ function configureSignaling(
     directory.prune(Date.now(), (roomId) => registry.members(roomId).length > 0);
     ticketStore.prune();
     mediaAgentEvents.prune();
-    nativePackagerAssignments.prune(Date.now(), (ownerPrincipal, expiredAssignment) => {
+    nativePackagerAssignments.prune(Date.now(), (ownerPrincipal, expiredAssignment, stopCommand) => {
+      safeSend(nativePackagers.socketFor(expiredAssignment.packagerId), stopCommand);
       stopProgramForPrincipal(broadcastRuntime, ownerPrincipal, expiredAssignment.programId);
     });
   }, 30_000);

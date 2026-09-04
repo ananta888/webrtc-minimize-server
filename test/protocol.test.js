@@ -124,3 +124,19 @@ test("parseClientMessage accepts only a closed P-256 overlay public key", () => 
     key: { kty: "EC", crv: "P-384", x: coordinate, y: coordinate, ext: true },
   }))), (error) => error.code === "invalid_overlay_key");
 });
+
+test("parseClientMessage accepts only assignment-bound native packager signals", () => {
+  const signal = {
+    version: 1,
+    type: "native-packager-signal",
+    packagerId: "pkr_0123456789abcdef",
+    assignmentId: "asn_0123456789abcdef",
+    programId: "prg_0123456789abcdef",
+    programEpoch: 2,
+    fencingRevision: 3,
+    description: { type: "offer", sdp: "v=0\r\n" },
+  };
+  assert.deepEqual(parseClientMessage(JSON.stringify(signal)), signal);
+  assert.throws(() => parseClientMessage(JSON.stringify({ ...signal, token: "forbidden" })), /invalid_native_packager_signal/);
+  assert.throws(() => parseClientMessage(JSON.stringify({ ...signal, candidate: null })), /invalid_native_packager_signal/);
+});
