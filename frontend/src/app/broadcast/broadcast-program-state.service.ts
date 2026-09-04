@@ -6,7 +6,9 @@ import {
   BroadcastPublicationSession,
 } from "./broadcast-ports";
 
-export type BroadcastBrowserLifecycle = "idle" | "starting" | "running" | "stopping" | "failed";
+export type BroadcastBrowserLifecycle =
+  "idle" | "starting" | "running" | "degraded" | "reconnecting" | "handing_over"
+  | "stopping" | "stopped" | "failed";
 
 export interface BroadcastBrowserProgramState {
   readonly lifecycle: BroadcastBrowserLifecycle;
@@ -34,7 +36,9 @@ export class BroadcastProgramStateService {
 
   begin(program: BroadcastProgramRef): void {
     const lifecycle = this.value().lifecycle;
-    if (lifecycle === "starting" || lifecycle === "running" || lifecycle === "stopping") {
+    if (new Set<BroadcastBrowserLifecycle>([
+      "starting", "running", "degraded", "reconnecting", "handing_over", "stopping",
+    ]).has(lifecycle)) {
       throw new BroadcastBrowserPortError("broadcast_lifecycle_busy");
     }
     this.value.set(Object.freeze({
@@ -66,6 +70,27 @@ export class BroadcastProgramStateService {
     this.value.set(Object.freeze({ ...current, lifecycle: "stopping" }));
   }
 
+  degraded(code: string): void {
+    this.transitionActive("degraded", code || "broadcast_degraded");
+  }
+
+  reconnecting(code: string): void {
+    this.transitionActive("reconnecting", code || "broadcast_reconnecting");
+  }
+
+  handingOver(code: string): void {
+    this.transitionActive("handing_over", code || "broadcast_handing_over");
+  }
+
+  resumeRunning(): void {
+    const current = this.value();
+    if (!new Set<BroadcastBrowserLifecycle>(["degraded", "reconnecting", "handing_over"]).has(current.lifecycle)
+      || !current.publicationSession) {
+      throw new BroadcastBrowserPortError("invalid_broadcast_resume_transition");
+    }
+    this.value.set(Object.freeze({ ...current, lifecycle: "running", errorCode: "" }));
+  }
+
   failed(code: string): void {
     const current = this.value();
     this.value.set(Object.freeze({
@@ -78,5 +103,25 @@ export class BroadcastProgramStateService {
 
   reset(): void {
     this.value.set(Object.freeze({ ...INITIAL_STATE, panelVisible: this.value().panelVisible }));
+  }
+
+  stopped(code = "broadcast_stopped"): void {
+    const current = this.value();
+    this.value.set(Object.freeze({
+      lifecycle: "stopped",
+      panelVisible: current.panelVisible,
+      program: current.program,
+      publicationSession: null,
+      errorCode: code,
+    }));
+  }
+
+  private transitionActive(lifecycle: "degraded" | "reconnecting" | "handing_over", code: string): void {
+    const current = this.value();
+    if (!new Set<BroadcastBrowserLifecycle>(["running", "degraded", "reconnecting", "handing_over"])
+      .has(current.lifecycle) || !current.publicationSession) {
+      throw new BroadcastBrowserPortError("invalid_broadcast_active_transition");
+    }
+    this.value.set(Object.freeze({ ...current, lifecycle, errorCode: code }));
   }
 }

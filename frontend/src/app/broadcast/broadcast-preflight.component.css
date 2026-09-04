@@ -124,6 +124,14 @@ app-broadcast-preflight .video-policy legend {
   color: #79b8ff;
 }
 
+app-broadcast-preflight .delivery-policy {
+  border-color: rgba(245, 166, 91, .3);
+}
+
+app-broadcast-preflight .delivery-policy legend {
+  color: #f5a65b;
+}
+
 app-broadcast-preflight .audio-policy .field,
 app-broadcast-preflight .audio-policy .facts {
   margin: 0;
@@ -173,6 +181,18 @@ app-broadcast-preflight .trust-warning {
 
 app-broadcast-preflight .trust-warning p {
   margin: .35rem 0 0;
+}
+
+app-broadcast-preflight .start-summary {
+  margin-top: 1rem;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: .8rem;
+  padding: .8rem;
+}
+
+app-broadcast-preflight .start-summary summary {
+  cursor: pointer;
+  font-weight: 750;
 }
 
 app-broadcast-preflight .preview-panel {

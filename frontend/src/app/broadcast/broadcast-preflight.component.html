@@ -63,6 +63,23 @@
       <input id="broadcast-captions" type="checkbox" [checked]="preflight.includeCaptions()" [disabled]="!captionsActive()" (change)="preflight.setIncludeCaptions($any($event.target).checked)">
       <span><strong>Finalisierte Vosk-Untertitel einplanen</strong><small>{{ captionsActive() ? 'Lokale Erkennung ist aktiv; Übernahme folgt im Caption-Packaging-Schritt.' : 'Starte Vosk bewusst im Bereich Untertitel.' }}</small></span>
     </label>
+    <fieldset class="audio-policy delivery-policy" id="broadcast-delivery-policy">
+      <legend>Delivery und Packager</legend>
+      <label class="field">Auslieferungsprofil
+        <select id="broadcast-delivery-profile" [value]="deliveryProfile()">
+          <option value="origin-llhls">Origin LL-HLS · Pilot bis zur gemessenen Hostgrenze</option>
+          <option value="cdn-hls" disabled>CDN-HLS · Provider noch nicht verifiziert</option>
+          <option value="moq-experimental" disabled>MoQ · experimentell und Draft-inkompatibel</option>
+        </select>
+      </label>
+      <label class="field">Trusted Packager
+        <select id="broadcast-packager-profile" [value]="packagerProfile()">
+          <option value="this-browser">Dieser Browser · nur eigene Originalquellen</option>
+          <option value="native-agent" disabled>Nativer Packager · Runtime noch nicht verbunden</option>
+        </select>
+      </label>
+      <p class="policy-note">Blind-Media-Agenten sind keine Trusted Packager und erhalten keine Decrypt-Schlüssel. Mehrfachauswahl und Handoff werden erst nach der getrennten Agent-Autorisierung freigeschaltet.</p>
+    </fieldset>
     <fieldset class="audio-policy" id="broadcast-audio-policy">
       <legend>Audio-Programmbus</legend>
       <label class="field">Strategie
@@ -116,6 +133,9 @@
     <dl class="facts">
       <div><dt>Codecprofil</dt><dd id="broadcast-codec-profile">{{ preflight.codecProfile() }}</dd></div>
       <div><dt>Geschätzter Upload</dt><dd id="broadcast-upload-estimate">{{ preflight.formatBitrate(preflight.estimatedUploadBitsPerSecond()) }}</dd></div>
+      <div><dt>Geschätzte CPU-Klasse</dt><dd id="broadcast-cpu-estimate">{{ estimatedCpuClass() }}</dd></div>
+      <div><dt>Delivery-Profil</dt><dd id="broadcast-delivery-summary">Origin LL-HLS · kurze Unterbrechung bei späterem Profilwechsel</dd></div>
+      <div><dt>Packager</dt><dd id="broadcast-packager-summary">Dieser Browser · Own Source</dd></div>
       <div><dt>Vorschau</dt><dd>{{ preflight.previews().length ? preflight.previews().length + ' getrennte Track-Klone' : 'noch nicht erzeugt' }}</dd></div>
       <div><dt>Auslieferung</dt><dd>Öffentliche Program-Orchestrierung noch nicht aktiviert</dd></div>
     </dl>
@@ -123,6 +143,16 @@
       <strong>Vertrauensgrenze: nicht SFrame-E2EE</strong>
       <p>Der Broadcast-Klon entsteht lokal vor der SFrame-Verschlüsselung. Ein später gewählter Trusted-Packager beziehungsweise Gateway kann diese freigegebenen Inhalte im Klartext verarbeiten. Der verschlüsselte interaktive Raumpfad bleibt davon getrennt.</p>
     </div>
+    <details id="broadcast-start-summary" class="start-summary">
+      <summary>Zusammenfassung vor dem späteren Sendestart</summary>
+      <dl class="facts compact">
+        <div><dt>Publikum</dt><dd>{{ preflight.audience() }}</dd></div>
+        <div><dt>Quellen</dt><dd>{{ preflight.selectedSources().length ? preflight.selectedSources().length + ' ausdrücklich gewählte Quelle(n)' : 'keine' }}</dd></div>
+        <div><dt>Raumpfad</dt><dd>SFrame-E2EE bleibt getrennt</dd></div>
+        <div><dt>Broadcast</dt><dd>Packager und Gateway verarbeiten nur das bestätigte Programm</dd></div>
+      </dl>
+      <button id="broadcast-start-disabled" class="button primary wide" type="button" disabled>Sendestart noch nicht mit der Control Plane verbunden</button>
+    </details>
   </section>
 </section>
 

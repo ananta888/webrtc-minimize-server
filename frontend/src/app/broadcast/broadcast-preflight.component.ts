@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, input, output } from "@angular/core";
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, input, output, signal } from "@angular/core";
 
 import { MediaStreamDirective } from "../shared/media-stream.directive";
 import { BroadcastOwnSourcePreflightService } from "./broadcast-own-source-preflight.service";
@@ -24,6 +24,13 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
   readonly trustedConsents = input<readonly TrustedDecryptConsentView[]>([]);
   readonly authorizeTrustedSource = output<TrustedDecryptConsentCandidate>();
   readonly revokeTrustedSource = output<string>();
+  readonly deliveryProfile = signal<"origin-llhls">("origin-llhls");
+  readonly packagerProfile = signal<"this-browser">("this-browser");
+  readonly estimatedCpuClass = computed(() => {
+    const profile = this.videoSettings.profile();
+    const pixelsPerSecond = profile.width * profile.height * profile.framesPerSecond;
+    return pixelsPerSecond > 45_000_000 ? "hoch" : pixelsPerSecond > 15_000_000 ? "mittel" : "niedrig";
+  });
 
   constructor(
     readonly preflight: BroadcastOwnSourcePreflightService,

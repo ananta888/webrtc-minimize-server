@@ -206,7 +206,7 @@ describe("BroadcastCoordinatorService", () => {
       `fork-release:${SOURCE_B}`,
       `fork-release:${SOURCE_A}`,
     ]);
-    expect(context.state.value().lifecycle).toBe("idle");
+    expect(context.state.value().lifecycle).toBe("stopped");
     expect(context.sources.selected()).toEqual([]);
     expect(context.coordinator.latestStats()).toBeNull();
     await context.coordinator.stop();
@@ -246,7 +246,7 @@ describe("BroadcastCoordinatorService", () => {
     await expect(starting).rejects.toMatchObject({ name: "AbortError" });
     await stopping;
     expect(capture).not.toHaveBeenCalled();
-    expect(context.state.value().lifecycle).toBe("idle");
+    expect(context.state.value().lifecycle).toBe("stopped");
     expect(context.sources.selected()).toEqual([]);
   });
 
@@ -266,7 +266,7 @@ describe("BroadcastCoordinatorService", () => {
     expect(context.state.value().lifecycle).toBe("running");
     expect(context.events.filter((event) => event === "publish-start")).toHaveLength(2);
     await context.coordinator.destroy();
-    expect(context.state.value().lifecycle).toBe("idle");
+    expect(context.state.value().lifecycle).toBe("stopped");
     await expect(context.coordinator.start(plan())).rejects.toThrow("broadcast_coordinator_destroyed");
   });
 
@@ -282,6 +282,6 @@ describe("BroadcastCoordinatorService", () => {
     await context.coordinator.stop();
     expect(context.events.filter((event) => event === "publish-stop")).toHaveLength(2);
     expect(context.events.filter((event) => event.startsWith("fork:"))).toHaveLength(2);
-    expect(context.state.value().lifecycle).toBe("idle");
+    expect(context.state.value().lifecycle).toBe("stopped");
   });
 });

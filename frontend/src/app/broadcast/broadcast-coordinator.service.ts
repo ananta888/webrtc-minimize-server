@@ -86,7 +86,9 @@ export class BroadcastCoordinatorService implements OnDestroy {
   async start(plan: BroadcastStartPlan): Promise<void> {
     if (this.destroyed) throw new BroadcastBrowserPortError("broadcast_coordinator_destroyed");
     const normalizedPlan = normalizeBroadcastStartPlan(plan);
-    if (this.startTask || this.stopTask || this.programState.value().lifecycle === "running") {
+    if (this.startTask || this.stopTask || new Set([
+      "starting", "running", "degraded", "reconnecting", "handing_over", "stopping",
+    ]).has(this.programState.value().lifecycle)) {
       throw new BroadcastBrowserPortError("broadcast_lifecycle_busy");
     }
     this.startController = new AbortController();
@@ -231,7 +233,7 @@ export class BroadcastCoordinatorService implements OnDestroy {
     }
     try {
       await this.cleanup();
-      this.programState.reset();
+      this.programState.stopped(reason === "user-stop" ? "broadcast_stopped_by_user" : `broadcast_stopped_${reason}`);
     } catch (error) {
       this.programState.failed(errorCode(error));
       throw error;
