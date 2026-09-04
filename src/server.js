@@ -2017,6 +2017,21 @@ function configureSignaling(
         }
         if (message.type === "assignment-status") {
           nativePackagerAssignments.acknowledge(connection.id, message);
+          const target = nativePackagerAssignments.statusTarget(connection.id, message);
+          const publisher = registry.members(target.assignment.roomId)
+            .find((candidate) => candidate.id === target.publisherPeerId);
+          if (publisher) safeSend(publisher.socket, {
+            version: 1,
+            type: "native-packager-status",
+            packagerId: target.assignment.packagerId,
+            assignmentId: target.assignment.assignmentId,
+            programId: target.assignment.programId,
+            programEpoch: target.assignment.programEpoch,
+            fencingRevision: target.assignment.fencingRevision,
+            state: target.assignment.state,
+            reasonCode: target.assignment.reasonCode,
+            observedAt: target.assignment.updatedAt,
+          });
           if (message.state === "running" && message.reasonCode === "OUTPUT_READY") {
             const output = nativePackagerAssignments.readyOutput(connection.id, message);
             broadcastRuntime.markNativeOutputReady(

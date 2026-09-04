@@ -20,6 +20,7 @@ export const SERVER_MESSAGE_VERSIONS = Object.freeze({
   "media-agent-track-state": 2,
   "media-agent-subscription-state": 2,
   "native-packager-signal": 1,
+  "native-packager-status": 1,
   "overlay-key": 1,
   error: 1,
 } satisfies Readonly<Record<string, number>>);

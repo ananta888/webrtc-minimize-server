@@ -23,6 +23,9 @@ interface NativeSession {
   unsubscribe: () => void;
   pendingCandidates: RTCIceCandidateInit[];
   signalTask: Promise<void>;
+  outputReady: Promise<void>;
+  resolveOutput: () => void;
+  rejectOutput: (error: unknown) => void;
   stopped: boolean;
 }
 
@@ -43,6 +46,23 @@ function exactSignal(message: ServerMessage, assignment: PreparedNativePackagerS
 }
 
 function abortError(): DOMException { return new DOMException("native-packager-start-aborted", "AbortError"); }
+
+function exactStatus(message: ServerMessage, assignment: PreparedNativePackagerStart): boolean {
+  const fields = new Set([
+    "version", "type", "packagerId", "assignmentId", "programId", "programEpoch",
+    "fencingRevision", "state", "reasonCode", "observedAt",
+  ]);
+  return message.type === "native-packager-status" && message.version === 1
+    && Object.keys(message).length === fields.size
+    && Object.keys(message).every((field) => fields.has(field))
+    && message["packagerId"] === assignment.packagerId
+    && message["assignmentId"] === assignment.assignmentId
+    && message["programId"] === assignment.programId
+    && message["programEpoch"] === assignment.programEpoch
+    && message["fencingRevision"] === assignment.fencingRevision
+    && typeof message["state"] === "string" && typeof message["reasonCode"] === "string"
+    && Number.isSafeInteger(message["observedAt"]);
+}
 
 @Injectable({ providedIn: "root" })
 export class NativePackagerBroadcastRuntimeService implements BroadcastPublicationPort, BroadcastStatsPort {
@@ -89,8 +109,16 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
       programId: request.program.programId,
       programEpoch: request.program.programEpoch,
     });
+    let resolveOutput: () => void = () => undefined;
+    let rejectOutput: (error: unknown) => void = () => undefined;
+    const outputReady = new Promise<void>((resolve, reject) => {
+      resolveOutput = resolve;
+      rejectOutput = reject;
+    });
+    void outputReady.catch(() => undefined);
     const native: NativeSession = {
       publicSession, assignment, pc, pendingCandidates: [], signalTask: Promise.resolve(), stopped: false,
+      outputReady, resolveOutput, rejectOutput,
       unsubscribe: () => undefined,
     };
     native.unsubscribe = this.signaling.subscribe((message) => this.acceptSignal(native, message));
@@ -110,6 +138,7 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
       if (!pc.localDescription) throw new BroadcastBrowserPortError("native-packager-offer_failed");
       this.sendSignal(assignment, { description: pc.localDescription.toJSON() });
       await connected;
+      await this.waitForOutput(native, signal);
       signal.throwIfAborted();
       return publicSession;
     } catch (error) {
@@ -153,7 +182,20 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
   }
 
   private acceptSignal(native: NativeSession, message: ServerMessage): void {
-    if (native.stopped || message.type !== "native-packager-signal") return;
+    if (native.stopped || (message.type !== "native-packager-signal" && message.type !== "native-packager-status")) return;
+    if (message.type === "native-packager-status") {
+      if (!exactStatus(message, native.assignment)) {
+        native.rejectOutput(new BroadcastBrowserPortError("invalid_native_packager_status"));
+        void this.close(native, true);
+        return;
+      }
+      if (message["state"] === "running" && message["reasonCode"] === "OUTPUT_READY") {
+        native.resolveOutput();
+      } else if (new Set(["draining", "stopped", "failed"]).has(String(message["state"]))) {
+        native.rejectOutput(new BroadcastBrowserPortError(String(message["reasonCode"])));
+      }
+      return;
+    }
     if (!exactSignal(message, native.assignment)) {
       void this.close(native, true);
       return;
@@ -191,6 +233,22 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
     }).catch(() => { void this.close(native, true); });
   }
 
+  private async waitForOutput(native: NativeSession, signal: AbortSignal): Promise<void> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let abort: (() => void) | undefined;
+    const boundary = new Promise<void>((_, reject) => {
+      timeout = setTimeout(() => reject(new BroadcastBrowserPortError("native-packager-output-timeout")), 30_000);
+      abort = () => reject(abortError());
+      signal.addEventListener("abort", abort, { once: true });
+    });
+    try {
+      await Promise.race([native.outputReady, boundary]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      if (abort) signal.removeEventListener("abort", abort);
+    }
+  }
+
   private sendSignal(assignment: PreparedNativePackagerStart, payload: { description: RTCSessionDescriptionInit } | { candidate: RTCIceCandidateInit | null }): void {
     this.signaling.send({
       version: 1, type: "native-packager-signal", packagerId: assignment.packagerId,
@@ -222,6 +280,7 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
   private async close(native: NativeSession, stopRemote: boolean, signal = new AbortController().signal): Promise<void> {
     if (native.stopped) return;
     native.stopped = true;
+    native.rejectOutput(new BroadcastBrowserPortError("native-packager-session-stopped"));
     native.unsubscribe();
     native.pc.onicecandidate = null;
     native.pc.close();

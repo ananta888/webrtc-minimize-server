@@ -79,7 +79,10 @@ oder alte Assignments ab und quittiert `ready`, `starting`, `running`,
 `degraded`, `draining`, `stopped` oder `failed` über eine separate
 Statusnachricht. `running` mit `OUTPUT_READY` wird erst gesendet, nachdem das
 Master-Manifest und alle vereinbarten Rendition-Manifeste tatsächlich sichtbar
-sind. Während einer aktiven Verbindung verlängert nur ein frisch
+sind. Die Control Plane gibt diesen gefenceten, inhaltsfreien Zustand nur an
+den zugewiesenen Publisher-Browser weiter; dessen Start-Promise und sichtbarer
+Running-State warten maximal 30 Sekunden genau auf dieses Signal. Während einer
+aktiven Verbindung verlängert nur ein frisch
 authentisierter Agent-Heartbeat die 60-Sekunden-Assignment-Lease. Das
 geschlossene `assignment-renew` übernimmt weder neue Quellen noch eine neue
 Fence. Disconnect und Lease-Ablauf schließen die Pion-

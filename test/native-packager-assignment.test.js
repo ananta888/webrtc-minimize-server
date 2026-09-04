@@ -157,6 +157,7 @@ test("only the fenced output-ready status exposes an internal resource binding",
     resourceRef: "res_aaaaaaaaaaaaaaaa", programId: "prg_aaaaaaaaaaaaaaaa",
     packagerId: PACKAGER, fencingRevision: 9,
   });
+  assert.equal(assignments.statusTarget(PACKAGER, status("running", "OUTPUT_READY"), NOW + 1).publisherPeerId, PUBLISHER);
 });
 
 test("authenticated packager heartbeats renew only the current fenced assignment", () => {

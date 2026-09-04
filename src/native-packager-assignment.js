@@ -193,6 +193,22 @@ export class NativePackagerAssignmentRegistry {
     });
   }
 
+  statusTarget(packagerId, value, now = Date.now()) {
+    if (!PACKAGER.test(packagerId || "") || !ASSIGNMENT.test(value?.assignmentId || "")
+      || !Number.isSafeInteger(value?.programEpoch) || !Number.isSafeInteger(value?.fencingRevision)) {
+      fail("invalid_native_packager_status_target");
+    }
+    const record = this.#assignments.get(value.assignmentId);
+    if (!record || record.packagerId !== packagerId || record.programEpoch !== value.programEpoch
+      || record.fencingRevision !== value.fencingRevision || record.updatedAt > now) {
+      fail("stale_native_packager_status_target", 409);
+    }
+    return Object.freeze({
+      publisherPeerId: record.publisherPeerId,
+      assignment: snapshot(record),
+    });
+  }
+
   renew(packagerId, now = Date.now()) {
     if (!PACKAGER.test(packagerId || "") || !Number.isSafeInteger(now)) {
       fail("invalid_native_packager_assignment_renewal");

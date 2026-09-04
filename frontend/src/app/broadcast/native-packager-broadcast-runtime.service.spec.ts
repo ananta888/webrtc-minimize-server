@@ -34,7 +34,15 @@ describe("NativePackagerBroadcastRuntimeService", () => {
       send: vi.fn((message: Record<string, unknown>) => {
         if (message["description"]) {
           subscriber?.({ ...message, type: "native-packager-signal", description: { type: "answer", sdp: "v=0\r\n" } });
-          queueMicrotask(() => pc.connect());
+          queueMicrotask(() => {
+            pc.connect();
+            subscriber?.({
+              version: 1, type: "native-packager-status", packagerId: assignment.packagerId,
+              assignmentId: assignment.assignmentId, programId: assignment.programId,
+              programEpoch: assignment.programEpoch, fencingRevision: assignment.fencingRevision,
+              state: "running", reasonCode: "OUTPUT_READY", observedAt: Date.now(),
+            });
+          });
         }
       }),
     };
