@@ -560,10 +560,10 @@
     {
       "id": "TBP-019",
       "title": "LL-HLS-Erzeugung mit niedriger Latenz und sauberem Lifecycle verifizieren",
-      "status": "in_progress",
+      "status": "partial",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 1,
+      "progress_percent": 55,
       "depends_on": ["TBP-011", "TBP-017", "TBP-018"],
       "acceptance_criteria": [
         "LL-HLS-Konfiguration definiert Segment-/Part-Dauer, Keyframe-Abstand, Playlistfenster, Blocking Reload, Part Hold Back, Timeouts und maximale In-Memory-Dauer auf Basis gemessener Playerkompatibilität.",
@@ -576,10 +576,10 @@
     {
       "id": "TBP-020",
       "title": "Codec-, Transcode- und Rendition-Profile mit Admission-Control festlegen",
-      "status": "todo",
+      "status": "partial",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 70,
       "depends_on": ["TBP-004", "TBP-016", "TBP-017", "TBP-019"],
       "acceptance_criteria": [
         "Mindestens ein nachweislich kompatibles Pilotprofil und eine abgestufte Ziel-Rendition-Leiter definieren Codec, Level/Profile, Auflösung, FPS, Bitrate, GOP/Keyframes, Audioformat und Kanalzahl.",
@@ -592,10 +592,10 @@
     {
       "id": "TBP-021",
       "title": "Capability-gesteuerten LL-HLS/HLS-Player für Browser und Mobilgeräte bauen",
-      "status": "todo",
+      "status": "partial",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 75,
       "depends_on": ["TBP-007", "TBP-019", "TBP-020"],
       "acceptance_criteria": [
         "Der Player wählt natives HLS oder eine gepinnte hls.js-/äquivalente Engine anhand echter Capability-Checks; MoQ/WHEP werden nur über separate Adapter angeboten.",
@@ -608,10 +608,10 @@
     {
       "id": "TBP-022",
       "title": "Private Manifest-, Segment- und Part-Auslieferung durchgängig autorisieren",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 1,
       "depends_on": ["TBP-006", "TBP-007", "TBP-008", "TBP-018", "TBP-021"],
       "acceptance_criteria": [
         "Das ausgewählte Verfahren schützt Master-/Media-Playlists, Initialisierungssegmente, Segmente, Parts, Preload Hints, Untertitel und Keys konsistent; der Schutz endet nicht nach dem ersten Manifest.",
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 21, "in_progress": 1, "partial": 4, "blocked": 0, "done": 14 },
+    "by_status": { "todo": 18, "in_progress": 1, "partial": 7, "blocked": 0, "done": 14 },
     "progress_percent_done": 35,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -963,9 +963,9 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 21,
+    "todo_remaining": 18,
     "in_progress": 1,
-    "partial": 4,
+    "partial": 7,
     "blocked": 0,
     "done": 14
   },
@@ -993,6 +993,9 @@
     "TBP-018 ist zu 65 Prozent umgesetzt. Der interne, standardmaessig deaktivierte MediaMTX-Callback akzeptiert nur POST mit JSON ohne Browser-Origin oder Query von einer exakt konfigurierten Gateway-IP. Der geschlossene MediaMTX-Contract verwirft unbekannte Felder, Basic-Credentials, Query-Tokens, ungueltige IPs, Protokolle und Resource-Pfade und bildet Publish, WHEP sowie HLS auf die vorhandenen kurzlebigen Grant-Aktionen ab. Signatur, autoritativer Grant-Datensatz, Program-Epoch, Status, Ablauf, Audience, Aktion und Pfad werden erneut geprueft; Rate-Limit und inhaltsfreie Antworten sind aktiv. Das sichere Compose-Overlay trennt Control- und Media-Netz und bindet beide Dienste an feste interne Adressen. Unit-, Integrations-, Negativ- und Compose-Strukturtests sind gruen. Ein beim ersten Deployment entdeckter fehlender Runtime-Copy der von der neuen Servergrenze importierten JSON-Schemas ist behoben und durch einen Docker-Runtime-Asset-Test regressionsgeschuetzt. Offen bleiben die Program-Orchestrierung als Composition-Root, produktive Reverse-Proxy-Methoden-/Rate-Regeln, Secret-/Key-Rotation und ein echter Publish/Read/Widerruf-Live-Gate; deshalb wird das Overlay noch nicht oeffentlich gestartet.",
     "TBP-015 ist zu 70 Prozent umgesetzt und bleibt wegen der ausstehenden Real- und Langzeitgates partial. Ein getrennter Canvas-Compositor nimmt bis zu vier consentierte Broadcast-Video-Forks auf und erzeugt genau einen stabilen program-video-Ausgang. Einzelquelle, Bildschirm plus Presenter, Side-by-Side, Active Speaker, Grid, Waiting Slate und End Slate sowie vier feste Geometrie-/FPS-Profile sind implementiert. Bildschirm nutzt contain fuer Textlesbarkeit, Kamera cover mit Thumbnail-Untergrenze; versteckte Tabs und Render-Backpressure senken die FPS begrenzt. Quellenende degradiert zum reduzierten Layout oder neutralen Slate, Stop/Abort/Destroy loesen Timer, DOM-Medien und Ausgangstrack. Titel, Namen und Captions sind default-aus und nur ueber eine geschlossene, begrenzte Overlay-Policy moeglich. Sechs Compositor- sowie Composition-, Contract-, Sender- und UI-Tests sind gruen. Offen sind automatische VAD-Kopplung, OffscreenCanvas-/Worker-Auslagerung, echte visuelle Golden-Gates und der 60-Minuten-A/V-/CPU-/Memory-/Freeze-Lauf. TBP-016 beginnt mit dem getrennten freiwilligen Native-Packager.",
     "TBP-016 ist zu 40 Prozent umgesetzt und bleibt wegen des fehlenden installierbaren Daemons und der Control-Plane-/Gateway-Anbindung partial. Eine geschlossene kurzlebige Capability-Policy bindet Agent, Device, Owner, Tenant und explizit consentierte Raum-IDs und akzeptiert nur begrenzte Codec-, Hardware-, CPU-/GPU-, Upload-, Energie-, Versions- und Health-Klassen ohne daraus Autoritaet abzuleiten. Admission verweigert Batterie, Draining, fremde Raeume und abgelaufene Reports und reduziert eine dreistufige 360p/540p/720p-H.264/AAC-Leiter anhand CPU-, Upload-, Rendition- und Pixelbudget. Hardwarebeschleunigung ist opt-in; libx264 bleibt benoetigter Software-Fallback. Die shell-freie FFmpeg-Pipeline liest nur pipe:0, schreibt unter eine validierte opaque Resource, begrenzt Queue/Playlist und richtet Keyframes alle zwei Sekunden aus. Drei Policy-/Negativtests und ein echter sechssekündiger FFmpeg-6-Gate mit drei H.264/AAC-Playlists sind gruen. Offen sind separater Daemon, signierte Artefakte, Enrollment/Keystore, WHIP-Empfang, Gateway-Publish, Temperatur- und echter Hardware-Fallback sowie OS-Install/Update/Uninstall/Sandbox-Gates. TBP-019 beginnt mit dem davon unabhaengig messbaren LL-HLS-Lifecycle.",
+    "TBP-019 ist zu 55 Prozent umgesetzt. Das gepinnte MediaMTX-Profil authoriert H.264/AAC als LL-HLS v10 mit Blocking Reload, 200-ms-Parts, Zwei-Sekunden-Segmenten und einem auf sieben Segmente begrenzten In-Memory-Fenster; Keyframes sind im realen Gate auf dieselben zwei Sekunden ausgerichtet. Ein test-only RTSP/TCP-Overlay bindet nur Loopback und veraendert den produktiv weiterhin deaktivierten RTSP-Eingang nicht. Der reale Docker-/FFmpeg-Gate prueft verspaeteten Einstieg, abrufbare fMP4-Initialisierung und unabhaengige Parts, Publisher-Stop, Muxer-Cleanup, Neustart mit neuer Initialisierung und erneutes Cleanup. Recording und HLS-Verzeichnis bleiben aus. Offen sind explizite Discontinuity bei laufendem Source-Wechsel, gemessene End-to-glass-/A/V-/Rebuffer-Metriken, Netzwechsel sowie der 60-Minuten-Lauf mit Safari/iOS, Chromium, Firefox und Android. TBP-020 beginnt mit der davon unabhaengigen Codec- und Admission-Policy.",
+    "TBP-020 ist zu 70 Prozent umgesetzt. Das geschlossene h264-aac-720p-v1-Pilotprofil definiert drei 360p/540p/720p-Renditions mit FPS, Bitraten, H.264 Main Level 3.1, yuv420p, AAC-LC, 48-kHz-Stereo und gemeinsamem Zwei-Sekunden-Keyframe-/Segmentraster. Eine reine Delivery-Policy trennt Browser-Single-WHIP, ausgehandeltes Browser-Simulcast, Gateway-Passthrough und Native-ABR und verhindert insbesondere erfundene HLS-ABR-Leitern aus Single-Layer- oder MediaMTX-Transcode-Annahmen. Der operatorseitige Capacity-Ledger reserviert CPU, RAM, Encoder-/GPU-Slots und Egress atomar, reduziert bei Knappheit high vor medium, lehnt unter low kontrolliert ab und bindet idempotente Leases an Admission, Programm und Epoche. Der reale FFmpeg-Gate erzeugt weiterhin alle drei H.264/AAC-fMP4-Varianten. Offen sind reale Browser-/Mobilwiedergabe, VMAF/SSIM oder begruendete Golden-Alternativen, Screen-Text, Lautheit/A/V-Sync und echter Hardware-/Thermal-Fallback. TBP-021 beginnt mit dem davon getrennten capability-gesteuerten Player.",
+    "TBP-021 ist zu 75 Prozent umgesetzt. BroadcastHlsPlayer waehlt natives HLS oder die exakt gepinnte stabile hls.js-Version 1.7.2 anhand echter Capability-Checks und aktiviert weder MoQ noch WHEP implizit. Der sichtbare Component-Start ist die einzige Startaktion; Autoplay-Blockade, Mute, Lautstaerke, Auto-/manuelle hls.js-Rendition, Vollbild, Picture-in-Picture, Live-Abstand und Fehler sind sichtbar. Ein begrenzter Watchdog erkennt eingefrorene Zeit trotz aktivem Medium, springt zur Live-Position und erlaubt zwei Recoveries in 30 Sekunden. HTTPS-/localhost-Manifestpfade sind geschlossen und Query-/Credential-/Fragment-URLs fail-closed. Abort, Stop, Sichtbarkeitswechsel und Destroy entfernen Loader, Listener, Timer, Texttracks und Media-src. Offen sind die echte Endpoint-/Directory-Verdrahtung, Poster/Live-WebVTT und reale Desktop-/Mobil-Langzeitgates; deshalb wird die Komponente noch nicht oeffentlich gerendert. TBP-022 beginnt mit der durchgaengigen privaten Delivery-Autorisierung.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }

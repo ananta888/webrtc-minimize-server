@@ -1,0 +1,8 @@
+services:
+  broadcast-gateway:
+    environment:
+      MTX_RTSP: "true"
+      MTX_RTSPADDRESS: ":8554"
+      MTX_PROTOCOLS: tcp
+    ports:
+      - "127.0.0.1:${MEDIAMTX_TEST_RTSP_PORT:-18554}:8554/tcp"

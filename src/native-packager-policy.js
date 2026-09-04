@@ -20,10 +20,20 @@ export class NativePackagerPolicyError extends Error {
 function fail(code, status) { throw new NativePackagerPolicyError(code, status); }
 
 const RENDITIONS = Object.freeze([
-  Object.freeze({ id: "low", width: 640, height: 360, framesPerSecond: 15, videoBitsPerSecond: 500_000, audioBitsPerSecond: 64_000 }),
-  Object.freeze({ id: "medium", width: 960, height: 540, framesPerSecond: 24, videoBitsPerSecond: 1_100_000, audioBitsPerSecond: 96_000 }),
-  Object.freeze({ id: "high", width: 1280, height: 720, framesPerSecond: 30, videoBitsPerSecond: 2_400_000, audioBitsPerSecond: 128_000 }),
+  Object.freeze({ id: "low", width: 640, height: 360, framesPerSecond: 15, videoCodec: "h264", videoProfile: "main", videoLevel: "3.1", videoBitsPerSecond: 500_000, audioCodec: "aac", audioProfile: "aac_low", audioBitsPerSecond: 64_000, audioSampleRate: 48_000, audioChannels: 2 }),
+  Object.freeze({ id: "medium", width: 960, height: 540, framesPerSecond: 24, videoCodec: "h264", videoProfile: "main", videoLevel: "3.1", videoBitsPerSecond: 1_100_000, audioCodec: "aac", audioProfile: "aac_low", audioBitsPerSecond: 96_000, audioSampleRate: 48_000, audioChannels: 2 }),
+  Object.freeze({ id: "high", width: 1280, height: 720, framesPerSecond: 30, videoCodec: "h264", videoProfile: "main", videoLevel: "3.1", videoBitsPerSecond: 2_400_000, audioCodec: "aac", audioProfile: "aac_low", audioBitsPerSecond: 128_000, audioSampleRate: 48_000, audioChannels: 2 }),
 ]);
+
+export const NATIVE_BROADCAST_PROFILE = Object.freeze({
+  profileId: "h264-aac-720p-v1",
+  transport: "native-abr",
+  segmentDurationSeconds: 2,
+  partDurationMilliseconds: 200,
+  keyframeIntervalSeconds: 2,
+  pixelFormat: "yuv420p",
+  renditions: RENDITIONS,
+});
 
 export function normalizeNativePackagerCapability(value, now = Date.now()) {
   const fields = new Set([
@@ -105,6 +115,7 @@ export function admitNativePackager(capabilityValue, request, now = Date.now()) 
     videoEncoder: hardwareEncoder || "libx264",
     softwareFallback: "libx264",
     audioEncoder: "aac",
+    profileId: NATIVE_BROADCAST_PROFILE.profileId,
     renditions: Object.freeze(selected),
     maximumQueueFrames: 60,
     keyframeIntervalSeconds: 2,
@@ -129,10 +140,15 @@ export function nativePackagerFfmpegArguments(admission, outputRoot) {
       `-maxrate:v:${index}`, String(Math.round(rendition.videoBitsPerSecond * 1.15)),
       `-bufsize:v:${index}`, String(rendition.videoBitsPerSecond * 2), `-r:v:${index}`, String(rendition.framesPerSecond),
       `-g:v:${index}`, String(rendition.framesPerSecond * admission.keyframeIntervalSeconds), `-sc_threshold:v:${index}`, "0",
-      `-c:a:${index}`, admission.audioEncoder, `-b:a:${index}`, String(rendition.audioBitsPerSecond));
+      `-profile:v:${index}`, rendition.videoProfile, `-level:v:${index}`, rendition.videoLevel,
+      `-pix_fmt:v:${index}`, NATIVE_BROADCAST_PROFILE.pixelFormat,
+      `-c:a:${index}`, admission.audioEncoder, `-profile:a:${index}`, rendition.audioProfile,
+      `-b:a:${index}`, String(rendition.audioBitsPerSecond), `-ar:a:${index}`, String(rendition.audioSampleRate),
+      `-ac:a:${index}`, String(rendition.audioChannels));
   });
   const variants = admission.renditions.map((rendition, index) => `v:${index},a:${index},name:${rendition.id}`).join(" ");
-  args.push("-f", "hls", "-hls_time", "1", "-hls_segment_type", "fmp4", "-hls_list_size", "7",
+  args.push("-f", "hls", "-hls_time", String(NATIVE_BROADCAST_PROFILE.segmentDurationSeconds),
+    "-hls_segment_type", "fmp4", "-hls_list_size", "7",
     "-hls_flags", "independent_segments+delete_segments+program_date_time",
     "-master_pl_name", "master.m3u8", "-var_stream_map", variants,
     path.join(output, "%v", "index.m3u8"));

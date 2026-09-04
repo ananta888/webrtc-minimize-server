@@ -1,0 +1,39 @@
+<section class="broadcast-player" aria-labelledby="broadcast-player-title">
+  <header>
+    <div><p class="eyebrow">Zuschaueransicht</p><h2 id="broadcast-player-title">{{ title() }}</h2></div>
+    <span class="state" [attr.data-state]="state().lifecycle">{{ state().lifecycle }}</span>
+  </header>
+
+  <div class="stage">
+    <video #video playsinline [muted]="muted()" aria-label="Live-Broadcast"></video>
+    @if (state().lifecycle === 'idle') {
+      <button id="broadcast-player-start" class="primary-action" type="button" (click)="start()">Live-Wiedergabe starten</button>
+    } @else if (state().lifecycle === 'awaiting-user') {
+      <button id="broadcast-player-continue" class="primary-action" type="button" (click)="continuePlayback()">Wiedergabe erlauben</button>
+    } @else if (state().lifecycle === 'failed') {
+      <div class="player-message" role="alert"><strong>Wiedergabe unterbrochen</strong><span>{{ state().errorCode }}</span></div>
+    }
+  </div>
+
+  <div class="controls" aria-label="Wiedergabesteuerung">
+    <button type="button" (click)="setMuted(!muted())">{{ muted() ? 'Ton einschalten' : 'Stumm' }}</button>
+    <label>Lautstärke <input type="range" min="0" max="1" step="0.05" [value]="volume()" (input)="setVolume($any($event.target).value)"></label>
+    <label>Qualität
+      <select [value]="state().selectedQuality" (change)="setQuality($any($event.target).value)" [disabled]="state().engine === 'native-hls'">
+        <option value="auto">Automatisch</option>
+        @for (quality of state().qualities; track quality.index) {
+          <option [value]="quality.index">{{ quality.label }} · {{ formatBitrate(quality.bitrate) }}</option>
+        }
+      </select>
+    </label>
+    <button type="button" (click)="pictureInPicture()">Bild-in-Bild</button>
+    <button type="button" (click)="fullscreen()">Vollbild</button>
+    <button type="button" (click)="stop()">Schließen</button>
+  </div>
+
+  <footer>
+    <span>{{ state().engine || 'Engine wird beim Start gewählt' }}</span>
+    <span>Live-Abstand: {{ state().liveEdgeDistanceSeconds === null ? '–' : state().liveEdgeDistanceSeconds!.toFixed(1) + ' s' }}</span>
+    @if (state().recoveryCount) { <span>Resync: {{ state().recoveryCount }}/2</span> }
+  </footer>
+</section>

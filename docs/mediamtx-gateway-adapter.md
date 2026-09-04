@@ -50,6 +50,9 @@ dem internen Docker-Adressraum und ist ausschließlich für das loopback-
 gebundene Integrationsprofil bestimmt. Sie ist keine Produktionsautorisierung.
 Die geschlossene externe Auth-Grenze und das Compose-Overlay sind in
 [`mediamtx-gateway-security.md`](./mediamtx-gateway-security.md) beschrieben.
+Der getrennte [LL-HLS-Lifecycle-Gate](./mediamtx-llhls-lifecycle.md) aktiviert
+RTSP nur in einem lokalen Test-Overlay und belegt H.264/AAC-Authoring,
+Publisher-Neustart und Cleanup; er schaltet keinen öffentlichen Stream frei.
 Vor einer öffentlichen Proxyfreigabe müssen zusätzlich Composition-Root,
 Program-Orchestrierung und das echte Live-Gate aktiv sein. Deshalb wird dieses
 Profil nicht durch das normale Deployment gestartet.

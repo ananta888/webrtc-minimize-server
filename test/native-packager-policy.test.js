@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  NATIVE_BROADCAST_PROFILE,
   NativePackagerPolicyError,
   admitNativePackager,
   nativePackagerFfmpegArguments,
@@ -50,6 +51,22 @@ test("capacity classes reduce ABR without believing a self-reported authority", 
   assert.throws(() => normalizeNativePackagerCapability({ ...capability, expiresAt: now - 1 }, now), /invalid/);
 });
 
+test("pilot profile fixes H.264 Main/AAC-LC ladder and aligned two-second GOPs", () => {
+  assert.equal(NATIVE_BROADCAST_PROFILE.profileId, "h264-aac-720p-v1");
+  assert.equal(NATIVE_BROADCAST_PROFILE.segmentDurationSeconds, 2);
+  assert.equal(NATIVE_BROADCAST_PROFILE.partDurationMilliseconds, 200);
+  assert.equal(NATIVE_BROADCAST_PROFILE.keyframeIntervalSeconds, 2);
+  for (const rendition of NATIVE_BROADCAST_PROFILE.renditions) {
+    assert.equal(rendition.videoCodec, "h264");
+    assert.equal(rendition.videoProfile, "main");
+    assert.equal(rendition.videoLevel, "3.1");
+    assert.equal(rendition.audioCodec, "aac");
+    assert.equal(rendition.audioProfile, "aac_low");
+    assert.equal(rendition.audioSampleRate, 48_000);
+    assert.equal(rendition.audioChannels, 2);
+  }
+});
+
 test("FFmpeg pipeline uses argv without shell, aligned keyframes and a confined opaque output path", () => {
   const admitted = admitNativePackager(capability, request, now);
   const pipeline = nativePackagerFfmpegArguments(admitted, "/var/lib/webrtc-packager");
@@ -57,6 +74,9 @@ test("FFmpeg pipeline uses argv without shell, aligned keyframes and a confined 
   assert.equal(pipeline.outputDirectory, "/var/lib/webrtc-packager/res_aaaaaaaaaaaaaaaa");
   assert.ok(pipeline.args.includes("pipe:0"));
   assert.ok(pipeline.args.includes("independent_segments+delete_segments+program_date_time"));
+  assert.ok(pipeline.args.includes("aac_low"));
+  assert.ok(pipeline.args.includes("yuv420p"));
+  assert.equal(pipeline.args[pipeline.args.indexOf("-hls_time") + 1], "2");
   assert.equal(pipeline.args.filter((value) => value === "0").length >= 3, true);
   assert.ok(pipeline.args.every((value) => !/[\u0000\r\n]/.test(value)));
   assert.throws(() => nativePackagerFfmpegArguments({ ...admitted, resourceRef: "../escape" }, "/safe"), /invalid/);

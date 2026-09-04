@@ -1,0 +1,17 @@
+:host { display: block; }
+.broadcast-player { display: grid; gap: 1rem; padding: 1rem; border: 1px solid rgba(148,163,184,.22); border-radius: 1.25rem; background: #111827; color: #f8fafc; }
+header, footer, .controls { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+h2, p { margin: 0; }
+.eyebrow { color: #5eead4; font-size: .72rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.state { padding: .3rem .65rem; border-radius: 999px; background: rgba(148,163,184,.18); font-size: .78rem; }
+.state[data-state="playing"] { background: rgba(16,185,129,.2); color: #6ee7b7; }
+.state[data-state="failed"] { background: rgba(244,63,94,.2); color: #fda4af; }
+.stage { position: relative; display: grid; place-items: center; min-height: 14rem; overflow: hidden; border-radius: 1rem; background: #020617; }
+video { display: block; width: 100%; max-height: 72vh; background: #020617; }
+.primary-action, .player-message { position: absolute; display: grid; gap: .35rem; text-align: center; }
+button, select { border: 1px solid rgba(148,163,184,.35); border-radius: .65rem; padding: .55rem .75rem; background: rgba(30,41,59,.92); color: inherit; }
+button { cursor: pointer; }
+.primary-action { border-color: #2dd4bf; background: #0f766e; font-weight: 800; }
+.controls label { display: flex; align-items: center; gap: .45rem; font-size: .82rem; }
+footer { color: #94a3b8; font-size: .78rem; }
+@media (max-width: 680px) { .controls { align-items: stretch; flex-direction: column; } .controls label { justify-content: space-between; } }

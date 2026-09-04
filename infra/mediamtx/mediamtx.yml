@@ -50,7 +50,7 @@ hlsAllowOrigins: ["http://127.0.0.1:8080", "https://webrtc.ananta.de"]
 hlsAlwaysRemux: false
 hlsVariant: lowLatency
 hlsSegmentCount: 7
-hlsSegmentDuration: 1s
+hlsSegmentDuration: 2s
 hlsPartDuration: 200ms
 hlsSegmentMaxSize: 20M
 hlsDirectory: ""

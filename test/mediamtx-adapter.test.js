@@ -32,6 +32,10 @@ test("MediaMTX adapter is digest-pinned, least-privilege and recording-free", as
   assert.equal(config.metrics, true);
   assert.equal(config.hls, true);
   assert.equal(config.hlsVariant, "lowLatency");
+  assert.equal(config.hlsSegmentDuration, "2s");
+  assert.equal(config.hlsPartDuration, "200ms");
+  assert.equal(config.hlsSegmentCount, 7);
+  assert.equal(config.hlsMuxerCloseAfter, "30s");
   assert.equal(config.webrtc, true);
   for (const disabled of ["rtsp", "rtmp", "srt", "moq", "pprof", "playback"]) {
     assert.equal(config[disabled], false, `${disabled} must remain disabled`);
@@ -47,6 +51,18 @@ test("MediaMTX adapter is digest-pinned, least-privilege and recording-free", as
   assert.equal(sbom.components[0].licenses[0].license.id, "MIT");
   assert.match(license, /^MIT License/);
   assert.doesNotMatch(`${composeText}\n${configText}`, /(?:password|token|secret)\s*:\s*[^"'\s][^\r\n]*/i);
+});
+
+test("MediaMTX LL-HLS live gate enables RTSP only on an explicit loopback test overlay", async () => {
+  const overlayText = await readFile(new URL("infra/mediamtx/compose.live-test.yaml", ROOT), "utf8");
+  const overlay = YAML.parse(overlayText);
+  const gateway = overlay.services["broadcast-gateway"];
+
+  assert.equal(gateway.environment.MTX_RTSP, "true");
+  assert.equal(gateway.environment.MTX_RTSPADDRESS, ":8554");
+  assert.equal(gateway.environment.MTX_PROTOCOLS, "tcp");
+  assert.deepEqual(gateway.ports, ["127.0.0.1:${MEDIAMTX_TEST_RTSP_PORT:-18554}:8554/tcp"]);
+  assert.doesNotMatch(overlayText, /(?:token|password|secret)\s*:/i);
 });
 
 test("MediaMTX secure overlay binds external auth to its isolated control network", async () => {

@@ -12,9 +12,10 @@
     "build": "ng build --configuration production && node scripts/extract-vosk-worker.mjs",
     "typecheck:broadcast": "tsc -p frontend/tsconfig.broadcast.json",
     "test:frontend": "vitest run --config vitest.config.mjs",
-    "test:infrastructure": "node scripts/live-infrastructure-gate.mjs && node scripts/live-mediamtx-adapter-gate.mjs && node scripts/live-whip-mediamtx-gate.mjs && node scripts/live-native-packager-gate.mjs",
+    "test:infrastructure": "node scripts/live-infrastructure-gate.mjs && node scripts/live-mediamtx-adapter-gate.mjs && node scripts/live-whip-mediamtx-gate.mjs && node scripts/live-native-packager-gate.mjs && node scripts/live-mediamtx-llhls-gate.mjs",
     "test:mediamtx-adapter": "node scripts/live-mediamtx-adapter-gate.mjs",
     "test:native-packager": "node scripts/live-native-packager-gate.mjs",
+    "test:llhls:mediamtx": "node scripts/live-mediamtx-llhls-gate.mjs",
     "test:whip:mediamtx": "node scripts/live-whip-mediamtx-gate.mjs",
     "test:media-agent-onboarding": "node scripts/live-media-agent-onboarding-gate.mjs",
     "test:media-agent-room": "node scripts/live-media-agent-room-gate.mjs",
@@ -29,6 +30,7 @@
   },
   "dependencies": {
     "ajv": "^8.17.1",
+    "hls.js": "1.7.2",
     "jose": "6.1.3",
     "ws": "^8.18.3"
   },
@@ -49,10 +51,10 @@
     "@angular/router": "21.2.22",
     "jsdom": "26.1.0",
     "playwright": "^1.62.1",
-    "vosk-browser": "0.0.8",
     "rxjs": "7.8.2",
     "typescript": "5.9.3",
     "vitest": "3.2.6",
+    "vosk-browser": "0.0.8",
     "yaml": "^2.9.0",
     "zone.js": "0.16.0"
   }

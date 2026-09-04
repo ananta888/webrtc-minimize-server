@@ -40,6 +40,16 @@ noch offen und werden nicht als einsatzbereit dargestellt.
 
 Der [MediaMTX-Gateway-Adapter](docs/mediamtx-gateway-adapter.md) stellt ein getrenntes, opt-in lokales Integrationsprofil bereit. MediaMTX 1.20.1 ist per OCI-Digest fixiert; nur WHIP, LL-HLS, interne API/Metrics und ICE sind aktiv. Der Container besitzt kein Recording, läuft read-only und veröffentlicht seine Medienports ausschließlich auf Loopback. Das Profil ist keine öffentliche Produktionsfreigabe.
 
+Die [Codec- und Capacity-Policy](docs/broadcast-codec-admission.md) definiert
+das H.264/AAC-720p-Pilotprofil, trennt Browser-Single-/Simulcast-, Gateway-
+Passthrough- und Native-ABR-Pfade und reserviert CPU, Speicher, Encoder/GPU und
+Egress vor einem Packager-Start.
+
+Der [Broadcast-Player](docs/broadcast-player.md) wählt natives HLS oder das
+gepinnte hls.js capability-gesteuert, begrenzt Stall-Recovery und räumt bei
+Stop, Navigation und Sichtbarkeitswechsel vollständig auf. Er bleibt bis zur
+privaten Delivery-Autorisierung vom öffentlichen Gateway getrennt.
+
 Die Hauptnavigation enthält außerdem eine [raumgebundene Mesh-Analyse](docs/mesh-analysis.md). Ihr interaktiver SVG-Graph zeigt Browser, Trusted Relays und native Media-Agenten sowie lokal gemessene beziehungsweise klar als Peer-Angabe markierte Kantenraten. Ein ausgewählter Knoten schlüsselt Upload und Download nach Audio, Kamera/Video, Bildschirmfreigabe und DataChannel auf. Direkt darunter liegen Inventar, Installation, Widerruf, Mehrfachauswahl, Raum-Consent und aktueller Routenzustand der eigenen Media-Agenten; der allgemeine Einstellungsbereich dupliziert diese Bedienung nicht. Die Telemetrie ist flüchtig, nur bei sichtbar geöffneter Analyse angefordert und niemals Membership- oder Routing-Autorität.
 
 ## Lokal starten
