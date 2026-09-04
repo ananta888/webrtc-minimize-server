@@ -209,6 +209,7 @@ func (c *client) prepareAssignment(message serverMessage, now time.Time) error {
 	}
 	assignment.Media = media
 	c.assignment = assignment
+	c.thermalState = false
 	return c.send(c.assignmentStatus(c.assignment, "ready", "CAPABILITY_READY"))
 }
 
@@ -230,6 +231,7 @@ func (c *client) stopAssignment(message serverMessage) error {
 	assignment := c.assignment
 	assignment.State = "stopped"
 	c.assignment = nil
+	c.thermalState = false
 	c.assignmentMu.Unlock()
 	if assignment.Media != nil {
 		assignment.Media.close()
@@ -245,6 +247,7 @@ func (c *client) expireAssignment(now time.Time) error {
 		return nil
 	}
 	c.assignment = nil
+	c.thermalState = false
 	assignment.State = "failed"
 	c.assignmentMu.Unlock()
 	if assignment.Media != nil {
@@ -262,4 +265,39 @@ func (c *client) heartbeatMessage() map[string]any {
 	state := c.assignment.State
 	return map[string]any{"version": 1, "type": "heartbeat", "assignmentId": c.assignment.AssignmentID,
 		"programEpoch": c.assignment.ProgramEpoch, "state": state, "observedAt": time.Now().UnixMilli()}
+}
+
+func (c *client) reconcileLocalHealth(health string) error {
+	if !oneOf(health, "healthy", "degraded", "draining") {
+		health = "draining"
+	}
+	c.assignmentMu.Lock()
+	assignment := c.assignment
+	if assignment == nil {
+		c.thermalState = false
+		c.assignmentMu.Unlock()
+		return nil
+	}
+	if health == "draining" {
+		c.assignment = nil
+		c.thermalState = false
+		assignment.State = "failed"
+		c.assignmentMu.Unlock()
+		if assignment.Media != nil {
+			assignment.Media.close()
+		}
+		return c.send(c.assignmentStatus(assignment, "failed", "THERMAL_LIMIT"))
+	}
+	if health == "degraded" && assignment.State == "running" && !c.thermalState {
+		c.thermalState = true
+		c.assignmentMu.Unlock()
+		return c.transitionAssignment(assignment, "degraded", "THERMAL_PRESSURE")
+	}
+	if health == "healthy" && assignment.State == "degraded" && c.thermalState {
+		c.thermalState = false
+		c.assignmentMu.Unlock()
+		return c.transitionAssignment(assignment, "running", "THERMAL_RECOVERED")
+	}
+	c.assignmentMu.Unlock()
+	return nil
 }

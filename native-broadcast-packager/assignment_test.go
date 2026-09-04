@@ -128,3 +128,36 @@ func TestAssignmentRenewalExtendsOnlyTheCurrentFence(t *testing.T) {
 		t.Fatalf("closed renewal message rejected: %v", err)
 	}
 }
+
+func TestLocalThermalPressureDegradesRecoversAndFencesCriticalAssignment(t *testing.T) {
+	assignment := assignmentFrom(assignmentMessage(time.Now()))
+	assignment.State = "running"
+	messages := []map[string]any{}
+	packager := &client{assignment: assignment, sendOverride: func(value any) error {
+		messages = append(messages, value.(map[string]any))
+		return nil
+	}}
+	if err := packager.reconcileLocalHealth("degraded"); err != nil || assignment.State != "degraded" {
+		t.Fatalf("thermal degrade failed: state=%s err=%v", assignment.State, err)
+	}
+	if got := messages[len(messages)-1]["reasonCode"]; got != "THERMAL_PRESSURE" {
+		t.Fatalf("unexpected degradation reason: %v", got)
+	}
+	if err := packager.reconcileLocalHealth("healthy"); err != nil || assignment.State != "running" {
+		t.Fatalf("thermal recovery failed: state=%s err=%v", assignment.State, err)
+	}
+	if got := messages[len(messages)-1]["reasonCode"]; got != "THERMAL_RECOVERED" {
+		t.Fatalf("unexpected recovery reason: %v", got)
+	}
+	if err := packager.reconcileLocalHealth("draining"); err != nil || packager.assignment != nil {
+		t.Fatalf("thermal limit did not fence assignment: err=%v", err)
+	}
+	if got := messages[len(messages)-1]["reasonCode"]; got != "THERMAL_LIMIT" {
+		t.Fatalf("unexpected thermal stop reason: %v", got)
+	}
+	packager.assignment = assignmentFrom(assignmentMessage(time.Now()))
+	packager.assignment.State = "running"
+	if err := packager.reconcileLocalHealth("degraded"); err != nil || packager.assignment.State != "degraded" {
+		t.Fatalf("replacement assignment retained stale thermal state: state=%s err=%v", packager.assignment.State, err)
+	}
+}

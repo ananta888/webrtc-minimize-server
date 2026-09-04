@@ -304,6 +304,7 @@ func (c *client) closeAssignmentMedia() {
 	c.assignmentMu.Lock()
 	assignment := c.assignment
 	c.assignment = nil
+	c.thermalState = false
 	c.assignmentMu.Unlock()
 	if assignment != nil && assignment.Media != nil {
 		assignment.Media.close()

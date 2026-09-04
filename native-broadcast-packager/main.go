@@ -422,6 +422,8 @@ type client struct {
 	assignment   *packagerAssignment
 	api          *webrtc.API
 	sendOverride func(any) error
+	healthProbe  func() string
+	thermalState bool
 }
 
 func (c *client) send(value any) error {
@@ -449,7 +451,7 @@ func (c *client) capabilityMessage() map[string]any {
 		"capabilityVersion": 1, "agentId": c.cfg.packagerID, "tenantId": "tn_0000000000000000", "ownerSubjectRef": "sub_0000000000000000",
 		"deviceRef": "dev_0000000000000000", "agentVersion": agentVersion, "ffmpegVersion": c.capability.version,
 		"videoEncoders": c.capability.videoEncoders, "audioEncoders": c.capability.audioEncoders, "hardwareClass": hardwareClass(),
-		"cpuClass": cpuClass(), "gpuClass": gpu, "uploadClass": c.cfg.uploadClass, "energyClass": c.cfg.energyClass, "health": c.capability.health,
+		"cpuClass": cpuClass(), "gpuClass": gpu, "uploadClass": c.cfg.uploadClass, "energyClass": c.cfg.energyClass, "health": c.currentHealth(),
 		"maximumRenditions": c.cfg.maximumRenditions, "maximumPixelsPerSecond": c.cfg.maximumPixelsPerSecond,
 		"consentedRoomIds": rooms, "observedAt": now, "expiresAt": now + 30000,
 	}}
@@ -530,6 +532,7 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 				return
 			case <-ticker.C:
 				_ = c.expireAssignment(time.Now())
+				_ = c.reconcileLocalHealth(c.currentHealth())
 				_ = c.send(c.capabilityMessage())
 				_ = c.send(c.heartbeatMessage())
 			}

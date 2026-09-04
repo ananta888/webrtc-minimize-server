@@ -38,6 +38,15 @@ den ausschließlich unterhalb der validierten `res_`-Resource erzeugten Output.
 Beobachter erhalten nur Zustand, Encoder, Byte-/Drop-Zähler und niemals
 Medieninhalt oder FFmpeg-Argumente.
 
+Auf Linux liest der Agent zusätzlich die vorhandenen Kernel-Sensoren unter
+`/sys/class/thermal` und `/sys/class/hwmon`, ohne dafür Schreibrechte oder
+Host-Tools zu benötigen. Ab 80 °C meldet er `degraded` und markiert einen
+laufenden Auftrag mit `THERMAL_PRESSURE`; unterhalb der Grenze darf genau dieser
+Zustand mit `THERMAL_RECOVERED` zurückkehren. Ab 90 °C meldet er `draining`,
+fencet den Auftrag lokal, stoppt Medien/FFmpeg und sendet `THERMAL_LIMIT`.
+Fehlende Sensoren auf Linux, macOS oder Windows erfinden keinen Messwert und
+belassen die übrige Health-Prüfung; ungültige Sensorwerte werden ignoriert.
+
 Der eigenständige Go-Daemon unter `native-broadcast-packager/` ist eine andere
 Binärdatei, Identität und WebSocket-Route als der blinde Relay-Agent. Er öffnet
 keinen Listener und benötigt keine Portfreigabe. Beim ersten Start registriert
@@ -180,8 +189,8 @@ Der Daemon besitzt nun den gefenceten WebRTC-RTP-Eingang, die echte
 FFmpeg-Transcode-/ABR-Pipeline und den intern autorisierten HLS-Origin. Diese
 native Ausgabe ist absichtlich normales, kurzes fMP4-HLS und wird nicht als
 Apple-LL-HLS ausgegeben; der vorhandene MediaMTX-WHIP-Pfad bleibt der getrennte
-LL-HLS-Adapter. Offen bleiben Temperaturmessung, ein realer
-Hardwarefehler-Gate, Publisher-signierte Release-Artefakte, Keychain/TPM,
+LL-HLS-Adapter. Offen bleiben ein real provozierter Temperatur-/Hardwarefehler-
+Gate, Publisher-signierte Release-Artefakte, Keychain/TPM,
 Update-Rollback, mehrere Stunden Soak sowie echte Windows-/macOS- und mobile
 Player-Gates. Deshalb bleibt
 TBP-016 `in_progress`; die UI zeigt nur online/gesund/raumconsentierte eigene
