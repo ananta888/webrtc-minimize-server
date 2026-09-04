@@ -47,6 +47,17 @@ Danach authentisiert er jede WSS-Verbindung mit einer frischen Challenge,
 prüft lokal FFmpeg ab Version 6 sowie `libx264` und AAC und meldet nur die
 begrenzten Capability-Klassen aus dem Contract.
 
+Die Control Plane kann inzwischen genau eine kurzlebige Assignment-Vorbereitung
+pro Packager und Programm ausgeben. Sie entsteht nur aus einem sichtbaren
+`user-action`, aktueller Owner-Membership, wirksamem Raumconsent und einer
+frischen Capability. Assignment, Programm und Writer-Lease sind an
+`programEpoch`, `leaseId` und eine monotone `fencingRevision` gebunden. Der
+Daemon akzeptiert nur den geschlossenen H.264/AAC-Profilvertrag, lehnt zweite
+oder alte Assignments ab und quittiert `ready`, `draining`, `stopped` oder
+`failed` über eine separate Statusnachricht. Disconnect und Lease-Ablauf
+entziehen die aktive Zuordnung. Weder diese WSS-Steuerung noch ihr HTTP-Start
+transportiert Medien, SDP/ICE, OIDC-Tokens oder Decrypt-Schlüssel.
+
 Die Angular-Analyse bietet getrennte Installation, Status, Widerruf und eine
 ausdrückliche Raumfreigabe. Die Control Plane übernimmt eine vom Agenten
 gemeldete Raum-ID ausschließlich dann in die effektive Capability, wenn der
@@ -87,12 +98,12 @@ RUN_LIVE_NATIVE_PACKAGER=1 npm run test:native-packager
 
 ## Ehrlich offene Punkte
 
-Der Daemon authentisiert sich, prüft seine lokale Encoderbasis und synchronisiert
-Raumconsent, nimmt aber noch keine produktive Programmzuweisung entgegen. Der
-bereits getestete Node-Supervisor und der Go-Control-Daemon müssen dafür in
-einen einzelnen Assignment-Lifecycle mit kurzlebigem Packager-Grant,
-WHIP/WHEP- oder gleichwertigem Ingest und einem autorisierten Gateway-Publish
-zusammengeführt werden. Ebenso offen bleiben Temperaturmessung, ein realer
+Der Daemon authentisiert sich, prüft seine lokale Encoderbasis, synchronisiert
+Raumconsent und nimmt die gefencete Vorbereitung einer Programmzuweisung
+entgegen. `ready` bedeutet ausdrücklich noch nicht, dass Medien fließen. Der
+bereits getestete Node-Supervisor und der Go-Control-Daemon müssen noch über
+einen tatsächlichen WebRTC-Medieneingang, einen kurzlebigen Packager-Grant und
+einen autorisierten Gateway-Publish zusammengeführt werden. Ebenso offen bleiben Temperaturmessung, ein realer
 Hardwarefehler-Gate, Publisher-signierte Release-Artefakte, Keychain/TPM,
 Update-Rollback sowie echte Windows-/macOS-Installationsgates. Deshalb bleibt
 TBP-016 trotz des jetzt installierbaren Control-Agenten `in_progress`; die UI

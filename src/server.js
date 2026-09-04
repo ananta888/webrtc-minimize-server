@@ -60,6 +60,10 @@ import {
   NativePackagerInstallerError,
   NativePackagerInstallerService,
 } from "./native-packager-installers.js";
+import {
+  NativePackagerAssignmentError,
+  NativePackagerAssignmentRegistry,
+} from "./native-packager-assignment.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
@@ -132,13 +136,14 @@ function requestOriginAllowed(request, config) {
 }
 
 function safeSend(socket, message, maximumBytes = Number.POSITIVE_INFINITY) {
-  if (socket.readyState !== WebSocket.OPEN) return;
+  if (!socket || socket.readyState !== WebSocket.OPEN) return false;
   const encoded = encodeServerMessage(message);
   if (Buffer.byteLength(encoded) > maximumBytes) {
     socket.close(1009, "server control message too large");
-    return;
+    return false;
   }
   socket.send(encoded);
+  return true;
 }
 
 function publicRuntimeConfig(config, services = {}) {
@@ -324,11 +329,25 @@ function principalFor(identity) {
   return identity ? `${identity.issuer}|${identity.subject}` : "";
 }
 
+function identityForPrincipal(principal) {
+  const value = String(principal || "");
+  const separator = value.lastIndexOf("|");
+  if (separator < 1 || separator === value.length - 1) return null;
+  return Object.freeze({ issuer: value.slice(0, separator), subject: value.slice(separator + 1) });
+}
+
+function stopProgramForPrincipal(broadcastRuntime, principal, programId) {
+  const identity = identityForPrincipal(principal);
+  if (!broadcastRuntime || !identity) return;
+  try { broadcastRuntime.stopProgram(identity, programId); } catch { /* fail closed during transport cleanup */ }
+}
+
 function errorStatus(error) {
   if (error instanceof RoomDirectoryError) return error.status;
   if (error instanceof PairWorkspaceError) return error.status;
   if (error instanceof MediaAgentEnrollmentError || error instanceof MediaAgentInstallerError) return error.status;
   if (error instanceof NativePackagerEnrollmentError || error instanceof NativePackagerControlError
+    || error instanceof NativePackagerAssignmentError
     || error instanceof NativePackagerInstallerError) return error.status;
   if (error instanceof MediaMtxExternalAuthError) return error.status;
   if (error instanceof BroadcastHlsProxyError || error instanceof BroadcastPlaybackSessionError) return error.status;
@@ -355,6 +374,7 @@ function createHttpHandler(config, registry, services) {
     nativePackagers,
     nativePackagerEnrollmentStore,
     nativePackagerInstallerService,
+    nativePackagerAssignments,
     mediaMtxExternalAuthService,
     broadcastHlsProxy,
     broadcastAbuseGuard,
@@ -416,6 +436,7 @@ function createHttpHandler(config, registry, services) {
             ...registrations.get(item.id),
             ...item,
           })),
+          assignments: nativePackagerAssignments.list(ownerPrincipal),
         }, securityHeaders(config));
         return;
       }
@@ -475,6 +496,16 @@ function createHttpHandler(config, registry, services) {
         );
         safeSend(nativePackagers.socketFor(nativePackagerConsentMatch[1]),
           nativePackagers.consentState(nativePackagerConsentMatch[1]));
+        if (!input.enabled) {
+          const activeAssignment = nativePackagerAssignments.activeForPackager(nativePackagerConsentMatch[1]);
+          if (activeAssignment?.roomId === nativePackagerConsentMatch[2]) {
+            const stoppedAssignment = nativePackagerAssignments.stop(
+              principalFor(identity), activeAssignment.packagerId, activeAssignment.assignmentId, "CONSENT_REVOKED",
+            );
+            safeSend(nativePackagers.socketFor(activeAssignment.packagerId), stoppedAssignment.command);
+            broadcastRuntime?.stopProgram(identity, activeAssignment.programId);
+          }
+        }
         sendJson(response, 200, consent, securityHeaders(config));
         return;
       }
@@ -488,11 +519,38 @@ function createHttpHandler(config, registry, services) {
         }
         const identity = await authenticateRequest(request, config, oidcVerifier);
         const revoked = nativePackagers.revoke(principalFor(identity), nativePackagerMatch[1]);
+        const failedAssignment = nativePackagerAssignments.failPackager(
+          revoked.packagerId, "PACKAGER_REVOKED",
+        );
+        if (failedAssignment) broadcastRuntime?.stopProgram(identity, failedAssignment.programId);
         revoked.socket?.close(1008, "native_packager_revoked");
         sendJson(response, 200, {
           packagerId: revoked.packagerId,
           revokedAt: revoked.revokedAt,
         }, securityHeaders(config));
+        return;
+      }
+      const nativePackagerAssignmentMatch = url.pathname.match(
+        /^\/api\/native-packagers\/(pkr_[A-Za-z0-9_-]{16,64})\/assignments\/(asn_[A-Za-z0-9_-]{16,64})$/,
+      );
+      if (nativePackagerAssignmentMatch && request.method === "DELETE") {
+        if (!config.nativePackagerSelfServiceEnabled || url.search || !requestOriginAllowed(request, config)) {
+          throw new NativePackagerEnrollmentError("native_packager_self_service_disabled", 404);
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const ownerPrincipal = principalFor(identity);
+        nativePackagers.candidate(ownerPrincipal, nativePackagerAssignmentMatch[1]);
+        const stopped = nativePackagerAssignments.stop(
+          ownerPrincipal,
+          nativePackagerAssignmentMatch[1],
+          nativePackagerAssignmentMatch[2],
+          "OWNER_STOP",
+        );
+        if (stopped.command) {
+          safeSend(nativePackagers.socketFor(nativePackagerAssignmentMatch[1]), stopped.command);
+          broadcastRuntime?.stopProgram(identity, stopped.snapshot.programId);
+        }
+        sendJson(response, 200, { assignment: stopped.snapshot }, securityHeaders(config));
         return;
       }
       if (url.pathname.startsWith("/api/native-packagers/")) {
@@ -604,6 +662,69 @@ function createHttpHandler(config, registry, services) {
       const broadcastPlaybackChallengeMatch = url.pathname.match(
         /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/playback-challenges$/,
       );
+      const broadcastNativeAssignmentMatch = url.pathname.match(
+        /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/native-assignments$/,
+      );
+      if (broadcastNativeAssignmentMatch) {
+        if (!broadcastRuntime || !config.nativePackagerSelfServiceEnabled
+          || request.method !== "POST" || url.search || !requestOriginAllowed(request, config)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const ownerPrincipal = principalFor(identity);
+        const input = await readJsonBody(request);
+        assertAllowedKeys(input, new Set([
+          "requestVersion", "trigger", "packagerId", "sourceIds", "requestedRenditions",
+          "allowHardwareAcceleration", "deviceFingerprint",
+        ]));
+        if (!/^[A-Za-z0-9_-]{43}$/.test(input.deviceFingerprint || "")) {
+          throw new BroadcastRuntimeError("invalid_broadcast_device_fingerprint");
+        }
+        const activeMember = registry.membersForPrincipal(ownerPrincipal)
+          .find((candidate) => candidate.deviceFingerprint === input.deviceFingerprint);
+        const preparedProgram = broadcastRuntime.prepareNativePublisher(
+          identity,
+          activeMember,
+          broadcastNativeAssignmentMatch[1],
+          {
+            requestVersion: input.requestVersion,
+            trigger: input.trigger,
+            packagerId: input.packagerId,
+            sourceIds: input.sourceIds,
+            requestedRenditions: input.requestedRenditions,
+            allowHardwareAcceleration: input.allowHardwareAcceleration,
+          },
+          (admissionRequest) => nativePackagerAssignments.admit(
+            ownerPrincipal,
+            input.packagerId,
+            admissionRequest,
+          ),
+        );
+        let assignment;
+        try {
+          assignment = nativePackagerAssignments.prepare(
+            ownerPrincipal,
+            input.packagerId,
+            preparedProgram.admission,
+            preparedProgram.lease,
+          );
+          if (!safeSend(nativePackagers.socketFor(input.packagerId), assignment.command)) {
+            throw new NativePackagerAssignmentError("native_packager_offline", 503);
+          }
+        } catch (error) {
+          nativePackagerAssignments.failPackager(input.packagerId, "ASSIGNMENT_DELIVERY_FAILED");
+          broadcastRuntime.stopProgram(identity, broadcastNativeAssignmentMatch[1]);
+          throw error;
+        }
+        sendJson(response, 201, {
+          assignment: assignment.snapshot,
+          program: preparedProgram.program,
+        }, securityHeaders(config));
+        return;
+      }
       if (broadcastPlaybackChallengeMatch) {
         if (!broadcastRuntime || request.method !== "POST" || url.search
           || !requestOriginAllowed(request, config)
@@ -669,6 +790,15 @@ function createHttpHandler(config, registry, services) {
           return;
         }
         const identity = await authenticateRequest(request, config, oidcVerifier);
+        const activeAssignment = nativePackagerAssignments.activeForProgram(broadcastProgramMatch[1]);
+        if (activeAssignment) {
+          const stoppedAssignment = nativePackagerAssignments.stop(
+            principalFor(identity), activeAssignment.packagerId, activeAssignment.assignmentId, "OWNER_STOP",
+          );
+          if (stoppedAssignment.command) {
+            safeSend(nativePackagers.socketFor(activeAssignment.packagerId), stoppedAssignment.command);
+          }
+        }
         const stopped = broadcastRuntime.stopProgram(identity, broadcastProgramMatch[1]);
         sendJson(response, 200, { program: stopped }, securityHeaders(config));
         return;
@@ -1131,6 +1261,7 @@ function configureSignaling(
   mediaAgentEvents,
   broadcastRuntime,
   nativePackagers,
+  nativePackagerAssignments,
 ) {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
   const mediaAgentWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
@@ -1849,16 +1980,28 @@ function configureSignaling(
           nativePackagers.heartbeat(socket, message);
           return;
         }
+        if (message.type === "assignment-status") {
+          nativePackagerAssignments.acknowledge(connection.id, message);
+          return;
+        }
         throw new NativePackagerControlError("unknown_native_packager_message");
       } catch (error) {
-        const code = error instanceof NativePackagerControlError ? error.code : "invalid_native_packager_message";
+        const code = error instanceof NativePackagerControlError || error instanceof NativePackagerAssignmentError
+          ? error.code : "invalid_native_packager_message";
         safeSend(socket, { version: 1, type: "packager-error", code });
         socket.close(1008, code);
       }
     });
     socket.on("close", () => {
       clearTimeout(timeout);
+      const connection = nativePackagers.connection(socket);
       nativePackagers.disconnect(socket);
+      if (connection) {
+        const failedAssignment = nativePackagerAssignments.failPackager(connection.id);
+        if (failedAssignment) stopProgramForPrincipal(
+          broadcastRuntime, connection.ownerPrincipal, failedAssignment.programId,
+        );
+      }
     });
   });
 
@@ -1879,6 +2022,9 @@ function configureSignaling(
     directory.prune(Date.now(), (roomId) => registry.members(roomId).length > 0);
     ticketStore.prune();
     mediaAgentEvents.prune();
+    nativePackagerAssignments.prune(Date.now(), (ownerPrincipal, expiredAssignment) => {
+      stopProgramForPrincipal(broadcastRuntime, ownerPrincipal, expiredAssignment.programId);
+    });
   }, 30_000);
   heartbeat.unref();
   const leaseRenewal = setInterval(() => {
@@ -1948,6 +2094,8 @@ export function createAppServer(options = {}) {
     enrollmentStore: nativePackagerEnrollmentStore,
     definitions: nativePackagerEnrollmentStore?.definitions() || [],
   });
+  const nativePackagerAssignments = options.nativePackagerAssignments
+    || new NativePackagerAssignmentRegistry({ controlRegistry: nativePackagers });
   const workspaceStore = options.workspaceStore || (config.pairWorkspaceEnabled
     ? new PairWorkspaceStore({ filename: config.pairWorkspaceDb }) : null);
   const publicDir = path.resolve(options.publicDir || DEFAULT_PUBLIC_DIR);
@@ -2028,6 +2176,7 @@ export function createAppServer(options = {}) {
     nativePackagers,
     nativePackagerEnrollmentStore,
     nativePackagerInstallerService,
+    nativePackagerAssignments,
     mediaMtxExternalAuthService,
     broadcastHlsProxy,
     broadcastAbuseGuard,
@@ -2047,7 +2196,7 @@ export function createAppServer(options = {}) {
   if (ownsBroadcastAbuseGuard) server.on("close", () => broadcastAbuseGuard.destroy());
   const signaling = configureSignaling(
     server, config, registry, ticketStore, directory, mediaAgents, mediaAgentEvents, broadcastRuntime,
-    nativePackagers,
+    nativePackagers, nativePackagerAssignments,
   );
   return {
     server,
@@ -2063,6 +2212,7 @@ export function createAppServer(options = {}) {
     nativePackagers,
     nativePackagerEnrollmentStore,
     nativePackagerInstallerService,
+    nativePackagerAssignments,
     broadcastAbuseGuard,
     broadcastHealthRegistry,
     broadcastRuntime,

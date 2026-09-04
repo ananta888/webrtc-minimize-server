@@ -28,12 +28,23 @@
       "required": ["version", "type", "assignmentId", "programEpoch", "state", "observedAt"],
       "properties": {
         "version": { "const": 1 }, "type": { "const": "heartbeat" }, "assignmentId": { "type": "string", "pattern": "^(?:|asn_[A-Za-z0-9_-]{16,64})$" },
-        "programEpoch": { "type": "integer", "minimum": 0 }, "state": { "enum": ["idle", "starting", "running", "degraded", "draining", "failed"] }, "observedAt": { "type": "integer", "minimum": 1 }
+        "programEpoch": { "type": "integer", "minimum": 0 }, "state": { "enum": ["idle", "ready", "starting", "running", "degraded", "draining", "failed"] }, "observedAt": { "type": "integer", "minimum": 1 }
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "type", "assignmentId", "programEpoch", "fencingRevision", "state", "reasonCode", "observedAt"],
+      "properties": {
+        "version": { "const": 1 }, "type": { "const": "assignment-status" }, "assignmentId": { "$ref": "#/$defs/assignmentId" },
+        "programEpoch": { "type": "integer", "minimum": 1 }, "fencingRevision": { "type": "integer", "minimum": 1 },
+        "state": { "enum": ["ready", "starting", "running", "degraded", "draining", "stopped", "failed"] },
+        "reasonCode": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$" }, "observedAt": { "type": "integer", "minimum": 1 }
       }
     }
   ],
   "$defs": {
     "packagerId": { "type": "string", "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$" },
+    "assignmentId": { "type": "string", "pattern": "^asn_[A-Za-z0-9_-]{16,64}$" },
     "proof": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$" },
     "publicKey": { "type": "object", "additionalProperties": false, "required": ["kty", "crv", "x", "y", "ext"], "properties": { "kty": { "const": "EC" }, "crv": { "const": "P-256" }, "x": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }, "y": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }, "ext": { "const": true } } },
     "capability": {

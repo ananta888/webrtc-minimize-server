@@ -3,11 +3,81 @@
   "$id": "https://webrtc.ananta.de/contracts/native-packager/server-control.v1.schema.json",
   "title": "Native packager server control v1",
   "oneOf": [
-    { "type": "object", "additionalProperties": false, "required": ["version", "type", "nonce", "expiresAt"], "properties": { "version": { "const": 1 }, "type": { "const": "packager-challenge" }, "nonce": { "type": "string", "pattern": "^[A-Za-z0-9_-]{32}$" }, "expiresAt": { "type": "integer", "minimum": 1 } } },
-    { "type": "object", "additionalProperties": false, "required": ["version", "type", "packagerId"], "properties": { "version": { "const": 1 }, "type": { "enum": ["packager-enrolled", "packager-authenticated"] }, "packagerId": { "$ref": "#/$defs/packagerId" }, "keyFingerprint": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" } } },
-    { "type": "object", "additionalProperties": false, "required": ["version", "type", "roomIds"], "properties": { "version": { "const": 1 }, "type": { "const": "room-consent-sync" }, "roomIds": { "type": "array", "maxItems": 20, "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Za-z0-9_-]{4,64}$" } } } },
-    { "type": "object", "additionalProperties": false, "required": ["version", "type", "observedAt"], "properties": { "version": { "const": 1 }, "type": { "const": "capability-accepted" }, "observedAt": { "type": "integer", "minimum": 1 } } },
-    { "type": "object", "additionalProperties": false, "required": ["version", "type", "code"], "properties": { "version": { "const": 1 }, "type": { "const": "packager-error" }, "code": { "type": "string", "pattern": "^[a-z][a-z0-9_]{2,80}$" } } }
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "type", "nonce", "expiresAt"],
+      "properties": {
+        "version": { "const": 1 }, "type": { "const": "packager-challenge" },
+        "nonce": { "type": "string", "pattern": "^[A-Za-z0-9_-]{32}$" }, "expiresAt": { "type": "integer", "minimum": 1 }
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "type", "packagerId"],
+      "properties": {
+        "version": { "const": 1 }, "type": { "enum": ["packager-enrolled", "packager-authenticated"] },
+        "packagerId": { "$ref": "#/$defs/packagerId" }, "keyFingerprint": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "type", "roomIds"],
+      "properties": {
+        "version": { "const": 1 }, "type": { "const": "room-consent-sync" },
+        "roomIds": { "type": "array", "maxItems": 20, "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Za-z0-9_-]{4,64}$" } }
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "type", "observedAt"],
+      "properties": { "version": { "const": 1 }, "type": { "const": "capability-accepted" }, "observedAt": { "type": "integer", "minimum": 1 } }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "type", "assignmentId", "roomId", "programId", "programEpoch", "leaseId", "fencingRevision", "resourceRef", "profile", "expiresAt"],
+      "properties": {
+        "version": { "const": 1 }, "type": { "const": "assignment-prepare" }, "assignmentId": { "$ref": "#/$defs/assignmentId" },
+        "roomId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{4,64}$" }, "programId": { "type": "string", "pattern": "^prg_[A-Za-z0-9_-]{16,64}$" },
+        "programEpoch": { "type": "integer", "minimum": 1 }, "leaseId": { "type": "string", "pattern": "^lea_[A-Za-z0-9_-]{16,64}$" },
+        "fencingRevision": { "type": "integer", "minimum": 1 }, "resourceRef": { "type": "string", "pattern": "^res_[A-Za-z0-9_-]{16,64}$" },
+        "profile": { "$ref": "#/$defs/profile" }, "expiresAt": { "type": "integer", "minimum": 1 }
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "type", "assignmentId", "programEpoch", "fencingRevision", "reasonCode"],
+      "properties": {
+        "version": { "const": 1 }, "type": { "const": "assignment-stop" }, "assignmentId": { "$ref": "#/$defs/assignmentId" },
+        "programEpoch": { "type": "integer", "minimum": 1 }, "fencingRevision": { "type": "integer", "minimum": 1 },
+        "reasonCode": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$" }
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "type", "code"],
+      "properties": { "version": { "const": 1 }, "type": { "const": "packager-error" }, "code": { "type": "string", "pattern": "^[a-z][a-z0-9_]{2,80}$" } }
+    }
   ],
-  "$defs": { "packagerId": { "type": "string", "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$" } }
+  "$defs": {
+    "packagerId": { "type": "string", "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$" },
+    "assignmentId": { "type": "string", "pattern": "^asn_[A-Za-z0-9_-]{16,64}$" },
+    "profile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profileId", "maximumQueueFrames", "keyframeIntervalSeconds", "renditions"],
+      "properties": {
+        "profileId": { "const": "h264-aac-720p-v1" }, "maximumQueueFrames": { "type": "integer", "minimum": 1, "maximum": 120 },
+        "keyframeIntervalSeconds": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "renditions": { "type": "array", "minItems": 1, "maxItems": 3, "items": { "$ref": "#/$defs/rendition" } }
+      }
+    },
+    "rendition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "width", "height", "framesPerSecond", "videoBitsPerSecond", "audioBitsPerSecond"],
+      "properties": {
+        "id": { "enum": ["low", "medium", "high"] }, "width": { "type": "integer", "minimum": 160, "maximum": 1920 },
+        "height": { "type": "integer", "minimum": 90, "maximum": 1080 }, "framesPerSecond": { "type": "integer", "minimum": 1, "maximum": 60 },
+        "videoBitsPerSecond": { "type": "integer", "minimum": 100000, "maximum": 10000000 }, "audioBitsPerSecond": { "type": "integer", "minimum": 16000, "maximum": 320000 }
+      }
+    }
+  }
 }

@@ -134,6 +134,7 @@ export class BroadcastRuntimeRegistry {
   #programIdFactory;
   #policyIdFactory;
   #resourceIdFactory;
+  #leaseIdFactory;
 
   constructor({
     grantAuthority,
@@ -144,12 +145,13 @@ export class BroadcastRuntimeRegistry {
     programIdFactory = () => `prg_${crypto.randomBytes(18).toString("base64url")}`,
     policyIdFactory = () => `pol_${crypto.randomBytes(18).toString("base64url")}`,
     resourceIdFactory = () => `res_${crypto.randomBytes(18).toString("base64url")}`,
+    leaseIdFactory = () => `lea_${crypto.randomBytes(18).toString("base64url")}`,
   } = {}) {
     if (!grantAuthority || typeof grantAuthority.issue !== "function"
       || !Number.isSafeInteger(challengeTtlMs) || challengeTtlMs < 5_000 || challengeTtlMs > 120_000
       || typeof clock !== "function" || typeof idFactory !== "function"
       || typeof programIdFactory !== "function" || typeof policyIdFactory !== "function"
-      || typeof resourceIdFactory !== "function") {
+      || typeof resourceIdFactory !== "function" || typeof leaseIdFactory !== "function") {
       fail("invalid_broadcast_runtime_configuration", 500);
     }
     this.#authority = grantAuthority;
@@ -162,6 +164,7 @@ export class BroadcastRuntimeRegistry {
     this.#programIdFactory = programIdFactory;
     this.#policyIdFactory = policyIdFactory;
     this.#resourceIdFactory = resourceIdFactory;
+    this.#leaseIdFactory = leaseIdFactory;
   }
 
   createProgram(identity, member, value, now = this.#clock()) {
@@ -630,6 +633,92 @@ export class BroadcastRuntimeRegistry {
         programEpoch: challenge.candidate.program.programEpoch,
       }),
       resourceRef: current.resourceRef,
+    });
+  }
+
+  prepareNativePublisher(identity, member, programId, value, admit, now = this.#clock()) {
+    const refs = identityRefs(identity);
+    const input = clone(value, "invalid_native_packager_publication_request");
+    closed(input, new Set([
+      "requestVersion", "trigger", "packagerId", "sourceIds", "requestedRenditions", "allowHardwareAcceleration",
+    ]), "invalid_native_packager_publication_request");
+    if (input.requestVersion !== 1 || input.trigger !== "user-action"
+      || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(input.packagerId || "")
+      || !Array.isArray(input.sourceIds) || input.sourceIds.length < 1 || input.sourceIds.length > 4
+      || new Set(input.sourceIds).size !== input.sourceIds.length
+      || input.sourceIds.some((sourceId) => !/^src_[A-Za-z0-9_-]{16,64}$/.test(sourceId))
+      || !Number.isSafeInteger(input.requestedRenditions) || input.requestedRenditions < 1
+      || input.requestedRenditions > 3 || typeof input.allowHardwareAcceleration !== "boolean"
+      || typeof admit !== "function" || !PROGRAM.test(programId || "")) {
+      fail("invalid_native_packager_publication_request");
+    }
+    const key = `${refs.tenantId}\0${programId}`;
+    const record = this.#records.get(key);
+    const current = record?.snapshot.machine;
+    if (!record || !current || current.scope.ownerSubjectRef !== refs.subjectRef) unavailable();
+    if (!member || member.principal !== refs.principal || member.roomId !== current.scope.roomId
+      || member.creator !== true || member.deviceFingerprint?.length !== 43) {
+      fail("broadcast_publisher_membership_required", 403);
+    }
+    if (current.program.state !== "draft") fail("broadcast_program_already_started", 409);
+    let candidate = applyBroadcastProgramCommand(current, command(current, "source-change", {
+      sourceIds: input.sourceIds,
+    }), now).state;
+    candidate = applyBroadcastProgramCommand(candidate, command(candidate, "start", {
+      requiresConsent: false,
+    }), now).state;
+    const admission = admit(Object.freeze({
+      requestVersion: 1,
+      trigger: "user-action",
+      tenantId: refs.tenantId,
+      ownerSubjectRef: refs.subjectRef,
+      roomId: candidate.scope.roomId,
+      programId,
+      programEpoch: candidate.program.programEpoch,
+      resourceRef: record.resourceRef,
+      requestedRenditions: input.requestedRenditions,
+      allowHardwareAcceleration: input.allowHardwareAcceleration,
+    }));
+    const leaseId = this.#leaseIdFactory();
+    if (!/^lea_[A-Za-z0-9_-]{16,64}$/.test(leaseId || "")) {
+      fail("invalid_broadcast_runtime_identifier", 500);
+    }
+    const lease = {
+      contractVersion: 1,
+      type: "lease",
+      tenantId: candidate.scope.tenantId,
+      holderRef: input.packagerId,
+      roomId: candidate.scope.roomId,
+      programId,
+      leaseId,
+      revision: 1,
+      programEpoch: candidate.epochs.broadcast,
+      role: "packager-writer",
+      status: "active",
+      fencingRevision: candidate.epochs.lease + 1,
+      acquiredAt: now,
+      renewedAt: now,
+      expiresAt: now + 60_000,
+    };
+    candidate = applyBroadcastProgramCommand(candidate, command(candidate, "handoff", {
+      expectedLeaseEpoch: candidate.epochs.lease,
+      lease,
+    }), now).state;
+    this.#synchronizeRecord(key, record, candidate, now);
+    return Object.freeze({
+      admission,
+      lease: Object.freeze({
+        leaseId: lease.leaseId,
+        fencingRevision: lease.fencingRevision,
+        expiresAt: lease.expiresAt,
+      }),
+      program: Object.freeze({
+        tenantId: candidate.scope.tenantId,
+        roomId: candidate.scope.roomId,
+        programId,
+        programRevision: candidate.program.revision,
+        programEpoch: candidate.program.programEpoch,
+      }),
     });
   }
 

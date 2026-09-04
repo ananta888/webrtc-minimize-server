@@ -107,5 +107,19 @@ test("native packager protocol fails closed on unknown fields and stale heartbea
     version: 1, type: "heartbeat", assignmentId: "", programEpoch: 0,
     state: "idle", observedAt: 1, roomAuthority: true,
   })), /invalid_native_packager_heartbeat/);
+  assert.equal(parseNativePackagerMessage(JSON.stringify({
+    version: 1, type: "heartbeat", assignmentId: "asn_0123456789abcdef", programEpoch: 2,
+    state: "ready", observedAt: 2,
+  })).state, "ready");
   assert.throws(() => parseNativePackagerMessage(JSON.stringify({ version: 1, type: "magic" })), /unknown_native_packager_message/);
+  assert.equal(parseNativePackagerMessage(JSON.stringify({
+    version: 1, type: "assignment-status", assignmentId: "asn_0123456789abcdef",
+    programEpoch: 2, fencingRevision: 3, state: "ready", reasonCode: "CAPABILITY_READY",
+    observedAt: 2,
+  })).state, "ready");
+  assert.throws(() => parseNativePackagerMessage(JSON.stringify({
+    version: 1, type: "assignment-status", assignmentId: "asn_0123456789abcdef",
+    programEpoch: 2, fencingRevision: 3, state: "ready", reasonCode: "CAPABILITY_READY",
+    observedAt: 2, decryptAuthority: true,
+  })), /invalid_native_packager_assignment_status/);
 });

@@ -66,8 +66,21 @@ export function parseNativePackagerMessage(raw) {
     if (!exact(value, fields) || value.version !== 1
       || (value.assignmentId !== "" && !/^asn_[A-Za-z0-9_-]{16,64}$/.test(value.assignmentId || ""))
       || !Number.isSafeInteger(value.programEpoch) || value.programEpoch < 0
-      || !new Set(["idle", "starting", "running", "degraded", "draining", "failed"]).has(value.state)
+      || !new Set(["idle", "ready", "starting", "running", "degraded", "draining", "failed"]).has(value.state)
       || !Number.isSafeInteger(value.observedAt)) fail("invalid_native_packager_heartbeat");
+    return Object.freeze(value);
+  }
+  if (value?.type === "assignment-status") {
+    const fields = new Set([
+      "version", "type", "assignmentId", "programEpoch", "fencingRevision", "state", "reasonCode", "observedAt",
+    ]);
+    if (!exact(value, fields) || value.version !== 1
+      || !/^asn_[A-Za-z0-9_-]{16,64}$/.test(value.assignmentId || "")
+      || !Number.isSafeInteger(value.programEpoch) || value.programEpoch < 1
+      || !Number.isSafeInteger(value.fencingRevision) || value.fencingRevision < 1
+      || !new Set(["ready", "starting", "running", "degraded", "draining", "stopped", "failed"]).has(value.state)
+      || !/^[A-Z][A-Z0-9_]{1,63}$/.test(value.reasonCode || "")
+      || !Number.isSafeInteger(value.observedAt)) fail("invalid_native_packager_assignment_status");
     return Object.freeze(value);
   }
   fail("unknown_native_packager_message");
@@ -198,6 +211,18 @@ export class NativePackagerControlRegistry {
   }
 
   socketFor(packagerId) { return this.#packagers.get(packagerId)?.socket || null; }
+
+  candidate(ownerPrincipal, packagerId, now = Date.now()) {
+    const packager = this.#packagers.get(packagerId);
+    if (!packager || packager.definition.ownerPrincipal !== ownerPrincipal) {
+      fail("native_packager_not_found", 404);
+    }
+    return Object.freeze({
+      id: packager.definition.id,
+      online: Boolean(packager.socket && now - packager.lastSeen <= 60_000),
+      capability: packager.capability,
+    });
+  }
 
   list(ownerPrincipal, now = Date.now()) {
     return [...this.#packagers.values()].filter(({ definition }) => definition.ownerPrincipal === ownerPrincipal)

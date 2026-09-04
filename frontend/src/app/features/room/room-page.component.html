@@ -807,6 +807,9 @@
                   <article class="owned-agent" [class.revoked]="packager.revokedAt">
                     <span class="agent-status-dot" [class.online]="packager.online" aria-hidden="true"></span>
                     <div><strong>{{ packager.label }}</strong><small>{{ nativePackagerPlatformLabel(packager.platform) }} · {{ packager.online ? 'online' : (packager.revokedAt ? 'widerrufen' : 'offline') }}</small><code>{{ packager.id }}</code><small>FFmpeg {{ packager.capability?.ffmpegVersion || 'noch nicht gemeldet' }} · {{ packager.capability?.maximumRenditions || 0 }} Rendition(s)</small></div>
+                    @if (nativePackagerAssignment(packager.id); as assignment) {
+                      <div class="agent-assignment"><strong>Zuweisung: {{ assignment.state }}</strong><small>{{ assignment.profileId }} · {{ assignment.renditionIds.join(', ') }} · Epoche {{ assignment.programEpoch }} / Fence {{ assignment.fencingRevision }}</small><code>{{ assignment.programId }}</code>@if (assignment.state !== 'stopped' && assignment.state !== 'failed') { <button class="button danger compact" type="button" [disabled]="nativePackagerOnboarding.busy()" (click)="stopNativePackagerAssignment(packager.id, assignment.assignmentId)">Zuweisung stoppen</button> }</div>
+                    }
                     @if (!packager.revokedAt) {
                       <label class="agent-consent"><input type="checkbox" [disabled]="!session.joined() || !packager.online || nativePackagerOnboarding.busy()" [ngModel]="session.joined() && packager.consentedRoomIds.includes(session.roomId())" (ngModelChange)="setNativePackagerRoomConsent(packager.id, $event)"><span><strong>Für diesen Raum</strong><small>Bewusster, jederzeit widerrufbarer Trusted-Consent.</small></span></label>
                       <button class="button ghost compact" type="button" [disabled]="nativePackagerOnboarding.busy()" (click)="revokeNativePackager(packager.id)">Widerrufen</button>

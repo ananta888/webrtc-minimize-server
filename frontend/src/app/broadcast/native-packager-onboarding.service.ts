@@ -31,9 +31,27 @@ export interface PendingNativePackagerInstallation {
   readonly expiresAt: number;
 }
 
+export interface NativePackagerAssignmentView {
+  readonly assignmentId: string;
+  readonly packagerId: string;
+  readonly roomId: string;
+  readonly programId: string;
+  readonly programEpoch: number;
+  readonly fencingRevision: number;
+  readonly profileId: string;
+  readonly renditionIds: readonly string[];
+  readonly state: "preparing" | "ready" | "starting" | "running" | "degraded" | "draining" | "stopped" | "failed";
+  readonly reasonCode: string;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly expiresAt: number;
+}
+
 const PACKAGER_ID = /^pkr_[A-Za-z0-9_-]{16,64}$/;
 const TARGET_ID = /^(?:linux|macos|windows)-(?:amd64|arm64)$/;
 const ROOM_ID = /^[A-Za-z0-9_-]{4,64}$/;
+const ASSIGNMENT_ID = /^asn_[A-Za-z0-9_-]{16,64}$/;
+const PROGRAM_ID = /^prg_[A-Za-z0-9_-]{16,64}$/;
 
 function parsePackager(value: unknown): OwnedNativePackager {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("native_packager_list_invalid");
@@ -48,16 +66,34 @@ function parsePackager(value: unknown): OwnedNativePackager {
   return Object.freeze(item as OwnedNativePackager);
 }
 
+function parseAssignment(value: unknown): NativePackagerAssignmentView {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("native_packager_assignment_list_invalid");
+  const item = value as Partial<NativePackagerAssignmentView>;
+  if (!ASSIGNMENT_ID.test(item.assignmentId || "") || !PACKAGER_ID.test(item.packagerId || "")
+    || !ROOM_ID.test(item.roomId || "") || !PROGRAM_ID.test(item.programId || "")
+    || !Number.isSafeInteger(item.programEpoch) || Number(item.programEpoch) < 1
+    || !Number.isSafeInteger(item.fencingRevision) || Number(item.fencingRevision) < 1
+    || item.profileId !== "h264-aac-720p-v1" || !Array.isArray(item.renditionIds)
+    || item.renditionIds.length < 1 || item.renditionIds.length > 3
+    || item.renditionIds.some((id) => !new Set(["low", "medium", "high"]).has(id))
+    || !new Set(["preparing", "ready", "starting", "running", "degraded", "draining", "stopped", "failed"]).has(String(item.state))
+    || !/^[A-Z][A-Z0-9_]{1,63}$/.test(item.reasonCode || "")
+    || !Number.isSafeInteger(item.createdAt) || !Number.isSafeInteger(item.updatedAt)
+    || !Number.isSafeInteger(item.expiresAt)) throw new Error("native_packager_assignment_list_invalid");
+  return Object.freeze(item as NativePackagerAssignmentView);
+}
+
 @Injectable({ providedIn: "root" })
 export class NativePackagerOnboardingService {
   readonly packagers = signal<readonly OwnedNativePackager[]>([]);
+  readonly assignments = signal<readonly NativePackagerAssignmentView[]>([]);
   readonly pending = signal<PendingNativePackagerInstallation | null>(null);
   readonly busy = signal(false);
   readonly error = signal("");
 
   constructor(private readonly auth: OidcAuthService) {}
 
-  clear(): void { this.packagers.set([]); this.pending.set(null); this.error.set(""); }
+  clear(): void { this.packagers.set([]); this.assignments.set([]); this.pending.set(null); this.error.set(""); }
 
   suggestedTarget(targets: readonly NativePackagerTarget[]): string {
     const platform = String(navigator.platform || "").toLowerCase();
@@ -72,11 +108,12 @@ export class NativePackagerOnboardingService {
     this.busy.set(true); this.error.set("");
     try {
       const response = await fetch("/api/native-packagers", { headers: this.auth.authorizationHeader() });
-      const body = await response.json() as { packagers?: unknown[]; error?: string };
-      if (!response.ok || !Array.isArray(body.packagers)) throw new Error(body.error || "native_packager_list_failed");
+      const body = await response.json() as { packagers?: unknown[]; assignments?: unknown[]; error?: string };
+      if (!response.ok || !Array.isArray(body.packagers) || !Array.isArray(body.assignments)) throw new Error(body.error || "native_packager_list_failed");
       this.packagers.set(body.packagers.map(parsePackager));
+      this.assignments.set(body.assignments.map(parseAssignment));
     } catch (error) {
-      this.packagers.set([]); this.error.set(error instanceof Error ? error.message : "native_packager_list_failed");
+      this.packagers.set([]); this.assignments.set([]); this.error.set(error instanceof Error ? error.message : "native_packager_list_failed");
     } finally { this.busy.set(false); }
   }
 
@@ -131,6 +168,25 @@ export class NativePackagerOnboardingService {
       const body = await response.json() as { error?: string }; if (!response.ok) throw new Error(body.error || "native_packager_revoke_failed"); await this.load();
     } catch (error) {
       const message = error instanceof Error ? error.message : "native_packager_revoke_failed"; this.error.set(message); throw error;
+    } finally { this.busy.set(false); }
+  }
+
+  async stopAssignment(packagerId: string, assignmentId: string): Promise<void> {
+    if (!PACKAGER_ID.test(packagerId) || !ASSIGNMENT_ID.test(assignmentId)) {
+      throw new Error("native_packager_assignment_not_found");
+    }
+    this.busy.set(true); this.error.set("");
+    try {
+      const response = await fetch(
+        `/api/native-packagers/${encodeURIComponent(packagerId)}/assignments/${encodeURIComponent(assignmentId)}`,
+        { method: "DELETE", headers: this.auth.authorizationHeader() },
+      );
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error || "native_packager_assignment_stop_failed");
+      await this.load();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "native_packager_assignment_stop_failed";
+      this.error.set(message); throw error;
     } finally { this.busy.set(false); }
   }
 }

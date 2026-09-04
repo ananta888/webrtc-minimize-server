@@ -9,7 +9,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -32,7 +31,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const agentVersion = "0.1.0"
+const agentVersion = "0.2.0"
 
 var packagerIDPattern = regexp.MustCompile(`^pkr_[A-Za-z0-9_-]{16,64}$`)
 var enrollmentTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
@@ -266,23 +265,36 @@ func hardwareClass() string {
 }
 
 type serverMessage struct {
-	Version    int      `json:"version"`
-	Type       string   `json:"type"`
-	Nonce      string   `json:"nonce,omitempty"`
-	PackagerID string   `json:"packagerId,omitempty"`
-	Code       string   `json:"code,omitempty"`
-	ExpiresAt  int64    `json:"expiresAt,omitempty"`
-	RoomIDs    []string `json:"roomIds,omitempty"`
+	Version         int               `json:"version"`
+	Type            string            `json:"type"`
+	Nonce           string            `json:"nonce,omitempty"`
+	PackagerID      string            `json:"packagerId,omitempty"`
+	KeyFingerprint  string            `json:"keyFingerprint,omitempty"`
+	Code            string            `json:"code,omitempty"`
+	ExpiresAt       int64             `json:"expiresAt,omitempty"`
+	ObservedAt      int64             `json:"observedAt,omitempty"`
+	RoomIDs         []string          `json:"roomIds,omitempty"`
+	AssignmentID    string            `json:"assignmentId,omitempty"`
+	RoomID          string            `json:"roomId,omitempty"`
+	ProgramID       string            `json:"programId,omitempty"`
+	ProgramEpoch    int               `json:"programEpoch,omitempty"`
+	LeaseID         string            `json:"leaseId,omitempty"`
+	FencingRevision int               `json:"fencingRevision,omitempty"`
+	ResourceRef     string            `json:"resourceRef,omitempty"`
+	ReasonCode      string            `json:"reasonCode,omitempty"`
+	Profile         assignmentProfile `json:"profile,omitempty"`
 }
 
 type client struct {
-	cfg        config
-	identity   *identity
-	capability ffmpegCapability
-	mu         sync.Mutex
-	roomsMu    sync.RWMutex
-	connection *websocket.Conn
-	rooms      []string
+	cfg          config
+	identity     *identity
+	capability   ffmpegCapability
+	mu           sync.Mutex
+	roomsMu      sync.RWMutex
+	connection   *websocket.Conn
+	rooms        []string
+	assignmentMu sync.Mutex
+	assignment   *packagerAssignment
 }
 
 func (c *client) send(value any) error {
@@ -344,8 +356,8 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 	if err != nil {
 		return err
 	}
-	var challenge serverMessage
-	if json.Unmarshal(raw, &challenge) != nil || challenge.Type != "packager-challenge" || challenge.Nonce == "" || challenge.ExpiresAt <= time.Now().UnixMilli() {
+	challenge, decodeErr := decodeServerMessage(raw)
+	if decodeErr != nil || challenge.Type != "packager-challenge" || challenge.Nonce == "" || challenge.ExpiresAt <= time.Now().UnixMilli() {
 		return errors.New("invalid control challenge")
 	}
 	timestamp := time.Now().UnixMilli()
@@ -361,8 +373,8 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 		if err != nil {
 			return err
 		}
-		var result serverMessage
-		if json.Unmarshal(raw, &result) != nil || result.Type != "packager-enrolled" || result.PackagerID != c.cfg.packagerID {
+		result, resultErr := decodeServerMessage(raw)
+		if resultErr != nil || result.Type != "packager-enrolled" || result.PackagerID != c.cfg.packagerID {
 			return errors.New("native packager enrollment rejected")
 		}
 		return nil
@@ -387,7 +399,7 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 				return
 			case <-ticker.C:
 				_ = c.send(c.capabilityMessage())
-				_ = c.send(map[string]any{"version": 1, "type": "heartbeat", "assignmentId": "", "programEpoch": 0, "state": "idle", "observedAt": time.Now().UnixMilli()})
+				_ = c.send(c.heartbeatMessage())
 			}
 		}
 	}()
@@ -396,9 +408,9 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 		if err != nil {
 			return err
 		}
-		var message serverMessage
-		if json.Unmarshal(raw, &message) != nil {
-			return errors.New("invalid control message")
+		message, decodeErr := decodeServerMessage(raw)
+		if decodeErr != nil {
+			return decodeErr
 		}
 		switch message.Type {
 		case "packager-authenticated":
@@ -416,6 +428,14 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 				return err
 			}
 		case "capability-accepted":
+		case "assignment-prepare":
+			if err = c.prepareAssignment(message, time.Now()); err != nil {
+				return err
+			}
+		case "assignment-stop":
+			if err = c.stopAssignment(message); err != nil {
+				return err
+			}
 		case "packager-error":
 			return fmt.Errorf("control rejected message: %s", message.Code)
 		default:

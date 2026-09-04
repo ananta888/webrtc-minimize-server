@@ -7,7 +7,7 @@ import test from "node:test";
 import { WebSocket } from "ws";
 
 import { createAppServer } from "../src/server.js";
-import { deviceProofMessage } from "../src/device-proof.js";
+import { deviceFingerprint, deviceProofMessage } from "../src/device-proof.js";
 import {
   mediaAgentAuthProof,
   mediaAgentEnrollmentProofMessage,
@@ -16,6 +16,12 @@ import {
 import { AuthenticationError } from "../src/oidc-verifier.js";
 import { MediaMtxExternalAuthError } from "../src/mediamtx-external-auth.js";
 import { BroadcastHlsProxyError } from "../src/broadcast-hls-proxy.js";
+import { BroadcastRuntimeRegistry } from "../src/broadcast-runtime-registry.js";
+import { broadcastSubjectRef, broadcastTenantRef } from "../src/broadcast-identifiers.js";
+import {
+  NativePackagerControlRegistry,
+  nativePackagerAuthMessage,
+} from "../src/native-packager-control.js";
 
 async function startTestServer(overrides = {}, serverOptions = {}) {
   const config = {
@@ -1574,4 +1580,184 @@ test("authorized sessions keep Edge-TURN credentials in the second ICE tier", as
   assert.match(authorization.body.icePolicy.peerRelayIceServers[0].username, /^\d+:[a-f0-9]{20}$/);
   assert.deepEqual(authorization.body.icePolicy.infrastructureRelayIceServers, []);
   assert.equal(JSON.stringify(authorization.body).includes("0123456789abcdef0123456789abcdef"), false);
+});
+
+test("native packager assignment is owner-, room-, device- and fence-bound end to end", async (context) => {
+  const issuer = "https://identity.test/realms/ananta";
+  const identity = { issuer, subject: "owner", displayName: "Owner" };
+  const ownerPrincipal = `${issuer}|owner`;
+  const publicOrigin = "https://webrtc.example";
+  const packagerId = "pkr_0123456789abcdef";
+  const keyPair = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const publicKey = { ...keyPair.publicKey.export({ format: "jwk" }), ext: true };
+  const definition = {
+    id: packagerId,
+    ownerPrincipal,
+    label: "Mini-PC Packager",
+    platform: "linux",
+    publicKey,
+    keyFingerprint: "A".repeat(43),
+  };
+  const nativePackagers = new NativePackagerControlRegistry({ definitions: [definition] });
+  const enrollmentStore = {
+    list(principal) {
+      return principal === ownerPrincipal ? [{
+        ...definition,
+        createdAt: 1,
+        lastAuthenticatedAt: 1,
+        revokedAt: 0,
+      }] : [];
+    },
+  };
+  const broadcastRuntime = new BroadcastRuntimeRegistry({
+    grantAuthority: { issue() { throw new Error("not_used"); }, revokeProgramEpoch() {} },
+  });
+  const oidcVerifier = {
+    async verify(token) {
+      if (token !== "owner-token") throw new AuthenticationError("invalid_access_token");
+      return identity;
+    },
+  };
+  const app = await startTestServer({
+    publicOrigin,
+    authMode: "required",
+    oidcIssuer: issuer,
+    oidcJwksUrl: "https://identity.test/certs",
+    oidcAudience: "webrtc-room-server",
+    oidcClientId: "webrtc-browser",
+    nativePackagerSelfServiceEnabled: true,
+  }, { oidcVerifier, nativePackagers, nativePackagerEnrollmentStore: enrollmentStore, broadcastRuntime });
+  context.after(() => app.close());
+
+  const agent = connect(`${app.wsUrl}/native-packager`);
+  const challenge = await agent.next((message) => message.type === "packager-challenge");
+  const authenticationTimestamp = Date.now();
+  const authenticationProof = crypto.sign(
+    "sha256",
+    Buffer.from(nativePackagerAuthMessage(packagerId, challenge.nonce, authenticationTimestamp)),
+    { key: keyPair.privateKey, dsaEncoding: "ieee-p1363" },
+  ).toString("base64url");
+  agent.socket.send(JSON.stringify({
+    version: 1,
+    type: "authenticate",
+    packagerId,
+    timestamp: authenticationTimestamp,
+    proof: authenticationProof,
+  }));
+  assert.equal((await agent.next((message) => message.type === "packager-authenticated")).packagerId, packagerId);
+  await agent.next((message) => message.type === "room-consent-sync");
+
+  const roomResponse = await fetch(`${app.httpUrl}/api/rooms`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: publicOrigin, authorization: "Bearer owner-token" },
+    body: JSON.stringify({ mode: "room", title: "Native Broadcast", visibility: "private" }),
+  });
+  assert.equal(roomResponse.status, 201);
+  const room = await roomResponse.json();
+  const browser = await connectAuthorized(app, room.roomId, "ignored", {
+    authorization: "Bearer owner-token", origin: publicOrigin, wsOrigin: publicOrigin,
+  });
+  const welcome = await browser.next((message) => message.type === "welcome");
+  assert.equal(welcome.roomCreator, true);
+
+  const consentResponse = await fetch(
+    `${app.httpUrl}/api/native-packagers/${packagerId}/room-consents/${room.roomId}`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json", origin: publicOrigin, authorization: "Bearer owner-token" },
+      body: JSON.stringify({ enabled: true }),
+    },
+  );
+  assert.equal(consentResponse.status, 200);
+  await agent.next((message) => message.type === "room-consent-sync" && message.roomIds.includes(room.roomId));
+
+  const now = Date.now();
+  agent.socket.send(JSON.stringify({
+    version: 1,
+    type: "capability",
+    capability: {
+      capabilityVersion: 1,
+      agentId: packagerId,
+      tenantId: broadcastTenantRef(issuer),
+      ownerSubjectRef: broadcastSubjectRef(identity),
+      deviceRef: `dev_${"B".repeat(43)}`,
+      agentVersion: "0.2.0",
+      ffmpegVersion: "6.1.1",
+      videoEncoders: ["libx264"],
+      audioEncoders: ["aac"],
+      hardwareClass: "medium",
+      cpuClass: "medium",
+      gpuClass: "integrated",
+      uploadClass: "5-15mbit",
+      energyClass: "ac",
+      health: "healthy",
+      maximumRenditions: 2,
+      maximumPixelsPerSecond: 1280 * 720 * 30,
+      consentedRoomIds: [room.roomId],
+      observedAt: now,
+      expiresAt: now + 30_000,
+    },
+  }));
+  await agent.next((message) => message.type === "capability-accepted");
+
+  const programResponse = await fetch(`${app.httpUrl}/api/broadcasts`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: publicOrigin, authorization: "Bearer owner-token" },
+    body: JSON.stringify({
+      requestVersion: 1, roomId: room.roomId, title: "Native Broadcast", visibility: "private",
+    }),
+  });
+  assert.equal(programResponse.status, 201);
+  const program = await programResponse.json();
+  const fingerprint = deviceFingerprint(browser.authorization.device.publicKey.export({ format: "jwk" }));
+  const assignmentResponse = await fetch(
+    `${app.httpUrl}/api/broadcasts/${program.control.programId}/native-assignments`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: publicOrigin, authorization: "Bearer owner-token" },
+      body: JSON.stringify({
+        requestVersion: 1,
+        trigger: "user-action",
+        packagerId,
+        sourceIds: ["src_0123456789abcdef"],
+        requestedRenditions: 2,
+        allowHardwareAcceleration: false,
+        deviceFingerprint: fingerprint,
+      }),
+    },
+  );
+  assert.equal(assignmentResponse.status, 201, JSON.stringify(await assignmentResponse.clone().json()));
+  const assignmentBody = await assignmentResponse.json();
+  const prepare = await agent.next((message) => message.type === "assignment-prepare");
+  assert.equal(prepare.assignmentId, assignmentBody.assignment.assignmentId);
+  assert.equal(prepare.roomId, room.roomId);
+  assert.equal(prepare.programId, program.control.programId);
+  assert.equal(Object.hasOwn(prepare, "accessToken"), false);
+  assert.equal(Object.hasOwn(prepare, "sdp"), false);
+
+  agent.socket.send(JSON.stringify({
+    version: 1,
+    type: "assignment-status",
+    assignmentId: prepare.assignmentId,
+    programEpoch: prepare.programEpoch,
+    fencingRevision: prepare.fencingRevision,
+    state: "ready",
+    reasonCode: "CAPABILITY_READY",
+    observedAt: Date.now(),
+  }));
+  const listed = await fetch(`${app.httpUrl}/api/native-packagers`, {
+    headers: { authorization: "Bearer owner-token" },
+  }).then((response) => response.json());
+  assert.equal(listed.assignments[0].state, "ready");
+
+  const stopResponse = await fetch(
+    `${app.httpUrl}/api/native-packagers/${packagerId}/assignments/${prepare.assignmentId}`,
+    { method: "DELETE", headers: { origin: publicOrigin, authorization: "Bearer owner-token" } },
+  );
+  assert.equal(stopResponse.status, 200);
+  assert.equal((await agent.next((message) => message.type === "assignment-stop")).assignmentId, prepare.assignmentId);
+  assert.equal((await stopResponse.json()).assignment.state, "draining");
+
+  browser.socket.close();
+  agent.socket.close();
 });

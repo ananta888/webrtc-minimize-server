@@ -310,3 +310,53 @@ test("publisher device departure stops only programs bound to that room device",
   assert.equal(runtime.listMine(owner).owned[0].availability, "ended");
   assert.equal(runtime.stopProgramsForMember(member, NOW + 2), 0);
 });
+
+test("native publisher preparation commits only after bounded admission and installs the real packager lease", () => {
+  const owner = identity("owner", "Ada");
+  const runtime = new BroadcastRuntimeRegistry({
+    grantAuthority: authority(),
+    clock: () => NOW,
+    programIdFactory: () => "prg_gggggggggggggggg",
+    policyIdFactory: () => "pol_gggggggggggggggg",
+    resourceIdFactory: () => "res_gggggggggggggggg",
+    leaseIdFactory: () => "lea_gggggggggggggggg",
+  });
+  const member = {
+    principal: `${owner.issuer}|${owner.subject}`,
+    roomId: "room-alpha",
+    creator: true,
+    deviceFingerprint: "a".repeat(43),
+  };
+  const created = runtime.createProgram(owner, member, {
+    requestVersion: 1, roomId: member.roomId, title: "Native", visibility: "private",
+  }, NOW);
+  let admitted;
+  assert.throws(() => runtime.prepareNativePublisher(owner, member, created.control.programId, {
+    requestVersion: 1, trigger: "user-action", packagerId: "pkr_gggggggggggggggg",
+    sourceIds: ["src_gggggggggggggggg"], requestedRenditions: 2, allowHardwareAcceleration: false,
+  }, () => { throw new Error("capacity_denied"); }, NOW), /capacity_denied/);
+  assert.equal(runtime.listMine(owner).owned[0].availability, "offline");
+
+  const prepared = runtime.prepareNativePublisher(owner, member, created.control.programId, {
+    requestVersion: 1, trigger: "user-action", packagerId: "pkr_gggggggggggggggg",
+    sourceIds: ["src_gggggggggggggggg"], requestedRenditions: 2, allowHardwareAcceleration: false,
+  }, (request) => {
+    admitted = request;
+    return Object.freeze({
+      admissionVersion: 1, agentId: "pkr_gggggggggggggggg", roomId: request.roomId,
+      programId: request.programId, programEpoch: request.programEpoch, resourceRef: request.resourceRef,
+      videoEncoder: "libx264", softwareFallback: "libx264", audioEncoder: "aac",
+      profileId: "h264-aac-720p-v1", renditions: Object.freeze([]), maximumQueueFrames: 60,
+      keyframeIntervalSeconds: 2,
+    });
+  }, NOW);
+  assert.equal(admitted.programEpoch, 2);
+  assert.equal(prepared.program.programEpoch, 2);
+  assert.equal(prepared.lease.leaseId, "lea_gggggggggggggggg");
+  assert.equal(prepared.lease.fencingRevision, 3);
+  assert.equal(runtime.listMine(owner).owned[0].availability, "offline");
+  assert.throws(() => runtime.prepareNativePublisher(owner, member, created.control.programId, {
+    requestVersion: 1, trigger: "user-action", packagerId: "pkr_gggggggggggggggg",
+    sourceIds: ["src_gggggggggggggggg"], requestedRenditions: 2, allowHardwareAcceleration: false,
+  }, () => ({}), NOW), /already_started/);
+});

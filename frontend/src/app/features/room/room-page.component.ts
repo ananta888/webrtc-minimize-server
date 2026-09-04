@@ -574,6 +574,17 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     catch (error) { this.pageError.set(error instanceof Error ? error.message : "Native-Packager konnte nicht widerrufen werden"); }
   }
 
+  nativePackagerAssignment(packagerId: string) {
+    return this.nativePackagerOnboarding.assignments().find((assignment) => assignment.packagerId === packagerId) || null;
+  }
+
+  async stopNativePackagerAssignment(packagerId: string, assignmentId: string): Promise<void> {
+    try {
+      await this.nativePackagerOnboarding.stopAssignment(packagerId, assignmentId);
+      this.notice.set("Native-Packager-Zuweisung gestoppt.");
+    } catch { /* service exposes bounded error */ }
+  }
+
   nativePackagerPlatformLabel(platform: NativePackagerPlatform): string {
     return ({ linux: "Linux", macos: "macOS", windows: "Windows" })[platform];
   }

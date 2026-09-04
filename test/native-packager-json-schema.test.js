@@ -14,4 +14,20 @@ test("native packager control schemas are closed and reject authority injection"
   assert.equal(client({ ...authentication, roomAuthority: true }), false);
   assert.equal(server({ version: 1, type: "room-consent-sync", roomIds: ["room-1234"] }), true, JSON.stringify(server.errors));
   assert.equal(server({ version: 1, type: "room-consent-sync", roomIds: ["room-1234"], decryptKey: "forbidden" }), false);
+  const assignment = {
+    version: 1, type: "assignment-prepare", assignmentId: "asn_0123456789abcdef",
+    roomId: "room-1234", programId: "prg_0123456789abcdef", programEpoch: 2,
+    leaseId: "lea_0123456789abcdef", fencingRevision: 3, resourceRef: "res_0123456789abcdef",
+    profile: { profileId: "h264-aac-720p-v1", maximumQueueFrames: 60, keyframeIntervalSeconds: 2,
+      renditions: [{ id: "low", width: 640, height: 360, framesPerSecond: 15,
+        videoBitsPerSecond: 500_000, audioBitsPerSecond: 64_000 }] },
+    expiresAt: 1_800_000_060_000,
+  };
+  assert.equal(server(assignment), true, JSON.stringify(server.errors));
+  assert.equal(server({ ...assignment, decryptKey: "forbidden" }), false);
+  assert.equal(client({
+    version: 1, type: "assignment-status", assignmentId: assignment.assignmentId,
+    programEpoch: 2, fencingRevision: 3, state: "ready", reasonCode: "CAPABILITY_READY",
+    observedAt: 1_800_000_000_001,
+  }), true, JSON.stringify(client.errors));
 });
