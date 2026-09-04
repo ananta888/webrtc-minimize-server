@@ -6,6 +6,27 @@
     "gateway": "mediamtx-1.20.1",
     "ffmpeg": "6.1.1"
   },
+  "nativePackagerRuns": [
+    {
+      "environment": "local-linux-wsl2",
+      "execution": "host",
+      "ffmpeg": "6.1.1",
+      "status": "verified-local",
+      "renditions": ["low", "medium", "high"],
+      "audioVideo": "h264-main-aac-lc",
+      "cleanup": "verified"
+    },
+    {
+      "environment": "minipc-ananta-linux-amd64",
+      "execution": "ephemeral-bounded-container",
+      "ffmpeg": "8.1.2",
+      "status": "verified-lan-host",
+      "renditions": ["low", "medium", "high"],
+      "audioVideo": "h264-main-aac-lc",
+      "cleanup": "verified",
+      "hostPackageInstalled": false
+    }
+  ],
   "interactiveMeet": {
     "participants": 20,
     "admissionAndIsolation": "verified-deterministic",

@@ -5,7 +5,9 @@ import {
   NATIVE_BROADCAST_PROFILE,
   NativePackagerPolicyError,
   admitNativePackager,
+  nativeFfmpegVersion,
   nativePackagerFfmpegArguments,
+  nativePackagerPipelineCandidates,
   normalizeNativePackagerCapability,
 } from "../src/native-packager-policy.js";
 
@@ -49,6 +51,23 @@ test("capacity classes reduce ABR without believing a self-reported authority", 
   assert.equal(admitted.maximumQueueFrames, 60);
   assert.throws(() => normalizeNativePackagerCapability({ ...capability, authority: "owner" }, now), /invalid/);
   assert.throws(() => normalizeNativePackagerCapability({ ...capability, expiresAt: now - 1 }, now), /invalid/);
+  assert.throws(
+    () => normalizeNativePackagerCapability({ ...capability, ffmpegVersion: "5.1.6" }, now),
+    /ffmpeg_6_or_newer_required/,
+  );
+});
+
+test("FFmpeg capability parsing enforces the real minimum version", () => {
+  assert.deepEqual(nativeFfmpegVersion("ffmpeg version 6.1.1 Copyright"), {
+    raw: "ffmpeg version 6.1.1",
+    major: 6,
+    minor: 1,
+    patch: 1,
+  });
+  assert.equal(nativeFfmpegVersion("7.2").major, 7);
+  for (const value of ["", "unknown", "ffmpeg version 5.1.6", "6", "release-7.0"]) {
+    assert.throws(() => nativeFfmpegVersion(value), /ffmpeg_6_or_newer_required/);
+  }
 });
 
 test("pilot profile fixes H.264 Main/AAC-LC ladder and aligned two-second GOPs", () => {
@@ -80,4 +99,16 @@ test("FFmpeg pipeline uses argv without shell, aligned keyframes and a confined 
   assert.equal(pipeline.args.filter((value) => value === "0").length >= 3, true);
   assert.ok(pipeline.args.every((value) => !/[\u0000\r\n]/.test(value)));
   assert.throws(() => nativePackagerFfmpegArguments({ ...admitted, resourceRef: "../escape" }, "/safe"), /invalid/);
+});
+
+test("hardware admission always carries one deterministic software fallback pipeline", () => {
+  const admitted = admitNativePackager(capability, request, now);
+  const candidates = nativePackagerPipelineCandidates(admitted, "/var/lib/webrtc-packager");
+  assert.equal(candidates.length, 2);
+  assert.equal(candidates[0].args[candidates[0].args.indexOf("-c:v:0") + 1], "h264_vaapi");
+  assert.equal(candidates[1].args[candidates[1].args.indexOf("-c:v:0") + 1], "libx264");
+  assert.equal(candidates[0].outputDirectory, candidates[1].outputDirectory);
+
+  const software = admitNativePackager({ ...capability, videoEncoders: ["libx264"] }, request, now);
+  assert.equal(nativePackagerPipelineCandidates(software, "/var/lib/webrtc-packager").length, 1);
 });

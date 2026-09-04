@@ -4,7 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 
-import { admitNativePackager, nativePackagerFfmpegArguments } from "../src/native-packager-policy.js";
+import {
+  admitNativePackager,
+  nativeFfmpegVersion,
+  nativePackagerFfmpegArguments,
+} from "../src/native-packager-policy.js";
 
 if (process.env.RUN_LIVE_NATIVE_PACKAGER !== "1") {
   console.log("SKIP live native packager gate: set RUN_LIVE_NATIVE_PACKAGER=1 with FFmpeg 6+");
@@ -13,11 +17,12 @@ if (process.env.RUN_LIVE_NATIVE_PACKAGER !== "1") {
 
 const version = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" });
 if (version.status !== 0) throw new Error("ffmpeg_6_or_newer_required");
+const parsedVersion = nativeFfmpegVersion(version.stdout.split("\n", 1)[0]);
 const now = Date.now();
 const capability = {
   capabilityVersion: 1, agentId: "live-packager", tenantId: "tn_aaaaaaaaaaaaaaaa",
   ownerSubjectRef: "sub_aaaaaaaaaaaaaaaa", deviceRef: "dev_aaaaaaaaaaaaaaaa",
-  agentVersion: "1.0.0", ffmpegVersion: version.stdout.match(/^ffmpeg version ([^\s]+)/)?.[1] || "unknown",
+  agentVersion: "1.0.0", ffmpegVersion: `${parsedVersion.major}.${parsedVersion.minor}.${parsedVersion.patch}`,
   videoEncoders: ["libx264"], audioEncoders: ["aac"], hardwareClass: "large", cpuClass: "high",
   gpuClass: "none", uploadClass: "over-15mbit", energyClass: "ac", health: "healthy",
   maximumRenditions: 3, maximumPixelsPerSecond: 1280 * 720 * 30,

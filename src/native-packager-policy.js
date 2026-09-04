@@ -7,6 +7,7 @@ const ROOM = /^[A-Za-z0-9_-]{4,64}$/;
 const PROGRAM = /^prg_[A-Za-z0-9_-]{16,64}$/;
 const RESOURCE = /^res_[A-Za-z0-9_-]{16,64}$/;
 const VERSION = /^[A-Za-z0-9._+-]{1,64}$/;
+const MINIMUM_FFMPEG_MAJOR = 6;
 
 export class NativePackagerPolicyError extends Error {
   constructor(code, status = 400) {
@@ -34,6 +35,20 @@ export const NATIVE_BROADCAST_PROFILE = Object.freeze({
   pixelFormat: "yuv420p",
   renditions: RENDITIONS,
 });
+
+export function nativeFfmpegVersion(value) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(?:ffmpeg version\s+)?(?:n)?(\d+)\.(\d+)(?:\.(\d+))?(?:[-+._A-Za-z0-9]*)?(?:\s|$)/);
+  if (!match || Number(match[1]) < MINIMUM_FFMPEG_MAJOR) {
+    fail("native_packager_ffmpeg_6_or_newer_required", 503);
+  }
+  return Object.freeze({
+    raw: match[0].trim(),
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3] || 0),
+  });
+}
 
 export function normalizeNativePackagerCapability(value, now = Date.now()) {
   const fields = new Set([
@@ -67,12 +82,25 @@ export function normalizeNativePackagerCapability(value, now = Date.now()) {
     || value.observedAt > now + 5_000 || value.expiresAt <= now || value.expiresAt > value.observedAt + 60_000) {
     fail("invalid_native_packager_capability");
   }
+  nativeFfmpegVersion(value.ffmpegVersion);
   return Object.freeze({
     ...value,
     videoEncoders: Object.freeze([...new Set(value.videoEncoders)]),
     audioEncoders: Object.freeze([...new Set(value.audioEncoders)]),
     consentedRoomIds: Object.freeze([...value.consentedRoomIds]),
   });
+}
+
+export function nativePackagerPipelineCandidates(admission, outputRoot) {
+  const preferred = nativePackagerFfmpegArguments(admission, outputRoot);
+  if (admission.videoEncoder === admission.softwareFallback) return Object.freeze([preferred]);
+  return Object.freeze([
+    preferred,
+    nativePackagerFfmpegArguments(Object.freeze({
+      ...admission,
+      videoEncoder: admission.softwareFallback,
+    }), outputRoot),
+  ]);
 }
 
 export function admitNativePackager(capabilityValue, request, now = Date.now()) {

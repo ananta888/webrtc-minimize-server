@@ -511,10 +511,10 @@
     {
       "id": "TBP-016",
       "title": "Installierbaren Native-Packager mit Transcoding, ABR und Geräte-Capabilities ergänzen",
-      "status": "partial",
+      "status": "in_progress",
       "priority": "P1",
       "risk": "critical",
-      "progress_percent": 40,
+      "progress_percent": 55,
       "depends_on": ["TBP-004", "TBP-005", "TBP-006", "TBP-013", "TBP-014", "TBP-015"],
       "acceptance_criteria": [
         "Der native Agent ist eine getrennte, freiwillige Rolle mit signiertem/prüfbarem Build, eindeutiger Geräteidentität, konto-/tenantgebundener Registrierung und pro Raum ausdrücklich aktivierter Packager-Capability.",
@@ -720,7 +720,7 @@
     {
       "id": "TBP-029",
       "title": "Angular-Broadcast-Cockpit mit explizitem Preflight, Live-State und Kill-Switch bauen",
-      "status": "in_progress",
+      "status": "partial",
       "priority": "P0",
       "risk": "high",
       "progress_percent": 85,
@@ -1016,6 +1016,7 @@
     "TBP-039 ist zu 55 Prozent umgesetzt. Ein versioniertes Profil definiert ohne unbelegte Produktobergrenze den 20-Personen-Raum, 5/20/50-Origin-Stufen, spaetere CDN-Rampen, ein mindestens vierstuendiges Release-Soak, alle geforderten Ereignisse/Messgroessen, neun Chaosklassen, feste lokale Budgets und zunaechst leere Preisinputs. Der reale Matrix-Runner bestand alle drei LL-HLS-Stufen ohne Fehler; bei 50 Viewern wurden 431,20 Requests/s, 13,94 ms p95, 204,63 Mbit/s, 3,23 Prozent Gateway-CPU und 66,62 MiB RAM gemessen. Der 20-Personen-Raum und Broadcast-Isolation sind deterministisch gruen. Ein realer FFmpeg-Gate misst SSIM 0,993941 bei 2,7719 Mbit/s und 7,864-facher Echtzeit. Fencing, Packager-/Gateway-Uebernahme, abgelaufene Grants und Split-Brain-Abwehr sind deterministisch, Publisher-Restart und Muxer-Cleanup lokal getestet. Offen bleiben der mehrstuendige Soak, reales Vorher/Waehrend/Nachher-Meet, weitere reale Chaosfehler, WAN/CDN/Provider, Packet-Loss/QP/Rebuffer/OCR/Sync/subjektive Qualitaet und belastbare Providerpreise; deshalb bleibt der Task partial und es werden weder Kosten noch Kapazitaetsgarantien erfunden.",
     "TBP-040 ist zu 70 Prozent umgesetzt. Ein konsolidiertes Produktionsarchitektur-Dokument zeigt Plane-, Sequenz-, Trust-/Key- und Failover-Datenfluesse und verweist auf die versionierten Port-, Codec-, Player- und Caption-Grenzen. Nutzerhilfe erklaert Own Source, Trusted Program, Raum-SFrame, Sichtbarkeit, Consent, Untertitel, Datenverbrauch, Latenz, Stop und aktuelle Einschraenkungen. Ein Lifecycle-/Security-Runbook deckt Provisionierung, Health, Alarme, Quoten/Kosten, Rotation, Incident, Providerausfall, Takeover, Purge, Rollback und Ausserbetriebnahme ab. Das maschinenlesbare Privacy-/Security-Review haelt Datenklassen, Nicht-Retention, Backupgrenzen, SBOM, Leakage, Dependency-Audit mit null bekannten Production-Vulnerabilities und Produktionslizenzen fest. Eine validierte vierstufige Rollout-Policy bindet disabled, internal, private-selected und public an reale Gates und einen fuenfteiligen Kill-Switch; Produktion bleibt fail-closed auf disabled und publicReady false. Offen sind die realen Geraete-/WAN-/Provider-/Mehrstunden-/Incident-Gates und deshalb auch interner, privater und oeffentlicher Rollout; der Task bleibt ehrlich partial.",
     "TBP-018, TBP-022, TBP-029 und TBP-031 wurden am 2026-09-04 gemeinsam weitergefuehrt. Die regulaere Serverinstanz erzeugt bei vollstaendiger expliziter Konfiguration nun BroadcastGrantAuthority, BroadcastRuntimeRegistry, MediaMTX-External-Auth, private Playback-Sessions und HLS-Proxy; ohne WHIP-Endpunkt bleiben alle neuen APIs und der Angular-Start default-deny. Public/Mine, Program-Create, gerätegebundene Publisher-/Playback-Einmal-Challenges, dynamische Resource-URLs, Visibility und Stop sind als geschlossene OIDC-HTTP-Grenzen verdrahtet. Der raumgebundene Angular-Workflow preautorisiert die exakte Programrevision vor jedem Capture-Fork, startet nur nach Preview plus sichtbarer Trust-Bestaetigung, zeigt alle Lifecycle-Zustaende, kann einen laufenden Start abbrechen und versucht WHIP-Cleanup sowie serverseitigen Revoke unabhaengig. Signaling-Abgang stoppt nur Programme, die an denselben attestierten Publisher-Browser und Raum gebunden sind. Directory/Playback verwenden reale Projections und P-256-Nachweise ohne Room-Membership. Lokal bestanden fokussierte Angular-, Runtime- und Serverintegrationstests sowie Produktions-/Entwicklungsbuild. Offen bleiben der isolierte reale Gateway-/Caddy-Pfad, operatorseitiger Stream-Kill, Visibility-Rekonfiguration, Refresh/Handoff, physische Browser-/Mobil-/Accessibility- und Langzeitgates; die oeffentliche Produktionsruntime bleibt deshalb deaktiviert.",
+    "TBP-016 wurde am 2026-09-04 auf 55 Prozent weitergefuehrt. Die FFmpeg-Capability prueft nun die tatsaechliche Major-Version und lehnt Versionen vor 6 ab. Ein getrennter NativePackagerSupervisor startet ausschließlich argv-basiert ohne Shell, erzwingt programEpoch-Fencing, maximal 1-MiB-Input-Chunks, unmittelbare Backpressure ohne unbeschraenkte Zweitqueue, genau einen Hardware-zu-libx264-Fallback, begrenzten SIGKILL und vollstaendigen Resource-Output-Cleanup. Deterministische Tests pruefen Race-/Doppelsignal-, Backpressure-, Fence-, Fallback- und Cleanup-Verhalten. Der reale Drei-Rendition-H.264/AAC-Gate bestand lokal mit FFmpeg 6.1.1 und auf minipc.ananta.de in einem kurzlebigen CPU-/RAM-/PID-begrenzten Container mit FFmpeg 8.1.2; auf dem Host wurde nichts installiert. Der gepinnte MediaMTX-Adapter bestand dort ebenfalls real. Noch fehlen der eigenstaendige registrierte Daemon, signierte Installer, Secret-Store, Remote-Assignment, WHIP/RTSP-Ingest, Gateway-Publish und reale Hardwarefehler; deshalb bleibt TBP-016 in_progress und Broadcast produktiv deaktiviert.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }

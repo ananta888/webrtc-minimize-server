@@ -39,6 +39,12 @@ test("local evidence is measured and unavailable external gates stay visibly una
   assert.equal(results.originRuns.every(({ errors, viewers, completedViewers }) => errors === 0 && viewers === completedViewers), true);
   assert.equal(results.cdnRuns.every(({ status }) => status !== "verified"), true);
   assert.equal(results.soak.status, "not-executed");
+  assert.deepEqual(results.nativePackagerRuns.map(({ status }) => status), [
+    "verified-local",
+    "verified-lan-host",
+  ]);
+  assert.deepEqual(results.nativePackagerRuns[1].renditions, ["low", "medium", "high"]);
+  assert.equal(results.nativePackagerRuns[1].hostPackageInstalled, false);
 });
 
 test("quality and cost evidence never invent missing physical measurements or rates", () => {
