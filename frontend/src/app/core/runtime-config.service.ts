@@ -27,6 +27,32 @@ export interface RuntimeConfig {
     minimumParticipants: number;
     shardMinParticipants: number;
   }>;
+  readonly broadcast: Readonly<{
+    whip: Readonly<{
+      configurationVersion: 1;
+      compatibilityProfile: "rfc9725" | "mediamtx-1.20";
+      enabled: boolean;
+      endpointUrl: string;
+      allowedRedirectOrigins: readonly string[];
+      trickleIce: boolean;
+      simulcast: Readonly<{
+        enabled: boolean;
+        sendEncodings: readonly RTCRtpEncodingParameters[];
+      }>;
+      codecPreferences: Readonly<{
+        audio: readonly string[];
+        video: readonly string[];
+      }>;
+      requestTimeoutMs: number;
+      iceGatheringTimeoutMs: number;
+      connectionTimeoutMs: number;
+      maximumResponseBytes: number;
+      maximumSdpBytes: number;
+      maximumIceFragmentBytes: number;
+      maximumCandidates: number;
+      retryBudget: number;
+    }>;
+  }>;
   readonly optimization: Readonly<{
     activeSpeakerLimit: number;
     peerRelayEnabled: boolean;
@@ -44,6 +70,60 @@ export interface RuntimeConfig {
     audience: string;
   }>;
 }
+
+export function validWhipRuntime(config: RuntimeConfig): boolean {
+  const whip = config.broadcast?.whip;
+  if (!whip || whip.configurationVersion !== 1
+    || !new Set(["rfc9725", "mediamtx-1.20"]).has(whip.compatibilityProfile)
+    || typeof whip.enabled !== "boolean"
+    || typeof whip.endpointUrl !== "string" || typeof whip.trickleIce !== "boolean"
+    || !Array.isArray(whip.allowedRedirectOrigins) || whip.allowedRedirectOrigins.length > 8
+    || whip.allowedRedirectOrigins.some((origin) => typeof origin !== "string")
+    || !whip.simulcast || whip.simulcast.enabled !== false
+    || !Array.isArray(whip.simulcast.sendEncodings) || whip.simulcast.sendEncodings.length !== 0
+    || !Array.isArray(whip.codecPreferences?.audio) || !Array.isArray(whip.codecPreferences?.video)
+    || whip.codecPreferences.audio.length > 8 || whip.codecPreferences.video.length > 8
+    || [...whip.codecPreferences.audio, ...whip.codecPreferences.video].some(
+      (codec) => typeof codec !== "string" || codec.length > 72,
+    )
+    || !Number.isSafeInteger(whip.requestTimeoutMs) || whip.requestTimeoutMs < 1_000 || whip.requestTimeoutMs > 30_000
+    || !Number.isSafeInteger(whip.iceGatheringTimeoutMs) || whip.iceGatheringTimeoutMs < 1_000
+    || whip.iceGatheringTimeoutMs > 30_000
+    || !Number.isSafeInteger(whip.connectionTimeoutMs) || whip.connectionTimeoutMs < 1_000
+    || whip.connectionTimeoutMs > 60_000
+    || !Number.isSafeInteger(whip.maximumResponseBytes) || whip.maximumResponseBytes < 1_024
+    || whip.maximumResponseBytes > 512 * 1_024
+    || !Number.isSafeInteger(whip.maximumSdpBytes) || whip.maximumSdpBytes < 1_024
+    || whip.maximumSdpBytes > 512 * 1_024
+    || !Number.isSafeInteger(whip.maximumIceFragmentBytes) || whip.maximumIceFragmentBytes < 256
+    || whip.maximumIceFragmentBytes > 64 * 1_024
+    || !Number.isSafeInteger(whip.maximumCandidates) || whip.maximumCandidates < 1 || whip.maximumCandidates > 128
+    || !Number.isSafeInteger(whip.retryBudget) || whip.retryBudget < 0 || whip.retryBudget > 2) return false;
+  try {
+    const redirectOriginsValid = whip.allowedRedirectOrigins.every((origin) => {
+      const parsed = new URL(origin);
+      return parsed.protocol === "https:" && parsed.origin === parsed.href.replace(/\/$/, "")
+        && !parsed.username && !parsed.password && !parsed.search && !parsed.hash;
+    });
+    const codecPreferencesValid = whip.codecPreferences.audio.every(
+      (codec) => /^audio\/[A-Za-z0-9!#$&^_.+-]{1,64}$/.test(codec),
+    ) && whip.codecPreferences.video.every(
+      (codec) => /^video\/[A-Za-z0-9!#$&^_.+-]{1,64}$/.test(codec),
+    );
+    if (!redirectOriginsValid || !codecPreferencesValid) return false;
+  } catch {
+    return false;
+  }
+  if (!whip.enabled) return whip.endpointUrl === "";
+  try {
+    const endpoint = new URL(whip.endpointUrl);
+    return endpoint.protocol === "https:" && !endpoint.username && !endpoint.password
+      && !endpoint.search && !endpoint.hash;
+  } catch {
+    return false;
+  }
+}
+
 @Injectable({ providedIn: "root" })
 export class RuntimeConfigService {
   readonly value = signal<RuntimeConfig | null>(null);
@@ -75,7 +155,8 @@ export class RuntimeConfigService {
       || config.mediaAgents.minimumParticipants > 20
       || !Number.isSafeInteger(config.mediaAgents.shardMinParticipants)
       || config.mediaAgents.shardMinParticipants < 3
-      || config.mediaAgents.shardMinParticipants > 20) throw new Error("runtime_config_invalid");
+      || config.mediaAgents.shardMinParticipants > 20
+      || !validWhipRuntime(config)) throw new Error("runtime_config_invalid");
     this.value.set(config);
     return config;
   }

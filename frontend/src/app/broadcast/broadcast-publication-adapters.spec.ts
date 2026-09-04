@@ -75,15 +75,48 @@ describe("broadcast publication adapters", () => {
     const whipTransport = transport("whip-browser");
     const adapter = new WhipBroadcastPublicationAdapter(whipTransport);
     const session = await adapter.start(request(), new AbortController().signal);
+    expect(await adapter.start(request(), new AbortController().signal)).toBe(session);
     expect(adapter.capability.available).toBe(true);
     expect(adapter.capability.supportsSimulcast).toBe(false);
     expect(whipTransport.start).toHaveBeenCalledOnce();
+
+    await expect(adapter.start({
+      ...request(),
+      composition: { compositionId: "composition-2", sourceIds: ["src_aaaaaaaaaaaaaaaa"] },
+    }, new AbortController().signal)).rejects.toThrow("broadcast_publication_conflict");
 
     whipTransport.stop.mockRejectedValueOnce(new Error("gateway_stop_failed"));
     await expect(adapter.stop(session, new AbortController().signal)).rejects.toThrow("gateway_stop_failed");
     await adapter.stop(session, new AbortController().signal);
     await adapter.stop(session, new AbortController().signal);
     expect(whipTransport.stop).toHaveBeenCalledTimes(2);
+  });
+
+  it("coalesces concurrent identical starts and rejects a conflicting start while pending", async () => {
+    let resolveStart!: (session: Awaited<ReturnType<BroadcastPublicationTransport["start"]>>) => void;
+    const pending = new Promise<Awaited<ReturnType<BroadcastPublicationTransport["start"]>>>((resolve) => {
+      resolveStart = resolve;
+    });
+    const whipTransport: BroadcastPublicationTransport = {
+      start: vi.fn(() => pending),
+      stop: vi.fn(async () => undefined),
+    };
+    const adapter = new WhipBroadcastPublicationAdapter(whipTransport);
+    const signal = new AbortController().signal;
+    const first = adapter.start(request(), signal);
+    const second = adapter.start(request(), signal);
+    await expect(adapter.start({
+      ...request(),
+      composition: { compositionId: "composition-2", sourceIds: ["src_aaaaaaaaaaaaaaaa"] },
+    }, signal)).rejects.toThrow("broadcast_publication_conflict");
+    expect(whipTransport.start).toHaveBeenCalledOnce();
+    resolveStart({
+      sessionId: "session-concurrent",
+      adapterId: "whip-browser",
+      programId: request().program.programId,
+      programEpoch: request().program.programEpoch,
+    });
+    expect(await first).toBe(await second);
   });
 
   it("provides a stateful mock and rejects duplicate adapter identities", async () => {

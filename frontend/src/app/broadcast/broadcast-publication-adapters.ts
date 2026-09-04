@@ -25,6 +25,14 @@ interface AdapterOptions {
 class TransportBackedPublicationAdapter implements BroadcastPublicationPort {
   readonly capability: BroadcastPublicationCapability;
   private readonly activeSessions = new Set<string>();
+  private readonly activePrograms = new Map<string, Readonly<{
+    requestKey: string;
+    session: BroadcastPublicationSession;
+  }>>();
+  private readonly pendingPrograms = new Map<string, Readonly<{
+    requestKey: string;
+    task: Promise<BroadcastPublicationSession>;
+  }>>();
 
   constructor(
     private readonly options: AdapterOptions,
@@ -53,7 +61,40 @@ class TransportBackedPublicationAdapter implements BroadcastPublicationPort {
     if (!this.options.transport || !this.capability.available) {
       throw new BroadcastBrowserPortError(this.capability.reasonCode || "broadcast_adapter_unavailable");
     }
-    const session = await this.options.transport.start(request, signal);
+    const programKey = `${request.program.programId}:${request.program.programEpoch}`;
+    const requestKey = JSON.stringify({
+      revision: request.program.programRevision,
+      compositionId: request.composition.compositionId,
+      sourceIds: request.composition.sourceIds,
+    });
+    const existing = this.activePrograms.get(programKey);
+    if (existing) {
+      if (existing.requestKey !== requestKey) {
+        throw new BroadcastBrowserPortError("broadcast_publication_conflict");
+      }
+      return existing.session;
+    }
+    const pending = this.pendingPrograms.get(programKey);
+    if (pending) {
+      if (pending.requestKey === requestKey) return pending.task;
+      throw new BroadcastBrowserPortError("broadcast_publication_conflict");
+    }
+    const task = this.startTransport(request, signal, programKey, requestKey);
+    this.pendingPrograms.set(programKey, Object.freeze({ requestKey, task }));
+    try {
+      return await task;
+    } finally {
+      if (this.pendingPrograms.get(programKey)?.task === task) this.pendingPrograms.delete(programKey);
+    }
+  }
+
+  private async startTransport(
+    request: BroadcastPublicationRequest,
+    signal: AbortSignal,
+    programKey: string,
+    requestKey: string,
+  ): Promise<BroadcastPublicationSession> {
+    const session = await this.options.transport!.start(request, signal);
     if (!session || session.adapterId !== this.capability.adapterId
       || session.programId !== request.program.programId
       || session.programEpoch !== request.program.programEpoch
@@ -66,7 +107,9 @@ class TransportBackedPublicationAdapter implements BroadcastPublicationPort {
       signal.throwIfAborted();
     }
     this.activeSessions.add(session.sessionId);
-    return Object.freeze({ ...session });
+    const normalized = Object.freeze({ ...session });
+    this.activePrograms.set(programKey, Object.freeze({ requestKey, session: normalized }));
+    return normalized;
   }
 
   async stop(session: BroadcastPublicationSession, signal: AbortSignal): Promise<void> {
@@ -76,6 +119,10 @@ class TransportBackedPublicationAdapter implements BroadcastPublicationPort {
     }
     await this.options.transport.stop(session, signal);
     this.activeSessions.delete(session.sessionId);
+    const programKey = `${session.programId}:${session.programEpoch}`;
+    if (this.activePrograms.get(programKey)?.session.sessionId === session.sessionId) {
+      this.activePrograms.delete(programKey);
+    }
   }
 }
 

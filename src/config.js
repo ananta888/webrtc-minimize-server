@@ -55,6 +55,16 @@ const DEFAULTS = Object.freeze({
   mediaAgentEnrollmentTtlMs: 10 * 60 * 1000,
   mediaAgentMaxPerPrincipal: 3,
   mediaAgentEnrollmentRateLimit: 5,
+  broadcastWhipEndpoint: "",
+  broadcastWhipProfile: "rfc9725",
+  broadcastWhipRedirectOrigins: [],
+  broadcastWhipTrickleIce: true,
+  broadcastWhipAudioCodecs: ["audio/opus"],
+  broadcastWhipVideoCodecs: ["video/vp8", "video/h264"],
+  broadcastWhipRequestTimeoutMs: 8_000,
+  broadcastWhipIceGatheringTimeoutMs: 10_000,
+  broadcastWhipConnectionTimeoutMs: 20_000,
+  broadcastWhipRetryBudget: 1,
 });
 
 const AUTH_MODES = new Set(["disabled", "optional", "required"]);
@@ -215,6 +225,39 @@ function httpOrigin(value, name) {
   return parsed.origin;
 }
 
+function httpsWhipEndpoint(value) {
+  const normalized = httpUrl(value, "BROADCAST_WHIP_ENDPOINT");
+  if (!normalized) return "";
+  const parsed = new URL(normalized);
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error("BROADCAST_WHIP_ENDPOINT must be an HTTPS URL without credentials, query or fragment");
+  }
+  return parsed.href.replace(/\/$/, "");
+}
+
+function httpsOrigins(value) {
+  const origins = commaSeparated(value);
+  if (origins.length > 8) throw new Error("BROADCAST_WHIP_REDIRECT_ORIGINS supports at most 8 origins");
+  return [...new Set(origins.map((origin) => {
+    const parsed = new URL(origin);
+    if (parsed.protocol !== "https:" || parsed.origin !== parsed.href.replace(/\/$/, "")
+      || parsed.username || parsed.password || parsed.search || parsed.hash) {
+      throw new Error("BROADCAST_WHIP_REDIRECT_ORIGINS entries must be HTTPS origins");
+    }
+    return parsed.origin;
+  }))];
+}
+
+function mediaTypes(value, fallback, kind, name) {
+  const items = commaSeparated(value === undefined ? fallback.join(",") : value)
+    .map((item) => item.toLowerCase());
+  if (items.length > 8 || new Set(items).size !== items.length
+    || items.some((item) => !new RegExp(`^${kind}/[A-Za-z0-9!#$&^_.+-]{1,64}$`, "i").test(item))) {
+    throw new Error(`${name} must contain up to 8 unique ${kind} MIME types`);
+  }
+  return items;
+}
+
 function keycloakRealm(value) {
   const normalized = String(value || "").trim();
   if (normalized && !/^[A-Za-z0-9._-]{1,128}$/.test(normalized)) {
@@ -313,6 +356,23 @@ export function loadConfig(env = process.env) {
   if (mediaAgentSelfServiceEnabled && (!mediaAgentRegistrationDb || !mediaAgentArtifactDir)) {
     throw new Error("media-agent self service requires registration DB and artifact directory paths");
   }
+  const broadcastWhipEndpoint = httpsWhipEndpoint(
+    env.BROADCAST_WHIP_ENDPOINT || DEFAULTS.broadcastWhipEndpoint,
+  );
+  const broadcastWhipProfile = String(
+    env.BROADCAST_WHIP_PROFILE || DEFAULTS.broadcastWhipProfile,
+  ).toLowerCase();
+  if (!new Set(["rfc9725", "mediamtx-1.20"]).has(broadcastWhipProfile)) {
+    throw new Error("BROADCAST_WHIP_PROFILE must be rfc9725 or mediamtx-1.20");
+  }
+  const broadcastWhipRedirectOrigins = httpsOrigins(
+    env.BROADCAST_WHIP_REDIRECT_ORIGINS || DEFAULTS.broadcastWhipRedirectOrigins.join(","),
+  );
+  const broadcastWhipTrickleIce = booleanValue(
+    env.BROADCAST_WHIP_TRICKLE_ICE,
+    DEFAULTS.broadcastWhipTrickleIce,
+    "BROADCAST_WHIP_TRICKLE_ICE",
+  );
   const peerRouteLeaseMs = boundedInteger(env.PEER_ROUTE_LEASE_MS, DEFAULTS.peerRouteLeaseMs, {
     minimum: 30_000, maximum: 300_000, name: "PEER_ROUTE_LEASE_MS",
   });
@@ -460,6 +520,42 @@ export function loadConfig(env = process.env) {
       env.MEDIA_AGENT_ENROLLMENT_RATE_LIMIT,
       DEFAULTS.mediaAgentEnrollmentRateLimit,
       { minimum: 1, maximum: 20, name: "MEDIA_AGENT_ENROLLMENT_RATE_LIMIT" },
+    ),
+    broadcastWhipEndpoint,
+    broadcastWhipProfile,
+    broadcastWhipRedirectOrigins: Object.freeze(broadcastWhipRedirectOrigins),
+    broadcastWhipTrickleIce,
+    broadcastWhipAudioCodecs: Object.freeze(mediaTypes(
+      env.BROADCAST_WHIP_AUDIO_CODECS,
+      DEFAULTS.broadcastWhipAudioCodecs,
+      "audio",
+      "BROADCAST_WHIP_AUDIO_CODECS",
+    )),
+    broadcastWhipVideoCodecs: Object.freeze(mediaTypes(
+      env.BROADCAST_WHIP_VIDEO_CODECS,
+      DEFAULTS.broadcastWhipVideoCodecs,
+      "video",
+      "BROADCAST_WHIP_VIDEO_CODECS",
+    )),
+    broadcastWhipRequestTimeoutMs: boundedInteger(
+      env.BROADCAST_WHIP_REQUEST_TIMEOUT_MS,
+      DEFAULTS.broadcastWhipRequestTimeoutMs,
+      { minimum: 1_000, maximum: 30_000, name: "BROADCAST_WHIP_REQUEST_TIMEOUT_MS" },
+    ),
+    broadcastWhipIceGatheringTimeoutMs: boundedInteger(
+      env.BROADCAST_WHIP_ICE_GATHERING_TIMEOUT_MS,
+      DEFAULTS.broadcastWhipIceGatheringTimeoutMs,
+      { minimum: 1_000, maximum: 30_000, name: "BROADCAST_WHIP_ICE_GATHERING_TIMEOUT_MS" },
+    ),
+    broadcastWhipConnectionTimeoutMs: boundedInteger(
+      env.BROADCAST_WHIP_CONNECTION_TIMEOUT_MS,
+      DEFAULTS.broadcastWhipConnectionTimeoutMs,
+      { minimum: 1_000, maximum: 60_000, name: "BROADCAST_WHIP_CONNECTION_TIMEOUT_MS" },
+    ),
+    broadcastWhipRetryBudget: boundedInteger(
+      env.BROADCAST_WHIP_RETRY_BUDGET,
+      DEFAULTS.broadcastWhipRetryBudget,
+      { minimum: 0, maximum: 2, name: "BROADCAST_WHIP_RETRY_BUDGET" },
     ),
   });
 }

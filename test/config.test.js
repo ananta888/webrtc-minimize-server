@@ -32,6 +32,13 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.equal(config.mediaAgentSelfServiceEnabled, false);
   assert.equal(config.mediaAgentEnrollmentTtlMs, 600_000);
   assert.equal(config.mediaAgentMaxPerPrincipal, 3);
+  assert.equal(config.broadcastWhipEndpoint, "");
+  assert.equal(config.broadcastWhipProfile, "rfc9725");
+  assert.deepEqual(config.broadcastWhipRedirectOrigins, []);
+  assert.equal(config.broadcastWhipTrickleIce, true);
+  assert.deepEqual(config.broadcastWhipAudioCodecs, ["audio/opus"]);
+  assert.deepEqual(config.broadcastWhipVideoCodecs, ["video/vp8", "video/h264"]);
+  assert.equal(config.broadcastWhipRetryBudget, 1);
 });
 
 test("loadConfig parses TURN configuration without preserving unknown fields", () => {
@@ -61,6 +68,12 @@ test("loadConfig rejects unsafe bounds and malformed public origins", () => {
   assert.throws(() => loadConfig({ PEER_EDGE_FALLBACK_MS: "500" }), /between 1000 and 30000/);
   assert.throws(() => loadConfig({ MEDIA_AGENT_RATE_LIMIT: "2001" }), /between 60 and 2000/);
   assert.throws(() => loadConfig({ MEDIA_AGENT_SELF_SERVICE_ENABLED: "true" }), /requires OIDC/);
+  assert.throws(() => loadConfig({ BROADCAST_WHIP_ENDPOINT: "http://media.example/live/whip" }), /HTTPS URL/);
+  assert.throws(() => loadConfig({ BROADCAST_WHIP_ENDPOINT: "https://media.example/live/whip?token=secret" }), /query/);
+  assert.throws(() => loadConfig({ BROADCAST_WHIP_REDIRECT_ORIGINS: "https://edge.example/path" }), /HTTPS origins/);
+  assert.throws(() => loadConfig({ BROADCAST_WHIP_AUDIO_CODECS: "video/vp8" }), /audio MIME/);
+  assert.throws(() => loadConfig({ BROADCAST_WHIP_RETRY_BUDGET: "3" }), /between 0 and 2/);
+  assert.throws(() => loadConfig({ BROADCAST_WHIP_PROFILE: "draft" }), /rfc9725 or mediamtx/);
   assert.throws(
     () => loadConfig({ PEER_EDGE_FALLBACK_MS: "9000", INFRASTRUCTURE_TURN_FALLBACK_MS: "9000" }),
     /longer/,
@@ -69,6 +82,31 @@ test("loadConfig rejects unsafe bounds and malformed public origins", () => {
     () => loadConfig({ PEER_ROUTE_LEASE_MS: "30000", PEER_ROUTE_RENEW_MS: "30000" }),
     /shorter/,
   );
+});
+
+test("loadConfig accepts a bounded secret-free WHIP browser policy", () => {
+  const config = loadConfig({
+    BROADCAST_WHIP_ENDPOINT: "https://media.example/live/whip/",
+    BROADCAST_WHIP_PROFILE: "mediamtx-1.20",
+    BROADCAST_WHIP_REDIRECT_ORIGINS: "https://edge-a.example,https://edge-b.example",
+    BROADCAST_WHIP_TRICKLE_ICE: "false",
+    BROADCAST_WHIP_AUDIO_CODECS: "audio/opus",
+    BROADCAST_WHIP_VIDEO_CODECS: "video/h264,video/vp8",
+    BROADCAST_WHIP_REQUEST_TIMEOUT_MS: "5000",
+    BROADCAST_WHIP_ICE_GATHERING_TIMEOUT_MS: "6000",
+    BROADCAST_WHIP_CONNECTION_TIMEOUT_MS: "12000",
+    BROADCAST_WHIP_RETRY_BUDGET: "2",
+  });
+  assert.equal(config.broadcastWhipEndpoint, "https://media.example/live/whip");
+  assert.equal(config.broadcastWhipProfile, "mediamtx-1.20");
+  assert.deepEqual(config.broadcastWhipRedirectOrigins, ["https://edge-a.example", "https://edge-b.example"]);
+  assert.equal(config.broadcastWhipTrickleIce, false);
+  assert.deepEqual(config.broadcastWhipVideoCodecs, ["video/h264", "video/vp8"]);
+  assert.equal(config.broadcastWhipRequestTimeoutMs, 5_000);
+  assert.equal(config.broadcastWhipIceGatheringTimeoutMs, 6_000);
+  assert.equal(config.broadcastWhipConnectionTimeoutMs, 12_000);
+  assert.equal(config.broadcastWhipRetryBudget, 2);
+  assert.equal(Object.hasOwn(config, "broadcastWhipToken"), false);
 });
 
 test("loadConfig accepts closed volunteer Edge-TURN definitions", () => {

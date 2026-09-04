@@ -4,8 +4,10 @@ Stand: 2026-09-04, Implementierungsstufe `TBP-010`.
 
 Die Angular-Anwendung besitzt jetzt einen sichtbaren Bereich `Broadcast` für
 die lokale Vorbereitung eigener Quellen. Der Bereich sendet noch keine Medien
-an einen Gateway und startet keinen öffentlichen Stream. RFC-9725-WHIP folgt
-getrennt in `TBP-011`.
+an einen Gateway und startet keinen öffentlichen Stream. Der getrennte
+[RFC-9725-WHIP-Transport](browser-whip-publisher.md) ist inzwischen vorhanden,
+aber noch nicht an diesen UI-Start und eine öffentliche Grant-HTTP-Grenze
+angeschlossen.
 
 ## Bewusster Ablauf
 

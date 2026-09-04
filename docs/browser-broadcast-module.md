@@ -1,14 +1,17 @@
 # Browser-Broadcast-Modul
 
-Stand: 2026-09-03. `TBP-009` definiert Ports und Lifecycle; der
+Stand: 2026-09-04. `TBP-009` definiert Ports und Lifecycle; der
 [Own-Source-Preflight](broadcast-own-source-preflight.md) aus `TBP-010` bindet
-davon inzwischen Source-Auswahl und Capture-Fork sichtbar in Angular ein.
+davon inzwischen Source-Auswahl und Capture-Fork sichtbar in Angular ein. Der
+[Browser-WHIP-Publisher](browser-whip-publisher.md) aus `TBP-011` implementiert
+den begrenzten RFC-9725-Transport hinter dem Publication-Port.
 
 Das Browser-Modul legt die kleinen Softwareports und den deterministischen
 Lifecycle für spätere Broadcast-Publisher und -Player fest. Es aktiviert noch
-keinen produktiven Broadcastpfad: Eigene Preview-Forks sind vorhanden; WHIP,
-LL-HLS und ein Zuschauer-Player sind weiterhin nicht angeschlossen. Diese
-Fähigkeiten folgen in eigenen Todo-Schritten.
+keinen produktiven Broadcastpfad: Eigene Preview-Forks und der separat real
+getestete WHIP-Transport sind vorhanden; die öffentliche Grant-HTTP-Grenze,
+Program-Orchestrierung, LL-HLS und ein Zuschauer-Player sind weiterhin nicht
+angeschlossen. Diese Fähigkeiten folgen in eigenen Todo-Schritten.
 
 ## Verantwortungen
 
@@ -91,9 +94,10 @@ Broadcast-Panel allein ruft keinen Consent-, Capture- oder Playback-Port auf.
 WHIP-, Native-Bridge-, Provider- und Mock-Adapter implementieren denselben
 kleinen Publication-Port. Ein Adapter ohne Transport meldet `available: false`
 mit einem maschinenlesbaren Grund und wirft beim Start; er simuliert keine
-Session. Der Mock ist ausschließlich für deterministische Tests verfügbar.
-Der WHIP-Adapter meldet Simulcast noch als nicht vorhanden. Ein konkreter
-RFC-9725-Transport folgt in `TBP-011`.
+Session. Der Mock ist ausschließlich für deterministische Tests verfügbar. Der
+WHIP-Adapter kann nun den konkreten `Rfc9725WhipTransport` erhalten; ohne
+geprüften Runtime-Endpunkt und Authorization-Port bleibt er unavailable.
+Simulcast bleibt bis `TBP-012` ehrlich als nicht verfügbar gemeldet.
 
 ## Verifikation
 
