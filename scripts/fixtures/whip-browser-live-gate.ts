@@ -13,14 +13,51 @@ if (!button) throw new Error("live_gate_button_missing");
 
 button.addEventListener("click", async () => {
   button.disabled = true;
-  const canvas = document.createElement("canvas");
-  canvas.width = 320;
-  canvas.height = 180;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("live_gate_canvas_unavailable");
-  context.fillStyle = "#32d3a4";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  const stream = canvas.captureStream(10);
+  const sources: Array<Readonly<{ stream: MediaStream; animation: ReturnType<typeof setInterval> }>> = [];
+  const mediaByComposition = new Map<string, Readonly<{
+    stream: MediaStream;
+    tracks: readonly Readonly<{
+      sourceId: string;
+      sourceKind: "camera" | "screen" | "slate";
+      envelope: "clear-program-v1";
+      track: MediaStreamTrack;
+    }>[];
+  }>>();
+  const createSource = (index: number) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 180;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("live_gate_canvas_unavailable");
+    let frame = 0;
+    const draw = () => {
+      frame += 1;
+      context.fillStyle = index % 2 === 0 ? "#32d3a4" : "#3377dd";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = "#ffffff";
+      context.fillRect((frame * 7) % 280, 70, 40, 40);
+    };
+    draw();
+    const animation = setInterval(draw, 50);
+    const stream = canvas.captureStream(10);
+    sources.push({ stream, animation });
+    const sourceId = `src_${String(index).padStart(16, "0")}`;
+    const compositionId = `composition-live-gate-${index}`;
+    const sourceKind = index % 3 === 1 ? "screen" : index % 3 === 2 ? "slate" : "camera";
+    const media = Object.freeze({
+      stream,
+      tracks: Object.freeze([Object.freeze({
+        sourceId,
+        sourceKind,
+        envelope: "clear-program-v1" as const,
+        track: stream.getVideoTracks()[0],
+      })]),
+    });
+    mediaByComposition.set(compositionId, media);
+    return { compositionId, sourceId, media };
+  };
+  const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+  const initial = createSource(0);
   const request: BroadcastPublicationRequest = {
     requestVersion: 1,
     program: {
@@ -31,8 +68,8 @@ button.addEventListener("click", async () => {
       programEpoch: 1,
     },
     composition: {
-      compositionId: "composition-live-gate",
-      sourceIds: ["src_aaaaaaaaaaaaaaaa"],
+      compositionId: initial.compositionId,
+      sourceIds: [initial.sourceId],
     },
   };
   const transport = new Rfc9725WhipTransport({
@@ -54,7 +91,13 @@ button.addEventListener("click", async () => {
     retryBudget: 1,
   }, {
     allowLoopbackHttpForTests: true,
-    media: { resolve: async () => stream },
+    media: {
+      resolve: async (composition) => {
+        const media = mediaByComposition.get(composition.compositionId);
+        if (!media) throw new Error("live_gate_composition_missing");
+        return media;
+      },
+    },
     authorization: {
       authorize: async () => ({
         authorizationVersion: 1,
@@ -62,10 +105,28 @@ button.addEventListener("click", async () => {
         expiresAt: Date.now() + 60_000,
       }),
     },
+    scheduleAdaptation: false,
   });
   try {
     const session = await transport.start(request, new AbortController().signal);
     const connected = transport.status(session);
+    const encodedFrames: number[] = [];
+    await wait(700);
+    await transport.sampleStats(session);
+    await wait(700);
+    encodedFrames.push((await transport.sampleStats(session)).framesEncodedDelta || 0);
+    for (let index = 1; index <= 4; index += 1) {
+      const replacement = createSource(index);
+      await transport.replaceComposition(session, {
+        compositionId: replacement.compositionId,
+        sourceIds: [replacement.sourceId],
+      }, new AbortController().signal);
+      await wait(700);
+      await transport.sampleStats(session);
+      await wait(700);
+      encodedFrames.push((await transport.sampleStats(session)).framesEncodedDelta || 0);
+      sources[index - 1].stream.getTracks().forEach((track) => track.stop());
+    }
     let restartError = "";
     try {
       await transport.restartIce(session, new AbortController().signal);
@@ -77,7 +138,9 @@ button.addEventListener("click", async () => {
       connected: connected.lifecycle === "connected",
       stopped: transport.status(session).lifecycle === "stopped",
       restartError,
-      trackStateBeforeCleanup: stream.getVideoTracks()[0]?.readyState,
+      switches: 4,
+      minimumFramesAfterSwitch: Math.min(...encodedFrames),
+      trackStateBeforeCleanup: sources.at(-1)?.stream.getVideoTracks()[0]?.readyState,
     });
   } catch (error) {
     window.__whipGateResult = Object.freeze({
@@ -86,7 +149,10 @@ button.addEventListener("click", async () => {
       errorCode: error && typeof error === "object" && "code" in error ? String(error.code) : "live_gate_failed",
     });
   } finally {
-    stream.getTracks().forEach((track) => track.stop());
+    for (const source of sources) {
+      clearInterval(source.animation);
+      source.stream.getTracks().forEach((track) => track.stop());
+    }
   }
 });
 

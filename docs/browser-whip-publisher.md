@@ -99,5 +99,7 @@ Broadcast bleibt trotzdem deaktiviert, bis mindestens die aktionsgebundene
 Grant-HTTP-Grenze, Program-Orchestrierung, der isolierte Gatewaybetrieb,
 Ausgabe/Playback und die sichtbare Start-/Stop-UI angeschlossen und separat
 verifiziert wurden. Simulcast ist im Runtime-Schema vorbereitet, aber noch
-absichtlich `enabled: false`; feste Media-Sections, Quellenwechsel und adaptive
-Sendersteuerung gehören zu `TBP-012`.
+absichtlich `enabled: false`. Feste Media-Sections, sichere Quellenwechsel und
+die gedämpfte Sendersteuerung sind inzwischen in
+[TBP-012](whip-source-switching-adaptation.md) beschrieben; öffentlich nutzbar
+werden sie erst mit der späteren Grant-, Gateway- und UI-Anbindung.

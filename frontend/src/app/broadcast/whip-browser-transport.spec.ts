@@ -20,12 +20,21 @@ const RESTART_OFFER = OFFER.replace("localA", "localB").replace(
   "abcdefghijklmnopqrstuvwx", "bcdefghijklmnopqrstuvwxy",
 );
 
+const AUDIO_OFFER = OFFER
+  .replace("m=video 9 UDP/TLS/RTP/SAVPF 96", "m=audio 9 UDP/TLS/RTP/SAVPF 111")
+  .replace("a=msid:program-stream video-track", "a=msid:program-stream audio-track")
+  .replace("a=rtpmap:96 VP8/90000", "a=rtpmap:111 opus/48000/2");
+
 const ANSWER = [
   "v=0", "o=- 2 1 IN IP4 127.0.0.1", "s=-", "t=0 0", "a=group:BUNDLE 0",
   "m=video 9 UDP/TLS/RTP/SAVPF 96", "c=IN IP4 0.0.0.0", "a=ice-ufrag:remoteA",
   "a=ice-pwd:zyxwvutsrqponmlkjihgfedc", "a=setup:passive", "a=mid:0",
   "a=recvonly", "a=rtcp-mux", "a=rtcp-mux-only", "a=rtpmap:96 VP8/90000", "",
 ].join("\r\n");
+
+const AUDIO_ANSWER = ANSWER
+  .replace("m=video 9 UDP/TLS/RTP/SAVPF 96", "m=audio 9 UDP/TLS/RTP/SAVPF 111")
+  .replace("a=rtpmap:96 VP8/90000", "a=rtpmap:111 opus/48000/2");
 
 const RESTART_FRAGMENT = [
   "a=group:BUNDLE 0", "m=video 9 UDP/TLS/RTP/SAVPF 96", "a=mid:0",
@@ -46,6 +55,23 @@ function request(): BroadcastPublicationRequest {
       programEpoch: 7,
     },
     composition: { compositionId: "composition-1", sourceIds: ["src_aaaaaaaaaaaaaaaa"] },
+  };
+}
+
+function fakeTrack(kind: "audio" | "video"): MediaStreamTrack {
+  return Object.assign(new EventTarget(), { kind, readyState: "live", contentHint: "" }) as MediaStreamTrack;
+}
+
+function resolvedMedia(
+  descriptors: readonly Readonly<{
+    sourceId: string;
+    sourceKind: "microphone" | "camera" | "screen" | "screen-audio" | "silence" | "slate";
+    track: MediaStreamTrack;
+  }>[],
+) {
+  return {
+    stream: { getTracks: () => descriptors.map(({ track }) => track) } as unknown as MediaStream,
+    tracks: descriptors.map((descriptor) => ({ ...descriptor, envelope: "clear-program-v1" as const })),
   };
 }
 
@@ -81,17 +107,39 @@ class FakePeerConnection extends EventTarget {
     this.connectionState = "closed";
   });
   readonly restartIce = vi.fn();
+  readonly senders: Array<RTCRtpSender & { replacedTrack: MediaStreamTrack }> = [];
+  readonly transceiverInits: RTCRtpTransceiverInit[] = [];
   private restart = false;
+  private statsTick = 0;
 
   addTransceiver(_track: MediaStreamTrack, init?: RTCRtpTransceiverInit): RTCRtpTransceiver {
     expect(init?.direction).toBe("sendonly");
     expect(init?.streams).toHaveLength(1);
-    return { setCodecPreferences: this.setCodecPreferences } as unknown as RTCRtpTransceiver;
+    let replacedTrack = _track;
+    this.transceiverInits.push({
+      ...init,
+      streams: init?.streams ? [...init.streams] : undefined,
+      sendEncodings: init?.sendEncodings?.map((encoding) => ({ ...encoding })),
+    });
+    let parameters = {
+      encodings: init?.sendEncodings?.map((encoding) => ({ ...encoding })) || [{}],
+    } as RTCRtpSendParameters;
+    const sender = {
+      get replacedTrack() { return replacedTrack; },
+      getParameters: vi.fn(() => structuredClone(parameters)),
+      setParameters: vi.fn(async (next: RTCRtpSendParameters) => { parameters = structuredClone(next); }),
+      replaceTrack: vi.fn(async (next: MediaStreamTrack | null) => {
+        if (next) replacedTrack = next;
+      }),
+    } as unknown as RTCRtpSender & { replacedTrack: MediaStreamTrack };
+    this.senders.push(sender);
+    return { sender, setCodecPreferences: this.setCodecPreferences } as unknown as RTCRtpTransceiver;
   }
 
   async createOffer(options?: RTCOfferOptions): Promise<RTCSessionDescriptionInit> {
     this.restart = options?.iceRestart === true;
-    return { type: "offer", sdp: this.restart ? RESTART_OFFER : OFFER };
+    const audioOnly = this.senders.length === 1 && this.senders[0].replacedTrack.kind === "audio";
+    return { type: "offer", sdp: this.restart ? RESTART_OFFER : audioOnly ? AUDIO_OFFER : OFFER };
   }
 
   async setLocalDescription(description?: RTCLocalSessionDescriptionInit): Promise<void> {
@@ -117,6 +165,24 @@ class FakePeerConnection extends EventTarget {
     this.connectionState = "connected";
     this.dispatchEvent(new Event("connectionstatechange"));
   }
+
+  async getStats(): Promise<RTCStatsReport> {
+    this.statsTick += 1;
+    return new Map([
+      ["outbound", {
+        type: "outbound-rtp",
+        kind: this.senders[0]?.replacedTrack.kind || "video",
+        bytesSent: this.statsTick * 100_000,
+        packetsSent: this.statsTick * 100,
+        framesEncoded: this.statsTick * 20,
+        totalEncodeTime: this.statsTick * 0.2,
+      }],
+      ["remote", { type: "remote-inbound-rtp", packetsLost: 0, roundTripTime: 0.05 }],
+      ["pair", {
+        type: "candidate-pair", selected: true, state: "succeeded", availableOutgoingBitrate: 5_000_000,
+      }],
+    ]) as unknown as RTCStatsReport;
+  }
 }
 
 function response(body: string | null, init: ResponseInit, url = ""): Response {
@@ -125,12 +191,12 @@ function response(body: string | null, init: ResponseInit, url = ""): Response {
   return result;
 }
 
-function created(url = ""): Response {
-  return response(ANSWER, {
+function created(url = "", answer = ANSWER): Response {
+  return response(answer, {
     status: 201,
     headers: {
       "content-type": "application/sdp",
-      "content-length": String(new TextEncoder().encode(ANSWER).byteLength),
+      "content-length": String(new TextEncoder().encode(answer).byteLength),
       location: "/live/session/opaque-resource",
       etag: '"ice-1"',
     },
@@ -141,19 +207,43 @@ function fixture(
   fetchResponses: readonly Response[] | ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>),
   configurationOverrides: Partial<WhipRuntimeConfiguration> = {},
 ) {
+  let currentNow = NOW;
   const peer = new FakePeerConnection();
+  const peers = [peer];
+  let peerConnectionCount = 0;
   const peerConnections: WhipPeerConnectionFactory = {
-    create: vi.fn(() => peer as unknown as RTCPeerConnection),
-    capabilities: vi.fn(() => ({
-      codecs: [{ mimeType: "video/VP8", clockRate: 90_000 }],
+    create: vi.fn(() => {
+      if (peerConnectionCount === 0) {
+        peerConnectionCount += 1;
+        return peer as unknown as RTCPeerConnection;
+      }
+      const next = new FakePeerConnection();
+      peers.push(next);
+      peerConnectionCount += 1;
+      return next as unknown as RTCPeerConnection;
+    }),
+    capabilities: vi.fn((kind) => ({
+      codecs: [kind === "audio"
+        ? { mimeType: "audio/opus", clockRate: 48_000, channels: 2 }
+        : { mimeType: "video/VP8", clockRate: 90_000 }],
       headerExtensions: [],
     })),
   };
-  const track = { kind: "video", readyState: "live" } as MediaStreamTrack;
+  const track = fakeTrack("video");
   const stream = {
     getTracks: () => [track],
   } as unknown as MediaStream;
-  const media: WhipMediaStreamPort = { resolve: vi.fn(async () => stream) };
+  const media: WhipMediaStreamPort = {
+    resolve: vi.fn(async () => ({
+      stream,
+      tracks: [{
+        sourceId: "src_aaaaaaaaaaaaaaaa",
+        sourceKind: "camera",
+        envelope: "clear-program-v1",
+        track,
+      }],
+    })),
+  };
   const authorizations: Array<{ action: WhipAction; resourceUrl: string }> = [];
   const authorization: WhipAuthorizationPort = {
     authorize: vi.fn(async (input) => {
@@ -161,7 +251,7 @@ function fixture(
       return {
         authorizationVersion: 1,
         accessToken: `grant-${input.action}-abcdefghijklmnop`,
-        expiresAt: NOW + 60_000,
+        expiresAt: currentNow + 60_000,
       };
     }),
   };
@@ -180,10 +270,22 @@ function fixture(
     media,
     peerConnections,
     fetch: fetchMock as unknown as typeof fetch,
-    now: () => NOW,
+    now: () => currentNow,
     delay,
+    scheduleAdaptation: false,
   });
-  return { transport, peer, peerConnections, media, authorization, authorizations, fetchMock, delay };
+  return {
+    transport,
+    peer,
+    peers,
+    peerConnections,
+    media,
+    authorization,
+    authorizations,
+    fetchMock,
+    delay,
+    advanceNow: (milliseconds: number) => { currentNow += milliseconds; },
+  };
 }
 
 describe("Rfc9725WhipTransport", () => {
@@ -198,6 +300,7 @@ describe("Rfc9725WhipTransport", () => {
     expect(await context.transport.start(request(), signal)).toBe(session);
     expect(context.transport.status(session)).toEqual({
       lifecycle: "connected", errorCode: "", restartAttempts: 0,
+      qualityLevel: "high", adaptationReason: "initial-profile",
     });
     expect(context.fetchMock).toHaveBeenCalledTimes(2);
     const [postUrl, postInit] = context.fetchMock.mock.calls[0];
@@ -244,6 +347,7 @@ describe("Rfc9725WhipTransport", () => {
     expect(context.peer.remoteDescription?.sdp).toContain("a=ice-ufrag:remoteB");
     expect(context.transport.status(session)).toEqual({
       lifecycle: "connected", errorCode: "", restartAttempts: 1,
+      qualityLevel: "high", adaptationReason: "initial-profile",
     });
     await context.transport.stop(session, signal);
   });
@@ -305,6 +409,140 @@ describe("Rfc9725WhipTransport", () => {
     expect(new Headers(context.fetchMock.mock.calls[1][1]?.headers).get("if-match")).toBe("*");
     await expect(context.transport.restartIce(session, signal)).rejects.toThrow("whip_ice_restart_unsupported");
     await context.transport.stop(session, signal);
+  });
+
+  it("uses only capability-checked runtime simulcast encodings and preserves their hard ceilings", async () => {
+    const sendEncodings = [
+      { rid: "q", active: true, maxBitrate: 120_000, maxFramerate: 6, scaleResolutionDownBy: 4 },
+      { rid: "h", active: true, maxBitrate: 420_000, maxFramerate: 15, scaleResolutionDownBy: 2 },
+      { rid: "f", active: true, maxBitrate: 1_200_000, maxFramerate: 24, scaleResolutionDownBy: 1 },
+    ];
+    const context = fixture([
+      created(), response(null, { status: 204 }), response(null, { status: 200 }),
+    ], { simulcast: { enabled: true, sendEncodings } });
+    const signal = new AbortController().signal;
+    const session = await context.transport.start(request(), signal);
+    expect(context.peer.transceiverInits[0].sendEncodings).toEqual(sendEncodings);
+    const applied = context.peer.senders[0].getParameters().encodings;
+    expect(applied.map(({ rid, scaleResolutionDownBy }) => ({ rid, scaleResolutionDownBy })))
+      .toEqual(sendEncodings.map(({ rid, scaleResolutionDownBy }) => ({ rid, scaleResolutionDownBy })));
+    expect(applied.reduce((sum, encoding) => sum + Number(encoding.maxBitrate || 0), 0)).toBeLessThanOrEqual(1_200_000);
+    applied.forEach((encoding, index) => {
+      expect(Number(encoding.maxBitrate)).toBeLessThanOrEqual(sendEncodings[index].maxBitrate);
+      expect(Number(encoding.maxFramerate)).toBeLessThanOrEqual(sendEncodings[index].maxFramerate);
+    });
+    await context.transport.stop(session, signal);
+  });
+
+  it("replaces a compatible source without renegotiation and exposes source end until a slate replaces it", async () => {
+    const context = fixture([created(), response(null, { status: 204 }), response(null, { status: 200 })]);
+    const signal = new AbortController().signal;
+    const session = await context.transport.start(request(), signal);
+    const screen = fakeTrack("video");
+    vi.mocked(context.media.resolve).mockResolvedValueOnce(resolvedMedia([{
+      sourceId: "src_bbbbbbbbbbbbbbbb", sourceKind: "screen", track: screen,
+    }]));
+    const switched = await context.transport.replaceComposition(session, {
+      compositionId: "composition-screen",
+      sourceIds: ["src_bbbbbbbbbbbbbbbb"],
+    }, signal);
+    expect(switched).toBe(session);
+    expect(context.fetchMock).toHaveBeenCalledTimes(2);
+    expect(context.peer.senders[0].replacedTrack).toBe(screen);
+    expect(context.transport.status(session)).toMatchObject({
+      lifecycle: "connected", adaptationReason: "source-replaced",
+    });
+    screen.dispatchEvent(new Event("ended"));
+    expect(context.transport.status(session)).toMatchObject({
+      lifecycle: "degraded", errorCode: "whip_video_source_ended", adaptationReason: "source-ended",
+    });
+
+    const slate = fakeTrack("video");
+    vi.mocked(context.media.resolve).mockResolvedValueOnce(resolvedMedia([{
+      sourceId: "src_cccccccccccccccc", sourceKind: "slate", track: slate,
+    }]));
+    expect(await context.transport.replaceComposition(session, {
+      compositionId: "composition-slate",
+      sourceIds: ["src_cccccccccccccccc"],
+    }, signal)).toBe(session);
+    expect(context.transport.status(session)).toMatchObject({ lifecycle: "connected", errorCode: "" });
+    await context.transport.stop(session, signal);
+  });
+
+  it("uses DELETE plus a fresh POST instead of changing negotiated media sections", async () => {
+    const context = fixture([
+      created(), response(null, { status: 204 }), response(null, { status: 200 }),
+      created("", AUDIO_ANSWER), response(null, { status: 204 }), response(null, { status: 200 }),
+    ]);
+    const signal = new AbortController().signal;
+    const session = await context.transport.start(request(), signal);
+    const audio = fakeTrack("audio");
+    const audioMedia = resolvedMedia([
+      { sourceId: "src_bbbbbbbbbbbbbbbb", sourceKind: "microphone", track: audio },
+    ]);
+    vi.mocked(context.media.resolve)
+      .mockResolvedValueOnce(audioMedia)
+      .mockResolvedValueOnce(audioMedia);
+    const restarted = await context.transport.replaceComposition(session, {
+      compositionId: "composition-audio",
+      sourceIds: ["src_bbbbbbbbbbbbbbbb"],
+    }, signal);
+    expect(restarted.sessionId).not.toBe(session.sessionId);
+    expect(context.transport.status(session).lifecycle).toBe("stopped");
+    expect(context.peers).toHaveLength(2);
+    expect(context.peers[0].close).toHaveBeenCalledOnce();
+    expect(context.peers[1].remoteDescription?.sdp).toContain("m=audio");
+    expect(context.fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual([
+      "POST", "PATCH", "DELETE", "POST", "PATCH",
+    ]);
+    await context.transport.stop(restarted, signal);
+  });
+
+  it("keeps encoding through 360 adaptation cycles, repeated source switches and one network interruption", async () => {
+    const context = fixture([
+      created(), response(null, { status: 204 }),
+      response(RESTART_FRAGMENT, {
+        status: 200,
+        headers: { "content-type": "application/trickle-ice-sdpfrag", etag: '"ice-2"' },
+      }),
+      response(null, { status: 200 }),
+    ]);
+    const signal = new AbortController().signal;
+    const session = await context.transport.start(request(), signal);
+    let progressiveSamples = 0;
+    for (let counter = 1; counter <= 360; counter += 1) {
+      context.advanceNow(2_000);
+      if (counter % 60 === 0) {
+        const replacement = fakeTrack("video");
+        const sourceId = `src_${String(counter).padStart(16, "0")}`;
+        vi.mocked(context.media.resolve).mockResolvedValueOnce(resolvedMedia([{
+          sourceId,
+          sourceKind: counter % 120 === 0 ? "screen" : "camera",
+          track: replacement,
+        }]));
+        await context.transport.replaceComposition(session, {
+          compositionId: `composition-${counter}`,
+          sourceIds: [sourceId],
+        }, signal);
+      }
+      if (counter === 180) {
+        context.peer.connectionState = "disconnected";
+        context.peer.dispatchEvent(new Event("connectionstatechange"));
+        expect(context.transport.status(session).lifecycle).toBe("degraded");
+        await context.transport.restartIce(session, signal);
+      }
+      const sample = await context.transport.sampleStats(session);
+      if (sample.framesEncodedDelta !== null) {
+        expect(sample.framesEncodedDelta).toBeGreaterThan(0);
+        progressiveSamples += 1;
+      }
+    }
+    expect(progressiveSamples).toBeGreaterThan(350);
+    expect(context.transport.status(session)).toMatchObject({
+      lifecycle: "connected", restartAttempts: 1,
+    });
+    await context.transport.stop(session, signal);
+    expect(context.peer.close).toHaveBeenCalledOnce();
   });
 
   it("fails closed on unauthorized, oversized and stale grant responses", async () => {

@@ -8,11 +8,14 @@ import {
   NormalizedWhipRuntimeConfiguration,
   WhipAction,
   WhipAuthorizationPort,
+  WhipMediaTrackDescriptor,
   WhipMediaStreamPort,
+  WhipResolvedMedia,
   WhipRuntimeConfiguration,
   WhipSessionLifecycle,
   assertWhipResourceUrl,
   normalizeWhipAuthorization,
+  normalizeWhipResolvedMedia,
   normalizeWhipRuntimeConfiguration,
 } from "./whip-contracts";
 import {
@@ -22,6 +25,14 @@ import {
   prepareWhipOffer,
   validateWhipAnswer,
 } from "./whip-sdp";
+import {
+  DEFAULT_WHIP_SENDER_POLICY,
+  WhipAdaptationSample,
+  WhipAdaptiveSenderController,
+  WhipSenderBinding,
+  WhipSenderPolicy,
+  WhipSenderQualityLevel,
+} from "./whip-sender-controller";
 
 export interface WhipPeerConnectionFactory {
   create(configuration: RTCConfiguration): RTCPeerConnection;
@@ -32,6 +43,8 @@ export interface WhipSessionStatus {
   readonly lifecycle: WhipSessionLifecycle;
   readonly errorCode: string;
   readonly restartAttempts: number;
+  readonly qualityLevel: WhipSenderQualityLevel | null;
+  readonly adaptationReason: string;
 }
 
 export interface Rfc9725WhipTransportDependencies {
@@ -42,6 +55,8 @@ export interface Rfc9725WhipTransportDependencies {
   readonly now?: () => number;
   readonly delay?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   readonly allowLoopbackHttpForTests?: boolean;
+  readonly senderPolicy?: WhipSenderPolicy;
+  readonly scheduleAdaptation?: boolean;
 }
 
 interface ActiveWhipSession {
@@ -49,6 +64,14 @@ interface ActiveWhipSession {
   readonly program: BroadcastPublicationRequest["program"];
   readonly peerConnection: RTCPeerConnection;
   readonly resourceUrl: string;
+  request: BroadcastPublicationRequest;
+  media: WhipResolvedMedia;
+  bindings: readonly WhipSenderBinding[];
+  senderController: WhipAdaptiveSenderController;
+  adaptationTimer: ReturnType<typeof setInterval> | null;
+  adaptationRunning: boolean;
+  adaptationReason: string;
+  trackListeners: ReadonlyMap<MediaStreamTrack, () => void>;
   etag: string | null;
   lifecycle: WhipSessionLifecycle;
   errorCode: string;
@@ -268,6 +291,7 @@ export class Rfc9725WhipTransport implements BroadcastPublicationTransport {
   private readonly fetchRequest: typeof fetch;
   private readonly now: () => number;
   private readonly delay: (milliseconds: number, signal: AbortSignal) => Promise<void>;
+  private readonly senderPolicy: WhipSenderPolicy;
   private readonly sessions = new Map<string, ActiveWhipSession>();
   private readonly sessionsByProgram = new Map<string, ActiveWhipSession>();
   private readonly startTasks = new Map<string, Promise<BroadcastPublicationSession>>();
@@ -283,16 +307,91 @@ export class Rfc9725WhipTransport implements BroadcastPublicationTransport {
     this.fetchRequest = dependencies.fetch || fetch.bind(globalThis);
     this.now = dependencies.now || Date.now;
     this.delay = dependencies.delay || defaultDelay;
+    this.senderPolicy = dependencies.senderPolicy || DEFAULT_WHIP_SENDER_POLICY;
   }
 
   status(session: BroadcastPublicationSession): WhipSessionStatus {
     const active = this.sessions.get(session.sessionId);
-    if (!active) return Object.freeze({ lifecycle: "stopped", errorCode: "", restartAttempts: 0 });
+    if (!active) return Object.freeze({
+      lifecycle: "stopped",
+      errorCode: "",
+      restartAttempts: 0,
+      qualityLevel: null,
+      adaptationReason: "",
+    });
     return Object.freeze({
       lifecycle: active.lifecycle,
       errorCode: active.errorCode,
       restartAttempts: active.restartAttempts,
+      qualityLevel: active.senderController.level,
+      adaptationReason: active.adaptationReason,
     });
+  }
+
+  async replaceComposition(
+    session: BroadcastPublicationSession,
+    composition: BroadcastPublicationRequest["composition"],
+    signal: AbortSignal,
+  ): Promise<BroadcastPublicationSession> {
+    signal.throwIfAborted();
+    const active = this.sessions.get(session.sessionId);
+    if (!active || active.lifecycle === "stopped") fail("unknown_whip_session");
+    const media = this.resolveMedia(composition, await this.dependencies.media.resolve(composition, signal));
+    signal.throwIfAborted();
+    const currentKinds = active.bindings.map(({ descriptor }) => descriptor.track.kind).sort().join(",");
+    const replacementKinds = media.tracks.map(({ track }) => track.kind).sort().join(",");
+    if (currentKinds !== replacementKinds) {
+      const replacementRequest: BroadcastPublicationRequest = Object.freeze({
+        requestVersion: 1,
+        program: active.request.program,
+        composition,
+      });
+      await this.stop(active.session, signal);
+      return this.start(replacementRequest, signal);
+    }
+    const replacements = active.bindings.map((binding) => ({
+      binding,
+      descriptor: media.tracks.find(({ track }) => track.kind === binding.descriptor.track.kind)!,
+    }));
+    const completed: typeof replacements = [];
+    try {
+      for (const replacement of replacements) {
+        if (replacement.binding.descriptor.envelope !== replacement.descriptor.envelope) {
+          fail("whip_replacement_envelope_mismatch");
+        }
+        await replacement.binding.sender.replaceTrack(replacement.descriptor.track);
+        completed.push(replacement);
+      }
+    } catch (error) {
+      for (const replacement of completed.reverse()) {
+        try {
+          await replacement.binding.sender.replaceTrack(replacement.binding.descriptor.track);
+        } catch {
+          active.lifecycle = "failed";
+          active.errorCode = "whip_replacement_rollback_failed";
+        }
+      }
+      if (active.lifecycle !== "failed") {
+        active.lifecycle = "degraded";
+        active.errorCode = "whip_replacement_failed";
+      }
+      throw error instanceof BroadcastBrowserPortError
+        ? error
+        : new BroadcastBrowserPortError(active.errorCode);
+    }
+    this.removeTrackListeners(active);
+    active.media = media;
+    active.request = Object.freeze({ ...active.request, composition });
+    active.bindings = Object.freeze(replacements.map(({ binding, descriptor }) => Object.freeze({
+      sender: binding.sender,
+      descriptor,
+    })));
+    const applied = await active.senderController.replaceBindings(active.bindings);
+    this.installTrackListeners(active);
+    active.lifecycle = applied ? "connected" : "degraded";
+    active.errorCode = applied ? "" : "whip_sender_parameters_degraded";
+    active.adaptationReason = "source-replaced";
+    return active.session;
   }
 
   async start(
@@ -397,13 +496,25 @@ export class Rfc9725WhipTransport implements BroadcastPublicationTransport {
     }
   }
 
+  async sampleStats(session: BroadcastPublicationSession): Promise<WhipAdaptationSample> {
+    const active = this.sessions.get(session.sessionId);
+    if (!active || active.lifecycle === "stopped") fail("unknown_whip_session");
+    const sample = await active.senderController.sample();
+    active.adaptationReason = sample.reasonCode;
+    return sample;
+  }
+
   private async create(
     request: BroadcastPublicationRequest,
     signal: AbortSignal,
   ): Promise<BroadcastPublicationSession> {
-    const stream = await this.dependencies.media.resolve(request.composition, signal);
+    const media = this.resolveMedia(
+      request.composition,
+      await this.dependencies.media.resolve(request.composition, signal),
+    );
     signal.throwIfAborted();
-    const tracks = stream?.getTracks?.() || [];
+    const { stream } = media;
+    const tracks = media.tracks.map(({ track }) => track);
     const audio = tracks.filter((track) => track.kind === "audio");
     const video = tracks.filter((track) => track.kind === "video");
     if (tracks.length < 1 || tracks.length > 2 || audio.length > 1 || video.length > 1
@@ -414,9 +525,13 @@ export class Rfc9725WhipTransport implements BroadcastPublicationTransport {
       iceServers: [...this.configuration.iceServers],
     });
     const collector = collectCandidates(peerConnection, this.configuration.maximumCandidates);
+    const bindings: WhipSenderBinding[] = [];
     let resourceUrl: string | null = null;
     try {
-      for (const track of [...audio, ...video]) this.addTrack(peerConnection, track, stream);
+      for (const track of [...audio, ...video]) {
+        const descriptor = media.tracks.find((candidate) => candidate.track === track)!;
+        bindings.push(Object.freeze({ descriptor, sender: this.addTrack(peerConnection, descriptor, stream) }));
+      }
       const offer = await peerConnection.createOffer();
       const preparedOffer = prepareWhipOffer(offer.sdp, this.configuration.maximumSdpBytes);
       await peerConnection.setLocalDescription({ type: "offer", sdp: preparedOffer });
@@ -471,14 +586,29 @@ export class Rfc9725WhipTransport implements BroadcastPublicationTransport {
         programId: request.program.programId,
         programEpoch: request.program.programEpoch,
       });
+      const senderController = new WhipAdaptiveSenderController(
+        peerConnection,
+        bindings,
+        this.senderPolicy,
+        this.now,
+      );
+      const senderParametersApplied = await senderController.apply();
       const active: ActiveWhipSession = {
         session,
         program: request.program,
         peerConnection,
         resourceUrl,
+        request,
+        media,
+        bindings: Object.freeze(bindings),
+        senderController,
+        adaptationTimer: null,
+        adaptationRunning: false,
+        adaptationReason: senderParametersApplied ? "initial-profile" : "sender-parameters-unavailable",
+        trackListeners: new Map(),
         etag: etag && STRONG_ETAG.test(etag) ? etag : null,
-        lifecycle: "connected",
-        errorCode: "",
+        lifecycle: senderParametersApplied ? "connected" : "degraded",
+        errorCode: senderParametersApplied ? "" : "whip_sender_parameters_degraded",
         restartAttempts: 0,
         stopTask: null,
         connectionListener: () => undefined,
@@ -493,6 +623,10 @@ export class Rfc9725WhipTransport implements BroadcastPublicationTransport {
         }
       };
       peerConnection.addEventListener("connectionstatechange", active.connectionListener);
+      this.installTrackListeners(active);
+      if (this.dependencies.scheduleAdaptation !== false) {
+        active.adaptationTimer = setInterval(() => void this.sampleAdaptation(active), senderController.intervalMs);
+      }
       this.sessions.set(session.sessionId, active);
       this.sessionsByProgram.set(this.programKey(request), active);
       return session;
@@ -505,14 +639,19 @@ export class Rfc9725WhipTransport implements BroadcastPublicationTransport {
     }
   }
 
-  private addTrack(peerConnection: RTCPeerConnection, track: MediaStreamTrack, stream: MediaStream): void {
+  private addTrack(
+    peerConnection: RTCPeerConnection,
+    descriptor: WhipMediaTrackDescriptor,
+    stream: MediaStream,
+  ): RTCRtpSender {
+    const { track } = descriptor;
     const init: RTCRtpTransceiverInit = { direction: "sendonly", streams: [stream] };
-    if (track.kind === "video" && this.configuration.simulcast.enabled) {
+    if (track.kind === "video" && descriptor.sourceKind === "camera" && this.configuration.simulcast.enabled) {
       init.sendEncodings = this.configuration.simulcast.sendEncodings.map((encoding) => ({ ...encoding }));
     }
     const transceiver = peerConnection.addTransceiver(track, init);
     const preferences = this.configuration.codecPreferences[track.kind as "audio" | "video"];
-    if (preferences.length === 0) return;
+    if (preferences.length === 0) return transceiver.sender;
     const capabilities = this.peerConnections.capabilities(track.kind as "audio" | "video");
     if (!capabilities) fail("whip_codec_capability_unavailable");
     const preferred = preferences.flatMap((mimeType) => capabilities.codecs.filter(
@@ -523,6 +662,7 @@ export class Rfc9725WhipTransport implements BroadcastPublicationTransport {
       "video/rtx", "video/red", "video/ulpfec", "audio/red",
     ]).has(codec.mimeType.toLowerCase()));
     transceiver.setCodecPreferences([...new Set([...preferred, ...repair])]);
+    return transceiver.sender;
   }
 
   private async createSession(
@@ -564,6 +704,12 @@ export class Rfc9725WhipTransport implements BroadcastPublicationTransport {
   }
 
   private async delete(active: ActiveWhipSession, signal: AbortSignal): Promise<void> {
+    if (active.adaptationTimer !== null) {
+      clearInterval(active.adaptationTimer);
+      active.adaptationTimer = null;
+    }
+    this.removeTrackListeners(active);
+    active.senderController.close();
     active.peerConnection.removeEventListener("connectionstatechange", active.connectionListener);
     active.peerConnection.close();
     active.lifecycle = "stopped";
@@ -662,6 +808,52 @@ export class Rfc9725WhipTransport implements BroadcastPublicationTransport {
     } finally {
       clearTimeout(timeout);
       signal.removeEventListener("abort", abort);
+    }
+  }
+
+  private resolveMedia(
+    composition: BroadcastPublicationRequest["composition"],
+    value: unknown,
+  ): WhipResolvedMedia {
+    const media = normalizeWhipResolvedMedia(value);
+    if (composition.sourceIds.length !== media.tracks.length
+      || !composition.sourceIds.every((sourceId) => media.tracks.some(
+        (descriptor) => descriptor.sourceId === sourceId,
+      ))) fail("whip_composition_source_mismatch");
+    return media;
+  }
+
+  private installTrackListeners(active: ActiveWhipSession): void {
+    const listeners = new Map<MediaStreamTrack, () => void>();
+    for (const { descriptor } of active.bindings) {
+      const listener = () => {
+        if (active.lifecycle === "stopped" || active.lifecycle === "failed") return;
+        active.lifecycle = "degraded";
+        active.errorCode = `whip_${descriptor.track.kind}_source_ended`;
+        active.adaptationReason = "source-ended";
+      };
+      descriptor.track.addEventListener("ended", listener, { once: true });
+      listeners.set(descriptor.track, listener);
+    }
+    active.trackListeners = listeners;
+  }
+
+  private removeTrackListeners(active: ActiveWhipSession): void {
+    for (const [track, listener] of active.trackListeners) track.removeEventListener("ended", listener);
+    active.trackListeners = new Map();
+  }
+
+  private async sampleAdaptation(active: ActiveWhipSession): Promise<void> {
+    if (active.adaptationRunning || active.lifecycle === "stopped" || active.lifecycle === "failed") return;
+    active.adaptationRunning = true;
+    try {
+      await this.sampleStats(active.session);
+    } catch {
+      active.lifecycle = "degraded";
+      active.errorCode = "whip_sender_adaptation_unavailable";
+      active.adaptationReason = "stats-unavailable";
+    } finally {
+      active.adaptationRunning = false;
     }
   }
 

@@ -152,7 +152,14 @@ function publicRuntimeConfig(config, services = {}) {
         endpointUrl: config.broadcastWhipEndpoint,
         allowedRedirectOrigins: config.broadcastWhipRedirectOrigins,
         trickleIce: config.broadcastWhipTrickleIce,
-        simulcast: { enabled: false, sendEncodings: [] },
+        simulcast: config.broadcastWhipSimulcastEnabled ? {
+          enabled: true,
+          sendEncodings: [
+            { rid: "q", active: true, maxBitrate: 120_000, maxFramerate: 6, scaleResolutionDownBy: 4 },
+            { rid: "h", active: true, maxBitrate: 420_000, maxFramerate: 15, scaleResolutionDownBy: 2 },
+            { rid: "f", active: true, maxBitrate: 1_200_000, maxFramerate: 24, scaleResolutionDownBy: 1 },
+          ],
+        } : { enabled: false, sendEncodings: [] },
         codecPreferences: {
           audio: config.broadcastWhipAudioCodecs,
           video: config.broadcastWhipVideoCodecs,

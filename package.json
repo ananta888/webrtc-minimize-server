@@ -10,6 +10,7 @@
     "dev": "ng build --watch --configuration development",
     "dev:server": "node --watch src/server.js",
     "build": "ng build --configuration production && node scripts/extract-vosk-worker.mjs",
+    "typecheck:broadcast": "tsc -p frontend/tsconfig.broadcast.json",
     "test:frontend": "vitest run --config vitest.config.mjs",
     "test:infrastructure": "node scripts/live-infrastructure-gate.mjs && node scripts/live-whip-mediamtx-gate.mjs",
     "test:whip:mediamtx": "node scripts/live-whip-mediamtx-gate.mjs",
@@ -19,7 +20,7 @@
     "test": "node --test",
     "todos:validate": "node scripts/validate-todos.mjs",
     "workflows:validate": "node scripts/validate-workflows.mjs",
-    "check": "npm run todos:validate && npm run workflows:validate && npm run test:frontend && npm run build && npm test && npm run test:infrastructure"
+    "check": "npm run todos:validate && npm run workflows:validate && npm run typecheck:broadcast && npm run test:frontend && npm run build && npm test && npm run test:infrastructure"
   },
   "engines": {
     "node": ">=22.5"

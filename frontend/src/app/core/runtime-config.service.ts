@@ -71,6 +71,32 @@ export interface RuntimeConfig {
   }>;
 }
 
+function validWhipSimulcast(value: RuntimeConfig["broadcast"]["whip"]["simulcast"]): boolean {
+  if (!value || typeof value !== "object" || typeof value.enabled !== "boolean"
+    || !Array.isArray(value.sendEncodings) || value.sendEncodings.length > 3
+    || (!value.enabled && value.sendEncodings.length !== 0)
+    || (value.enabled && value.sendEncodings.length < 2)) return false;
+  const rids = new Set<string>();
+  return value.sendEncodings.every((encoding) => {
+    if (!encoding || typeof encoding !== "object"
+      || Object.keys(encoding).some((field) => !new Set([
+        "rid", "active", "maxBitrate", "maxFramerate", "scaleResolutionDownBy",
+      ]).has(field))
+      || typeof encoding.rid !== "string" || !/^[a-z0-9]{1,8}$/.test(encoding.rid)
+      || rids.has(encoding.rid)
+      || typeof encoding.active !== "boolean"
+      || !Number.isSafeInteger(encoding.maxBitrate)
+      || Number(encoding.maxBitrate) < 50_000 || Number(encoding.maxBitrate) > 20_000_000
+      || !Number.isSafeInteger(encoding.maxFramerate)
+      || Number(encoding.maxFramerate) < 1 || Number(encoding.maxFramerate) > 60
+      || typeof encoding.scaleResolutionDownBy !== "number"
+      || !Number.isFinite(encoding.scaleResolutionDownBy)
+      || encoding.scaleResolutionDownBy < 1 || encoding.scaleResolutionDownBy > 16) return false;
+    rids.add(encoding.rid);
+    return true;
+  });
+}
+
 export function validWhipRuntime(config: RuntimeConfig): boolean {
   const whip = config.broadcast?.whip;
   if (!whip || whip.configurationVersion !== 1
@@ -79,8 +105,8 @@ export function validWhipRuntime(config: RuntimeConfig): boolean {
     || typeof whip.endpointUrl !== "string" || typeof whip.trickleIce !== "boolean"
     || !Array.isArray(whip.allowedRedirectOrigins) || whip.allowedRedirectOrigins.length > 8
     || whip.allowedRedirectOrigins.some((origin) => typeof origin !== "string")
-    || !whip.simulcast || whip.simulcast.enabled !== false
-    || !Array.isArray(whip.simulcast.sendEncodings) || whip.simulcast.sendEncodings.length !== 0
+    || !validWhipSimulcast(whip.simulcast)
+    || (whip.compatibilityProfile === "mediamtx-1.20" && whip.simulcast.enabled)
     || !Array.isArray(whip.codecPreferences?.audio) || !Array.isArray(whip.codecPreferences?.video)
     || whip.codecPreferences.audio.length > 8 || whip.codecPreferences.video.length > 8
     || [...whip.codecPreferences.audio, ...whip.codecPreferences.video].some(

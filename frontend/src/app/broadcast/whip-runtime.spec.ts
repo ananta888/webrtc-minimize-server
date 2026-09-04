@@ -78,4 +78,25 @@ describe("trusted WHIP runtime mapping", () => {
     invalidCodec.broadcast.whip.codecPreferences.video = ["audio/opus"];
     expect(validWhipRuntime(invalidCodec as unknown as RuntimeConfig)).toBe(false);
   });
+
+  it("accepts only bounded strict-profile simulcast and maps it without inventing layers", () => {
+    const configured = structuredClone(runtime(true)) as unknown as {
+      broadcast: { whip: {
+        compatibilityProfile: "rfc9725" | "mediamtx-1.20";
+        simulcast: { enabled: boolean; sendEncodings: RTCRtpEncodingParameters[] };
+      } };
+    };
+    configured.broadcast.whip.simulcast = {
+      enabled: true,
+      sendEncodings: [
+        { rid: "q", active: true, maxBitrate: 120_000, maxFramerate: 6, scaleResolutionDownBy: 4 },
+        { rid: "f", active: true, maxBitrate: 1_200_000, maxFramerate: 24, scaleResolutionDownBy: 1 },
+      ],
+    };
+    expect(validWhipRuntime(configured as unknown as RuntimeConfig)).toBe(true);
+    expect(whipRuntimeConfiguration(configured as unknown as RuntimeConfig).simulcast.sendEncodings)
+      .toHaveLength(2);
+    configured.broadcast.whip.compatibilityProfile = "mediamtx-1.20";
+    expect(validWhipRuntime(configured as unknown as RuntimeConfig)).toBe(false);
+  });
 });

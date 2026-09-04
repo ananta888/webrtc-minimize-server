@@ -59,6 +59,7 @@ const DEFAULTS = Object.freeze({
   broadcastWhipProfile: "rfc9725",
   broadcastWhipRedirectOrigins: [],
   broadcastWhipTrickleIce: true,
+  broadcastWhipSimulcastEnabled: false,
   broadcastWhipAudioCodecs: ["audio/opus"],
   broadcastWhipVideoCodecs: ["video/vp8", "video/h264"],
   broadcastWhipRequestTimeoutMs: 8_000,
@@ -373,6 +374,14 @@ export function loadConfig(env = process.env) {
     DEFAULTS.broadcastWhipTrickleIce,
     "BROADCAST_WHIP_TRICKLE_ICE",
   );
+  const broadcastWhipSimulcastEnabled = booleanValue(
+    env.BROADCAST_WHIP_SIMULCAST_ENABLED,
+    DEFAULTS.broadcastWhipSimulcastEnabled,
+    "BROADCAST_WHIP_SIMULCAST_ENABLED",
+  );
+  if (broadcastWhipProfile === "mediamtx-1.20" && broadcastWhipSimulcastEnabled) {
+    throw new Error("BROADCAST_WHIP_SIMULCAST_ENABLED is unsupported by the mediamtx-1.20 profile");
+  }
   const peerRouteLeaseMs = boundedInteger(env.PEER_ROUTE_LEASE_MS, DEFAULTS.peerRouteLeaseMs, {
     minimum: 30_000, maximum: 300_000, name: "PEER_ROUTE_LEASE_MS",
   });
@@ -525,6 +534,7 @@ export function loadConfig(env = process.env) {
     broadcastWhipProfile,
     broadcastWhipRedirectOrigins: Object.freeze(broadcastWhipRedirectOrigins),
     broadcastWhipTrickleIce,
+    broadcastWhipSimulcastEnabled,
     broadcastWhipAudioCodecs: Object.freeze(mediaTypes(
       env.BROADCAST_WHIP_AUDIO_CODECS,
       DEFAULTS.broadcastWhipAudioCodecs,

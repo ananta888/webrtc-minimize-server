@@ -8,11 +8,11 @@ import {
   BroadcastCompositionPort,
   BroadcastProgramRef,
 } from "./broadcast-ports";
-import { WhipMediaStreamPort } from "./whip-contracts";
+import { WhipMediaStreamPort, WhipResolvedMedia } from "./whip-contracts";
 
 interface OwnedComposition {
   readonly handle: BroadcastCompositionHandle;
-  readonly stream: MediaStream;
+  readonly media: WhipResolvedMedia;
 }
 
 function compositionId(): string {
@@ -60,7 +60,15 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
     });
     this.compositions.set(handle.compositionId, Object.freeze({
       handle,
-      stream: new MediaStream(tracks),
+      media: Object.freeze({
+        stream: new MediaStream(tracks),
+        tracks: Object.freeze(forks.map((fork, index) => Object.freeze({
+          sourceId: fork.sourceId,
+          sourceKind: fork.kind,
+          envelope: "clear-program-v1" as const,
+          track: tracks[index],
+        }))),
+      }),
     }));
     if (signal.aborted) {
       this.compositions.delete(handle.compositionId);
@@ -69,14 +77,14 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
     return handle;
   }
 
-  async resolve(composition: BroadcastCompositionHandle, signal: AbortSignal): Promise<MediaStream> {
+  async resolve(composition: BroadcastCompositionHandle, signal: AbortSignal): Promise<WhipResolvedMedia> {
     signal.throwIfAborted();
     const owned = this.compositions.get(composition.compositionId);
     if (!owned || owned.handle.sourceIds.length !== composition.sourceIds.length
       || !owned.handle.sourceIds.every((sourceId, index) => sourceId === composition.sourceIds[index])) {
       throw new BroadcastBrowserPortError("unknown_broadcast_composition");
     }
-    return owned.stream;
+    return owned.media;
   }
 
   async release(handle: BroadcastCompositionHandle): Promise<void> {

@@ -58,13 +58,13 @@ try {
       await page.click("#run-whip-gate");
       await page.waitForFunction(() => Boolean(window.__whipGateResult), null, { timeout: 30_000 });
       const result = await page.evaluate(() => window.__whipGateResult);
-      assert.deepEqual(result, {
-        connected: true,
-        stopped: true,
-        restartError: "whip_ice_restart_unsupported",
-        trackStateBeforeCleanup: "live",
-      });
-      console.log(`PASS live MediaMTX 1.20.1 WHIP gate (${engine.name()}): POST/PATCH/ICE/DELETE; restart visibly unsupported`);
+      assert.equal(result.connected, true);
+      assert.equal(result.stopped, true);
+      assert.equal(result.restartError, "whip_ice_restart_unsupported");
+      assert.equal(result.switches, 4);
+      assert.ok(result.minimumFramesAfterSwitch > 0, "video encoding froze during a source switch");
+      assert.equal(result.trackStateBeforeCleanup, "live");
+      console.log(`PASS live MediaMTX 1.20.1 WHIP gate (${engine.name()}): POST/PATCH/ICE/DELETE, 4 replaceTrack switches with advancing frames; restart visibly unsupported`);
     } finally {
       await browser.close();
     }

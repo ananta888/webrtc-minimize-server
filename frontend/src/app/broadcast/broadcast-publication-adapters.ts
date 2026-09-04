@@ -103,7 +103,7 @@ class TransportBackedPublicationAdapter implements BroadcastPublicationPort {
       throw new BroadcastBrowserPortError("invalid_broadcast_publication_session");
     }
     if (signal.aborted) {
-      await this.options.transport.stop(session, new AbortController().signal);
+      await this.options.transport!.stop(session, new AbortController().signal);
       signal.throwIfAborted();
     }
     this.activeSessions.add(session.sessionId);
@@ -127,14 +127,14 @@ class TransportBackedPublicationAdapter implements BroadcastPublicationPort {
 }
 
 export class WhipBroadcastPublicationAdapter extends TransportBackedPublicationAdapter {
-  constructor(transport?: BroadcastPublicationTransport) {
+  constructor(transport?: BroadcastPublicationTransport, supportsSimulcast = false) {
     super({
       adapterId: "whip-browser",
       kind: "whip",
       ingestProtocol: "whip",
       supportsAudio: true,
       supportsVideo: true,
-      supportsSimulcast: false,
+      supportsSimulcast,
       unavailableReason: "whip-not-configured",
       transport,
     });

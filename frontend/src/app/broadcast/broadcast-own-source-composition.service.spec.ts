@@ -9,8 +9,9 @@ function fork(id: string, kind: "camera" | "microphone" | "screen" | "screen-aud
 }
 
 function source(kind: "audio" | "video"): MediaStream {
+  const track = Object.assign(new EventTarget(), { kind, readyState: "live", contentHint: "" });
   return {
-    getTracks: () => [{ kind, readyState: "live" } as MediaStreamTrack],
+    getTracks: () => [track as MediaStreamTrack],
   } as unknown as MediaStream;
 }
 
@@ -34,7 +35,19 @@ describe("BroadcastOwnSourceCompositionService", () => {
       tenantId: "tn_aaaaaaaaaaaaaaaa", roomId: "room-alpha", programId: "prg_aaaaaaaaaaaaaaaa",
       programRevision: 1, programEpoch: 1,
     }, [camera, microphone], signal);
-    expect((await composition.resolve(handle, signal)).getTracks().map(({ kind }) => kind)).toEqual(["video", "audio"]);
+    const media = await composition.resolve(handle, signal);
+    expect(media.stream.getTracks().map(({ kind }) => kind)).toEqual(["video", "audio"]);
+    expect(media.tracks.map(({ sourceId, sourceKind, envelope, track }) => ({
+      sourceId, sourceKind, envelope, kind: track.kind,
+    }))).toEqual([
+      { sourceId: camera.sourceId, sourceKind: "camera", envelope: "clear-program-v1", kind: "video" },
+      {
+        sourceId: microphone.sourceId,
+        sourceKind: "microphone",
+        envelope: "clear-program-v1",
+        kind: "audio",
+      },
+    ]);
     await composition.release(handle);
     await expect(composition.resolve(handle, signal)).rejects.toThrow("unknown_broadcast_composition");
   });

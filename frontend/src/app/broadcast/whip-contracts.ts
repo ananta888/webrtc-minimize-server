@@ -2,6 +2,7 @@ import {
   BroadcastBrowserPortError,
   BroadcastCompositionHandle,
   BroadcastProgramRef,
+  BroadcastSourceKind,
 } from "./broadcast-ports";
 
 export type WhipAction = "whip:create" | "whip:update" | "whip:delete";
@@ -24,8 +25,23 @@ export interface WhipAuthorizationPort {
   authorize(request: WhipAuthorizationRequest, signal: AbortSignal): Promise<WhipAuthorization>;
 }
 
+export type WhipSyntheticSourceKind = "silence" | "slate";
+export type WhipSourceKind = BroadcastSourceKind | WhipSyntheticSourceKind;
+
+export interface WhipMediaTrackDescriptor {
+  readonly sourceId: string;
+  readonly sourceKind: WhipSourceKind;
+  readonly envelope: "clear-program-v1";
+  readonly track: MediaStreamTrack;
+}
+
+export interface WhipResolvedMedia {
+  readonly stream: MediaStream;
+  readonly tracks: readonly WhipMediaTrackDescriptor[];
+}
+
 export interface WhipMediaStreamPort {
-  resolve(composition: BroadcastCompositionHandle, signal: AbortSignal): Promise<MediaStream>;
+  resolve(composition: BroadcastCompositionHandle, signal: AbortSignal): Promise<WhipResolvedMedia>;
 }
 
 export interface WhipCodecPreferences {
@@ -67,6 +83,10 @@ export interface NormalizedWhipRuntimeConfiguration extends WhipRuntimeConfigura
 
 const TOKEN_CONTROL = /[\u0000-\u001f\u007f]/;
 const MIME_TYPE = /^(?:audio|video)\/[A-Za-z0-9!#$&^_.+-]{1,64}$/;
+const SOURCE_ID = /^src_[A-Za-z0-9_-]{16,64}$/;
+const SOURCE_KINDS = new Set<WhipSourceKind>([
+  "microphone", "camera", "screen", "screen-audio", "silence", "slate",
+]);
 
 function fail(code: string): never {
   throw new BroadcastBrowserPortError(code);
@@ -122,7 +142,7 @@ function normalizeIceServers(value: unknown): readonly RTCIceServer[] {
       fail("invalid_whip_runtime_configuration");
     }
     return Object.freeze({
-      urls: Object.freeze([...urls]),
+      urls: Object.freeze([...urls]) as unknown as string[],
       ...(username === undefined ? {} : { username }),
       ...(credential === undefined ? {} : { credential }),
     });
@@ -239,6 +259,58 @@ export function normalizeWhipAuthorization(value: unknown, now = Date.now()): Wh
     accessToken: authorization["accessToken"],
     expiresAt: Number(authorization["expiresAt"]),
   });
+}
+
+export function normalizeWhipResolvedMedia(value: unknown): WhipResolvedMedia {
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail("invalid_whip_media_stream");
+  const media = value as Record<string, unknown>;
+  if (Object.keys(media).length !== 2
+    || Object.keys(media).some((field) => !new Set(["stream", "tracks"]).has(field))
+    || !media["stream"] || typeof media["stream"] !== "object"
+    || typeof (media["stream"] as MediaStream).getTracks !== "function"
+    || !Array.isArray(media["tracks"]) || media["tracks"].length < 1 || media["tracks"].length > 2) {
+    fail("invalid_whip_media_stream");
+  }
+  const stream = media["stream"] as MediaStream;
+  const streamTracks = stream.getTracks();
+  const sourceIds = new Set<string>();
+  const kinds = new Set<string>();
+  const tracks = media["tracks"].map((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) fail("invalid_whip_media_stream");
+    const descriptor = value as Record<string, unknown>;
+    if (Object.keys(descriptor).length !== 4
+      || Object.keys(descriptor).some((field) => !new Set([
+        "sourceId", "sourceKind", "envelope", "track",
+      ]).has(field))
+      || typeof descriptor["sourceId"] !== "string" || !SOURCE_ID.test(descriptor["sourceId"])
+      || sourceIds.has(descriptor["sourceId"])
+      || typeof descriptor["sourceKind"] !== "string"
+      || !SOURCE_KINDS.has(descriptor["sourceKind"] as WhipSourceKind)
+      || descriptor["envelope"] !== "clear-program-v1"
+      || !descriptor["track"] || typeof descriptor["track"] !== "object") {
+      fail("invalid_whip_media_stream");
+    }
+    const track = descriptor["track"] as MediaStreamTrack;
+    const expectedKind = new Set(["microphone", "screen-audio", "silence"]).has(descriptor["sourceKind"])
+      ? "audio"
+      : "video";
+    if (track.kind !== expectedKind || track.readyState !== "live"
+      || typeof track.addEventListener !== "function" || typeof track.removeEventListener !== "function"
+      || kinds.has(track.kind)
+      || !streamTracks.includes(track)) fail("invalid_whip_media_stream");
+    sourceIds.add(descriptor["sourceId"]);
+    kinds.add(track.kind);
+    return Object.freeze({
+      sourceId: descriptor["sourceId"],
+      sourceKind: descriptor["sourceKind"] as WhipSourceKind,
+      envelope: "clear-program-v1" as const,
+      track,
+    });
+  });
+  if (streamTracks.length !== tracks.length || streamTracks.some((track) => !tracks.some(
+    (descriptor) => descriptor.track === track,
+  ))) fail("invalid_whip_media_stream");
+  return Object.freeze({ stream, tracks: Object.freeze(tracks) });
 }
 
 export function assertWhipResourceUrl(

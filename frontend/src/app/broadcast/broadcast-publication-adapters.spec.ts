@@ -90,6 +90,8 @@ describe("broadcast publication adapters", () => {
     await adapter.stop(session, new AbortController().signal);
     await adapter.stop(session, new AbortController().signal);
     expect(whipTransport.stop).toHaveBeenCalledTimes(2);
+
+    expect(new WhipBroadcastPublicationAdapter(whipTransport, true).capability.supportsSimulcast).toBe(true);
   });
 
   it("coalesces concurrent identical starts and rejects a conflicting start while pending", async () => {

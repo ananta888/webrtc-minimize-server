@@ -36,6 +36,7 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.equal(config.broadcastWhipProfile, "rfc9725");
   assert.deepEqual(config.broadcastWhipRedirectOrigins, []);
   assert.equal(config.broadcastWhipTrickleIce, true);
+  assert.equal(config.broadcastWhipSimulcastEnabled, false);
   assert.deepEqual(config.broadcastWhipAudioCodecs, ["audio/opus"]);
   assert.deepEqual(config.broadcastWhipVideoCodecs, ["video/vp8", "video/h264"]);
   assert.equal(config.broadcastWhipRetryBudget, 1);
@@ -74,6 +75,10 @@ test("loadConfig rejects unsafe bounds and malformed public origins", () => {
   assert.throws(() => loadConfig({ BROADCAST_WHIP_AUDIO_CODECS: "video/vp8" }), /audio MIME/);
   assert.throws(() => loadConfig({ BROADCAST_WHIP_RETRY_BUDGET: "3" }), /between 0 and 2/);
   assert.throws(() => loadConfig({ BROADCAST_WHIP_PROFILE: "draft" }), /rfc9725 or mediamtx/);
+  assert.throws(() => loadConfig({
+    BROADCAST_WHIP_PROFILE: "mediamtx-1.20",
+    BROADCAST_WHIP_SIMULCAST_ENABLED: "true",
+  }), /unsupported/);
   assert.throws(
     () => loadConfig({ PEER_EDGE_FALLBACK_MS: "9000", INFRASTRUCTURE_TURN_FALLBACK_MS: "9000" }),
     /longer/,
@@ -87,9 +92,10 @@ test("loadConfig rejects unsafe bounds and malformed public origins", () => {
 test("loadConfig accepts a bounded secret-free WHIP browser policy", () => {
   const config = loadConfig({
     BROADCAST_WHIP_ENDPOINT: "https://media.example/live/whip/",
-    BROADCAST_WHIP_PROFILE: "mediamtx-1.20",
+    BROADCAST_WHIP_PROFILE: "rfc9725",
     BROADCAST_WHIP_REDIRECT_ORIGINS: "https://edge-a.example,https://edge-b.example",
     BROADCAST_WHIP_TRICKLE_ICE: "false",
+    BROADCAST_WHIP_SIMULCAST_ENABLED: "true",
     BROADCAST_WHIP_AUDIO_CODECS: "audio/opus",
     BROADCAST_WHIP_VIDEO_CODECS: "video/h264,video/vp8",
     BROADCAST_WHIP_REQUEST_TIMEOUT_MS: "5000",
@@ -98,7 +104,7 @@ test("loadConfig accepts a bounded secret-free WHIP browser policy", () => {
     BROADCAST_WHIP_RETRY_BUDGET: "2",
   });
   assert.equal(config.broadcastWhipEndpoint, "https://media.example/live/whip");
-  assert.equal(config.broadcastWhipProfile, "mediamtx-1.20");
+  assert.equal(config.broadcastWhipProfile, "rfc9725");
   assert.deepEqual(config.broadcastWhipRedirectOrigins, ["https://edge-a.example", "https://edge-b.example"]);
   assert.equal(config.broadcastWhipTrickleIce, false);
   assert.deepEqual(config.broadcastWhipVideoCodecs, ["video/h264", "video/vp8"]);
@@ -106,6 +112,7 @@ test("loadConfig accepts a bounded secret-free WHIP browser policy", () => {
   assert.equal(config.broadcastWhipIceGatheringTimeoutMs, 6_000);
   assert.equal(config.broadcastWhipConnectionTimeoutMs, 12_000);
   assert.equal(config.broadcastWhipRetryBudget, 2);
+  assert.equal(config.broadcastWhipSimulcastEnabled, true);
   assert.equal(Object.hasOwn(config, "broadcastWhipToken"), false);
 });
 
