@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "currentStage": "disabled",
+  "serverFeatureFlag": { "name": "BROADCAST_WHIP_ENDPOINT", "disabledValue": "", "failClosed": true },
+  "stages": [
+    { "id": "disabled", "audience": "none", "entryGates": [] },
+    { "id": "internal", "audience": "operators only", "entryGates": ["security", "local-interop", "rollback", "kill-switch"] },
+    { "id": "private-selected", "audience": "explicitly selected private programs", "entryGates": ["internal-observation", "multi-hour-soak", "physical-devices", "wan", "privacy-review"] },
+    { "id": "public", "audience": "public directory", "entryGates": ["private-observation", "cdn-provider", "cost-rates", "perceptual-quality", "public-incident-drill"] }
+  ],
+  "gateStatus": {
+    "security": "verified-local",
+    "local-interop": "verified-local",
+    "rollback": "verified-production-deploy-path",
+    "kill-switch": "verified-config-default",
+    "internal-observation": "not-run",
+    "multi-hour-soak": "not-run",
+    "physical-devices": "not-run",
+    "wan": "not-run",
+    "privacy-review": "documented-open-findings",
+    "private-observation": "not-run",
+    "cdn-provider": "unavailable",
+    "cost-rates": "unavailable",
+    "perceptual-quality": "not-run",
+    "public-incident-drill": "not-run"
+  },
+  "killSwitch": [
+    "clear BROADCAST_WHIP_ENDPOINT and recreate the control service",
+    "stop the private gateway and packager profiles",
+    "revoke all broadcast grants and writer leases",
+    "purge ephemeral gateway muxers and CDN objects if a CDN is later configured",
+    "verify meet health, readiness and room join independently"
+  ],
+  "rollbackCommand": "WEBRTC_REVERSE_PROXY_NETWORK=bbb-edge PRODUCTION_ORIGIN=https://webrtc.ananta.de scripts/production-deploy.sh rollback"
+}

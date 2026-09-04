@@ -1,0 +1,11 @@
+# Broadcast-Datenschutz- und Security-Review
+
+Stand: 2026-09-04. Die maschinenlesbare Entscheidung steht in `infra/security/broadcast-review.v1.json`: Das bestehende Meet bleibt freigegeben, der Broadcast bleibt deaktiviert.
+
+Der Node-Server verarbeitet OIDC-Identität, Geräteattestierung, Rollen, Program-/Audience-Metadaten, kurzlebige Grants, Writer-Fences und inhaltsfreie Betriebsmetriken. Er erhält keine Audio-, Video-, Bildschirm- oder Untertitelinhalte. Erst ein ausdrücklich consentierter Trusted Packager darf ausgewählte Quellen entschlüsseln und ein Programm erzeugen. Die resultierende H.264/AAC-Ausgabe ist transportverschlüsselt, aber nicht gleichbedeutend mit Raum-SFrame-E2EE. Gateway, Provider und berechtigte Zuschauer liegen daher in einer anderen Trust-Grenze.
+
+Aufnahme und Transcript-Retention sind nicht implementiert. Broadcastmedien, Caption-Text, Room-Membership, Peer-IDs, SFrame-Schlüssel, Grants und Writer-Leases werden weder persistiert noch gesichert. Backups dürfen ausschließlich explizite Pair-Workspace-Metadaten und verschlüsselte Operator-Konfiguration nach deren eigenem Aufbewahrungsplan enthalten. Technische Metriken besitzen geschlossene Labels ohne Room-Code, IP, SDP/ICE, Caption oder Schlüssel und werden 14 Tage operativ beziehungsweise 90 Tage aggregiert gehalten.
+
+Die lokale Lieferkette wurde mit `npm audit --omit=dev` ohne bekannte Production-Vulnerabilities geprüft. Direkte und transitive Production-NPM-Lizenzen sind MIT, BSD-3-Clause oder Apache-2.0. CI erzeugt ein CycloneDX-SBOM; MediaMTX besitzt ein eingechecktes SBOM und Lizenzfile, das Containerimage zusätzlich BuildKit-SBOM und Provenance. Der Leakage-Gate hat das reale OCI-Archiv sowie Angular- und Agent-Artefakte auf feste synthetische Secrets, Tokens, Keys, SDP/ICE, Rooms und Captions geprüft.
+
+Offene Freigabefunde sind der fehlende Mehrstunden-Soak, reale Safari-/Mobil-/WAN-/Netzwechseltests, reale DNS-/TLS-/Provider-/Partitionsübungen, ein gewählter CDN samt Vertrag/Region/Löschpfad und gemessenen Preisen sowie perceptuelle A/V-/Caption-/OCR-Tests. Vor deren Abschluss bleiben interner, privater und öffentlicher Rollout gesperrt. Ein späterer Recording- oder Transcript-Speicher benötigt einen eigenen angenommenen Todo-Track samt Zweck, Einwilligung, Zugriff, Löschung und Backupgrenze.

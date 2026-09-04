@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "reviewedAt": "2026-09-04",
+  "decision": "meet-approved-broadcast-disabled",
+  "dataClasses": [
+    { "name": "room-media", "controlPlane": false, "retention": "none", "broadcastExposure": "trusted-packager-only-after-consent" },
+    { "name": "caption-text", "controlPlane": false, "retention": "none", "broadcastExposure": "program-output-only-after-explicit-enable" },
+    { "name": "oidc-token", "controlPlane": "authorization-header-only", "retention": "none", "broadcastExposure": "never" },
+    { "name": "program-metadata", "controlPlane": true, "retention": "bounded-operational", "broadcastExposure": "minimal-directory-fields-by-policy" },
+    { "name": "metrics", "controlPlane": true, "retention": "14d-operational-90d-aggregate", "broadcastExposure": "content-free-closed-labels" }
+  ],
+  "recording": "not-implemented",
+  "transcriptRetention": "not-implemented",
+  "backupRestore": {
+    "included": ["explicit pair-workspace metadata", "operator configuration outside git"],
+    "excluded": ["room membership", "peer ids", "media", "caption text", "ephemeral grants", "writer leases", "SFrame keys"]
+  },
+  "supplyChain": {
+    "productionNpmAudit": "zero-known-vulnerabilities-2026-09-04",
+    "productionLicenses": ["MIT", "BSD-3-Clause", "Apache-2.0"],
+    "sbom": ["CI npm CycloneDX artifact", "infra/mediamtx/sbom.cdx.json", "BuildKit image SBOM/provenance"],
+    "imageLeakageScan": "verified-local-oci-archive",
+    "dependencyPins": "lockfile plus digest-pinned MediaMTX image"
+  },
+  "externalReachability": {
+    "meetOrigin": "verified-https-health-readiness-and-runtime-config",
+    "broadcastOrigin": "not-exposed",
+    "gatewayAdmin": "private-only",
+    "keycloakAndTurn": "separate-existing-services"
+  },
+  "openFindings": [
+    "No completed multi-hour soak or physical mobile/Safari test.",
+    "No selected CDN/provider, data-processing agreement or measured provider pricing.",
+    "No public incident drill or real provider/DNS/TLS partition exercise.",
+    "No accepted recording or transcript-retention track; both remain absent."
+  ]
+}

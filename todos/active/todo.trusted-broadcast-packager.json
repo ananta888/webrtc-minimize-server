@@ -899,10 +899,10 @@
     {
       "id": "TBP-040",
       "title": "Dokumentation, Runbooks, Datenschutzreview und gestufte Produktionsfreigabe abschließen",
-      "status": "todo",
+      "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 70,
       "depends_on": ["TBP-028", "TBP-036", "TBP-037", "TBP-038", "TBP-039"],
       "acceptance_criteria": [
         "Architektur-, Sequenz-, Deployment-, Trust-, Key-, Port-, Codec-, Player-, Caption-, Failover- und Datenflussdiagramme stimmen mit dem verifizierten Code und den tatsächlich aktivierten Adaptern überein.",
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 1, "in_progress": 0, "partial": 23, "blocked": 0, "done": 16 },
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 24, "blocked": 0, "done": 16 },
     "progress_percent_done": 40,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -963,9 +963,9 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 1,
+    "todo_remaining": 0,
     "in_progress": 0,
-    "partial": 23,
+    "partial": 24,
     "blocked": 0,
     "done": 16
   },
@@ -1014,6 +1014,7 @@
     "TBP-037 ist abgeschlossen. Eine versionierte Coverage-Matrix bindet positive und negative Suites fuer alle Schemas, Transitions, Idempotenz/Fencing, Grants/Scopes/Replay, Visibility/Origin/Rollen, Consent/Keys, Capabilities/Codecs/Adapter, Oversize/Rate-Limit/Unknown-Message/Disconnect, Browser-No-Capture, Leakage und externe Infrastruktur an existierende Dateien. Der Browser-Gate prueft Broadcast-Panel, gespeicherte Praeferenzen, Refresh, Viewer-Deep-Link, Join und Peer-Signale ohne implizites Capture vor dem sichtbaren Klick. Feste synthetische Token-, Secret-, Private-Key-, Room-, SDP-, ICE- und Caption-Canaries werden streamend und budgetiert in Angular-Bundle, Agent-Artefakten und CI-OCI-Image sowie nach serverseitiger Injektion in Responses, Header, Fehlerseiten und normalen Logs gesucht; Symlinks und Scanbomben scheitern fail-closed. npm run check enthaelt den Gate. Lokal fehlendes Image und nicht konfigurierte externe Keycloak-/TURN-/Gateway-/Packager-Gates werden mit konkretem Grund sichtbar als SKIP und nie als bestanden ausgegeben.",
     "TBP-038 ist zu 55 Prozent umgesetzt. Ein reproduzierbarer lokaler Interop-Runner prueft den gepinnten MediaMTX-Adapter, Native-FFmpeg-ABR, LL-HLS und WHIP in Chromium 151 sowie Firefox 153. Real bestanden sind POST/PATCH/ICE/DELETE, vier replaceTrack-Wechsel mit weiterlaufenden Frames, sichtbares unsupported fuer MediaMTX-ICE-Restart, drei H.264/AAC-Renditions sowie LL-HLS-Version/Blocking-Reload/200-ms-Parts/Late-Join/Restart/Cleanup. Das Testprofil korrigiert testisoliert CORS, synthetische Internal-Auth, gleiche Host-/Container-ICE-Ports und Firefox-mDNS, ohne das sichere Gatewayprofil zu lockern. Eine geschlossene Ergebnismatrix haelt Edge-Binary, macOS Safari, Android/iOS, natives Safari-HLS, Mobilfunk/NAT/Netzwechsel, WAN-Loss, blockiertes UDP/QUIC, Provider sowie akustische und visuelle Wahrnehmung ehrlich unverified/unavailable/experimental. Diese realen Geraete-, Netz- und Providergates fehlen weiterhin; deshalb bleibt der Task partial und eine oeffentliche Broadcast-Freigabe ausgeschlossen.",
     "TBP-039 ist zu 55 Prozent umgesetzt. Ein versioniertes Profil definiert ohne unbelegte Produktobergrenze den 20-Personen-Raum, 5/20/50-Origin-Stufen, spaetere CDN-Rampen, ein mindestens vierstuendiges Release-Soak, alle geforderten Ereignisse/Messgroessen, neun Chaosklassen, feste lokale Budgets und zunaechst leere Preisinputs. Der reale Matrix-Runner bestand alle drei LL-HLS-Stufen ohne Fehler; bei 50 Viewern wurden 431,20 Requests/s, 13,94 ms p95, 204,63 Mbit/s, 3,23 Prozent Gateway-CPU und 66,62 MiB RAM gemessen. Der 20-Personen-Raum und Broadcast-Isolation sind deterministisch gruen. Ein realer FFmpeg-Gate misst SSIM 0,993941 bei 2,7719 Mbit/s und 7,864-facher Echtzeit. Fencing, Packager-/Gateway-Uebernahme, abgelaufene Grants und Split-Brain-Abwehr sind deterministisch, Publisher-Restart und Muxer-Cleanup lokal getestet. Offen bleiben der mehrstuendige Soak, reales Vorher/Waehrend/Nachher-Meet, weitere reale Chaosfehler, WAN/CDN/Provider, Packet-Loss/QP/Rebuffer/OCR/Sync/subjektive Qualitaet und belastbare Providerpreise; deshalb bleibt der Task partial und es werden weder Kosten noch Kapazitaetsgarantien erfunden.",
+    "TBP-040 ist zu 70 Prozent umgesetzt. Ein konsolidiertes Produktionsarchitektur-Dokument zeigt Plane-, Sequenz-, Trust-/Key- und Failover-Datenfluesse und verweist auf die versionierten Port-, Codec-, Player- und Caption-Grenzen. Nutzerhilfe erklaert Own Source, Trusted Program, Raum-SFrame, Sichtbarkeit, Consent, Untertitel, Datenverbrauch, Latenz, Stop und aktuelle Einschraenkungen. Ein Lifecycle-/Security-Runbook deckt Provisionierung, Health, Alarme, Quoten/Kosten, Rotation, Incident, Providerausfall, Takeover, Purge, Rollback und Ausserbetriebnahme ab. Das maschinenlesbare Privacy-/Security-Review haelt Datenklassen, Nicht-Retention, Backupgrenzen, SBOM, Leakage, Dependency-Audit mit null bekannten Production-Vulnerabilities und Produktionslizenzen fest. Eine validierte vierstufige Rollout-Policy bindet disabled, internal, private-selected und public an reale Gates und einen fuenfteiligen Kill-Switch; Produktion bleibt fail-closed auf disabled und publicReady false. Offen sind die realen Geraete-/WAN-/Provider-/Mehrstunden-/Incident-Gates und deshalb auch interner, privater und oeffentlicher Rollout; der Task bleibt ehrlich partial.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }

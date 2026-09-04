@@ -6,6 +6,8 @@ Ein eigenständiger, Keycloak-fähiger Raumserver mit Angular-Oberfläche für A
 
 Die [aktuelle Architektur als UML-/Datenflussmodell](docs/current-architecture-uml.md) zeigt den vollständigen Direct-, TURN-, Single-/Multi-Media-Agent-, Consent-, Failover- und Bandbreitenpfad mit konkreten Teilnehmerbeispielen.
 
+Die [verifizierte Broadcast-Produktionsarchitektur](docs/broadcast-production-architecture.md), die [Nutzerhilfe](docs/broadcast-user-help.md) und das [Lifecycle-/Security-Runbook](docs/runbooks/broadcast-lifecycle-and-security.md) bündeln Trust-, Key-, Port-, Codec-, Player-, Caption-, Failover-, Datenschutz- und Rolloutgrenzen. Der maschinengeprüfte Rollout steht weiterhin auf `disabled`; die Broadcast-Implementierung ist damit nicht automatisch eine öffentliche Produktfreigabe.
+
 Die [verifizierte Broadcast-Ausgangsbasis](docs/broadcast-baseline-inventory.md) hält zusätzlich Trust-, Port-, Browser-, Ressourcen- und Deploymentgrenzen vor dem ersten Packager fest. MediaMTX, WHIP, LL-HLS, MoQ und ein Zuschauer-Player sind darin ausdrücklich noch nicht als vorhandene Produktfähigkeiten ausgewiesen.
 
 Die angenommene [Plane-ADR](docs/adr/0001-separated-interactive-broadcast-delivery-planes.md) trennt Control Plane, interaktiven SFrame-Raum, Own-Source-/Trusted-Program-Packager, Media-Gateway, Delivery-Provider und Viewer. Sie beschreibt insbesondere die Klartextgrenzen und hält Zuschauer vollständig außerhalb von Membership, Peer-Liste, 20er-Grenze und Mesh.
