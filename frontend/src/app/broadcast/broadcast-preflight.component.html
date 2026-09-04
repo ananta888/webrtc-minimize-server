@@ -59,10 +59,66 @@
         <option value="public">Öffentlich · im Broadcast-Verzeichnis</option>
       </select>
     </label>
-    <label class="caption-option">
-      <input id="broadcast-captions" type="checkbox" [checked]="preflight.includeCaptions()" [disabled]="!captionsActive()" (change)="preflight.setIncludeCaptions($any($event.target).checked)">
-      <span><strong>Finalisierte Vosk-Untertitel einplanen</strong><small>{{ captionsActive() ? 'Lokale Erkennung ist aktiv; Übernahme folgt im Caption-Packaging-Schritt.' : 'Starte Vosk bewusst im Bereich Untertitel.' }}</small></span>
-    </label>
+    <fieldset class="audio-policy caption-policy" id="broadcast-caption-policy">
+      <legend>Vosk-Untertitel · jede Freigabe getrennt</legend>
+      <p class="policy-note">Alle Ziele sind pro Sitzung standardmäßig aus. Partials bleiben flüchtig; nur finalisierte Ergebnisse dürfen in den gewählten Broadcast-Zweig gelangen.</p>
+      <div class="caption-destinations">
+        <label class="caption-option">
+          <input id="broadcast-caption-local" type="checkbox" [checked]="captionSettings.consent().localOverlay" (change)="setCaptionDestination('localOverlay', $any($event.target).checked)">
+          <span><strong>Nur lokal einblenden</strong><small>Untertitel auf diesem Gerät, ohne neue Empfänger.</small></span>
+        </label>
+        <label class="caption-option">
+          <input id="broadcast-caption-room" type="checkbox" [checked]="captionSettings.consent().shareWithRoom" [disabled]="captionsActive()" (change)="setCaptionDestination('shareWithRoom', $any($event.target).checked)">
+          <span><strong>Im SFrame-Raum teilen</strong><small>Nur vor dem Start der Erkennung änderbar; läuft direkt zwischen Raum-Peers.</small></span>
+        </label>
+        <label class="caption-option">
+          <input id="broadcast-captions" type="checkbox" [checked]="captionSettings.consent().broadcastTextTrack" [disabled]="!captionsActive()" (change)="setCaptionDestination('broadcastTextTrack', $any($event.target).checked)">
+          <span><strong>Als Broadcast-TextTrack</strong><small>WebVTT erhält exakt denselben privaten Zugriffsschutz wie Bild und Ton.</small></span>
+        </label>
+        <label class="caption-option">
+          <input id="broadcast-caption-burn-in" type="checkbox" [checked]="captionSettings.consent().broadcastBurnIn" [disabled]="!captionsActive()" (change)="setCaptionDestination('broadcastBurnIn', $any($event.target).checked)">
+          <span><strong>In das Programmbild einbrennen</strong><small>Für Player ohne TextTrack; Zuschauer können diese Variante nicht ausblenden.</small></span>
+        </label>
+      </div>
+      <div class="caption-settings-grid">
+        <label class="field">Vosk-Modell und Sprache
+          <select id="broadcast-caption-model" [value]="captionModels.selectedModelId()" [disabled]="captionsActive() || captionModels.status() === 'downloading' || captionModels.status() === 'preparing'" (change)="setCaptionModel($any($event.target).value)">
+            @for (model of captionModels.models; track model.id) {
+              <option [value]="model.id">{{ model.nativeLanguage }} · {{ model.languageTag }} · {{ (model.sizeBytes / 1000000).toFixed(1) }} MB</option>
+            }
+          </select>
+        </label>
+        <button id="broadcast-caption-load-model" class="button ghost compact" type="button" [disabled]="captionsActive() || captionModels.status() === 'downloading' || captionModels.status() === 'preparing'" (click)="loadCaptionModel()">
+          {{ captionModels.ready() ? 'Modell bereit' : 'Modell bewusst nachladen' }}
+        </button>
+        <label class="field">Sprecherlabel
+          <select id="broadcast-caption-speaker-mode" [value]="captionSettings.settings().speakerMode" (change)="setCaptionSpeakerMode($any($event.target).value)">
+            <option value="off">Aus</option><option value="custom">Eigenes Label</option>
+          </select>
+        </label>
+        @if (captionSettings.settings().speakerMode === 'custom') {
+          <label class="field">Labeltext<input id="broadcast-caption-speaker-label" maxlength="40" [value]="captionSettings.settings().speakerLabel" (change)="setCaptionSpeakerLabel($any($event.target).value)"></label>
+        }
+        <label class="field">Verzögerung
+          <select id="broadcast-caption-delay" [value]="captionSettings.settings().delayMs" (change)="setCaptionDelay($any($event.target).value)">
+            <option value="0">0 ms</option><option value="300">300 ms</option><option value="600">600 ms</option><option value="1200">1.200 ms</option><option value="2000">2.000 ms</option>
+          </select>
+        </label>
+        <label class="field">Maximale Zeilenlänge
+          <input id="broadcast-caption-line-length" type="number" min="20" max="80" step="1" [value]="captionSettings.settings().maximumLineLength" (change)="setCaptionLineLength($any($event.target).value)">
+        </label>
+        <label class="field">Position
+          <input id="broadcast-caption-position" type="range" min="10" max="95" step="1" [value]="captionSettings.settings().positionPercent" (change)="setCaptionPosition($any($event.target).value)">
+          <span>{{ captionSettings.settings().positionPercent }} % von oben</span>
+        </label>
+        <label class="field">Stil
+          <select id="broadcast-caption-style" [value]="captionSettings.settings().style" (change)="setCaptionStyle($any($event.target).value)">
+            <option value="high-contrast">Hoher Kontrast</option><option value="subtle">Dezent</option><option value="large">Groß</option>
+          </select>
+        </label>
+      </div>
+      <p class="policy-note">Synchronitätsbudget: {{ captionSettings.settings().syncBudgetMs }} ms. Source-Wechsel, Pause, Handoff, Resync und Widerruf beginnen eine leere Caption-Generation; alte Cues werden nicht wiederverwendet.</p>
+    </fieldset>
     <fieldset class="audio-policy delivery-policy" id="broadcast-delivery-policy">
       <legend>Delivery und Packager</legend>
       <label class="field">Auslieferungsprofil

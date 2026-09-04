@@ -78,7 +78,10 @@ test("Chromium and Firefox expose Vosk sources, local sharing and the fixed cata
       await page.locator('input[name="captionAudioSource"][value="screen-audio"]').check();
       await page.waitForFunction(() => document.querySelector("#selected-caption-source")?.textContent?.trim() === "Bildschirmton");
       assert.equal((await page.locator("#selected-caption-source").textContent()).trim(), "Bildschirmton", name);
-      assert.equal(await page.locator("#caption-share-with-room").isChecked(), true, name);
+      assert.equal(await page.locator("#caption-share-with-room").isChecked(), false, `${name} expanded caption sharing without consent`);
+      await page.locator("#caption-share-with-room").check();
+      await page.waitForFunction(() => document.querySelector("#caption-sharing-state")?.textContent?.trim() === "lokal und im Raum");
+      assert.equal((await page.locator("#caption-sharing-state").textContent()).trim(), "lokal und im Raum", name);
       await page.locator("#caption-share-with-room").uncheck();
       await page.waitForFunction(() => document.querySelector("#caption-sharing-state")?.textContent?.trim() === "nur auf diesem Gerät");
       assert.equal((await page.locator("#caption-sharing-state").textContent()).trim(), "nur auf diesem Gerät", name);

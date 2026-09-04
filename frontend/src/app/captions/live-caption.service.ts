@@ -55,7 +55,7 @@ export class LiveCaptionService {
   readonly starting = computed(() => this.startingSources().length > 0);
   readonly error = signal("");
   readonly showOverlay = signal(storedBoolean("webrtc-caption-overlay-v1", true));
-  readonly shareWithRoom = signal(storedBoolean("webrtc-caption-share-v1", true));
+  readonly shareWithRoom = signal(storedBoolean("webrtc-caption-share-v1", false));
   readonly entries = this.mesh.captions;
   readonly recentEntries = computed(() => this.entries().slice(-100).reverse());
   readonly overlayEntries = computed(() => this.entries().slice(-3));

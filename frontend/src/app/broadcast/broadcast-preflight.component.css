@@ -132,6 +132,31 @@ app-broadcast-preflight .delivery-policy legend {
   color: #f5a65b;
 }
 
+app-broadcast-preflight .caption-policy {
+  border-color: rgba(203, 145, 255, .32);
+}
+
+app-broadcast-preflight .caption-policy legend {
+  color: #d7adff;
+}
+
+app-broadcast-preflight .caption-destinations,
+app-broadcast-preflight .caption-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .65rem;
+}
+
+app-broadcast-preflight .caption-settings-grid .field,
+app-broadcast-preflight .caption-settings-grid button {
+  align-self: end;
+}
+
+app-broadcast-preflight .caption-settings-grid input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 app-broadcast-preflight .audio-policy .field,
 app-broadcast-preflight .audio-policy .facts {
   margin: 0;
@@ -259,7 +284,9 @@ app-broadcast-preflight .error {
 }
 
 @media (max-width: 850px) {
-  app-broadcast-preflight .preflight-grid {
+  app-broadcast-preflight .preflight-grid,
+  app-broadcast-preflight .caption-destinations,
+  app-broadcast-preflight .caption-settings-grid {
     grid-template-columns: 1fr;
   }
 

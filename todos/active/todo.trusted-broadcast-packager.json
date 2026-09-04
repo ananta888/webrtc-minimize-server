@@ -768,10 +768,10 @@
     {
       "id": "TBP-032",
       "title": "Vosk-Live-Captions als synchronisierte, consentierte Broadcast-Untertitel ausliefern",
-      "status": "todo",
+      "status": "partial",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 75,
       "depends_on": ["TBP-003", "TBP-014", "TBP-015", "TBP-019", "TBP-021", "TBP-031"],
       "acceptance_criteria": [
         "Der Publisher wählt explizit, ob lokale Vosk-Ergebnisse nur lokal, im SFrame-Raum, im Broadcast als TextTrack und/oder eingebrannt sichtbar sind; Default erweitert die Freigabe nicht.",
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 9, "in_progress": 0, "partial": 16, "blocked": 0, "done": 15 },
+    "by_status": { "todo": 8, "in_progress": 0, "partial": 17, "blocked": 0, "done": 15 },
     "progress_percent_done": 37.5,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -963,9 +963,9 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 9,
+    "todo_remaining": 8,
     "in_progress": 0,
-    "partial": 16,
+    "partial": 17,
     "blocked": 0,
     "done": 15
   },
@@ -1006,6 +1006,7 @@
     "TBP-029 ist zu 65 Prozent umgesetzt. Das vorhandene Angular-Broadcast-Menue zeigt nun neben Own-Source-Auswahl, Preview, Program-Audio, Layout, Untertiteln, Sichtbarkeit und Qualitaet auch Delivery-Profil, konkreten Packager, Upload-/CPU-Schaetzung und eine zusammenfassende Trust-Ansicht. Nur dieser Browser als Own-Source-Packager und Origin-LL-HLS sind waehbar; CDN, Native und MoQ bleiben sichtbar deaktiviert, Blind-Agenten werden nicht als Trusted Packager umgedeutet und der echte Sendestart bleibt bis zur Runtime-Verdrahtung gesperrt. Ein separater Cockpit-Workflow verlangt Anfrage plus frische lokale Bestaetigung und kapselt Start/Change/Kill hinter einem kleinen Action-Port. Die Programanzeige besitzt idle, starting, running, degraded, reconnecting, handing_over, stopping, stopped und failed; stopped bleibt sichtbar. Kill versucht Publication-Stop, Grant-Revoke und lokales Cleanup auch bei Teilfehlern. 19 fokussierte Tests pruefen State, Bestätigung, Unterbrechung, Kill, Remote-/Restore-Deny und UI-Angaben. Offen sind produktive Control-Plane-/Grant-/Gateway-Anbindung, echter stets erreichbarer UI-Kill-Switch, Refresh/Restore/Handoff sowie reale Tastatur-/Screenreader-Gates; deshalb bleibt der Task partial.",
     "TBP-030 ist zu 75 Prozent umgesetzt. Eine geschlossene serverseitige Moderationspolicy autorisiert Quellenanfrage/-entfernung, Layout, Packager-Auswahl, schluessellose Standbys, Handoff und Stop anhand Rolle, Tenant, Raum, Programmrevision, Program-/Lease-Epoche sowie einer frischen lokalen Zweifachbestaetigung. Publisher koennen nur ihre eigene Quelle widerrufen; ein verbindlicher Effektplan fencet und stoppt sie lokal zuerst, widerruft Keys/Grants, zerstoert den Decoder, leert die Compositorflaeche und verbietet den letzten decodierten Frame. Native-Packager-Kandidaten muessen demselben Owner/Tenant/Raum gehoeren, explizit consentiert, operatorzugelassen, gesund sowie fuer Upload, Energie, Codec und Kapazitaet geeignet sein. Genau ein aktiver Writer erhaelt die naechste Fencing-Revision und gegebenenfalls Keys; bis zu zwei Standbys bleiben warm-no-media-key. Der Angular-Workflow behandelt stale Revision/Epochen sichtbar, die Regieansicht nutzt native Tastaturcontrols und einen beschrifteten Bestaetigungsdialog. Das inhaltsfreie Audit ist auf 256 Eintraege begrenzt. Offen bleiben produktive Control-Plane-/Consent-/Lease-/Compositor-Verdrahtung, der Native-Packager aus TBP-016 sowie reale Zwei-Geraete-Handoff- und Accessibility-Gates; die oeffentliche Regie bleibt deshalb sichtbar, aber deaktiviert, und der Task partial.",
     "TBP-031 ist zu 70 Prozent umgesetzt. Eine sichtbare Angular-Zuschaueransicht trennt oeffentliche Live-Programme, OIDC-berechtigte private Programme, eigene Programme sowie beendet/offline und startet weder Playback noch Capture automatisch. Der geschlossene Directory-Client akzeptiert auf dem anonymen Public-Pfad ausschliesslich public/live oder public/degraded, laedt private/eigene Mengen nur authentisiert und vereinheitlicht 403/404 gegen Enumeration. Playback-Autorisierung nutzt POST und behaelt Grant/Resource aus Deep Link und History; der vorhandene Cookie-Gateway bleibt die Mediengrenze. Der Player zeigt Besitzer nach Policy, aggregierte Viewerzahl, Latenzpfad, Untertitelstatus, Audio, Vollbild, PiP, Live-Abstand, Recovery und Fallback. Eine hysteretische Regel kombiniert Bandbreite, Buffer, Decode-Drops und Save-Data; Datensparen/Niedrig deckeln bei 360p, Mittel bei 540p, und exakte manuelle Renditionen werden nicht von Auto ueberschrieben. Offen bleiben die produktiven Public/Mine/Playback-Projections, echte Grants/Programme, laufende End-/Revoke-/Providerwechsel sowie reale Desktop-/Mobil-/Accessibility-Gates; deshalb bleibt die Runtime-Ansicht sichtbar, aber deaktiviert, und der Task partial.",
+    "TBP-032 ist zu 75 Prozent umgesetzt. Der Angular-Preflight trennt lokale Einblendung, SFrame-Raumfreigabe, Broadcast-WebVTT und Burn-in in vier einzeln consentierte, pro Sitzung default-aus geschaltete Ziele; auch die bestehende Raumfreigabe ist fuer neue Browserprofile nun default-aus. Der feste 13-Modell-Vosk-Katalog bleibt nur per Nutzerklick ladbar; Sprache, Sprecherlabel, Delay, Zeilenlaenge, Position und Stil sind begrenzt einstellbar. Ein reiner BrowserBroadcastCaptionPackager bindet Eingaben an Source/Epoch/Revision und Program-Zeit, haelt Partials fluechtig, erzeugt nur aus Final-Ergebnissen maximal 32 Cues beziehungsweise 64 KiB WebVTT im 30-Sekunden-Livefenster und verwirft Steuer-/Bidi-Zeichen, Duplikate sowie stale Ergebnisse. Source-Wechsel, Pause, Handoff, Resync und Revoke leeren Cues/Revisionen, erhoehen die Discontinuity und sperren alte Source-Epochen. Der Viewer besitzt eine ausdrueckliche Caption-Steuerung; private WebVTT-Ressourcen bleiben an dieselbe Playback-Session wie Medien gebunden. Offen bleiben die echte Vosk-zu-Compositor-/Gateway-Verdrahtung, reale MediaMTX-WebVTT-Ausgabe sowie Zwei-Sprachen-, Mobil-, Accessibility-, Sync- und Langzeitgates; deshalb bleibt der Task partial und die oeffentliche Broadcast-Runtime deaktiviert.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }

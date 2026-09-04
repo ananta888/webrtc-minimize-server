@@ -28,6 +28,7 @@ export class BroadcastPlayerComponent implements OnDestroy {
   readonly state = signal<BroadcastPlayerSnapshot>(new BroadcastHlsPlayer().snapshot());
   readonly muted = signal(true);
   readonly volume = signal(1);
+  readonly captionsVisible = signal(false);
   private controller: AbortController | null = null;
   private readonly player = new BroadcastHlsPlayer((state) => this.state.set(state));
   private readonly visibilityListener = () => {
@@ -76,6 +77,15 @@ export class BroadcastPlayerComponent implements OnDestroy {
   setAdaptiveMode(value: string): void {
     if (!new Set(["auto", "data-saver", "low", "medium", "high"]).has(value)) return;
     this.player.setAdaptiveMode(value as "auto" | "data-saver" | "low" | "medium" | "high");
+  }
+
+  setCaptionsVisible(visible: boolean): void {
+    this.captionsVisible.set(visible);
+    const tracks = this.video().nativeElement.textTracks;
+    for (let index = 0; index < tracks.length; index += 1) {
+      const track = tracks[index];
+      if (track?.kind === "subtitles" || track?.kind === "captions") track.mode = visible ? "showing" : "disabled";
+    }
   }
 
   async fullscreen(): Promise<void> {

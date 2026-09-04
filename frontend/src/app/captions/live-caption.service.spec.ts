@@ -99,6 +99,11 @@ describe("LiveCaptionService", () => {
 
   afterEach(() => vi.useRealTimers());
 
+  it("does not expand caption sharing before the user explicitly opts in", () => {
+    const test = fixture();
+    expect(test.service.shareWithRoom()).toBe(false);
+  });
+
   it("fails closed without an already active microphone and never requests capture", async () => {
     const test = fixture({ microphone: false });
     const getUserMedia = vi.fn();
@@ -114,6 +119,7 @@ describe("LiveCaptionService", () => {
 
   it("feeds microphone PCM into Vosk and sends bounded partial and final updates", async () => {
     const test = fixture();
+    expect(test.service.setShareWithRoom(true)).toBe(true);
     expect(await test.service.start("microphone")).toBe(true);
     const recognizer = test.recognizerFor("microphone");
     expect(test.models.createRecognizer).toHaveBeenCalledWith(48_000);

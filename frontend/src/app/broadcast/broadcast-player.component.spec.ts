@@ -9,6 +9,8 @@ describe("BroadcastPlayerComponent viewer controls", () => {
     expect(template).toContain("Ton einschalten");
     expect(template).toContain("Live-Abstand:");
     expect(template).toContain("Vollbild");
+    expect(template).toContain('id="broadcast-player-captions"');
+    expect(template).toContain('[attr.aria-pressed]="captionsVisible()"');
     expect(template).toContain('id="broadcast-viewer-quality-mode"');
     for (const mode of ["auto", "data-saver", "low", "medium", "high"]) {
       expect(template).toContain(`<option value="${mode}">`);

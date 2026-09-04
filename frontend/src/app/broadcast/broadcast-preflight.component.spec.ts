@@ -50,4 +50,19 @@ describe("BroadcastPreflightComponent audio policy", () => {
     }
     expect(template).toContain("Titel, Namen und Untertitel bleiben standardmäßig aus");
   });
+
+  it("separates local, room, text-track and burn-in caption consent with bounded controls", () => {
+    for (const id of [
+      "broadcast-caption-local", "broadcast-caption-room", "broadcast-captions", "broadcast-caption-burn-in",
+      "broadcast-caption-model", "broadcast-caption-load-model", "broadcast-caption-speaker-mode",
+      "broadcast-caption-delay", "broadcast-caption-line-length", "broadcast-caption-position", "broadcast-caption-style",
+    ]) expect(template).toContain(`id="${id}"`);
+    expect(template).toContain("Alle Ziele sind pro Sitzung standardmäßig aus");
+    expect(template).toContain("Partials bleiben flüchtig");
+    expect(template).toContain("alte Cues werden nicht wiederverwendet");
+    expect(component).toContain("setCaptionDestination");
+    expect(component).toContain("captionModels.loadSelected()");
+    expect(component).not.toContain("getUserMedia");
+    expect(component).not.toContain("getDisplayMedia");
+  });
 });
