@@ -67,7 +67,7 @@ jobs:
             --provenance=mode=max --sbom=true \
             --output type=oci,dest=/tmp/webrtc-minimize-server.oci.tar .
       - name: Scan OCI archive for synthetic leakage canaries
-        run: BROADCAST_IMAGE_ARCHIVE=/tmp/webrtc-minimize-server.oci.tar node scripts/broadcast-leakage-gate.mjs
+        run: BROADCAST_LEAKAGE_SCOPE=image BROADCAST_IMAGE_ARCHIVE=/tmp/webrtc-minimize-server.oci.tar node scripts/broadcast-leakage-gate.mjs
 
   media-agent:
     name: Blind media agent

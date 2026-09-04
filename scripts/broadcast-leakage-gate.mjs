@@ -20,9 +20,18 @@ for (const suite of coverage.suites) {
   }
 }
 
-const paths = ["dist/browser"];
-for (const optional of ["media-agent-downloads"]) if (existsSync(optional)) paths.push(optional);
+const scanScope = process.env.BROADCAST_LEAKAGE_SCOPE || "workspace";
+if (!new Set(["workspace", "image"]).has(scanScope)) {
+  throw new Error("invalid BROADCAST_LEAKAGE_SCOPE");
+}
 const imageArchive = process.env.BROADCAST_IMAGE_ARCHIVE;
+if (scanScope === "image" && !imageArchive) {
+  throw new Error("image leakage scope requires BROADCAST_IMAGE_ARCHIVE");
+}
+const paths = scanScope === "workspace" ? ["dist/browser"] : [];
+if (scanScope === "workspace") {
+  for (const optional of ["media-agent-downloads"]) if (existsSync(optional)) paths.push(optional);
+}
 if (imageArchive) {
   if (!existsSync(imageArchive)) throw new Error("BROADCAST_IMAGE_ARCHIVE does not exist");
   paths.push(imageArchive);

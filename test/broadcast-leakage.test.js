@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -21,6 +22,23 @@ test("streaming leakage scanner finds split-boundary canaries and rejects symlin
   assert.deepEqual(await scanPathsForCanaries([safe]), { files: 1, bytes: 70_000 });
   await assert.rejects(() => scanPathsForCanaries([leaking]), /broadcast_leakage_canary_found/);
   await assert.rejects(() => scanPathsForCanaries([link]), /leakage_scan_symlink_forbidden/);
+});
+
+test("image-only leakage gate requires and scans its explicit archive", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "broadcast-image-leakage-"));
+  const archive = path.join(directory, "image.oci.tar");
+  writeFileSync(archive, Buffer.alloc(1_024, 120));
+  const output = execFileSync(process.execPath, ["scripts/broadcast-leakage-gate.mjs"], {
+    cwd: new URL("..", import.meta.url),
+    encoding: "utf8",
+    env: { ...process.env, BROADCAST_LEAKAGE_SCOPE: "image", BROADCAST_IMAGE_ARCHIVE: archive },
+  });
+  assert.match(output, /Broadcast leakage scan passed for 1 files/);
+  assert.throws(() => execFileSync(process.execPath, ["scripts/broadcast-leakage-gate.mjs"], {
+    cwd: new URL("..", import.meta.url),
+    stdio: "pipe",
+    env: { ...process.env, BROADCAST_LEAKAGE_SCOPE: "image", BROADCAST_IMAGE_ARCHIVE: "" },
+  }), /Command failed/);
 });
 
 test("public responses, headers and application shell never expose server-side canaries", async (context) => {
