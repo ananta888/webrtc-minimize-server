@@ -7,6 +7,7 @@ function proxy(status = 200, contentType = "application/vnd.apple.mpegurl") {
   const calls = [];
   const sessions = {
     create: async (value) => value,
+    renew: async (value) => value,
     close: () => null,
     authorize: async () => ({
       sessionId: "pbs_aaaaaaaaaaaaaaaaaaaaaaaa",
@@ -50,6 +51,7 @@ test("HLS proxy bounds range, redirects, content type, size and private misses",
 test("HLS proxy bounds concurrent slow viewers and releases capacity on cancellation", async () => {
   const sessions = {
     create: async (value) => value,
+    renew: async (value) => value,
     close: () => null,
     authorize: async () => ({
       sessionId: "pbs_aaaaaaaaaaaaaaaaaaaaaaaa",

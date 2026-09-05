@@ -42,6 +42,13 @@ function cookieEntries(header) {
   ));
 }
 
+function sameGrantScope(left, right) {
+  return [
+    "tenantId", "deviceRef", "roomId", "programId", "programEpoch", "resourceRef",
+    "policyId", "policyRevision",
+  ].every((field) => left[field] === right[field]);
+}
+
 export class BroadcastPlaybackSessionStore {
   #authority;
   #origin;
@@ -108,7 +115,11 @@ export class BroadcastPlaybackSessionStore {
     const pathScope = `/broadcast/play/${resourceRef}/`;
     this.#sessions.set(sessionId, Object.freeze({
       sessionId, cookieName, resourceRef, audienceRef: grant.audienceRef,
-      authorizationHeader, expiresAt: grant.expiresAt,
+      authorizationHeader, expiresAt: grant.expiresAt, grantScope: Object.freeze({
+        tenantId: grant.tenantId, deviceRef: grant.deviceRef, roomId: grant.roomId,
+        programId: grant.programId, programEpoch: grant.programEpoch, resourceRef: grant.resourceRef,
+        policyId: grant.policyId, policyRevision: grant.policyRevision,
+      }),
     }));
     const maxAge = Math.max(1, Math.floor((grant.expiresAt - now) / 1_000));
     return Object.freeze({
@@ -116,6 +127,44 @@ export class BroadcastPlaybackSessionStore {
       manifestUrl: `${pathScope}index.m3u8`,
       expiresAt: grant.expiresAt,
       setCookie: `${cookieName}=${sessionId}; Path=${pathScope}; Max-Age=${maxAge}; Secure; HttpOnly; SameSite=Strict`,
+    });
+  }
+
+  async renew({ authorizationHeader, sessionId, resourceRef, cookieHeader, origin, now = Date.now() }) {
+    if (!SESSION.test(sessionId || "") || !RESOURCE.test(resourceRef || "")
+      || origin !== this.#origin || !Number.isSafeInteger(now)) notFound();
+    this.#prune(now);
+    const session = this.#sessions.get(sessionId);
+    const ownsCookie = cookieEntries(cookieHeader).some(([name, value]) => (
+      name === session?.cookieName && value === sessionId
+    ));
+    if (!session || !ownsCookie || session.resourceRef !== resourceRef) notFound();
+    const path = `/broadcast/play/${session.resourceRef}`;
+    let grant;
+    try {
+      grant = await this.#authority.authorizeGatewayBearer(authorizationHeader, {
+        action: "playback:manifest", path, grantKinds: ["playback"],
+      }, now);
+      await this.#authority.authorizeGatewayBearer(authorizationHeader, {
+        action: "playback:segment", path, grantKinds: ["playback"],
+      }, now);
+    } catch {
+      notFound();
+    }
+    if (!grant || grant.grantKind !== "playback" || grant.resourceRef !== session.resourceRef
+      || !Number.isSafeInteger(grant.expiresAt) || grant.expiresAt <= now
+      || !sameGrantScope(session.grantScope, grant)) notFound();
+    const renewed = Object.freeze({
+      ...session, authorizationHeader, audienceRef: grant.audienceRef, expiresAt: grant.expiresAt,
+    });
+    this.#sessions.set(sessionId, renewed);
+    const pathScope = `/broadcast/play/${session.resourceRef}/`;
+    const maxAge = Math.max(1, Math.floor((grant.expiresAt - now) / 1_000));
+    return Object.freeze({
+      playbackSessionId: sessionId,
+      manifestUrl: `${pathScope}index.m3u8`,
+      expiresAt: grant.expiresAt,
+      setCookie: `${session.cookieName}=${sessionId}; Path=${pathScope}; Max-Age=${maxAge}; Secure; HttpOnly; SameSite=Strict`,
     });
   }
 

@@ -15,9 +15,15 @@ function createStore(overrides = {}) {
   const authority = {
     async authorizeGatewayBearer(header, expectation, calledAt) {
       calls.push({ header, expectation, calledAt });
-      if (header !== "Bearer playback-grant" || revoked) throw new Error("inactive_broadcast_grant");
+      if (!new Set(["Bearer playback-grant", "Bearer renewed-playback-grant", "Bearer wrong-device-grant"]).has(header)
+        || revoked) throw new Error("inactive_broadcast_grant");
       return {
-        grantKind: "playback", resourceRef, audienceRef: "sub_aaaaaaaaaaaaaaaa", expiresAt: now + 60_000,
+        grantKind: "playback", resourceRef, audienceRef: header === "Bearer renewed-playback-grant"
+          ? "sub_bbbbbbbbbbbbbbbb" : "sub_aaaaaaaaaaaaaaaa",
+        tenantId: "tn_aaaaaaaaaaaaaaaa", deviceRef: header === "Bearer wrong-device-grant"
+          ? "dev_bbbbbbbbbbbbbbbb" : "dev_aaaaaaaaaaaaaaaa",
+        roomId: "room-alpha", programId: "prg_aaaaaaaaaaaaaaaa", programEpoch: 2,
+        policyId: "pol_aaaaaaaaaaaaaaaa", policyRevision: 3, expiresAt: calledAt + 60_000,
       };
     },
   };
@@ -43,6 +49,30 @@ test("playback grant becomes a path-bound Secure HttpOnly cookie without token i
   assert.match(session.setCookie, /Secure; HttpOnly; SameSite=Strict$/);
   assert.equal(calls[0].expectation.action, "playback:manifest");
   assert.equal(calls[1].expectation.action, "playback:segment");
+});
+
+test("renewal rotates only the bearer and expiry of the same cookie-, device- and epoch-bound session", async () => {
+  const { store } = createStore();
+  const session = await store.create({
+    authorizationHeader: "Bearer playback-grant", resourceRef,
+    origin: "https://webrtc.ananta.de", now,
+  });
+  const cookieHeader = session.setCookie.split(";", 1)[0];
+  const renewed = await store.renew({
+    authorizationHeader: "Bearer renewed-playback-grant", sessionId: session.playbackSessionId,
+    resourceRef, cookieHeader, origin: "https://webrtc.ananta.de", now: now + 20_000,
+  });
+  assert.equal(renewed.playbackSessionId, session.playbackSessionId);
+  assert.equal(renewed.expiresAt, now + 80_000);
+  assert.match(renewed.setCookie, /Max-Age=60; Secure; HttpOnly; SameSite=Strict$/);
+  await store.authorize({
+    cookieHeader, method: "GET", resourceRef, file: "index.m3u8", query: "", origin: "",
+    now: now + 60_001,
+  });
+  await assert.rejects(store.renew({
+    authorizationHeader: "Bearer wrong-device-grant", sessionId: session.playbackSessionId,
+    resourceRef, cookieHeader, origin: "https://webrtc.ananta.de", now: now + 60_002,
+  }), /not_found/);
 });
 
 test("every manifest and part rechecks the live grant and only permits LL-HLS query fields", async () => {

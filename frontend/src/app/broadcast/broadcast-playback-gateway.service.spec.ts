@@ -42,4 +42,33 @@ describe("BroadcastPlaybackGatewayService", () => {
     )).rejects.toThrow("invalid_broadcast_playback_gateway_response");
     vi.restoreAllMocks();
   });
+
+  it("renews the same opaque cookie session with a fresh header-only grant", async () => {
+    const initialExpiry = Date.now() + 30_000;
+    const renewedExpiry = Date.now() + 60_000;
+    const body = (expiresAt: number) => JSON.stringify({
+      playbackSessionId: "pbs_cccccccccccccccccccccccc",
+      manifestUrl: "/broadcast/play/res_cccccccccccccccc/index.m3u8",
+      expiresAt,
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(body(initialExpiry), { status: 201 }))
+      .mockResolvedValueOnce(new Response(body(renewedExpiry), { status: 200 }));
+    const service = new BroadcastPlaybackGatewayService();
+    await service.open("res_cccccccccccccccc", "initial-playback-grant", new AbortController().signal);
+    const renewed = await service.renew(
+      "res_cccccccccccccccc", "renewed-playback-grant", new AbortController().signal,
+    );
+    expect(renewed.expiresAt).toBe(renewedExpiry);
+    expect(fetchMock.mock.calls[1]).toEqual([
+      "/api/broadcast/playback-sessions/pbs_cccccccccccccccccccccccc",
+      expect.objectContaining({
+        method: "PUT",
+        headers: { authorization: "Bearer renewed-playback-grant", "content-type": "application/json" },
+        body: JSON.stringify({ resourceRef: "res_cccccccccccccccc" }),
+      }),
+    ]);
+    expect(JSON.stringify(service.session())).not.toContain("playback-grant");
+    fetchMock.mockRestore();
+  });
 });

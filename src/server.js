@@ -888,8 +888,40 @@ function createHttpHandler(config, registry, services) {
           response.end();
           return;
         }
+        if (request.method === "PUT") {
+          const origin = request.headers.origin || "";
+          if (url.search || origin !== config.publicOrigin
+            || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+            response.writeHead(404, { "cache-control": "no-store" });
+            response.end();
+            return;
+          }
+          if (broadcastAbuseGuard && !broadcastAbuseGuard.allow({
+            action: "credential-attempt", actorRef: request.socket.remoteAddress || "unknown-address",
+          })) {
+            sendJson(response, 429, { error: "broadcast_temporarily_unavailable" }, {
+              "retry-after": "60", ...securityHeaders(config),
+            });
+            return;
+          }
+          const input = await readJsonBody(request);
+          assertAllowedKeys(input, new Set(["resourceRef"]));
+          const session = await broadcastHlsProxy.renewSession({
+            authorizationHeader: request.headers.authorization || "",
+            sessionId: playbackSessionMatch[1],
+            resourceRef: input.resourceRef,
+            cookieHeader: request.headers.cookie || "",
+            origin,
+          });
+          sendJson(response, 200, {
+            playbackSessionId: session.playbackSessionId,
+            manifestUrl: session.manifestUrl,
+            expiresAt: session.expiresAt,
+          }, { "set-cookie": session.setCookie, ...securityHeaders(config) });
+          return;
+        }
         if (request.method !== "DELETE") {
-          response.writeHead(405, { allow: "DELETE", "cache-control": "no-store" });
+          response.writeHead(405, { allow: "PUT, DELETE", "cache-control": "no-store" });
           response.end();
           return;
         }

@@ -95,7 +95,8 @@ export class BroadcastHlsProxy {
     idleTimeoutMs = 5_000,
     streamTimeoutMs = 30_000,
   }) {
-    if (!sessions || typeof sessions.create !== "function" || typeof sessions.authorize !== "function") {
+    if (!sessions || typeof sessions.create !== "function" || typeof sessions.renew !== "function"
+      || typeof sessions.authorize !== "function") {
       fail("invalid_broadcast_hls_proxy_configuration", 500);
     }
     let parsed;
@@ -119,6 +120,8 @@ export class BroadcastHlsProxy {
   }
 
   createSession(input) { return this.#sessions.create(input); }
+
+  renewSession(input) { return this.#sessions.renew(input); }
 
   closeSession(input) { return this.#sessions.close(input); }
 

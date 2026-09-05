@@ -390,6 +390,19 @@ test("private broadcast delivery exchanges a bearer for HttpOnly cookie and prox
         setCookie: "__Secure-webrtc-broadcast-aaaaaaaaaaaa=pbs_aaaaaaaaaaaaaaaaaaaaaaaa; Path=/broadcast/play/res_aaaaaaaaaaaaaaaa/; Max-Age=60; Secure; HttpOnly; SameSite=Strict",
       };
     },
+    async renewSession(input) {
+      calls.push({ kind: "renew", input });
+      if (input.authorizationHeader !== "Bearer renewed-playback-grant"
+        || input.resourceRef !== "res_aaaaaaaaaaaaaaaa") {
+        throw new BroadcastHlsProxyError("broadcast_playback_not_found", 404);
+      }
+      return {
+        playbackSessionId: "pbs_aaaaaaaaaaaaaaaaaaaaaaaa",
+        manifestUrl: "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8",
+        expiresAt: Date.now() + 60_000,
+        setCookie: "__Secure-webrtc-broadcast-aaaaaaaaaaaa=pbs_aaaaaaaaaaaaaaaaaaaaaaaa; Path=/broadcast/play/res_aaaaaaaaaaaaaaaa/; Max-Age=60; Secure; HttpOnly; SameSite=Strict",
+      };
+    },
     async fetchMedia(input) {
       calls.push({ kind: "media", input });
       return {
@@ -433,13 +446,26 @@ test("private broadcast delivery exchanges a bearer for HttpOnly cookie and prox
   assert.equal(nestedSegment.status, 200);
   assert.equal(calls[2].input.file, "low/segment_000000001.m4s");
 
+  const renewed = await fetch(`${app.httpUrl}/api/broadcast/playback-sessions/${session.playbackSessionId}`, {
+    method: "PUT",
+    headers: {
+      authorization: "Bearer renewed-playback-grant", "content-type": "application/json",
+      cookie, origin: "https://webrtc.ananta.de",
+    },
+    body: JSON.stringify({ resourceRef: "res_aaaaaaaaaaaaaaaa" }),
+  });
+  assert.equal(renewed.status, 200);
+  assert.match(renewed.headers.get("set-cookie"), /HttpOnly; SameSite=Strict/);
+  assert.equal(calls[3].kind, "renew");
+  assert.equal(calls[3].input.cookieHeader, cookie);
+
   const closed = await fetch(`${app.httpUrl}/api/broadcast/playback-sessions/${session.playbackSessionId}`, {
     method: "DELETE", headers: { cookie, origin: "https://webrtc.ananta.de" },
   });
   assert.equal(closed.status, 204);
   assert.match(closed.headers.get("set-cookie"), /Max-Age=0/);
   assert.equal(calls[1].input.query, "?_HLS_msn=3");
-  assert.equal(calls[3].input.cookieHeader, cookie);
+  assert.equal(calls[4].input.cookieHeader, cookie);
 
   assert.equal((await fetch(`${app.httpUrl}/api/broadcast/playback-sessions`, {
     method: "POST",

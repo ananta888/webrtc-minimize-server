@@ -608,10 +608,10 @@
     {
       "id": "TBP-022",
       "title": "Private Manifest-, Segment- und Part-Auslieferung durchgängig autorisieren",
-      "status": "partial",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 70,
+      "progress_percent": 76,
       "depends_on": ["TBP-006", "TBP-007", "TBP-008", "TBP-018", "TBP-021"],
       "acceptance_criteria": [
         "Das ausgewählte Verfahren schützt Master-/Media-Playlists, Initialisierungssegmente, Segmente, Parts, Preload Hints, Untertitel und Keys konsistent; der Schutz endet nicht nach dem ersten Manifest.",
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 0, "in_progress": 4, "partial": 18, "blocked": 0, "done": 18 },
+    "by_status": { "todo": 0, "in_progress": 5, "partial": 17, "blocked": 0, "done": 18 },
     "progress_percent_done": 45,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -964,8 +964,8 @@
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 4,
-    "partial": 18,
+    "in_progress": 5,
+    "partial": 17,
     "blocked": 0,
     "done": 18
   },

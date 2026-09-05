@@ -12,6 +12,29 @@ export interface SecureBroadcastPlaybackSession {
   readonly expiresAt: number;
 }
 
+async function parseSessionResponse(response: Response): Promise<SecureBroadcastPlaybackSession> {
+  if (!response.ok) throw new BroadcastBrowserPortError(response.status === 429
+    ? "broadcast_playback_session_quota_reached" : "broadcast_playback_not_found");
+  let value: unknown;
+  try { value = await response.json(); } catch { throw new BroadcastBrowserPortError("invalid_broadcast_playback_gateway_response"); }
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || Object.keys(value).length !== 3
+    || Object.keys(value).some((key) => !new Set(["playbackSessionId", "manifestUrl", "expiresAt"]).has(key))) {
+    throw new BroadcastBrowserPortError("invalid_broadcast_playback_gateway_response");
+  }
+  const session = value as Record<string, unknown>;
+  if (!SESSION.test(String(session["playbackSessionId"] || ""))
+    || !MANIFEST.test(String(session["manifestUrl"] || ""))
+    || !Number.isSafeInteger(session["expiresAt"]) || Number(session["expiresAt"]) <= Date.now()) {
+    throw new BroadcastBrowserPortError("invalid_broadcast_playback_gateway_response");
+  }
+  return Object.freeze({
+    playbackSessionId: String(session["playbackSessionId"]),
+    manifestUrl: String(session["manifestUrl"]),
+    expiresAt: Number(session["expiresAt"]),
+  });
+}
+
 @Injectable({ providedIn: "root" })
 export class BroadcastPlaybackGatewayService {
   private active: SecureBroadcastPlaybackSession | null = null;
@@ -31,27 +54,34 @@ export class BroadcastPlaybackGatewayService {
       signal,
       body: JSON.stringify({ resourceRef }),
     });
-    if (!response.ok) throw new BroadcastBrowserPortError(response.status === 429
-      ? "broadcast_playback_session_quota_reached" : "broadcast_playback_not_found");
-    let value: unknown;
-    try { value = await response.json(); } catch { throw new BroadcastBrowserPortError("invalid_broadcast_playback_gateway_response"); }
-    if (!value || typeof value !== "object" || Array.isArray(value)
-      || Object.keys(value).length !== 3
-      || Object.keys(value).some((key) => !new Set(["playbackSessionId", "manifestUrl", "expiresAt"]).has(key))) {
-      throw new BroadcastBrowserPortError("invalid_broadcast_playback_gateway_response");
-    }
-    const session = value as Record<string, unknown>;
-    if (!SESSION.test(String(session["playbackSessionId"] || ""))
-      || !MANIFEST.test(String(session["manifestUrl"] || ""))
-      || !Number.isSafeInteger(session["expiresAt"]) || Number(session["expiresAt"]) <= Date.now()) {
-      throw new BroadcastBrowserPortError("invalid_broadcast_playback_gateway_response");
-    }
-    this.active = Object.freeze({
-      playbackSessionId: String(session["playbackSessionId"]),
-      manifestUrl: String(session["manifestUrl"]),
-      expiresAt: Number(session["expiresAt"]),
-    });
+    this.active = await parseSessionResponse(response);
     return this.active;
+  }
+
+  async renew(resourceRef: string, playbackGrant: string, signal: AbortSignal): Promise<SecureBroadcastPlaybackSession> {
+    const active = this.active;
+    if (!active || !RESOURCE.test(resourceRef) || !active.manifestUrl.includes(`/${resourceRef}/`)
+      || typeof playbackGrant !== "string" || playbackGrant.length < 16 || playbackGrant.length > 8 * 1024
+      || /[\u0000-\u001f\u007f]/.test(playbackGrant)) {
+      throw new BroadcastBrowserPortError("invalid_broadcast_playback_gateway_request");
+    }
+    const response = await fetch(
+      `/api/broadcast/playback-sessions/${encodeURIComponent(active.playbackSessionId)}`,
+      {
+        method: "PUT",
+        headers: { authorization: `Bearer ${playbackGrant}`, "content-type": "application/json" },
+        credentials: "same-origin",
+        redirect: "error",
+        signal,
+        body: JSON.stringify({ resourceRef }),
+      },
+    );
+    const renewed = await parseSessionResponse(response);
+    if (renewed.playbackSessionId !== active.playbackSessionId || renewed.manifestUrl !== active.manifestUrl) {
+      throw new BroadcastBrowserPortError("invalid_broadcast_playback_gateway_response");
+    }
+    this.active = renewed;
+    return renewed;
   }
 
   async close(): Promise<void> {

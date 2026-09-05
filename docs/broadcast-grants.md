@@ -1,10 +1,9 @@
 # Kurzlebige Broadcast-Grants
 
-TBP-007 ergänzt eine serverseitige Autorisierungsgrenze für Publisher,
-Trusted-Packager und Zuschauer. Sie ist noch nicht an einen öffentlichen HTTP-
-oder Medienendpunkt angeschlossen und aktiviert deshalb weder WHIP noch
-Playback. Ihr Zweck ist, vor der späteren Adapterintegration eine kleine,
-fail-closed Grant-Schnittstelle festzulegen.
+TBP-007 und TBP-022 bilden die serverseitige Autorisierungsgrenze für Publisher,
+Trusted-Packager und Zuschauer. Playback ist über den gleichursprünglichen
+HLS-Proxy angeschlossen; der rohe Grant wird dort einmalig gegen eine
+pfadgebundene HttpOnly-Cookie-Sitzung getauscht und gelangt nie in eine URL.
 
 ## Vertrauenskette
 
@@ -40,6 +39,18 @@ Sekunden ab und können innerhalb ihrer kurzen Laufzeit für die erlaubten
 Manifest-/Segmentaktionen wiederverwendet werden. Keine konfigurierte Laufzeit
 darf fünf Minuten überschreiten; das OIDC-Ablaufdatum bildet immer die engere
 Obergrenze.
+
+Ein laufender Player erneuert seine kurze Sitzung vor Ablauf ohne erneute
+Medienfreigabe. Dazu erzeugt der Browser einen neuen, nicht exportierbaren
+P-256-Gerätebeweis und sendet den neuen Playback-Grant ausschließlich im
+Authorization-Header an `PUT /api/broadcast/playback-sessions/{id}`. Der Server
+akzeptiert die Rotation nur mit dem vorhandenen exakten Cookie und bei
+identischem Tenant, Gerät, Raum, Programm, Program-Epoch, Ressource sowie
+Policy-ID/-Revision. Die anonyme pseudonyme Audience darf sich dabei ändern;
+das nachgewiesene Gerät und alle Autoritätsgrenzen dürfen es nicht. Nach
+Visibility-/Epoch-Wechsel, Widerruf, Programmende, falschem Cookie oder
+abweichendem Scope schlägt die Erneuerung nicht unterscheidbar mit 404 fehl und
+der Player räumt seine lokale Sitzung auf.
 
 Jeder Grant ist gebunden an:
 
@@ -92,3 +103,7 @@ Negativfälle für OIDC-Attestation, Membership/Rollen, Gerätebindung,
 Consent-Abdeckung, Quoten, Replay, falsche Audience, Tenant, Raum, Programm,
 Epoch, Gerät, Aktion und Pfad, Ablauf, Einzelverbrauch, expliziten Widerruf,
 Epoch-Widerruf, Key-Rotation und Key-Deaktivierung.
+`test/broadcast-playback-session-store.test.js`,
+`test/server.integration.test.js` und die Angular-Tests des Playback-Gateways
+prüfen zusätzlich Cookie-Besitz, Header-only-Rotation, unveränderten Scope,
+Gerätewechsel, Ablauf und Cleanup der erneuerten Sitzung.

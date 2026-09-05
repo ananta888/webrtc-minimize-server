@@ -26,6 +26,9 @@ describe("BroadcastAudienceComponent", () => {
     expect(component).toContain("this.directory.deepLink(entry.programId)");
     expect(component).not.toContain("deepLink(bootstrap.playbackGrant");
     expect(component).not.toContain("getUserMedia");
+    expect(component).toContain("scheduleRenewal(bootstrap.program, bootstrap.resourceRef, session.expiresAt)");
+    expect(component).toContain("this.directory.authorize(program.programId, controller.signal)");
+    expect(component).toContain("this.playbackGateway.renew(");
   });
 
   it("uses native buttons and alert/status semantics for accessible recovery", () => {
