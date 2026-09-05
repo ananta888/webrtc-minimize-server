@@ -696,7 +696,11 @@ func reconnectSchedule(current time.Duration, authenticated bool) (time.Duration
 }
 
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "version" {
+	mode, err := commandMode(os.Args[1:])
+	if err != nil {
+		log.Fatal(err)
+	}
+	if mode == "version" {
 		if err := writeJSON(os.Stdout, normalizedBuildManifest(buildRevision, buildTimestamp)); err != nil {
 			log.Fatal("build metadata unavailable")
 		}
@@ -706,11 +710,16 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	identity, err := loadOrCreateIdentity(cfg.identityFile)
+	var identity *identity
+	if mode == "preflight" {
+		identity, err = loadIdentity(cfg.identityFile)
+	} else {
+		identity, err = loadOrCreateIdentity(cfg.identityFile)
+	}
 	if err != nil {
 		log.Fatal("identity unavailable")
 	}
-	if len(os.Args) == 2 && os.Args[1] == "operator-manifest" {
+	if mode == "operator-manifest" {
 		owner, readErr := os.ReadFile("/dev/stdin")
 		if readErr != nil || len(owner) < 2 || len(owner) > 2048 {
 			log.Fatal("owner principal unavailable")
@@ -735,6 +744,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if mode == "preflight" {
+		if err = writeJSON(os.Stdout, localPreflightReport()); err != nil {
+			log.Fatal("preflight report unavailable")
+		}
+		return
+	}
 	if err = cleanOutputRoot(cfg.outputRoot); err != nil {
 		log.Fatal("native packager output unavailable")
 	}
@@ -745,7 +760,7 @@ func main() {
 		log.Fatal(err)
 	}
 	client := &client{cfg: cfg, identity: identity, capability: capability, api: api}
-	if len(os.Args) == 2 && os.Args[1] == "enroll" {
+	if mode == "enroll" {
 		if cfg.enrollmentToken == "" {
 			log.Fatal("enrollment token required")
 		}
@@ -754,9 +769,6 @@ func main() {
 		}
 		log.Print("native broadcast packager enrolled")
 		return
-	}
-	if len(os.Args) != 1 {
-		log.Fatal("usage: native-broadcast-packager [enroll|operator-manifest|version]")
 	}
 	backoff := time.Second
 	for ctx.Err() == nil {

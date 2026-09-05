@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/preflight.v1.schema.json",
+  "title": "Local native packager update preflight (not control-plane health)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "type", "status", "controlPlaneVerified"],
+  "properties": {
+    "version": { "const": 1 },
+    "type": { "const": "native-packager-preflight" },
+    "status": { "const": "local-ready" },
+    "controlPlaneVerified": { "const": false }
+  }
+}

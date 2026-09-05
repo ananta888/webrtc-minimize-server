@@ -4,6 +4,15 @@ import test from "node:test";
 
 import Ajv2020 from "ajv/dist/2020.js";
 
+test("native packager preflight cannot claim network health or expose identity", async () => {
+  const schema = JSON.parse(await readFile(new URL("../contracts/native-packager/preflight.v1.schema.json", import.meta.url), "utf8"));
+  const validate = new Ajv2020({ strict: true }).compile(schema);
+  const report = { version: 1, type: "native-packager-preflight", status: "local-ready", controlPlaneVerified: false };
+  assert.equal(validate(report), true);
+  for (const invalid of [{ ...report, controlPlaneVerified: true }, { ...report, identity: "private" },
+    { ...report, status: "online" }, { ...report, version: 2 }]) assert.equal(validate(invalid), false);
+});
+
 test("native packager control schemas are closed and reject authority injection", async () => {
   const ajv = new Ajv2020({ strict: true, allErrors: true });
   const load = async (name) => JSON.parse(await readFile(new URL(`../contracts/native-packager/${name}`, import.meta.url), "utf8"));

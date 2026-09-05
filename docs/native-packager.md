@@ -187,6 +187,27 @@ nicht automatisch verschoben oder neu registriert. Eine Migration muss die
 jeweiligen Dienste stoppen und deren Identitäten, Startpfade und Schreibrechte
 gezielt erhalten; automatische Migration, Update und Rollback bleiben offen.
 
+Als lokale Voraussetzung für einen späteren Versionswechsel unterstützt der
+Agent `preflight` mit derselben `NATIVE_PACKAGER_*`-Konfiguration wie der Dienst.
+Der Befehl liest nur die **vorhandene** P-256-Identität, prüft Konfiguration und
+FFmpeg einschließlich der begrenzten Encoderproben und endet ohne Enrollment,
+WSS-Verbindung, Ausgabe-Cleanup oder Dienstwechsel. Eine fehlende oder beschädigte
+Identität wird nicht neu erzeugt oder ersetzt. Unbekannte CLI-Befehle werden vor
+Konfigurations- und Dateizugriff abgelehnt.
+
+```bash
+native-broadcast-packager preflight
+```
+
+Das geschlossene Ergebnis nach `contracts/native-packager/preflight.v1.schema.json`
+meldet ausschließlich `local-ready` und `controlPlaneVerified: false`. Es beweist
+weder die Erreichbarkeit oder Annahme durch den Server noch freien Speicher,
+Schreibrechte, aktuelle Raumfreigaben oder einen gesunden Medien-/Gatewaypfad.
+Die Prüfung selbst ersetzt keine Artefakt-/Signaturprüfung: Nur einen bereits
+vertrauenswürdig verifizierten Kandidaten ausführen. Die CLI-Tests verwenden
+echte Agent-Subprozesse und synthetisches FFmpeg; sie prüfen explizit, dass
+vorhandene Schlüssel und Mediendateien unverändert bleiben.
+
 Die isolierten Installer-Tests verwenden synthetische Binaries und simulierte
 Dienstcontroller; sie berühren keine reale Registrierung oder Benutzer-Autostarts.
 Der zusätzliche Parser-Gate kann unter Windows/WSL mit echter Windows

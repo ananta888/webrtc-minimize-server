@@ -28,7 +28,7 @@ try {
   const windowsPath = execFileSync("wslpath", ["-w", binary], { encoding: "utf8", timeout: 10_000 }).trim();
   const windowsDirectory = execFileSync("wslpath", ["-w", temporary], { encoding: "utf8", timeout: 10_000 }).trim();
   assert.ok(windowsPath && !/[\r\n\0]/.test(windowsPath));
-  const selection = `^(TestConfig|TestTranscodeOutput|TestOutput|TestWindowsMediaPipe|TestWindowsJobKillsOnlyAgentDescendantsOnAbruptExit${liveMedia ? "|TestLiveVP8ToH264AACPipeline|TestLiveVP8OpusToH264AACPipeline" : ""})`;
+  const selection = `^(TestCLI|TestConfig|TestTranscodeOutput|TestOutput|TestWindowsMediaPipe|TestWindowsJobKillsOnlyAgentDescendantsOnAbruptExit${liveMedia ? "|TestLiveVP8ToH264AACPipeline|TestLiveVP8OpusToH264AACPipeline" : ""})`;
   const result = execFileSync("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
     `${liveMedia ? "$env:RUN_LIVE_NATIVE_TRANSCODE='1'; " : ""}Set-Location -LiteralPath ${psQuote(windowsDirectory)}; & ${psQuote(windowsPath)} '-test.run=${selection}' '-test.v'; exit $LASTEXITCODE`],
   { encoding: "utf8", stdio: "pipe", timeout: liveMedia ? 120_000 : 60_000 });
@@ -38,6 +38,8 @@ try {
   assert.match(result, /--- PASS: TestOutputCleanupRejectsWindowsRootJunction/);
   assert.match(result, /--- PASS: TestWindowsMediaPipeRejectsWrongPIDBeforeWritingHeaders/);
   assert.match(result, /--- PASS: TestWindowsJobKillsOnlyAgentDescendantsOnAbruptExit/);
+  assert.match(result, /--- PASS: TestCLIPreflightPreservesIdentityAndMediaWithoutConnecting/);
+  assert.match(result, /--- PASS: TestCLIPreflightNeverCreatesMissingIdentity/);
   if (liveMedia) {
     assert.match(result, /--- PASS: TestLiveVP8ToH264AACPipeline/);
     assert.match(result, /--- PASS: TestLiveVP8OpusToH264AACPipeline/);
