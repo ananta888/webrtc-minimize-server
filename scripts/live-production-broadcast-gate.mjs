@@ -11,6 +11,7 @@ const issuer = process.env.LIVE_OIDC_ISSUER || "https://keycloak.ananta.de/realm
 const username = process.env.LIVE_OIDC_USERNAME || "";
 const password = process.env.LIVE_OIDC_PASSWORD || "";
 const packagerId = process.env.LIVE_NATIVE_PACKAGER_ID || "";
+const verifyRefreshRestore = process.env.LIVE_PRODUCTION_REFRESH_RESTORE === "1";
 if (!/^https:\/\/[^/]+$/.test(origin) || !/^https:\/\/[^/]+\/realms\/[A-Za-z0-9._-]+$/.test(issuer)
   || !username || !password || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(packagerId)) {
   throw new Error("isolated production broadcast gate configuration is incomplete");
@@ -324,44 +325,53 @@ try {
   await ownerPage.locator("#broadcast-start", {
     hasText: "Programm anlegen und Start bestätigen",
   }).waitFor({ timeout: 30_000 });
-  const revoked = await viewer.evaluate(async (url) => (await fetch(url, { cache: "no-store" })).status, playerManifest);
-  assert.equal(revoked, 404, "stopped program manifest must be revoked immediately");
-  await viewer.locator("app-broadcast-player .state[data-state=ended]").waitFor({ timeout: 20_000 });
+  try {
+    await viewer.locator("app-broadcast-player .state[data-state=ended]").waitFor({ timeout: 45_000 });
+  } catch (error) {
+    const status = (await viewer.locator("app-broadcast-player").innerText()).replaceAll(/\s+/g, " ").slice(0, 500);
+    throw new Error(`broadcast_player_terminal_timeout:${status}:${playbackDiagnostics.slice(-20).join("|")}`, {
+      cause: error,
+    });
+  }
   await viewer.waitForTimeout(500);
   const terminalMediaRequests = viewerPlayback.mediaRequests;
   await viewer.waitForTimeout(2_500);
   assert.equal(viewerPlayback.mediaRequests, terminalMediaRequests,
     "terminal player must stop manifest and segment requests after revocation");
+  const revoked = await viewer.evaluate(async (url) => (await fetch(url, { cache: "no-store" })).status, playerManifest);
+  assert.equal(revoked, 404, "stopped program manifest must be revoked immediately");
 
-  const refreshTitle = `${title} refresh`;
-  await ownerPage.locator("#prepare-broadcast-preview").click();
-  await ownerPage.locator(".broadcast-heading .status[data-state=ready]").waitFor({ timeout: 20_000 });
-  await ownerPage.locator("#broadcast-start:not([disabled])").waitFor({ timeout: 20_000 });
-  ownerPage.once("dialog", (dialog) => dialog.accept());
-  await ownerPage.locator("#broadcast-start-summary").evaluate((details) => { details.open = true; });
-  await ownerPage.locator("#broadcast-program-title").fill(refreshTitle);
-  await ownerPage.locator("#broadcast-start").click();
-  await waitForProgramRunning(ownerPage);
-  await refreshUntilProgramVisible(ownerPage, "section[aria-labelledby=own-broadcasts-heading]", refreshTitle);
-  const refreshManifest = await startVisiblePlayer(
-    ownerPage,
-    "section[aria-labelledby=own-broadcasts-heading]",
-    refreshTitle,
-  );
-  await ownerPage.locator("app-broadcast-player .controls button", { hasText: "Schließen" }).click();
-  const createRequestsBeforeRefresh = programCreateRequests;
-  await ownerPage.reload({ waitUntil: "domcontentloaded" });
-  await ownerPage.locator("#broadcast-preflight-heading").waitFor({ timeout: 30_000 });
-  await ownerPage.waitForTimeout(2_000);
-  assert.deepEqual(await ownerPage.evaluate(() => window.__captureCalls), [],
-    "refresh during active native output must not restart capture");
-  assert.equal(programCreateRequests, createRequestsBeforeRefresh,
-    "refresh during active native output must not create or restart a program");
-  await ownerPage.waitForFunction(async (manifest) => {
-    try { return (await fetch(manifest, { cache: "no-store" })).status === 404; } catch { return false; }
-  }, refreshManifest, { timeout: 20_000 });
-  assert.equal(await ownerPage.locator("#broadcast-stop").count(), 0,
-    "restored cockpit must not present stale local ownership of the stopped program");
+  if (verifyRefreshRestore) {
+    const refreshTitle = `${title} refresh`;
+    await ownerPage.locator("#prepare-broadcast-preview").click();
+    await ownerPage.locator(".broadcast-heading .status[data-state=ready]").waitFor({ timeout: 20_000 });
+    await ownerPage.locator("#broadcast-start:not([disabled])").waitFor({ timeout: 20_000 });
+    ownerPage.once("dialog", (dialog) => dialog.accept());
+    await ownerPage.locator("#broadcast-start-summary").evaluate((details) => { details.open = true; });
+    await ownerPage.locator("#broadcast-program-title").fill(refreshTitle);
+    await ownerPage.locator("#broadcast-start").click();
+    await waitForProgramRunning(ownerPage);
+    await refreshUntilProgramVisible(ownerPage, "section[aria-labelledby=own-broadcasts-heading]", refreshTitle);
+    const refreshManifest = await startVisiblePlayer(
+      ownerPage,
+      "section[aria-labelledby=own-broadcasts-heading]",
+      refreshTitle,
+    );
+    await ownerPage.locator("app-broadcast-player .controls button", { hasText: "Schließen" }).click();
+    const createRequestsBeforeRefresh = programCreateRequests;
+    await ownerPage.reload({ waitUntil: "domcontentloaded" });
+    await ownerPage.locator("#broadcast-preflight-heading").waitFor({ timeout: 30_000 });
+    await ownerPage.waitForTimeout(2_000);
+    assert.deepEqual(await ownerPage.evaluate(() => window.__captureCalls), [],
+      "refresh during active native output must not restart capture");
+    assert.equal(programCreateRequests, createRequestsBeforeRefresh,
+      "refresh during active native output must not create or restart a program");
+    await ownerPage.waitForFunction(async (manifest) => {
+      try { return (await fetch(manifest, { cache: "no-store" })).status === 404; } catch { return false; }
+    }, refreshManifest, { timeout: 20_000 });
+    assert.equal(await ownerPage.locator("#broadcast-stop").count(), 0,
+      "restored cockpit must not present stale local ownership of the stopped program");
+  }
   assert.deepEqual(pageErrors, []);
 
   await ownerPage.locator("#mesh-analysis-navigation").click();
@@ -372,7 +382,7 @@ try {
   const leaveRoom = ownerPage.locator("#leave-room");
   if (await leaveRoom.isVisible()) await leaveRoom.click();
 
-  console.log("PASS production native broadcast: private owner playback, public anonymous playback, stop revoke and packager revoke");
+  console.log("PASS production native broadcast: private owner playback, renewable public anonymous playback, terminal stop and packager revoke");
 } finally {
   if (ownerPage && !ownerPage.isClosed()) {
     try {

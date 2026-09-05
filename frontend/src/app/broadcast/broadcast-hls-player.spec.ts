@@ -99,6 +99,31 @@ describe("BroadcastHlsPlayer", () => {
     await player.destroy();
   });
 
+  it("retries one transient same-origin player-module load and then fails with a bounded code", async () => {
+    const element = video(false);
+    const recoveredLoader = vi.fn()
+      .mockRejectedValueOnce(new TypeError("network changed with private URL details"))
+      .mockResolvedValueOnce(fakeModule as never);
+    const recovered = new BroadcastHlsPlayer(() => undefined, recoveredLoader);
+    await recovered.open(element, "/broadcast/play/res_3333333333333333/index.m3u8", {
+      muted: true, volume: 1,
+    }, new AbortController().signal);
+    expect(recoveredLoader).toHaveBeenCalledTimes(2);
+    expect(recovered.snapshot()).toMatchObject({ lifecycle: "playing", engine: "hls-js" });
+    await recovered.destroy();
+
+    const failedLoader = vi.fn(async () => { throw new TypeError("secret network detail"); });
+    const failed = new BroadcastHlsPlayer(() => undefined, failedLoader);
+    await expect(failed.open(video(false), "/broadcast/play/res_4444444444444444/index.m3u8", {
+      muted: true, volume: 1,
+    }, new AbortController().signal)).rejects.toThrow("broadcast_player_engine_unavailable");
+    expect(failedLoader).toHaveBeenCalledTimes(2);
+    expect(failed.snapshot()).toMatchObject({
+      lifecycle: "failed", errorCode: "broadcast_player_engine_unavailable",
+    });
+    await failed.destroy();
+  });
+
   it("uses pinned hls.js for MSE, offers quality selection and destroys every handle", async () => {
     FakeHls.instances = [];
     const states: string[] = [];
