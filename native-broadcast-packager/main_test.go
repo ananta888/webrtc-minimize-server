@@ -8,7 +8,21 @@ import (
 	"encoding/base64"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestBuildManifestIsBoundedAndNormalizesUntrustedLinkerValues(t *testing.T) {
+	valid := normalizedBuildManifest(strings.Repeat("a", 40), "2026-09-05T08:00:00+02:00")
+	if valid.Type != "native-packager-build" || valid.Version != 1 || valid.AgentVersion != agentVersion ||
+		valid.Revision != strings.Repeat("a", 40) || valid.BuiltAt != "2026-09-05T06:00:00Z" ||
+		valid.GoVersion == "" || valid.OperatingSys == "" || valid.Architecture == "" {
+		t.Fatalf("unexpected build manifest: %#v", valid)
+	}
+	invalid := normalizedBuildManifest("$(unsafe)", time.Now().String())
+	if invalid.Revision != "unknown" || invalid.BuiltAt != "unknown" {
+		t.Fatalf("untrusted linker values survived normalization: %#v", invalid)
+	}
+}
 
 func TestConfigRequiresExactSecureOutboundEndpoint(t *testing.T) {
 	values := map[string]string{

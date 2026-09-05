@@ -138,9 +138,36 @@ Benutzerdienst. Der Linux-Dienst setzt unter anderem `NoNewPrivileges`,
 Der Agent benötigt nur ausgehendes HTTPS/WSS; Installer verändern keine
 Firewall. Ein Uninstaller wird im privaten Agent-Verzeichnis abgelegt.
 
-SHA-256 macht den über genau diese TLS-Session geladenen Build prüfbar, ersetzt
-aber keine Publisher-Signatur. Windows Authenticode und Apple Developer ID sind
-noch nicht vorhanden und die UI weist ausdrücklich darauf hin. Private Keys
+Jeder Build enthält außerdem eine geschlossene, rein technische
+`native-packager-build`-Auskunft. Sie ist ohne Konfiguration und ohne Zugriff
+auf die Geräteidentität abrufbar:
+
+```bash
+native-broadcast-packager version
+```
+
+Git-Revision, Commit-Zeit, Agent-/Go-Version, Betriebssystem und Architektur
+lassen sich damit dem geladenen Artefakt zuordnen. CI baut alle fünf Ziele mit
+dem in `go.mod` gepinnten Toolchain-Stand, veröffentlicht ihre SHA-256-Liste als
+kurzlebiges Workflow-Artefakt und erstellt bei vertrauenswürdigen Pushes eine
+keyless GitHub-Artifact-Attestation für jede Binärdatei. Nach einem bewussten
+Download kann ein Operator diese unabhängig vom WebRTC-Server prüfen:
+
+```bash
+gh attestation verify native-broadcast-packager-linux-amd64 \
+  --repo ananta888/webrtc-minimize-server
+```
+
+Pull Requests aus fremden Forks erhalten kein OIDC-Signing: Sie bauen und
+testen dieselben Artefakte, überspringen aber die Attestation ausdrücklich.
+Die attestierten CI-Binaries und die zur Laufzeit im Web-Image angebotenen
+Binaries sind erst dann gleichzusetzen, wenn Revision, eingebettete Buildzeit
+und SHA-256 exakt übereinstimmen.
+
+SHA-256 plus die getrennte GitHub-Attestation machen den Build gegen Repository
+und Workflow prüfbar, ersetzen aber keine plattformspezifische
+Publisher-Signatur. Windows Authenticode und Apple Developer ID sind noch nicht
+vorhanden und die UI weist ausdrücklich darauf hin. Private Keys
 werden derzeit als nur für den jeweiligen unprivilegierten Benutzer lesbare
 Datei mit Modus `0600` gespeichert; eine Keychain-/TPM-Anbindung bleibt ein
 Hardening-Schritt.
@@ -190,7 +217,7 @@ FFmpeg-Transcode-/ABR-Pipeline und den intern autorisierten HLS-Origin. Diese
 native Ausgabe ist absichtlich normales, kurzes fMP4-HLS und wird nicht als
 Apple-LL-HLS ausgegeben; der vorhandene MediaMTX-WHIP-Pfad bleibt der getrennte
 LL-HLS-Adapter. Offen bleiben ein real provozierter Temperatur-/Hardwarefehler-
-Gate, Publisher-signierte Release-Artefakte, Keychain/TPM,
+Gate, Windows-Authenticode-/Apple-Developer-ID-Signaturen, Keychain/TPM,
 Update-Rollback, mehrere Stunden Soak sowie echte Windows-/macOS- und mobile
 Player-Gates. Deshalb bleibt
 TBP-016 `in_progress`; die UI zeigt nur online/gesund/raumconsentierte eigene

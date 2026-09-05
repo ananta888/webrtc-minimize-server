@@ -32,8 +32,16 @@ for (const workflowName of workflowNames) {
     throw new Error(`${workflowName}: test and dependent docker jobs are required`);
   }
   for (const [jobName, job] of Object.entries(workflow.jobs)) {
+    if (job.permissions) {
+      const allowed = jobName === "native-packager"
+        && job.permissions.contents === "read"
+        && job.permissions["id-token"] === "write"
+        && job.permissions.attestations === "write"
+        && Object.keys(job.permissions).length === 3;
+      if (!allowed) throw new Error(`${workflowName}: ${jobName} has unexpected elevated permissions`);
+    }
     for (const step of job.steps || []) {
-      if (step.uses && !/^actions\/(?:checkout|setup-node|upload-artifact)@[0-9a-f]{40}$/.test(step.uses)) {
+      if (step.uses && !/^actions\/(?:checkout|setup-node|setup-go|upload-artifact|attest-build-provenance)@[0-9a-f]{40}$/.test(step.uses)) {
         throw new Error(`${workflowName}: ${jobName} uses an unpinned or unapproved action: ${step.uses}`);
       }
     }

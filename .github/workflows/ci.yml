@@ -105,9 +105,18 @@ jobs:
     name: Trusted native broadcast packager
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up pinned Go toolchain
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version-file: native-broadcast-packager/go.mod
+          cache-dependency-path: native-broadcast-packager/go.sum
       - name: Download Go modules with bounded retry
         working-directory: native-broadcast-packager
         run: |
@@ -128,11 +137,30 @@ jobs:
       - name: Reproducibly build supported artifacts
         working-directory: native-broadcast-packager
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /tmp/native-packager-linux-amd64 .
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o /tmp/native-packager-linux-arm64 .
-          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /tmp/native-packager-macos-amd64 .
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o /tmp/native-packager-macos-arm64 .
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /tmp/native-packager-windows-amd64.exe .
+          artifact_root="$RUNNER_TEMP/native-packager-artifacts"
+          artifact_bin="$artifact_root/bin"
+          mkdir -p "$artifact_bin"
+          build_timestamp=$(git show -s --format=%cI "$GITHUB_SHA")
+          linker_flags="-s -w -X main.buildRevision=$GITHUB_SHA -X main.buildTimestamp=$build_timestamp"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="$linker_flags" -o "$artifact_bin/native-broadcast-packager-linux-amd64" .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="$linker_flags" -o "$artifact_bin/native-broadcast-packager-linux-arm64" .
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="$linker_flags" -o "$artifact_bin/native-broadcast-packager-macos-amd64" .
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="$linker_flags" -o "$artifact_bin/native-broadcast-packager-macos-arm64" .
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="$linker_flags" -o "$artifact_bin/native-broadcast-packager-windows-amd64.exe" .
+          (cd "$artifact_bin" && sha256sum ./*) > "$artifact_root/sha256sums.txt"
+          "$artifact_bin/native-broadcast-packager-linux-amd64" version > "$artifact_root/linux-amd64-build.json"
+      - name: Attest native packager binaries
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/native-packager-artifacts/bin/*
+      - name: Upload native packager binaries and checksums
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: native-broadcast-packager-${{ github.sha }}
+          path: ${{ runner.temp }}/native-packager-artifacts
+          if-no-files-found: error
+          retention-days: 30
 
   infrastructure:
     name: Live Keycloak and TURN

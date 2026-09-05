@@ -55,16 +55,19 @@ case "$action" in
       exit 1
     fi
     revision=$(git rev-parse --verify HEAD)
+    source_timestamp=$(git show -s --format=%cI "$revision")
     candidate="webrtc-minimize-server:${revision}"
     if [ "$native_broadcast" = "enabled" ]; then
-      docker compose $compose_files --profile native-packager build native-packager broadcast-hls-origin
+      SOURCE_REVISION="$revision" SOURCE_TIMESTAMP="$source_timestamp" \
+        docker compose $compose_files --profile native-packager build native-packager broadcast-hls-origin
       docker compose $compose_files --profile native-packager up -d --wait native-packager broadcast-hls-origin
     fi
     current_container=$(docker compose $compose_files ps -q webrtc 2>/dev/null || true)
     if [ -n "$current_container" ]; then
       docker inspect --format '{{.Image}}' "$current_container" > "$previous_file"
     fi
-    docker build --pull --build-arg "SOURCE_REVISION=$revision" -t "$candidate" .
+    docker build --pull --build-arg "SOURCE_REVISION=$revision" \
+      --build-arg "SOURCE_TIMESTAMP=$source_timestamp" -t "$candidate" .
     if ! WEBRTC_IMAGE="$candidate" WEBRTC_REVERSE_PROXY_NETWORK="$proxy_network" \
       docker compose $compose_files up -d --no-build --wait webrtc || ! smoke; then
       echo "Candidate failed; restoring previous image" >&2

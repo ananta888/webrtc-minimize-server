@@ -2,7 +2,10 @@
 
 ## Provisionierung
 
-1. Gepinnte Images, SBOM/Provenance und `npm audit --omit=dev` prüfen.
+1. Gepinnte Images, SBOM/Provenance und `npm audit --omit=dev` prüfen. Bei einem
+   Native-Packager zusätzlich SHA-256, `version`-Ausgabe und die keyless
+   GitHub-Attestation gegen `ananta888/webrtc-minimize-server` abgleichen;
+   Authenticode/Developer ID bleiben ein separates, noch offenes Gate.
 2. Gateway-/Packager-Netze gemäß Portmatrix anlegen; Admin/API/WHIP/HLS bleiben privat hinter dem kontrollierten Proxy.
 3. Secrets ausschließlich als root-lesbare Hostdatei oder Orchestrator-Secret mounten. Keine Keys, Tokens oder Stream-Schlüssel in Git, Image, Angular-Bundle oder Logs.
 4. Gateway-Auth, Grant-Authority, Writer-Fencing, Health und Observability zuerst im internen Profil prüfen.

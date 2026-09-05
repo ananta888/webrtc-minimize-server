@@ -1,6 +1,10 @@
 services:
   webrtc:
-    build: .
+    build:
+      context: .
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
+        SOURCE_TIMESTAMP: ${SOURCE_TIMESTAMP:-unknown}
     restart: unless-stopped
     environment:
       HOST: 0.0.0.0
@@ -86,6 +90,9 @@ services:
     build:
       context: .
       target: native-packager-runtime
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
+        SOURCE_TIMESTAMP: ${SOURCE_TIMESTAMP:-unknown}
     image: ${NATIVE_PACKAGER_IMAGE:-webrtc-minimize-server-native-packager:local}
     restart: unless-stopped
     environment:

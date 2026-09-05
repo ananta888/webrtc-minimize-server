@@ -1,3 +1,6 @@
+ARG SOURCE_REVISION=unknown
+ARG SOURCE_TIMESTAMP=unknown
+
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -26,14 +29,17 @@ RUN CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -
 RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/media-edge-agent-windows-amd64.exe .
 
 WORKDIR /native-packager
+ARG SOURCE_REVISION
+ARG SOURCE_TIMESTAMP
 COPY native-broadcast-packager/go.mod native-broadcast-packager/go.sum ./
 RUN go mod download
 COPY native-broadcast-packager ./
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/native-broadcast-packager-linux-amd64 .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o /out/native-broadcast-packager-linux-arm64 .
-RUN CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/native-broadcast-packager-macos-amd64 .
-RUN CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o /out/native-broadcast-packager-macos-arm64 .
-RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/native-broadcast-packager-windows-amd64.exe .
+RUN linker_flags="-s -w -X main.buildRevision=${SOURCE_REVISION} -X main.buildTimestamp=${SOURCE_TIMESTAMP}" \
+    && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="$linker_flags" -o /out/native-broadcast-packager-linux-amd64 . \
+    && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="$linker_flags" -o /out/native-broadcast-packager-linux-arm64 . \
+    && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="$linker_flags" -o /out/native-broadcast-packager-macos-amd64 . \
+    && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="$linker_flags" -o /out/native-broadcast-packager-macos-arm64 . \
+    && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="$linker_flags" -o /out/native-broadcast-packager-windows-amd64.exe .
 
 WORKDIR /broadcast-origin
 COPY broadcast-hls-origin/go.mod ./
@@ -64,7 +70,7 @@ ENV NATIVE_PACKAGER_CONTROL_URL=wss://webrtc.ananta.de/native-packager \
 ENTRYPOINT ["/usr/local/bin/native-broadcast-packager"]
 
 FROM node:22-alpine
-ARG SOURCE_REVISION=unknown
+ARG SOURCE_REVISION
 LABEL org.opencontainers.image.source="https://github.com/ananta888/webrtc-minimize-server" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
       org.opencontainers.image.licenses="BSD-3-Clause"

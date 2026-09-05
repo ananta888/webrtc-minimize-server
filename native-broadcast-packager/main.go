@@ -34,7 +34,10 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-const agentVersion = "0.4.0"
+const agentVersion = "0.5.0"
+
+var buildRevision = "unknown"
+var buildTimestamp = "unknown"
 
 var packagerIDPattern = regexp.MustCompile(`^pkr_[A-Za-z0-9_-]{16,64}$`)
 var enrollmentTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
@@ -261,6 +264,39 @@ type operatorProvisioningManifest struct {
 	Platform       string    `json:"platform"`
 	PublicKey      publicKey `json:"publicKey"`
 	Proof          string    `json:"proof"`
+}
+
+type buildManifest struct {
+	Version      int    `json:"version"`
+	Type         string `json:"type"`
+	AgentVersion string `json:"agentVersion"`
+	Revision     string `json:"revision"`
+	BuiltAt      string `json:"builtAt"`
+	GoVersion    string `json:"goVersion"`
+	OperatingSys string `json:"operatingSystem"`
+	Architecture string `json:"architecture"`
+}
+
+func normalizedBuildManifest(revision, builtAt string) buildManifest {
+	if !regexp.MustCompile(`^[a-f0-9]{40}$`).MatchString(revision) {
+		revision = "unknown"
+	}
+	if parsed, err := time.Parse(time.RFC3339, builtAt); err != nil {
+		builtAt = "unknown"
+	} else {
+		builtAt = parsed.UTC().Format(time.RFC3339)
+	}
+	return buildManifest{
+		Version: 1, Type: "native-packager-build", AgentVersion: agentVersion,
+		Revision: revision, BuiltAt: builtAt, GoVersion: runtime.Version(),
+		OperatingSys: runtime.GOOS, Architecture: runtime.GOARCH,
+	}
+}
+
+func writeJSON(output *os.File, value any) error {
+	encoder := json.NewEncoder(output)
+	encoder.SetEscapeHTML(false)
+	return encoder.Encode(value)
 }
 
 func normalizeOperatorOwner(raw string) (string, error) {
@@ -588,6 +624,12 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 }
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "version" {
+		if err := writeJSON(os.Stdout, normalizedBuildManifest(buildRevision, buildTimestamp)); err != nil {
+			log.Fatal("build metadata unavailable")
+		}
+		return
+	}
 	cfg, err := loadConfig(os.Getenv)
 	if err != nil {
 		log.Fatal(err)
@@ -607,9 +649,7 @@ func main() {
 		if manifestErr != nil {
 			log.Fatal(manifestErr)
 		}
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetEscapeHTML(false)
-		if err = encoder.Encode(manifest); err != nil {
+		if err = writeJSON(os.Stdout, manifest); err != nil {
 			log.Fatal("operator manifest unavailable")
 		}
 		return
@@ -641,7 +681,7 @@ func main() {
 		return
 	}
 	if len(os.Args) != 1 {
-		log.Fatal("usage: native-broadcast-packager [enroll|operator-manifest]")
+		log.Fatal("usage: native-broadcast-packager [enroll|operator-manifest|version]")
 	}
 	backoff := time.Second
 	for ctx.Err() == nil {
