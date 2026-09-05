@@ -359,7 +359,6 @@ export class BroadcastHlsPlayer {
   }
 
   private handleHlsError(data: ErrorData): void {
-    if (!data.fatal) return;
     const status = Number(data.response?.code || 0);
     if (data.type === "networkError" && [401, 403, 404, 410].includes(status)) {
       this.hls?.stopLoad();
@@ -367,7 +366,8 @@ export class BroadcastHlsPlayer {
     } else if (data.type === "networkError" && status === 429) {
       this.hls?.stopLoad();
       this.update({ lifecycle: "failed", errorCode: "broadcast_player_rate_limited" });
-    } else if (data.type === "networkError") this.recover("network");
+    } else if (!data.fatal) return;
+    else if (data.type === "networkError") this.recover("network");
     else if (data.type === "mediaError" && this.hls) {
       this.hls.recoverMediaError();
       this.recover("media");

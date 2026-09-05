@@ -184,7 +184,7 @@ describe("BroadcastHlsPlayer", () => {
       muted: true, volume: 1,
     }, new AbortController().signal);
     const endedHls = FakeHls.instances[0];
-    endedHls.emit("hlsError", { fatal: true, type: "networkError", response: { code: 404 } });
+    endedHls.emit("hlsError", { fatal: false, type: "networkError", response: { code: 404 } });
     expect(endedHls.stopLoad).toHaveBeenCalledOnce();
     expect(endedHls.startLoad).not.toHaveBeenCalled();
     expect(endedPlayer.snapshot()).toMatchObject({ lifecycle: "ended", errorCode: "broadcast_ended" });
@@ -195,7 +195,7 @@ describe("BroadcastHlsPlayer", () => {
       muted: true, volume: 1,
     }, new AbortController().signal);
     const limitedHls = FakeHls.instances[1];
-    limitedHls.emit("hlsError", { fatal: true, type: "networkError", response: { code: 429 } });
+    limitedHls.emit("hlsError", { fatal: false, type: "networkError", response: { code: 429 } });
     expect(limitedHls.stopLoad).toHaveBeenCalledOnce();
     expect(limitedHls.startLoad).not.toHaveBeenCalled();
     expect(limitedPlayer.snapshot()).toMatchObject({
