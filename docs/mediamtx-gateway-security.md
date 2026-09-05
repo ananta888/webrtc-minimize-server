@@ -48,11 +48,28 @@ docker compose --project-directory . \
   --profile broadcast-gateway config -q
 ```
 
-Das Overlay ist noch kein Produktions-Startsignal: Die Program-Orchestrierung
-muss die Grant-Authority als Composition-Root bereitstellen und der Reverse
-Proxy muss die späteren WHIP-/Playback-Pfade getrennt freigeben. Bis dieses
-Live-Gate reproduzierbar bestanden ist, bleibt TBP-018 `partial` beziehungsweise
-`in_progress` und der öffentliche Dienst verwendet das Gateway nicht.
+Das Overlay ist trotz bestandenem Sicherheitsgate kein automatisches
+Produktions-Startsignal. Der öffentliche Dienst verwendet den Gateway erst,
+wenn ein eigener Rollout die Program-Orchestrierung, Composition-Root und
+getrennten WHIP-/Playback-Proxy-Pfade ausdrücklich aktiviert; der bestehende
+native Broadcastpfad bleibt davon unabhängig.
+
+Der reproduzierbare Sicherheitsgate startet das per Digest gepinnte Image mit
+Read-only-Dateisystem, ohne Capabilities, zufällig vergebenen HTTP-Loopback-
+Ports und dem expliziten lokalen ICE-Testport 8189/UDP. Eine ephemere echte
+`BroadcastGrantAuthority` bedient den
+MediaMTX-Callback, ohne Grantwerte zu protokollieren:
+
+```bash
+RUN_LIVE_MEDIAMTX_SECURE_AUTH=1 node scripts/live-mediamtx-secure-auth-gate.mjs
+```
+
+Er prüft über die echten HTTP-Pfade falsche Aktion, Resource und Query-Token,
+den einmaligen Publisher-Grant, wiederholbaren HLS-Read sowie sofortige
+Ablehnung nach Program-Epoch-Widerruf und Signing-Key-Rotation. Der getrennte
+WHIP-Browser- und LL-HLS-Lifecycle-Gate bleibt für echte Medienframes
+verantwortlich; der Security-Gate dupliziert diese längeren Codecprüfungen
+nicht.
 
 ## Inhaltsschutz und Logs
 

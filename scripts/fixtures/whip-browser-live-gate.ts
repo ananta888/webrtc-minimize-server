@@ -4,6 +4,11 @@ import { Rfc9725WhipTransport } from "../../frontend/src/app/broadcast/whip-brow
 declare global {
   interface Window {
     __WHIP_GATE_ENDPOINT__: string;
+    __WHIP_GATE_TOKEN__?: string;
+    __WHIP_GATE_HOLD_MS__?: number;
+    __WHIP_GATE_SWITCHES__?: number;
+    __WHIP_GATE_VIDEO_CODEC__?: string;
+    __whipGateConnected?: boolean;
     __whipGateResult?: Readonly<Record<string, unknown>>;
   }
 }
@@ -78,7 +83,7 @@ button.addEventListener("click", async () => {
     endpointUrl: window.__WHIP_GATE_ENDPOINT__,
     allowedRedirectOrigins: [],
     iceServers: [],
-    codecPreferences: { audio: [], video: ["video/vp8"] },
+    codecPreferences: { audio: [], video: [window.__WHIP_GATE_VIDEO_CODEC__ || "video/vp8"] },
     simulcast: { enabled: false, sendEncodings: [] },
     trickleIce: true,
     requestTimeoutMs: 8_000,
@@ -101,7 +106,7 @@ button.addEventListener("click", async () => {
     authorization: {
       authorize: async () => ({
         authorizationVersion: 1,
-        accessToken: "live-gate:live-password",
+        accessToken: window.__WHIP_GATE_TOKEN__ || "live-gate:live-password",
         expiresAt: Date.now() + 60_000,
       }),
     },
@@ -110,12 +115,15 @@ button.addEventListener("click", async () => {
   try {
     const session = await transport.start(request, new AbortController().signal);
     const connected = transport.status(session);
+    window.__whipGateConnected = connected.lifecycle === "connected";
+    if (window.__WHIP_GATE_HOLD_MS__) await wait(window.__WHIP_GATE_HOLD_MS__);
     const encodedFrames: number[] = [];
     await wait(700);
     await transport.sampleStats(session);
     await wait(700);
     encodedFrames.push((await transport.sampleStats(session)).framesEncodedDelta || 0);
-    for (let index = 1; index <= 4; index += 1) {
+    const switches = window.__WHIP_GATE_SWITCHES__ ?? 4;
+    for (let index = 1; index <= switches; index += 1) {
       const replacement = createSource(index);
       await transport.replaceComposition(session, {
         compositionId: replacement.compositionId,
@@ -138,8 +146,8 @@ button.addEventListener("click", async () => {
       connected: connected.lifecycle === "connected",
       stopped: transport.status(session).lifecycle === "stopped",
       restartError,
-      switches: 4,
-      minimumFramesAfterSwitch: Math.min(...encodedFrames),
+      switches,
+      minimumFramesAfterSwitch: encodedFrames.length ? Math.min(...encodedFrames) : 0,
       trackStateBeforeCleanup: sources.at(-1)?.stream.getVideoTracks()[0]?.readyState,
     });
   } catch (error) {

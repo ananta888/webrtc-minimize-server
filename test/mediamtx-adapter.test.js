@@ -91,3 +91,20 @@ test("MediaMTX secure overlay binds external auth to its isolated control networ
   assert.match(gateway.environment.MTX_AUTHHTTPEXCLUDE, /"metrics"/);
   assert.doesNotMatch(overlayText, /(?:token|password|secret)\s*:/i);
 });
+
+test("secure MediaMTX live gate is opt-in, pinned and exercises revocation without logging grants", async () => {
+  const [gateText, packageText] = await Promise.all([
+    readFile(new URL("scripts/live-mediamtx-secure-auth-gate.mjs", ROOT), "utf8"),
+    readFile(new URL("package.json", ROOT), "utf8"),
+  ]);
+  const scripts = JSON.parse(packageText).scripts;
+
+  assert.match(gateText, /RUN_LIVE_MEDIAMTX_SECURE_AUTH/);
+  assert.match(gateText, new RegExp(`bluenviron/mediamtx:1\\.20\\.1@${DIGEST}`));
+  assert.match(gateText, /"--read-only", "--cap-drop", "ALL"/);
+  assert.match(gateText, /revokeProgramEpoch/);
+  assert.match(gateText, /rotateSigningKey/);
+  assert.match(gateText, /crossOriginPreflight/);
+  assert.doesNotMatch(gateText, /console\.(?:log|error)\([^\n]*(?:\.token|accessToken)/);
+  assert.match(scripts["test:infrastructure"], /live-mediamtx-secure-auth-gate\.mjs/);
+});
