@@ -6,11 +6,17 @@ Ein bereits von der Control Plane ausgestellter `broadcast-playback`-Grant wird
 nur einmal per `Authorization: Bearer` an
 `POST /api/broadcast/playback-sessions` gesendet. Body, Origin und
 `res_`-Resource sind geschlossen. Die Antwort enthält ausschließlich eine
-same-origin Manifest-URL und setzt eine zufällige, kurzlebige Cookie-Session:
+same-origin Manifest-URL und setzt eine zufällige, kurzlebige Cookie-Session
+mit zwei disjunkten Minimalpfaden:
 
 ```text
 Secure; HttpOnly; SameSite=Strict; Path=/broadcast/play/<resource>/
+Secure; HttpOnly; SameSite=Strict; Path=/api/broadcast/playback-sessions/<session-id>
 ```
+
+Beide Cookies tragen denselben zufälligen Sessionwert. Der erste ist nur bei
+Manifesten und Medien sichtbar, der zweite nur bei Erneuerung und Schließen
+genau dieser Sitzung. Ein breites `Path=/` wird nicht verwendet.
 
 Der Browser speichert den Grant nicht im Playerzustand und setzt ihn weder in
 URL, History noch Referer. Cookie-Name und Session-ID sind zufällig, pro
@@ -44,16 +50,17 @@ werden zurückgegeben; private Antworten tragen `private, no-store`,
 `nosniff` und `Cross-Origin-Resource-Policy: same-origin`. Gateway-Bearer und
 Upstreamantworten gelangen nicht in den Browser.
 
-`DELETE /api/broadcast/playback-sessions/<opaque-id>` verlangt exakten Origin
-und das passende Cookie, entfernt den serverseitigen Grant-Verweis und löscht
-das Cookie über denselben Pfad.
+`PUT /api/broadcast/playback-sessions/<opaque-id>` verlangt exakten Origin,
+den API-pfadgebundenen Cookie sowie einen frischen scopegleichen Grant und
+erneuert beide Cookie-Pfade. `DELETE` verlangt ebenfalls exakten Origin und
+den API-Cookie, entfernt den serverseitigen Grant-Verweis und löscht beide
+Cookies über ihre jeweiligen Pfade.
 
 ## Noch offene Produktionsgrenzen
 
-Store, Proxy, Serverrouten und Angular-Exchange-Client sind implementiert und
-negativ getestet. Die normale Laufzeit erzeugt den Proxy jedoch noch nicht,
-solange Broadcast-Program-Orchestrierung, Grant-Ausgabe und sichere
-Gateway-Konfiguration nicht gemeinsam aktiviert sind. Caddy-Rate-Limits,
-reale Safari-/hls.js-Cookie-Gates, Key-/Cookie-Rotation und CDN-Verhalten sind
-noch offen. Öffentliche Streams erhalten später eine ausdrücklich getrennte
-Policy; sie fallen nicht stillschweigend aus der privaten Prüfung heraus.
+Store, Proxy, Serverrouten, Angular-Exchange-Client, öffentliche sowie private
+Policy und die sichere Gateway-Konfiguration sind in der Produktionslaufzeit
+aktiviert. Der echte Chromium-Produktionsgate belegt privaten und anonymen
+Playback, Session-Rotation, Stop-Widerruf und terminales Polling. Reale
+Safari-/Mobilbrowser-Gates, verteilte HA-Sessions und CDN-Cookie-Verhalten
+bleiben offen.

@@ -30,6 +30,11 @@ const pageErrors = [];
 const failedApiResponses = [];
 
 function observePlayback(page) {
+  const counters = { mediaRequests: 0, sessionRenewals: 0 };
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.origin === origin && url.pathname.startsWith("/broadcast/play/")) counters.mediaRequests += 1;
+  });
   page.on("response", (response) => {
     const url = new URL(response.url());
     if (url.origin !== origin || (!url.pathname.startsWith("/broadcast/play/")
@@ -39,6 +44,9 @@ function observePlayback(page) {
       response.request().method(), url.pathname, response.status(),
       response.headers()["content-type"] || "missing-content-type",
     ].join(" "));
+    if (response.request().method() === "PUT"
+      && url.pathname.startsWith("/api/broadcast/playback-sessions/")
+      && response.status() === 200) counters.sessionRenewals += 1;
   });
   page.on("requestfailed", (request) => {
     const url = new URL(request.url());
@@ -46,6 +54,7 @@ function observePlayback(page) {
       && !url.pathname.includes("/playback") && !url.pathname.endsWith(".js"))) return;
     playbackDiagnostics.push(`${request.method()} ${url.pathname} failed ${request.failure()?.errorText || "unknown"}`);
   });
+  return counters;
 }
 
 async function login(page) {
@@ -286,11 +295,19 @@ try {
 
   viewerContext = await browser.newContext();
   const viewer = await viewerContext.newPage();
-  observePlayback(viewer);
+  const viewerPlayback = observePlayback(viewer);
   await viewer.goto(`${origin}/?section=broadcast`, { waitUntil: "domcontentloaded" });
   await viewer.locator("#public-broadcasts-heading").waitFor();
   await refreshUntilProgramVisible(viewer, "section[aria-labelledby=public-broadcasts-heading]", title);
+  const renewedSession = viewer.waitForResponse((response) => (
+    response.request().method() === "PUT"
+    && new URL(response.url()).pathname.startsWith("/api/broadcast/playback-sessions/")
+  ), { timeout: 140_000 });
   playerManifest = await startVisiblePlayer(viewer, "section[aria-labelledby=public-broadcasts-heading]");
+  const renewalResponse = await renewedSession;
+  assert.equal(renewalResponse.status(), 200, "active anonymous playback session was not renewed");
+  assert.equal(viewerPlayback.sessionRenewals, 1,
+    "one scoped playback-session renewal was expected before the first grant expired");
 
   await ownerPage.locator("#broadcast-stop").click();
   await ownerPage.locator("#broadcast-start", {
@@ -298,6 +315,12 @@ try {
   }).waitFor({ timeout: 30_000 });
   const revoked = await viewer.evaluate(async (url) => (await fetch(url, { cache: "no-store" })).status, playerManifest);
   assert.equal(revoked, 404, "stopped program manifest must be revoked immediately");
+  await viewer.locator("app-broadcast-player .state[data-state=ended]").waitFor({ timeout: 20_000 });
+  await viewer.waitForTimeout(500);
+  const terminalMediaRequests = viewerPlayback.mediaRequests;
+  await viewer.waitForTimeout(2_500);
+  assert.equal(viewerPlayback.mediaRequests, terminalMediaRequests,
+    "terminal player must stop manifest and segment requests after revocation");
 
   const refreshTitle = `${title} refresh`;
   await ownerPage.locator("#prepare-broadcast-preview").click();

@@ -45,8 +45,11 @@ test("playback grant becomes a path-bound Secure HttpOnly cookie without token i
   });
   assert.equal(session.manifestUrl, `/broadcast/play/${resourceRef}/index.m3u8`);
   assert.doesNotMatch(session.manifestUrl, /token|grant/i);
-  assert.match(session.setCookie, /^__Secure-webrtc-broadcast-[A-Za-z0-9_-]{12}=pbs_/);
-  assert.match(session.setCookie, /Secure; HttpOnly; SameSite=Strict$/);
+  assert.equal(session.setCookie.length, 2);
+  assert.match(session.setCookie[0], /^__Secure-webrtc-broadcast-[A-Za-z0-9_-]{12}=pbs_/);
+  assert.match(session.setCookie[0], new RegExp(`Path=/broadcast/play/${resourceRef}/;`));
+  assert.match(session.setCookie[1], new RegExp(`Path=/api/broadcast/playback-sessions/${session.playbackSessionId};`));
+  assert.ok(session.setCookie.every((value) => /Secure; HttpOnly; SameSite=Strict$/.test(value)));
   assert.equal(calls[0].expectation.action, "playback:manifest");
   assert.equal(calls[1].expectation.action, "playback:segment");
 });
@@ -57,14 +60,15 @@ test("renewal rotates only the bearer and expiry of the same cookie-, device- an
     authorizationHeader: "Bearer playback-grant", resourceRef,
     origin: "https://webrtc.ananta.de", now,
   });
-  const cookieHeader = session.setCookie.split(";", 1)[0];
+  const cookieHeader = session.setCookie[0].split(";", 1)[0];
   const renewed = await store.renew({
     authorizationHeader: "Bearer renewed-playback-grant", sessionId: session.playbackSessionId,
     resourceRef, cookieHeader, origin: "https://webrtc.ananta.de", now: now + 20_000,
   });
   assert.equal(renewed.playbackSessionId, session.playbackSessionId);
   assert.equal(renewed.expiresAt, now + 80_000);
-  assert.match(renewed.setCookie, /Max-Age=60; Secure; HttpOnly; SameSite=Strict$/);
+  assert.equal(renewed.setCookie.length, 2);
+  assert.ok(renewed.setCookie.every((value) => /Max-Age=60; Secure; HttpOnly; SameSite=Strict$/.test(value)));
   await store.authorize({
     cookieHeader, method: "GET", resourceRef, file: "index.m3u8", query: "", origin: "",
     now: now + 60_001,
@@ -81,7 +85,7 @@ test("every manifest and part rechecks the live grant and only permits LL-HLS qu
     authorizationHeader: "Bearer playback-grant", resourceRef,
     origin: "https://webrtc.ananta.de", now,
   });
-  const cookieHeader = session.setCookie.split(";", 1)[0];
+  const cookieHeader = session.setCookie[0].split(";", 1)[0];
   const manifest = await store.authorize({
     cookieHeader, method: "GET", resourceRef, file: "index.m3u8",
     query: "_HLS_msn=42&_HLS_part=3&_HLS_skip=YES", origin: "https://webrtc.ananta.de", now,
@@ -113,7 +117,7 @@ test("scope, origin, traversal, token query, expiry and cookie replay fail close
     authorizationHeader: "Bearer playback-grant", resourceRef,
     origin: "https://webrtc.ananta.de", now,
   });
-  const cookieHeader = session.setCookie.split(";", 1)[0];
+  const cookieHeader = session.setCookie[0].split(";", 1)[0];
   const invalid = [
     { cookieHeader, method: "GET", resourceRef, file: "../secret", query: "", origin: "" },
     { cookieHeader, method: "GET", resourceRef, file: "low/../secret", query: "", origin: "" },
@@ -142,7 +146,7 @@ test("grant revocation blocks the next part even while its cookie is still valid
   });
   revoke();
   await assert.rejects(store.authorize({
-    cookieHeader: session.setCookie.split(";", 1)[0], method: "GET", resourceRef,
+    cookieHeader: session.setCookie[0].split(";", 1)[0], method: "GET", resourceRef,
     file: "video_part2.mp4", query: "", origin: "", now: now + 1,
   }), (error) => error instanceof BroadcastPlaybackSessionError
     && error.code === "broadcast_playback_not_found" && error.status === 404);
@@ -158,14 +162,15 @@ test("close expires the exact cookie and quotas bound active sessions", async ()
     authorizationHeader: "Bearer playback-grant", resourceRef,
     origin: "https://webrtc.ananta.de", now,
   }), /quota_reached/);
-  const cookieHeader = session.setCookie.split(";", 1)[0];
+  const cookieHeader = session.setCookie[0].split(";", 1)[0];
   assert.throws(() => store.close({
     sessionId: session.playbackSessionId, cookieHeader: "", origin: "https://webrtc.ananta.de", now,
   }), /not_found/);
   const expired = store.close({
     sessionId: session.playbackSessionId, cookieHeader, origin: "https://webrtc.ananta.de", now,
   });
-  assert.match(expired, /Max-Age=0; Secure; HttpOnly; SameSite=Strict$/);
+  assert.equal(expired.length, 2);
+  assert.ok(expired.every((value) => /Max-Age=0; Secure; HttpOnly; SameSite=Strict$/.test(value)));
   assert.equal(store.size, 0);
   assert.throws(() => store.close({
     sessionId: session.playbackSessionId, cookieHeader, origin: "https://webrtc.ananta.de", now,

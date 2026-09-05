@@ -49,6 +49,15 @@ function sameGrantScope(left, right) {
   ].every((field) => left[field] === right[field]);
 }
 
+function sessionCookies(session, maxAge) {
+  const value = maxAge > 0 ? session.sessionId : "";
+  const attributes = `Max-Age=${maxAge}; Secure; HttpOnly; SameSite=Strict`;
+  return Object.freeze([
+    `${session.cookieName}=${value}; Path=/broadcast/play/${session.resourceRef}/; ${attributes}`,
+    `${session.cookieName}=${value}; Path=/api/broadcast/playback-sessions/${session.sessionId}; ${attributes}`,
+  ]);
+}
+
 export class BroadcastPlaybackSessionStore {
   #authority;
   #origin;
@@ -126,7 +135,7 @@ export class BroadcastPlaybackSessionStore {
       playbackSessionId: sessionId,
       manifestUrl: `${pathScope}index.m3u8`,
       expiresAt: grant.expiresAt,
-      setCookie: `${cookieName}=${sessionId}; Path=${pathScope}; Max-Age=${maxAge}; Secure; HttpOnly; SameSite=Strict`,
+      setCookie: sessionCookies(this.#sessions.get(sessionId), maxAge),
     });
   }
 
@@ -158,13 +167,12 @@ export class BroadcastPlaybackSessionStore {
       ...session, authorizationHeader, audienceRef: grant.audienceRef, expiresAt: grant.expiresAt,
     });
     this.#sessions.set(sessionId, renewed);
-    const pathScope = `/broadcast/play/${session.resourceRef}/`;
     const maxAge = Math.max(1, Math.floor((grant.expiresAt - now) / 1_000));
     return Object.freeze({
       playbackSessionId: sessionId,
-      manifestUrl: `${pathScope}index.m3u8`,
+      manifestUrl: `/broadcast/play/${session.resourceRef}/index.m3u8`,
       expiresAt: grant.expiresAt,
-      setCookie: `${session.cookieName}=${sessionId}; Path=${pathScope}; Max-Age=${maxAge}; Secure; HttpOnly; SameSite=Strict`,
+      setCookie: sessionCookies(renewed, maxAge),
     });
   }
 
@@ -203,8 +211,7 @@ export class BroadcastPlaybackSessionStore {
     ));
     if (!session || origin !== this.#origin || !ownsCookie) notFound();
     this.#sessions.delete(sessionId);
-    const pathScope = `/broadcast/play/${session.resourceRef}/`;
-    return `${session.cookieName}=; Path=${pathScope}; Max-Age=0; Secure; HttpOnly; SameSite=Strict`;
+    return sessionCookies(session, 0);
   }
 
   get size() { return this.#sessions.size; }

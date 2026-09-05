@@ -52,6 +52,13 @@ Visibility-/Epoch-Wechsel, Widerruf, Programmende, falschem Cookie oder
 abweichendem Scope schlägt die Erneuerung nicht unterscheidbar mit 404 fehl und
 der Player räumt seine lokale Sitzung auf.
 
+Damit der Medien-Cookie nicht auf die gesamte Anwendung erweitert werden muss,
+setzt der Austausch zwei gleichnamige Secure-/HttpOnly-/SameSite-Strict-Cookies:
+einen ausschließlich unter `/broadcast/play/<resource>/` und einen
+ausschließlich unter dem exakten Playback-Session-Endpunkt. Rotation und Close
+aktualisieren beziehungsweise löschen beide Pfade; andere API-Routen erhalten
+keinen dieser Cookies.
+
 Jeder Grant ist gebunden an:
 
 - Signatur-Key und dessen Generation;

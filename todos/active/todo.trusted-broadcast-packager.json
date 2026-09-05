@@ -595,7 +595,7 @@
       "status": "in_progress",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 78,
+      "progress_percent": 80,
       "depends_on": ["TBP-007", "TBP-019", "TBP-020"],
       "acceptance_criteria": [
         "Der Player wählt natives HLS oder eine gepinnte hls.js-/äquivalente Engine anhand echter Capability-Checks; MoQ/WHEP werden nur über separate Adapter angeboten.",
@@ -611,7 +611,7 @@
       "status": "in_progress",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 76,
+      "progress_percent": 80,
       "depends_on": ["TBP-006", "TBP-007", "TBP-008", "TBP-018", "TBP-021"],
       "acceptance_criteria": [
         "Das ausgewählte Verfahren schützt Master-/Media-Playlists, Initialisierungssegmente, Segmente, Parts, Preload Hints, Untertitel und Keys konsistent; der Schutz endet nicht nach dem ersten Manifest.",
@@ -755,7 +755,7 @@
       "status": "in_progress",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 82,
+      "progress_percent": 85,
       "depends_on": ["TBP-007", "TBP-008", "TBP-021", "TBP-022", "TBP-029"],
       "acceptance_criteria": [
         "Eine übersichtliche Ansicht trennt live öffentliche Programme, berechtigte private Programme, eigene Programme und beendete/unerreichbare Zustände ohne private Enumeration.",
@@ -1045,6 +1045,7 @@
     "TBP-029 wurde auf 94 Prozent weitergefuehrt. Der reale Stop-/Restart-Gate deckte auf, dass der Browser den lokalen Lifecycle bereits freigab, sobald die Control Plane den gefenceten assignment-stop gesendet hatte, waehrend der Native-Packager die alte Zuordnung serverseitig noch als draining fuehrte. Der Control-Plane-Port pollt nach dem DELETE nun authentisiert, abbrechbar und maximal zwoelf Sekunden auf den terminalen stopped-/failed-ACK; fehlende oder unbekannte Assignmentzustaende bleiben fail-closed. Dadurch kann derselbe freiwillige Packager erst nach bestaetigtem Cleanup wiederverwendet werden. Der Produktionsgate erkennt sichtbare Fehler nun direkt und gibt vor seinem isolierten Cleanup begrenzte Agentdiagnostik aus. Seine Keycloak-Administration verwendet pro Lauf eine eigene CLI-Konfiguration und loescht eine teilweise angelegte Testidentitaet noch auf dem Oracle-System. Sieben fokussierte Angular-Tests, TypeScript sowie Shell-/Node-Syntax sind gruen; der Produktions-Restart-Nachweis folgt nach Deployment.",
     "TBP-029 wurde auf 95 Prozent weitergefuehrt. Der naechste reale Lauf belegte, dass ein aktiver private-zu-public-Wechsel die Program- und Lease-Epoche korrekt fencet, der alte Agent-Heartbeat aber ohne kontrollierten Medienrestart nicht mehr erneuerbar ist. Das Cockpit setzt einen bestaetigten Visibility-Wechsel deshalb nun als Stop, terminalen Agent-ACK, erneuten Preview aus den bereits freigegebenen Own Sources und neue Publikation mit der Zielpolicy um. Es fordert kein neues Capture an. Die Runtime verweigert direkte Policy-PATCHes auf aktive Programme mit broadcast_visibility_restart_required, sodass alte Writer keinen Inhalt unter einer neuen Audience-Policy weiterliefern koennen. Der Produktionsgate verlangt entsprechend DELETE vor dem neuen public-POST und danach erneut Live. Einundzwanzig fokussierte Angular-/Node-Tests und TypeScript sind gruen; der reale Produktionsnachweis folgt nach Deployment.",
     "Der erste Produktionslauf nach dem kontrollierten Visibility-Restart bestand den privaten Owner-Playback, traf aber waehrend der neuen public-Zuordnung einen vom Native-Control-Pfad pauschalisierten Runtimefehler. Geschlossene BroadcastRuntimeError- und BroadcastProgramError-Codes werden fuer den bereits authentisierten eigenen Packager nun ebenso begrenzt wie Control- und Assignmentfehler als packager-error gemeldet, statt die konkrete verletzte Lease-/Epoch-Regel unter invalid_native_packager_message zu verbergen. Der Live-Gate protokolliert ausserdem nur Pfad, Methode, Status, Content-Type und Browser-Netzwerkfehler der Playback-Grenze; Grants, Cookies, Titel, SDP, ICE und Medieninhalte bleiben ausgeschlossen. Nach dem Diagnose-Rollout durchlief der Gate privaten Owner-Playback, gefencten Visibility-Restart ohne neues Capture, oeffentlichen anonymen Playback, sofortigen Stop-Widerruf und den Refresh-Sicherheitsfall. Ein Wiederholungslauf belegte danach exakt invalid_broadcast_lease_renewal: Eine Zuordnung blieb waehrend des terminalen Stop-ACK-Fensters bewusst draining und reserviert, ihr Heartbeat versuchte aber bereits widerrufene Program-Writer-Leases zu erneuern. Draining ist nun ausdruecklich nicht erneuerbar, waehrend der vorhandene begrenzte Stop-ACK-/Expiry-Pfad erhalten bleibt; ein Unit-Test fixiert diese Race. Der Cleanup erwartet nach absichtlich verlorener fluechtiger Room-Membership keinen Leave-Button mehr. Der regulaere Produktionsgate-Abschluss folgt nach Rollout der Lease-Korrektur.",
+    "Der Produktionsgate nach der Draining-Korrektur bestand seinen gesamten bisherigen Lifecycle einschliesslich normalem Cleanup. Der anschliessend bis ueber die 120-Sekunden-Playback-Grantgrenze verlaengerte Lauf deckte eine getrennte Cookie-Pfad-Luecke auf: Der absichtlich auf /broadcast/play/<resource>/ begrenzte HttpOnly-Cookie konnte am Session-PUT nie ankommen. Der Store gibt nun zwei gleichnamige zufaellige Secure-/HttpOnly-/SameSite-Strict-Cookies mit disjunkten Minimalpfaden fuer Medien beziehungsweise exakt die eigene Session-API aus; Renew und Close rotieren oder loeschen beide, ohne einen Path=/ Cookie einzufuehren. Unit- und Serverintegrationstests sowie die Dokumentation sind angepasst. Der erweiterte Produktionsgate verlangt einen echten erfolgreichen PUT vor Ablauf und nach Stop einen terminalen Player ohne weitere Medienrequests; dieser Nachweis folgt nach Deployment.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }
