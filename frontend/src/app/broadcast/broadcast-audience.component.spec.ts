@@ -7,6 +7,8 @@ const component = readFileSync("frontend/src/app/broadcast/broadcast-audience.co
 
 describe("BroadcastAudienceComponent", () => {
   it("separates public, entitled private, owned and unavailable programs", () => {
+    expect(template).toContain('id="broadcast-audience-directory"');
+    expect(template).not.toContain('id="broadcast-audience"');
     for (const heading of [
       "Öffentlich live", "Für mich freigegeben", "Meine Programme", "Beendet oder nicht erreichbar",
     ]) expect(template).toContain(heading);
