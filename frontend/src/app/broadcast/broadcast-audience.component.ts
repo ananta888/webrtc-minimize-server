@@ -4,6 +4,7 @@ import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, input, output, s
 import { BroadcastDirectoryEntry, BroadcastDirectoryService } from "./broadcast-directory.service";
 import { BroadcastPlaybackGatewayService } from "./broadcast-playback-gateway.service";
 import { BroadcastPlayerComponent } from "./broadcast-player.component";
+import { BroadcastBrowserPortError } from "./broadcast-ports";
 
 @Component({
   selector: "app-broadcast-audience",
@@ -136,9 +137,11 @@ export class BroadcastAudienceComponent implements OnInit, OnDestroy {
       if (controller.signal.aborted || this.selected()?.programId !== program.programId) return;
       this.selected.set(bootstrap.program);
       this.scheduleRenewal(bootstrap.program, resourceRef, session.expiresAt);
-    } catch {
+    } catch (error) {
       if (controller.signal.aborted) return;
-      this.openError.set("broadcast_playback_renewal_failed");
+      this.openError.set(error instanceof BroadcastBrowserPortError
+        && error.code === "broadcast_playback_not_found"
+        ? "broadcast_ended" : "broadcast_playback_renewal_failed");
       try { await this.playbackGateway.close(); } catch { /* The bounded renewal error remains primary. */ }
       this.selected.set(null);
       this.manifestUrl.set("");

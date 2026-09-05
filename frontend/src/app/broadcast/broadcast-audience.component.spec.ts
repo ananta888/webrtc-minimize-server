@@ -31,6 +31,8 @@ describe("BroadcastAudienceComponent", () => {
     expect(component).toContain("scheduleRenewal(bootstrap.program, bootstrap.resourceRef, session.expiresAt)");
     expect(component).toContain("this.directory.authorize(program.programId, controller.signal)");
     expect(component).toContain("this.playbackGateway.renew(");
+    expect(component).toContain('error.code === "broadcast_playback_not_found"');
+    expect(component).toContain('? "broadcast_ended" : "broadcast_playback_renewal_failed"');
   });
 
   it("uses native buttons and alert/status semantics for accessible recovery", () => {

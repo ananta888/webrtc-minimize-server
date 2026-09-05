@@ -326,9 +326,13 @@ try {
     hasText: "Programm anlegen und Start bestätigen",
   }).waitFor({ timeout: 30_000 });
   try {
-    await viewer.locator("app-broadcast-player .state[data-state=ended]").waitFor({ timeout: 45_000 });
+    await viewer.waitForFunction(() => (
+      document.querySelector("app-broadcast-player .state")?.getAttribute("data-state") === "ended"
+      || document.querySelector("#broadcast-open-error")?.textContent?.includes("broadcast_ended")
+    ), undefined, { timeout: 45_000 });
   } catch (error) {
-    const status = (await viewer.locator("app-broadcast-player").innerText()).replaceAll(/\s+/g, " ").slice(0, 500);
+    const status = (await viewer.locator("#broadcast-audience-directory").innerText())
+      .replaceAll(/\s+/g, " ").slice(0, 700);
     throw new Error(`broadcast_player_terminal_timeout:${status}:${playbackDiagnostics.slice(-20).join("|")}`, {
       cause: error,
     });
