@@ -14,7 +14,8 @@ describe("NativePackagerOnboardingService", () => {
   it("loads only a closed account-bound packager projection", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ packagers: [{
       id: "pkr_0123456789abcdef", label: "Mini-PC", platform: "linux", keyFingerprint: "A".repeat(43),
-      createdAt: 1, lastAuthenticatedAt: 2, revokedAt: 0, online: true, consentedRoomIds: ["room-1234"],
+      createdAt: 1, lastAuthenticatedAt: 2, revokedAt: 0, online: true,
+      consentedRoomIds: ["room-1234"], confirmedRoomIds: ["room-1234"],
       capability: { ffmpegVersion: "8.1", health: "healthy", maximumRenditions: 3 }, heartbeat: null,
     }], assignments: [{
       assignmentId: "asn_0123456789abcdef", packagerId: "pkr_0123456789abcdef", roomId: "room-1234",
@@ -32,12 +33,32 @@ describe("NativePackagerOnboardingService", () => {
   });
 
   it("sends room consent only to the exact encoded resource", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ packagers: [], assignments: [] }), { status: 200, headers: { "content-type": "application/json" } }));
+    const fetchMock = vi.fn(async (url: string) => new Response(JSON.stringify(url.includes("room-consents")
+      ? { enabled: true }
+      : { packagers: [{
+        id: "pkr_0123456789abcdef", label: "Mini-PC", platform: "linux", keyFingerprint: "A".repeat(43),
+        createdAt: 1, lastAuthenticatedAt: 2, revokedAt: 0, online: true,
+        consentedRoomIds: ["room-1234"], confirmedRoomIds: ["room-1234"],
+        capability: { ffmpegVersion: "8.1", health: "healthy", maximumRenditions: 3 }, heartbeat: null,
+      }], assignments: [] }), { status: 200, headers: { "content-type": "application/json" } }));
     vi.stubGlobal("fetch", fetchMock);
     const service = new NativePackagerOnboardingService(auth as never);
     await service.setRoomConsent("pkr_0123456789abcdef", "room-1234", true);
     expect(fetchMock.mock.calls[0][0]).toBe("/api/native-packagers/pkr_0123456789abcdef/room-consents/room-1234");
     expect(JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body))).toEqual({ enabled: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not offer requested consent until the agent confirms it", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ packagers: [{
+      id: "pkr_0123456789abcdef", label: "Mini-PC", platform: "linux", keyFingerprint: "A".repeat(43),
+      createdAt: 1, lastAuthenticatedAt: 2, revokedAt: 0, online: true,
+      consentedRoomIds: ["room-1234"], confirmedRoomIds: [],
+      capability: { ffmpegVersion: "8.1", health: "healthy", maximumRenditions: 3 }, heartbeat: null,
+    }], assignments: [] }), { status: 200, headers: { "content-type": "application/json" } })));
+    const service = new NativePackagerOnboardingService(auth as never);
+    await service.load();
+    expect(service.eligible("room-1234")).toEqual([]);
   });
 
   it("stops only an exact owned assignment resource", async () => {

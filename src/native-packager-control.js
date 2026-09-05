@@ -278,6 +278,7 @@ export class NativePackagerControlRegistry {
         keyFingerprint: packager.definition.keyFingerprint,
         online: Boolean(packager.socket && now - packager.lastSeen <= 60_000),
         consentedRoomIds: Object.freeze([...(this.#roomConsents.get(packager.definition.id) || new Set())].sort()),
+        confirmedRoomIds: Object.freeze([...(packager.capability?.consentedRoomIds || [])].sort()),
         capability: packager.capability,
         heartbeat: packager.heartbeat,
       }));

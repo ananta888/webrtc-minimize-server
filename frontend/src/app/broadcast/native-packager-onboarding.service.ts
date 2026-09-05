@@ -20,6 +20,7 @@ export interface OwnedNativePackager {
   readonly revokedAt: number;
   readonly online: boolean;
   readonly consentedRoomIds: readonly string[];
+  readonly confirmedRoomIds: readonly string[];
   readonly capability: Readonly<{ ffmpegVersion: string; health: string; maximumRenditions: number }> | null;
   readonly heartbeat: Readonly<{ state: string; observedAt: number }> | null;
 }
@@ -62,7 +63,11 @@ function parsePackager(value: unknown): OwnedNativePackager {
     || !Number.isSafeInteger(item.createdAt) || !Number.isSafeInteger(item.lastAuthenticatedAt)
     || !Number.isSafeInteger(item.revokedAt) || typeof item.online !== "boolean"
     || !Array.isArray(item.consentedRoomIds) || item.consentedRoomIds.length > 20
-    || item.consentedRoomIds.some((roomId) => !ROOM_ID.test(roomId))) throw new Error("native_packager_list_invalid");
+    || item.consentedRoomIds.some((roomId) => !ROOM_ID.test(roomId))
+    || !Array.isArray(item.confirmedRoomIds) || item.confirmedRoomIds.length > 20
+    || item.confirmedRoomIds.some((roomId) => !ROOM_ID.test(roomId) || !item.consentedRoomIds?.includes(roomId))) {
+    throw new Error("native_packager_list_invalid");
+  }
   return Object.freeze(item as OwnedNativePackager);
 }
 
@@ -105,7 +110,7 @@ export class NativePackagerOnboardingService {
 
   eligible(roomId: string): readonly OwnedNativePackager[] {
     return this.packagers().filter((packager) => packager.online && packager.revokedAt === 0
-      && packager.capability?.health === "healthy" && packager.consentedRoomIds.includes(roomId));
+      && packager.capability?.health === "healthy" && packager.confirmedRoomIds.includes(roomId));
   }
 
   suggestedTarget(targets: readonly NativePackagerTarget[]): string {
@@ -117,16 +122,22 @@ export class NativePackagerOnboardingService {
     return targets.some(({ id }) => id === target) ? target : targets[0]?.id || "";
   }
 
+  private async refresh(): Promise<void> {
+    const response = await fetch("/api/native-packagers", { headers: this.auth.authorizationHeader() });
+    const body = await response.json() as { packagers?: unknown[]; assignments?: unknown[]; error?: string };
+    if (!response.ok || !Array.isArray(body.packagers) || !Array.isArray(body.assignments)) {
+      throw new Error(body.error || "native_packager_list_failed");
+    }
+    this.packagers.set(body.packagers.map(parsePackager));
+    this.assignments.set(body.assignments.map(parseAssignment));
+    const current = this.selectedPackagerId();
+    if (current && !this.packagers().some(({ id }) => id === current)) this.selectedPackagerId.set("");
+  }
+
   async load(): Promise<void> {
     this.busy.set(true); this.error.set("");
     try {
-      const response = await fetch("/api/native-packagers", { headers: this.auth.authorizationHeader() });
-      const body = await response.json() as { packagers?: unknown[]; assignments?: unknown[]; error?: string };
-      if (!response.ok || !Array.isArray(body.packagers) || !Array.isArray(body.assignments)) throw new Error(body.error || "native_packager_list_failed");
-      this.packagers.set(body.packagers.map(parsePackager));
-      this.assignments.set(body.assignments.map(parseAssignment));
-      const current = this.selectedPackagerId();
-      if (current && !this.packagers().some(({ id }) => id === current)) this.selectedPackagerId.set("");
+      await this.refresh();
     } catch (error) {
       this.packagers.set([]); this.assignments.set([]); this.error.set(error instanceof Error ? error.message : "native_packager_list_failed");
     } finally { this.busy.set(false); }
@@ -169,7 +180,14 @@ export class NativePackagerOnboardingService {
       });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || "native_packager_room_consent_failed");
-      await this.load();
+      const deadline = Date.now() + 5_000;
+      do {
+        await this.refresh();
+        const packager = this.packagers().find(({ id }) => id === packagerId);
+        if (packager && packager.confirmedRoomIds.includes(roomId) === enabled) return;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      } while (Date.now() < deadline);
+      throw new Error("native_packager_room_consent_confirmation_timeout");
     } catch (error) {
       const message = error instanceof Error ? error.message : "native_packager_room_consent_failed"; this.error.set(message); throw error;
     } finally { this.busy.set(false); }

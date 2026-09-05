@@ -84,6 +84,8 @@ try {
   await sources.nth(1).waitFor({ timeout: 10_000 });
   assert.equal(await sources.count(), 2, "synthetic camera and microphone must be explicit sources");
   for (let index = 0; index < 2; index += 1) await sources.nth(index).check();
+  await ownerPage.locator(`#broadcast-packager-profile option[value="native:${packagerId}"]`)
+    .waitFor({ state: "attached", timeout: 10_000 });
   await ownerPage.locator("#broadcast-packager-profile").selectOption(`native:${packagerId}`);
   await ownerPage.locator("#prepare-broadcast-preview").click();
   await ownerPage.locator(".broadcast-heading .status[data-state=ready]").waitFor({ timeout: 20_000 });

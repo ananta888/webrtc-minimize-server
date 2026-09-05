@@ -100,12 +100,15 @@ test("server room consent intersects an agent report and cannot be self-asserted
   const refs = { tenantId: "tn_0123456789abcdef", ownerSubjectRef: "sub_0123456789abcdef" };
   const unapproved = registry.setCapability(socket, capability(definition.id, now, ["room-allowed"]), refs, now);
   assert.deepEqual(unapproved.consentedRoomIds, []);
+  assert.deepEqual(registry.list("issuer|owner", now)[0].confirmedRoomIds, []);
   assert.throws(() => registry.consent("issuer|other", definition.id, "room-allowed", true), /not_found/);
   registry.consent("issuer|owner", definition.id, "room-allowed", true);
   const approved = registry.setCapability(socket, capability(definition.id, now + 1, ["room-allowed", "room-invented"]), refs, now + 1);
   assert.deepEqual(approved.consentedRoomIds, ["room-allowed"]);
+  assert.deepEqual(registry.list("issuer|owner", now + 1)[0].confirmedRoomIds, ["room-allowed"]);
   registry.consent("issuer|owner", definition.id, "room-allowed", false);
   assert.deepEqual(registry.list("issuer|owner", now + 1)[0].capability.consentedRoomIds, []);
+  assert.deepEqual(registry.list("issuer|owner", now + 1)[0].confirmedRoomIds, []);
 });
 
 test("native packager protocol fails closed on unknown fields and stale heartbeats", () => {
