@@ -31,6 +31,25 @@ function base64Url(value: ArrayBuffer | Uint8Array): string {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+const P256_COORDINATE = /^[A-Za-z0-9_-]{43}$/;
+
+export function normalizeDevicePublicJwk(value: JsonWebKey): JsonWebKey {
+  const x = value?.x;
+  const y = value?.y;
+  if (!value || value.kty !== "EC" || value.crv !== "P-256"
+    || !P256_COORDINATE.test(x || "") || !P256_COORDINATE.test(y || "")) {
+    throw new Error("invalid_device_public_key");
+  }
+  return Object.freeze({
+    kty: "EC",
+    crv: "P-256",
+    x: x as string,
+    y: y as string,
+    ext: true,
+    key_ops: ["verify"],
+  });
+}
+
 export function deviceProofMessage(input: JoinProofInput, timestamp: number, nonce: string): string {
   return `webrtc-join-v1\n${input.roomId}\n${input.mode}\n${input.displayName}\n${timestamp}\n${nonce}`;
 }
@@ -94,7 +113,7 @@ export class DeviceIdentityService {
     const nonce = base64Url(crypto.getRandomValues(new Uint8Array(24)));
     const message = new TextEncoder().encode(deviceProofMessage(input, timestamp, nonce));
     const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, keys.privateKey, message);
-    const publicKey = await crypto.subtle.exportKey("jwk", keys.publicKey);
+    const publicKey = normalizeDevicePublicJwk(await crypto.subtle.exportKey("jwk", keys.publicKey));
     const digest = await crypto.subtle.digest(
       "SHA-256",
       new TextEncoder().encode(`P-256\n${publicKey.x}\n${publicKey.y}`),
@@ -109,7 +128,7 @@ export class DeviceIdentityService {
     const nonce = base64Url(crypto.getRandomValues(new Uint8Array(24)));
     const message = new TextEncoder().encode(broadcastGrantProofMessage(context, timestamp, nonce));
     const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, keys.privateKey, message);
-    const publicKey = await crypto.subtle.exportKey("jwk", keys.publicKey);
+    const publicKey = normalizeDevicePublicJwk(await crypto.subtle.exportKey("jwk", keys.publicKey));
     const digest = await crypto.subtle.digest(
       "SHA-256",
       new TextEncoder().encode(`P-256\n${publicKey.x}\n${publicKey.y}`),

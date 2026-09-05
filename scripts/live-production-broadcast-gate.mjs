@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chromium } from "playwright";
+import { chromium, firefox } from "playwright";
 
 if (process.env.RUN_LIVE_PRODUCTION_BROADCAST !== "1") {
   console.log("SKIP production broadcast gate: provide an isolated test identity and packager");
@@ -12,8 +12,10 @@ const username = process.env.LIVE_OIDC_USERNAME || "";
 const password = process.env.LIVE_OIDC_PASSWORD || "";
 const packagerId = process.env.LIVE_NATIVE_PACKAGER_ID || "";
 const verifyRefreshRestore = process.env.LIVE_PRODUCTION_REFRESH_RESTORE === "1";
+const viewerBrowserName = process.env.LIVE_PRODUCTION_VIEWER_BROWSER || "chromium";
 if (!/^https:\/\/[^/]+$/.test(origin) || !/^https:\/\/[^/]+\/realms\/[A-Za-z0-9._-]+$/.test(issuer)
-  || !username || !password || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(packagerId)) {
+  || !username || !password || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(packagerId)
+  || !new Set(["chromium", "firefox"]).has(viewerBrowserName)) {
   throw new Error("isolated production broadcast gate configuration is incomplete");
 }
 
@@ -25,10 +27,12 @@ const browser = await chromium.launch({
 let ownerContext;
 let viewerContext;
 let ownerPage;
+let viewerBrowser;
 let playerManifest = "";
 const playbackDiagnostics = [];
 const pageErrors = [];
 const failedApiResponses = [];
+const viewerDiagnostics = [];
 
 function observePlayback(page) {
   const counters = { mediaRequests: 0, sessionRenewals: 0 };
@@ -56,6 +60,18 @@ function observePlayback(page) {
     playbackDiagnostics.push(`${request.method()} ${url.pathname} failed ${request.failure()?.errorText || "unknown"}`);
   });
   return counters;
+}
+
+function observeFailedApis(page) {
+  page.on("response", async (response) => {
+    if (response.status() < 400 || !response.url().startsWith(`${origin}/api/`)) return;
+    let code = "unreadable_response";
+    try {
+      const body = await response.json();
+      if (body && typeof body === "object" && typeof body.error === "string") code = body.error;
+    } catch { /* a missing JSON body remains visible as an unreadable response */ }
+    failedApiResponses.push(`${response.request().method()} ${new URL(response.url()).pathname} ${response.status()} ${code}`);
+  });
 }
 
 async function login(page) {
@@ -97,8 +113,13 @@ async function startVisiblePlayer(page, cardSection, programTitle = title) {
     ]);
   } catch (error) {
     await page.waitForTimeout(250);
-    const status = (await page.locator("app-broadcast-player").innerText()).replaceAll(/\s+/g, " ").slice(0, 500);
-    throw new Error(`broadcast_player_request_timeout:${status}:${playbackDiagnostics.join("|")}:${failedApiResponses.join("|")}`, { cause: error });
+    const status = await page.locator("app-broadcast-player").innerText({ timeout: 1_000 })
+      .then((value) => value.replaceAll(/\s+/g, " ").slice(0, 500))
+      .catch(() => "player_missing");
+    const openError = await page.locator("#broadcast-open-error").innerText({ timeout: 1_000 })
+      .then((value) => value.replaceAll(/\s+/g, " ").slice(0, 200))
+      .catch(() => "open_error_missing");
+    throw new Error(`broadcast_player_request_timeout:${status}:${openError}:${playbackDiagnostics.join("|")}:${failedApiResponses.join("|")}`, { cause: error });
   }
   const decodable = await page.locator("app-broadcast-player video").evaluate(async (video) => {
     const deadline = Date.now() + 25_000;
@@ -185,16 +206,8 @@ try {
     }
   });
   observePlayback(ownerPage);
+  observeFailedApis(ownerPage);
   ownerPage.on("pageerror", (error) => pageErrors.push(error.message));
-  ownerPage.on("response", async (response) => {
-    if (response.status() < 400 || !response.url().startsWith(`${origin}/api/`)) return;
-    let code = "unreadable_response";
-    try {
-      const body = await response.json();
-      if (body && typeof body === "object" && typeof body.error === "string") code = body.error;
-    } catch { /* a missing JSON body remains visible as an unreadable response */ }
-    failedApiResponses.push(`${response.request().method()} ${new URL(response.url()).pathname} ${response.status()} ${code}`);
-  });
   await login(ownerPage);
 
   await ownerPage.locator("#new-room-title").fill(title);
@@ -308,18 +321,37 @@ try {
   assert.equal(publicDirectory.body?.programs?.some((program) => program.title === title), true,
     "public control-plane directory did not expose the committed live program");
 
-  viewerContext = await browser.newContext();
+  if (viewerBrowserName === "firefox") {
+    viewerBrowser = await firefox.launch({ headless: true });
+    viewerBrowser.on("disconnected", () => viewerDiagnostics.push("browser_disconnected"));
+    viewerContext = await viewerBrowser.newContext();
+  } else {
+    viewerContext = await browser.newContext();
+  }
   const viewer = await viewerContext.newPage();
+  viewer.on("crash", () => viewerDiagnostics.push("page_crashed"));
+  viewer.on("close", () => viewerDiagnostics.push("page_closed"));
+  viewer.on("pageerror", () => viewerDiagnostics.push("page_error"));
   const viewerPlayback = observePlayback(viewer);
+  observeFailedApis(viewer);
   await viewer.goto(`${origin}/?section=broadcast`, { waitUntil: "domcontentloaded" });
   await viewer.locator("#public-broadcasts-heading").waitFor();
   await refreshUntilProgramVisible(viewer, "section[aria-labelledby=public-broadcasts-heading]", title);
   const renewedSession = viewer.waitForResponse((response) => (
     response.request().method() === "PUT"
     && new URL(response.url()).pathname.startsWith("/api/broadcast/playback-sessions/")
-  ), { timeout: 140_000 });
+  ), { timeout: 140_000 }).then(
+    (response) => ({ response, error: null }),
+    (error) => ({ response: null, error }),
+  );
   playerManifest = await startVisiblePlayer(viewer, "section[aria-labelledby=public-broadcasts-heading]");
-  const renewalResponse = await renewedSession;
+  const renewalResult = await renewedSession;
+  if (!renewalResult.response) {
+    throw new Error(`broadcast_playback_renewal_unavailable:${viewerDiagnostics.join("|")}:${playbackDiagnostics.slice(-20).join("|")}`, {
+      cause: renewalResult.error,
+    });
+  }
+  const renewalResponse = renewalResult.response;
   assert.equal(renewalResponse.status(), 200, "active anonymous playback session was not renewed");
   assert.equal(viewerPlayback.sessionRenewals, 1,
     "one scoped playback-session renewal was expected before the first grant expired");
@@ -402,5 +434,6 @@ try {
   }
   await viewerContext?.close();
   await ownerContext?.close();
+  await viewerBrowser?.close();
   await browser.close();
 }

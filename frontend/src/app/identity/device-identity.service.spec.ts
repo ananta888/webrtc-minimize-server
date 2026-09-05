@@ -1,6 +1,43 @@
 import { describe, expect, it } from "vitest";
 
-import { broadcastGrantProofMessage, deviceProofMessage } from "./device-identity.service";
+import {
+  broadcastGrantProofMessage,
+  deviceProofMessage,
+  normalizeDevicePublicJwk,
+} from "./device-identity.service";
+
+describe("normalizeDevicePublicJwk", () => {
+  it("removes browser-specific JWK metadata before the closed wire contract", () => {
+    const normalized = normalizeDevicePublicJwk({
+      alg: "ES256",
+      crv: "P-256",
+      ext: true,
+      key_ops: ["verify"],
+      kty: "EC",
+      x: "A".repeat(43),
+      y: "B".repeat(43),
+    });
+
+    expect(normalized).toEqual({
+      crv: "P-256",
+      ext: true,
+      key_ops: ["verify"],
+      kty: "EC",
+      x: "A".repeat(43),
+      y: "B".repeat(43),
+    });
+    expect(Object.hasOwn(normalized, "alg")).toBe(false);
+  });
+
+  it("rejects keys outside the exact P-256 coordinate shape", () => {
+    expect(() => normalizeDevicePublicJwk({
+      crv: "P-384",
+      kty: "EC",
+      x: "A".repeat(43),
+      y: "B".repeat(43),
+    })).toThrowError("invalid_device_public_key");
+  });
+});
 
 describe("deviceProofMessage", () => {
   it("binds every normalized join field in a stable order", () => {
