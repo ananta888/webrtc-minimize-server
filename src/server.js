@@ -2118,7 +2118,9 @@ function configureSignaling(
         }
         throw new NativePackagerControlError("unknown_native_packager_message");
       } catch (error) {
-        const code = error instanceof NativePackagerControlError || error instanceof NativePackagerAssignmentError
+        const code = error instanceof NativePackagerControlError
+          || error instanceof NativePackagerAssignmentError
+          || error instanceof BroadcastRuntimeError
           ? error.code : "invalid_native_packager_message";
         safeSend(socket, { version: 1, type: "packager-error", code });
         socket.close(1008, code);

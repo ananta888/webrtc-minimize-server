@@ -32,16 +32,19 @@ const failedApiResponses = [];
 function observePlayback(page) {
   page.on("response", (response) => {
     const url = new URL(response.url());
-    if (url.origin !== origin || !url.pathname.startsWith("/broadcast/play/")) return;
+    if (url.origin !== origin || (!url.pathname.startsWith("/broadcast/play/")
+      && !url.pathname.includes("/playback")
+      && !url.pathname.startsWith("/api/broadcast/playback-sessions"))) return;
     playbackDiagnostics.push([
-      response.request().method(), url.pathname.split("/").at(-1), response.status(),
+      response.request().method(), url.pathname, response.status(),
       response.headers()["content-type"] || "missing-content-type",
     ].join(" "));
   });
   page.on("requestfailed", (request) => {
     const url = new URL(request.url());
-    if (url.origin !== origin || !url.pathname.startsWith("/broadcast/play/")) return;
-    playbackDiagnostics.push(`${request.method()} ${url.pathname.split("/").at(-1)} failed`);
+    if (url.origin !== origin || (!url.pathname.startsWith("/broadcast/play/")
+      && !url.pathname.includes("/playback") && !url.pathname.endsWith(".js"))) return;
+    playbackDiagnostics.push(`${request.method()} ${url.pathname} failed ${request.failure()?.errorText || "unknown"}`);
   });
 }
 
@@ -83,8 +86,9 @@ async function startVisiblePlayer(page, cardSection, programTitle = title) {
       page.locator("#broadcast-player-start").click(),
     ]);
   } catch (error) {
+    await page.waitForTimeout(250);
     const status = (await page.locator("app-broadcast-player").innerText()).replaceAll(/\s+/g, " ").slice(0, 500);
-    throw new Error(`broadcast_player_request_timeout:${status}:${failedApiResponses.join("|")}`, { cause: error });
+    throw new Error(`broadcast_player_request_timeout:${status}:${playbackDiagnostics.join("|")}:${failedApiResponses.join("|")}`, { cause: error });
   }
   const decodable = await page.locator("app-broadcast-player video").evaluate(async (video) => {
     const deadline = Date.now() + 25_000;
