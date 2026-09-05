@@ -16,3 +16,21 @@ das Vorgängerimage und anschließend wieder auf die aktuelle Revision. Alle
 2.913 HTTPS-Anfragen blieben erfolgreich; der abschließende Status war 200.
 
 Zertifikatsprüfung ist Bestandteil von `curl`/Node TLS beim externen Smoke. Keycloak-, TURN-, private/public Playback- und optionale MoQ-Live-Gates benötigen ausdrücklich bereitgestellte Testkonten beziehungsweise aktivierte Adapter und werden sonst sichtbar übersprungen.
+
+Ein isolierter, nach dem Lauf zu widerrufender Produktionsnutzer und ein nur
+diesem Principal zugeordneter Native-Packager können den vollständigen
+Playback-Pfad prüfen. Das Gate verwendet ausschließlich Chromiums synthetische
+Kamera und Mikrofon, startet beide über sichtbare Klicks, spielt zuerst als angemeldeter
+Owner privat und danach anonym öffentlich ab und verlangt nach Stop sofort 404:
+
+```bash
+RUN_LIVE_PRODUCTION_BROADCAST=1 \
+LIVE_OIDC_USERNAME=... LIVE_OIDC_PASSWORD=... \
+LIVE_NATIVE_PACKAGER_ID=pkr_... \
+node scripts/live-production-broadcast-gate.mjs
+```
+
+Testkonto, Packager-Registrierung, Container/Volume und Room-Consent sind
+isolierte Wegwerfressourcen. Der Packager wird vor dem Löschen des Testkontos
+über dessen normale authentisierte API widerrufen; direkte Datenbanklöschung
+ist kein zulässiger Cleanup-Pfad.

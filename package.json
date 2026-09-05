@@ -13,7 +13,7 @@
     "typecheck:broadcast": "tsc -p frontend/tsconfig.broadcast.json",
     "test:frontend": "vitest run --config vitest.config.mjs",
     "test:go": "node scripts/go-unit-gate.mjs",
-    "test:infrastructure": "node scripts/live-infrastructure-gate.mjs && node scripts/live-mediamtx-adapter-gate.mjs && node scripts/live-whip-mediamtx-gate.mjs && node scripts/live-native-packager-gate.mjs && node scripts/live-mediamtx-llhls-gate.mjs && node scripts/live-mediamtx-origin-load-gate.mjs",
+    "test:infrastructure": "node scripts/live-infrastructure-gate.mjs && node scripts/live-production-broadcast-gate.mjs && node scripts/live-mediamtx-adapter-gate.mjs && node scripts/live-whip-mediamtx-gate.mjs && node scripts/live-native-packager-gate.mjs && node scripts/live-mediamtx-llhls-gate.mjs && node scripts/live-mediamtx-origin-load-gate.mjs",
     "test:mediamtx-adapter": "node scripts/live-mediamtx-adapter-gate.mjs",
     "test:native-packager": "node scripts/live-native-packager-gate.mjs",
     "test:llhls:mediamtx": "node scripts/live-mediamtx-llhls-gate.mjs",

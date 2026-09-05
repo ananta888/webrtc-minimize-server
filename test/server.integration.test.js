@@ -1763,7 +1763,7 @@ test("native packager assignment is owner-, room-, device- and fence-bound end t
       tenantId: broadcastTenantRef(issuer),
       ownerSubjectRef: broadcastSubjectRef(identity),
       deviceRef: `dev_${"B".repeat(43)}`,
-      agentVersion: "0.2.0",
+      agentVersion: "0.7.0",
       ffmpegVersion: "6.1.1",
       videoEncoders: ["libx264"],
       audioEncoders: ["aac"],
@@ -1815,6 +1815,8 @@ test("native packager assignment is owner-, room-, device- and fence-bound end t
   assert.equal(prepare.roomId, room.roomId);
   assert.equal(prepare.programId, program.control.programId);
   assert.equal(prepare.publisherPeerId, welcome.peerId);
+  assert.equal(prepare.version, 3);
+  assert.deepEqual(prepare.iceServers, [{ urls: ["stun:stun.test:3478"] }]);
   assert.equal(Object.hasOwn(prepare, "accessToken"), false);
   assert.equal(Object.hasOwn(prepare, "sdp"), false);
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -35,6 +36,13 @@ type assignmentProfile struct {
 	Renditions              []assignmentRendition `json:"renditions"`
 }
 
+type assignmentICEServer struct {
+	URLs           []string `json:"urls"`
+	Username       string   `json:"username,omitempty"`
+	Credential     string   `json:"credential,omitempty"`
+	CredentialType string   `json:"credentialType,omitempty"`
+}
+
 type packagerAssignment struct {
 	AssignmentID    string
 	RoomID          string
@@ -45,6 +53,7 @@ type packagerAssignment struct {
 	FencingRevision int
 	ResourceRef     string
 	Profile         assignmentProfile
+	ICEServers      []assignmentICEServer
 	expiresAt       atomic.Int64
 	State           string
 	Media           *nativeMediaSession
@@ -65,7 +74,7 @@ func validAssignmentPrepare(message serverMessage, now time.Time) bool {
 		if message.Profile.VideoEncoder != "" || message.Profile.SoftwareFallback != "" {
 			return false
 		}
-	} else if message.Version == 2 {
+	} else if message.Version == 2 || message.Version == 3 {
 		if !oneOf(message.Profile.VideoEncoder, "libx264", "h264_nvenc", "h264_videotoolbox") ||
 			message.Profile.SoftwareFallback != "libx264" {
 			return false
@@ -84,6 +93,43 @@ func validAssignmentPrepare(message serverMessage, now time.Time) bool {
 		}
 		seen[rendition.ID] = true
 	}
+	if message.Version == 3 {
+		if !validAssignmentICEServers(message.ICEServers) {
+			return false
+		}
+	} else if len(message.ICEServers) != 0 {
+		return false
+	}
+	return true
+}
+
+func validAssignmentICEServers(servers []assignmentICEServer) bool {
+	if len(servers) < 1 || len(servers) > 24 {
+		return false
+	}
+	for _, server := range servers {
+		if len(server.URLs) < 1 || len(server.URLs) > 8 {
+			return false
+		}
+		usesTURN := false
+		for _, raw := range server.URLs {
+			lower := strings.ToLower(raw)
+			if len(raw) < 6 || len(raw) > 2048 || strings.ContainsAny(raw, " \t\r\n") ||
+				!(strings.HasPrefix(lower, "stun:") || strings.HasPrefix(lower, "stuns:") ||
+					strings.HasPrefix(lower, "turn:") || strings.HasPrefix(lower, "turns:")) {
+				return false
+			}
+			usesTURN = usesTURN || strings.HasPrefix(lower, "turn:") || strings.HasPrefix(lower, "turns:")
+		}
+		if usesTURN {
+			if len(server.Username) < 1 || len(server.Username) > 512 || len(server.Credential) < 1 ||
+				len(server.Credential) > 512 || server.CredentialType != "password" {
+				return false
+			}
+		} else if server.Username != "" || server.Credential != "" || server.CredentialType != "" {
+			return false
+		}
+	}
 	return true
 }
 
@@ -92,7 +138,8 @@ func assignmentFrom(message serverMessage) *packagerAssignment {
 		AssignmentID: message.AssignmentID, RoomID: message.RoomID, ProgramID: message.ProgramID,
 		PublisherPeerID: message.PublisherPeerID,
 		ProgramEpoch:    message.ProgramEpoch, LeaseID: message.LeaseID, FencingRevision: message.FencingRevision,
-		ResourceRef: message.ResourceRef, Profile: message.Profile, State: "ready",
+		ResourceRef: message.ResourceRef, Profile: message.Profile,
+		ICEServers: append([]assignmentICEServer(nil), message.ICEServers...), State: "ready",
 	}
 	assignment.expiresAt.Store(message.ExpiresAt)
 	return assignment
@@ -102,8 +149,14 @@ func sameAssignment(left *packagerAssignment, right serverMessage) bool {
 	if left == nil {
 		return false
 	}
-	leftJSON, _ := json.Marshal(left.Profile)
-	rightJSON, _ := json.Marshal(right.Profile)
+	rightJSON, _ := json.Marshal(struct {
+		Profile    assignmentProfile
+		ICEServers []assignmentICEServer
+	}{right.Profile, right.ICEServers})
+	leftJSON, _ := json.Marshal(struct {
+		Profile    assignmentProfile
+		ICEServers []assignmentICEServer
+	}{left.Profile, left.ICEServers})
 	return left.AssignmentID == right.AssignmentID && left.RoomID == right.RoomID &&
 		left.ProgramID == right.ProgramID && left.ProgramEpoch == right.ProgramEpoch &&
 		left.PublisherPeerID == right.PublisherPeerID &&
@@ -111,7 +164,7 @@ func sameAssignment(left *packagerAssignment, right serverMessage) bool {
 		left.ResourceRef == right.ResourceRef && left.expiresAt.Load() == right.ExpiresAt && bytes.Equal(leftJSON, rightJSON)
 }
 
-func allowedServerFields(messageType string) map[string]bool {
+func allowedServerFields(messageType string, version int) map[string]bool {
 	common := map[string]map[string]bool{
 		"packager-challenge":     {"version": true, "type": true, "nonce": true, "expiresAt": true},
 		"packager-enrolled":      {"version": true, "type": true, "packagerId": true, "keyFingerprint": true},
@@ -138,7 +191,11 @@ func allowedServerFields(messageType string) map[string]bool {
 			"programEpoch": true, "fencingRevision": true, "description": true, "candidate": true,
 		},
 	}
-	return common[messageType]
+	allowed := common[messageType]
+	if messageType == "assignment-prepare" && version == 3 {
+		allowed["iceServers"] = true
+	}
+	return allowed
 }
 
 func decodeServerMessage(raw []byte) (serverMessage, error) {
@@ -150,7 +207,11 @@ func decodeServerMessage(raw []byte) (serverMessage, error) {
 	if json.Unmarshal(fields["type"], &messageType) != nil {
 		return serverMessage{}, errors.New("invalid control message")
 	}
-	allowed := allowedServerFields(messageType)
+	var version int
+	if json.Unmarshal(fields["version"], &version) != nil {
+		return serverMessage{}, errors.New("invalid control message")
+	}
+	allowed := allowedServerFields(messageType, version)
 	if allowed == nil {
 		return serverMessage{}, errors.New("unknown control message")
 	}
@@ -173,7 +234,8 @@ func decodeServerMessage(raw []byte) (serverMessage, error) {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	var message serverMessage
-	if decoder.Decode(&message) != nil || (message.Version != 1 && (message.Version != 2 || messageType != "assignment-prepare")) {
+	if decoder.Decode(&message) != nil || (message.Version != 1 &&
+		((message.Version != 2 && message.Version != 3) || messageType != "assignment-prepare")) {
 		return serverMessage{}, errors.New("invalid control message")
 	}
 	return message, nil

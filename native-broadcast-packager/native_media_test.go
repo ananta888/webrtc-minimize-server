@@ -128,6 +128,34 @@ func TestNativeMediaReceivesBrowserRTP(t *testing.T) {
 	}
 }
 
+func TestNativeMediaUsesAssignmentICEConfiguration(t *testing.T) {
+	api, err := createWebRTCAPI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	message := assignmentMessage(time.Now())
+	message.Version = 3
+	message.Profile.VideoEncoder = "libx264"
+	message.Profile.SoftwareFallback = "libx264"
+	message.ICEServers = []assignmentICEServer{{
+		URLs: []string{"turn:turn.example.test:3478?transport=tcp"}, Username: "ephemeral-user",
+		Credential: "ephemeral-password", CredentialType: "password",
+	}}
+	assignment := assignmentFrom(message)
+	packager := &client{api: api, cfg: config{stunURLs: []string{"stun:static.example.test:3478"}}}
+	media, err := newNativeMediaSession(packager, assignment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer media.close()
+	servers := media.pc.GetConfiguration().ICEServers
+	if len(servers) != 1 || len(servers[0].URLs) != 1 || servers[0].URLs[0] != message.ICEServers[0].URLs[0] ||
+		servers[0].Username != "ephemeral-user" || servers[0].Credential != "ephemeral-password" ||
+		servers[0].CredentialType != webrtc.ICECredentialTypePassword {
+		t.Fatalf("assignment ICE configuration was not applied: %#v", servers)
+	}
+}
+
 func assignmentSignalForTest(
 	assignment *packagerAssignment,
 	description *webrtc.SessionDescription,

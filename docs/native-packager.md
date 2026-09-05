@@ -218,6 +218,13 @@ Er speist einen viersekündigen VP8-RTP-Strom in die echte Pipeline, prüft zwei
 H.264/AAC-Renditions und das ABR-Master-Manifest, verlangt den
 `OUTPUT_READY`-Callback und bestätigt das Löschen des flüchtigen Outputs.
 
+Ab Agent 0.7.0 verwendet `assignment-prepare.v3` eine geschlossene, kurzlebige
+ICE-Konfiguration. Die Control Plane stellt STUN und ausschließlich
+agentgebundene Coturn-REST-Credentials für die konkrete Zuweisung bereit.
+Dadurch bleibt der Agent ausgehend verbunden und benötigt auch hinter
+Docker/NAT keinen pauschal geöffneten eingehenden UDP-Port. Ältere
+v1/v2-Agenten erhalten keine Credential-Felder.
+
 ## Ehrlich offene Punkte
 
 Der Daemon besitzt nun den gefenceten WebRTC-RTP-Eingang, die echte

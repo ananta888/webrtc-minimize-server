@@ -10,6 +10,7 @@ import {
   nativePackagerPipelineCandidates,
   normalizeNativePackagerCapability,
   supportsNativeAssignmentV2,
+  supportsNativeAssignmentV3,
 } from "../src/native-packager-policy.js";
 
 const now = 1_800_000_000_000;
@@ -79,6 +80,15 @@ test("hardware assignments require the additive v2-capable agent generation", ()
   }
   const legacy = admitNativePackager({ ...capability, agentVersion: "0.5.9" }, request, now);
   assert.equal(legacy.videoEncoder, "libx264");
+});
+
+test("assignment ICE credentials require the additive v3-capable agent generation", () => {
+  for (const version of ["0.7.0", "0.8.0-beta.1", "1.0.0"]) {
+    assert.equal(supportsNativeAssignmentV3(version), true);
+  }
+  for (const version of ["0.6.9", "unknown", "0.7", "0.7.0 bad"]) {
+    assert.equal(supportsNativeAssignmentV3(version), false);
+  }
 });
 
 test("pilot profile fixes H.264 Main/AAC-LC ladder and aligned two-second GOPs", () => {

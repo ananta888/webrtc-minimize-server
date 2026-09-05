@@ -40,7 +40,17 @@ func newNativeMediaSession(client *client, assignment *packagerAssignment) (*nat
 		return nil, errors.New("native media configuration unavailable")
 	}
 	configuration := webrtc.Configuration{}
-	if len(client.cfg.stunURLs) > 0 {
+	if len(assignment.ICEServers) > 0 {
+		for _, server := range assignment.ICEServers {
+			iceServer := webrtc.ICEServer{
+				URLs: append([]string(nil), server.URLs...), Username: server.Username, Credential: server.Credential,
+			}
+			if server.CredentialType == "password" {
+				iceServer.CredentialType = webrtc.ICECredentialTypePassword
+			}
+			configuration.ICEServers = append(configuration.ICEServers, iceServer)
+		}
+	} else if len(client.cfg.stunURLs) > 0 {
 		configuration.ICEServers = []webrtc.ICEServer{{URLs: append([]string(nil), client.cfg.stunURLs...)}}
 	}
 	pc, err := client.api.NewPeerConnection(configuration)

@@ -35,7 +35,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-const agentVersion = "0.6.0"
+const agentVersion = "0.7.0"
 
 var buildRevision = "unknown"
 var buildTimestamp = "unknown"
@@ -472,6 +472,7 @@ type serverMessage struct {
 	ResourceRef     string                     `json:"resourceRef,omitempty"`
 	ReasonCode      string                     `json:"reasonCode,omitempty"`
 	Profile         assignmentProfile          `json:"profile,omitempty"`
+	ICEServers      []assignmentICEServer      `json:"iceServers,omitempty"`
 	PublisherPeerID string                     `json:"publisherPeerId,omitempty"`
 	Description     *webrtc.SessionDescription `json:"description,omitempty"`
 	Candidate       json.RawMessage            `json:"candidate,omitempty"`

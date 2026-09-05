@@ -34,6 +34,7 @@ import { RoomAdmissionError, RoomFullError, RoomRegistry } from "./room-registry
 import { SessionTicketError, SessionTicketStore } from "./session-tickets.js";
 import { createMediaAgentIceServers } from "./media-agent-ice.js";
 import { createEdgeTurnCredentials, createTurnCredentials } from "./turn-credentials.js";
+import { createNativePackagerIceServers } from "./native-packager-ice.js";
 import { MediaMtxExternalAuthError, MediaMtxExternalAuthService } from "./mediamtx-external-auth.js";
 import { BroadcastHlsProxy, BroadcastHlsProxyError } from "./broadcast-hls-proxy.js";
 import {
@@ -2191,7 +2192,10 @@ export function createAppServer(options = {}) {
     definitions: nativePackagerEnrollmentStore?.definitions() || [],
   });
   const nativePackagerAssignments = options.nativePackagerAssignments
-    || new NativePackagerAssignmentRegistry({ controlRegistry: nativePackagers });
+    || new NativePackagerAssignmentRegistry({
+      controlRegistry: nativePackagers,
+      iceServersForPackager: (packagerId, now) => createNativePackagerIceServers(config, packagerId, now),
+    });
   const workspaceStore = options.workspaceStore || (config.pairWorkspaceEnabled
     ? new PairWorkspaceStore({ filename: config.pairWorkspaceDb }) : null);
   const publicDir = path.resolve(options.publicDir || DEFAULT_PUBLIC_DIR);

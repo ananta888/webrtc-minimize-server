@@ -10,6 +10,7 @@ test("native packager control schemas are closed and reject authority injection"
   const client = ajv.compile(await load("client-control.v1.schema.json"));
   const server = ajv.compile(await load("server-control.v1.schema.json"));
   const assignmentV2 = ajv.compile(await load("assignment-prepare.v2.schema.json"));
+  const assignmentV3 = ajv.compile(await load("assignment-prepare.v3.schema.json"));
   const authentication = { version: 1, type: "authenticate", packagerId: "pkr_0123456789abcdef", timestamp: 1_800_000_000_000, proof: "A".repeat(86) };
   assert.equal(client(authentication), true, JSON.stringify(client.errors));
   assert.equal(client({ ...authentication, roomAuthority: true }), false);
@@ -34,6 +35,18 @@ test("native packager control schemas are closed and reject authority injection"
   assert.equal(assignmentV2(v2), true, JSON.stringify(assignmentV2.errors));
   assert.equal(assignmentV2({ ...v2, profile: { ...v2.profile, decryptKey: "forbidden" } }), false);
   assert.equal(assignmentV2({ ...v2, profile: { ...v2.profile, videoEncoder: "h264_vaapi" } }), false);
+  const v3 = {
+    ...v2,
+    version: 3,
+    iceServers: [{
+      urls: ["turn:turn.example.test:3478?transport=udp"], username: "1800000600:test",
+      credential: "short-lived", credentialType: "password",
+    }],
+  };
+  assert.equal(assignmentV3(v3), true, JSON.stringify(assignmentV3.errors));
+  assert.equal(assignmentV3({ ...v3, iceServers: [{ urls: ["https://not-ice.example.test"] }] }), false);
+  assert.equal(assignmentV3({ ...v3, iceServers: [{ ...v3.iceServers[0], roomAuthority: true }] }), false);
+  assert.equal(assignmentV3({ ...v3, decryptKey: "forbidden" }), false);
   assert.equal(client({
     version: 1, type: "assignment-status", assignmentId: assignment.assignmentId,
     programEpoch: 2, fencingRevision: 3, state: "ready", reasonCode: "CAPABILITY_READY",

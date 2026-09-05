@@ -103,6 +103,41 @@ func TestAssignmentV2CarriesOnlySupportedEncoderAndSoftwareFallback(t *testing.T
 	}
 }
 
+func TestAssignmentV3CarriesOnlyClosedBoundedICEConfiguration(t *testing.T) {
+	now := time.Now()
+	message := assignmentMessage(now)
+	message.Version = 3
+	message.Profile.VideoEncoder = "libx264"
+	message.Profile.SoftwareFallback = "libx264"
+	message.ICEServers = []assignmentICEServer{{
+		URLs: []string{"turn:turn.example.test:3478?transport=udp"}, Username: "1800000600:test",
+		Credential: "short-lived", CredentialType: "password",
+	}}
+	raw, _ := json.Marshal(message)
+	decoded, err := decodeServerMessage(raw)
+	if err != nil || !validAssignmentPrepare(decoded, now) {
+		t.Fatalf("valid v3 assignment rejected: %v", err)
+	}
+	for _, mutation := range []func(*serverMessage){
+		func(value *serverMessage) { value.ICEServers[0].URLs = []string{"https://not-ice.example.test"} },
+		func(value *serverMessage) { value.ICEServers[0].Credential = "" },
+		func(value *serverMessage) { value.ICEServers[0].CredentialType = "token" },
+	} {
+		invalid := message
+		invalid.ICEServers = append([]assignmentICEServer(nil), message.ICEServers...)
+		invalid.ICEServers[0].URLs = append([]string(nil), message.ICEServers[0].URLs...)
+		mutation(&invalid)
+		if validAssignmentPrepare(invalid, now) {
+			t.Fatalf("invalid v3 ICE configuration accepted: %#v", invalid.ICEServers)
+		}
+	}
+	legacy := message
+	legacy.Version = 2
+	if validAssignmentPrepare(legacy, now) {
+		t.Fatal("v2 assignment accepted v3 ICE fields")
+	}
+}
+
 func TestPreparedAssignmentHeartbeatDoesNotClaimMediaStarted(t *testing.T) {
 	message := assignmentMessage(time.Now())
 	packager := &client{assignment: assignmentFrom(message)}

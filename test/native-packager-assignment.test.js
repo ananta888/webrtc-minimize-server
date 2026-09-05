@@ -62,6 +62,12 @@ function registry(candidate = { id: PACKAGER, online: true, capability: capabili
       },
     },
     idFactory: () => "asn_aaaaaaaaaaaaaaaa",
+    iceServersForPackager: () => [{
+      urls: ["turn:turn.example.test:3478?transport=udp"],
+      username: "1800000600:test",
+      credential: "short-lived-credential",
+      credentialType: "password",
+    }],
   });
 }
 
@@ -77,12 +83,18 @@ test("assignment preparation is owner-, consent-, capability- and lease-fenced",
   assert.deepEqual(prepared.snapshot.renditionIds, ["low", "medium", "high"]);
   assert.equal(prepared.snapshot.state, "preparing");
   assert.equal(prepared.command.type, "assignment-prepare");
-  assert.equal(prepared.command.version, 2);
+  assert.equal(prepared.command.version, 3);
   assert.equal(prepared.command.publisherPeerId, PUBLISHER);
   assert.equal(prepared.command.profile.videoEncoder, "h264_nvenc");
   assert.equal(prepared.command.profile.softwareFallback, "libx264");
   assert.equal(prepared.command.profile.maximumQueueFrames, 60);
   assert.equal(prepared.command.profile.renditions[2].videoBitsPerSecond, 2_400_000);
+  assert.deepEqual(prepared.command.iceServers, [{
+    urls: ["turn:turn.example.test:3478?transport=udp"],
+    username: "1800000600:test",
+    credential: "short-lived-credential",
+    credentialType: "password",
+  }]);
   assert.deepEqual(assignments.activeForProgram(request().programId), prepared.snapshot);
   const signal = {
     packagerId: PACKAGER,
@@ -117,6 +129,25 @@ test("legacy agents receive v1 software assignments without silently selected ha
   assert.equal(prepared.command.version, 1);
   assert.equal(Object.hasOwn(prepared.command.profile, "videoEncoder"), false);
   assert.equal(Object.hasOwn(prepared.command.profile, "softwareFallback"), false);
+});
+
+test("agent 0.6 receives v2 without ICE credentials and malformed v3 ICE fails closed", () => {
+  const v2Assignments = registry({ id: PACKAGER, online: true, capability: capability({ agentVersion: "0.6.9" }) });
+  const admission = v2Assignments.admit(OWNER, PACKAGER, request(), NOW);
+  const prepared = v2Assignments.prepare(OWNER, PACKAGER, admission, {
+    leaseId: "lea_aaaaaaaaaaaaaaaa", fencingRevision: 9, expiresAt: NOW + 60_000,
+  }, PUBLISHER, NOW);
+  assert.equal(prepared.command.version, 2);
+  assert.equal(Object.hasOwn(prepared.command, "iceServers"), false);
+
+  const invalid = new NativePackagerAssignmentRegistry({
+    controlRegistry: { candidate: () => ({ id: PACKAGER, online: true, capability: capability() }) },
+    idFactory: () => "asn_bbbbbbbbbbbbbbbb",
+    iceServersForPackager: () => [{ urls: ["https://not-ice.example.test"] }],
+  });
+  assert.throws(() => invalid.prepare(OWNER, PACKAGER, invalid.admit(OWNER, PACKAGER, request(), NOW), {
+    leaseId: "lea_bbbbbbbbbbbbbbbb", fencingRevision: 10, expiresAt: NOW + 60_000,
+  }, PUBLISHER, NOW), /invalid_native_packager_ice_configuration/);
 });
 
 test("assignment status rejects stale fences and follows a closed lifecycle", () => {

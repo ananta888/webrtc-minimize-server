@@ -58,6 +58,14 @@ export function supportsNativeAssignmentV2(agentVersion) {
   return major > 0 || minor >= 6;
 }
 
+export function supportsNativeAssignmentV3(agentVersion) {
+  const match = String(agentVersion || "").match(/^(\d+)\.(\d+)\.(\d+)(?:[-+][A-Za-z0-9.-]+)?$/);
+  if (!match) return false;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  return major > 0 || minor >= 7;
+}
+
 export function normalizeNativePackagerCapability(value, now = Date.now()) {
   const fields = new Set([
     "capabilityVersion", "agentId", "tenantId", "ownerSubjectRef", "deviceRef", "agentVersion",

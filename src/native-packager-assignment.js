@@ -1,6 +1,10 @@
 import crypto from "node:crypto";
 
-import { admitNativePackager, supportsNativeAssignmentV2 } from "./native-packager-policy.js";
+import {
+  admitNativePackager,
+  supportsNativeAssignmentV2,
+  supportsNativeAssignmentV3,
+} from "./native-packager-policy.js";
 
 const PACKAGER = /^pkr_[A-Za-z0-9_-]{16,64}$/;
 const ASSIGNMENT = /^asn_[A-Za-z0-9_-]{16,64}$/;
@@ -35,6 +39,39 @@ function exact(value, fields, code = "invalid_native_packager_assignment") {
     || Object.keys(value).some((field) => !fields.has(field))) fail(code);
 }
 
+function normalizeIceServers(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 24) {
+    fail("invalid_native_packager_ice_configuration", 500);
+  }
+  return Object.freeze(value.map((entry) => {
+    const fields = new Set(["urls", "username", "credential", "credentialType"]);
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)
+      || Object.keys(entry).some((field) => !fields.has(field))) {
+      fail("invalid_native_packager_ice_configuration", 500);
+    }
+    const urls = Array.isArray(entry.urls) ? entry.urls : [entry.urls];
+    if (urls.length < 1 || urls.length > 8 || urls.some((url) => typeof url !== "string"
+      || url.length < 6 || url.length > 2048 || !/^(?:stun|stuns|turn|turns):[^\s]+$/i.test(url))) {
+      fail("invalid_native_packager_ice_configuration", 500);
+    }
+    const usesTurn = urls.some((url) => /^turns?:/i.test(url));
+    const username = entry.username;
+    const credential = entry.credential;
+    if (usesTurn !== (typeof username === "string" && username.length >= 1 && username.length <= 512
+      && typeof credential === "string" && credential.length >= 1 && credential.length <= 512
+      && entry.credentialType === "password")) {
+      fail("invalid_native_packager_ice_configuration", 500);
+    }
+    if (!usesTurn && (username !== undefined || credential !== undefined || entry.credentialType !== undefined)) {
+      fail("invalid_native_packager_ice_configuration", 500);
+    }
+    return Object.freeze({
+      urls: Object.freeze([...urls]),
+      ...(usesTurn ? { username, credential, credentialType: "password" } : {}),
+    });
+  }));
+}
+
 function snapshot(record) {
   return Object.freeze({
     assignmentId: record.assignmentId,
@@ -59,15 +96,20 @@ export class NativePackagerAssignmentRegistry {
   #byPackager = new Map();
   #byProgram = new Map();
   #idFactory;
+  #iceServersForPackager;
 
   constructor({
     controlRegistry,
     idFactory = () => `asn_${crypto.randomBytes(18).toString("base64url")}`,
+    iceServersForPackager = () => [],
   } = {}) {
     if (!controlRegistry || typeof controlRegistry.candidate !== "function"
-      || typeof idFactory !== "function") fail("invalid_native_packager_assignment_configuration", 500);
+      || typeof idFactory !== "function" || typeof iceServersForPackager !== "function") {
+      fail("invalid_native_packager_assignment_configuration", 500);
+    }
     this.#control = controlRegistry;
     this.#idFactory = idFactory;
+    this.#iceServersForPackager = iceServersForPackager;
   }
 
   admit(ownerPrincipal, packagerId, request, now = Date.now()) {
@@ -125,7 +167,10 @@ export class NativePackagerAssignmentRegistry {
       leaseId: lease.leaseId,
       fencingRevision: lease.fencingRevision,
       admission: Object.freeze(admission),
-      assignmentProtocolVersion: supportsNativeAssignmentV2(packager.capability.agentVersion) ? 2 : 1,
+      assignmentProtocolVersion: supportsNativeAssignmentV3(packager.capability.agentVersion)
+        ? 3 : (supportsNativeAssignmentV2(packager.capability.agentVersion) ? 2 : 1),
+      iceServers: supportsNativeAssignmentV3(packager.capability.agentVersion)
+        ? normalizeIceServers(this.#iceServersForPackager(packagerId, now)) : null,
       state: "preparing",
       reasonCode: "AWAITING_AGENT",
       createdAt: now,
@@ -343,7 +388,7 @@ export class NativePackagerAssignmentRegistry {
         audioBitsPerSecond: rendition.audioBitsPerSecond,
       }))),
     };
-    if (record.assignmentProtocolVersion === 2) {
+    if (record.assignmentProtocolVersion >= 2) {
       profile.videoEncoder = record.admission.videoEncoder;
       profile.softwareFallback = record.admission.softwareFallback;
     }
@@ -359,6 +404,7 @@ export class NativePackagerAssignmentRegistry {
       resourceRef: record.resourceRef,
       publisherPeerId: record.publisherPeerId,
       profile: Object.freeze(profile),
+      ...(record.assignmentProtocolVersion === 3 ? { iceServers: record.iceServers } : {}),
       expiresAt: record.expiresAt,
     });
   }
