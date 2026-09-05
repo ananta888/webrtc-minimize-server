@@ -720,10 +720,10 @@
     {
       "id": "TBP-029",
       "title": "Angular-Broadcast-Cockpit mit explizitem Preflight, Live-State und Kill-Switch bauen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 97,
+      "progress_percent": 100,
       "depends_on": ["TBP-007", "TBP-008", "TBP-009", "TBP-010", "TBP-011"],
       "acceptance_criteria": [
         "Das bestehende Menü erhält einen klaren Broadcast-Bereich für Quelle, Preview, Programlayout, Audio, Untertitel, Sichtbarkeit, Delivery-Profil, Packager, Qualitätsprofil und geschätzte Ressourcen.",
@@ -954,20 +954,20 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 0, "in_progress": 5, "partial": 17, "blocked": 0, "done": 18 },
-    "progress_percent_done": 45,
+    "by_status": { "todo": 0, "in_progress": 4, "partial": 17, "blocked": 0, "done": 19 },
+    "progress_percent_done": 47.5,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
-    "critical_path": { "total": 36, "done": 17, "remaining": 19 },
+    "critical_path": { "total": 36, "done": 18, "remaining": 18 },
     "milestones": { "total": 10, "todo": 2, "in_progress": 5, "blocked": 0, "done": 3 }
   },
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 5,
+    "in_progress": 4,
     "partial": 17,
     "blocked": 0,
-    "done": 18
+    "done": 19
   },
   "summary_notes": [
     "Der Track wurde am 2026-09-03 nach Abschluss des Blind-Media-Agent-Tracks angenommen. TBP-001 inventarisiert zuerst den verifizierten Ist-Zustand; vor dieser Bestandsaufnahme beginnt kein Broadcast-Medienpfad.",
@@ -1049,6 +1049,7 @@
     "Ein weiterer Produktionslauf erreichte vor dem Medienabruf eine erfolgreich ausgestellte Playback-Session, verlor aber den einmaligen same-origin hls.js-Lazychunk durch Chromium net::ERR_NETWORK_CHANGED. Der Browser cached eine fehlgeschlagene dynamische ES-Modulaufloesung im Realm, sodass ein zweiter import keinen neuen Netzversuch erzeugt. Die gepinnte primaere hls.js-Engine ist deshalb nun Teil des atomaren Initialbuilds; der injizierbare Adapter behaelt fuer spaetere Engines einen einzelnen abbrechbaren Retry und danach den geschlossenen Code broadcast_player_engine_unavailable. Grant, Capture, Programmlifecycle und Medienrequest werden dabei nicht wiederholt oder auf natives HLS heruntergestuft. Der gemessene komprimierte Initialtransfer steigt von rund 213 auf 361 KiB; die weiterhin harte Angular-Grenze liegt mit 1,5 MiB Warn- und 1,6 MiB Fehlerbudget knapp ueber dem 1,51-MiB-Rohbundle. Tests und Playerdokumentation halten diese bewusste Stabilitaetsentscheidung fest. Der Produktions-Langzeitgate bleibt bis zum Rollout und vollstaendigen Wiederholungslauf offen.",
     "Der Langzeitgate bestaetigte erneut den erfolgreichen Playback-Session-PUT. Nach Program-Stop kann anschliessend entweder der HLS-Medienrequest zuerst den 404 sehen oder die naechste geplante Session-Erneuerung. Der zweite sichere Pfad entfernte den Player bereits, wurde aber bisher irrefuehrend als broadcast_playback_renewal_failed angezeigt. Ein nicht unterscheidbares Renewal-404 wird nun als broadcast_ended dargestellt; andere Renewalfehler bleiben getrennt. Der Gate akzeptiert ausschliesslich den sichtbaren Playerzustand ended oder diesen sichtbaren Audience-Terminalcode und fordert danach Requeststillstand und einen separaten Manifest-404. TypeScript und zwoelf fokussierte Audience-/Player-Tests sind gruen; der abschliessende Produktionslauf folgt nach Deployment.",
     "Der abschliessende isolierte Produktions-Langzeitgate bestand am 2026-09-05 gegen https://webrtc.ananta.de. Ein temporaerer Keycloak-Nutzer bezog den Installer ueber die oeffentliche App, enrollte einen eigenen P-256-gebundenen Native-Packager auf dem Mini-PC und bestaetigte den expliziten Room-Consent. Headless Chromium publizierte Kamera und Mikrofon, spielte den privaten Owner-Pfad sowie nach gefenctem Visibility-Restart den oeffentlichen anonymen Pfad dekodierbar ab und beobachtete mindestens einen erfolgreichen Playback-Session-PUT ueber die erste Grant-Laufzeit hinaus. Stop fuehrte entweder zum expliziten Player-Endzustand oder zum sicheren broadcast_ended-Renewalpfad, danach blieben Medienrequests ruhig und das Manifest lieferte 404. Der Packager wurde normal widerrufen. Eine getrennte Nachkontrolle fand weder webrtc-gate-Container oder Identity-Volumes noch res_-Ausgabe oder webrtc-gate-Keycloak-Nutzer. Der Gate wartet nun auf die erst nach bestaetigtem Agent-Handshake gesetzte UI-Erfolgsmeldung und kann den Consent nicht mehr durch einen lokalen Checkboxzustand falsch positiv bewerten. Der anschliessende volle npm-run-check-Gate bestand mit 334 Angular- und 280 Node-/Browser-/Integrationstests, Produktionsbuild, Go-Test/Vet, Lizenz-, Deployment-, Leakage- sowie dem echten Chromium-Firefox-SFrame-Counter-350-Gate; externe opt-in Gates blieben sichtbar als Skip ausgewiesen. Offen bleiben insbesondere physische Safari-/iOS-/Android-, Screenreader-, Wahrnehmungs-, WAN-/Netzwechsel- und 60-Minuten-Lastgates; diese werden nicht als bestanden behauptet.",
+    "TBP-029 wurde abgeschlossen. Ein zweiter isolierter Produktions-Langzeitlauf aktivierte ausdruecklich den Refresh-/Restore-Zweig und bestand erneut Enrollment, bestaetigten Room-Consent, private sowie oeffentliche dekodierbare Ausgabe, Playback-Erneuerung, terminalen Stop und normalen Widerruf. Der anschliessende Reload forderte laut instrumentierter Browser-Capture-API weder Kamera noch Mikrofon erneut an, erzeugte keinen weiteren Program-POST und zeigte fuer das bereits gestoppte Programm keinen stale lokalen Kill-Switch. Zusammen mit den vorhandenen Komponenten-, Zustands-, Tastaturfokus-, aria-live-, Visibility-Restart- und Cleanup-Nachweisen sind die fuenf Akzeptanzkriterien reproduzierbar erfuellt. Ein physischer Screenreader-Test bleibt als Interoperabilitaets-/Releaseevidenz in TBP-038/TBP-040 offen und wird durch diesen Abschluss nicht behauptet.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }
