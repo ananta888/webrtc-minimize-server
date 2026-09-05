@@ -12,6 +12,7 @@ const LEASE = /^lea_[A-Za-z0-9_-]{16,64}$/;
 const REASON = /^[A-Z][A-Z0-9_]{1,63}$/;
 const PEER = /^[a-f0-9]{16}$/;
 const ACTIVE_STATES = new Set(["preparing", "ready", "starting", "running", "degraded", "draining"]);
+const RENEWABLE_STATES = new Set(["preparing", "ready", "starting", "running", "degraded"]);
 const REPORTED_STATES = new Set(["ready", "starting", "running", "degraded", "draining", "stopped", "failed"]);
 const ASSIGNMENT_LEASE_MS = 60_000;
 
@@ -260,7 +261,7 @@ export class NativePackagerAssignmentRegistry {
       fail("invalid_native_packager_assignment_renewal");
     }
     const record = this.#byPackager.get(packagerId);
-    if (!record || !ACTIVE_STATES.has(record.state) || record.expiresAt <= now) return null;
+    if (!record || !RENEWABLE_STATES.has(record.state) || record.expiresAt <= now) return null;
     record.expiresAt = now + ASSIGNMENT_LEASE_MS;
     record.updatedAt = now;
     return Object.freeze({

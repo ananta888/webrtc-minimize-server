@@ -335,7 +335,8 @@ try {
   ownerPage.once("dialog", (dialog) => dialog.accept());
   await currentPackager.getByRole("button", { name: "Widerrufen" }).click();
   await currentPackager.getByText("widerrufen", { exact: false }).waitFor();
-  await ownerPage.locator("#leave-room").click();
+  const leaveRoom = ownerPage.locator("#leave-room");
+  if (await leaveRoom.isVisible()) await leaveRoom.click();
 
   console.log("PASS production native broadcast: private owner playback, public anonymous playback, stop revoke and packager revoke");
 } finally {

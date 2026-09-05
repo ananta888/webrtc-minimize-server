@@ -182,6 +182,8 @@ test("assignment status rejects stale fences and follows a closed lifecycle", ()
   const stopping = assignments.stop(OWNER, PACKAGER, "asn_aaaaaaaaaaaaaaaa", "OWNER_STOP", NOW + 2);
   assert.equal(stopping.command.type, "assignment-stop");
   assert.equal(stopping.snapshot.state, "draining");
+  assert.equal(assignments.renew(PACKAGER, NOW + 2), null,
+    "a draining assignment must never renew already revoked writer leases");
   assert.equal(assignments.acknowledge(PACKAGER, status("stopped", "STOP_COMPLETE"), NOW + 3).state, "stopped");
   assert.equal(assignments.activeForProgram(request().programId), null);
 });
