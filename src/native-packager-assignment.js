@@ -287,6 +287,7 @@ export class NativePackagerAssignmentRegistry {
     if (!record || record.ownerPrincipal !== ownerPrincipal || record.packagerId !== packagerId) {
       fail("native_packager_assignment_not_found", 404);
     }
+    if (record.state === "draining") return Object.freeze({ snapshot: snapshot(record), command: null });
     if (!ACTIVE_STATES.has(record.state)) return Object.freeze({ snapshot: snapshot(record), command: null });
     record.state = "draining";
     record.reasonCode = reasonCode;

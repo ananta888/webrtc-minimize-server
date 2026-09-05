@@ -197,8 +197,19 @@ try {
   await login(ownerPage);
 
   await ownerPage.locator("#new-room-title").fill(title);
+  const roomCreated = ownerPage.waitForResponse((response) => (
+    response.request().method() === "POST" && new URL(response.url()).pathname === "/api/rooms"
+  ), { timeout: 30_000 });
   await ownerPage.locator("#create-room").click();
+  const roomResponse = await roomCreated;
+  assert.equal(roomResponse.status(), 201,
+    `isolated room creation failed: ${roomResponse.status()} ${failedApiResponses.join("|")}`);
+  await ownerPage.waitForFunction(() => {
+    const input = document.querySelector("#room-id");
+    return input instanceof HTMLInputElement && Boolean(input.value.trim());
+  }, undefined, { timeout: 10_000 });
   await ownerPage.locator("#display-name").fill("Broadcast Smoke");
+  await ownerPage.locator("#join-room:not([disabled])").waitFor({ timeout: 10_000 });
   await ownerPage.locator("#join-room").click();
   await ownerPage.locator("#connection-status", { hasText: "Signaling verbunden" }).waitFor();
   await ownerPage.locator("#toggle-camera").click();
