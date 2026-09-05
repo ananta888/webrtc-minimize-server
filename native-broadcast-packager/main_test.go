@@ -72,6 +72,21 @@ func TestBuildManifestIsBoundedAndNormalizesUntrustedLinkerValues(t *testing.T) 
 	}
 }
 
+func TestReconnectScheduleResetsAfterAnAuthenticatedControlSession(t *testing.T) {
+	wait, next := reconnectSchedule(30*time.Second, true)
+	if wait != time.Second || next != time.Second {
+		t.Fatalf("authenticated reconnect was not reset: wait=%s next=%s", wait, next)
+	}
+	wait, next = reconnectSchedule(16*time.Second, false)
+	if wait != 16*time.Second || next != 30*time.Second {
+		t.Fatalf("unauthenticated reconnect was not bounded: wait=%s next=%s", wait, next)
+	}
+	wait, next = reconnectSchedule(30*time.Second, false)
+	if wait != 30*time.Second || next != 30*time.Second {
+		t.Fatalf("maximum reconnect delay drifted: wait=%s next=%s", wait, next)
+	}
+}
+
 func TestConfigRequiresExactSecureOutboundEndpoint(t *testing.T) {
 	values := map[string]string{
 		"NATIVE_PACKAGER_CONTROL_URL":   "wss://webrtc.example/native-packager",

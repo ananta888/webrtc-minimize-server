@@ -26,6 +26,8 @@ let viewerContext;
 let ownerPage;
 let playerManifest = "";
 const playbackDiagnostics = [];
+const pageErrors = [];
+const failedApiResponses = [];
 
 function observePlayback(page) {
   page.on("response", (response) => {
@@ -44,24 +46,50 @@ function observePlayback(page) {
 }
 
 async function login(page) {
-  await page.goto(origin, { waitUntil: "domcontentloaded" });
-  await page.locator("#login").click();
-  await page.locator("#username").waitFor({ timeout: 60_000 });
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await page.goto(origin, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      assert.equal(response?.status(), 200, "application shell must return HTTP 200");
+      await page.locator("#login").waitFor({ state: "visible", timeout: 15_000 });
+      await page.locator("#login").click();
+      await page.waitForURL((url) => url.origin === new URL(issuer).origin, { timeout: 30_000 });
+      await page.locator("#username").waitFor({ state: "visible", timeout: 30_000 });
+      lastError = undefined;
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (lastError) {
+    throw new Error(`production_oidc_login_unavailable:${new URL(page.url()).origin}`, { cause: lastError });
+  }
   assert.equal(new URL(page.url()).origin, new URL(issuer).origin, "login must stay on the configured issuer");
   await page.locator("#username").fill(username);
   await page.locator("#password").fill(password);
   await page.locator("#kc-login").click();
-  await page.locator("#logout").waitFor({ timeout: 30_000 });
+  try {
+    await page.locator("#logout").waitFor({ timeout: 30_000 });
+  } catch (error) {
+    const body = (await page.locator("body").innerText()).replaceAll(/\s+/g, " ").slice(0, 500);
+    throw new Error(`production_oidc_callback_failed:${new URL(page.url()).origin}:${body}`, { cause: error });
+  }
 }
 
 async function startVisiblePlayer(page, cardSection) {
   const card = page.locator(`${cardSection} .program-card`, { hasText: title });
   await card.getByRole("button", { name: "Zuschauen" }).click();
-  const [manifestRequest] = await Promise.all([
-    page.waitForRequest((request) => request.url().includes("/broadcast/play/")
-      && request.url().includes(".m3u8"), { timeout: 20_000 }),
-    page.locator("#broadcast-player-start").click(),
-  ]);
+  let manifestRequest;
+  try {
+    [manifestRequest] = await Promise.all([
+      page.waitForRequest((request) => request.url().includes("/broadcast/play/")
+        && request.url().includes(".m3u8"), { timeout: 20_000 }),
+      page.locator("#broadcast-player-start").click(),
+    ]);
+  } catch (error) {
+    const status = (await page.locator("app-broadcast-player").innerText()).replaceAll(/\s+/g, " ").slice(0, 500);
+    throw new Error(`broadcast_player_request_timeout:${status}:${failedApiResponses.join("|")}`, { cause: error });
+  }
   const decodable = await page.locator("app-broadcast-player video").evaluate(async (video) => {
     const deadline = Date.now() + 25_000;
     while (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA && Date.now() < deadline) {
@@ -89,8 +117,6 @@ try {
   ownerContext = await browser.newContext({ permissions: ["camera", "microphone"] });
   ownerPage = await ownerContext.newPage();
   observePlayback(ownerPage);
-  const pageErrors = [];
-  const failedApiResponses = [];
   ownerPage.on("pageerror", (error) => pageErrors.push(error.message));
   ownerPage.on("response", async (response) => {
     if (response.status() < 400 || !response.url().startsWith(`${origin}/api/`)) return;
@@ -118,13 +144,18 @@ try {
   await packager.getByText("online", { exact: false }).waitFor({ timeout: 30_000 });
   const roomConsent = packager.locator(".agent-consent input");
   await roomConsent.check();
-  await ownerPage.waitForFunction((id) => {
-    const cards = [...document.querySelectorAll("#native-packager-analysis-panel .owned-agent")];
-    const card = cards.find((candidate) => candidate.textContent?.includes(id));
-    const input = card?.querySelector(".agent-consent input");
-    return input instanceof HTMLInputElement && input.checked && !input.disabled
-      && !card?.textContent?.includes("Bestätigung des Agenten ausstehend");
-  }, packagerId, { timeout: 10_000 });
+  try {
+    await ownerPage.waitForFunction((id) => {
+      const cards = [...document.querySelectorAll("#native-packager-analysis-panel .owned-agent")];
+      const card = cards.find((candidate) => candidate.textContent?.includes(id));
+      const input = card?.querySelector(".agent-consent input");
+      return input instanceof HTMLInputElement && input.checked && !input.disabled
+        && !card?.textContent?.includes("Bestätigung des Agenten ausstehend");
+    }, packagerId, { timeout: 10_000 });
+  } catch (error) {
+    const status = (await packager.innerText()).replaceAll(/\s+/g, " ").slice(0, 500);
+    throw new Error(`native_packager_consent_not_confirmed:${status}`, { cause: error });
+  }
 
   await ownerPage.locator("#broadcast-navigation").click();
   const sources = ownerPage.locator("#broadcast-own-source-list input[type=checkbox]");
@@ -158,14 +189,30 @@ try {
   await ownerPage.locator("app-broadcast-player .controls button", { hasText: "Schließen" }).click();
 
   ownerPage.once("dialog", (dialog) => dialog.accept());
+  const visibilityResponse = ownerPage.waitForResponse((response) => (
+    response.request().method() === "PATCH"
+    && new URL(response.url()).pathname.startsWith("/api/broadcasts/prg_")
+  ), { timeout: 20_000 });
   await ownerPage.locator("select#broadcast-audience").selectOption("public");
-  await ownerPage.waitForTimeout(1_000);
+  const changed = await visibilityResponse;
+  const changedBody = await changed.json();
+  assert.equal(changed.status(), 200, `public visibility update failed: ${changed.status()}`);
+  assert.equal(changedBody?.program?.visibility, "public", "visibility response did not commit public policy");
+  assert.match(changedBody?.program?.availability || "", /^(?:live|degraded)$/);
+  const publicDirectory = await ownerPage.evaluate(async () => {
+    const response = await fetch("/api/broadcasts/public", { cache: "no-store", credentials: "omit" });
+    return { status: response.status, body: await response.json() };
+  });
+  assert.equal(publicDirectory.status, 200);
+  assert.equal(publicDirectory.body?.programs?.some((program) => program.title === title), true,
+    "public control-plane directory did not expose the committed live program");
 
   viewerContext = await browser.newContext();
   const viewer = await viewerContext.newPage();
   observePlayback(viewer);
   await viewer.goto(`${origin}/?section=broadcast`, { waitUntil: "domcontentloaded" });
   await viewer.locator("#public-broadcasts-heading").waitFor();
+  await viewer.locator("section#broadcast-audience .audience-heading button", { hasText: "Aktualisieren" }).click();
   const publicCard = viewer.locator("section[aria-labelledby=public-broadcasts-heading] .program-card", { hasText: title });
   await publicCard.waitFor({ timeout: 20_000 });
   playerManifest = await startVisiblePlayer(viewer, "section[aria-labelledby=public-broadcasts-heading]");

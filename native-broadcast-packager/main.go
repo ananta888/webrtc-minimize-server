@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -479,19 +480,20 @@ type serverMessage struct {
 }
 
 type client struct {
-	cfg          config
-	identity     *identity
-	capability   ffmpegCapability
-	mu           sync.Mutex
-	roomsMu      sync.RWMutex
-	connection   *websocket.Conn
-	rooms        []string
-	assignmentMu sync.Mutex
-	assignment   *packagerAssignment
-	api          *webrtc.API
-	sendOverride func(any) error
-	healthProbe  func() string
-	thermalState bool
+	cfg                  config
+	identity             *identity
+	capability           ffmpegCapability
+	mu                   sync.Mutex
+	roomsMu              sync.RWMutex
+	connection           *websocket.Conn
+	rooms                []string
+	assignmentMu         sync.Mutex
+	assignment           *packagerAssignment
+	api                  *webrtc.API
+	sendOverride         func(any) error
+	healthProbe          func() string
+	thermalState         bool
+	sessionAuthenticated atomic.Bool
 }
 
 func (c *client) send(value any) error {
@@ -528,6 +530,7 @@ func (c *client) capabilityMessage() map[string]any {
 }
 
 func (c *client) connect(ctx context.Context, enroll bool) error {
+	c.sessionAuthenticated.Store(false)
 	defer c.closeAssignmentMedia()
 	dialer := websocket.Dialer{HandshakeTimeout: 15 * time.Second, EnableCompression: false, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
 	connection, response, err := dialer.DialContext(ctx, c.cfg.controlURL, http.Header{})
@@ -622,6 +625,7 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 			if message.PackagerID != c.cfg.packagerID {
 				return errors.New("invalid authentication response")
 			}
+			c.sessionAuthenticated.Store(true)
 		case "room-consent-sync":
 			if len(message.RoomIDs) > 20 {
 				return errors.New("too many room consents")
@@ -655,6 +659,23 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 			return errors.New("unknown control message")
 		}
 	}
+}
+
+func reconnectSchedule(current time.Duration, authenticated bool) (time.Duration, time.Duration) {
+	if authenticated {
+		return time.Second, time.Second
+	}
+	if current < time.Second {
+		current = time.Second
+	}
+	if current > 30*time.Second {
+		current = 30 * time.Second
+	}
+	next := current * 2
+	if next > 30*time.Second {
+		next = 30 * time.Second
+	}
+	return current, next
 }
 
 func main() {
@@ -722,14 +743,13 @@ func main() {
 		if err = client.connect(ctx, false); err != nil && ctx.Err() == nil {
 			log.Printf("control connection ended: %v", err)
 		}
-		timer := time.NewTimer(backoff)
+		wait, next := reconnectSchedule(backoff, client.sessionAuthenticated.Swap(false))
+		timer := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
 		case <-timer.C:
 		}
-		if backoff < 30*time.Second {
-			backoff *= 2
-		}
+		backoff = next
 	}
 }
