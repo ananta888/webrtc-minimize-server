@@ -1,9 +1,10 @@
 # Broadcast-Audience- und Directory-Policy
 
 TBP-008 trennt die Sichtbarkeit eines Broadcast-Programms ausdrücklich von
-der Sichtbarkeit des interaktiven Raums. Die Domain-Komponenten sind noch nicht
-an öffentliche HTTP-Endpunkte oder einen Player angeschlossen. Sie aktivieren
-keinen Medienpfad und verändern die bestehende Raumoberfläche nicht.
+der Sichtbarkeit des interaktiven Raums. Die Policy ist inzwischen über die
+öffentlichen Directory-, Challenge-, Grant- und Playback-Endpunkte mit dem
+Angular-Player verbunden. Sie aktiviert keinen Raum-Medienpfad und verändert
+die bestehende Room-Membership nicht.
 
 ## Drei Broadcast-Sichtbarkeiten
 
@@ -99,7 +100,19 @@ Eine erfolgreiche Viewerentscheidung ist kurzlebig und erlaubt nur
 Peer-ID, Session-Ticket-, Signaling-, Chat-, Capture-, Publish- oder
 SFrame-Berechtigung. Auch ein authentifizierter Viewer wird dadurch nicht auf
 die 20 Room-Mitglieder angerechnet. Die spätere durchgängige Absicherung aller
-HLS-Objekte und Browservarianten folgt in TBP-022.
+HLS-Objekte ist umgesetzt: Jeder Manifest-, Init- und Segmentabruf prüft den
+pfad-, Policy- und Program-Epoch-gebundenen Grant erneut.
+
+Auch anonyme öffentliche Wiedergabe ist kein ungebundener Dateiabruf. Der
+Server erzeugt dafür eine einmalige, höchstens 30 Sekunden gültige
+Playback-Challenge mit einer zufälligen pseudonymen Subject-Referenz. Der
+Browser signiert den vollständigen Grant-Kontext mit seiner nicht
+exportierbaren P-256-Geräteidentität. Erst danach stellt die Control Plane einen
+kurzlebigen `broadcast-playback`-Grant aus. Ein vorhandener ungültiger Bearer
+wird nicht als anonym behandelt; private und unlisted Programme bleiben als
+einheitliches `404 broadcast_not_available` nicht enumerierbar. Der Grant gibt
+weder OIDC-Identität noch Raum-, Chat-, Publish-, Signaling- oder
+SFrame-Autorität.
 
 Die Registry hält Programm-/Policy-Snapshots und die aktuelle private
 Viewer-Zuordnung zunächst im Speicher. Persistenz, HA und Backup sind spätere

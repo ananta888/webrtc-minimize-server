@@ -136,6 +136,7 @@ export class BroadcastRuntimeRegistry {
   #policyIdFactory;
   #resourceIdFactory;
   #leaseIdFactory;
+  #anonymousSubjectFactory;
 
   constructor({
     grantAuthority,
@@ -147,12 +148,15 @@ export class BroadcastRuntimeRegistry {
     policyIdFactory = () => `pol_${crypto.randomBytes(18).toString("base64url")}`,
     resourceIdFactory = () => `res_${crypto.randomBytes(18).toString("base64url")}`,
     leaseIdFactory = () => `lea_${crypto.randomBytes(18).toString("base64url")}`,
+    anonymousSubjectFactory = () => `sub_${crypto.randomBytes(18).toString("base64url")}`,
   } = {}) {
     if (!grantAuthority || typeof grantAuthority.issue !== "function"
+      || typeof grantAuthority.issueAnonymousPlayback !== "function"
       || !Number.isSafeInteger(challengeTtlMs) || challengeTtlMs < 5_000 || challengeTtlMs > 120_000
       || typeof clock !== "function" || typeof idFactory !== "function"
       || typeof programIdFactory !== "function" || typeof policyIdFactory !== "function"
-      || typeof resourceIdFactory !== "function" || typeof leaseIdFactory !== "function") {
+      || typeof resourceIdFactory !== "function" || typeof leaseIdFactory !== "function"
+      || typeof anonymousSubjectFactory !== "function") {
       fail("invalid_broadcast_runtime_configuration", 500);
     }
     this.#authority = grantAuthority;
@@ -166,6 +170,7 @@ export class BroadcastRuntimeRegistry {
     this.#policyIdFactory = policyIdFactory;
     this.#resourceIdFactory = resourceIdFactory;
     this.#leaseIdFactory = leaseIdFactory;
+    this.#anonymousSubjectFactory = anonymousSubjectFactory;
   }
 
   createProgram(identity, member, value, now = this.#clock()) {
@@ -196,7 +201,7 @@ export class BroadcastRuntimeRegistry {
       title: input.title.trim(),
       viewerPolicyId: policyId,
     }), now).state;
-    const publicWithoutAnonymous = input.visibility === "public";
+    const publicWithoutAuthentication = input.visibility === "public";
     const policy = validateBroadcastContract({
       contractVersion: 1,
       type: "viewer-policy",
@@ -208,9 +213,9 @@ export class BroadcastRuntimeRegistry {
       revision: 1,
       programEpoch: machine.program.programEpoch,
       visibility: input.visibility,
-      authentication: "required",
-      directoryListed: publicWithoutAnonymous,
-      anonymousAllowed: false,
+      authentication: publicWithoutAuthentication ? "none" : "required",
+      directoryListed: publicWithoutAuthentication,
+      anonymousAllowed: publicWithoutAuthentication,
       allowedOriginHashes: [],
       updatedAt: now,
     }, { tenantId: refs.tenantId, roomId: input.roomId, programId, programEpoch: 1 });
@@ -309,8 +314,8 @@ export class BroadcastRuntimeRegistry {
       expectedProgramEpoch: machine.program.programEpoch,
       expectedPolicyRevision: policy.revision,
       visibility: input.visibility,
-      authentication: "required",
-      anonymousAllowed: false,
+      authentication: input.visibility === "public" ? "none" : "required",
+      anonymousAllowed: input.visibility === "public",
       allowedOriginHashes: [],
     };
     request.idempotencyKeyHash = crypto.createHash("sha256")
@@ -375,8 +380,21 @@ export class BroadcastRuntimeRegistry {
     return this.#synchronizeRecord(key, record, machine, now);
   }
 
-  async createPlaybackChallenge(identity, programId, now = this.#clock()) {
-    const refs = identityRefs(identity);
+  async createPlaybackChallenge(identity, programId, now = this.#clock(), anonymousContext = null) {
+    const anonymous = identity === null;
+    let refs;
+    if (anonymous) {
+      if (!anonymousContext || typeof anonymousContext !== "object" || Array.isArray(anonymousContext)
+        || Object.keys(anonymousContext).some((field) => field !== "tenantId")
+        || !/^tn_[A-Za-z0-9_-]{16,64}$/.test(anonymousContext.tenantId || "")) {
+        fail("broadcast_authentication_required", 401);
+      }
+      const subjectRef = this.#anonymousSubjectFactory();
+      if (!SUBJECT.test(subjectRef)) fail("invalid_broadcast_runtime_identifier", 500);
+      refs = Object.freeze({ tenantId: anonymousContext.tenantId, subjectRef, principal: "" });
+    } else {
+      refs = identityRefs(identity);
+    }
     if (!PROGRAM.test(programId || "")) unavailable();
     this.prune(now);
     if (this.#challenges.size >= MAX_CHALLENGES) fail("broadcast_challenge_capacity_reached", 429);
@@ -389,8 +407,8 @@ export class BroadcastRuntimeRegistry {
       programId,
       expectedProgramEpoch: machine.program.programEpoch,
       expectedPolicyRevision: policy.revision,
-      authenticated: true,
-      subjectRef: refs.subjectRef,
+      authenticated: !anonymous,
+      ...(anonymous ? {} : { subjectRef: refs.subjectRef }),
     }, now);
     const challengeId = this.#idFactory();
     if (!CHALLENGE.test(challengeId) || this.#challenges.has(challengeId)) {
@@ -412,10 +430,11 @@ export class BroadcastRuntimeRegistry {
       pathHash: broadcastGrantPathHash(pathPrefix),
       actions,
     });
-    const expiresAt = Math.min(now + this.#challengeTtlMs, identity.expiresAt);
+    const expiresAt = Math.min(now + this.#challengeTtlMs, anonymous ? now + 30_000 : identity.expiresAt);
     if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) fail("broadcast_authentication_required", 401);
     this.#challenges.set(challengeId, Object.freeze({
-      kind: "playback", challengeId, refs, identity, record, authorization, proofContext, pathPrefix, expiresAt,
+      kind: "playback", anonymous, challengeId, refs, identity, record, authorization,
+      proofContext, pathPrefix, expiresAt,
     }));
     return Object.freeze({
       challengeVersion: 1,
@@ -434,11 +453,17 @@ export class BroadcastRuntimeRegistry {
       fail("invalid_broadcast_playback_authorization");
     }
     this.prune(now);
-    const refs = identityRefs(identity);
     const challenge = this.#challenges.get(input.challengeId);
     this.#challenges.delete(input.challengeId);
-    if (!challenge || challenge.kind !== "playback" || challenge.expiresAt <= now
-      || challenge.refs.principal !== refs.principal) unavailable();
+    if (!challenge || challenge.kind !== "playback" || challenge.expiresAt <= now) unavailable();
+    let refs;
+    if (challenge.anonymous) {
+      if (identity !== null) unavailable();
+      refs = challenge.refs;
+    } else {
+      refs = identityRefs(identity);
+      if (challenge.refs.principal !== refs.principal) unavailable();
+    }
     const current = this.#records.get(`${refs.tenantId}\0${challenge.proofContext.programId}`);
     if (current !== challenge.record
       || current.snapshot.machine.program.revision !== challenge.proofContext.programRevision
@@ -446,7 +471,7 @@ export class BroadcastRuntimeRegistry {
       || current.snapshot.policy.revision !== challenge.authorization.policyRevision) unavailable();
     let fingerprint;
     try { fingerprint = deviceFingerprint(input.deviceProof.publicKey); } catch { fail("invalid_broadcast_device_public_key"); }
-    const issued = await this.#authority.issue({
+    const grantRequest = {
       grantVersion: 1,
       kind: "playback",
       roomId: challenge.proofContext.roomId,
@@ -460,7 +485,8 @@ export class BroadcastRuntimeRegistry {
       policyId: current.snapshot.policy.policyId,
       policyRevision: current.snapshot.policy.revision,
       deviceProof: input.deviceProof,
-    }, {
+    };
+    const grantAuthorization = {
       identity,
       membership: null,
       audience: {
@@ -481,7 +507,16 @@ export class BroadcastRuntimeRegistry {
       program: current.snapshot.machine.program,
       consents: null,
       viewerPolicy: current.snapshot.policy,
-    }, now);
+    };
+    const issued = challenge.anonymous
+      ? await this.#authority.issueAnonymousPlayback(grantRequest, {
+        audience: challenge.authorization,
+        program: current.snapshot.machine.program,
+        viewerPolicy: current.snapshot.policy,
+        subjectRef: refs.subjectRef,
+        deviceFingerprint: fingerprint,
+      }, now)
+      : await this.#authority.issue(grantRequest, grantAuthorization, now);
     return Object.freeze({
       bootstrapVersion: 1,
       program: entry(current),

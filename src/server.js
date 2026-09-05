@@ -767,10 +767,12 @@ function createHttpHandler(config, registry, services) {
         const input = await readJsonBody(request);
         assertAllowedKeys(input, new Set(["requestVersion"]));
         if (input.requestVersion !== 1) throw new BroadcastRuntimeError("invalid_broadcast_playback_challenge");
-        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const identity = await authenticateOptionalRequest(request, config, oidcVerifier);
         const challenge = await broadcastRuntime.createPlaybackChallenge(
           identity,
           broadcastPlaybackChallengeMatch[1],
+          Date.now(),
+          identity ? null : { tenantId: broadcastTenantRef(config.oidcIssuer) },
         );
         sendJson(response, 201, challenge, securityHeaders(config));
         return;
@@ -786,7 +788,7 @@ function createHttpHandler(config, registry, services) {
           response.end();
           return;
         }
-        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const identity = await authenticateOptionalRequest(request, config, oidcVerifier);
         const input = await readJsonBody(request);
         const bootstrap = await broadcastRuntime.authorizePlayback(identity, input);
         if (bootstrap.program.programId !== broadcastPlaybackMatch[1]) {

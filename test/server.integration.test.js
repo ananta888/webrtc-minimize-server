@@ -538,6 +538,30 @@ test("broadcast directory and device challenge APIs are default-deny and use ver
   });
   assert.equal(playback.status, 201);
   assert.equal((await playback.json()).resourceRef, "res_aaaaaaaaaaaaaaaa");
+  const anonymousHeaders = { "content-type": "application/json", origin: enabled.httpUrl };
+  const anonymousChallenge = await fetch(
+    `${enabled.httpUrl}/api/broadcasts/${program.programId}/playback-challenges`,
+    { method: "POST", headers: anonymousHeaders, body: JSON.stringify({ requestVersion: 1 }) },
+  );
+  assert.equal(anonymousChallenge.status, 201);
+  const anonymousChallengeBody = await anonymousChallenge.json();
+  const anonymousPlayback = await fetch(`${enabled.httpUrl}/api/broadcasts/${program.programId}/playback`, {
+    method: "POST", headers: anonymousHeaders, body: JSON.stringify({
+      requestVersion: 1,
+      challengeId: anonymousChallengeBody.challengeId,
+      deviceProof: { test: true },
+    }),
+  });
+  assert.equal(anonymousPlayback.status, 201);
+  const invalidBearer = await fetch(
+    `${enabled.httpUrl}/api/broadcasts/${program.programId}/playback-challenges`,
+    {
+      method: "POST",
+      headers: { ...anonymousHeaders, authorization: "Bearer invalid" },
+      body: JSON.stringify({ requestVersion: 1 }),
+    },
+  );
+  assert.equal(invalidBearer.status, 401);
   const visibility = await fetch(`${enabled.httpUrl}/api/broadcasts/${program.programId}`, {
     method: "PATCH", headers, body: JSON.stringify({ requestVersion: 1, visibility: "unlisted" }),
   });
@@ -548,7 +572,8 @@ test("broadcast directory and device challenge APIs are default-deny and use ver
   });
   assert.equal(stop.status, 200);
   assert.equal((await stop.json()).program.availability, "ended");
-  assert.equal(calls.map(([kind]) => kind).join(","), "public,mine,challenge,playback,visibility,stop");
+  assert.equal(calls.map(([kind]) => kind).join(","),
+    "public,mine,challenge,playback,challenge,playback,visibility,stop");
   assert.equal((await fetch(`${enabled.httpUrl}/api/broadcasts/${program.programId}/playback-challenges`, {
     method: "POST",
     headers: { ...headers, origin: "https://evil.test" },
@@ -1699,7 +1724,11 @@ test("native packager assignment is owner-, room-, device- and fence-bound end t
     },
   };
   const broadcastRuntime = new BroadcastRuntimeRegistry({
-    grantAuthority: { issue() { throw new Error("not_used"); }, revokeProgramEpoch() {} },
+    grantAuthority: {
+      issue() { throw new Error("not_used"); },
+      issueAnonymousPlayback() { throw new Error("not_used"); },
+      revokeProgramEpoch() {},
+    },
   });
   const oidcVerifier = {
     async verify(token) {

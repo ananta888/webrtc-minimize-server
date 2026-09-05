@@ -35,7 +35,7 @@ function identity(subject, displayName) {
   });
 }
 
-function registration(owner, suffix, visibility = "private", viewers = []) {
+function registration(owner, suffix, visibility = "private", viewers = [], anonymous = false) {
   const tenantId = broadcastTenantRef(owner.issuer);
   const ownerSubjectRef = broadcastSubjectRef(owner);
   const programId = `prg_${suffix.repeat(16)}`;
@@ -76,9 +76,9 @@ function registration(owner, suffix, visibility = "private", viewers = []) {
       revision: 1,
       programEpoch: 1,
       visibility,
-      authentication: "required",
+      authentication: anonymous ? "none" : "required",
       directoryListed: visibility === "public",
-      anonymousAllowed: false,
+      anonymousAllowed: anonymous,
       allowedOriginHashes: [],
       updatedAt: NOW - 1_000,
     },
@@ -160,7 +160,48 @@ test("playback uses a one-time device-bound challenge and does not create room m
       challengeId: challenge.challengeId,
       deviceProof: proof(device, challenge.proofContext),
     }, NOW),
-    (error) => error instanceof BroadcastRuntimeError && error.code === "broadcast_not_available",
+    (error) => error?.code === "broadcast_not_available",
+  );
+});
+
+test("public anonymous playback remains device-, policy- and epoch-bound without OIDC", async () => {
+  const owner = identity("owner", "Ada");
+  const grantAuthority = authority();
+  const runtime = new BroadcastRuntimeRegistry({
+    grantAuthority,
+    clock: () => NOW,
+    idFactory: () => `bpc_${"a".repeat(24)}`,
+    anonymousSubjectFactory: () => `sub_${"z".repeat(24)}`,
+  });
+  const registered = runtime.register(registration(owner, "c", "public", [], true), NOW);
+  const challenge = await runtime.createPlaybackChallenge(null, registered.programId, NOW, {
+    tenantId: broadcastTenantRef(ISSUER),
+  });
+  assert.equal(challenge.proofContext.subjectRef, `sub_${"z".repeat(24)}`);
+  const device = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const bootstrap = await runtime.authorizePlayback(null, {
+    requestVersion: 1,
+    challengeId: challenge.challengeId,
+    deviceProof: proof(device, challenge.proofContext),
+  }, NOW);
+  assert.equal(bootstrap.program.playback, "public");
+  assert.match(bootstrap.playbackGrant, /^[^.]+\.[^.]+\.[^.]+$/);
+  assert.equal(runtime.challengeCount, 0);
+  await assert.rejects(
+    () => runtime.authorizePlayback(null, {
+      requestVersion: 1,
+      challengeId: challenge.challengeId,
+      deviceProof: proof(device, challenge.proofContext),
+    }, NOW),
+    (error) => error?.code === "broadcast_not_available",
+  );
+
+  const privateProgram = runtime.register(registration(owner, "d", "private"), NOW);
+  await assert.rejects(
+    () => runtime.createPlaybackChallenge(null, privateProgram.programId, NOW, {
+      tenantId: broadcastTenantRef(ISSUER),
+    }),
+    (error) => error?.code === "broadcast_not_available",
   );
 });
 
@@ -262,7 +303,7 @@ test("only the owner can change visibility or stop and each action updates direc
     visibility: "public",
   }, NOW + 1);
   assert.equal(visible.visibility, "public");
-  assert.equal(visible.playback, "grant-required");
+  assert.equal(visible.playback, "public");
   assert.equal(runtime.listPublic(broadcastTenantRef(ISSUER)).length, 1);
 
   const stopped = runtime.stopProgram(owner, "prg_eeeeeeeeeeeeeeee", NOW + 2);

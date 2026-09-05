@@ -24,7 +24,13 @@ export { BroadcastGrantError, broadcastGrantPathHash } from "./broadcast-grant-p
 
 const KEY_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const GRANT_ID_PATTERN = /^grt_[A-Za-z0-9_-]{16,64}$/;
+const SUBJECT_REF_PATTERN = /^sub_[A-Za-z0-9_-]{16,64}$/;
+const DEVICE_FINGERPRINT_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const GATEWAY_GRANT_KINDS = new Set(["publisher", "packager", "playback"]);
+const ANONYMOUS_AUDIENCE_FIELDS = new Set([
+  "authorizationVersion", "type", "tenantId", "roomId", "programId", "programRevision",
+  "programEpoch", "policyId", "policyRevision", "anonymous", "actions", "expiresAt",
+]);
 
 const fail = broadcastGrantFail;
 
@@ -183,6 +189,76 @@ export class BroadcastGrantAuthority {
       this.#identityConfig(),
       now,
     );
+    return this.#issueAuthorized(request, authorized, now);
+  }
+
+  async issueAnonymousPlayback(input, authorization, now = Date.now()) {
+    const request = normalizeBroadcastGrantRequest(input);
+    if (request.kind !== "playback" || !authorization || typeof authorization !== "object"
+      || Array.isArray(authorization)
+      || Object.keys(authorization).some((field) => !new Set([
+        "audience", "program", "viewerPolicy", "subjectRef", "deviceFingerprint",
+      ]).has(field))
+      || !SUBJECT_REF_PATTERN.test(authorization.subjectRef || "")
+      || !DEVICE_FINGERPRINT_PATTERN.test(authorization.deviceFingerprint || "")) {
+      fail("invalid_anonymous_broadcast_grant_authorization", 400);
+    }
+    const program = checkedContract(authorization.program, {
+      tenantId: authorization.audience?.tenantId,
+      roomId: request.roomId,
+      programId: request.programId,
+      programEpoch: request.programEpoch,
+      requireFresh: false,
+    }, now);
+    const viewerPolicy = checkedContract(authorization.viewerPolicy, {
+      tenantId: program.tenantId,
+      roomId: request.roomId,
+      programId: request.programId,
+      programEpoch: request.programEpoch,
+      requireFresh: false,
+    }, now);
+    const audience = authorization.audience;
+    if (!audience || typeof audience !== "object" || Array.isArray(audience)
+      || Object.keys(audience).length !== ANONYMOUS_AUDIENCE_FIELDS.size
+      || Object.keys(audience).some((field) => !ANONYMOUS_AUDIENCE_FIELDS.has(field))
+      || audience.authorizationVersion !== 1 || audience.type !== "broadcast-playback-only"
+      || audience.anonymous !== true || audience.tenantId !== program.tenantId
+      || audience.roomId !== request.roomId || audience.programId !== request.programId
+      || audience.programRevision !== request.programRevision
+      || audience.programEpoch !== request.programEpoch
+      || audience.policyId !== request.policyId || audience.policyRevision !== request.policyRevision
+      || !Array.isArray(audience.actions)
+      || JSON.stringify(audience.actions) !== JSON.stringify(request.actions)
+      || !Number.isSafeInteger(audience.expiresAt) || audience.expiresAt <= now
+      || audience.expiresAt > now + 120_000
+      || program.type !== "broadcast-program"
+      || (program.state !== "live" && program.state !== "degraded")
+      || program.revision !== request.programRevision || program.visibility !== "public"
+      || program.viewerPolicyId !== request.policyId
+      || viewerPolicy.type !== "viewer-policy" || viewerPolicy.visibility !== "public"
+      || viewerPolicy.ownerSubjectRef !== program.ownerSubjectRef
+      || viewerPolicy.directoryListed !== true || viewerPolicy.anonymousAllowed !== true
+      || viewerPolicy.authentication === "required" || viewerPolicy.policyId !== request.policyId
+      || viewerPolicy.revision !== request.policyRevision
+      || request.audienceRef !== authorization.subjectRef) {
+      fail("invalid_anonymous_broadcast_grant_authorization");
+    }
+    return this.#issueAuthorized(request, {
+      identity: { expiresAt: audience.expiresAt },
+      refs: {
+        tenantId: program.tenantId,
+        subjectRef: authorization.subjectRef,
+      },
+      membership: { deviceFingerprint: authorization.deviceFingerprint },
+      grantee: {
+        deviceFingerprint: authorization.deviceFingerprint,
+      },
+      program,
+      viewerPolicy,
+    }, now);
+  }
+
+  async #issueAuthorized(request, authorized, now) {
     const {
       identity,
       refs,
