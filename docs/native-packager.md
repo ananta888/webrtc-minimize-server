@@ -180,6 +180,31 @@ PowerShell ausgeführt werden, ersetzt aber keinen OS-Lifecycle-Test:
 RUN_WINDOWS_INSTALLER_PARSE=1 node --test test/native-packager-installers.test.js
 ```
 
+Ohne explizites `NATIVE_PACKAGER_OUTPUT_ROOT` verwendet der Agent das
+OS-Tempverzeichnis mit `ananta-native-packager/<packagerId>` als Unterpfad.
+Das ist auch unter Windows absolut und trennt die flüchtigen Medienausgaben
+verschiedener Identitäten. Konfigurierte Produktions-Volumes bleiben
+unverändert. Startup-Cleanup lehnt Dateisystem-/Laufwerkswurzeln und einen
+Symlink als Ausgabeverzeichnis ab und entfernt nur `res_`-Einträge der eigenen
+Ausgabebasis. Bei gemeinsam konfigurierten Volumes muss weiterhin jeder
+Packager eine eigene Basis erhalten.
+
+Der folgende opt-in Gate baut ein Windows-amd64-Testbinary und führt dessen
+Konfigurations-/Outputtests auf dem tatsächlichen Windows-Host unter WSL aus.
+Er benötigt Docker und `powershell.exe`; er registriert keine Geräte und
+berührt weder Autostarts noch echte Medien:
+
+```bash
+RUN_WINDOWS_NATIVE_PACKAGER=1 node scripts/live-native-packager-windows-gate.mjs
+```
+
+Der gemessene Windows-Lauf bestand sieben Konfigurations-/Outputtests,
+einschließlich einer echten Verzeichnis-Junction und zweier isolierter IDs.
+Der separate Symlink-Test blieb mangels Windows-Symlinkrecht ausdrücklich
+`SKIP`; unter Linux wurde er ausgeführt und bestand. Damit sind weder die
+Windows-FFmpeg-Pipeline noch Installation und Autostart als vollständig
+verifiziert ausgewiesen.
+
 Jeder Build enthält außerdem eine geschlossene, rein technische
 `native-packager-build`-Auskunft. Sie ist ohne Konfiguration und ohne Zugriff
 auf die Geräteidentität abrufbar:

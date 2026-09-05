@@ -68,8 +68,8 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if identityFile == "" || strings.ContainsAny(identityFile, "\x00\r\n") {
 		return config{}, errors.New("NATIVE_PACKAGER_IDENTITY_FILE is required")
 	}
-	outputRoot := defaultValue(getenv("NATIVE_PACKAGER_OUTPUT_ROOT"), "/tmp/ananta-native-packager")
-	if !filepath.IsAbs(outputRoot) || filepath.Clean(outputRoot) == string(filepath.Separator) || strings.ContainsAny(outputRoot, "\x00\r\n") {
+	outputRoot := defaultValue(getenv("NATIVE_PACKAGER_OUTPUT_ROOT"), filepath.Join(os.TempDir(), "ananta-native-packager", id))
+	if !validOutputRoot(outputRoot) {
 		return config{}, errors.New("NATIVE_PACKAGER_OUTPUT_ROOT must be absolute")
 	}
 	token := strings.TrimSpace(getenv("NATIVE_PACKAGER_ENROLLMENT_TOKEN"))

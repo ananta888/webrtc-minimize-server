@@ -67,8 +67,13 @@ type transcodePipeline struct {
 	onFailure  func()
 }
 
+func validOutputRoot(root string) bool {
+	clean := filepath.Clean(root)
+	return filepath.IsAbs(root) && filepath.Dir(clean) != clean && !strings.ContainsAny(root, "\x00\r\n")
+}
+
 func validatedOutputDirectory(root, resourceRef string) (string, error) {
-	if !filepath.IsAbs(root) || filepath.Clean(root) == string(filepath.Separator) || !resourceIDPattern.MatchString(resourceRef) {
+	if !validOutputRoot(root) || !resourceIDPattern.MatchString(resourceRef) {
 		return "", errors.New("invalid native-packager output scope")
 	}
 	cleanRoot := filepath.Clean(root)
@@ -80,12 +85,19 @@ func validatedOutputDirectory(root, resourceRef string) (string, error) {
 }
 
 func cleanOutputRoot(root string) error {
-	if !filepath.IsAbs(root) || filepath.Clean(root) == string(filepath.Separator) {
+	if !validOutputRoot(root) {
 		return errors.New("invalid native-packager output root")
 	}
 	cleanRoot := filepath.Clean(root)
 	if err := os.MkdirAll(cleanRoot, 0o700); err != nil {
 		return err
+	}
+	info, err := os.Lstat(cleanRoot)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("native-packager output root must be a real directory")
 	}
 	entries, err := os.ReadDir(cleanRoot)
 	if err != nil {

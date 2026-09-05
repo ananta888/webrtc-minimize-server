@@ -7,7 +7,9 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -133,6 +135,51 @@ func TestConfigAcceptsOnlyBoundedSTUNURLs(t *testing.T) {
 		if _, err = parseStunURLs(raw); err == nil {
 			t.Fatalf("invalid STUN URL accepted: %s", raw)
 		}
+	}
+}
+
+func TestConfigOutputDefaultsArePortableAndIsolatedPerIdentity(t *testing.T) {
+	temporary := t.TempDir()
+	for _, name := range []string{"TMPDIR", "TEMP", "TMP"} {
+		t.Setenv(name, temporary)
+	}
+	values := map[string]string{
+		"NATIVE_PACKAGER_CONTROL_URL":   "wss://webrtc.example/native-packager",
+		"NATIVE_PACKAGER_ID":            "pkr_0123456789abcdef",
+		"NATIVE_PACKAGER_IDENTITY_FILE": filepath.Join(temporary, "identity.pem"),
+	}
+	first, err := loadConfig(func(name string) string { return values[name] })
+	if err != nil || first.outputRoot != filepath.Join(os.TempDir(), "ananta-native-packager", values["NATIVE_PACKAGER_ID"]) || !filepath.IsAbs(first.outputRoot) {
+		t.Fatalf("default output is not portable and ID-scoped: %v", err)
+	}
+	values["NATIVE_PACKAGER_ID"] = "pkr_fedcba9876543210"
+	second, err := loadConfig(func(name string) string { return values[name] })
+	if err != nil || second.outputRoot == first.outputRoot {
+		t.Fatalf("different identities share an output root: %v", err)
+	}
+	resource := "res_0123456789abcdef"
+	for _, cfg := range []config{first, second} {
+		if err := os.MkdirAll(filepath.Join(cfg.outputRoot, resource), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := cleanOutputRoot(first.outputRoot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(first.outputRoot, resource)); !os.IsNotExist(err) {
+		t.Fatal("own stale output was not removed")
+	}
+	if _, err := os.Stat(filepath.Join(second.outputRoot, resource)); err != nil {
+		t.Fatal("cleanup touched another identity")
+	}
+	values["NATIVE_PACKAGER_OUTPUT_ROOT"] = filepath.Join(temporary, "explicit-production-volume")
+	explicit, err := loadConfig(func(name string) string { return values[name] })
+	if err != nil || explicit.outputRoot != values["NATIVE_PACKAGER_OUTPUT_ROOT"] {
+		t.Fatalf("explicit production output path changed: %v", err)
+	}
+	values["NATIVE_PACKAGER_OUTPUT_ROOT"] = filepath.VolumeName(temporary) + string(filepath.Separator)
+	if _, err := loadConfig(func(name string) string { return values[name] }); err == nil {
+		t.Fatal("filesystem or drive root accepted")
 	}
 }
 

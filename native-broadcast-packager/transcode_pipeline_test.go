@@ -284,7 +284,7 @@ exec %q "$@"
 }
 
 func TestTranscodeOutputCannotEscapeConfiguredRoot(t *testing.T) {
-	root := filepath.Join(string(filepath.Separator), "tmp", "ananta-native-packager")
+	root := filepath.Join(t.TempDir(), "ananta-native-packager")
 	output, err := validatedOutputDirectory(root, "res_0123456789abcdef")
 	if err != nil || filepath.Dir(output) != root {
 		t.Fatalf("valid output rejected: output=%s error=%v", output, err)
@@ -317,5 +317,39 @@ func TestOutputCleanupRemovesOnlyBoundedResourceDirectories(t *testing.T) {
 	}
 	if err := cleanOutputRoot(string(filepath.Separator)); err == nil {
 		t.Fatal("filesystem root accepted for cleanup")
+	}
+}
+
+func TestOutputCleanupRejectsRootSymlink(t *testing.T) {
+	directory := t.TempDir()
+	target := filepath.Join(directory, "target")
+	resource := filepath.Join(target, "res_0123456789abcdef")
+	if err := os.MkdirAll(resource, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(directory, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("OS account cannot create directory symlinks: %v", err)
+	}
+	if err := cleanOutputRoot(link); err == nil {
+		t.Fatal("output cleanup followed a root symlink")
+	}
+	if _, err := os.Stat(resource); err != nil {
+		t.Fatal("output cleanup touched symlink target")
+	}
+}
+
+func TestOutputScopeRejectsOSRootsAndMalformedPaths(t *testing.T) {
+	root := filepath.VolumeName(t.TempDir()) + string(filepath.Separator)
+	for _, invalid := range []string{root, filepath.Join(root, "folder", ".."), "relative", "", root + "invalid\npath"} {
+		if validOutputRoot(invalid) {
+			t.Fatalf("unsafe output root accepted: %q", invalid)
+		}
+		if _, err := validatedOutputDirectory(invalid, "res_0123456789abcdef"); err == nil {
+			t.Fatal("unsafe root accepted for resource")
+		}
+		if err := cleanOutputRoot(invalid); err == nil {
+			t.Fatal("unsafe root accepted for cleanup")
+		}
 	}
 }
