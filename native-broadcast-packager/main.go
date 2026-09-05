@@ -50,6 +50,7 @@ type config struct {
 	energyClass, uploadClass                                                      string
 	maximumRenditions, maximumPixelsPerSecond                                     int
 	stunURLs                                                                      []string
+	iceTransportPolicy                                                            webrtc.ICETransportPolicy
 }
 
 func loadConfig(getenv func(string) string) (config, error) {
@@ -95,11 +96,27 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if err != nil {
 		return config{}, err
 	}
+	iceTransportPolicy, err := parseICETransportPolicy(getenv("NATIVE_PACKAGER_ICE_TRANSPORT_POLICY"))
+	if err != nil {
+		return config{}, err
+	}
 	return config{
 		controlURL: rawURL, packagerID: id, identityFile: identityFile, enrollmentToken: token,
 		ffmpegPath: defaultValue(getenv("NATIVE_PACKAGER_FFMPEG"), "ffmpeg"), outputRoot: filepath.Clean(outputRoot), energyClass: energy,
 		uploadClass: upload, maximumRenditions: renditions, maximumPixelsPerSecond: pixels, stunURLs: stunURLs,
+		iceTransportPolicy: iceTransportPolicy,
 	}, nil
+}
+
+func parseICETransportPolicy(raw string) (webrtc.ICETransportPolicy, error) {
+	switch defaultValue(raw, "all") {
+	case "all":
+		return webrtc.ICETransportPolicyAll, nil
+	case "relay":
+		return webrtc.ICETransportPolicyRelay, nil
+	default:
+		return webrtc.ICETransportPolicyAll, errors.New("NATIVE_PACKAGER_ICE_TRANSPORT_POLICY must be all or relay")
+	}
 }
 
 func parseStunURLs(raw string) ([]string, error) {

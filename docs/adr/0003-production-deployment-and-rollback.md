@@ -30,7 +30,26 @@ Dies ist ein health-gated atomarer Recreate mit automatischem Rollback, kein ver
 
 Die verbindliche Default-deny-Matrix steht in `infra/deployment/port-firewall-matrix.v1.json`. Nur Caddy 443 (und 80, falls für ACME/Redirect benötigt) sowie aktiviertes TURN werden öffentlich exponiert. WHIP, HLS-Upstream, Gateway-API/-Metriken und Node 8080 bleiben privat. UDP 443 für MoQ wird erst nach tatsächlicher Capability und externem Test geöffnet.
 
-Ausgehende Ziele sind auf OIDC/JWKS, konfigurierte STUN/TURN- und explizite WHIP-Ziele beschränkt. Eine hostnamebasierte Host-Firewall oder ein Egress-Proxy ist für die echte Erzwingung nötig; Docker Compose allein implementiert diese Allowlist nicht.
+Ausgehende Ziele werden im Produktionsprofil zusätzlich erzwungen. Control Plane
+und Native-Packager erhalten je ein ausschließlich von ihnen verwendetes,
+festes Egress-Subnetz. Ein auf einen Image-Digest fixierter Firewall-Guard darf
+als einzige Ausnahme `NET_ADMIN` im Host-Netz besitzen und hält zwei
+generationell ausgetauschte `DOCKER-USER`-Chains aktiv. Die Control Plane darf
+neue Verbindungen nur zum konfigurierten OIDC-/JWKS-Host auf TCP 443 beginnen.
+Der Native-Packager darf nur sein Control-WSS auf TCP 443 sowie die exakt
+konfigurierten TURN-Hosts auf UDP/TCP 3478 und TCP/TLS 5349 erreichen; alles
+andere aus diesen Subnetzen wird verworfen. DNS-Namen werden vor einem
+Regeltausch vollständig aufgelöst, die letzte gültige Generation bleibt bei
+einem DNS-Fehler aktiv.
+
+Damit die Ziel-Allowlist keine beliebigen ICE-Gegenstellen benötigt, verwendet
+der Native-Packager in Produktion validiert `ICETransportPolicy=relay`.
+Direkte Browser-Peer-Verbindungen und freiwillige Media-/TURN-Edge-Agenten sind
+davon nicht betroffen. Eine Änderung der OIDC-, Control- oder TURN-Hostnamen
+muss gemeinsam mit `WEBRTC_*_EGRESS_*_HOSTS` ausgerollt und durch den
+Produktionsgate verifiziert werden. Buildcontainer gehören nicht zu den
+geschützten Runtime-Subnetzen und dürfen Paketregistries nur während des
+isolierten Builds erreichen.
 
 Für den Oracle-Coturn beschreibt
 [`infrastructure-turn-tls.md`](../runbooks/infrastructure-turn-tls.md) den

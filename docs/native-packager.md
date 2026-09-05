@@ -228,7 +228,13 @@ ICE-Konfiguration. Die Control Plane stellt STUN und ausschließlich
 agentgebundene Coturn-REST-Credentials für die konkrete Zuweisung bereit.
 Dadurch bleibt der Agent ausgehend verbunden und benötigt auch hinter
 Docker/NAT keinen pauschal geöffneten eingehenden UDP-Port. Ältere
-v1/v2-Agenten erhalten keine Credential-Felder.
+v1/v2-Agenten erhalten keine Credential-Felder. Das allgemeine Installerprofil
+verwendet `NATIVE_PACKAGER_ICE_TRANSPORT_POLICY=all`; das gehärtete
+Produktionsprofil setzt validiert `relay`. Nur damit kann dessen
+containerbezogene Egress-Allowlist neue UDP-/TCP-Verbindungen auf die
+konfigurierten TURN-Ziele begrenzen. Fehlen dort gültige TURN-Credentials,
+bricht die Medienverbindung geschlossen ab und fällt nicht auf beliebige
+direkte Ziele zurück.
 
 ## Ehrlich offene Punkte
 

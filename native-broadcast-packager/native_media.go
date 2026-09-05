@@ -39,7 +39,7 @@ func newNativeMediaSession(client *client, assignment *packagerAssignment) (*nat
 	if client == nil || client.api == nil || assignment == nil {
 		return nil, errors.New("native media configuration unavailable")
 	}
-	configuration := webrtc.Configuration{}
+	configuration := webrtc.Configuration{ICETransportPolicy: client.cfg.iceTransportPolicy}
 	if len(assignment.ICEServers) > 0 {
 		for _, server := range assignment.ICEServers {
 			iceServer := webrtc.ICEServer{

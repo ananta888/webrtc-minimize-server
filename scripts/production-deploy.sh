@@ -72,6 +72,8 @@ case "$action" in
         docker compose $compose_files --profile native-packager build native-packager broadcast-hls-origin
       docker compose $compose_files --profile native-packager up -d --wait native-packager broadcast-hls-origin
     fi
+    WEBRTC_REVERSE_PROXY_NETWORK="$proxy_network" \
+      docker compose $compose_files up -d --no-build --wait production-egress-firewall
     docker build --pull --build-arg "SOURCE_REVISION=$revision" \
       --build-arg "SOURCE_TIMESTAMP=$source_timestamp" -t "$candidate" .
     if ! WEBRTC_IMAGE="$candidate" WEBRTC_REVERSE_PROXY_NETWORK="$proxy_network" \

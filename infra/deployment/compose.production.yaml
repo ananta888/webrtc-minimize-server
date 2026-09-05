@@ -19,6 +19,11 @@ services:
       reverse-proxy:
         aliases:
           - webrtc-room-server
+      control-egress:
+        gw_priority: 1
+    depends_on:
+      production-egress-firewall:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/readyz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 15s
@@ -42,5 +47,53 @@ services:
     stop_grace_period: 20s
 
   native-packager:
+    environment:
+      NATIVE_PACKAGER_ICE_TRANSPORT_POLICY: relay
     networks: !override
-      default:
+      packager-egress:
+        gw_priority: 1
+    depends_on:
+      production-egress-firewall:
+        condition: service_healthy
+
+  production-egress-firewall:
+    image: nicolaka/netshoot@sha256:b09d9b21381f47a79b3cbcb30da25266dc17186ea00ae65e99fdc51396f48e70
+    network_mode: host
+    restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    cap_add: ["NET_ADMIN"]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      WEBRTC_CONTROL_EGRESS_SUBNET: ${WEBRTC_CONTROL_EGRESS_SUBNET:-10.203.0.0/28}
+      WEBRTC_PACKAGER_EGRESS_SUBNET: ${WEBRTC_PACKAGER_EGRESS_SUBNET:-10.203.0.16/28}
+      WEBRTC_CONTROL_EGRESS_HTTPS_HOSTS: ${WEBRTC_CONTROL_EGRESS_HTTPS_HOSTS:-keycloak.ananta.de}
+      WEBRTC_PACKAGER_EGRESS_HTTPS_HOSTS: ${WEBRTC_PACKAGER_EGRESS_HTTPS_HOSTS:-webrtc.ananta.de}
+      WEBRTC_PACKAGER_EGRESS_TURN_HOSTS: ${WEBRTC_PACKAGER_EGRESS_TURN_HOSTS:-webrtc.ananta.de,minipc.ananta.de}
+      WEBRTC_EGRESS_REFRESH_SECONDS: ${WEBRTC_EGRESS_REFRESH_SECONDS:-300}
+    volumes:
+      - ./scripts/production-egress-firewall.sh:/opt/ananta/production-egress-firewall.sh:ro
+    command: ["sh", "/opt/ananta/production-egress-firewall.sh", "run"]
+    healthcheck:
+      test: ["CMD", "sh", "/opt/ananta/production-egress-firewall.sh", "verify"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+
+networks:
+  control-egress:
+    ipam:
+      config:
+        - subnet: ${WEBRTC_CONTROL_EGRESS_SUBNET:-10.203.0.0/28}
+  packager-egress:
+    ipam:
+      config:
+        - subnet: ${WEBRTC_PACKAGER_EGRESS_SUBNET:-10.203.0.16/28}

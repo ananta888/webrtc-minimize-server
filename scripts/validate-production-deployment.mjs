@@ -17,7 +17,9 @@ const turnTlsService = read("infra/deployment/ananta-turn-tls-sync.service");
 const turnTlsTimer = read("infra/deployment/ananta-turn-tls-sync.timer");
 
 if (policy.version !== 1 || policy.broadcast?.enabledByDefault !== false
-  || policy.release?.automaticRollback !== true || policy.container?.readOnlyRoot !== true) {
+  || policy.release?.automaticRollback !== true || policy.container?.readOnlyRoot !== true
+  || policy.egress?.enforcement !== "DOCKER-USER source-subnet allowlist maintained by pinned firewall guard"
+  || policy.egress?.nativePackagerIceTransportPolicy !== "relay") {
   throw new Error("invalid production deployment policy");
 }
 if (ports.version !== 1 || ports.defaultPolicy !== "deny" || !Array.isArray(ports.entries)
@@ -36,11 +38,13 @@ for (const required of [
   "read_only: true", "cap_drop: [\"ALL\"]", "no-new-privileges:true", "ports: !reset []",
   "pids_limit: 256", "healthcheck:", "max-size: 10m", "networks: !override",
   "reverse-proxy:", "broadcast-origin:", "native-packager:",
+  "production-egress-firewall:", "network_mode: host", "cap_add: [\"NET_ADMIN\"]",
+  "NATIVE_PACKAGER_ICE_TRANSPORT_POLICY: relay", "control-egress:", "packager-egress:",
 ]) {
   if (!compose.includes(required)) throw new Error(`production hardening missing: ${required}`);
 }
 if ((compose.match(/networks: !override/g) || []).length !== 2
-  || !/native-packager:\s+[\s\S]*?networks: !override\s+default:\s*$/m.test(compose)) {
+  || !/native-packager:\s+[\s\S]*?networks: !override\s+packager-egress:/m.test(compose)) {
   throw new Error("production services must use their minimal network sets");
 }
 if (!baseCompose.includes("${WEBRTC_BIND_ADDRESS:-127.0.0.1}:${PORT:-8080}:8080")) {
@@ -56,9 +60,16 @@ for (const required of [
   "docker image tag", "webrtc-minimize-server:rollback", "previous_file.new",
   "production-smoke-gate.mjs", "ensure-broadcast-signing-key.mjs",
   "native-broadcast-deployment-enabled.mjs", "--profile native-packager",
-  "EXPECT_NATIVE_BROADCAST",
+  "EXPECT_NATIVE_BROADCAST", "production-egress-firewall",
 ]) {
   if (!deploy.includes(required)) throw new Error(`safe deploy gate missing: ${required}`);
+}
+const egressFirewall = read("scripts/production-egress-firewall.sh");
+for (const required of [
+  "DOCKER-USER", "ananta-control-default-deny", "ananta-packager-default-deny",
+  "--dport 443", "--dport 3478", "--dport 5349", "ESTABLISHED,RELATED",
+]) {
+  if (!egressFirewall.includes(required)) throw new Error(`egress enforcement missing: ${required}`);
 }
 if (!compose.includes("/run/secrets/broadcast-signing-private-key.pem:ro")) {
   throw new Error("broadcast signing key must be mounted read-only from deployment state");

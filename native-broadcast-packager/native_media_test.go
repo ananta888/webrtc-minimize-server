@@ -128,6 +128,23 @@ func TestNativeMediaReceivesBrowserRTP(t *testing.T) {
 	}
 }
 
+func TestNativeMediaAppliesConfiguredICETransportPolicy(t *testing.T) {
+	api, err := createWebRTCAPI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	packager := &client{api: api, cfg: config{iceTransportPolicy: webrtc.ICETransportPolicyRelay}}
+	assignment := assignmentFrom(assignmentMessage(time.Now()))
+	media, err := newNativeMediaSession(packager, assignment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer media.close()
+	if policy := media.pc.GetConfiguration().ICETransportPolicy; policy != webrtc.ICETransportPolicyRelay {
+		t.Fatalf("unexpected ICE transport policy: %s", policy.String())
+	}
+}
+
 func TestNativeMediaUsesAssignmentICEConfiguration(t *testing.T) {
 	api, err := createWebRTCAPI()
 	if err != nil {

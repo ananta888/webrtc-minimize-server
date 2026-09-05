@@ -17,8 +17,17 @@
     "rotation":"replace mount atomically, recreate service, revoke old grants and verify readiness",
     "forbiddenLocations":["git","container image","Angular bundle","logs","backups without encryption"]
   },
-  "container": {"readOnlyRoot":true,"noNewPrivileges":true,"capabilities":"none","boundedPids":256,"boundedLogs":true},
-  "egressAllowlist":["configured OIDC issuer/JWKS","configured STUN/TURN","explicit WHIP redirect origins","package registries only during isolated build"],
+  "container": {"readOnlyRoot":true,"noNewPrivileges":true,"capabilities":"none except NET_ADMIN on the pinned host-network firewall guard","boundedPids":256,"boundedLogs":true},
+  "egress": {
+    "enforcement":"DOCKER-USER source-subnet allowlist maintained by pinned firewall guard",
+    "controlPlane":["configured OIDC issuer/JWKS over TCP 443"],
+    "nativePackager":["control WSS over TCP 443","configured TURN over UDP/TCP 3478 or TCP/TLS 5349"],
+    "nativePackagerIceTransportPolicy":"relay",
+    "dns":"Docker embedded DNS; host resolver performs the upstream lookup outside the scoped container subnets",
+    "refreshSeconds":300,
+    "default":"drop all other new forwarded traffic from the dedicated production egress subnets",
+    "build":"package registries are reachable only from isolated build containers"
+  },
   "release": {"strategy":"immutable candidate image plus health-gated atomic recreate","automaticRollback":true,"contractCompatibility":"v1 additive and unknown-field fail-closed"},
   "retention": {"workspaceVolumes":"operator backup policy","broadcastMedia":"none by default","metrics":"14d operational, 90d aggregate"}
 }

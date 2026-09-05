@@ -29,7 +29,7 @@ test("production configs contain no literal credential and expose no gateway adm
   assert.equal(matrix.entries.find(({ component }) => component === "mediamtx-admin").public, false);
 });
 
-test("production control plane and packager have disjoint minimal network sets", () => {
+test("production control plane and packager have disjoint, firewall-scoped network sets", () => {
   const rendered = execFileSync("docker", [
     "compose",
     "-f", "compose.yaml",
@@ -43,11 +43,17 @@ test("production control plane and packager have disjoint minimal network sets",
     env: { ...process.env, WEBRTC_REVERSE_PROXY_NETWORK: "policy-test-edge" },
   });
   const config = JSON.parse(rendered);
-  assert.deepEqual(Object.keys(config.services.webrtc.networks).sort(), ["broadcast-origin", "reverse-proxy"]);
-  assert.deepEqual(Object.keys(config.services["native-packager"].networks), ["default"]);
+  assert.deepEqual(Object.keys(config.services.webrtc.networks).sort(), ["broadcast-origin", "control-egress", "reverse-proxy"]);
+  assert.deepEqual(Object.keys(config.services["native-packager"].networks), ["packager-egress"]);
   assert.deepEqual(Object.keys(config.services["broadcast-hls-origin"].networks), ["broadcast-origin"]);
   assert.equal(config.networks["broadcast-origin"].internal, true);
   assert.equal(config.networks["reverse-proxy"].external, true);
+  assert.equal(config.networks["control-egress"].ipam.config[0].subnet, "10.203.0.0/28");
+  assert.equal(config.networks["packager-egress"].ipam.config[0].subnet, "10.203.0.16/28");
+  assert.equal(config.services["native-packager"].environment.NATIVE_PACKAGER_ICE_TRANSPORT_POLICY, "relay");
+  assert.equal(config.services["production-egress-firewall"].network_mode, "host");
+  assert.deepEqual(config.services["production-egress-firewall"].cap_add, ["NET_ADMIN"]);
+  assert.deepEqual(config.services["production-egress-firewall"].cap_drop, ["ALL"]);
 });
 
 test("production deploy anchors a local rollback tag before a same-revision rebuild", (context) => {

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pion/webrtc/v4"
 )
 
 func TestFFmpegReportsOnlyHardwareThatCompletesARealEncode(t *testing.T) {
@@ -94,9 +96,19 @@ func TestConfigRequiresExactSecureOutboundEndpoint(t *testing.T) {
 		"NATIVE_PACKAGER_IDENTITY_FILE": "/tmp/identity.pem",
 	}
 	cfg, err := loadConfig(func(name string) string { return values[name] })
-	if err != nil || cfg.maximumRenditions != 2 {
+	if err != nil || cfg.maximumRenditions != 2 || cfg.iceTransportPolicy != webrtc.ICETransportPolicyAll {
 		t.Fatalf("valid config rejected: %v", err)
 	}
+	values["NATIVE_PACKAGER_ICE_TRANSPORT_POLICY"] = "relay"
+	cfg, err = loadConfig(func(name string) string { return values[name] })
+	if err != nil || cfg.iceTransportPolicy != webrtc.ICETransportPolicyRelay {
+		t.Fatalf("relay-only ICE config rejected: %v", err)
+	}
+	values["NATIVE_PACKAGER_ICE_TRANSPORT_POLICY"] = "public"
+	if _, err = loadConfig(func(name string) string { return values[name] }); err == nil {
+		t.Fatal("unknown ICE transport policy accepted")
+	}
+	delete(values, "NATIVE_PACKAGER_ICE_TRANSPORT_POLICY")
 	values["NATIVE_PACKAGER_CONTROL_URL"] = "ws://webrtc.example/native-packager"
 	if _, err = loadConfig(func(name string) string { return values[name] }); err == nil {
 		t.Fatal("insecure control URL accepted")
