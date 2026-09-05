@@ -20,7 +20,8 @@ function video(nativeHls = false): HTMLVideoElement {
 class FakeHls {
   static instances: FakeHls[] = [];
   static autoManifest = true;
-  static isSupported(): boolean { return true; }
+  static supported = true;
+  static isSupported(): boolean { return FakeHls.supported; }
   readonly levels = [
     { height: 360, bitrate: 564_000 },
     { height: 720, bitrate: 2_528_000 },
@@ -62,17 +63,19 @@ const fakeModule = {
 describe("BroadcastHlsPlayer", () => {
   afterEach(() => {
     FakeHls.autoManifest = true;
+    FakeHls.supported = true;
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     Reflect.deleteProperty(URL, "createObjectURL");
     Reflect.deleteProperty(URL, "revokeObjectURL");
   });
-  it("uses native HLS first and treats autoplay denial as a visible user-action state", async () => {
+  it("falls back to native HLS without MSE and treats autoplay denial as a visible user-action state", async () => {
     const element = video(true);
     Object.defineProperty(element, "play", {
       value: vi.fn(async () => { throw new DOMException("denied", "NotAllowedError"); }),
     });
-    const player = new BroadcastHlsPlayer();
+    FakeHls.supported = false;
+    const player = new BroadcastHlsPlayer(() => undefined, async () => fakeModule as never);
     await player.open(element, "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8", {
       muted: false, volume: 0.7,
     }, new AbortController().signal);
@@ -81,6 +84,19 @@ describe("BroadcastHlsPlayer", () => {
     await player.destroy();
     expect(element.getAttribute("src")).toBeNull();
     expect(element.load).toHaveBeenCalled();
+  });
+
+  it("prefers hls.js over a browser's incomplete native HLS claim", async () => {
+    FakeHls.instances = [];
+    const element = video(true);
+    const player = new BroadcastHlsPlayer(() => undefined, async () => fakeModule as never);
+    await player.open(element, "/broadcast/play/res_ffffffffffffffff/index.m3u8", {
+      muted: true, volume: 1,
+    }, new AbortController().signal);
+    expect(player.snapshot()).toMatchObject({ engine: "hls-js", lifecycle: "playing" });
+    expect(FakeHls.instances).toHaveLength(1);
+    expect(element.getAttribute("src")).toBeNull();
+    await player.destroy();
   });
 
   it("uses pinned hls.js for MSE, offers quality selection and destroys every handle", async () => {

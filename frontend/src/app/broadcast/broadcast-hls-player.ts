@@ -120,13 +120,9 @@ export class BroadcastHlsPlayer {
     this.abortListener = () => { void this.destroy(); };
     signal.addEventListener("abort", this.abortListener, { once: true });
     try {
-      if (video.canPlayType("application/vnd.apple.mpegurl")) {
-        this.update({ engine: "native-hls" });
-        video.src = source;
-      } else {
-        const module = await this.loadHls();
-        signal.throwIfAborted();
-        if (!module.default.isSupported()) throw new BroadcastBrowserPortError("broadcast_hls_unsupported");
+      const module = await this.loadHls();
+      signal.throwIfAborted();
+      if (module.default.isSupported()) {
         const config: Partial<HlsConfig> = {
           lowLatencyMode: true,
           backBufferLength: 30,
@@ -148,6 +144,11 @@ export class BroadcastHlsPlayer {
         hls.loadSource(source);
         this.update({ engine: "hls-js" });
         await manifestReady;
+      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        this.update({ engine: "native-hls" });
+        video.src = source;
+      } else {
+        throw new BroadcastBrowserPortError("broadcast_hls_unsupported");
       }
       if (options.captions === true) this.startCaptionPolling(source);
       this.startWatchdog();
