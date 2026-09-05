@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh Coturn TLS material after Caddy renewal
+
+[Timer]
+OnCalendar=*-*-* 03,09,15,21:15:00
+RandomizedDelaySec=10m
+Persistent=true
+Unit=ananta-turn-tls-sync.service
+
+[Install]
+WantedBy=timers.target

@@ -851,7 +851,7 @@ flowchart LR
     InternetBrowser["Browser\nhttps://webrtc.ananta.de"]
     OracleProxy["oeffentlicher Reverse Proxy"]
     KeycloakProd["keycloak.ananta.de\nKeycloak"]
-    CoturnProd["webrtc.ananta.de:3478\nInfrastruktur-Coturn"]
+    CoturnProd["webrtc.ananta.de\nTURN UDP/TCP :3478\nTURN/TLS TCP :5349"]
 
     subgraph LAN["LAN"]
         MiniCaddy["vorhandener Mini-PC-Caddy"]

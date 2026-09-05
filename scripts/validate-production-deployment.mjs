@@ -12,6 +12,9 @@ const dockerfile = read("Dockerfile");
 const dockerignore = read(".dockerignore");
 const deploy = read("scripts/production-deploy.sh");
 const smoke = read("scripts/production-smoke-gate.mjs");
+const turnTlsSync = read("scripts/sync-turn-tls-certificate.sh");
+const turnTlsService = read("infra/deployment/ananta-turn-tls-sync.service");
+const turnTlsTimer = read("infra/deployment/ananta-turn-tls-sync.timer");
 
 if (policy.version !== 1 || policy.broadcast?.enabledByDefault !== false
   || policy.release?.automaticRollback !== true || policy.container?.readOnlyRoot !== true) {
@@ -64,6 +67,20 @@ for (const productionFile of [compose, JSON.stringify(policy), JSON.stringify(po
   if (/sharedSecret\s*["':=]+\s*(?!\$\{)[A-Za-z0-9+/]{16}/i.test(productionFile)) {
     throw new Error("literal secret found in production deployment files");
   }
+}
+for (const required of [
+  "openssl verify", "-verify_hostname", "-checkend", "openssl pkey", "cmp -s",
+  "mv -Tf", "com.docker.compose.project", "com.docker.compose.service",
+]) {
+  if (!turnTlsSync.includes(required)) throw new Error(`TURN TLS sync gate missing: ${required}`);
+}
+for (const required of [
+  "NoNewPrivileges=yes", "ProtectSystem=strict", "ReadWritePaths=/etc/ananta/turn-tls",
+]) {
+  if (!turnTlsService.includes(required)) throw new Error(`TURN TLS service hardening missing: ${required}`);
+}
+if (!turnTlsTimer.includes("Persistent=true") || !turnTlsTimer.includes("RandomizedDelaySec=")) {
+  throw new Error("TURN TLS renewal timer is not persistent and jittered");
 }
 
 process.stdout.write("Validated production deployment policy, ports, hardening, secrets and rollback gates.\n");

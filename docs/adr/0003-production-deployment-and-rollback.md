@@ -17,6 +17,13 @@ Secrets werden nicht in Compose oder Images geschrieben. `TURN_SHARED_SECRET_FIL
 
 `scripts/production-deploy.sh deploy` baut ein unveränderlich mit Git-SHA benanntes Image, merkt sich den vorherigen Image-Digest, ersetzt nur den App-Container und verlangt Docker-Readiness plus externen HTTPS-Smoke-Test. Der Smoke-Test prüft Health, getrennte Readiness, OIDC required, SFrame required, 20er-Limit, Runtime-Config, CSP und Angular-Shell. Scheitert ein Gate, wird automatisch der vorherige Digest gestartet und erneut extern geprüft. `rollback` ist auch manuell verfügbar.
 
+Die Docker-Buildgraphen für Webserver, nativen Packager und Broadcast-Origin
+sind getrennt. Das kleine Origin-Ziel kompiliert keine Agent-Artefakte; das
+laufende Linux-Packager-Image kompiliert nur Linux/amd64. Erst das Webimage,
+das die geprüften Self-Service-Downloads ausliefert, erzeugt die vollständige
+Fünf-Plattform-Matrix. Identische Revision und Commitzeit bleiben dabei in
+Laufzeitbinary und Download eingebettet.
+
 Dies ist ein health-gated atomarer Recreate mit automatischem Rollback, kein verlustfreies Multi-Replica-Blue/Green: Room-Membership bleibt definitionsgemäß flüchtig. Contract-v1 bleibt additiv; unbekannte Felder werden fail-closed behandelt. Broadcast ist im Produktionsprofil nicht implizit aktiviert und kann daher einen fehlgeschlagenen Release des Meets nicht stillschweigend übernehmen.
 
 ## Netzwerk
@@ -24,3 +31,10 @@ Dies ist ein health-gated atomarer Recreate mit automatischem Rollback, kein ver
 Die verbindliche Default-deny-Matrix steht in `infra/deployment/port-firewall-matrix.v1.json`. Nur Caddy 443 (und 80, falls für ACME/Redirect benötigt) sowie aktiviertes TURN werden öffentlich exponiert. WHIP, HLS-Upstream, Gateway-API/-Metriken und Node 8080 bleiben privat. UDP 443 für MoQ wird erst nach tatsächlicher Capability und externem Test geöffnet.
 
 Ausgehende Ziele sind auf OIDC/JWKS, konfigurierte STUN/TURN- und explizite WHIP-Ziele beschränkt. Eine hostnamebasierte Host-Firewall oder ein Egress-Proxy ist für die echte Erzwingung nötig; Docker Compose allein implementiert diese Allowlist nicht.
+
+Für den Oracle-Coturn beschreibt
+[`infrastructure-turn-tls.md`](../runbooks/infrastructure-turn-tls.md) den
+TCP/TLS-5349-Pfad. Caddys Schlüsselvolume wird nicht geteilt: Ein gehärteter
+Timer validiert Hostname, Restgültigkeit und Schlüsselpaar, aktiviert eine
+root-only Kopie atomar und startet genau den gelabelten Coturn neu. Die
+`turns:`-URL bleibt bis zum externen TLS- und Allocation-Gate aus der Runtime.

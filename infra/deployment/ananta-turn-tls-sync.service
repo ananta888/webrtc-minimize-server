@@ -1,0 +1,21 @@
+[Unit]
+Description=Validate and atomically synchronize Caddy certificate for Coturn
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/ananta/turn-tls-sync.env
+ExecStart=/usr/local/sbin/ananta-sync-turn-tls
+User=root
+Group=root
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/ananta/turn-tls
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
