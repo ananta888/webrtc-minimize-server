@@ -45,13 +45,17 @@ async function startVisiblePlayer(page, cardSection) {
       && request.url().includes(".m3u8"), { timeout: 20_000 }),
     page.locator("#broadcast-player-start").click(),
   ]);
-  await page.locator("app-broadcast-player video").evaluate(async (video) => {
+  const decodable = await page.locator("app-broadcast-player video").evaluate(async (video) => {
     const deadline = Date.now() + 25_000;
     while (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) throw new Error("broadcast_video_not_decodable");
+    return video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
   });
+  if (!decodable) {
+    const status = (await page.locator("app-broadcast-player").innerText()).replaceAll(/\s+/g, " ").slice(0, 500);
+    throw new Error(`broadcast_video_not_decodable:${status}`);
+  }
   return manifestRequest.url();
 }
 
@@ -59,7 +63,17 @@ try {
   ownerContext = await browser.newContext({ permissions: ["camera", "microphone"] });
   ownerPage = await ownerContext.newPage();
   const pageErrors = [];
+  const failedApiResponses = [];
   ownerPage.on("pageerror", (error) => pageErrors.push(error.message));
+  ownerPage.on("response", async (response) => {
+    if (response.status() < 400 || !response.url().startsWith(`${origin}/api/`)) return;
+    let code = "unreadable_response";
+    try {
+      const body = await response.json();
+      if (body && typeof body === "object" && typeof body.error === "string") code = body.error;
+    } catch { /* a missing JSON body remains visible as an unreadable response */ }
+    failedApiResponses.push(`${response.request().method()} ${new URL(response.url()).pathname} ${response.status()} ${code}`);
+  });
   await login(ownerPage);
 
   await ownerPage.locator("#new-room-title").fill(title);
@@ -77,7 +91,13 @@ try {
   await packager.getByText("online", { exact: false }).waitFor({ timeout: 30_000 });
   const roomConsent = packager.locator(".agent-consent input");
   await roomConsent.check();
-  assert.equal(await roomConsent.isChecked(), true);
+  await ownerPage.waitForFunction((id) => {
+    const cards = [...document.querySelectorAll("#native-packager-analysis-panel .owned-agent")];
+    const card = cards.find((candidate) => candidate.textContent?.includes(id));
+    const input = card?.querySelector(".agent-consent input");
+    return input instanceof HTMLInputElement && input.checked && !input.disabled
+      && !card?.textContent?.includes("Bestätigung des Agenten ausstehend");
+  }, packagerId, { timeout: 10_000 });
 
   await ownerPage.locator("#broadcast-navigation").click();
   const sources = ownerPage.locator("#broadcast-own-source-list input[type=checkbox]");
@@ -102,7 +122,7 @@ try {
   const startSummary = await ownerPage.locator("#broadcast-start-summary").innerText();
   if (!startSummary.includes("Zustand running")) {
     const code = await ownerPage.locator("#broadcast-start-summary .error").innerText();
-    throw new Error(`production_broadcast_not_running:${code}`);
+    throw new Error(`production_broadcast_not_running:${code}:${failedApiResponses.join("|")}`);
   }
 
   const refresh = ownerPage.locator("section#broadcast-audience .audience-heading button");

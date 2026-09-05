@@ -19,6 +19,7 @@ function video(nativeHls = false): HTMLVideoElement {
 
 class FakeHls {
   static instances: FakeHls[] = [];
+  static autoManifest = true;
   static isSupported(): boolean { return true; }
   readonly levels = [
     { height: 360, bitrate: 564_000 },
@@ -41,7 +42,13 @@ class FakeHls {
     this.handlers.set(event, [...(this.handlers.get(event) || []), listener]);
   }
   attachMedia(media: HTMLMediaElement): void { this.attached = media; }
-  loadSource(source: string): void { this.source = source; }
+  loadSource(source: string): void {
+    this.source = source;
+    if (FakeHls.autoManifest) queueMicrotask(() => this.emit("hlsManifestParsed"));
+  }
+  off(event: string, listener: (...args: unknown[]) => void): void {
+    this.handlers.set(event, (this.handlers.get(event) || []).filter((candidate) => candidate !== listener));
+  }
   emit(event: string, data: unknown = {}): void {
     for (const listener of this.handlers.get(event) || []) listener(event, data);
   }
@@ -54,6 +61,7 @@ const fakeModule = {
 
 describe("BroadcastHlsPlayer", () => {
   afterEach(() => {
+    FakeHls.autoManifest = true;
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     Reflect.deleteProperty(URL, "createObjectURL");
@@ -79,7 +87,15 @@ describe("BroadcastHlsPlayer", () => {
     FakeHls.instances = [];
     const states: string[] = [];
     const element = video(false);
-    const player = new BroadcastHlsPlayer(
+    let player!: BroadcastHlsPlayer;
+    Object.defineProperty(element, "play", {
+      configurable: true,
+      value: vi.fn(async () => {
+        expect(FakeHls.instances[0].source).toContain("/broadcast/play/");
+        expect(player.snapshot().qualities).toHaveLength(2);
+      }),
+    });
+    player = new BroadcastHlsPlayer(
       (state) => states.push(state.lifecycle),
       async () => fakeModule as never,
     );
@@ -87,7 +103,6 @@ describe("BroadcastHlsPlayer", () => {
       muted: true, volume: 1,
     }, new AbortController().signal);
     const hls = FakeHls.instances[0];
-    hls.emit("hlsManifestParsed");
     expect(player.snapshot().qualities.map(({ label }) => label)).toEqual(["360p", "720p"]);
     player.selectQuality(1);
     expect(hls.currentLevel).toBe(1);
@@ -105,6 +120,23 @@ describe("BroadcastHlsPlayer", () => {
     await player.destroy();
     expect(hls.stopLoad).toHaveBeenCalledOnce();
     expect(hls.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("fails closed when the hls.js manifest reports a fatal startup error", async () => {
+    FakeHls.instances = [];
+    FakeHls.autoManifest = false;
+    const element = video(false);
+    const player = new BroadcastHlsPlayer(() => undefined, async () => fakeModule as never);
+    const opening = player.open(element, "/broadcast/play/res_eeeeeeeeeeeeeeee/index.m3u8", {
+      muted: true, volume: 1,
+    }, new AbortController().signal);
+    await vi.waitFor(() => expect(FakeHls.instances).toHaveLength(1));
+    FakeHls.instances[0].emit("hlsError", { fatal: true, type: "networkError" });
+    await expect(opening).rejects.toThrow("broadcast_player_manifest_unavailable");
+    expect(player.snapshot()).toMatchObject({
+      lifecycle: "failed", errorCode: "broadcast_player_manifest_unavailable",
+    });
+    await player.destroy();
   });
 
   it("bounds fatal recovery and rejects token-bearing or foreign-shaped manifests", async () => {

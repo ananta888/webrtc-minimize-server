@@ -45,6 +45,8 @@ const initialSnapshot = (): BroadcastPlayerSnapshot => Object.freeze({
   errorCode: "",
 });
 
+const HLS_STARTUP_TIMEOUT_MS = 20_000;
+
 function validateManifestUrl(value: string): string {
   let parsed: URL;
   try {
@@ -142,8 +144,10 @@ export class BroadcastHlsPlayer {
         hls.on(module.Events.LEVEL_SWITCHED, () => this.updateLiveEdge());
         hls.on(module.Events.ERROR, (_event, data) => this.handleHlsError(data));
         hls.attachMedia(video);
+        const manifestReady = this.waitForHlsManifest(hls, module, signal);
         hls.loadSource(source);
         this.update({ engine: "hls-js" });
+        await manifestReady;
       }
       if (options.captions === true) this.startCaptionPolling(source);
       this.startWatchdog();
@@ -359,6 +363,38 @@ export class BroadcastHlsPlayer {
       this.hls.recoverMediaError();
       this.recover("media");
     } else this.update({ lifecycle: "failed", errorCode: "broadcast_player_hls_failed" });
+  }
+
+  private waitForHlsManifest(hls: Hls, module: HlsModule, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (error?: BroadcastBrowserPortError | DOMException) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        signal.removeEventListener("abort", onAbort);
+        hls.off(module.Events.MANIFEST_PARSED, onManifest);
+        hls.off(module.Events.ERROR, onError);
+        if (error) reject(error);
+        else resolve();
+      };
+      const onManifest = () => finish();
+      const onError = (_event: string, data: ErrorData) => {
+        if (data.fatal) finish(new BroadcastBrowserPortError(
+          data.type === "networkError" ? "broadcast_player_manifest_unavailable" : "broadcast_player_manifest_failed",
+        ));
+      };
+      const onAbort = () => finish(signal.reason instanceof DOMException
+        ? signal.reason : new DOMException("aborted", "AbortError"));
+      const timeout = setTimeout(
+        () => finish(new BroadcastBrowserPortError("broadcast_player_manifest_timeout")),
+        HLS_STARTUP_TIMEOUT_MS,
+      );
+      hls.on(module.Events.MANIFEST_PARSED, onManifest);
+      hls.on(module.Events.ERROR, onError);
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) onAbort();
+    });
   }
 
   private updateLiveEdge(): void {
