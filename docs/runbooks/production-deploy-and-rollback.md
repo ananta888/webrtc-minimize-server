@@ -54,9 +54,48 @@ Scheitert einer dieser Schritte, setzt er den alten Schlüssel atomar zurück un
 prüft auch den Rückweg. Nach Erfolg wird die temporäre Vorversion entfernt; sie
 darf nicht in Backups, Logs oder Deployment-Ausgaben übernommen werden.
 
-Der feste lokale Tag `webrtc-minimize-server:rollback` wird vor jedem Build
-atomar als einzig akzeptiertes Rücksprungziel hinterlegt. Er darf nicht durch
-einen nackten BuildKit-Manifest-Digest ersetzt werden. Der Produktionsdrill vom
+Der Runner sichert vor jedem Build die tatsächlich laufenden Containerimages
+von Web-App, Native-Packager und HLS-Origin unter einem gemeinsamen zufälligen
+`rollback.XXXXXX`-Suffix. Das vierzeilige `image-set-v1`-Manifest in
+`.deploy/previous-images` wird erst nach vollständiger Sicherung atomar ersetzt.
+Ein Rebuild derselben Git-Revision kann diese Rücksprungtags nicht überschreiben.
+Ist ein alter Multi-Plattform-Index nicht mehr verfügbar, wird der konfigurierte
+Tag einmal in eine unveränderliche lokale Image-ID aufgelöst. Nur wenn deren
+Linux-amd64-/arm64-Manifest exakt dem im laufenden Container gespeicherten
+Manifest-Digest entspricht, darf dieser Index als gleichwertige Sicherung dienen.
+Fehlt diese Docker-Metadatenfähigkeit oder weicht der Digest ab, erfolgt Abbruch
+vor dem Build. Ein veränderlicher Tag allein ist niemals ausreichende Evidenz.
+Tags aus früheren Snapshots werden nicht automatisch gelöscht; vor manuellem
+Pruning den aktuellen Snapshot und den gewünschten Rücksprungzeitraum sichern.
+
+Alle Kandidaten werden fertig gebaut, bevor einer der drei Dienste ersetzt
+wird. Der Native-Kandidat muss mit der vorhandenen Dienstkonfiguration und
+Geräteidentität `preflight` bestehen; der einmalige Prüfcontainer wird entfernt,
+Identitäts- und Medienvolumes nicht. Build-/Preflight-Fehler lassen laufende
+Dienste unverändert. Fehler bei Native-/Web-Aktivierung oder externem Smoke
+stellen den kompletten vorherigen Satz wieder her und prüfen ihn erneut.
+Rollback validiert zuerst das gesamte Manifest und alle lokal vorhandenen
+Images und verwendet anschließend ausschließlich `--no-build --pull never`.
+Bei einer fehlgeschlagenen Erstinstallation ohne Vorgänger werden ausschließlich
+die neuen Dienste gestoppt; kein Volume wird gelöscht.
+
+Die atomare Manifestdatei macht die Docker-Umschaltung **nicht** atomar oder
+unterbrechungsfrei. Raum-/Broadcast-Sessions sind flüchtig und müssen nach einem
+Neustart neu freigegeben werden. Datenbank-, Compose-, Firewall-, Secret- und
+Konfigurationsmigrationen werden nicht zurückgesetzt und müssen separat kompatibel
+geplant werden. Auch der Desktop-Agent-Updater ist ein anderer, noch offener Weg.
+Ein Fehler im Rückweg bleibt ausdrücklich ein Fehler, keine erfolgreiche Freigabe.
+
+`.deploy/operation.lock` schließt parallele Deployments, Rollbacks und
+Schlüsselrotationen aus. Nach SIGKILL/Hostabbruch kann die Sperre zurückbleiben:
+erst laufende Prozesse und Container prüfen, dann ausschließlich das leere
+Lock-Verzeichnis mit `rmdir` entfernen und den gespeicherten Image-Satz gezielt
+zurückspielen. Die Sperre wird nie aufgrund ihres Alters automatisch entfernt.
+Alte `.deploy/previous-image`-Dateien mit `webrtc-minimize-server:rollback`
+bleiben nur ohne aktivierten Native-Pfad verwendbar; sonst wird ein gemischter
+Rollback abgelehnt. Nackte BuildKit-Manifest-Digests bleiben ungeeignet.
+
+Der frühere, ausschließlich auf die Web-App bezogene Produktionsdrill vom
 5. September 2026 schaltete unter vier parallelen externen Health-Workern auf
 das Vorgängerimage und anschließend wieder auf die aktuelle Revision. Alle
 2.913 HTTPS-Anfragen blieben erfolgreich; der abschließende Status war 200.

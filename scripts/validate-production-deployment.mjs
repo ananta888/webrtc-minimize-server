@@ -58,7 +58,7 @@ for (const ignored of [".env", ".git", "node_modules", "dist"]) {
 }
 for (const required of [
   "git status --porcelain", "previous-image", "--no-build --wait", "rollback",
-  "docker image tag", "webrtc-minimize-server:rollback", "previous_file.new",
+  "webrtc-minimize-server:rollback", "save_image_set", "restore_image_set", "activate_image_set", "operation.lock", "preflight",
   "production-smoke-gate.mjs", "ensure-broadcast-signing-key.mjs",
   "native-broadcast-deployment-enabled.mjs", "--profile native-packager",
   "EXPECT_NATIVE_BROADCAST", "production-egress-firewall",
@@ -66,6 +66,11 @@ for (const required of [
   "mv -Tf", "previous_key", "--force-recreate",
 ]) {
   if (!deploy.includes(required)) throw new Error(`safe deploy gate missing: ${required}`);
+}
+const imageSet = read("scripts/deployment-image-set.sh");
+for (const required of ["docker image tag", "{{.Image}}", "image-set-v1", "previous-images", "mktemp",
+  "--no-build --pull never --wait", "NATIVE_PACKAGER_IMAGE", "BROADCAST_HLS_ORIGIN_IMAGE", "stop webrtc"]) {
+  if (!imageSet.includes(required)) throw new Error(`complete image rollback gate missing: ${required}`);
 }
 const egressFirewall = read("scripts/production-egress-firewall.sh");
 for (const required of [

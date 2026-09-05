@@ -56,7 +56,7 @@ test("production control plane and packager have disjoint, firewall-scoped netwo
   assert.deepEqual(config.services["production-egress-firewall"].cap_drop, ["ALL"]);
 });
 
-test("production deploy anchors a local rollback tag before a same-revision rebuild", (context) => {
+test("production deploy anchors unique local rollback tags before a same-revision rebuild", (context) => {
   const directory = mkdtempSync(path.join(tmpdir(), "production-deploy-"));
   context.after(() => rmSync(directory, { recursive: true, force: true }));
   const bin = path.join(directory, "bin");
@@ -95,16 +95,17 @@ exit 0
   const deploy = new URL("../scripts/production-deploy.sh", import.meta.url).pathname;
 
   execFileSync("sh", [deploy, "deploy"], { cwd: directory, env: environment });
-  assert.equal(readFileSync(path.join(directory, ".deploy", "previous-image"), "utf8"),
-    "webrtc-minimize-server:rollback\n");
+  const snapshot = readFileSync(path.join(directory, ".deploy", "previous-images"), "utf8");
+  assert.match(snapshot, /^image-set-v1\nwebrtc-minimize-server:rollback\.[A-Za-z0-9]{6}\n-\n-\n$/);
+  const rollbackTag = snapshot.split("\n")[1];
   let calls = readFileSync(log, "utf8");
-  assert.match(calls, /image tag webrtc-minimize-server:old webrtc-minimize-server:rollback/);
+  assert.ok(calls.includes(`image tag webrtc-minimize-server:old ${rollbackTag}`));
   assert.match(calls, /WEBRTC_IMAGE=webrtc-minimize-server:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/);
 
   execFileSync("sh", [deploy, "rollback"], { cwd: directory, env: environment });
   calls = readFileSync(log, "utf8");
-  assert.match(calls, /image inspect webrtc-minimize-server:rollback/);
-  assert.match(calls, /WEBRTC_IMAGE=webrtc-minimize-server:rollback/);
+  assert.ok(calls.includes(`image inspect ${rollbackTag}`));
+  assert.ok(calls.includes(`WEBRTC_IMAGE=${rollbackTag}`));
 });
 
 test("broadcast signing-key rotation is confirmed, atomic and removes the previous key", (context) => {
