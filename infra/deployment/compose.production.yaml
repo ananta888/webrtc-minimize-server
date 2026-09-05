@@ -14,6 +14,11 @@ services:
       BROADCAST_SIGNING_PRIVATE_KEY_FILE: /run/secrets/broadcast-signing-private-key.pem
     volumes:
       - ./.deploy/secrets/broadcast-signing-private-key.pem:/run/secrets/broadcast-signing-private-key.pem:ro
+    networks: !override
+      broadcast-origin:
+      reverse-proxy:
+        aliases:
+          - webrtc-room-server
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/readyz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 15s
@@ -35,3 +40,7 @@ services:
         max-size: 10m
         max-file: "3"
     stop_grace_period: 20s
+
+  native-packager:
+    networks: !override
+      default:

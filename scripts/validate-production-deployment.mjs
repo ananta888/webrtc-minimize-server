@@ -34,9 +34,14 @@ const nodePort = ports.entries.find(({ component, direction }) => (
 if (!nodePort || nodePort.public || nodePort.ports !== "8080") throw new Error("Node port must remain private");
 for (const required of [
   "read_only: true", "cap_drop: [\"ALL\"]", "no-new-privileges:true", "ports: !reset []",
-  "pids_limit: 256", "healthcheck:", "max-size: 10m",
+  "pids_limit: 256", "healthcheck:", "max-size: 10m", "networks: !override",
+  "reverse-proxy:", "broadcast-origin:", "native-packager:",
 ]) {
   if (!compose.includes(required)) throw new Error(`production hardening missing: ${required}`);
+}
+if ((compose.match(/networks: !override/g) || []).length !== 2
+  || !/native-packager:\s+[\s\S]*?networks: !override\s+default:\s*$/m.test(compose)) {
+  throw new Error("production services must use their minimal network sets");
 }
 if (!baseCompose.includes("${WEBRTC_BIND_ADDRESS:-127.0.0.1}:${PORT:-8080}:8080")) {
   throw new Error("development host port must default to loopback");

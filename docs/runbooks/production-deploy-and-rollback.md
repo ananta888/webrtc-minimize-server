@@ -8,4 +8,11 @@
 6. Bei später erkannter Regression `scripts/production-deploy.sh rollback` ausführen. Danach `/healthz`, `/readyz`, `/config`, Login, Raumbeitritt, Medien-Stopp und Leave-Cleanup prüfen.
 7. Fehler nur mit Commit, Image-Digest, Zeit, anonymisiertem Alertcode und Readiness-Komponente dokumentieren. Keine Tokens, Raumcodes, IPs, SDP/ICE, Medien oder Captions erfassen.
 
+Der feste lokale Tag `webrtc-minimize-server:rollback` wird vor jedem Build
+atomar als einzig akzeptiertes Rücksprungziel hinterlegt. Er darf nicht durch
+einen nackten BuildKit-Manifest-Digest ersetzt werden. Der Produktionsdrill vom
+5. September 2026 schaltete unter vier parallelen externen Health-Workern auf
+das Vorgängerimage und anschließend wieder auf die aktuelle Revision. Alle
+2.913 HTTPS-Anfragen blieben erfolgreich; der abschließende Status war 200.
+
 Zertifikatsprüfung ist Bestandteil von `curl`/Node TLS beim externen Smoke. Keycloak-, TURN-, private/public Playback- und optionale MoQ-Live-Gates benötigen ausdrücklich bereitgestellte Testkonten beziehungsweise aktivierte Adapter und werden sonst sichtbar übersprungen.

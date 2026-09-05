@@ -29,6 +29,27 @@ test("production configs contain no literal credential and expose no gateway adm
   assert.equal(matrix.entries.find(({ component }) => component === "mediamtx-admin").public, false);
 });
 
+test("production control plane and packager have disjoint minimal network sets", () => {
+  const rendered = execFileSync("docker", [
+    "compose",
+    "-f", "compose.yaml",
+    "-f", "infra/reverse-proxy/compose.caddy-network.yaml",
+    "-f", "infra/deployment/compose.production.yaml",
+    "--profile", "native-packager",
+    "config", "--format", "json",
+  ], {
+    cwd: new URL("..", import.meta.url),
+    encoding: "utf8",
+    env: { ...process.env, WEBRTC_REVERSE_PROXY_NETWORK: "policy-test-edge" },
+  });
+  const config = JSON.parse(rendered);
+  assert.deepEqual(Object.keys(config.services.webrtc.networks).sort(), ["broadcast-origin", "reverse-proxy"]);
+  assert.deepEqual(Object.keys(config.services["native-packager"].networks), ["default"]);
+  assert.deepEqual(Object.keys(config.services["broadcast-hls-origin"].networks), ["broadcast-origin"]);
+  assert.equal(config.networks["broadcast-origin"].internal, true);
+  assert.equal(config.networks["reverse-proxy"].external, true);
+});
+
 test("production deploy anchors a local rollback tag before a same-revision rebuild", (context) => {
   const directory = mkdtempSync(path.join(tmpdir(), "production-deploy-"));
   context.after(() => rmSync(directory, { recursive: true, force: true }));
