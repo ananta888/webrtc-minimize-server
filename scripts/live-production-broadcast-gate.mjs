@@ -344,8 +344,9 @@ try {
     return { status: response.status, body: await response.json() };
   });
   assert.equal(publicDirectory.status, 200);
-  assert.equal(publicDirectory.body?.programs?.some((program) => program.title === title), true,
-    "public control-plane directory did not expose the committed live program");
+  const publicProgram = publicDirectory.body?.programs?.find((program) => program.title === title);
+  assert.ok(publicProgram, "public control-plane directory did not expose the committed live program");
+  assert.match(publicProgram.programId, /^prg_[A-Za-z0-9_-]{16,64}$/);
 
   viewerContext = await newViewerContext();
   const viewer = await viewerContext.newPage();
@@ -354,8 +355,14 @@ try {
   viewer.on("pageerror", () => viewerDiagnostics.push("page_error"));
   const viewerPlayback = observePlayback(viewer);
   observeFailedApis(viewer);
-  await viewer.goto(`${origin}/?section=broadcast`, { waitUntil: "domcontentloaded" });
+  await viewer.goto(
+    `${origin}/?section=broadcast&program=${encodeURIComponent(publicProgram.programId)}`,
+    { waitUntil: "domcontentloaded" },
+  );
   await viewer.locator("#public-broadcasts-heading").waitFor();
+  await viewer.locator("#broadcast-deep-link-state").waitFor();
+  assert.equal(await viewer.locator("app-broadcast-player").count(), 0,
+    "a broadcast deep link must not authorize or start playback without a local click");
   await refreshUntilProgramVisible(viewer, "section[aria-labelledby=public-broadcasts-heading]", title);
   const renewedSession = viewer.waitForResponse((response) => (
     response.request().method() === "PUT"
