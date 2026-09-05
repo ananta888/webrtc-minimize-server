@@ -35,6 +35,15 @@ func request(value *origin, method, path, authorization string) *httptest.Respon
 
 func TestOriginServesOnlyAuthorizedExactMediaPaths(t *testing.T) {
 	value, resource := testOrigin(t)
+	if err := os.Mkdir(filepath.Join(value.root, resource, "low"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(value.root, resource, "low", "index.m3u8"), []byte("#EXTM3U\n#EXT-X-MAP:URI=\"init_0.mp4\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(value.root, resource, "low", "init_0.mp4"), []byte("synthetic-init"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(value.root, resource, "captions_live.vtt"), []byte("WEBVTT\n\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -44,6 +53,14 @@ func TestOriginServesOnlyAuthorizedExactMediaPaths(t *testing.T) {
 	}
 	if response.Header().Get("Cache-Control") != "private, no-store, max-age=0" {
 		t.Fatal("origin response is cacheable")
+	}
+	nestedManifest := request(value, http.MethodGet, "/"+resource+"/low/index.m3u8", "Bearer synthetic-test-token")
+	if nestedManifest.Code != http.StatusOK || nestedManifest.Header().Get("Content-Type") != "application/vnd.apple.mpegurl" {
+		t.Fatalf("nested rendition manifest unavailable: code=%d type=%s", nestedManifest.Code, nestedManifest.Header().Get("Content-Type"))
+	}
+	nestedInit := request(value, http.MethodGet, "/"+resource+"/low/init_0.mp4", "Bearer synthetic-test-token")
+	if nestedInit.Code != http.StatusOK || nestedInit.Header().Get("Content-Type") != "video/mp4" || nestedInit.Body.String() != "synthetic-init" {
+		t.Fatalf("nested rendition init unavailable: code=%d type=%s body=%q", nestedInit.Code, nestedInit.Header().Get("Content-Type"), nestedInit.Body.String())
 	}
 	caption := request(value, http.MethodGet, "/"+resource+"/captions_live.vtt", "Bearer synthetic-test-token")
 	if caption.Code != http.StatusOK || caption.Header().Get("Content-Type") != "text/vtt; charset=utf-8" {
@@ -75,6 +92,12 @@ func TestOriginRejectsSymlinksAndSupportsBoundedRanges(t *testing.T) {
 	}
 	if response := request(value, http.MethodGet, "/"+resource+"/low_init.mp4", "Bearer synthetic-test-token"); response.Code != http.StatusNotFound {
 		t.Fatal("origin followed a media symlink")
+	}
+	if err := os.Symlink(filepath.Dir(outside), filepath.Join(value.root, resource, "medium")); err != nil {
+		t.Fatal(err)
+	}
+	if response := request(value, http.MethodGet, "/"+resource+"/medium/init_1.mp4", "Bearer synthetic-test-token"); response.Code != http.StatusNotFound {
+		t.Fatal("origin followed a rendition-directory symlink")
 	}
 	req := httptest.NewRequest(http.MethodGet, "/"+resource+"/index.m3u8", nil)
 	req.Header.Set("Authorization", "Bearer synthetic-test-token")

@@ -425,6 +425,13 @@ test("private broadcast delivery exchanges a bearer for HttpOnly cookie and prox
   assert.equal(manifest.status, 200);
   assert.equal(await manifest.text(), "#EXTM3U\n");
   assert.equal(manifest.headers.get("cache-control"), "private, no-store");
+  const nestedSegment = await fetch(
+    `${app.httpUrl}/broadcast/play/res_aaaaaaaaaaaaaaaa/low/segment_000000001.m4s`, {
+      headers: { cookie, origin: "https://webrtc.ananta.de" },
+    },
+  );
+  assert.equal(nestedSegment.status, 200);
+  assert.equal(calls[2].input.file, "low/segment_000000001.m4s");
 
   const closed = await fetch(`${app.httpUrl}/api/broadcast/playback-sessions/${session.playbackSessionId}`, {
     method: "DELETE", headers: { cookie, origin: "https://webrtc.ananta.de" },
@@ -432,7 +439,7 @@ test("private broadcast delivery exchanges a bearer for HttpOnly cookie and prox
   assert.equal(closed.status, 204);
   assert.match(closed.headers.get("set-cookie"), /Max-Age=0/);
   assert.equal(calls[1].input.query, "?_HLS_msn=3");
-  assert.equal(calls[2].input.cookieHeader, cookie);
+  assert.equal(calls[3].input.cookieHeader, cookie);
 
   assert.equal((await fetch(`${app.httpUrl}/api/broadcast/playback-sessions`, {
     method: "POST",

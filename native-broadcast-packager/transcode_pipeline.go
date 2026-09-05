@@ -182,10 +182,10 @@ func ffmpegTranscodeArguments(assignment *packagerAssignment, output string, has
 		"-f", "hls", "-hls_time", "2", "-hls_segment_type", "fmp4",
 		"-hls_list_size", "7", "-hls_delete_threshold", "2",
 		"-hls_flags", "independent_segments+delete_segments+program_date_time+temp_file",
-		"-hls_fmp4_init_filename", "%v_init.mp4",
-		"-hls_segment_filename", filepath.Join(output, "%v_segment_%09d.m4s"),
+		"-hls_fmp4_init_filename", "init.mp4",
+		"-hls_segment_filename", filepath.Join(output, "%v", "segment_%09d.m4s"),
 		"-master_pl_name", "index.m3u8", "-var_stream_map", strings.Join(variants, " "),
-		filepath.Join(output, "%v.m3u8"),
+		filepath.Join(output, "%v", "index.m3u8"),
 	)
 }
 
@@ -308,8 +308,18 @@ func (pipeline *transcodePipeline) watchReadiness(assignment *packagerAssignment
 			continue
 		}
 		ready := true
-		for _, rendition := range assignment.Profile.Renditions {
-			if _, err := os.Stat(filepath.Join(pipeline.output, rendition.ID+".m3u8")); err != nil {
+		for index, rendition := range assignment.Profile.Renditions {
+			renditionDirectory := filepath.Join(pipeline.output, rendition.ID)
+			if _, err := os.Stat(filepath.Join(renditionDirectory, "index.m3u8")); err != nil {
+				ready = false
+				break
+			}
+			if _, err := os.Stat(filepath.Join(renditionDirectory, fmt.Sprintf("init_%d.mp4", index))); err != nil {
+				ready = false
+				break
+			}
+			segments, err := filepath.Glob(filepath.Join(renditionDirectory, "segment_*.m4s"))
+			if err != nil || len(segments) == 0 {
 				ready = false
 				break
 			}

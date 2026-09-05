@@ -89,7 +89,7 @@ func TestLiveVP8ToH264AACPipeline(t *testing.T) {
 	deadline := time.Now().Add(8 * time.Second)
 	for {
 		contents, readErr := os.ReadFile(master)
-		if readErr == nil && strings.Contains(string(contents), "low.m3u8") && strings.Contains(string(contents), "medium.m3u8") {
+		if readErr == nil && strings.Contains(string(contents), "low/index.m3u8") && strings.Contains(string(contents), "medium/index.m3u8") {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -100,7 +100,31 @@ func TestLiveVP8ToH264AACPipeline(t *testing.T) {
 	select {
 	case <-ready:
 	case <-time.After(time.Second):
-		t.Fatal("output-ready callback did not follow complete ABR manifests")
+		var files []string
+		_ = filepath.Walk(filepath.Join(root, assignment.ResourceRef), func(path string, info os.FileInfo, walkErr error) error {
+			if walkErr == nil && info != nil && !info.IsDir() {
+				if relative, relativeErr := filepath.Rel(filepath.Join(root, assignment.ResourceRef), path); relativeErr == nil {
+					files = append(files, relative)
+				}
+			}
+			return nil
+		})
+		t.Fatalf("output-ready callback did not follow complete playable ABR output: files=%v diagnostic=%s", files, pipeline.diagnostic.String())
+	}
+	for index, rendition := range assignment.Profile.Renditions {
+		renditionDirectory := filepath.Join(root, assignment.ResourceRef, rendition.ID)
+		contents, readErr := os.ReadFile(filepath.Join(renditionDirectory, "index.m3u8"))
+		initFilename := fmt.Sprintf("init_%d.mp4", index)
+		if readErr != nil || !strings.Contains(string(contents), fmt.Sprintf(`#EXT-X-MAP:URI="%s"`, initFilename)) {
+			t.Fatalf("rendition %s does not reference its local init segment: error=%v playlist=%s", rendition.ID, readErr, contents)
+		}
+		if _, statErr := os.Stat(filepath.Join(renditionDirectory, initFilename)); statErr != nil {
+			t.Fatalf("rendition %s init segment unavailable: %v", rendition.ID, statErr)
+		}
+		segments, globErr := filepath.Glob(filepath.Join(renditionDirectory, "segment_*.m4s"))
+		if globErr != nil || len(segments) == 0 {
+			t.Fatalf("rendition %s media segments unavailable: error=%v", rendition.ID, globErr)
+		}
 	}
 	if failed.Load() || pipeline.dropped.Load() != 0 {
 		t.Fatalf("live transcode degraded: failed=%t dropped=%d", failed.Load(), pipeline.dropped.Load())
@@ -141,10 +165,16 @@ func TestTranscodeArgumentsArePipeBoundedAndGenerateABR(t *testing.T) {
 		"-c:v:0 libx264", "-c:v:1 libx264", "-c:a:0 aac", "-c:a:1 aac",
 		"independent_segments+delete_segments+program_date_time+temp_file",
 		"v:0,a:0,name:low v:1,a:1,name:medium",
+		filepath.Join(output, "%v", "segment_%09d.m4s"),
+		filepath.Join(output, "%v", "index.m3u8"),
 	} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("missing bounded transcode argument %q in %s", expected, joined)
 		}
+	}
+	initIndex := slices.Index(args, "-hls_fmp4_init_filename")
+	if initIndex < 0 || initIndex+1 >= len(args) || args[initIndex+1] != "init.mp4" {
+		t.Fatal("each rendition must use a relative init segment inside its own output directory")
 	}
 	if slices.Contains(args, "-listen") || strings.Contains(joined, "http://") || strings.Contains(joined, "https://") {
 		t.Fatal("transcode pipeline unexpectedly opens or targets a network endpoint")

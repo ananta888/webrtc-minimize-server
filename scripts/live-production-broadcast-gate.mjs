@@ -25,6 +25,23 @@ let ownerContext;
 let viewerContext;
 let ownerPage;
 let playerManifest = "";
+const playbackDiagnostics = [];
+
+function observePlayback(page) {
+  page.on("response", (response) => {
+    const url = new URL(response.url());
+    if (url.origin !== origin || !url.pathname.startsWith("/broadcast/play/")) return;
+    playbackDiagnostics.push([
+      response.request().method(), url.pathname.split("/").at(-1), response.status(),
+      response.headers()["content-type"] || "missing-content-type",
+    ].join(" "));
+  });
+  page.on("requestfailed", (request) => {
+    const url = new URL(request.url());
+    if (url.origin !== origin || !url.pathname.startsWith("/broadcast/play/")) return;
+    playbackDiagnostics.push(`${request.method()} ${url.pathname.split("/").at(-1)} failed`);
+  });
+}
 
 async function login(page) {
   await page.goto(origin, { waitUntil: "domcontentloaded" });
@@ -54,7 +71,16 @@ async function startVisiblePlayer(page, cardSection) {
   });
   if (!decodable) {
     const status = (await page.locator("app-broadcast-player").innerText()).replaceAll(/\s+/g, " ").slice(0, 500);
-    throw new Error(`broadcast_video_not_decodable:${status}`);
+    const media = await page.locator("app-broadcast-player video").evaluate((video) => ({
+      readyState: video.readyState,
+      networkState: video.networkState,
+      errorCode: video.error?.code || 0,
+      paused: video.paused,
+      currentTime: Math.round(video.currentTime * 100) / 100,
+      bufferedSeconds: video.buffered.length
+        ? Math.round((video.buffered.end(video.buffered.length - 1) - video.buffered.start(0)) * 100) / 100 : 0,
+    }));
+    throw new Error(`broadcast_video_not_decodable:${status}:${JSON.stringify(media)}:${playbackDiagnostics.join("|")}`);
   }
   return manifestRequest.url();
 }
@@ -62,6 +88,7 @@ async function startVisiblePlayer(page, cardSection) {
 try {
   ownerContext = await browser.newContext({ permissions: ["camera", "microphone"] });
   ownerPage = await ownerContext.newPage();
+  observePlayback(ownerPage);
   const pageErrors = [];
   const failedApiResponses = [];
   ownerPage.on("pageerror", (error) => pageErrors.push(error.message));
@@ -136,6 +163,7 @@ try {
 
   viewerContext = await browser.newContext();
   const viewer = await viewerContext.newPage();
+  observePlayback(viewer);
   await viewer.goto(`${origin}/?section=broadcast`, { waitUntil: "domcontentloaded" });
   await viewer.locator("#public-broadcasts-heading").waitFor();
   const publicCard = viewer.locator("section[aria-labelledby=public-broadcasts-heading] .program-card", { hasText: title });
@@ -160,7 +188,10 @@ try {
   if (ownerPage && !ownerPage.isClosed()) {
     try {
       const stop = ownerPage.locator("#broadcast-stop");
-      if (await stop.isVisible()) await stop.click();
+      if (await stop.isVisible()) {
+        await stop.click();
+        await ownerPage.locator("#broadcast-start").waitFor({ state: "visible", timeout: 20_000 });
+      }
     } catch { /* best-effort cleanup; the operator wrapper revokes the isolated identity */ }
   }
   await viewerContext?.close();

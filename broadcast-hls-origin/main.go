@@ -19,7 +19,8 @@ import (
 const maximumMediaFileBytes = 24 * 1024 * 1024
 
 var resourcePattern = regexp.MustCompile(`^res_[A-Za-z0-9_-]{16,64}$`)
-var mediaFilePattern = regexp.MustCompile(`^(?:index|(?:low|medium|high)(?:_init|_segment_[0-9]{1,12})?)\.(?:m3u8|mp4|m4s)|(?:captions_[A-Za-z0-9_-]{1,48})\.vtt$`)
+var rootMediaFilePattern = regexp.MustCompile(`^(?:index|(?:low|medium|high)(?:_init|_segment_[0-9]{1,12})?)\.(?:m3u8|mp4|m4s)|(?:captions_[A-Za-z0-9_-]{1,48})\.vtt$`)
+var renditionMediaFilePattern = regexp.MustCompile(`^(?:low|medium|high)/(?:index\.m3u8|init_[0-2]\.mp4|segment_[0-9]{1,12}\.m4s)$`)
 
 type origin struct {
 	root string
@@ -55,17 +56,29 @@ func (value *origin) ServeHTTP(response http.ResponseWriter, request *http.Reque
 		return
 	}
 	parts := strings.Split(strings.TrimPrefix(request.URL.Path, "/"), "/")
-	if len(parts) != 2 || !resourcePattern.MatchString(parts[0]) || !mediaFilePattern.MatchString(parts[1]) {
+	if (len(parts) != 2 && len(parts) != 3) || !resourcePattern.MatchString(parts[0]) {
+		http.NotFound(response, request)
+		return
+	}
+	relativeMediaPath := strings.Join(parts[1:], "/")
+	if (len(parts) == 2 && !rootMediaFilePattern.MatchString(relativeMediaPath)) ||
+		(len(parts) == 3 && !renditionMediaFilePattern.MatchString(relativeMediaPath)) {
 		http.NotFound(response, request)
 		return
 	}
 	resourceDirectory := filepath.Join(value.root, parts[0])
-	filename := filepath.Join(resourceDirectory, parts[1])
-	if filepath.Dir(resourceDirectory) != value.root || filepath.Dir(filename) != resourceDirectory {
+	filename := filepath.Join(append([]string{resourceDirectory}, parts[1:]...)...)
+	relative, err := filepath.Rel(resourceDirectory, filename)
+	if err != nil || filepath.Dir(resourceDirectory) != value.root || filepath.ToSlash(relative) != relativeMediaPath {
 		http.NotFound(response, request)
 		return
 	}
-	for _, candidate := range []string{resourceDirectory, filename} {
+	candidates := []string{resourceDirectory}
+	if len(parts) == 3 {
+		candidates = append(candidates, filepath.Join(resourceDirectory, parts[1]))
+	}
+	candidates = append(candidates, filename)
+	for _, candidate := range candidates {
 		info, err := os.Lstat(candidate)
 		if err != nil || info.Mode()&os.ModeSymlink != 0 {
 			http.NotFound(response, request)

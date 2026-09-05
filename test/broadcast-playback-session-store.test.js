@@ -57,13 +57,19 @@ test("every manifest and part rechecks the live grant and only permits LL-HLS qu
     query: "_HLS_msn=42&_HLS_part=3&_HLS_skip=YES", origin: "https://webrtc.ananta.de", now,
   });
   assert.equal(manifest.upstreamPath, `/${resourceRef}/index.m3u8?_HLS_msn=42&_HLS_part=3&_HLS_skip=YES`);
+  const nativeInit = await store.authorize({
+    cookieHeader, method: "GET", resourceRef, file: "low/init_0.mp4",
+    query: "", origin: "https://webrtc.ananta.de", now,
+  });
+  assert.equal(nativeInit.upstreamPath, `/${resourceRef}/low/init_0.mp4`);
   const part = await store.authorize({
     cookieHeader, method: "HEAD", resourceRef, file: "stream_part4.mp4",
     query: "session=75279348-f58e-4e5c-b711-39e339b3cce3", origin: "", now,
   });
   assert.equal(part.cacheControl, "private, no-store, max-age=0");
-  assert.equal(calls.at(-2).expectation.action, "playback:manifest");
-  assert.equal(calls.at(-1).expectation.action, "playback:segment");
+  assert.deepEqual(calls.slice(-3).map(({ expectation }) => expectation.action), [
+    "playback:manifest", "playback:segment", "playback:segment",
+  ]);
 });
 
 test("scope, origin, traversal, token query, expiry and cookie replay fail closed as 404", async () => {
@@ -75,6 +81,9 @@ test("scope, origin, traversal, token query, expiry and cookie replay fail close
   const cookieHeader = session.setCookie.split(";", 1)[0];
   const invalid = [
     { cookieHeader, method: "GET", resourceRef, file: "../secret", query: "", origin: "" },
+    { cookieHeader, method: "GET", resourceRef, file: "low/../secret", query: "", origin: "" },
+    { cookieHeader, method: "GET", resourceRef, file: "unknown/init_0.mp4", query: "", origin: "" },
+    { cookieHeader, method: "GET", resourceRef, file: "low/init_3.mp4", query: "", origin: "" },
     { cookieHeader, method: "POST", resourceRef, file: "index.m3u8", query: "", origin: "" },
     { cookieHeader, method: "GET", resourceRef, file: "index.m3u8", query: "token=secret", origin: "" },
     { cookieHeader, method: "GET", resourceRef, file: "index.m3u8", query: "", origin: "https://evil.test" },

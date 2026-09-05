@@ -900,7 +900,9 @@ function createHttpHandler(config, registry, services) {
         response.end();
         return;
       }
-      const broadcastMediaMatch = url.pathname.match(/^\/broadcast\/play\/(res_[A-Za-z0-9_-]{16,64})\/([^/]{1,128})$/);
+      const broadcastMediaMatch = url.pathname.match(
+        /^\/broadcast\/play\/(res_[A-Za-z0-9_-]{16,64})\/((?:[^/]{1,128}\/)?[^/]{1,128})$/,
+      );
       if (broadcastMediaMatch) {
         if (!broadcastHlsProxy) {
           response.writeHead(404, { "cache-control": "no-store" });
