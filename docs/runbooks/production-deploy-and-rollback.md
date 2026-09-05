@@ -67,7 +67,9 @@ Ein isolierter, nach dem Lauf zu widerrufender Produktionsnutzer und ein nur
 diesem Principal zugeordneter Native-Packager können den vollständigen
 Playback-Pfad prüfen. Das Gate verwendet ausschließlich Chromiums synthetische
 Kamera und Mikrofon, startet beide über sichtbare Klicks, spielt zuerst als angemeldeter
-Owner privat und danach anonym öffentlich ab und verlangt nach Stop sofort 404:
+Owner privat und danach anonym öffentlich ab. Es prüft zusätzlich den dauerhaft
+sichtbaren, beschrifteten und tastaturfokussierbaren Kill-Switch und verlangt
+nach Stop sofort 404:
 
 ```bash
 RUN_LIVE_PRODUCTION_BROADCAST=1 \

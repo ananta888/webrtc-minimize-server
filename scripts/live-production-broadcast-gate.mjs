@@ -173,6 +173,23 @@ try {
   await ownerPage.locator("#broadcast-program-title").fill(title);
   await ownerPage.locator("#broadcast-start").click();
   await ownerPage.locator("#broadcast-stop").waitFor({ timeout: 45_000 });
+  const liveControl = await ownerPage.locator("#broadcast-stop").evaluate((stop) => {
+    const region = stop.closest("[role=region]");
+    const status = region?.querySelector("[role=status]");
+    stop.focus();
+    return {
+      outsideCollapsibleSummary: stop.closest("details") === null,
+      regionLabelledBy: region?.getAttribute("aria-labelledby") || "",
+      statusLiveMode: status?.getAttribute("aria-live") || "",
+      keyboardFocusable: document.activeElement === stop,
+    };
+  });
+  assert.deepEqual(liveControl, {
+    outsideCollapsibleSummary: true,
+    regionLabelledBy: "broadcast-live-control-heading",
+    statusLiveMode: "polite",
+    keyboardFocusable: true,
+  }, "active broadcast must expose an always-visible, labelled and keyboard-focusable kill switch");
   await ownerPage.waitForFunction(() => {
     const summary = document.querySelector("#broadcast-start-summary");
     return summary?.textContent?.includes("Zustand running") || Boolean(summary?.querySelector(".error")?.textContent?.trim());
@@ -182,6 +199,8 @@ try {
     const code = await ownerPage.locator("#broadcast-start-summary .error").innerText();
     throw new Error(`production_broadcast_not_running:${code}:${failedApiResponses.join("|")}`);
   }
+  assert.equal(await ownerPage.locator("#broadcast-program-status").innerText(), "Live",
+    "the persistent live region must announce the running lifecycle in plain language");
 
   const refresh = ownerPage.locator("section#broadcast-audience .audience-heading button");
   await refresh.click();

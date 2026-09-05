@@ -1,19 +1,22 @@
 # Angular-Broadcast-Cockpit
 
-Stand: 2026-09-04. Das bestehende Broadcast-Menü ist als sicherer Preflight
+Stand: 2026-09-05. Das bestehende Broadcast-Menü ist als sicherer Preflight
 sichtbar. Es wählt bis zu vier bereits lokal gestartete Originalquellen,
 Publikum, Program-Audio, Layout, Qualitätsprofil, Untertitel, Delivery und
 Packager und zeigt Upload-/CPU-Schätzung sowie die Trust-Grenze.
 
-Der einzig auswählbare Pilot ist derzeit **dieser Browser als Own-Source-
-Packager → Origin LL-HLS**. CDN, nativer Packager und MoQ sind sichtbar, aber
-deaktiviert. Blind-Media-Agenten werden nicht als Trusted Packager angeboten.
-Der Sendestart ist inzwischen mit Program-Control-Plane, gerätegebundener
-Einmal-Challenge, kurzlebigem Publisher-Grant und dem Browser-WHIP-Adapter
-verdrahtet. Er bleibt dennoch solange technisch gesperrt, wie
-`broadcast.whip.enabled` in der validierten öffentlichen Runtime `false` ist.
-Das Produktionsprofil aktiviert ihn erst bei vollständiger OIDC-, Gateway-,
-Resource-Base- und P-256-Signing-Konfiguration.
+Der ausgelieferte Produktionspilot ist **ein ausdrücklich für den aktuellen
+Raum consentierter, kontogebundener Native-Packager → privater Origin
+LL-HLS**. Mehrere eigene Packager werden einzeln angezeigt und auswählbar;
+Erreichbarkeit allein erteilt keinem Gerät Zugriff. Der Browser-WHIP-
+MediaMTX-Pfad, CDN und MoQ bleiben capability-gesteuert deaktiviert.
+Blind-Media-Agenten werden nicht als Trusted Packager angeboten.
+
+Der Sendestart verbindet Program-Control-Plane, nicht exportierbare
+P-256-Geräteidentität, kurzlebige aktions-/pfad-/epochgebundene Grants,
+quellengenauen Trusted-Decrypt-Consent und den ausgewählten Adapter. Der
+Native-Pfad ist in der öffentlichen Runtime aktiviert; der Browser-WHIP-Pfad
+bleibt bei `broadcast.whip.enabled=false` gesperrt.
 
 ## Workflow-Grundlage
 
@@ -46,10 +49,12 @@ späterer operatorseitiger Stream-Kill bleiben davon getrennte Schutzschichten.
 
 ## Noch offene Produktionsgrenze
 
-Der Browserpfad verbindet State-Machine, OIDC, nicht exportierbare
-P-256-Geräteidentität, Preview-Forks, Composition und WHIP. Nicht abgeschlossen
-sind der native Packager, operatorseitiger MediaMTX-Stream-Kill, echte
-Visibility-Rekonfiguration am Gateway, Refresh-/Reconnect-/Handoff-Gates sowie
-ein barrierefreier Tastatur-/Screen-Reader-Test im ausgelieferten Cockpit. Bis
-diese externen Gates bestanden sind, bleibt der Schalter in der
-Produktionsumgebung aus.
+Der Native-Pilot wurde in Produktion mit privatem Owner-Playback, bewusstem
+Wechsel auf Public, anonymem Viewer ohne Room-Membership sowie sofortigem
+Manifest-Widerruf nach Stop geprüft. MediaMTX ist kein Bestandteil dieses
+öffentlich aktivierten Pfads und bleibt hinter seinem getrennten Feature-Flag.
+Noch offen sind ein echter Refresh-/Reconnect-/Handoff-Lauf während aktiver
+Ausgabe sowie ein physischer Tastatur-/Screenreader-Test. Der automatisierte
+Produktionsgate prüft beim nächsten isolierten Lauf zusätzlich, dass der
+Kill-Switch außerhalb einklappbarer Bereiche liegt, korrekt beschriftet und
+tastaturfokussierbar ist.
