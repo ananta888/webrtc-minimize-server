@@ -44,6 +44,7 @@ import {
 import { BroadcastAbuseGuard } from "./broadcast-admission-control.js";
 import { BroadcastHealthRegistry } from "./broadcast-observability.js";
 import { BroadcastRuntimeError, BroadcastRuntimeRegistry } from "./broadcast-runtime-registry.js";
+import { BroadcastProgramError } from "./broadcast-program-machine.js";
 import { broadcastSubjectRef, broadcastTenantRef } from "./broadcast-identifiers.js";
 import { BroadcastAudienceError } from "./broadcast-action-policy.js";
 import { BroadcastGrantAuthority, BroadcastGrantError } from "./broadcast-grant-authority.js";
@@ -2121,6 +2122,7 @@ function configureSignaling(
         const code = error instanceof NativePackagerControlError
           || error instanceof NativePackagerAssignmentError
           || error instanceof BroadcastRuntimeError
+          || error instanceof BroadcastProgramError
           ? error.code : "invalid_native_packager_message";
         safeSend(socket, { version: 1, type: "packager-error", code });
         socket.close(1008, code);
