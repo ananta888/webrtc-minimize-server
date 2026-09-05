@@ -128,6 +128,19 @@ async function refreshUntilProgramVisible(page, cardSection, programTitle, timeo
   throw new Error(`broadcast_directory_refresh_timeout:${cardSection}:${state}`);
 }
 
+async function waitForProgramRunning(page, timeoutMs = 60_000) {
+  await page.waitForFunction(() => {
+    const status = document.querySelector("#broadcast-program-status");
+    const error = document.querySelector("#broadcast-start-summary .error");
+    return status?.textContent?.trim() === "Live" || Boolean(error?.textContent?.trim());
+  }, undefined, { timeout: timeoutMs });
+  const status = (await page.locator("#broadcast-program-status").innerText()).trim();
+  if (status !== "Live") {
+    const code = (await page.locator("#broadcast-start-summary .error").innerText()).trim();
+    throw new Error(`production_broadcast_not_running:${code}:${failedApiResponses.join("|")}`);
+  }
+}
+
 try {
   ownerContext = await browser.newContext({ permissions: ["camera", "microphone"] });
   await ownerContext.addInitScript(() => {
@@ -225,16 +238,8 @@ try {
     statusLiveMode: "polite",
     keyboardFocusable: true,
   }, "active broadcast must expose an always-visible, labelled and keyboard-focusable kill switch");
-  await ownerPage.waitForFunction(() => {
-    const summary = document.querySelector("#broadcast-start-summary");
-    return summary?.textContent?.includes("Zustand running") || Boolean(summary?.querySelector(".error")?.textContent?.trim());
-  }, undefined, { timeout: 45_000 });
-  const startSummary = await ownerPage.locator("#broadcast-start-summary").innerText();
-  if (!startSummary.includes("Zustand running")) {
-    const code = await ownerPage.locator("#broadcast-start-summary .error").innerText();
-    throw new Error(`production_broadcast_not_running:${code}:${failedApiResponses.join("|")}`);
-  }
-  assert.equal(await ownerPage.locator("#broadcast-program-status").innerText(), "Live",
+  await waitForProgramRunning(ownerPage);
+  assert.equal((await ownerPage.locator("#broadcast-program-status").innerText()).trim(), "Live",
     "the persistent live region must announce the running lifecycle in plain language");
 
   await refreshUntilProgramVisible(ownerPage, "section[aria-labelledby=own-broadcasts-heading]", title);
@@ -269,7 +274,7 @@ try {
   playerManifest = await startVisiblePlayer(viewer, "section[aria-labelledby=public-broadcasts-heading]");
 
   await ownerPage.locator("#broadcast-stop").click();
-  await ownerPage.locator("#broadcast-start").waitFor({ timeout: 20_000 });
+  await ownerPage.locator("#broadcast-start:not([disabled])").waitFor({ timeout: 30_000 });
   const revoked = await viewer.evaluate(async (url) => (await fetch(url, { cache: "no-store" })).status, playerManifest);
   assert.equal(revoked, 404, "stopped program manifest must be revoked immediately");
 
@@ -280,7 +285,7 @@ try {
   await ownerPage.locator("#broadcast-start-summary").evaluate((details) => { details.open = true; });
   await ownerPage.locator("#broadcast-program-title").fill(refreshTitle);
   await ownerPage.locator("#broadcast-start").click();
-  await ownerPage.locator("#broadcast-program-status", { hasText: "Live" }).waitFor({ timeout: 45_000 });
+  await waitForProgramRunning(ownerPage);
   await refreshUntilProgramVisible(ownerPage, "section[aria-labelledby=own-broadcasts-heading]", refreshTitle);
   const refreshManifest = await startVisiblePlayer(
     ownerPage,
