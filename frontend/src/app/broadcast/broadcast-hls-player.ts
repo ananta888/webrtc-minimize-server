@@ -1,4 +1,4 @@
-import type Hls from "hls.js";
+import Hls, { Events } from "hls.js";
 import type { ErrorData, HlsConfig, Level } from "hls.js";
 
 import { BroadcastBrowserPortError } from "./broadcast-ports";
@@ -30,7 +30,7 @@ export interface BroadcastPlayerSnapshot {
   readonly errorCode: string;
 }
 
-type HlsModule = typeof import("hls.js");
+type HlsModule = Readonly<{ default: typeof Hls; Events: typeof Events }>;
 type HlsLoader = () => Promise<HlsModule>;
 
 const initialSnapshot = (): BroadcastPlayerSnapshot => Object.freeze({
@@ -94,7 +94,7 @@ export class BroadcastHlsPlayer {
 
   constructor(
     private readonly onState: (snapshot: BroadcastPlayerSnapshot) => void = () => undefined,
-    private readonly loadHls: HlsLoader = () => import("hls.js"),
+    private readonly loadHls: HlsLoader = async () => ({ default: Hls, Events }),
   ) {}
 
   snapshot(): BroadcastPlayerSnapshot { return this.snapshotValue; }

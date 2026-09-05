@@ -3,6 +3,12 @@
 `BroadcastHlsPlayer` wählt pro konkretem `HTMLVideoElement` genau eine Engine:
 natives HLS, wenn der Browser `application/vnd.apple.mpegurl` meldet, sonst die
 exakt gepinnte stabile `hls.js`-Version 1.7.2 über Media Source Extensions.
+Die primäre Engine ist statisch in den atomaren Angular-Build eingebunden. Das
+vergrößert den komprimierten Initialtransfer gemessen von rund 213 auf 361 KiB,
+verhindert aber, dass ein erst beim Zuschauer-Klick nachgeladener ES-Modulchunk
+bei einem Browser-Netzwechsel dauerhaft als fehlgeschlagen gecacht wird. Das
+Produktionsbudget bleibt mit 1,5 MiB Warn- und 1,6 MiB Fehlergrenze eng oberhalb
+des gemessenen 1,51-MiB-Rohbundles.
 Fehlt beides, wird sichtbar `broadcast_hls_unsupported` gemeldet. MoQ und WHEP
 werden dadurch nicht implizit aktiviert.
 
