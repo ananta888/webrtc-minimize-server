@@ -592,10 +592,10 @@
     {
       "id": "TBP-021",
       "title": "Capability-gesteuerten LL-HLS/HLS-Player für Browser und Mobilgeräte bauen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 88,
+      "progress_percent": 100,
       "depends_on": ["TBP-007", "TBP-019", "TBP-020"],
       "acceptance_criteria": [
         "Der Player wählt natives HLS oder eine gepinnte hls.js-/äquivalente Engine anhand echter Capability-Checks; MoQ/WHEP werden nur über separate Adapter angeboten.",
@@ -611,7 +611,7 @@
       "status": "in_progress",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 90,
+      "progress_percent": 94,
       "depends_on": ["TBP-006", "TBP-007", "TBP-008", "TBP-018", "TBP-021"],
       "acceptance_criteria": [
         "Das ausgewählte Verfahren schützt Master-/Media-Playlists, Initialisierungssegmente, Segmente, Parts, Preload Hints, Untertitel und Keys konsistent; der Schutz endet nicht nach dem ersten Manifest.",
@@ -755,7 +755,7 @@
       "status": "in_progress",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 92,
+      "progress_percent": 95,
       "depends_on": ["TBP-007", "TBP-008", "TBP-021", "TBP-022", "TBP-029"],
       "acceptance_criteria": [
         "Eine übersichtliche Ansicht trennt live öffentliche Programme, berechtigte private Programme, eigene Programme und beendete/unerreichbare Zustände ohne private Enumeration.",
@@ -788,7 +788,7 @@
       "status": "partial",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 70,
+      "progress_percent": 75,
       "depends_on": ["TBP-003", "TBP-006", "TBP-007", "TBP-017", "TBP-018", "TBP-023", "TBP-024", "TBP-026"],
       "acceptance_criteria": [
         "Harte Limits existieren vor Allokation für Request-/Message-Größe, Rate, aktive Programs pro Principal/Tenant/Gateway, Quellen, Renditions, Encoder, Queue, Speicher, Segmentfenster, Viewer, Egress und Laufzeit.",
@@ -869,7 +869,7 @@
       "status": "in_progress",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 70,
+      "progress_percent": 75,
       "depends_on": ["TBP-011", "TBP-012", "TBP-019", "TBP-020", "TBP-021", "TBP-027", "TBP-029", "TBP-031", "TBP-032", "TBP-037"],
       "acceptance_criteria": [
         "Mindestens Chromium/Edge, Firefox, Safari Desktop, Android und iOS werden mit dokumentierten Versionen für Publish soweit unterstützt, natives/hls.js Playback, private Auth, Captions, Autoplay und Stop getestet.",
@@ -954,20 +954,20 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 0, "in_progress": 5, "partial": 16, "blocked": 0, "done": 19 },
-    "progress_percent_done": 47.5,
+    "by_status": { "todo": 0, "in_progress": 4, "partial": 16, "blocked": 0, "done": 20 },
+    "progress_percent_done": 50,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
-    "critical_path": { "total": 36, "done": 18, "remaining": 18 },
+    "critical_path": { "total": 36, "done": 19, "remaining": 17 },
     "milestones": { "total": 10, "todo": 2, "in_progress": 5, "blocked": 0, "done": 3 }
   },
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 5,
+    "in_progress": 4,
     "partial": 16,
     "blocked": 0,
-    "done": 19
+    "done": 20
   },
   "summary_notes": [
     "Der Track wurde am 2026-09-03 nach Abschluss des Blind-Media-Agent-Tracks angenommen. TBP-001 inventarisiert zuerst den verifizierten Ist-Zustand; vor dieser Bestandsaufnahme beginnt kein Broadcast-Medienpfad.",
@@ -1051,6 +1051,8 @@
     "Der abschliessende isolierte Produktions-Langzeitgate bestand am 2026-09-05 gegen https://webrtc.ananta.de. Ein temporaerer Keycloak-Nutzer bezog den Installer ueber die oeffentliche App, enrollte einen eigenen P-256-gebundenen Native-Packager auf dem Mini-PC und bestaetigte den expliziten Room-Consent. Headless Chromium publizierte Kamera und Mikrofon, spielte den privaten Owner-Pfad sowie nach gefenctem Visibility-Restart den oeffentlichen anonymen Pfad dekodierbar ab und beobachtete mindestens einen erfolgreichen Playback-Session-PUT ueber die erste Grant-Laufzeit hinaus. Stop fuehrte entweder zum expliziten Player-Endzustand oder zum sicheren broadcast_ended-Renewalpfad, danach blieben Medienrequests ruhig und das Manifest lieferte 404. Der Packager wurde normal widerrufen. Eine getrennte Nachkontrolle fand weder webrtc-gate-Container oder Identity-Volumes noch res_-Ausgabe oder webrtc-gate-Keycloak-Nutzer. Der Gate wartet nun auf die erst nach bestaetigtem Agent-Handshake gesetzte UI-Erfolgsmeldung und kann den Consent nicht mehr durch einen lokalen Checkboxzustand falsch positiv bewerten. Der anschliessende volle npm-run-check-Gate bestand mit 334 Angular- und 280 Node-/Browser-/Integrationstests, Produktionsbuild, Go-Test/Vet, Lizenz-, Deployment-, Leakage- sowie dem echten Chromium-Firefox-SFrame-Counter-350-Gate; externe opt-in Gates blieben sichtbar als Skip ausgewiesen. Offen bleiben insbesondere physische Safari-/iOS-/Android-, Screenreader-, Wahrnehmungs-, WAN-/Netzwechsel- und 60-Minuten-Lastgates; diese werden nicht als bestanden behauptet.",
     "TBP-029 wurde abgeschlossen. Ein zweiter isolierter Produktions-Langzeitlauf aktivierte ausdruecklich den Refresh-/Restore-Zweig und bestand erneut Enrollment, bestaetigten Room-Consent, private sowie oeffentliche dekodierbare Ausgabe, Playback-Erneuerung, terminalen Stop und normalen Widerruf. Der anschliessende Reload forderte laut instrumentierter Browser-Capture-API weder Kamera noch Mikrofon erneut an, erzeugte keinen weiteren Program-POST und zeigte fuer das bereits gestoppte Programm keinen stale lokalen Kill-Switch. Zusammen mit den vorhandenen Komponenten-, Zustands-, Tastaturfokus-, aria-live-, Visibility-Restart- und Cleanup-Nachweisen sind die fuenf Akzeptanzkriterien reproduzierbar erfuellt. Ein physischer Screenreader-Test bleibt als Interoperabilitaets-/Releaseevidenz in TBP-038/TBP-040 offen und wird durch diesen Abschluss nicht behauptet.",
     "TBP-038 wurde fuer einen getrennten Firefox-Zuschauerpfad wieder aktiv aufgenommen. Zwei isolierte Produktionsversuche erreichten mit Chromium-Publisher und Native-Packager den Public-Restart, Firefox erhielt danach jeweils eine anonyme Playback-Challenge, wurde beim Grant aber mit HTTP 400 abgewiesen. Ein lokaler Browservergleich reproduzierte die Ursache ohne Medieninhalt: Firefox 153 exportiert zum gueltigen P-256-JWK zusaetzlich alg ES256, Chromium 1234 nicht; der absichtlich geschlossene Broadcast-Vertrag verwarf das unbekannte Feld als invalid_broadcast_device_public_key. DeviceIdentityService kanonisiert den browserabhaengigen WebCrypto-Export nun vor Join- und Broadcast-Proof auf exakt kty, crv, x, y, ext und key_ops, statt die Servergrenze aufzuweiten. TypeScript, neun fokussierte Identitaets-/Playbacktests und ein echter Firefox-signierter Node-Verifier-Nachweis sind gruen. Der Firefox-Produktions-Langzeitgate folgt nach Rollout; Safari und physische Mobilgeraete bleiben unverified.",
+    "TBP-021 wurde abgeschlossen; TBP-022, TBP-031 und TBP-038 wurden auf Basis echter Cross-Browser-Evidenz weitergefuehrt. Revision d8ffc45 wurde ohne Rollback auf dem Mini-PC ausgerollt und meldete Control Plane sowie Broadcast ready. Chromium 151 publizierte ueber den Native-Packager; Firefox 153 bestand danach in einem eigenen OIDC-Kontext Keycloak Authorization Code/PKCE, private Owner-Berechtigung, P-256-Playback-Proof, dekodierbares hls.js-H.264/AAC-Playback und nachweislich keine Room-Membership. Ein verworfener Kontext wurde durch einen frischen anonymen Firefox-Kontext ersetzt; dieser bestand Public Directory, anonymen Proof, dekodierbare Ausgabe und mindestens einen erfolgreichen Session-PUT. Beim Stop durfte Firefox hoechstens zwei bereits geplante Requests drainieren; danach blieb ein 2,5-Sekunden-Fenster requestfrei und das Manifest lieferte weiterhin 404. Ein Wiederholungslauf war vollstaendig gruen. Player-Capabilitywahl, Controls, manuelle/automatische Qualitaet, Stall-Hysterese, begrenzte Recovery, sichere Fehlercodes und Destroy-Cleanup sind damit zusammen mit den vorhandenen Unit-/Komponententests implementierungsseitig erfuellt. Eine getrennte Nachkontrolle fand keine Gate-Container, Identity-Volumes, res_-Ausgabe oder Gate-Keycloak-Nutzer. TBP-022 bleibt wegen Safari-/Mobil-Cookie-Evidenz offen, TBP-031 wegen weiterer Deep-Link-/Provider-/Accessibility-Realgates und TBP-038 wegen Safari, Edge, Android, iOS, WAN-/Netzwechsel- sowie Wahrnehmungspruefungen.",
+    "Der abschliessende volle npm-run-check-Gate nach der JWK-Kanonisierung und den Cross-Browser-Gateerweiterungen bestand mit 336 Angular- und 280 Node-/Browser-/Integrationstests, Produktionsbuild, Go-Test/Vet, Lizenz-, Deployment-, Leakage-, Chromium-/Firefox-Medien- und SFrame-Counter-350-Nachweisen. Externe opt-in Infrastrukturtests blieben sichtbar als Skip ausgewiesen; der separat credential-gebundene Produktionsgate war unmittelbar zuvor real gruen.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }

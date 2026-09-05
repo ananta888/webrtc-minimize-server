@@ -12,6 +12,7 @@ const username = process.env.LIVE_OIDC_USERNAME || "";
 const password = process.env.LIVE_OIDC_PASSWORD || "";
 const packagerId = process.env.LIVE_NATIVE_PACKAGER_ID || "";
 const verifyRefreshRestore = process.env.LIVE_PRODUCTION_REFRESH_RESTORE === "1";
+const verifyPrivateViewer = process.env.LIVE_PRODUCTION_PRIVATE_VIEWER === "1";
 const viewerBrowserName = process.env.LIVE_PRODUCTION_VIEWER_BROWSER || "chromium";
 if (!/^https:\/\/[^/]+$/.test(origin) || !/^https:\/\/[^/]+\/realms\/[A-Za-z0-9._-]+$/.test(issuer)
   || !username || !password || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(packagerId)
@@ -26,6 +27,7 @@ const browser = await chromium.launch({
 });
 let ownerContext;
 let viewerContext;
+let privateViewerContext;
 let ownerPage;
 let viewerBrowser;
 let playerManifest = "";
@@ -72,6 +74,15 @@ function observeFailedApis(page) {
     } catch { /* a missing JSON body remains visible as an unreadable response */ }
     failedApiResponses.push(`${response.request().method()} ${new URL(response.url()).pathname} ${response.status()} ${code}`);
   });
+}
+
+async function newViewerContext() {
+  if (viewerBrowserName !== "firefox") return browser.newContext();
+  if (!viewerBrowser) {
+    viewerBrowser = await firefox.launch({ headless: true });
+    viewerBrowser.on("disconnected", () => viewerDiagnostics.push("browser_disconnected"));
+  }
+  return viewerBrowser.newContext();
 }
 
 async function login(page) {
@@ -292,6 +303,21 @@ try {
   await refreshUntilProgramVisible(ownerPage, "section[aria-labelledby=own-broadcasts-heading]", title);
   playerManifest = await startVisiblePlayer(ownerPage, "section[aria-labelledby=own-broadcasts-heading]");
   await ownerPage.locator("app-broadcast-player .controls button", { hasText: "Schließen" }).click();
+  if (verifyPrivateViewer) {
+    privateViewerContext = await newViewerContext();
+    const privateViewer = await privateViewerContext.newPage();
+    observePlayback(privateViewer);
+    observeFailedApis(privateViewer);
+    await login(privateViewer);
+    await privateViewer.locator("#broadcast-navigation").click();
+    await refreshUntilProgramVisible(privateViewer, "section[aria-labelledby=own-broadcasts-heading]", title);
+    await startVisiblePlayer(privateViewer, "section[aria-labelledby=own-broadcasts-heading]");
+    assert.equal(await privateViewer.locator("#leave-room").count(), 0,
+      "authenticated private viewers must not receive room membership");
+    await privateViewer.locator("app-broadcast-player .controls button", { hasText: "Schließen" }).click();
+    await privateViewerContext.close();
+    privateViewerContext = undefined;
+  }
   const captureCallsBeforeVisibility = await ownerPage.evaluate(() => [...window.__captureCalls]);
 
   ownerPage.once("dialog", (dialog) => dialog.accept());
@@ -321,13 +347,7 @@ try {
   assert.equal(publicDirectory.body?.programs?.some((program) => program.title === title), true,
     "public control-plane directory did not expose the committed live program");
 
-  if (viewerBrowserName === "firefox") {
-    viewerBrowser = await firefox.launch({ headless: true });
-    viewerBrowser.on("disconnected", () => viewerDiagnostics.push("browser_disconnected"));
-    viewerContext = await viewerBrowser.newContext();
-  } else {
-    viewerContext = await browser.newContext();
-  }
+  viewerContext = await newViewerContext();
   const viewer = await viewerContext.newPage();
   viewer.on("crash", () => viewerDiagnostics.push("page_crashed"));
   viewer.on("close", () => viewerDiagnostics.push("page_closed"));
@@ -372,10 +392,19 @@ try {
       cause: error,
     });
   }
-  await viewer.waitForTimeout(500);
   const terminalMediaRequests = viewerPlayback.mediaRequests;
+  let settledMediaRequests = terminalMediaRequests;
+  const drainDeadline = Date.now() + 5_000;
+  do {
+    await viewer.waitForTimeout(1_000);
+    const observed = viewerPlayback.mediaRequests;
+    if (observed === settledMediaRequests) break;
+    settledMediaRequests = observed;
+  } while (Date.now() < drainDeadline);
+  assert.ok(settledMediaRequests - terminalMediaRequests <= 2,
+    "terminal player may drain at most two already scheduled media requests");
   await viewer.waitForTimeout(2_500);
-  assert.equal(viewerPlayback.mediaRequests, terminalMediaRequests,
+  assert.equal(viewerPlayback.mediaRequests, settledMediaRequests,
     "terminal player must stop manifest and segment requests after revocation");
   const revoked = await viewer.evaluate(async (url) => (await fetch(url, { cache: "no-store" })).status, playerManifest);
   assert.equal(revoked, 404, "stopped program manifest must be revoked immediately");
@@ -433,6 +462,7 @@ try {
     } catch { /* best-effort cleanup; the operator wrapper revokes the isolated identity */ }
   }
   await viewerContext?.close();
+  await privateViewerContext?.close();
   await ownerContext?.close();
   await viewerBrowser?.close();
   await browser.close();
