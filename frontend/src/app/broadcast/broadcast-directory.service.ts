@@ -105,11 +105,11 @@ export class BroadcastDirectoryService {
     this.errorCode.set("");
     try {
       const requests = [fetch("/api/broadcasts/public", {
-        credentials: "same-origin", redirect: "error", signal: controller.signal,
+        cache: "no-store", credentials: "same-origin", redirect: "error", signal: controller.signal,
       })];
       if (authenticated) requests.push(fetch("/api/broadcasts/mine", {
         headers: this.auth.authorizationHeader(),
-        credentials: "same-origin", redirect: "error", signal: controller.signal,
+        cache: "no-store", credentials: "same-origin", redirect: "error", signal: controller.signal,
       }));
       const responses = await Promise.all(requests);
       if (!responses[0].ok) throw new Error("broadcast_directory_unavailable");

@@ -71,6 +71,37 @@ Owner privat und danach anonym öffentlich ab. Es prüft zusätzlich den dauerha
 sichtbaren, beschrifteten und tastaturfokussierbaren Kill-Switch und verlangt
 nach Stop sofort 404:
 
+Die Installationsdatei für dieses isolierte Konto kann reproduzierbar über die
+echte Angular-Oberfläche erzeugt werden. Das Ausgabeverzeichnis muss bereits
+existieren, darf kein Symlink sein und muss Modus `0700` besitzen; Manifest und
+Installer enthalten keine OIDC-Zugangsdaten und werden mit Modus `0600`
+gespeichert:
+
+```bash
+RUN_LIVE_NATIVE_PACKAGER_ONBOARDING=1 \
+LIVE_OIDC_USERNAME=... LIVE_OIDC_PASSWORD=... \
+LIVE_NATIVE_PACKAGER_ACTION=download \
+LIVE_NATIVE_PACKAGER_OUTPUT_DIR=/sicheres/temporaeres/verzeichnis \
+npm run test:native-packager-onboarding
+```
+
+Der heruntergeladene Installer enthält absichtlich das kurzlebige einmalige
+Enrollment-Ticket und muss deshalb nach Installation oder Ablauf vernichtet
+werden. `verify-online` und `revoke` verwenden `LIVE_NATIVE_PACKAGER_IDS` und
+prüfen anschließend denselben kontogebundenen UI-Pfad ohne Capture-Aufruf.
+
+Für die dokumentierte Ananta-Produktionsumgebung kapselt der explizit
+aktivierbare Operator-Gate den gesamten Weg. Er erzeugt sein zufälliges
+Testpasswort nur im Prozessspeicher, überträgt es nicht als Kommandozeilenargument
+und entfernt Testnutzer, Installer, Agent-Container und Identitätsvolume über
+einen Trap auch bei Abbruch. Die Keycloak-Zuordnung läuft ausschließlich über
+die Admin-API, die Packager-Zuordnung ausschließlich über den normalen
+Einmal-Enrollment- und späteren UI-Widerrufspfad:
+
+```bash
+RUN_LIVE_PRODUCTION_SUITE=1 npm run test:production-broadcast-suite
+```
+
 ```bash
 RUN_LIVE_PRODUCTION_BROADCAST=1 \
 LIVE_OIDC_USERNAME=... LIVE_OIDC_PASSWORD=... \

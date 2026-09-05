@@ -752,10 +752,10 @@
     {
       "id": "TBP-031",
       "title": "Öffentliche und private Zuschaueroberfläche mit Directory und Qualitätswahl erstellen",
-      "status": "partial",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 80,
+      "progress_percent": 82,
       "depends_on": ["TBP-007", "TBP-008", "TBP-021", "TBP-022", "TBP-029"],
       "acceptance_criteria": [
         "Eine übersichtliche Ansicht trennt live öffentliche Programme, berechtigte private Programme, eigene Programme und beendete/unerreichbare Zustände ohne private Enumeration.",
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 0, "in_progress": 2, "partial": 20, "blocked": 0, "done": 18 },
+    "by_status": { "todo": 0, "in_progress": 3, "partial": 19, "blocked": 0, "done": 18 },
     "progress_percent_done": 45,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -964,8 +964,8 @@
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 2,
-    "partial": 20,
+    "in_progress": 3,
+    "partial": 19,
     "blocked": 0,
     "done": 18
   },

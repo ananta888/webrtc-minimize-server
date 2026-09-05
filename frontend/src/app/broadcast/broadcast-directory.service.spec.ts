@@ -56,6 +56,8 @@ describe("BroadcastDirectoryService", () => {
     expect(directory.privatePrograms()).toHaveLength(1);
     expect(directory.ownPrograms()).toHaveLength(0);
     expect(directory.endedPrograms().map(({ programId }) => programId)).toEqual(["prg_cccccccccccccccc"]);
+    expect(vi.mocked(fetch).mock.calls[0][1]).toMatchObject({ cache: "no-store" });
+    expect(vi.mocked(fetch).mock.calls[1][1]).toMatchObject({ cache: "no-store" });
   });
 
   it("never asks for or accepts private entries from the anonymous public endpoint", async () => {
@@ -66,6 +68,7 @@ describe("BroadcastDirectoryService", () => {
     await expect(directory.load(false)).rejects.toThrow("invalid_broadcast_directory_response");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe("/api/broadcasts/public");
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ cache: "no-store" });
   });
 
   it("maps 403 and 404 to the same non-enumerating playback state", async () => {

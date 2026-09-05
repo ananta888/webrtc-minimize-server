@@ -76,8 +76,8 @@ async function login(page) {
   }
 }
 
-async function startVisiblePlayer(page, cardSection) {
-  const card = page.locator(`${cardSection} .program-card`, { hasText: title });
+async function startVisiblePlayer(page, cardSection, programTitle = title) {
+  const card = page.locator(`${cardSection} .program-card`, { hasText: programTitle });
   await card.getByRole("button", { name: "Zuschauen" }).click();
   let manifestRequest;
   try {
@@ -113,9 +113,41 @@ async function startVisiblePlayer(page, cardSection) {
   return manifestRequest.url();
 }
 
+async function refreshUntilProgramVisible(page, cardSection, programTitle, timeoutMs = 20_000) {
+  const card = page.locator(`${cardSection} .program-card`, { hasText: programTitle });
+  const refresh = page.locator("section#broadcast-audience .audience-heading button", { hasText: "Aktualisieren" });
+  const deadline = Date.now() + timeoutMs;
+  do {
+    await refresh.click();
+    if (await card.isVisible()) return;
+    await page.waitForTimeout(500);
+  } while (Date.now() < deadline);
+  throw new Error(`broadcast_directory_refresh_timeout:${cardSection}`);
+}
+
 try {
   ownerContext = await browser.newContext({ permissions: ["camera", "microphone"] });
+  await ownerContext.addInitScript(() => {
+    window.__captureCalls = [];
+    const devices = navigator.mediaDevices;
+    if (!devices) return;
+    for (const method of ["getUserMedia", "getDisplayMedia"]) {
+      const original = devices[method]?.bind(devices);
+      if (!original) continue;
+      devices[method] = (...args) => {
+        window.__captureCalls.push(method);
+        return original(...args);
+      };
+    }
+  });
   ownerPage = await ownerContext.newPage();
+  let programCreateRequests = 0;
+  ownerPage.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.origin === origin && url.pathname === "/api/broadcasts" && request.method() === "POST") {
+      programCreateRequests += 1;
+    }
+  });
   observePlayback(ownerPage);
   ownerPage.on("pageerror", (error) => pageErrors.push(error.message));
   ownerPage.on("response", async (response) => {
@@ -202,8 +234,7 @@ try {
   assert.equal(await ownerPage.locator("#broadcast-program-status").innerText(), "Live",
     "the persistent live region must announce the running lifecycle in plain language");
 
-  const refresh = ownerPage.locator("section#broadcast-audience .audience-heading button");
-  await refresh.click();
+  await refreshUntilProgramVisible(ownerPage, "section[aria-labelledby=own-broadcasts-heading]", title);
   playerManifest = await startVisiblePlayer(ownerPage, "section[aria-labelledby=own-broadcasts-heading]");
   await ownerPage.locator("app-broadcast-player .controls button", { hasText: "Schließen" }).click();
 
@@ -231,15 +262,42 @@ try {
   observePlayback(viewer);
   await viewer.goto(`${origin}/?section=broadcast`, { waitUntil: "domcontentloaded" });
   await viewer.locator("#public-broadcasts-heading").waitFor();
-  await viewer.locator("section#broadcast-audience .audience-heading button", { hasText: "Aktualisieren" }).click();
-  const publicCard = viewer.locator("section[aria-labelledby=public-broadcasts-heading] .program-card", { hasText: title });
-  await publicCard.waitFor({ timeout: 20_000 });
+  await refreshUntilProgramVisible(viewer, "section[aria-labelledby=public-broadcasts-heading]", title);
   playerManifest = await startVisiblePlayer(viewer, "section[aria-labelledby=public-broadcasts-heading]");
 
   await ownerPage.locator("#broadcast-stop").click();
   await ownerPage.locator("#broadcast-start").waitFor({ timeout: 20_000 });
   const revoked = await viewer.evaluate(async (url) => (await fetch(url, { cache: "no-store" })).status, playerManifest);
   assert.equal(revoked, 404, "stopped program manifest must be revoked immediately");
+
+  const refreshTitle = `${title} refresh`;
+  await ownerPage.locator("#prepare-broadcast-preview").click();
+  await ownerPage.locator(".broadcast-heading .status[data-state=ready]").waitFor({ timeout: 20_000 });
+  ownerPage.once("dialog", (dialog) => dialog.accept());
+  await ownerPage.locator("#broadcast-start-summary").evaluate((details) => { details.open = true; });
+  await ownerPage.locator("#broadcast-program-title").fill(refreshTitle);
+  await ownerPage.locator("#broadcast-start").click();
+  await ownerPage.locator("#broadcast-program-status", { hasText: "Live" }).waitFor({ timeout: 45_000 });
+  await refreshUntilProgramVisible(ownerPage, "section[aria-labelledby=own-broadcasts-heading]", refreshTitle);
+  const refreshManifest = await startVisiblePlayer(
+    ownerPage,
+    "section[aria-labelledby=own-broadcasts-heading]",
+    refreshTitle,
+  );
+  await ownerPage.locator("app-broadcast-player .controls button", { hasText: "Schließen" }).click();
+  const createRequestsBeforeRefresh = programCreateRequests;
+  await ownerPage.reload({ waitUntil: "domcontentloaded" });
+  await ownerPage.locator("#broadcast-preflight-heading").waitFor({ timeout: 30_000 });
+  await ownerPage.waitForTimeout(2_000);
+  assert.deepEqual(await ownerPage.evaluate(() => window.__captureCalls), [],
+    "refresh during active native output must not restart capture");
+  assert.equal(programCreateRequests, createRequestsBeforeRefresh,
+    "refresh during active native output must not create or restart a program");
+  await ownerPage.waitForFunction(async (manifest) => {
+    try { return (await fetch(manifest, { cache: "no-store" })).status === 404; } catch { return false; }
+  }, refreshManifest, { timeout: 20_000 });
+  assert.equal(await ownerPage.locator("#broadcast-stop").count(), 0,
+    "restored cockpit must not present stale local ownership of the stopped program");
   assert.deepEqual(pageErrors, []);
 
   await ownerPage.locator("#mesh-analysis-navigation").click();
