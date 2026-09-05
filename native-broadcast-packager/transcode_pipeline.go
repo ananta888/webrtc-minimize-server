@@ -50,21 +50,22 @@ func (diagnostic *boundedDiagnostic) String() string {
 }
 
 type transcodePipeline struct {
-	mu         sync.Mutex
-	cmd        *exec.Cmd
-	video      rtpPacketWriter
-	audio      rtpPacketWriter
-	videoQ     chan *rtp.Packet
-	audioQ     chan *rtp.Packet
-	writers    sync.WaitGroup
-	dropped    atomic.Uint64
-	diagnostic *boundedDiagnostic
-	done       chan error
-	output     string
-	encoder    string
-	closed     bool
-	onReady    func()
-	onFailure  func()
+	mu          sync.Mutex
+	cmd         *exec.Cmd
+	video       rtpPacketWriter
+	audio       rtpPacketWriter
+	videoQ      chan *rtp.Packet
+	audioQ      chan *rtp.Packet
+	writers     sync.WaitGroup
+	dropped     atomic.Uint64
+	diagnostic  *boundedDiagnostic
+	done        chan error
+	output      string
+	encoder     string
+	closed      bool
+	onReady     func()
+	onFailure   func()
+	closeInputs func()
 }
 
 func validOutputRoot(root string) bool {
@@ -137,18 +138,22 @@ func ffmpegTranscodeArguments(assignment *packagerAssignment, output string, has
 	if len(encoderOverride) == 1 {
 		encoder = encoderOverride[0]
 	}
+	audioURL := "pipe:3"
+	if hasVideo {
+		audioURL = "pipe:4"
+	}
+	return ffmpegTranscodeArgumentsForInputs(assignment, output, hasVideo, hasAudio, encoder, "pipe:3", audioURL)
+}
+
+func ffmpegTranscodeArgumentsForInputs(assignment *packagerAssignment, output string, hasVideo, hasAudio bool, encoder, videoURL, audioURL string) []string {
 	args := []string{"-hide_banner", "-nostdin", "-loglevel", "warning"}
 	if hasVideo {
-		args = append(args, "-f", "ivf", "-i", "pipe:3")
+		args = append(args, "-f", "ivf", "-i", videoURL)
 	} else {
 		args = append(args, "-re", "-f", "lavfi", "-i", "color=c=black:s=1280x720:r=30")
 	}
 	if hasAudio {
-		audioFD := "pipe:3"
-		if hasVideo {
-			audioFD = "pipe:4"
-		}
-		args = append(args, "-f", "ogg", "-i", audioFD)
+		args = append(args, "-f", "ogg", "-i", audioURL)
 	} else {
 		args = append(args, "-re", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo")
 	}
@@ -195,9 +200,9 @@ func ffmpegTranscodeArguments(assignment *packagerAssignment, output string, has
 		"-hls_list_size", "7", "-hls_delete_threshold", "2",
 		"-hls_flags", "independent_segments+delete_segments+program_date_time+temp_file",
 		"-hls_fmp4_init_filename", "init.mp4",
-		"-hls_segment_filename", filepath.Join(output, "%v", "segment_%09d.m4s"),
+		"-hls_segment_filename", filepath.ToSlash(filepath.Join(output, "%v", "segment_%09d.m4s")),
 		"-master_pl_name", "index.m3u8", "-var_stream_map", strings.Join(variants, " "),
-		filepath.Join(output, "%v", "index.m3u8"),
+		filepath.ToSlash(filepath.Join(output, "%v", "index.m3u8")),
 	)
 }
 
@@ -226,62 +231,40 @@ func startTranscodePipeline(cfg config, assignment *packagerAssignment, videoCod
 	if err = os.MkdirAll(output, 0o700); err != nil {
 		return nil, errors.New("native packager output unavailable")
 	}
-	readers := []*os.File{}
-	writers := []*os.File{}
-	closeFiles := func(files []*os.File) {
-		for _, file := range files {
-			_ = file.Close()
-		}
+	inputs, err := newTranscodeInputs(hasVideo, hasAudio)
+	if err != nil {
+		_ = os.RemoveAll(output)
+		return nil, errors.New("native packager inputs unavailable")
 	}
-	if hasVideo {
-		reader, writer, pipeErr := os.Pipe()
-		if pipeErr != nil {
-			return nil, pipeErr
-		}
-		readers = append(readers, reader)
-		writers = append(writers, writer)
-	}
-	if hasAudio {
-		reader, writer, pipeErr := os.Pipe()
-		if pipeErr != nil {
-			closeFiles(readers)
-			closeFiles(writers)
-			return nil, pipeErr
-		}
-		readers = append(readers, reader)
-		writers = append(writers, writer)
-	}
-	cmd := exec.Command(cfg.ffmpegPath, ffmpegTranscodeArguments(assignment, output, hasVideo, hasAudio, encoder)...)
+	cmd := exec.Command(cfg.ffmpegPath, ffmpegTranscodeArgumentsForInputs(assignment, output, hasVideo, hasAudio, encoder, inputs.videoURL, inputs.audioURL)...)
+	cmd.Dir = output
 	diagnostic := &boundedDiagnostic{}
-	cmd.ExtraFiles = readers
+	inputs.configure(cmd)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = diagnostic
 	if err = cmd.Start(); err != nil {
-		closeFiles(readers)
-		closeFiles(writers)
+		inputs.close()
 		_ = os.RemoveAll(output)
 		return nil, errors.New("native packager transcode start failed")
 	}
-	closeFiles(readers)
 	pipeline := &transcodePipeline{
 		cmd: cmd, done: make(chan error, 1), output: output, encoder: encoder,
-		onReady: onReady, onFailure: onFailure, diagnostic: diagnostic,
+		onReady: onReady, onFailure: onFailure, diagnostic: diagnostic, closeInputs: inputs.close,
 	}
-	writerIndex := 0
 	if hasVideo {
-		pipeline.video, err = ivfwriter.NewWith(writers[writerIndex], ivfwriter.WithCodec(webrtc.MimeTypeVP8))
-		writerIndex++
+		pipeline.video, err = ivfwriter.NewWith(inputs.video, ivfwriter.WithCodec(webrtc.MimeTypeVP8))
 	}
 	if err == nil && hasAudio {
-		pipeline.audio, err = oggwriter.NewWith(writers[writerIndex], 48000, 2)
+		pipeline.audio, err = oggwriter.NewWith(inputs.audio, 48000, 2)
 	}
 	if err != nil {
-		closeFiles(writers)
+		inputs.close()
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 		_ = os.RemoveAll(output)
 		return nil, errors.New("native packager media writer unavailable")
 	}
+	inputs.started(cmd)
 	queueSize := assignment.Profile.MaximumQueueFrames
 	if hasVideo {
 		pipeline.videoQ = make(chan *rtp.Packet, queueSize)
@@ -293,6 +276,7 @@ func startTranscodePipeline(cfg config, assignment *packagerAssignment, videoCod
 	}
 	go func() {
 		waitErr := cmd.Wait()
+		inputs.close()
 		pipeline.done <- waitErr
 		close(pipeline.done)
 		pipeline.mu.Lock()
@@ -414,6 +398,9 @@ func (pipeline *transcodePipeline) close() {
 	case <-writersDone:
 	case <-time.After(pipelineStopTimeout):
 		_ = process.Kill()
+		if pipeline.closeInputs != nil {
+			pipeline.closeInputs()
+		}
 		<-writersDone
 	}
 	select {
@@ -421,6 +408,9 @@ func (pipeline *transcodePipeline) close() {
 	case <-time.After(pipelineStopTimeout):
 		_ = process.Kill()
 		<-pipeline.done
+	}
+	if pipeline.closeInputs != nil {
+		pipeline.closeInputs()
 	}
 	_ = os.RemoveAll(pipeline.output)
 }

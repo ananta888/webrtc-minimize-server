@@ -5,10 +5,12 @@ go 1.24.0
 toolchain go1.24.13
 
 require (
+	github.com/Microsoft/go-winio v0.6.2
 	github.com/gorilla/websocket v1.5.3
 	github.com/pion/interceptor v0.1.47
 	github.com/pion/rtp v1.10.5
 	github.com/pion/webrtc/v4 v4.2.18
+	golang.org/x/sys v0.41.0
 )
 
 require (
@@ -29,6 +31,5 @@ require (
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/net v0.50.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 )

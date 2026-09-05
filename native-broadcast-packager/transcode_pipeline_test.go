@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -16,6 +19,7 @@ import (
 	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media/ivfreader"
+	"github.com/pion/webrtc/v4/pkg/media/oggreader"
 )
 
 func transcodeAssignment() *packagerAssignment {
@@ -34,6 +38,15 @@ func transcodeAssignment() *packagerAssignment {
 }
 
 func TestLiveVP8ToH264AACPipeline(t *testing.T) {
+	testLiveTranscode(t, false)
+}
+
+func TestLiveVP8OpusToH264AACPipeline(t *testing.T) {
+	testLiveTranscode(t, true)
+}
+
+func testLiveTranscode(t *testing.T, withAudio bool) {
+	t.Helper()
 	if os.Getenv("RUN_LIVE_NATIVE_TRANSCODE") != "1" {
 		t.Skip("set RUN_LIVE_NATIVE_TRANSCODE=1 with FFmpeg 6+")
 	}
@@ -48,14 +61,52 @@ func TestLiveVP8ToH264AACPipeline(t *testing.T) {
 	if output, generateErr := generate.CombinedOutput(); generateErr != nil {
 		t.Fatalf("VP8 fixture generation failed: %v: %s", generateErr, output)
 	}
+	var audioPackets [][]byte
+	if withAudio {
+		audioFixture := filepath.Join(root, "input.ogg")
+		generateAudio := exec.Command(ffmpeg, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+			"sine=frequency=700:sample_rate=48000", "-t", "4", "-ac", "2", "-c:a", "libopus", "-frame_duration", "20", "-page_duration", "20000", audioFixture)
+		if output, err := generateAudio.CombinedOutput(); err != nil {
+			t.Fatalf("Opus fixture failed: %v: %s", err, output)
+		}
+		file, err := os.Open(audioFixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer file.Close()
+		reader, _, err := oggreader.NewWith(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for {
+			data, header, err := reader.ParseNextPage()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, metadata := header.HeaderType(data); metadata {
+				continue
+			}
+			audioPackets = append(audioPackets, data)
+		}
+		if len(audioPackets) < 190 || len(audioPackets) > 205 {
+			t.Fatal("Opus fixture must have one 20ms packet per page")
+		}
+	}
 	assignment := transcodeAssignment()
 	assignment.Profile.MaximumQueueFrames = 120
 	assignment.expiresAt.Store(time.Now().Add(time.Minute).UnixMilli())
 	var failed atomic.Bool
 	ready := make(chan struct{})
+	audioCodec := webrtc.RTPCodecParameters{}
+	if withAudio {
+		audioCodec = webrtc.RTPCodecParameters{RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2}}
+	}
 	pipeline, err := startTranscodePipeline(config{ffmpegPath: ffmpeg, outputRoot: root}, assignment,
 		webrtc.RTPCodecParameters{RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90000}},
-		webrtc.RTPCodecParameters{}, "libx264", func() { close(ready) }, func() { failed.Store(true) })
+		audioCodec, "libx264", func() { close(ready) }, func() { failed.Store(true) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,6 +121,8 @@ func TestLiveVP8ToH264AACPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	packetizer := rtp.NewPacketizer(1200, 96, 0x12345678, &codecs.VP8Payloader{}, rtp.NewRandomSequencer(), 90000)
+	audioIndex := 0
+	started := time.Now()
 	for {
 		frame, _, readErr := reader.ParseNextFrame()
 		if readErr != nil && readErr != io.EOF {
@@ -83,6 +136,13 @@ func TestLiveVP8ToH264AACPipeline(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		for audioIndex < len(audioPackets) && time.Duration(audioIndex)*20*time.Millisecond <= time.Since(started) {
+			packet := &rtp.Packet{Header: rtp.Header{Version: 2, PayloadType: 111, SSRC: 0x87654321, SequenceNumber: uint16(audioIndex), Timestamp: uint32(audioIndex * 960)}, Payload: audioPackets[audioIndex]}
+			if err := pipeline.write(webrtc.RTPCodecTypeAudio, packet); err != nil {
+				t.Fatal(err)
+			}
+			audioIndex++
+		}
 		time.Sleep(time.Second / 30)
 	}
 	master := filepath.Join(root, assignment.ResourceRef, "index.m3u8")
@@ -93,7 +153,7 @@ func TestLiveVP8ToH264AACPipeline(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("ABR master playlist unavailable: failure=%t error=%v diagnostic=%s", failed.Load(), readErr, pipeline.diagnostic.String())
+			t.Fatalf("ABR master playlist unavailable: failure=%t error=%v playlist=%s diagnostic=%s", failed.Load(), readErr, contents, pipeline.diagnostic.String())
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -128,6 +188,21 @@ func TestLiveVP8ToH264AACPipeline(t *testing.T) {
 	}
 	if failed.Load() || pipeline.dropped.Load() != 0 {
 		t.Fatalf("live transcode degraded: failed=%t dropped=%d", failed.Load(), pipeline.dropped.Load())
+	}
+	if withAudio {
+		probeContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		checkAudio := exec.CommandContext(probeContext, ffmpeg, "-hide_banner", "-loglevel", "info", "-i", filepath.Join(root, assignment.ResourceRef, "low", "index.m3u8"),
+			"-t", "1", "-vn", "-af", "volumedetect", "-f", "null", "-")
+		output, err := checkAudio.CombinedOutput()
+		match := regexp.MustCompile(`mean_volume:\s*(-?[0-9]+(?:\.[0-9]+)?) dB`).FindSubmatch(output)
+		volume := -100.0
+		if len(match) == 2 {
+			volume, _ = strconv.ParseFloat(string(match[1]), 64)
+		}
+		if err != nil || volume < -50 || volume >= 0 {
+			t.Fatalf("AAC output has no decoded input tone: %v: %s", err, output)
+		}
 	}
 	pipeline.close()
 	if _, err = os.Stat(filepath.Join(root, assignment.ResourceRef)); !os.IsNotExist(err) {
@@ -176,8 +251,8 @@ func TestTranscodeArgumentsArePipeBoundedAndGenerateABR(t *testing.T) {
 		"-c:v:0 libx264", "-c:v:1 libx264", "-c:a:0 aac", "-c:a:1 aac",
 		"independent_segments+delete_segments+program_date_time+temp_file",
 		"v:0,a:0,name:low v:1,a:1,name:medium",
-		filepath.Join(output, "%v", "segment_%09d.m4s"),
-		filepath.Join(output, "%v", "index.m3u8"),
+		filepath.ToSlash(filepath.Join(output, "%v", "segment_%09d.m4s")),
+		filepath.ToSlash(filepath.Join(output, "%v", "index.m3u8")),
 	} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("missing bounded transcode argument %q in %s", expected, joined)

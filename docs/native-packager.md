@@ -190,7 +190,7 @@ Ausgabebasis. Bei gemeinsam konfigurierten Volumes muss weiterhin jeder
 Packager eine eigene Basis erhalten.
 
 Der folgende opt-in Gate baut ein Windows-amd64-Testbinary und führt dessen
-Konfigurations-/Outputtests auf dem tatsächlichen Windows-Host unter WSL aus.
+Konfigurations-/Output-/Named-Pipe-Tests auf dem tatsächlichen Windows-Host unter WSL aus.
 Er benötigt Docker und `powershell.exe`; er registriert keine Geräte und
 berührt weder Autostarts noch echte Medien:
 
@@ -198,12 +198,24 @@ berührt weder Autostarts noch echte Medien:
 RUN_WINDOWS_NATIVE_PACKAGER=1 node scripts/live-native-packager-windows-gate.mjs
 ```
 
-Der gemessene Windows-Lauf bestand sieben Konfigurations-/Outputtests,
-einschließlich einer echten Verzeichnis-Junction und zweier isolierter IDs.
+Der gemessene Windows-Lauf bestand Konfigurations-/Outputtests,
+einschließlich einer echten Verzeichnis-Junction und zweier isolierter IDs,
+sowie Named-Pipe-Tests für Benutzer-ACL, Prozessbindung, ausbleibenden Client,
+blockierten Schreiber und Abbruch.
 Der separate Symlink-Test blieb mangels Windows-Symlinkrecht ausdrücklich
-`SKIP`; unter Linux wurde er ausgeführt und bestand. Damit sind weder die
-Windows-FFmpeg-Pipeline noch Installation und Autostart als vollständig
-verifiziert ausgewiesen.
+`SKIP`; unter Linux wurde er ausgeführt und bestand. Mit installiertem FFmpeg
+6+ lässt sich zusätzlich die echte synthetische Windows-Medienpipeline prüfen:
+
+```bash
+RUN_WINDOWS_NATIVE_PACKAGER=1 RUN_WINDOWS_NATIVE_MEDIA=1 \
+  node scripts/live-native-packager-windows-gate.mjs
+```
+
+Auf Windows mit FFmpeg 8.1.1 bestanden Kamera mit synthetischer Stille sowie
+VP8 plus echter Opus-Testton zu zwei H.264/AAC-Renditions, vorwärts gerichtete
+Playlist-URLs, lokale Init-Segmente, OUTPUT_READY und Output-Cleanup. Der
+AAC-Ausgang wird decodiert und auf einen hörbaren Testpegel geprüft. Das ist
+kein Langzeit-, Hardwareencoder-, Installer- oder Autostart-Nachweis.
 
 Jeder Build enthält außerdem eine geschlossene, rein technische
 `native-packager-build`-Auskunft. Sie ist ohne Konfiguration und ohne Zugriff
@@ -255,8 +267,24 @@ Playlists, H.264/AAC, unabhängige Segmente und sauberes Ende:
 RUN_LIVE_NATIVE_PACKAGER=1 npm run test:native-packager
 ```
 
-Der produktive Agent nimmt ausschließlich VP8/Opus-RTP über lokale, vererbte
-Pipes an. Pro Assignment startet er FFmpeg ohne Shell und ohne Netzwerkziel,
+Der produktive Agent nimmt ausschließlich VP8/Opus-RTP an. Ein getrennter
+OS-Prozessadapter übergibt unter Linux/macOS IVF/Opus-Ogg über lokale vererbte
+Pipes, unter Windows über zwei lokale Named Pipes. Der Windows-Adapter nutzt
+[Microsoft go-winio v0.6.2](https://github.com/microsoft/go-winio/releases/tag/v0.6.2)
+(MIT, Notice in `native-broadcast-packager/LICENSE.go-winio` und im CI-Artefakt)
+für abbrechbare I/O; die Bibliothek erzeugt die erste Pipe exklusiv und
+verweigert Remote-Clients. Jede Pipe hat einen zufälligen 192-Bit-Namen und
+eine geschützte DACL nur für den laufenden Benutzer. Vor dem ersten
+Containerheader wird die vom Betriebssystem gemeldete Client-PID gegen den
+gestarteten FFmpeg-Kindprozess geprüft. Fremde PIDs brechen ohne Medienausgabe
+ab. Es entsteht kein TCP-/UDP-Listener, kein Firewall-Eintrag und keine
+persistente Input-Mediendatei.
+
+Vor Aktivierung werden höchstens 4 KiB Containerheader je Eingang gepuffert;
+danach gelten Kernel-Backpressure, 15 Sekunden Connect- und fünf Sekunden
+Write-Deadline. Prozessende, Stop und Fehler schließen Listener und Verbindungen
+und lösen auch wartende Writer. Pro Assignment startet der Agent FFmpeg ohne
+Shell und ohne Netzwerkziel im eigenen flüchtigen Resource-Verzeichnis,
 erzeugt eine admission-kontrollierte H.264-Main/AAC-Leiter mit gemeinsamen
 Zwei-Sekunden-GOPs, maximal sieben fMP4-Segmenten und bounded RTP-Queues. Jede
 Rendition liegt in einem geschlossenen `low|medium|high`-Unterpfad mit eigenem
