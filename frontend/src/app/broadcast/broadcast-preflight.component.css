@@ -18,6 +18,32 @@ app-broadcast-preflight .broadcast-heading {
   align-items: flex-start;
 }
 
+app-broadcast-preflight .broadcast-live-control {
+  position: sticky;
+  top: .75rem;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1rem;
+  border: 1px solid rgba(255, 110, 110, .55);
+  border-radius: .9rem;
+  background: rgba(38, 17, 24, .96);
+  box-shadow: 0 .6rem 1.5rem rgba(0, 0, 0, .28);
+  padding: .85rem 1rem;
+}
+
+app-broadcast-preflight .broadcast-live-control h2,
+app-broadcast-preflight .broadcast-live-control p {
+  margin-bottom: 0;
+}
+
+app-broadcast-preflight #broadcast-program-status {
+  margin-top: .3rem;
+  color: var(--text-muted, #c8cfda);
+}
+
 app-broadcast-preflight h1,
 app-broadcast-preflight h2,
 app-broadcast-preflight p {
@@ -284,6 +310,11 @@ app-broadcast-preflight .error {
 }
 
 @media (max-width: 850px) {
+  app-broadcast-preflight .broadcast-live-control {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   app-broadcast-preflight .preflight-grid,
   app-broadcast-preflight .caption-destinations,
   app-broadcast-preflight .caption-settings-grid {

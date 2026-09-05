@@ -45,6 +45,22 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
   readonly controlBusy = this.publisher.busy;
   readonly activeProgramId = this.publisher.activeProgramId;
   readonly programState = computed(() => this.publisher.coordinator.programState.value());
+  readonly programActive = computed(() => new Set([
+    "starting", "running", "degraded", "reconnecting", "handing_over", "stopping",
+  ]).has(this.programState().lifecycle));
+  readonly programStatusLabel = computed(() => {
+    switch (this.programState().lifecycle) {
+      case "starting": return "Start wird vorbereitet";
+      case "running": return "Live";
+      case "degraded": return "Beeinträchtigt";
+      case "reconnecting": return "Verbindung wird wiederhergestellt";
+      case "handing_over": return "Packager wird übergeben";
+      case "stopping": return "Sendung wird gestoppt";
+      case "stopped": return "Gestoppt";
+      case "failed": return "Fehlgeschlagen";
+      default: return "Nicht gestartet";
+    }
+  });
   readonly eligibleNativePackagers = computed(() => this.nativePackagers.eligible(this.roomId()));
   readonly selectedNativePackager = computed(() => this.eligibleNativePackagers()
     .find(({ id }) => id === this.nativePackagers.selectedPackagerId()) || null);
@@ -56,8 +72,7 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
     && this.preflight.selectedSourceIds().length > 0
     && this.packagerReady()
     && !this.controlBusy()
-    && !new Set(["starting", "running", "degraded", "reconnecting", "handing_over", "stopping"])
-      .has(this.programState().lifecycle));
+    && !this.programActive());
   readonly canStop = computed(() => Boolean(this.activeProgramId() || this.programState().program?.programId)
     && this.programState().lifecycle !== "stopping");
   readonly estimatedCpuClass = computed(() => {

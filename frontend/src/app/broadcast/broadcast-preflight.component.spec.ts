@@ -13,6 +13,9 @@ describe("BroadcastPreflightComponent audio policy", () => {
     expect(template).toContain('id="broadcast-start-summary"');
     expect(template).toContain('id="broadcast-start"');
     expect(template).toContain('id="broadcast-stop"');
+    expect(template.indexOf('id="broadcast-stop"')).toBeLessThan(template.indexOf('id="broadcast-start-summary"'));
+    expect(template).toContain('id="broadcast-program-status" role="status" aria-live="polite"');
+    expect(template).toContain('role="region" aria-labelledby="broadcast-live-control-heading"');
     expect(template).toContain('(click)="startBroadcast()"');
     expect(template).toContain('[disabled]="!canStart()"');
     expect(template).toContain("Blind-Media-Agenten sind keine Trusted Packager");
@@ -22,6 +25,8 @@ describe("BroadcastPreflightComponent audio policy", () => {
     expect(template).toContain("<app-broadcast-audience");
     expect(template).toContain('[enabled]="enabled()"');
     expect(component).toContain("estimatedCpuClass");
+    expect(component).toContain("programStatusLabel");
+    expect(component).toContain("programActive");
     expect(component).toContain("window.confirm");
     expect(component).toContain("this.publisher.start");
   });

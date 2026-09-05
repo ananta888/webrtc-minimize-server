@@ -7,6 +7,18 @@
   <span class="status" [attr.data-state]="preflight.lifecycle()">{{ preflight.lifecycle() }}</span>
 </section>
 
+@if (programActive()) {
+  <section class="broadcast-live-control" role="region" aria-labelledby="broadcast-live-control-heading">
+    <div>
+      <p class="eyebrow">Broadcast-Steuerung</p>
+      <h2 id="broadcast-live-control-heading">Sendung läuft</h2>
+      <p id="broadcast-program-status" role="status" aria-live="polite">{{ programStatusLabel() }}</p>
+    </div>
+    <button id="broadcast-stop" class="button danger" type="button" [disabled]="!canStop()" (click)="stopBroadcast()">Sendung sofort stoppen</button>
+  </section>
+}
+@if (controlError()) { <p class="error" role="alert">{{ controlError() }}</p> }
+
 <section class="preflight-grid">
   <section class="panel" aria-labelledby="broadcast-sources-heading">
     <div class="panel-title">
@@ -216,15 +228,12 @@
       @if (!roomCreator() && joined()) {
         <p class="policy-note">Nur der aktuelle Ersteller dieses Raums darf den Broadcast-Zweig starten.</p>
       }
-      @if (activeProgramId() || programState().lifecycle === 'starting' || programState().lifecycle === 'running' || programState().lifecycle === 'degraded' || programState().lifecycle === 'reconnecting' || programState().lifecycle === 'handing_over' || programState().lifecycle === 'stopping') {
-        <button id="broadcast-stop" class="button danger wide" type="button" [disabled]="!canStop()" (click)="stopBroadcast()">Sendung sofort stoppen</button>
-      } @else {
+      @if (!programActive()) {
         <button id="broadcast-start" class="button primary wide" type="button" [disabled]="!canStart()" (click)="startBroadcast()">{{ enabled() ? (controlBusy() ? 'Start wird autorisiert…' : 'Programm anlegen und Start bestätigen') : 'Broadcast ist sicher deaktiviert' }}</button>
       }
       @if (programState().program; as program) {
         <p class="policy-note">Programm {{ program.programId }} · Zustand {{ programState().lifecycle }} · Epoche {{ program.programEpoch }}</p>
       }
-      @if (controlError()) { <p class="error" role="alert">{{ controlError() }}</p> }
     </details>
   </section>
 </section>

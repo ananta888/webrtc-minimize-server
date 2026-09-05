@@ -34,7 +34,10 @@ idle → starting → running ↔ degraded/reconnecting/handing_over
 ```
 
 `stopped` bleibt mit Grund sichtbar, bis ein neuer expliziter Start beginnt.
-Der sichtbare Kill-Switch bricht auch einen noch laufenden Start ab und versucht
+Während jedes aktiven Zustands liegt eine sticky Statusleiste mit deutschem,
+per `aria-live` angekündigtem Zustand und nativ fokussierbarem Stop-Button
+außerhalb der zuklappbaren Startzusammenfassung. Der sichtbare Kill-Switch
+bricht auch einen noch laufenden Start ab und versucht
 unabhängig voneinander WHIP-Stop, serverseitigen Grant-Revoke und lokales
 Source-Cleanup. Ein normaler Raum-Leave wartet darauf. Zusätzlich bindet die
 Control Plane das Programm an den konkret attestierten Publisher-Browser und
