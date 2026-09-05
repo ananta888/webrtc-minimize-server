@@ -55,25 +55,21 @@ async function login(page) {
       await page.locator("#login").click();
       await page.waitForURL((url) => url.origin === new URL(issuer).origin, { timeout: 30_000 });
       await page.locator("#username").waitFor({ state: "visible", timeout: 30_000 });
-      lastError = undefined;
-      break;
+      assert.equal(new URL(page.url()).origin, new URL(issuer).origin,
+        "login must stay on the configured issuer");
+      await page.locator("#username").fill(username);
+      await page.locator("#password").fill(password);
+      await page.locator("#kc-login").click();
+      await page.locator("#logout").waitFor({ timeout: 30_000 });
+      return;
     } catch (error) {
       lastError = error;
+      if (attempt < 2) await page.waitForTimeout(500);
     }
   }
-  if (lastError) {
-    throw new Error(`production_oidc_login_unavailable:${new URL(page.url()).origin}`, { cause: lastError });
-  }
-  assert.equal(new URL(page.url()).origin, new URL(issuer).origin, "login must stay on the configured issuer");
-  await page.locator("#username").fill(username);
-  await page.locator("#password").fill(password);
-  await page.locator("#kc-login").click();
-  try {
-    await page.locator("#logout").waitFor({ timeout: 30_000 });
-  } catch (error) {
-    const body = (await page.locator("body").innerText()).replaceAll(/\s+/g, " ").slice(0, 500);
-    throw new Error(`production_oidc_callback_failed:${new URL(page.url()).origin}:${body}`, { cause: error });
-  }
+  const currentOrigin = URL.canParse(page.url()) ? new URL(page.url()).origin : "unparseable";
+  const body = (await page.locator("body").innerText()).replaceAll(/\s+/g, " ").slice(0, 500);
+  throw new Error(`production_oidc_login_unavailable:${currentOrigin}:${body}`, { cause: lastError });
 }
 
 async function startVisiblePlayer(page, cardSection, programTitle = title) {
