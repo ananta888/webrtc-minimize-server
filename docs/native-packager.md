@@ -201,9 +201,10 @@ Pipes an. Pro Assignment startet er FFmpeg ohne Shell und ohne Netzwerkziel,
 erzeugt eine admission-kontrollierte H.264-Main/AAC-Leiter mit gemeinsamen
 Zwei-Sekunden-GOPs, maximal sieben fMP4-Segmenten und bounded RTP-Queues. Jede
 Rendition liegt in einem geschlossenen `low|medium|high`-Unterpfad mit eigenem
-`init_0.mp4`, `init_1.mp4` beziehungsweise `init_2.mp4`; damit werden
-Codecparameter nicht zwischen Auflösungen geteilt. FFmpegs nicht expandiertes
-`%v` gelangt nie in einen Init-Dateinamen oder eine Playlist. Der Agent
+`init.mp4` bei einer Einzelrendition beziehungsweise `init_0.mp4` bis
+`init_2.mp4` bei einer Mehrfachleiter; damit werden Codecparameter nicht
+zwischen Auflösungen geteilt. FFmpegs nicht expandiertes `%v` gelangt nie in
+einen Init-Dateinamen oder eine Playlist. Der Agent
 löscht die `res_`-Ausgabe bei Stop. Ein separater statischer
 `broadcast-hls-origin` liest dasselbe Volume ausschließlich read-only, verlangt
 die bereits von der Node-Control-Plane geprüfte Bearer-Grenze und akzeptiert

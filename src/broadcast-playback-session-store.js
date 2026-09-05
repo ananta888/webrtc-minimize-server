@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 const RESOURCE = /^res_[A-Za-z0-9_-]{16,64}$/;
 const SESSION = /^pbs_[A-Za-z0-9_-]{24,64}$/;
 const COOKIE_NAME = /^__Secure-webrtc-broadcast-[A-Za-z0-9_-]{8,16}$/;
-const MEDIA_FILE = /^(?:[A-Za-z0-9_-]{1,96}\.(?:m3u8|mp4|m4s|vtt|key)|gap\.mp4|(?:low|medium|high)\/(?:index\.m3u8|init_[0-2]\.mp4|segment_[0-9]{1,12}\.m4s))$/;
+const MEDIA_FILE = /^(?:[A-Za-z0-9_-]{1,96}\.(?:m3u8|mp4|m4s|vtt|key)|gap\.mp4|(?:low|medium|high)\/(?:index\.m3u8|init(?:_[0-2])?\.mp4|segment_[0-9]{1,12}\.m4s))$/;
 const MANIFEST_FILE = /\.m3u8$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 

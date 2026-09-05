@@ -62,13 +62,18 @@ test("every manifest and part rechecks the live grant and only permits LL-HLS qu
     query: "", origin: "https://webrtc.ananta.de", now,
   });
   assert.equal(nativeInit.upstreamPath, `/${resourceRef}/low/init_0.mp4`);
+  const singleRenditionInit = await store.authorize({
+    cookieHeader, method: "GET", resourceRef, file: "low/init.mp4",
+    query: "", origin: "https://webrtc.ananta.de", now,
+  });
+  assert.equal(singleRenditionInit.upstreamPath, `/${resourceRef}/low/init.mp4`);
   const part = await store.authorize({
     cookieHeader, method: "HEAD", resourceRef, file: "stream_part4.mp4",
     query: "session=75279348-f58e-4e5c-b711-39e339b3cce3", origin: "", now,
   });
   assert.equal(part.cacheControl, "private, no-store, max-age=0");
-  assert.deepEqual(calls.slice(-3).map(({ expectation }) => expectation.action), [
-    "playback:manifest", "playback:segment", "playback:segment",
+  assert.deepEqual(calls.slice(-4).map(({ expectation }) => expectation.action), [
+    "playback:manifest", "playback:segment", "playback:segment", "playback:segment",
   ]);
 });
 

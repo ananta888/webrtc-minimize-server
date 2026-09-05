@@ -314,7 +314,7 @@ func (pipeline *transcodePipeline) watchReadiness(assignment *packagerAssignment
 				ready = false
 				break
 			}
-			if _, err := os.Stat(filepath.Join(renditionDirectory, fmt.Sprintf("init_%d.mp4", index))); err != nil {
+			if _, err := os.Stat(filepath.Join(renditionDirectory, renditionInitFilename(len(assignment.Profile.Renditions), index))); err != nil {
 				ready = false
 				break
 			}
@@ -331,6 +331,13 @@ func (pipeline *transcodePipeline) watchReadiness(assignment *packagerAssignment
 			return
 		}
 	}
+}
+
+func renditionInitFilename(renditionCount, index int) string {
+	if renditionCount == 1 {
+		return "init.mp4"
+	}
+	return fmt.Sprintf("init_%d.mp4", index)
 }
 
 func (pipeline *transcodePipeline) startWriter(writer rtpPacketWriter, queue <-chan *rtp.Packet) {

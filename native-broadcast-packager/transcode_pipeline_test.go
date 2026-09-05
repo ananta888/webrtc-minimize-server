@@ -114,7 +114,7 @@ func TestLiveVP8ToH264AACPipeline(t *testing.T) {
 	for index, rendition := range assignment.Profile.Renditions {
 		renditionDirectory := filepath.Join(root, assignment.ResourceRef, rendition.ID)
 		contents, readErr := os.ReadFile(filepath.Join(renditionDirectory, "index.m3u8"))
-		initFilename := fmt.Sprintf("init_%d.mp4", index)
+		initFilename := renditionInitFilename(len(assignment.Profile.Renditions), index)
 		if readErr != nil || !strings.Contains(string(contents), fmt.Sprintf(`#EXT-X-MAP:URI="%s"`, initFilename)) {
 			t.Fatalf("rendition %s does not reference its local init segment: error=%v playlist=%s", rendition.ID, readErr, contents)
 		}
@@ -132,6 +132,17 @@ func TestLiveVP8ToH264AACPipeline(t *testing.T) {
 	pipeline.close()
 	if _, err = os.Stat(filepath.Join(root, assignment.ResourceRef)); !os.IsNotExist(err) {
 		t.Fatal("transient native output survived pipeline cleanup")
+	}
+}
+
+func TestRenditionInitFilenameMatchesSingleAndMultiVariantFFmpegOutput(t *testing.T) {
+	if filename := renditionInitFilename(1, 0); filename != "init.mp4" {
+		t.Fatalf("single-rendition init filename mismatch: %s", filename)
+	}
+	for index, expected := range []string{"init_0.mp4", "init_1.mp4", "init_2.mp4"} {
+		if filename := renditionInitFilename(3, index); filename != expected {
+			t.Fatalf("multi-rendition init filename mismatch: got=%s expected=%s", filename, expected)
+		}
 	}
 }
 

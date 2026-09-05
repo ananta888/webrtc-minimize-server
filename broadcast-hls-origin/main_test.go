@@ -44,6 +44,9 @@ func TestOriginServesOnlyAuthorizedExactMediaPaths(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(value.root, resource, "low", "init_0.mp4"), []byte("synthetic-init"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(value.root, resource, "low", "init.mp4"), []byte("synthetic-single-init"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(value.root, resource, "captions_live.vtt"), []byte("WEBVTT\n\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -61,6 +64,10 @@ func TestOriginServesOnlyAuthorizedExactMediaPaths(t *testing.T) {
 	nestedInit := request(value, http.MethodGet, "/"+resource+"/low/init_0.mp4", "Bearer synthetic-test-token")
 	if nestedInit.Code != http.StatusOK || nestedInit.Header().Get("Content-Type") != "video/mp4" || nestedInit.Body.String() != "synthetic-init" {
 		t.Fatalf("nested rendition init unavailable: code=%d type=%s body=%q", nestedInit.Code, nestedInit.Header().Get("Content-Type"), nestedInit.Body.String())
+	}
+	singleInit := request(value, http.MethodGet, "/"+resource+"/low/init.mp4", "Bearer synthetic-test-token")
+	if singleInit.Code != http.StatusOK || singleInit.Body.String() != "synthetic-single-init" {
+		t.Fatalf("single-rendition init unavailable: code=%d body=%q", singleInit.Code, singleInit.Body.String())
 	}
 	caption := request(value, http.MethodGet, "/"+resource+"/captions_live.vtt", "Bearer synthetic-test-token")
 	if caption.Code != http.StatusOK || caption.Header().Get("Content-Type") != "text/vtt; charset=utf-8" {
