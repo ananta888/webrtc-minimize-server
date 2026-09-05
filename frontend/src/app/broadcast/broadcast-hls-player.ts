@@ -343,6 +343,7 @@ export class BroadcastHlsPlayer {
     const now = Date.now();
     this.recoveries = this.recoveries.filter((value) => value > now - 30_000);
     if (this.recoveries.length >= 2) {
+      this.hls?.stopLoad();
       this.update({ lifecycle: "failed", errorCode: "broadcast_player_recovery_exhausted" });
       return;
     }
@@ -359,7 +360,14 @@ export class BroadcastHlsPlayer {
 
   private handleHlsError(data: ErrorData): void {
     if (!data.fatal) return;
-    if (data.type === "networkError") this.recover("network");
+    const status = Number(data.response?.code || 0);
+    if (data.type === "networkError" && [401, 403, 404, 410].includes(status)) {
+      this.hls?.stopLoad();
+      this.update({ lifecycle: "ended", errorCode: "broadcast_ended" });
+    } else if (data.type === "networkError" && status === 429) {
+      this.hls?.stopLoad();
+      this.update({ lifecycle: "failed", errorCode: "broadcast_player_rate_limited" });
+    } else if (data.type === "networkError") this.recover("network");
     else if (data.type === "mediaError" && this.hls) {
       this.hls.recoverMediaError();
       this.recover("media");

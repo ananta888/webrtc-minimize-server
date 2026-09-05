@@ -172,8 +172,36 @@ describe("BroadcastHlsPlayer", () => {
     hls.emit("hlsError", { fatal: true, type: "networkError" });
     await Promise.resolve();
     expect(hls.startLoad).toHaveBeenCalledTimes(2);
+    expect(hls.stopLoad).toHaveBeenCalledOnce();
     expect(player.snapshot()).toMatchObject({ lifecycle: "failed", recoveryCount: 2, errorCode: "broadcast_player_recovery_exhausted" });
     await player.destroy();
+  });
+
+  it("stops loading terminal revocation and rate-limit responses instead of retrying", async () => {
+    FakeHls.instances = [];
+    const endedPlayer = new BroadcastHlsPlayer(() => undefined, async () => fakeModule as never);
+    await endedPlayer.open(video(false), "/broadcast/play/res_1111111111111111/index.m3u8", {
+      muted: true, volume: 1,
+    }, new AbortController().signal);
+    const endedHls = FakeHls.instances[0];
+    endedHls.emit("hlsError", { fatal: true, type: "networkError", response: { code: 404 } });
+    expect(endedHls.stopLoad).toHaveBeenCalledOnce();
+    expect(endedHls.startLoad).not.toHaveBeenCalled();
+    expect(endedPlayer.snapshot()).toMatchObject({ lifecycle: "ended", errorCode: "broadcast_ended" });
+    await endedPlayer.destroy();
+
+    const limitedPlayer = new BroadcastHlsPlayer(() => undefined, async () => fakeModule as never);
+    await limitedPlayer.open(video(false), "/broadcast/play/res_2222222222222222/index.m3u8", {
+      muted: true, volume: 1,
+    }, new AbortController().signal);
+    const limitedHls = FakeHls.instances[1];
+    limitedHls.emit("hlsError", { fatal: true, type: "networkError", response: { code: 429 } });
+    expect(limitedHls.stopLoad).toHaveBeenCalledOnce();
+    expect(limitedHls.startLoad).not.toHaveBeenCalled();
+    expect(limitedPlayer.snapshot()).toMatchObject({
+      lifecycle: "failed", errorCode: "broadcast_player_rate_limited",
+    });
+    await limitedPlayer.destroy();
   });
 
   it("polls the same protected playback scope for bounded live WebVTT and revokes it on destroy", async () => {

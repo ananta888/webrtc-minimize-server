@@ -245,7 +245,7 @@
       "id": "TBP-M06",
       "title": "Player, private Auslieferung und Reichweitenskalierung",
       "task_ids": ["TBP-021", "TBP-022", "TBP-023", "TBP-024"],
-      "status": "todo"
+      "status": "in_progress"
     },
     {
       "id": "TBP-M07",
@@ -592,10 +592,10 @@
     {
       "id": "TBP-021",
       "title": "Capability-gesteuerten LL-HLS/HLS-Player für Browser und Mobilgeräte bauen",
-      "status": "partial",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 75,
+      "progress_percent": 78,
       "depends_on": ["TBP-007", "TBP-019", "TBP-020"],
       "acceptance_criteria": [
         "Der Player wählt natives HLS oder eine gepinnte hls.js-/äquivalente Engine anhand echter Capability-Checks; MoQ/WHEP werden nur über separate Adapter angeboten.",
@@ -954,18 +954,18 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 0, "in_progress": 3, "partial": 19, "blocked": 0, "done": 18 },
+    "by_status": { "todo": 0, "in_progress": 4, "partial": 18, "blocked": 0, "done": 18 },
     "progress_percent_done": 45,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
     "critical_path": { "total": 36, "done": 17, "remaining": 19 },
-    "milestones": { "total": 10, "todo": 3, "in_progress": 4, "blocked": 0, "done": 3 }
+    "milestones": { "total": 10, "todo": 2, "in_progress": 5, "blocked": 0, "done": 3 }
   },
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 3,
-    "partial": 19,
+    "in_progress": 4,
+    "partial": 18,
     "blocked": 0,
     "done": 18
   },
