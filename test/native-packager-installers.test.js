@@ -52,6 +52,11 @@ test("native packager Windows installer has checksum, enrollment cleanup and no 
   assert.match(installer.content, /NativePackager\\pkr_0123456789abcdef\\run-pkr_/);
   assert.match(installer.content, /ReparsePoint/);
   assert.match(installer.content, /Test-Path -LiteralPath \$root/);
+  assert.match(installer.content, /SetAccessRuleProtection\(\$true, \$false\)/);
+  assert.match(installer.content, /uninstall-pkr_0123456789abcdef\.ps1/);
+  assert.match(installer.content, /StringComparison\]::OrdinalIgnoreCase/);
+  assert.match(installer.content, /\.running\.lock/);
+  assert.doesNotMatch(installer.content, /Stop-Process -Name|taskkill|New-NetFirewallRule/);
   assert.doesNotMatch(installer.content, /New-NetFirewallRule/);
   assert.throws(() => service.artifact("../secret"), /artifact_unavailable/);
 });
@@ -177,9 +182,11 @@ test("native packager Windows installer and launcher parse in the real Windows P
   context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const { content } = service.installer({ enrollment: enrollment("windows"), targetId: "windows-amd64", publicOrigin: "https://webrtc.example" });
   const launcher = /\$launcherContent = @'\r?\n([\s\S]*?)\r?\n'@/.exec(content)?.[1];
+  const uninstaller = /\$uninstallerContent = @'\r?\n([\s\S]*?)\r?\n'@/.exec(content)?.[1];
   assert.ok(launcher);
+  assert.ok(uninstaller);
   const parser = "$tokens=$null; $errors=$null; [void][System.Management.Automation.Language.Parser]::ParseInput([Console]::In.ReadToEnd(), [ref]$tokens, [ref]$errors); if ($errors.Count -gt 0) { throw 'Installer syntax invalid' }; Write-Output 'PASS Windows PowerShell parser'";
-  for (const script of [content, launcher]) {
+  for (const script of [content, launcher, uninstaller]) {
     const result = execFileSync("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", parser], {
       input: script, encoding: "utf8", timeout: 15_000, stdio: ["pipe", "pipe", "pipe"],
     });

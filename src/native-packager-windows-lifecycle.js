@@ -1,0 +1,55 @@
+// Only a contract-validated packager ID may reach these script generators.
+export function windowsPackagerUninstaller(id) {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "$base = Join-Path $env:LOCALAPPDATA 'Ananta\\NativePackager'",
+    `$root = Join-Path $base '${id}'`,
+    "$binary = Join-Path $root 'native-broadcast-packager.exe'",
+    "foreach ($scope in @((Split-Path -Parent $base), $base, $root)) {",
+    "  if ((Get-Item -LiteralPath $scope -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Agent-Pfad darf kein Reparse Point sein.' }",
+    "}",
+    "foreach ($entry in @(Get-ChildItem -LiteralPath $root -Force)) { if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Reparse Point in Installation; Entfernung abgebrochen.' } }",
+    "$marker = Join-Path $root '.uninstalling'",
+    "if (-not (Test-Path -LiteralPath $marker)) { $createdMarker = [IO.File]::Open($marker, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None); $createdMarker.Dispose() }",
+    "$startup = Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs\\Startup'",
+    `$startupFile = Join-Path $startup 'ananta-native-packager-${id}.cmd'`,
+    "if (Test-Path -LiteralPath $startupFile) { Remove-Item -LiteralPath $startupFile -Force }",
+    "$deadline = [DateTime]::UtcNow.AddSeconds(15)", "$lock = $null",
+    "while ($null -eq $lock) {",
+    "  foreach ($candidate in @(Get-Process -Name 'native-broadcast-packager' -ErrorAction SilentlyContinue)) {",
+    "    try {",
+    "      if ([String]::Equals($candidate.Path, $binary, [StringComparison]::OrdinalIgnoreCase)) {",
+    "        $null = $candidate.Handle",
+    "        if (-not $candidate.HasExited) { $candidate.Kill(); if (-not $candidate.WaitForExit(5000)) { throw 'Agent-Stopp nicht bestaetigt.' } }",
+    "      }",
+    "    } finally { $candidate.Dispose() }",
+    "  }",
+    "  try { $lock = [IO.File]::Open((Join-Path $root '.running.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }",
+    "  catch [IO.IOException] { if ([DateTime]::UtcNow -ge $deadline) { throw 'Launcher-Stopp nicht bestaetigt; Dateien bleiben erhalten.' }; Start-Sleep -Milliseconds 100 }",
+    "}",
+    "try {",
+    `  $allowed = @('native-broadcast-packager.exe','native-broadcast-packager.download.exe','identity-${id}.pem','run-${id}.ps1','uninstall-${id}.ps1','.uninstalling','.running.lock','output')`,
+    "  foreach ($entry in @(Get-ChildItem -LiteralPath $root -Force)) { if ($entry.Name -notin $allowed) { throw 'Unbekannte Dateien; Installation bleibt erhalten.' } }",
+    "  $queue = New-Object 'Collections.Generic.Queue[string]'", "  $queue.Enqueue($root)", "  $count = 0",
+    "  while ($queue.Count -gt 0) {",
+    "    foreach ($entry in @(Get-ChildItem -LiteralPath ($queue.Dequeue()) -Force)) {",
+    "      $count++; if ($count -gt 4096) { throw 'Unerwartet grosse Installation; Entfernung abgebrochen.' }",
+    "      if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Reparse Point in Installation; Entfernung abgebrochen.' }",
+    "      if ($entry.PSIsContainer) { $queue.Enqueue($entry.FullName) }",
+    "    }",
+    "  }",
+    "} finally { $lock.Dispose() }",
+    "Remove-Item -LiteralPath $root -Recurse -Force",
+    "Write-Host 'Dieser Native-Packager wurde entfernt. Andere Agenten bleiben erhalten. Kontowiderruf bleibt ein separater Schritt in der Web-App.'",
+  ].join("\r\n");
+}
+
+export function windowsPackagerPrivateAcl() {
+  return [
+    "$owner = [Security.Principal.WindowsIdentity]::GetCurrent().User",
+    "$acl = New-Object Security.AccessControl.DirectorySecurity",
+    "$acl.SetOwner($owner)", "$acl.SetAccessRuleProtection($true, $false)",
+    "$rule = New-Object Security.AccessControl.FileSystemAccessRule($owner, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')",
+    "$acl.AddAccessRule($rule)", "Set-Acl -LiteralPath $root -AclObject $acl",
+  ];
+}

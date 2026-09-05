@@ -159,9 +159,25 @@ Er stoppt zuerst genau den eigenen Benutzerdienst; bei einem Fehler bleiben
 die Dateien erhalten. Danach entfernt er nur dessen Autostart und
 ID-Verzeichnis, nicht andere Agenten oder den gemeinsamen Basisordner.
 Basis-/ID-Symlinks werden vor der Entfernung abgelehnt. Konto-Widerruf in der
-Web-App bleibt ein separater Schritt. Unter Windows ist eine automatisierte
-Deinstallation noch offen; die plattformspezifischen Lifecycle-Gates sind
-nicht durch die Script-Tests auf Linux ersetzt.
+Web-App bleibt ein separater Schritt.
+
+Unter Windows schützt eine vererbte, ausschließlich dem aktuellen Benutzer
+erteilte ACL das ID-Verzeichnis einschließlich Geräteidentität. Der Installer
+prüft vorhandenes FFmpeg und lehnt Reparse Points sowie bestehende ID-Verzeichnisse
+ab. Der korrekt gequotete Launcher unterstützt Leerzeichen und verhindert über
+eine exklusive Dateisperre doppelte Starts. Medienausgaben liegen im eigenen
+`output`-Unterverzeichnis. `uninstall-<packagerId>.ps1` entfernt nur den eigenen
+Autostart und stoppt ausschließlich Prozesse mit dem exakten eigenen Binary-Pfad.
+Eine `.uninstalling`-Markierung verhindert Neustarts während der Entfernung.
+Bei fehlender Stoppbestätigung, unbekannten Dateien oder Reparse Points bleiben
+die Dateien erhalten; Autostart und Agent können dann bereits gestoppt sein.
+Nach Prüfung und Beseitigung der Ursache kann derselbe Uninstaller erneut laufen.
+Andere Installationen und der gemeinsame Basisordner bleiben erhalten.
+
+Der Windows-Agent bindet sich und seine Kindprozesse an ein eigenes
+kill-on-close Job Object. Ein harter Agent-Stopp beendet damit auch FFmpeg;
+kann die Prozessbindung nicht hergestellt werden, startet der Agent nicht.
+Das ersetzt keine Sandbox gegen Schadcode unter demselben Benutzerkonto.
 
 Bereits heruntergeladene alte Installer/Uninstaller ändern sich durch ein
 Serverupdate nicht. Insbesondere alte POSIX-Uninstaller im gemeinsamen
@@ -179,6 +195,21 @@ PowerShell ausgeführt werden, ersetzt aber keinen OS-Lifecycle-Test:
 ```bash
 RUN_WINDOWS_INSTALLER_PARSE=1 node --test test/native-packager-installers.test.js
 ```
+
+Der zusätzliche echte Windows-Lifecycle-Gate verwendet temporäre NTFS-Verzeichnisse
+mit Leerzeichen, synthetische Identitäten/Binaries und einen simulierten Download.
+Er führt die erzeugten PowerShell-Installer, Launcher, Autostart-CMD und Uninstaller
+tatsächlich aus. Er prüft private ACL-Vererbung, Doppelstart, Hashfehler,
+Bestandsschutz, Junctions, unbekannte Dateien und zwei voneinander isolierte
+Installationen. Echte Konten, Geräteidentitäten und Benutzer-Autostarts bleiben
+unangetastet. Voraussetzungen: WSL, `powershell.exe` und FFmpeg im Windows-PATH.
+
+```bash
+RUN_WINDOWS_PACKAGER_INSTALLER=1 node scripts/live-native-packager-windows-installer-gate.mjs
+```
+
+Das ist kein Nachweis für reales Windows-OIDC-Enrollment, einen Login/Reboot,
+macOS-Lifecycle, Update/Rollback oder Plattformsignaturen.
 
 Ohne explizites `NATIVE_PACKAGER_OUTPUT_ROOT` verwendet der Agent das
 OS-Tempverzeichnis mit `ananta-native-packager/<packagerId>` als Unterpfad.
@@ -201,7 +232,9 @@ RUN_WINDOWS_NATIVE_PACKAGER=1 node scripts/live-native-packager-windows-gate.mjs
 Der gemessene Windows-Lauf bestand Konfigurations-/Outputtests,
 einschließlich einer echten Verzeichnis-Junction und zweier isolierter IDs,
 sowie Named-Pipe-Tests für Benutzer-ACL, Prozessbindung, ausbleibenden Client,
-blockierten Schreiber und Abbruch.
+blockierten Schreiber und Abbruch. Ein separater echter Prozess-Gate prüft, dass
+ein abrupt beendeter Agent sein Kind beendet, aber einen unabhängigen Prozess
+am Leben lässt.
 Der separate Symlink-Test blieb mangels Windows-Symlinkrecht ausdrücklich
 `SKIP`; unter Linux wurde er ausgeführt und bestand. Mit installiertem FFmpeg
 6+ lässt sich zusätzlich die echte synthetische Windows-Medienpipeline prüfen:

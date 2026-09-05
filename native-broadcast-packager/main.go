@@ -726,6 +726,9 @@ func main() {
 		}
 		return
 	}
+	if err := initializeProcessContainment(); err != nil {
+		log.Fatal("native packager process containment unavailable")
+	}
 	probeContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	capability, err := probeFFmpeg(probeContext, cfg.ffmpegPath)
 	cancel()

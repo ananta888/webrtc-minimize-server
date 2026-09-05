@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { windowsPackagerPrivateAcl, windowsPackagerUninstaller } from "./native-packager-windows-lifecycle.js";
 
 const TARGETS = Object.freeze([
   Object.freeze({ id: "linux-amd64", platform: "linux", label: "Linux · Intel/AMD 64-Bit", artifact: "native-broadcast-packager-linux-amd64", installer: "ananta-native-packager-linux-amd64.sh" }),
@@ -110,26 +111,41 @@ function windows({ enrollment, sha256, artifactUrl, controlUrl, stunUrls }) {
   const id = enrollment.packagerId;
   return [
     "$ErrorActionPreference = 'Stop'", "$ProgressPreference = 'SilentlyContinue'",
+    "if (-not (Get-Command ffmpeg.exe -ErrorAction SilentlyContinue)) { throw 'FFmpeg 6 oder neuer wird benoetigt.' }",
     "$base = Join-Path $env:LOCALAPPDATA 'Ananta\\NativePackager'",
+    "if ((Test-Path -LiteralPath (Split-Path -Parent $base)) -and ((Get-Item -LiteralPath (Split-Path -Parent $base)).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Agent-Basis darf kein Reparse Point sein.' }",
     "if ((Test-Path -LiteralPath $base) -and ((Get-Item -LiteralPath $base).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Agent-Basis darf kein Reparse Point sein.' }",
     "New-Item -ItemType Directory -Force -Path $base | Out-Null",
     `$root = Join-Path $base ${psQuote(id)}`,
     "if (Test-Path -LiteralPath $root) { throw 'Installation existiert bereits; keine Identität wird überschrieben.' }",
     "New-Item -ItemType Directory -Path $root | Out-Null",
+    ...windowsPackagerPrivateAcl(),
     "$binary = Join-Path $root 'native-broadcast-packager.exe'", "$temporary = Join-Path $root 'native-broadcast-packager.download.exe'",
     `Invoke-WebRequest -UseBasicParsing -Uri ${psQuote(artifactUrl)} -OutFile $temporary`, `$expected = ${psQuote(sha256)}`,
     "$actual = (Get-FileHash -Algorithm SHA256 -Path $temporary).Hash.ToLowerInvariant()", "if ($actual -ne $expected) { Remove-Item -Force $temporary; throw 'SHA-256-Prüfung fehlgeschlagen.' }", "Move-Item -Force $temporary $binary",
     `$env:NATIVE_PACKAGER_CONTROL_URL = ${psQuote(controlUrl)}`, `$env:NATIVE_PACKAGER_ID = ${psQuote(id)}`,
+    "$env:NATIVE_PACKAGER_OUTPUT_ROOT = Join-Path $root 'output'",
     `$env:NATIVE_PACKAGER_IDENTITY_FILE = Join-Path $root ${psQuote(`identity-${id}.pem`)}`, `$env:NATIVE_PACKAGER_ENROLLMENT_TOKEN = ${psQuote(enrollment.enrollmentToken)}`,
     "try { & $binary enroll; if ($LASTEXITCODE -ne 0) { throw 'Registrierung fehlgeschlagen.' } } finally { Remove-Item Env:NATIVE_PACKAGER_ENROLLMENT_TOKEN -ErrorAction SilentlyContinue }",
     `$launcher = Join-Path $root ${psQuote(`run-${id}.ps1`)}`, "$launcherContent = @'",
+    "$ErrorActionPreference = 'Stop'",
+    `$agentRoot = Join-Path $env:LOCALAPPDATA ${psQuote(`Ananta\\NativePackager\\${id}`)}`,
+    "$runningLock = $null",
+    "try { $runningLock = [IO.File]::Open((Join-Path $agentRoot '.running.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) } catch [IO.IOException] { exit 0 }",
+    "try {",
+    "if (Test-Path -LiteralPath (Join-Path $agentRoot '.uninstalling')) { exit 0 }",
     `$env:NATIVE_PACKAGER_CONTROL_URL = ${psQuote(controlUrl)}`, `$env:NATIVE_PACKAGER_ID = ${psQuote(id)}`,
     `$env:NATIVE_PACKAGER_IDENTITY_FILE = Join-Path $env:LOCALAPPDATA ${psQuote(`Ananta\\NativePackager\\${id}\\identity-${id}.pem`)}`,
     `$env:NATIVE_PACKAGER_STUN_URLS = ${psQuote(stunUrls.join(","))}`,
-    `& (Join-Path $env:LOCALAPPDATA ${psQuote(`Ananta\\NativePackager\\${id}\\native-broadcast-packager.exe`)})`, "'@", "Set-Content -Encoding UTF8 -Path $launcher -Value $launcherContent",
+    "$env:NATIVE_PACKAGER_OUTPUT_ROOT = Join-Path $agentRoot 'output'",
+    `& (Join-Path $env:LOCALAPPDATA ${psQuote(`Ananta\\NativePackager\\${id}\\native-broadcast-packager.exe`)})`,
+    "} finally { $runningLock.Dispose() }", "'@", "Set-Content -Encoding UTF8 -Path $launcher -Value $launcherContent",
+    `$uninstaller = Join-Path $root ${psQuote(`uninstall-${id}.ps1`)}`, "$uninstallerContent = @'",
+    windowsPackagerUninstaller(id), "'@", "Set-Content -Encoding UTF8 -Path $uninstaller -Value $uninstallerContent",
     "$startup = Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs\\Startup'", `$startupFile = Join-Path $startup ${psQuote(`ananta-native-packager-${id}.cmd`)}`,
+    "if (Test-Path -LiteralPath $startupFile) { throw 'Autostart existiert bereits; er wird nicht ueberschrieben.' }",
     `$startupContent = ${psQuote(`@start "" /min powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\\Ananta\\NativePackager\\${id}\\run-${id}.ps1"`)}`,
-    "Set-Content -Encoding ASCII -Path $startupFile -Value $startupContent", "Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$launcher)",
+    "Set-Content -Encoding ASCII -Path $startupFile -Value $startupContent", "Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File', ('\"' + $launcher + '\"'))",
     "Write-Host 'Native-Packager installiert. Kein eingehender Port ist erforderlich; Raumfreigaben bleiben aus.'", "if ($PSCommandPath) { Remove-Item -Force $PSCommandPath -ErrorAction SilentlyContinue }", "",
   ].join("\r\n");
 }
