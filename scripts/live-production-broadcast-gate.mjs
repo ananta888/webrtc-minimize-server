@@ -224,13 +224,16 @@ try {
   const roomConsent = packager.locator(".agent-consent input");
   await roomConsent.check();
   try {
+    await ownerPage.getByRole("status")
+      .filter({ hasText: "Native-Packager für diesen Raum freigegeben." })
+      .waitFor({ state: "visible", timeout: 15_000 });
     await ownerPage.waitForFunction((id) => {
       const cards = [...document.querySelectorAll("#native-packager-analysis-panel .owned-agent")];
       const card = cards.find((candidate) => candidate.textContent?.includes(id));
       const input = card?.querySelector(".agent-consent input");
       return input instanceof HTMLInputElement && input.checked && !input.disabled
         && !card?.textContent?.includes("Bestätigung des Agenten ausstehend");
-    }, packagerId, { timeout: 10_000 });
+    }, packagerId, { timeout: 5_000 });
   } catch (error) {
     const status = (await packager.innerText()).replaceAll(/\s+/g, " ").slice(0, 500);
     throw new Error(`native_packager_consent_not_confirmed:${status}`, { cause: error });
@@ -242,7 +245,7 @@ try {
   assert.equal(await sources.count(), 2, "synthetic camera and microphone must be explicit sources");
   for (let index = 0; index < 2; index += 1) await sources.nth(index).check();
   await ownerPage.locator(`#broadcast-packager-profile option[value="native:${packagerId}"]`)
-    .waitFor({ state: "attached", timeout: 10_000 });
+    .waitFor({ state: "attached", timeout: 30_000 });
   await ownerPage.locator("#broadcast-packager-profile").selectOption(`native:${packagerId}`);
   await ownerPage.locator("#prepare-broadcast-preview").click();
   await ownerPage.locator(".broadcast-heading .status[data-state=ready]").waitFor({ timeout: 20_000 });

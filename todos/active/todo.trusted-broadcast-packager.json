@@ -514,7 +514,7 @@
       "status": "in_progress",
       "priority": "P1",
       "risk": "critical",
-      "progress_percent": 98,
+      "progress_percent": 99,
       "depends_on": ["TBP-004", "TBP-005", "TBP-006", "TBP-013", "TBP-014", "TBP-015"],
       "acceptance_criteria": [
         "Der native Agent ist eine getrennte, freiwillige Rolle mit signiertem/prüfbarem Build, eindeutiger Geräteidentität, konto-/tenantgebundener Registrierung und pro Raum ausdrücklich aktivierter Packager-Capability.",
@@ -595,7 +595,7 @@
       "status": "in_progress",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 82,
+      "progress_percent": 88,
       "depends_on": ["TBP-007", "TBP-019", "TBP-020"],
       "acceptance_criteria": [
         "Der Player wählt natives HLS oder eine gepinnte hls.js-/äquivalente Engine anhand echter Capability-Checks; MoQ/WHEP werden nur über separate Adapter angeboten.",
@@ -611,7 +611,7 @@
       "status": "in_progress",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 80,
+      "progress_percent": 90,
       "depends_on": ["TBP-006", "TBP-007", "TBP-008", "TBP-018", "TBP-021"],
       "acceptance_criteria": [
         "Das ausgewählte Verfahren schützt Master-/Media-Playlists, Initialisierungssegmente, Segmente, Parts, Preload Hints, Untertitel und Keys konsistent; der Schutz endet nicht nach dem ersten Manifest.",
@@ -723,7 +723,7 @@
       "status": "in_progress",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 95,
+      "progress_percent": 97,
       "depends_on": ["TBP-007", "TBP-008", "TBP-009", "TBP-010", "TBP-011"],
       "acceptance_criteria": [
         "Das bestehende Menü erhält einen klaren Broadcast-Bereich für Quelle, Preview, Programlayout, Audio, Untertitel, Sichtbarkeit, Delivery-Profil, Packager, Qualitätsprofil und geschätzte Ressourcen.",
@@ -755,7 +755,7 @@
       "status": "in_progress",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 87,
+      "progress_percent": 92,
       "depends_on": ["TBP-007", "TBP-008", "TBP-021", "TBP-022", "TBP-029"],
       "acceptance_criteria": [
         "Eine übersichtliche Ansicht trennt live öffentliche Programme, berechtigte private Programme, eigene Programme und beendete/unerreichbare Zustände ohne private Enumeration.",
@@ -1048,6 +1048,7 @@
     "Der Produktionsgate nach der Draining-Korrektur bestand seinen gesamten bisherigen Lifecycle einschliesslich normalem Cleanup. Der anschliessend bis ueber die 120-Sekunden-Playback-Grantgrenze verlaengerte Lauf deckte eine getrennte Cookie-Pfad-Luecke auf: Der absichtlich auf /broadcast/play/<resource>/ begrenzte HttpOnly-Cookie konnte am Session-PUT nie ankommen. Der Store gibt nun zwei gleichnamige zufaellige Secure-/HttpOnly-/SameSite-Strict-Cookies mit disjunkten Minimalpfaden fuer Medien beziehungsweise exakt die eigene Session-API aus; Renew und Close rotieren oder loeschen beide, ohne einen Path=/ Cookie einzufuehren. Unit- und Serverintegrationstests sowie die Dokumentation sind angepasst. Der erste Nachweisversuch nach Rollout traf vor dem Visibility-Neustart eine weitere Stop-Race: Assignment-Cleanup und anschliessender Program-Stop lieferten zwei assignment-stop-Kommandos fuer dieselbe draining-Zuordnung; der Agent hatte sie nach dem ersten bereits entfernt und reconnectete. Assignment stop ist auf draining nun idempotent und liefert keinen zweiten Befehl, waehrend Reservation, terminaler ACK und Ablauf unveraendert bleiben. Der erweiterte Produktionsgate verlangt weiterhin einen echten erfolgreichen PUT vor Ablauf und nach Stop einen terminalen Player ohne weitere Medienrequests; dieser Nachweis folgt nach Deployment.",
     "Ein weiterer Produktionslauf erreichte vor dem Medienabruf eine erfolgreich ausgestellte Playback-Session, verlor aber den einmaligen same-origin hls.js-Lazychunk durch Chromium net::ERR_NETWORK_CHANGED. Der Browser cached eine fehlgeschlagene dynamische ES-Modulaufloesung im Realm, sodass ein zweiter import keinen neuen Netzversuch erzeugt. Die gepinnte primaere hls.js-Engine ist deshalb nun Teil des atomaren Initialbuilds; der injizierbare Adapter behaelt fuer spaetere Engines einen einzelnen abbrechbaren Retry und danach den geschlossenen Code broadcast_player_engine_unavailable. Grant, Capture, Programmlifecycle und Medienrequest werden dabei nicht wiederholt oder auf natives HLS heruntergestuft. Der gemessene komprimierte Initialtransfer steigt von rund 213 auf 361 KiB; die weiterhin harte Angular-Grenze liegt mit 1,5 MiB Warn- und 1,6 MiB Fehlerbudget knapp ueber dem 1,51-MiB-Rohbundle. Tests und Playerdokumentation halten diese bewusste Stabilitaetsentscheidung fest. Der Produktions-Langzeitgate bleibt bis zum Rollout und vollstaendigen Wiederholungslauf offen.",
     "Der Langzeitgate bestaetigte erneut den erfolgreichen Playback-Session-PUT. Nach Program-Stop kann anschliessend entweder der HLS-Medienrequest zuerst den 404 sehen oder die naechste geplante Session-Erneuerung. Der zweite sichere Pfad entfernte den Player bereits, wurde aber bisher irrefuehrend als broadcast_playback_renewal_failed angezeigt. Ein nicht unterscheidbares Renewal-404 wird nun als broadcast_ended dargestellt; andere Renewalfehler bleiben getrennt. Der Gate akzeptiert ausschliesslich den sichtbaren Playerzustand ended oder diesen sichtbaren Audience-Terminalcode und fordert danach Requeststillstand und einen separaten Manifest-404. TypeScript und zwoelf fokussierte Audience-/Player-Tests sind gruen; der abschliessende Produktionslauf folgt nach Deployment.",
+    "Der abschliessende isolierte Produktions-Langzeitgate bestand am 2026-09-05 gegen https://webrtc.ananta.de. Ein temporaerer Keycloak-Nutzer bezog den Installer ueber die oeffentliche App, enrollte einen eigenen P-256-gebundenen Native-Packager auf dem Mini-PC und bestaetigte den expliziten Room-Consent. Headless Chromium publizierte Kamera und Mikrofon, spielte den privaten Owner-Pfad sowie nach gefenctem Visibility-Restart den oeffentlichen anonymen Pfad dekodierbar ab und beobachtete mindestens einen erfolgreichen Playback-Session-PUT ueber die erste Grant-Laufzeit hinaus. Stop fuehrte entweder zum expliziten Player-Endzustand oder zum sicheren broadcast_ended-Renewalpfad, danach blieben Medienrequests ruhig und das Manifest lieferte 404. Der Packager wurde normal widerrufen. Eine getrennte Nachkontrolle fand weder webrtc-gate-Container oder Identity-Volumes noch res_-Ausgabe oder webrtc-gate-Keycloak-Nutzer. Der Gate wartet nun auf die erst nach bestaetigtem Agent-Handshake gesetzte UI-Erfolgsmeldung und kann den Consent nicht mehr durch einen lokalen Checkboxzustand falsch positiv bewerten. Der anschliessende volle npm-run-check-Gate bestand mit 334 Angular- und 280 Node-/Browser-/Integrationstests, Produktionsbuild, Go-Test/Vet, Lizenz-, Deployment-, Leakage- sowie dem echten Chromium-Firefox-SFrame-Counter-350-Gate; externe opt-in Gates blieben sichtbar als Skip ausgewiesen. Offen bleiben insbesondere physische Safari-/iOS-/Android-, Screenreader-, Wahrnehmungs-, WAN-/Netzwechsel- und 60-Minuten-Lastgates; diese werden nicht als bestanden behauptet.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }
