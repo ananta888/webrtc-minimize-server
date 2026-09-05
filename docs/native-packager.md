@@ -144,7 +144,41 @@ Hash ein, entfernt das Einmalticket nach Enrollment und installiert einen
 Benutzerdienst. Der Linux-Dienst setzt unter anderem `NoNewPrivileges`,
 `ProtectSystem=strict`, eine begrenzte beschreibbare Root und Ressourcenlimits.
 Der Agent benötigt nur ausgehendes HTTPS/WSS; Installer verändern keine
-Firewall. Ein Uninstaller wird im privaten Agent-Verzeichnis abgelegt.
+Firewall. Neue Installationen verwenden pro registrierter Packager-ID ein
+eigenes Verzeichnis: unter Linux/macOS
+`~/.local/share/ananta-native-packager/<packagerId>/`, unter Windows
+`%LOCALAPPDATA%\Ananta\NativePackager\<packagerId>\`. Binary, Launcher und
+Geräteidentität werden nicht mehr zwischen Installationen geteilt. Der
+Linux-Dienst darf nur in sein eigenes Verzeichnis schreiben. Vorhandene
+ID-Verzeichnisse werden nicht überschrieben; ein abgebrochener Installer
+bewahrt auch eine möglicherweise bereits registrierte Identität für eine
+kontrollierte Wiederherstellung auf.
+
+Unter Linux/macOS liegt `uninstall-<packagerId>` im jeweiligen ID-Verzeichnis.
+Er stoppt zuerst genau den eigenen Benutzerdienst; bei einem Fehler bleiben
+die Dateien erhalten. Danach entfernt er nur dessen Autostart und
+ID-Verzeichnis, nicht andere Agenten oder den gemeinsamen Basisordner.
+Basis-/ID-Symlinks werden vor der Entfernung abgelehnt. Konto-Widerruf in der
+Web-App bleibt ein separater Schritt. Unter Windows ist eine automatisierte
+Deinstallation noch offen; die plattformspezifischen Lifecycle-Gates sind
+nicht durch die Script-Tests auf Linux ersetzt.
+
+Bereits heruntergeladene alte Installer/Uninstaller ändern sich durch ein
+Serverupdate nicht. Insbesondere alte POSIX-Uninstaller im gemeinsamen
+Basisverzeichnis **nicht bei mehreren Installationen ausführen**: Sie können
+alle dort liegenden Identitäten entfernen. Bestehende Installationen werden
+nicht automatisch verschoben oder neu registriert. Eine Migration muss die
+jeweiligen Dienste stoppen und deren Identitäten, Startpfade und Schreibrechte
+gezielt erhalten; automatische Migration, Update und Rollback bleiben offen.
+
+Die isolierten Installer-Tests verwenden synthetische Binaries und simulierte
+Dienstcontroller; sie berühren keine reale Registrierung oder Benutzer-Autostarts.
+Der zusätzliche Parser-Gate kann unter Windows/WSL mit echter Windows
+PowerShell ausgeführt werden, ersetzt aber keinen OS-Lifecycle-Test:
+
+```bash
+RUN_WINDOWS_INSTALLER_PARSE=1 node --test test/native-packager-installers.test.js
+```
 
 Jeder Build enthält außerdem eine geschlossene, rein technische
 `native-packager-build`-Auskunft. Sie ist ohne Konfiguration und ohne Zugriff

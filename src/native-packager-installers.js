@@ -34,7 +34,8 @@ function endpoints(publicOrigin) {
 }
 
 function posix({ enrollment, target, sha256, artifactUrl, controlUrl, stunUrls }) {
-  const root = "$HOME/.local/share/ananta-native-packager";
+  const base = "$HOME/.local/share/ananta-native-packager";
+  const root = `${base}/${enrollment.packagerId}`;
   const service = `ananta-native-packager-${enrollment.packagerId}`;
   const launcher = `run-${enrollment.packagerId}`;
   const identity = `identity-${enrollment.packagerId}.pem`;
@@ -49,8 +50,12 @@ function posix({ enrollment, target, sha256, artifactUrl, controlUrl, stunUrls }
     'binary="$packager_root/native-broadcast-packager"',
     `identity="$packager_root/${identity}"`,
     'temporary="$packager_root/native-broadcast-packager.download"',
-    'mkdir -p "$packager_root"', 'chmod 700 "$packager_root"',
     'command -v ffmpeg >/dev/null 2>&1 || { printf "%s\\n" "FFmpeg 6 oder neuer wird benötigt." >&2; exit 1; }',
+    `packager_base="${base}"`,
+    '[ ! -L "$packager_base" ] || { printf "%s\\n" "Agent-Basis darf kein Symlink sein." >&2; exit 1; }',
+    'mkdir -p "$packager_base"',
+    'mkdir "$packager_root" || { printf "%s\\n" "Installation existiert bereits; keine Identität wird überschrieben." >&2; exit 1; }',
+    'chmod 700 "$packager_root"',
     'curl --fail --location --proto "=https" --tlsv1.2 --output "$temporary" "$artifact_url"',
     'if command -v sha256sum >/dev/null 2>&1; then actual_sha256=$(sha256sum "$temporary" | awk \'{print $1}\'); else actual_sha256=$(shasum -a 256 "$temporary" | awk \'{print $1}\'); fi',
     'if [ "$actual_sha256" != "$expected_sha256" ]; then rm -f "$temporary"; printf "%s\\n" "SHA-256-Prüfung fehlgeschlagen." >&2; exit 1; fi',
@@ -64,29 +69,33 @@ function posix({ enrollment, target, sha256, artifactUrl, controlUrl, stunUrls }
     `export NATIVE_PACKAGER_STUN_URLS=${quote(stunUrls.join(","))}`,
     `exec "${root}/native-broadcast-packager"`, "ANANTA_PACKAGER_LAUNCHER", `chmod 700 "$packager_root/${launcher}"`,
     `cat > "$packager_root/${uninstall}" <<'ANANTA_PACKAGER_UNINSTALL'`, "#!/bin/sh", "set -eu",
+    `packager_root="${root}"`,
+    `[ ! -L "${base}" ] && [ ! -L "$packager_root" ] || { printf "%s\\n" "Agent-Pfad darf kein Symlink sein." >&2; exit 1; }`,
   ];
   if (target.platform === "linux") {
     lines.push(
-      `systemctl --user disable --now ${quote(`${service}.service`)} >/dev/null 2>&1 || true`,
+      `systemctl --user disable --now ${quote(`${service}.service`)}`,
       `rm -f "$HOME/.config/systemd/user/${service}.service"`, "systemctl --user daemon-reload >/dev/null 2>&1 || true",
     );
   } else {
     const launchLabel = `de.ananta.native-packager.${enrollment.packagerId}`;
-    lines.push(`launchctl bootout "gui/$(id -u)/${launchLabel}" >/dev/null 2>&1 || true`, `rm -f "$HOME/Library/LaunchAgents/${launchLabel}.plist"`);
+    lines.push(`launchctl bootout "gui/$(id -u)/${launchLabel}"`, `rm -f "$HOME/Library/LaunchAgents/${launchLabel}.plist"`);
   }
-  lines.push('rm -rf -- "$HOME/.local/share/ananta-native-packager"', "ANANTA_PACKAGER_UNINSTALL", `chmod 700 "$packager_root/${uninstall}"`);
+  lines.push(
+    'rm -rf -- "$packager_root"', "ANANTA_PACKAGER_UNINSTALL", `chmod 700 "$packager_root/${uninstall}"`,
+  );
   if (target.platform === "linux") {
     lines.push(
       'unit_dir="$HOME/.config/systemd/user"', 'mkdir -p "$unit_dir"',
       `cat > "$unit_dir/${service}.service" <<'ANANTA_PACKAGER_UNIT'`, "[Unit]", "Description=Ananta voluntary trusted broadcast packager", "After=network-online.target", "Wants=network-online.target", "", "[Service]", "Type=simple",
-      `ExecStart=%h/.local/share/ananta-native-packager/${launcher}`, "Restart=on-failure", "RestartSec=5", "NoNewPrivileges=true", "PrivateTmp=true", "ProtectSystem=strict", "ProtectHome=read-only", "ReadWritePaths=%h/.local/share/ananta-native-packager", "MemoryMax=2G", "TasksMax=128", "", "[Install]", "WantedBy=default.target", "ANANTA_PACKAGER_UNIT",
+      `ExecStart="%h/.local/share/ananta-native-packager/${enrollment.packagerId}/${launcher}"`, "Restart=on-failure", "RestartSec=5", "NoNewPrivileges=true", "PrivateTmp=true", "ProtectSystem=strict", "ProtectHome=read-only", `ReadWritePaths="%h/.local/share/ananta-native-packager/${enrollment.packagerId}"`, "MemoryMax=2G", "TasksMax=128", "", "[Install]", "WantedBy=default.target", "ANANTA_PACKAGER_UNIT",
       `systemctl --user daemon-reload && systemctl --user enable --now ${quote(`${service}.service`)}`,
     );
   } else {
     const launchLabel = `de.ananta.native-packager.${enrollment.packagerId}`;
     lines.push(
       'launch_dir="$HOME/Library/LaunchAgents"', 'mkdir -p "$launch_dir"', `plist="$launch_dir/${launchLabel}.plist"`,
-      `cat > "$plist" <<'ANANTA_PACKAGER_PLIST'`, '<?xml version="1.0" encoding="UTF-8"?>', '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">', '<plist version="1.0"><dict>', `<key>Label</key><string>${launchLabel}</string>`, `<key>ProgramArguments</key><array><string>/bin/sh</string><string>${root}/${launcher}</string></array>`, '<key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>ThrottleInterval</key><integer>5</integer>', '</dict></plist>', "ANANTA_PACKAGER_PLIST", 'launchctl bootstrap "gui/$(id -u)" "$plist"',
+      `cat > "$plist" <<'ANANTA_PACKAGER_PLIST'`, '<?xml version="1.0" encoding="UTF-8"?>', '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">', '<plist version="1.0"><dict>', `<key>Label</key><string>${launchLabel}</string>`, `<key>ProgramArguments</key><array><string>/bin/sh</string><string>-c</string><string>exec "${root}/${launcher}"</string></array>`, '<key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>ThrottleInterval</key><integer>5</integer>', '</dict></plist>', "ANANTA_PACKAGER_PLIST", 'launchctl bootstrap "gui/$(id -u)" "$plist"',
     );
   }
   lines.push(
@@ -101,7 +110,12 @@ function windows({ enrollment, sha256, artifactUrl, controlUrl, stunUrls }) {
   const id = enrollment.packagerId;
   return [
     "$ErrorActionPreference = 'Stop'", "$ProgressPreference = 'SilentlyContinue'",
-    "$root = Join-Path $env:LOCALAPPDATA 'Ananta\\NativePackager'", "New-Item -ItemType Directory -Force -Path $root | Out-Null",
+    "$base = Join-Path $env:LOCALAPPDATA 'Ananta\\NativePackager'",
+    "if ((Test-Path -LiteralPath $base) -and ((Get-Item -LiteralPath $base).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Agent-Basis darf kein Reparse Point sein.' }",
+    "New-Item -ItemType Directory -Force -Path $base | Out-Null",
+    `$root = Join-Path $base ${psQuote(id)}`,
+    "if (Test-Path -LiteralPath $root) { throw 'Installation existiert bereits; keine Identität wird überschrieben.' }",
+    "New-Item -ItemType Directory -Path $root | Out-Null",
     "$binary = Join-Path $root 'native-broadcast-packager.exe'", "$temporary = Join-Path $root 'native-broadcast-packager.download.exe'",
     `Invoke-WebRequest -UseBasicParsing -Uri ${psQuote(artifactUrl)} -OutFile $temporary`, `$expected = ${psQuote(sha256)}`,
     "$actual = (Get-FileHash -Algorithm SHA256 -Path $temporary).Hash.ToLowerInvariant()", "if ($actual -ne $expected) { Remove-Item -Force $temporary; throw 'SHA-256-Prüfung fehlgeschlagen.' }", "Move-Item -Force $temporary $binary",
@@ -110,11 +124,11 @@ function windows({ enrollment, sha256, artifactUrl, controlUrl, stunUrls }) {
     "try { & $binary enroll; if ($LASTEXITCODE -ne 0) { throw 'Registrierung fehlgeschlagen.' } } finally { Remove-Item Env:NATIVE_PACKAGER_ENROLLMENT_TOKEN -ErrorAction SilentlyContinue }",
     `$launcher = Join-Path $root ${psQuote(`run-${id}.ps1`)}`, "$launcherContent = @'",
     `$env:NATIVE_PACKAGER_CONTROL_URL = ${psQuote(controlUrl)}`, `$env:NATIVE_PACKAGER_ID = ${psQuote(id)}`,
-    `$env:NATIVE_PACKAGER_IDENTITY_FILE = Join-Path $env:LOCALAPPDATA ${psQuote(`Ananta\\NativePackager\\identity-${id}.pem`)}`,
+    `$env:NATIVE_PACKAGER_IDENTITY_FILE = Join-Path $env:LOCALAPPDATA ${psQuote(`Ananta\\NativePackager\\${id}\\identity-${id}.pem`)}`,
     `$env:NATIVE_PACKAGER_STUN_URLS = ${psQuote(stunUrls.join(","))}`,
-    "& (Join-Path $env:LOCALAPPDATA 'Ananta\\NativePackager\\native-broadcast-packager.exe')", "'@", "Set-Content -Encoding UTF8 -Path $launcher -Value $launcherContent",
+    `& (Join-Path $env:LOCALAPPDATA ${psQuote(`Ananta\\NativePackager\\${id}\\native-broadcast-packager.exe`)})`, "'@", "Set-Content -Encoding UTF8 -Path $launcher -Value $launcherContent",
     "$startup = Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs\\Startup'", `$startupFile = Join-Path $startup ${psQuote(`ananta-native-packager-${id}.cmd`)}`,
-    `$startupContent = ${psQuote(`@start "" /min powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\\Ananta\\NativePackager\\run-${id}.ps1"`)}`,
+    `$startupContent = ${psQuote(`@start "" /min powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\\Ananta\\NativePackager\\${id}\\run-${id}.ps1"`)}`,
     "Set-Content -Encoding ASCII -Path $startupFile -Value $startupContent", "Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$launcher)",
     "Write-Host 'Native-Packager installiert. Kein eingehender Port ist erforderlich; Raumfreigaben bleiben aus.'", "if ($PSCommandPath) { Remove-Item -Force $PSCommandPath -ErrorAction SilentlyContinue }", "",
   ].join("\r\n");
@@ -138,6 +152,9 @@ export class NativePackagerInstallerService {
   target(id) { const target = this.#artifacts.get(String(id || "")); if (!target) throw new NativePackagerInstallerError("native_packager_artifact_unavailable", 409); return target; }
   artifact(id) { return this.target(id); }
   installer({ enrollment, targetId, publicOrigin, stunUrls = [] }) {
+    if (typeof enrollment.packagerId !== "string" || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(enrollment.packagerId)) {
+      throw new NativePackagerInstallerError("invalid_native_packager_id");
+    }
     const target = this.target(targetId); if (target.platform !== enrollment.platform) throw new NativePackagerInstallerError("invalid_native_packager_platform");
     const { origin, controlUrl } = endpoints(publicOrigin); const artifactUrl = `${origin}/downloads/native-packager/${target.id}`;
     if (!Array.isArray(stunUrls) || stunUrls.length > 8
