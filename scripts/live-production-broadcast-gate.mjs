@@ -129,14 +129,20 @@ async function refreshUntilProgramVisible(page, cardSection, programTitle, timeo
 }
 
 async function waitForProgramRunning(page, timeoutMs = 60_000) {
-  await page.waitForFunction(() => {
-    const status = document.querySelector("#broadcast-program-status");
-    const error = document.querySelector("#broadcast-start-summary .error");
-    return status?.textContent?.trim() === "Live" || Boolean(error?.textContent?.trim());
-  }, undefined, { timeout: timeoutMs });
-  const status = (await page.locator("#broadcast-program-status").innerText()).trim();
+  try {
+    await page.waitForFunction(() => {
+      const status = document.querySelector("#broadcast-program-status");
+      const error = document.querySelector("app-broadcast-preflight > .error[role=alert]");
+      return status?.textContent?.trim() === "Live" || Boolean(error?.textContent?.trim());
+    }, undefined, { timeout: timeoutMs });
+  } catch (error) {
+    const state = (await page.locator("app-broadcast-preflight").innerText())
+      .replaceAll(/\s+/g, " ").slice(0, 1_000);
+    throw new Error(`production_broadcast_state_timeout:${state}:${failedApiResponses.join("|")}`, { cause: error });
+  }
+  const status = (await page.locator("#broadcast-program-status").allInnerTexts()).at(0)?.trim() || "";
   if (status !== "Live") {
-    const code = (await page.locator("#broadcast-start-summary .error").innerText()).trim();
+    const code = (await page.locator("app-broadcast-preflight > .error[role=alert]").innerText()).trim();
     throw new Error(`production_broadcast_not_running:${code}:${failedApiResponses.join("|")}`);
   }
 }

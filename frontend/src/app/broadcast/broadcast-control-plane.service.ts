@@ -20,6 +20,8 @@ const CHALLENGE = /^bpc_[A-Za-z0-9_-]{24,64}$/;
 const SOURCE = /^src_[A-Za-z0-9_-]{16,64}$/;
 const PACKAGER = /^pkr_[A-Za-z0-9_-]{16,64}$/;
 const ASSIGNMENT = /^asn_[A-Za-z0-9_-]{16,64}$/;
+const TERMINAL_ASSIGNMENT_STATES = new Set(["stopped", "failed"]);
+const NATIVE_STOP_CONFIRMATION_MS = 12_000;
 
 export interface PreparedNativePackagerStart {
   readonly assignmentId: string;
@@ -46,6 +48,20 @@ function requestError(response: Response, fallback: string): BroadcastBrowserPor
   if (response.status === 409) return new BroadcastBrowserPortError("broadcast_state_conflict");
   if (response.status === 429) return new BroadcastBrowserPortError("broadcast_temporarily_unavailable");
   return new BroadcastBrowserPortError(fallback);
+}
+
+function wait(delayMs: number, signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(finish, delayMs);
+    const abort = () => finish(signal.reason || new DOMException("Aborted", "AbortError"));
+    function finish(error?: unknown): void {
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", abort);
+      if (error) reject(error); else resolve();
+    }
+    signal.addEventListener("abort", abort, { once: true });
+  });
 }
 
 function programRef(value: unknown): BroadcastProgramRef {
@@ -209,6 +225,36 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
       { method: "DELETE", headers: this.auth.authorizationHeader(), credentials: "same-origin", redirect: "error", signal },
     );
     if (!response.ok) throw requestError(response, "native_packager_assignment_stop_failed");
+    await json(response, "invalid_native_packager_assignment_stop_response");
+    const deadline = Date.now() + NATIVE_STOP_CONFIRMATION_MS;
+    do {
+      signal.throwIfAborted();
+      const inventoryResponse = await fetch("/api/native-packagers", {
+        headers: this.auth.authorizationHeader(),
+        credentials: "same-origin",
+        redirect: "error",
+        signal,
+      });
+      if (!inventoryResponse.ok) {
+        throw requestError(inventoryResponse, "native_packager_assignment_confirmation_failed");
+      }
+      const inventory = await json(inventoryResponse, "invalid_native_packager_assignment_confirmation");
+      if (!Array.isArray(inventory["assignments"])) {
+        throw new BroadcastBrowserPortError("invalid_native_packager_assignment_confirmation");
+      }
+      const current = inventory["assignments"].find((candidate) => {
+        if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+        const item = candidate as Record<string, unknown>;
+        return item["assignmentId"] === assignment.assignmentId
+          && item["packagerId"] === assignment.packagerId;
+      }) as Record<string, unknown> | undefined;
+      if (!current || TERMINAL_ASSIGNMENT_STATES.has(String(current["state"]))) return;
+      if (!new Set(["preparing", "ready", "starting", "running", "degraded", "draining"]).has(String(current["state"]))) {
+        throw new BroadcastBrowserPortError("invalid_native_packager_assignment_confirmation");
+      }
+      await wait(100, signal);
+    } while (Date.now() < deadline);
+    throw new BroadcastBrowserPortError("native_packager_assignment_stop_confirmation_timeout");
   }
 
   async authorize(request: WhipAuthorizationRequest, signal: AbortSignal): Promise<WhipAuthorization> {

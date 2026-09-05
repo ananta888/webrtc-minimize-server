@@ -35,7 +35,12 @@ gate_volume=""
 gate_revoked=0
 
 cleanup() {
+  exit_status=$?
   set +e
+  if [ "$exit_status" -ne 0 ] && [ -n "$gate_container" ]; then
+    printf '%s\n' "Isolated native-packager failure log follows" >&2
+    ssh -i "$ssh_key" "$packager_target" "docker logs --tail 500 '$gate_container' 2>&1" >&2
+  fi
   if [ -n "$gate_packager_id" ] && [ "$gate_revoked" -eq 0 ]; then
     RUN_LIVE_NATIVE_PACKAGER_ONBOARDING=1 \
       LIVE_OIDC_USERNAME="$gate_user" LIVE_OIDC_PASSWORD="$gate_password" \
@@ -51,7 +56,7 @@ cleanup() {
   fi
   if [ -n "$gate_user_id" ]; then
     ssh -i "$ssh_key" "$keycloak_target" \
-      "docker exec '$keycloak_container' sh -lc '/opt/keycloak/bin/kcadm.sh config credentials --server http://127.0.0.1:8080 --realm master --user \"\$KC_BOOTSTRAP_ADMIN_USERNAME\" --password \"\$KC_BOOTSTRAP_ADMIN_PASSWORD\" >/dev/null 2>&1; /opt/keycloak/bin/kcadm.sh delete users/$gate_user_id -r $keycloak_realm >/dev/null 2>&1 || true'"
+      "docker exec '$keycloak_container' sh -lc 'c=/tmp/kcadm-webrtc-cleanup-$gate_user_id.config; trap \"rm -f \$c\" EXIT; /opt/keycloak/bin/kcadm.sh config credentials --config \"\$c\" --server http://127.0.0.1:8080 --realm master --user \"\$KC_BOOTSTRAP_ADMIN_USERNAME\" --password \"\$KC_BOOTSTRAP_ADMIN_PASSWORD\" >/dev/null 2>&1; /opt/keycloak/bin/kcadm.sh delete users/$gate_user_id --config \"\$c\" -r $keycloak_realm >/dev/null 2>&1 || true'"
   fi
   case "$gate_directory" in /tmp/tmp.*) find "$gate_directory" -depth -delete ;; esac
 }
@@ -64,20 +69,35 @@ gate_user_id="$({
   printf 'gate_password_base64=%q\n' "$password_base64"
   printf 'keycloak_container=%q\n' "$keycloak_container"
   printf 'keycloak_realm=%q\n' "$keycloak_realm"
+  printf 'kcadm_config=%q\n' "/tmp/kcadm-$gate_user.config"
   cat <<'REMOTE'
 set -euo pipefail
 gate_user="$(printf '%s' "$gate_user_base64" | base64 -d)"
 gate_password="$(printf '%s' "$gate_password_base64" | base64 -d)"
-docker exec -e GATE_USER="$gate_user" -e GATE_PASSWORD="$gate_password" "$keycloak_container" sh -lc '
+docker exec -e GATE_USER="$gate_user" -e GATE_PASSWORD="$gate_password" -e GATE_REALM="$keycloak_realm" \
+  -e KCADM_CONFIG="$kcadm_config" "$keycloak_container" sh -lc '
   set -eu
   k=/opt/keycloak/bin/kcadm.sh
-  "$k" config credentials --server http://127.0.0.1:8080 --realm master --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
-  "$k" create users -r '"$keycloak_realm"' -s "username=$GATE_USER" -s enabled=true -s emailVerified=true >/dev/null
-  id=$("$k" get users -r '"$keycloak_realm"' -q "username=$GATE_USER" --fields id --format csv --noquotes | tr -d "\r" | tail -n 1)
+  c="$KCADM_CONFIG"
+  created_id=""
+  cleanup_identity() {
+    status=$?
+    if [ "$status" -ne 0 ] && [ -n "$created_id" ]; then
+      "$k" delete "users/$created_id" --config "$c" -r "$GATE_REALM" >/dev/null 2>&1 || true
+    fi
+    rm -f "$c"
+    trap - EXIT
+    exit "$status"
+  }
+  trap cleanup_identity EXIT
+  "$k" config credentials --config "$c" --server http://127.0.0.1:8080 --realm master --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+  id=$("$k" create users --config "$c" -r "$GATE_REALM" -s "username=$GATE_USER" -s enabled=true -s emailVerified=true -i)
   test -n "$id"
-  "$k" update "users/$id" -r '"$keycloak_realm"' -s firstName=WebRTC -s lastName=Gate -s "email=$GATE_USER@example.invalid" -s emailVerified=true >/dev/null
-  "$k" set-password -r '"$keycloak_realm"' --username "$GATE_USER" --new-password "$GATE_PASSWORD" >/dev/null
+  created_id="$id"
+  "$k" update "users/$id" --config "$c" -r "$GATE_REALM" -s firstName=WebRTC -s lastName=Gate -s "email=$GATE_USER@example.invalid" -s emailVerified=true >/dev/null
+  "$k" set-password --config "$c" -r "$GATE_REALM" --username "$GATE_USER" --new-password "$GATE_PASSWORD" >/dev/null
   printf "%s\n" "$id"
+  created_id=""
 '
 REMOTE
 } | ssh -i "$ssh_key" "$keycloak_target" bash -s)"

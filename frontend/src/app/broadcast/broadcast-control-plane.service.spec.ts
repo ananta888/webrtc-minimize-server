@@ -127,4 +127,28 @@ describe("BroadcastControlPlaneService", () => {
     const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
     expect(body).toMatchObject({ trigger: "user-action", deviceFingerprint: "f".repeat(43) });
   });
+
+  it("waits for the native agent stop acknowledgement before allowing reuse", async () => {
+    const assignment = {
+      assignmentId: "asn_0123456789abcdef", packagerId: "pkr_0123456789abcdef",
+      programId: program.programId, programEpoch: 2, fencingRevision: 3, expiresAt: Date.now() + 30_000,
+    };
+    const draining = { ...assignment, roomId: program.roomId, profileId: "h264-aac-720p-v1",
+      renditionIds: ["low"], state: "draining", reasonCode: "OWNER_STOP",
+      createdAt: Date.now(), updatedAt: Date.now() };
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(json({ assignment: draining }, 200))
+      .mockResolvedValueOnce(json({ packagers: [], assignments: [draining] }, 200))
+      .mockResolvedValueOnce(json({ packagers: [], assignments: [{ ...draining, state: "stopped" }] }, 200));
+    const service = new BroadcastControlPlaneService(
+      { authorizationHeader: () => ({ Authorization: "Bearer oidc" }) } as never,
+      {} as never,
+    );
+    await service.stopNativeAssignment(assignment, new AbortController().signal);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/native-packagers/" + assignment.packagerId + "/assignments/" + assignment.assignmentId,
+      "/api/native-packagers",
+      "/api/native-packagers",
+    ]);
+  });
 });
