@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
 import assert from "node:assert/strict";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { chromium, firefox } from "playwright";
 
@@ -9,6 +11,33 @@ const cameraContinuityWindowMs = Math.max(4_000, Math.min(
   180_000,
   Number.parseInt(process.env.CAMERA_CONTINUITY_WINDOW_MS || "4000", 10) || 4_000,
 ));
+
+async function createFakeAudioFixture() {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "webrtc-fake-audio-"));
+  const filename = path.join(directory, "active-speaker.wav");
+  const sampleRate = 48_000;
+  const durationSeconds = 12;
+  const samples = sampleRate * durationSeconds;
+  const wave = Buffer.alloc(44 + samples * 2);
+  wave.write("RIFF", 0, "ascii");
+  wave.writeUInt32LE(wave.length - 8, 4);
+  wave.write("WAVEfmt ", 8, "ascii");
+  wave.writeUInt32LE(16, 16);
+  wave.writeUInt16LE(1, 20);
+  wave.writeUInt16LE(1, 22);
+  wave.writeUInt32LE(sampleRate, 24);
+  wave.writeUInt32LE(sampleRate * 2, 28);
+  wave.writeUInt16LE(2, 32);
+  wave.writeUInt16LE(16, 34);
+  wave.write("data", 36, "ascii");
+  wave.writeUInt32LE(samples * 2, 40);
+  for (let index = 0; index < samples; index += 1) {
+    const envelope = index % sampleRate < sampleRate * 0.8 ? 0.35 : 0.05;
+    wave.writeInt16LE(Math.round(Math.sin(2 * Math.PI * 440 * index / sampleRate) * 32767 * envelope), 44 + index * 2);
+  }
+  await fs.writeFile(filename, wave, { mode: 0o600 });
+  return { directory, filename };
+}
 
 test("two Chromium pages negotiate SFrame chat and media then clean every capture on stop and leave", { timeout: cameraContinuityWindowMs + 35_000 }, async (context) => {
   try {
@@ -796,9 +825,14 @@ test("six Chromium peers use consented video relay, adaptive sender tiers and on
     app.server.listen(0, "127.0.0.1", resolve);
   });
   const origin = `http://127.0.0.1:${app.server.address().port}`;
+  const fakeAudio = await createFakeAudioFixture();
   const browser = await chromium.launch({
     headless: true,
-    args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
+    args: [
+      "--use-fake-device-for-media-stream",
+      "--use-fake-ui-for-media-stream",
+      `--use-file-for-fake-audio-capture=${fakeAudio.filename}`,
+    ],
   });
   const browserContext = await browser.newContext({ permissions: ["camera", "microphone"] });
   await browserContext.addInitScript(() => {
@@ -841,6 +875,7 @@ test("six Chromium peers use consented video relay, adaptive sender tiers and on
   context.after(async () => {
     await browserContext.close();
     await browser.close();
+    await fs.rm(fakeAudio.directory, { recursive: true, force: true });
     for (const socket of app.webSocketServer.clients) socket.terminate();
     await new Promise((resolve) => app.server.close(resolve));
   });
