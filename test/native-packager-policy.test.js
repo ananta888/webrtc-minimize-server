@@ -9,6 +9,7 @@ import {
   nativePackagerFfmpegArguments,
   nativePackagerPipelineCandidates,
   normalizeNativePackagerCapability,
+  supportsNativeAssignmentV2,
 } from "../src/native-packager-policy.js";
 
 const now = 1_800_000_000_000;
@@ -16,7 +17,7 @@ const capability = {
   capabilityVersion: 1, agentId: "mini-packager", tenantId: "tn_aaaaaaaaaaaaaaaa",
   ownerSubjectRef: "sub_aaaaaaaaaaaaaaaa", deviceRef: "dev_aaaaaaaaaaaaaaaa",
   agentVersion: "1.0.0", ffmpegVersion: "6.1.1",
-  videoEncoders: ["libx264", "h264_vaapi"], audioEncoders: ["aac"],
+  videoEncoders: ["libx264", "h264_nvenc"], audioEncoders: ["aac"],
   hardwareClass: "large", cpuClass: "high", gpuClass: "integrated",
   uploadClass: "over-15mbit", energyClass: "ac", health: "healthy",
   maximumRenditions: 3, maximumPixelsPerSecond: 1280 * 720 * 30,
@@ -32,7 +33,7 @@ const request = {
 
 test("native packager admission is exact-owner, tenant, room-consent and health bound", () => {
   const admitted = admitNativePackager(capability, request, now);
-  assert.equal(admitted.videoEncoder, "h264_vaapi");
+  assert.equal(admitted.videoEncoder, "h264_nvenc");
   assert.equal(admitted.softwareFallback, "libx264");
   assert.deepEqual(admitted.renditions.map(({ id }) => id), ["low", "medium", "high"]);
   for (const mutation of [
@@ -70,6 +71,16 @@ test("FFmpeg capability parsing enforces the real minimum version", () => {
   }
 });
 
+test("hardware assignments require the additive v2-capable agent generation", () => {
+  assert.equal(supportsNativeAssignmentV2("0.6.0"), true);
+  assert.equal(supportsNativeAssignmentV2("1.0.0"), true);
+  for (const version of ["0.5.9", "unknown", "0.6", "0.6.0 bad"]) {
+    assert.equal(supportsNativeAssignmentV2(version), false);
+  }
+  const legacy = admitNativePackager({ ...capability, agentVersion: "0.5.9" }, request, now);
+  assert.equal(legacy.videoEncoder, "libx264");
+});
+
 test("pilot profile fixes H.264 Main/AAC-LC ladder and aligned two-second GOPs", () => {
   assert.equal(NATIVE_BROADCAST_PROFILE.profileId, "h264-aac-720p-v1");
   assert.equal(NATIVE_BROADCAST_PROFILE.segmentDurationSeconds, 2);
@@ -105,7 +116,7 @@ test("hardware admission always carries one deterministic software fallback pipe
   const admitted = admitNativePackager(capability, request, now);
   const candidates = nativePackagerPipelineCandidates(admitted, "/var/lib/webrtc-packager");
   assert.equal(candidates.length, 2);
-  assert.equal(candidates[0].args[candidates[0].args.indexOf("-c:v:0") + 1], "h264_vaapi");
+  assert.equal(candidates[0].args[candidates[0].args.indexOf("-c:v:0") + 1], "h264_nvenc");
   assert.equal(candidates[1].args[candidates[1].args.indexOf("-c:v:0") + 1], "libx264");
   assert.equal(candidates[0].outputDirectory, candidates[1].outputDirectory);
 

@@ -18,9 +18,13 @@ Die aktuelle Pipeline plant höchstens drei H.264/AAC-Renditions:
 | medium | 960 × 540 | 24 | 1,1 Mbit/s | 96 kbit/s |
 | high | 1280 × 720 | 30 | 2,4 Mbit/s | 128 kbit/s |
 
-CPU-/Upload-/Pixelbudget reduziert diese Leiter vor dem Start. Hardwareencoder
-werden nur nach expliziter Anforderung und Capability gewählt; `libx264` bleibt
-der notwendige Software-Fallback. Keyframes liegen alle zwei Sekunden,
+CPU-/Upload-/Pixelbudget reduziert diese Leiter vor dem Start. Ein
+Hardwareencoder wird nur nach expliziter Anforderung und einem beim Agentstart
+wirklich bestandenen, auf drei Sekunden begrenzten Test-Encode gewählt; eine
+reine FFmpeg-Encoderliste reicht nicht. Der geschlossene
+`assignment-prepare.v2` bindet die Auswahl und genau `libx264` als
+Software-Fallback. Agenten vor 0.6.0 erhalten kompatibel v1 und ausschließlich
+`libx264`. Keyframes liegen alle zwei Sekunden,
 Szenenwechsel-Keyframes sind deaktiviert und jede Rendition erhält dieselbe
 Grenze. FFmpeg wird als Argumentvektor ohne Shell gestartet, liest nur von
 `pipe:0` und schreibt ausschließlich unter eine validierte opaque
@@ -54,7 +58,11 @@ er einen lokal mit Modus `0600` abgelegten, nicht über das Protokoll
 exportierten P-256-Private-Key über ein zehn Minuten gültiges Einmalticket.
 Danach authentisiert er jede WSS-Verbindung mit einer frischen Challenge,
 prüft lokal FFmpeg ab Version 6 sowie `libx264` und AAC und meldet nur die
-begrenzten Capability-Klassen aus dem Contract.
+begrenzten Capability-Klassen aus dem Contract. NVENC beziehungsweise
+VideoToolbox erscheinen nur nach erfolgreichem Test-Encode mit der tatsächlich
+laufenden FFmpeg-/Treiber-/Gerätekombination. VAAPI wird derzeit nicht gemeldet,
+weil der notwendige gerätegebundene Upload-/Filterpfad noch nicht Teil der
+portablen Pipeline ist; das Vorhandensein von `/dev/dri` allein genügt nicht.
 
 Für dauerhaft betriebene, operatorverwaltete Rechner gibt es zusätzlich eine
 offline provisionierbare Registrierung ohne Benutzerpasswort und ohne
@@ -216,8 +224,10 @@ Der Daemon besitzt nun den gefenceten WebRTC-RTP-Eingang, die echte
 FFmpeg-Transcode-/ABR-Pipeline und den intern autorisierten HLS-Origin. Diese
 native Ausgabe ist absichtlich normales, kurzes fMP4-HLS und wird nicht als
 Apple-LL-HLS ausgegeben; der vorhandene MediaMTX-WHIP-Pfad bleibt der getrennte
-LL-HLS-Adapter. Offen bleiben ein real provozierter Temperatur-/Hardwarefehler-
-Gate, Windows-Authenticode-/Apple-Developer-ID-Signaturen, Keychain/TPM,
+LL-HLS-Adapter. Ein echter FFmpeg-Prozessabbruch auf dem Hardwarepfad ist als
+einmaliger, sichtbarer Software-Fallback getestet; offen bleiben ein physischer
+GPU-/Treiberfehler und ein provozierter Temperatur-Gate,
+Windows-Authenticode-/Apple-Developer-ID-Signaturen, Keychain/TPM,
 Update-Rollback, mehrere Stunden Soak sowie echte Windows-/macOS- und mobile
 Player-Gates. Deshalb bleibt
 TBP-016 `in_progress`; die UI zeigt nur online/gesund/raumconsentierte eigene

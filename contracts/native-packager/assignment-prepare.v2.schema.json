@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/assignment-prepare.v2.schema.json",
+  "title": "Native packager assignment prepare v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version", "type", "assignmentId", "roomId", "programId", "publisherPeerId",
+    "programEpoch", "leaseId", "fencingRevision", "resourceRef", "profile", "expiresAt"
+  ],
+  "properties": {
+    "version": { "const": 2 },
+    "type": { "const": "assignment-prepare" },
+    "assignmentId": { "type": "string", "pattern": "^asn_[A-Za-z0-9_-]{16,64}$" },
+    "roomId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{4,64}$" },
+    "programId": { "type": "string", "pattern": "^prg_[A-Za-z0-9_-]{16,64}$" },
+    "publisherPeerId": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
+    "programEpoch": { "type": "integer", "minimum": 1 },
+    "leaseId": { "type": "string", "pattern": "^lea_[A-Za-z0-9_-]{16,64}$" },
+    "fencingRevision": { "type": "integer", "minimum": 1 },
+    "resourceRef": { "type": "string", "pattern": "^res_[A-Za-z0-9_-]{16,64}$" },
+    "profile": { "$ref": "#/$defs/profile" },
+    "expiresAt": { "type": "integer", "minimum": 1 }
+  },
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profileId", "videoEncoder", "softwareFallback", "maximumQueueFrames",
+        "keyframeIntervalSeconds", "renditions"
+      ],
+      "properties": {
+        "profileId": { "const": "h264-aac-720p-v1" },
+        "videoEncoder": { "enum": ["libx264", "h264_nvenc", "h264_videotoolbox"] },
+        "softwareFallback": { "const": "libx264" },
+        "maximumQueueFrames": { "type": "integer", "minimum": 1, "maximum": 120 },
+        "keyframeIntervalSeconds": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "renditions": {
+          "type": "array", "minItems": 1, "maxItems": 3,
+          "items": { "$ref": "#/$defs/rendition" }
+        }
+      }
+    },
+    "rendition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "width", "height", "framesPerSecond", "videoBitsPerSecond", "audioBitsPerSecond"],
+      "properties": {
+        "id": { "enum": ["low", "medium", "high"] },
+        "width": { "type": "integer", "minimum": 160, "maximum": 1920 },
+        "height": { "type": "integer", "minimum": 90, "maximum": 1080 },
+        "framesPerSecond": { "type": "integer", "minimum": 1, "maximum": 60 },
+        "videoBitsPerSecond": { "type": "integer", "minimum": 100000, "maximum": 10000000 },
+        "audioBitsPerSecond": { "type": "integer", "minimum": 16000, "maximum": 320000 }
+      }
+    }
+  }
+}

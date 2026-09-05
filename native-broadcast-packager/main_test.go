@@ -1,15 +1,63 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestFFmpegReportsOnlyHardwareThatCompletesARealEncode(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("FFmpeg is not installed")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	capability, err := probeFFmpeg(ctx, ffmpeg)
+	if err != nil {
+		t.Skipf("FFmpeg 6 with libx264/AAC is unavailable: %v", err)
+	}
+	if len(capability.videoEncoders) < 1 || capability.videoEncoders[0] != "libx264" {
+		t.Fatalf("software fallback missing from capability: %#v", capability)
+	}
+	for _, encoder := range capability.videoEncoders[1:] {
+		if !probeHardwareVideoEncoder(ctx, ffmpeg, encoder) {
+			t.Fatalf("unusable hardware encoder was advertised: %s", encoder)
+		}
+	}
+	for _, encoder := range capability.videoEncoders {
+		if encoder == "h264_vaapi" {
+			t.Fatal("unimplemented VAAPI pipeline was advertised")
+		}
+	}
+}
+
+func TestCapabilityClassifiesOnlyProbedHardwareFamilies(t *testing.T) {
+	for _, scenario := range []struct {
+		encoders []string
+		gpu      string
+	}{
+		{[]string{"libx264"}, "none"},
+		{[]string{"libx264", "h264_videotoolbox"}, "integrated"},
+		{[]string{"libx264", "h264_nvenc"}, "dedicated"},
+	} {
+		packager := client{
+			cfg:        config{packagerID: "pkr_0123456789abcdef", uploadClass: "5-15mbit", energyClass: "ac", maximumRenditions: 1, maximumPixelsPerSecond: 640 * 360 * 15},
+			capability: ffmpegCapability{version: "6.1", videoEncoders: scenario.encoders, audioEncoders: []string{"aac"}, health: "healthy"},
+		}
+		capability := packager.capabilityMessage()["capability"].(map[string]any)
+		if capability["gpuClass"] != scenario.gpu {
+			t.Fatalf("unexpected GPU class for %v: %v", scenario.encoders, capability["gpuClass"])
+		}
+	}
+}
 
 func TestBuildManifestIsBoundedAndNormalizesUntrustedLinkerValues(t *testing.T) {
 	valid := normalizedBuildManifest(strings.Repeat("a", 40), "2026-09-05T08:00:00+02:00")

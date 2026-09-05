@@ -28,6 +28,8 @@ type assignmentRendition struct {
 
 type assignmentProfile struct {
 	ProfileID               string                `json:"profileId"`
+	VideoEncoder            string                `json:"videoEncoder,omitempty"`
+	SoftwareFallback        string                `json:"softwareFallback,omitempty"`
 	MaximumQueueFrames      int                   `json:"maximumQueueFrames"`
 	KeyframeIntervalSeconds int                   `json:"keyframeIntervalSeconds"`
 	Renditions              []assignmentRendition `json:"renditions"`
@@ -57,6 +59,18 @@ func validAssignmentPrepare(message serverMessage, now time.Time) bool {
 		message.Profile.MaximumQueueFrames < 1 || message.Profile.MaximumQueueFrames > 120 ||
 		message.Profile.KeyframeIntervalSeconds < 1 || message.Profile.KeyframeIntervalSeconds > 10 ||
 		len(message.Profile.Renditions) < 1 || len(message.Profile.Renditions) > 3 {
+		return false
+	}
+	if message.Version == 1 {
+		if message.Profile.VideoEncoder != "" || message.Profile.SoftwareFallback != "" {
+			return false
+		}
+	} else if message.Version == 2 {
+		if !oneOf(message.Profile.VideoEncoder, "libx264", "h264_nvenc", "h264_videotoolbox") ||
+			message.Profile.SoftwareFallback != "libx264" {
+			return false
+		}
+	} else {
 		return false
 	}
 	seen := map[string]bool{}
@@ -159,7 +173,7 @@ func decodeServerMessage(raw []byte) (serverMessage, error) {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	var message serverMessage
-	if decoder.Decode(&message) != nil || message.Version != 1 {
+	if decoder.Decode(&message) != nil || (message.Version != 1 && (message.Version != 2 || messageType != "assignment-prepare")) {
 		return serverMessage{}, errors.New("invalid control message")
 	}
 	return message, nil

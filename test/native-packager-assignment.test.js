@@ -77,7 +77,10 @@ test("assignment preparation is owner-, consent-, capability- and lease-fenced",
   assert.deepEqual(prepared.snapshot.renditionIds, ["low", "medium", "high"]);
   assert.equal(prepared.snapshot.state, "preparing");
   assert.equal(prepared.command.type, "assignment-prepare");
+  assert.equal(prepared.command.version, 2);
   assert.equal(prepared.command.publisherPeerId, PUBLISHER);
+  assert.equal(prepared.command.profile.videoEncoder, "h264_nvenc");
+  assert.equal(prepared.command.profile.softwareFallback, "libx264");
   assert.equal(prepared.command.profile.maximumQueueFrames, 60);
   assert.equal(prepared.command.profile.renditions[2].videoBitsPerSecond, 2_400_000);
   assert.deepEqual(assignments.activeForProgram(request().programId), prepared.snapshot);
@@ -101,6 +104,19 @@ test("assignment preparation is owner-, consent-, capability- and lease-fenced",
     }, PUBLISHER, NOW),
     (error) => error instanceof NativePackagerAssignmentError && error.code === "native_packager_assignment_conflict",
   );
+});
+
+test("legacy agents receive v1 software assignments without silently selected hardware", () => {
+  const legacyCapability = capability({ agentVersion: "0.5.0" });
+  const assignments = registry({ id: PACKAGER, online: true, capability: legacyCapability });
+  const admission = assignments.admit(OWNER, PACKAGER, request(), NOW);
+  assert.equal(admission.videoEncoder, "libx264");
+  const prepared = assignments.prepare(OWNER, PACKAGER, admission, {
+    leaseId: "lea_aaaaaaaaaaaaaaaa", fencingRevision: 9, expiresAt: NOW + 60_000,
+  }, PUBLISHER, NOW);
+  assert.equal(prepared.command.version, 1);
+  assert.equal(Object.hasOwn(prepared.command.profile, "videoEncoder"), false);
+  assert.equal(Object.hasOwn(prepared.command.profile, "softwareFallback"), false);
 });
 
 test("assignment status rejects stale fences and follows a closed lifecycle", () => {

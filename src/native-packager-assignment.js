@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { admitNativePackager } from "./native-packager-policy.js";
+import { admitNativePackager, supportsNativeAssignmentV2 } from "./native-packager-policy.js";
 
 const PACKAGER = /^pkr_[A-Za-z0-9_-]{16,64}$/;
 const ASSIGNMENT = /^asn_[A-Za-z0-9_-]{16,64}$/;
@@ -125,6 +125,7 @@ export class NativePackagerAssignmentRegistry {
       leaseId: lease.leaseId,
       fencingRevision: lease.fencingRevision,
       admission: Object.freeze(admission),
+      assignmentProtocolVersion: supportsNativeAssignmentV2(packager.capability.agentVersion) ? 2 : 1,
       state: "preparing",
       reasonCode: "AWAITING_AGENT",
       createdAt: now,
@@ -329,8 +330,25 @@ export class NativePackagerAssignmentRegistry {
   }
 
   #prepareCommand(record) {
+    const profile = {
+      profileId: record.admission.profileId,
+      maximumQueueFrames: record.admission.maximumQueueFrames,
+      keyframeIntervalSeconds: record.admission.keyframeIntervalSeconds,
+      renditions: Object.freeze(record.admission.renditions.map((rendition) => Object.freeze({
+        id: rendition.id,
+        width: rendition.width,
+        height: rendition.height,
+        framesPerSecond: rendition.framesPerSecond,
+        videoBitsPerSecond: rendition.videoBitsPerSecond,
+        audioBitsPerSecond: rendition.audioBitsPerSecond,
+      }))),
+    };
+    if (record.assignmentProtocolVersion === 2) {
+      profile.videoEncoder = record.admission.videoEncoder;
+      profile.softwareFallback = record.admission.softwareFallback;
+    }
     return Object.freeze({
-      version: 1,
+      version: record.assignmentProtocolVersion,
       type: "assignment-prepare",
       assignmentId: record.assignmentId,
       roomId: record.roomId,
@@ -340,19 +358,7 @@ export class NativePackagerAssignmentRegistry {
       fencingRevision: record.fencingRevision,
       resourceRef: record.resourceRef,
       publisherPeerId: record.publisherPeerId,
-      profile: Object.freeze({
-        profileId: record.admission.profileId,
-        maximumQueueFrames: record.admission.maximumQueueFrames,
-        keyframeIntervalSeconds: record.admission.keyframeIntervalSeconds,
-        renditions: Object.freeze(record.admission.renditions.map((rendition) => Object.freeze({
-          id: rendition.id,
-          width: rendition.width,
-          height: rendition.height,
-          framesPerSecond: rendition.framesPerSecond,
-          videoBitsPerSecond: rendition.videoBitsPerSecond,
-          audioBitsPerSecond: rendition.audioBitsPerSecond,
-        }))),
-      }),
+      profile: Object.freeze(profile),
       expiresAt: record.expiresAt,
     });
   }

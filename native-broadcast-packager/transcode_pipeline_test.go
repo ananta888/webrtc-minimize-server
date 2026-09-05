@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -54,7 +55,7 @@ func TestLiveVP8ToH264AACPipeline(t *testing.T) {
 	ready := make(chan struct{})
 	pipeline, err := startTranscodePipeline(config{ffmpegPath: ffmpeg, outputRoot: root}, assignment,
 		webrtc.RTPCodecParameters{RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90000}},
-		webrtc.RTPCodecParameters{}, func() { close(ready) }, func() { failed.Store(true) })
+		webrtc.RTPCodecParameters{}, "libx264", func() { close(ready) }, func() { failed.Store(true) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,6 +148,97 @@ func TestTranscodeArgumentsArePipeBoundedAndGenerateABR(t *testing.T) {
 	}
 	if slices.Contains(args, "-listen") || strings.Contains(joined, "http://") || strings.Contains(joined, "https://") {
 		t.Fatal("transcode pipeline unexpectedly opens or targets a network endpoint")
+	}
+}
+
+func TestHardwareArgumentsRemainExplicitAndSoftwareFallbackCompatible(t *testing.T) {
+	assignment := transcodeAssignment()
+	assignment.Profile.VideoEncoder = "h264_nvenc"
+	assignment.Profile.SoftwareFallback = "libx264"
+	output := filepath.Join(string(filepath.Separator), "tmp", "ananta-native-packager", assignment.ResourceRef)
+	hardware := strings.Join(ffmpegTranscodeArguments(assignment, output, true, true), " ")
+	software := strings.Join(ffmpegTranscodeArguments(assignment, output, true, true, "libx264"), " ")
+	for _, expected := range []string{"-c:v:0 h264_nvenc", "-preset:v:0 p4", "-tune:v:0 ll"} {
+		if !strings.Contains(hardware, expected) {
+			t.Fatalf("hardware pipeline omitted %q: %s", expected, hardware)
+		}
+	}
+	for _, expected := range []string{"-c:v:0 libx264", "-preset:v:0 veryfast", "-tune:v:0 zerolatency"} {
+		if !strings.Contains(software, expected) {
+			t.Fatalf("software fallback omitted %q: %s", expected, software)
+		}
+	}
+}
+
+func TestHardwareProcessFailureRetriesExactlyOnceWithSoftware(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("FFmpeg is not installed")
+	}
+	root := t.TempDir()
+	wrapper := filepath.Join(root, "ffmpeg-hardware-failure")
+	script := fmt.Sprintf(`#!/bin/sh
+for argument in "$@"; do
+  if [ "$argument" = "h264_nvenc" ]; then
+    exit 23
+  fi
+done
+exec %q "$@"
+`, ffmpeg)
+	if err = os.WriteFile(wrapper, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	assignment := transcodeAssignment()
+	assignment.State = "starting"
+	assignment.Profile.VideoEncoder = "h264_nvenc"
+	assignment.Profile.SoftwareFallback = "libx264"
+	assignment.expiresAt.Store(time.Now().Add(time.Minute).UnixMilli())
+	statuses := make(chan map[string]any, 8)
+	packager := &client{
+		cfg:        config{ffmpegPath: wrapper, outputRoot: root},
+		assignment: assignment,
+		sendOverride: func(value any) error {
+			statuses <- value.(map[string]any)
+			return nil
+		},
+	}
+	media := &nativeMediaSession{
+		client: packager, assignment: assignment,
+		videoCodec: webrtc.RTPCodecParameters{RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeVP8, ClockRate: 90000,
+		}},
+	}
+	media.startTranscode()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		media.pipelineMu.Lock()
+		pipeline := media.pipeline
+		fallbackAttempted := media.fallbackAttempted
+		media.pipelineMu.Unlock()
+		if fallbackAttempted && pipeline != nil && pipeline.encoder == "libx264" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	media.pipelineMu.Lock()
+	pipeline := media.pipeline
+	fallbackAttempted := media.fallbackAttempted
+	media.pipeline = nil
+	media.closed.Store(true)
+	media.pipelineMu.Unlock()
+	if pipeline != nil {
+		pipeline.close()
+	}
+	if !fallbackAttempted || pipeline == nil || pipeline.encoder != "libx264" {
+		t.Fatalf("hardware failure did not switch to bounded software fallback: attempted=%t pipeline=%v", fallbackAttempted, pipeline)
+	}
+	select {
+	case status := <-statuses:
+		if status["state"] != "degraded" || status["reasonCode"] != "HARDWARE_ENCODER_FALLBACK" {
+			t.Fatalf("hardware fallback was not reported: %#v", status)
+		}
+	default:
+		t.Fatal("hardware fallback emitted no status")
 	}
 }
 

@@ -69,6 +69,40 @@ func TestControlMessagesAreClosedPerType(t *testing.T) {
 	}
 }
 
+func TestAssignmentV2CarriesOnlySupportedEncoderAndSoftwareFallback(t *testing.T) {
+	now := time.Now()
+	message := assignmentMessage(now)
+	message.Version = 2
+	message.Profile.VideoEncoder = "h264_nvenc"
+	message.Profile.SoftwareFallback = "libx264"
+	raw, err := json.Marshal(message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeServerMessage(raw)
+	if err != nil || !validAssignmentPrepare(decoded, now) {
+		t.Fatalf("valid v2 assignment rejected: %v", err)
+	}
+	for _, mutation := range []func(*serverMessage){
+		func(value *serverMessage) { value.Profile.VideoEncoder = "h264_vaapi" },
+		func(value *serverMessage) { value.Profile.SoftwareFallback = "h264_nvenc" },
+		func(value *serverMessage) { value.Version = 3 },
+	} {
+		invalid := message
+		mutation(&invalid)
+		invalidRaw, _ := json.Marshal(invalid)
+		if decodedInvalid, decodeErr := decodeServerMessage(invalidRaw); decodeErr == nil && validAssignmentPrepare(decodedInvalid, now) {
+			t.Fatalf("unsupported v2 assignment accepted: %#v", invalid.Profile)
+		}
+	}
+	legacy := assignmentMessage(now)
+	legacy.Profile.VideoEncoder = "libx264"
+	legacy.Profile.SoftwareFallback = "libx264"
+	if validAssignmentPrepare(legacy, now) {
+		t.Fatal("v1 assignment accepted v2 encoder fields")
+	}
+}
+
 func TestPreparedAssignmentHeartbeatDoesNotClaimMediaStarted(t *testing.T) {
 	message := assignmentMessage(time.Now())
 	packager := &client{assignment: assignmentFrom(message)}

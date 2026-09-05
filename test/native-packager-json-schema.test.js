@@ -9,6 +9,7 @@ test("native packager control schemas are closed and reject authority injection"
   const load = async (name) => JSON.parse(await readFile(new URL(`../contracts/native-packager/${name}`, import.meta.url), "utf8"));
   const client = ajv.compile(await load("client-control.v1.schema.json"));
   const server = ajv.compile(await load("server-control.v1.schema.json"));
+  const assignmentV2 = ajv.compile(await load("assignment-prepare.v2.schema.json"));
   const authentication = { version: 1, type: "authenticate", packagerId: "pkr_0123456789abcdef", timestamp: 1_800_000_000_000, proof: "A".repeat(86) };
   assert.equal(client(authentication), true, JSON.stringify(client.errors));
   assert.equal(client({ ...authentication, roomAuthority: true }), false);
@@ -25,6 +26,14 @@ test("native packager control schemas are closed and reject authority injection"
   };
   assert.equal(server(assignment), true, JSON.stringify(server.errors));
   assert.equal(server({ ...assignment, decryptKey: "forbidden" }), false);
+  const v2 = {
+    ...assignment,
+    version: 2,
+    profile: { ...assignment.profile, videoEncoder: "h264_nvenc", softwareFallback: "libx264" },
+  };
+  assert.equal(assignmentV2(v2), true, JSON.stringify(assignmentV2.errors));
+  assert.equal(assignmentV2({ ...v2, profile: { ...v2.profile, decryptKey: "forbidden" } }), false);
+  assert.equal(assignmentV2({ ...v2, profile: { ...v2.profile, videoEncoder: "h264_vaapi" } }), false);
   assert.equal(client({
     version: 1, type: "assignment-status", assignmentId: assignment.assignmentId,
     programEpoch: 2, fencingRevision: 3, state: "ready", reasonCode: "CAPABILITY_READY",

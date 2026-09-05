@@ -53,8 +53,15 @@ Ausweichressource verwendet. Reservierungen sind höchstens fünf Minuten alt,
 idempotent an ihre komplette Admission gebunden und nur mit passender
 Program-ID/-Epoche freigebbar. Abgelaufene Reservierungen werden verworfen.
 
-Hardwarebeschleunigung bleibt explizit opt-in. Jede Capability muss weiterhin
-`libx264` als Software-Fallback anbieten. Ein realer Hardwarefehler darf nicht
+Hardwarebeschleunigung bleibt explizit opt-in. Der Go-Agent meldet NVENC oder
+VideoToolbox nur nach einem begrenzten realen Test-Encode; eine kompilierte
+FFmpeg-Encoderliste gilt nicht als Verfügbarkeit. `assignment-prepare.v2`
+transportiert die konkrete Wahl und genau `libx264` als Software-Fallback.
+Ältere Agenten erhalten v1 und werden unabhängig von ihrer Selbstmeldung auf
+Software begrenzt. Ein Prozessfehler erzeugt höchstens einen Fallbackversuch und
+die sichtbaren Zustände `HARDWARE_ENCODER_FALLBACK` sowie nach fertigen
+Manifesten `SOFTWARE_FALLBACK_READY`. VAAPI bleibt bis zu einem getesteten
+Geräte-/hwupload-Filterpfad ausgeschlossen. Der Fallback darf nicht
 stillschweigend die bereits reservierten CPU-/Temperaturbudgets überschreiten.
 
 ## Verifikationsgrenze
@@ -63,6 +70,6 @@ Der echte FFmpeg-Gate erzeugt alle drei H.264/AAC-fMP4-Varianten, prüft
 unabhängige Segmente, End-of-stream und begrenzte Playlists. Unit-Tests decken
 Codecwerte, Modustrennung, Downshift, Überbuchung, Idempotenz, Ablauf und
 Epoch-Fencing ab. Noch offen bleiben VMAF/SSIM- und Screen-Text-Golden-Gates,
-Lautheit/A/V-Sync, echter Hardware-Fallback sowie die Wiedergabe auf Safari/iOS,
+Lautheit/A/V-Sync, ein physischer GPU-/Treiberfehler sowie die Wiedergabe auf Safari/iOS,
 Chromium, Firefox und Android. Bis dahin ist das Profil ein verifizierter
 Packager-Pilot, keine plattformübergreifende Produktionsfreigabe.

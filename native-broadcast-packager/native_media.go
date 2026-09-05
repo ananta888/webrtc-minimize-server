@@ -16,22 +16,23 @@ import (
 const maximumPendingNativeCandidates = 128
 
 type nativeMediaSession struct {
-	client     *client
-	assignment *packagerAssignment
-	pc         *webrtc.PeerConnection
-	signalMu   sync.Mutex
-	pending    []webrtc.ICECandidateInit
-	closed     atomic.Bool
-	pipelineMu sync.Mutex
-	videoCodec webrtc.RTPCodecParameters
-	audioCodec webrtc.RTPCodecParameters
-	pipeline   *transcodePipeline
-	startTimer *time.Timer
-	captionMu  sync.Mutex
-	caption    *nativeCaptionMessage
-	captionSet atomic.Bool
-	bytes      atomic.Uint64
-	packets    atomic.Uint64
+	client            *client
+	assignment        *packagerAssignment
+	pc                *webrtc.PeerConnection
+	signalMu          sync.Mutex
+	pending           []webrtc.ICECandidateInit
+	closed            atomic.Bool
+	pipelineMu        sync.Mutex
+	videoCodec        webrtc.RTPCodecParameters
+	audioCodec        webrtc.RTPCodecParameters
+	pipeline          *transcodePipeline
+	fallbackAttempted bool
+	startTimer        *time.Timer
+	captionMu         sync.Mutex
+	caption           *nativeCaptionMessage
+	captionSet        atomic.Bool
+	bytes             atomic.Uint64
+	packets           atomic.Uint64
 }
 
 func newNativeMediaSession(client *client, assignment *packagerAssignment) (*nativeMediaSession, error) {
@@ -207,6 +208,10 @@ func (media *nativeMediaSession) registerTrack(track *webrtc.TrackRemote) error 
 }
 
 func (media *nativeMediaSession) startTranscode() {
+	media.startTranscodeWithEncoder(selectedVideoEncoder(media.assignment.Profile), "OUTPUT_READY")
+}
+
+func (media *nativeMediaSession) startTranscodeWithEncoder(encoder, readyReason string) {
 	media.pipelineMu.Lock()
 	if media.closed.Load() || media.pipeline != nil {
 		media.pipelineMu.Unlock()
@@ -215,10 +220,11 @@ func (media *nativeMediaSession) startTranscode() {
 	videoCodec := media.videoCodec
 	audioCodec := media.audioCodec
 	media.pipelineMu.Unlock()
-	pipeline, err := startTranscodePipeline(media.client.cfg, media.assignment, videoCodec, audioCodec, func() {
-		_ = media.client.transitionAssignment(media.assignment, "running", "OUTPUT_READY")
+	pipelineReady := make(chan *transcodePipeline, 1)
+	pipeline, err := startTranscodePipeline(media.client.cfg, media.assignment, videoCodec, audioCodec, encoder, func() {
+		_ = media.client.transitionAssignment(media.assignment, "running", readyReason)
 	}, func() {
-		_ = media.client.transitionAssignment(media.assignment, "failed", "TRANSCODE_FAILED")
+		media.handleTranscodeFailure(<-pipelineReady)
 	})
 	if err != nil {
 		_ = media.client.transitionAssignment(media.assignment, "failed", "TRANSCODE_START_FAILED")
@@ -232,7 +238,30 @@ func (media *nativeMediaSession) startTranscode() {
 	}
 	media.pipeline = pipeline
 	media.pipelineMu.Unlock()
+	pipelineReady <- pipeline
 	media.flushCaptionOutput()
+}
+
+func (media *nativeMediaSession) handleTranscodeFailure(failed *transcodePipeline) {
+	media.pipelineMu.Lock()
+	if media.closed.Load() || media.pipeline != failed {
+		media.pipelineMu.Unlock()
+		return
+	}
+	media.pipeline = nil
+	fallback := media.assignment.Profile.SoftwareFallback
+	useFallback := failed.encoder != "libx264" && fallback == "libx264" && !media.fallbackAttempted
+	if useFallback {
+		media.fallbackAttempted = true
+	}
+	media.pipelineMu.Unlock()
+	failed.close()
+	if !useFallback {
+		_ = media.client.transitionAssignment(media.assignment, "failed", "TRANSCODE_FAILED")
+		return
+	}
+	_ = media.client.transitionAssignment(media.assignment, "degraded", "HARDWARE_ENCODER_FALLBACK")
+	media.startTranscodeWithEncoder(fallback, "SOFTWARE_FALLBACK_READY")
 }
 
 func (media *nativeMediaSession) close() {

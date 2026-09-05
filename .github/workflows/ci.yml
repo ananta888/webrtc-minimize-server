@@ -38,7 +38,7 @@ jobs:
       - name: Generate production dependency SBOM
         run: npm sbom --omit=dev --sbom-format cyclonedx > webrtc-minimize-server.cdx.json
       - name: Upload SBOM
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: webrtc-minimize-server-sbom
           path: webrtc-minimize-server.cdx.json
@@ -113,7 +113,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up pinned Go toolchain
-        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: native-broadcast-packager/go.mod
           cache-dependency-path: native-broadcast-packager/go.sum
@@ -155,7 +155,7 @@ jobs:
         with:
           subject-path: ${{ runner.temp }}/native-packager-artifacts/bin/*
       - name: Upload native packager binaries and checksums
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: native-broadcast-packager-${{ github.sha }}
           path: ${{ runner.temp }}/native-packager-artifacts

@@ -104,7 +104,7 @@ function capability(agentId, suffix, overrides = {}) {
     deviceRef: `dev_${suffix.repeat(16)}`,
     agentVersion: "1.0.0",
     ffmpegVersion: "6.1",
-    videoEncoders: ["libx264", "h264_vaapi"],
+    videoEncoders: ["libx264", "h264_nvenc"],
     audioEncoders: ["aac"],
     hardwareClass: "medium",
     cpuClass: "high",

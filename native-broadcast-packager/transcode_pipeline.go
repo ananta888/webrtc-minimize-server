@@ -61,6 +61,7 @@ type transcodePipeline struct {
 	diagnostic *boundedDiagnostic
 	done       chan error
 	output     string
+	encoder    string
 	closed     bool
 	onReady    func()
 	onFailure  func()
@@ -100,7 +101,30 @@ func cleanOutputRoot(root string) error {
 	return nil
 }
 
-func ffmpegTranscodeArguments(assignment *packagerAssignment, output string, hasVideo, hasAudio bool) []string {
+func selectedVideoEncoder(profile assignmentProfile) string {
+	if profile.VideoEncoder == "" {
+		return "libx264"
+	}
+	return profile.VideoEncoder
+}
+
+func ffmpegVideoEncoderArguments(encoder string, index int) []string {
+	suffix := fmt.Sprint(index)
+	switch encoder {
+	case "h264_nvenc":
+		return []string{"-preset:v:" + suffix, "p4", "-tune:v:" + suffix, "ll"}
+	case "h264_videotoolbox":
+		return []string{"-realtime:v:" + suffix, "1", "-allow_sw:v:" + suffix, "0"}
+	default:
+		return []string{"-preset:v:" + suffix, "veryfast", "-tune:v:" + suffix, "zerolatency"}
+	}
+}
+
+func ffmpegTranscodeArguments(assignment *packagerAssignment, output string, hasVideo, hasAudio bool, encoderOverride ...string) []string {
+	encoder := selectedVideoEncoder(assignment.Profile)
+	if len(encoderOverride) == 1 {
+		encoder = encoderOverride[0]
+	}
 	args := []string{"-hide_banner", "-nostdin", "-loglevel", "warning"}
 	if hasVideo {
 		args = append(args, "-f", "ivf", "-i", "pipe:3")
@@ -133,9 +157,10 @@ func ffmpegTranscodeArguments(assignment *packagerAssignment, output string, has
 	for index, rendition := range assignment.Profile.Renditions {
 		args = append(args,
 			"-map", fmt.Sprintf("[v%dout]", index), "-map", "1:a:0",
-			fmt.Sprintf("-c:v:%d", index), "libx264",
-			fmt.Sprintf("-preset:v:%d", index), "veryfast",
-			fmt.Sprintf("-tune:v:%d", index), "zerolatency",
+			fmt.Sprintf("-c:v:%d", index), encoder,
+		)
+		args = append(args, ffmpegVideoEncoderArguments(encoder, index)...)
+		args = append(args,
 			fmt.Sprintf("-b:v:%d", index), fmt.Sprint(rendition.VideoBitsPerSecond),
 			fmt.Sprintf("-maxrate:v:%d", index), fmt.Sprint(rendition.VideoBitsPerSecond*115/100),
 			fmt.Sprintf("-bufsize:v:%d", index), fmt.Sprint(rendition.VideoBitsPerSecond*2),
@@ -164,7 +189,7 @@ func ffmpegTranscodeArguments(assignment *packagerAssignment, output string, has
 	)
 }
 
-func startTranscodePipeline(cfg config, assignment *packagerAssignment, videoCodec, audioCodec webrtc.RTPCodecParameters, onReady, onFailure func()) (*transcodePipeline, error) {
+func startTranscodePipeline(cfg config, assignment *packagerAssignment, videoCodec, audioCodec webrtc.RTPCodecParameters, encoder string, onReady, onFailure func()) (*transcodePipeline, error) {
 	hasVideo := videoCodec.MimeType != ""
 	hasAudio := audioCodec.MimeType != ""
 	if hasVideo && !strings.EqualFold(videoCodec.MimeType, webrtc.MimeTypeVP8) {
@@ -175,6 +200,9 @@ func startTranscodePipeline(cfg config, assignment *packagerAssignment, videoCod
 	}
 	if !hasVideo && !hasAudio {
 		return nil, errors.New("native packager has no media ingress")
+	}
+	if !oneOf(encoder, "libx264", "h264_nvenc", "h264_videotoolbox") {
+		return nil, errors.New("native packager video encoder unavailable")
 	}
 	output, err := validatedOutputDirectory(cfg.outputRoot, assignment.ResourceRef)
 	if err != nil {
@@ -211,7 +239,7 @@ func startTranscodePipeline(cfg config, assignment *packagerAssignment, videoCod
 		readers = append(readers, reader)
 		writers = append(writers, writer)
 	}
-	cmd := exec.Command(cfg.ffmpegPath, ffmpegTranscodeArguments(assignment, output, hasVideo, hasAudio)...)
+	cmd := exec.Command(cfg.ffmpegPath, ffmpegTranscodeArguments(assignment, output, hasVideo, hasAudio, encoder)...)
 	diagnostic := &boundedDiagnostic{}
 	cmd.ExtraFiles = readers
 	cmd.Stdout = io.Discard
@@ -224,7 +252,7 @@ func startTranscodePipeline(cfg config, assignment *packagerAssignment, videoCod
 	}
 	closeFiles(readers)
 	pipeline := &transcodePipeline{
-		cmd: cmd, done: make(chan error, 1), output: output,
+		cmd: cmd, done: make(chan error, 1), output: output, encoder: encoder,
 		onReady: onReady, onFailure: onFailure, diagnostic: diagnostic,
 	}
 	writerIndex := 0

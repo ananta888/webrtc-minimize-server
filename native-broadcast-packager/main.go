@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,7 +35,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-const agentVersion = "0.5.0"
+const agentVersion = "0.6.0"
 
 var buildRevision = "unknown"
 var buildTimestamp = "unknown"
@@ -355,16 +356,46 @@ func probeFFmpeg(ctx context.Context, executable string) (ffmpegCapability, erro
 		return ffmpegCapability{}, errors.New("ffmpeg encoder probe failed")
 	}
 	text := string(encoderOutput)
-	video := []string{}
-	for _, encoder := range []string{"libx264", "h264_nvenc", "h264_vaapi", "h264_videotoolbox"} {
-		if strings.Contains(text, " "+encoder+" ") {
+	if !strings.Contains(text, " libx264 ") || !strings.Contains(text, " aac ") {
+		return ffmpegCapability{}, errors.New("libx264 and AAC encoders are required")
+	}
+	video := []string{"libx264"}
+	// Listing an encoder only proves that FFmpeg was compiled with it. Drivers,
+	// devices and container permissions can still be missing, so advertise a
+	// hardware path only after a bounded real encode using this runtime.
+	for _, encoder := range []string{"h264_nvenc", "h264_videotoolbox"} {
+		if strings.Contains(text, " "+encoder+" ") && probeHardwareVideoEncoder(ctx, executable, encoder) {
 			video = append(video, encoder)
 		}
 	}
-	if len(video) == 0 || video[0] != "libx264" || !strings.Contains(text, " aac ") {
-		return ffmpegCapability{}, errors.New("libx264 and AAC encoders are required")
-	}
 	return ffmpegCapability{fmt.Sprintf("%s.%s", match[1], match[2]), video, []string{"aac"}, "healthy"}, nil
+}
+
+func probeHardwareVideoEncoder(parent context.Context, executable, encoder string) bool {
+	if !oneOf(encoder, "h264_nvenc", "h264_videotoolbox") {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
+	defer cancel()
+	args := []string{
+		"-hide_banner", "-nostdin", "-loglevel", "error",
+		"-f", "lavfi", "-i", "color=c=black:s=64x64:r=1",
+		"-frames:v", "1", "-an", "-c:v", encoder,
+	}
+	args = append(args, hardwareEncoderProbeArguments(encoder)...)
+	args = append(args, "-f", "null", "-")
+	return exec.CommandContext(ctx, executable, args...).Run() == nil
+}
+
+func hardwareEncoderProbeArguments(encoder string) []string {
+	switch encoder {
+	case "h264_nvenc":
+		return []string{"-preset", "p4", "-tune", "ll", "-profile:v", "main", "-pix_fmt", "yuv420p"}
+	case "h264_videotoolbox":
+		return []string{"-realtime", "1", "-allow_sw", "0", "-profile:v", "main", "-pix_fmt", "yuv420p"}
+	default:
+		return nil
+	}
 }
 
 func cpuClass() string {
@@ -480,7 +511,9 @@ func (c *client) capabilityMessage() map[string]any {
 	c.roomsMu.RUnlock()
 	now := time.Now().UnixMilli()
 	gpu := "none"
-	if len(c.capability.videoEncoders) > 1 {
+	if slices.Contains(c.capability.videoEncoders, "h264_nvenc") {
+		gpu = "dedicated"
+	} else if slices.Contains(c.capability.videoEncoders, "h264_videotoolbox") {
 		gpu = "integrated"
 	}
 	return map[string]any{"version": 1, "type": "capability", "capability": map[string]any{

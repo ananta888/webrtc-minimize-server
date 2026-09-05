@@ -50,6 +50,14 @@ export function nativeFfmpegVersion(value) {
   });
 }
 
+export function supportsNativeAssignmentV2(agentVersion) {
+  const match = String(agentVersion || "").match(/^(\d+)\.(\d+)\.(\d+)(?:[-+][A-Za-z0-9.-]+)?$/);
+  if (!match) return false;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  return major > 0 || minor >= 6;
+}
+
 export function normalizeNativePackagerCapability(value, now = Date.now()) {
   const fields = new Set([
     "capabilityVersion", "agentId", "tenantId", "ownerSubjectRef", "deviceRef", "agentVersion",
@@ -63,7 +71,7 @@ export function normalizeNativePackagerCapability(value, now = Date.now()) {
     || !SUBJECT.test(value.ownerSubjectRef || "") || !/^dev_[A-Za-z0-9_-]{16,64}$/.test(value.deviceRef || "")
     || !VERSION.test(value.agentVersion || "") || !VERSION.test(value.ffmpegVersion || "")
     || !Array.isArray(value.videoEncoders) || value.videoEncoders.length > 8
-    || value.videoEncoders.some((codec) => !new Set(["libx264", "h264_nvenc", "h264_vaapi", "h264_videotoolbox"]).has(codec))
+    || value.videoEncoders.some((codec) => !new Set(["libx264", "h264_nvenc", "h264_videotoolbox"]).has(codec))
     || !Array.isArray(value.audioEncoders) || value.audioEncoders.length > 4
     || value.audioEncoders.some((codec) => codec !== "aac")
     || !new Set(["small", "medium", "large"]).has(value.hardwareClass)
@@ -130,7 +138,7 @@ export function admitNativePackager(capabilityValue, request, now = Date.now()) 
     rendition.width * rendition.height * rendition.framesPerSecond <= capability.maximumPixelsPerSecond
   ));
   if (selected.length < 1) fail("native_packager_capacity_rejected", 503);
-  const hardwareEncoder = request.allowHardwareAcceleration
+  const hardwareEncoder = request.allowHardwareAcceleration && supportsNativeAssignmentV2(capability.agentVersion)
     ? capability.videoEncoders.find((encoder) => encoder !== "libx264") || null
     : null;
   return Object.freeze({
