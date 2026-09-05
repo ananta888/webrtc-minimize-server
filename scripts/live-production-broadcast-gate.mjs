@@ -113,12 +113,19 @@ async function refreshUntilProgramVisible(page, cardSection, programTitle, timeo
   const card = page.locator(`${cardSection} .program-card`, { hasText: programTitle });
   const refresh = page.locator("section#broadcast-audience .audience-heading button", { hasText: "Aktualisieren" });
   const deadline = Date.now() + timeoutMs;
-  do {
-    await refresh.click();
+  for (let attempt = 0; attempt < 5 && Date.now() < deadline; attempt += 1) {
     if (await card.isVisible()) return;
-    await page.waitForTimeout(500);
-  } while (Date.now() < deadline);
-  throw new Error(`broadcast_directory_refresh_timeout:${cardSection}`);
+    await refresh.click();
+    await page.waitForTimeout(100);
+    await page.waitForFunction(() => {
+      const button = document.querySelector("section#broadcast-audience .audience-heading button");
+      return button instanceof HTMLButtonElement && !button.disabled;
+    }, undefined, { timeout: Math.min(5_000, Math.max(1, deadline - Date.now())) }).catch(() => undefined);
+    if (await card.isVisible()) return;
+    await page.waitForTimeout(1_000);
+  }
+  const state = (await page.locator("#broadcast-audience").innerText()).replaceAll(/\s+/g, " ").slice(0, 500);
+  throw new Error(`broadcast_directory_refresh_timeout:${cardSection}:${state}`);
 }
 
 try {
