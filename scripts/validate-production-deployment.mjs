@@ -48,6 +48,7 @@ for (const ignored of [".env", ".git", "node_modules", "dist"]) {
 }
 for (const required of [
   "git status --porcelain", "previous-image", "--no-build --wait", "rollback",
+  "docker image tag", "webrtc-minimize-server:rollback", "previous_file.new",
   "production-smoke-gate.mjs", "ensure-broadcast-signing-key.mjs",
   "native-broadcast-deployment-enabled.mjs", "--profile native-packager",
   "EXPECT_NATIVE_BROADCAST",

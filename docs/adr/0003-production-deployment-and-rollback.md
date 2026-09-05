@@ -15,7 +15,7 @@ Secrets werden nicht in Compose oder Images geschrieben. `TURN_SHARED_SECRET_FIL
 
 ## Release und Rollback
 
-`scripts/production-deploy.sh deploy` baut ein unveränderlich mit Git-SHA benanntes Image, merkt sich den vorherigen Image-Digest, ersetzt nur den App-Container und verlangt Docker-Readiness plus externen HTTPS-Smoke-Test. Der Smoke-Test prüft Health, getrennte Readiness, OIDC required, SFrame required, 20er-Limit, Runtime-Config, CSP und Angular-Shell. Scheitert ein Gate, wird automatisch der vorherige Digest gestartet und erneut extern geprüft. `rollback` ist auch manuell verfügbar.
+`scripts/production-deploy.sh deploy` baut ein unveränderlich mit Git-SHA benanntes Image, verankert das aktuell laufende Image vor jedem Build unter dem lokalen Tag `webrtc-minimize-server:rollback`, ersetzt nur den App-Container und verlangt Docker-Readiness plus externen HTTPS-Smoke-Test. Der feste lokale Rollback-Tag ist nötig, weil ein nackter BuildKit-Manifest-Digest beim erneuten Build desselben Revisionstags unreferenziert werden und von Compose fälschlich als Registry-Image behandelt werden kann. Der Smoke-Test prüft Health, getrennte Readiness, OIDC required, SFrame required, 20er-Limit, Runtime-Config, CSP und Angular-Shell. Scheitert ein Gate, wird automatisch das verankerte vorherige Image gestartet und erneut extern geprüft. `rollback` ist auch manuell verfügbar.
 
 Die Docker-Buildgraphen für Webserver, nativen Packager und Broadcast-Origin
 sind getrennt. Das kleine Origin-Ziel kompiliert keine Agent-Artefakte; das

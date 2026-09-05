@@ -7,6 +7,7 @@ production_origin=${PRODUCTION_ORIGIN:-https://webrtc.ananta.de}
 proxy_network=${WEBRTC_REVERSE_PROXY_NETWORK:-webrtc-edge}
 state_dir="$project_dir/.deploy"
 previous_file="$state_dir/previous-image"
+rollback_image="webrtc-minimize-server:rollback"
 compose_files="-f compose.yaml -f infra/reverse-proxy/compose.caddy-network.yaml -f infra/deployment/compose.production.yaml"
 
 cd "$project_dir"
@@ -34,9 +35,10 @@ rollback() {
   fi
   previous_image=$(sed -n '1p' "$previous_file")
   case "$previous_image" in
-    sha256:*|webrtc-minimize-server:*) ;;
+    webrtc-minimize-server:rollback) ;;
     *) echo "Recorded rollback image is invalid" >&2; return 1 ;;
   esac
+  docker image inspect "$previous_image" >/dev/null
   WEBRTC_IMAGE="$previous_image" WEBRTC_REVERSE_PROXY_NETWORK="$proxy_network" \
     docker compose $compose_files up -d --no-build --wait webrtc
   smoke
@@ -57,14 +59,18 @@ case "$action" in
     revision=$(git rev-parse --verify HEAD)
     source_timestamp=$(git show -s --format=%cI "$revision")
     candidate="webrtc-minimize-server:${revision}"
+    current_container=$(docker compose $compose_files ps -q webrtc 2>/dev/null || true)
+    if [ -n "$current_container" ]; then
+      current_image=$(docker inspect --format '{{.Config.Image}}' "$current_container")
+      docker image inspect "$current_image" >/dev/null
+      docker image tag "$current_image" "$rollback_image"
+      printf '%s\n' "$rollback_image" > "$previous_file.new"
+      mv "$previous_file.new" "$previous_file"
+    fi
     if [ "$native_broadcast" = "enabled" ]; then
       SOURCE_REVISION="$revision" SOURCE_TIMESTAMP="$source_timestamp" \
         docker compose $compose_files --profile native-packager build native-packager broadcast-hls-origin
       docker compose $compose_files --profile native-packager up -d --wait native-packager broadcast-hls-origin
-    fi
-    current_container=$(docker compose $compose_files ps -q webrtc 2>/dev/null || true)
-    if [ -n "$current_container" ]; then
-      docker inspect --format '{{.Image}}' "$current_container" > "$previous_file"
     fi
     docker build --pull --build-arg "SOURCE_REVISION=$revision" \
       --build-arg "SOURCE_TIMESTAMP=$source_timestamp" -t "$candidate" .
