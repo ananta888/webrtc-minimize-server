@@ -274,13 +274,16 @@ try {
   playerManifest = await startVisiblePlayer(viewer, "section[aria-labelledby=public-broadcasts-heading]");
 
   await ownerPage.locator("#broadcast-stop").click();
-  await ownerPage.locator("#broadcast-start:not([disabled])").waitFor({ timeout: 30_000 });
+  await ownerPage.locator("#broadcast-start", {
+    hasText: "Programm anlegen und Start bestätigen",
+  }).waitFor({ timeout: 30_000 });
   const revoked = await viewer.evaluate(async (url) => (await fetch(url, { cache: "no-store" })).status, playerManifest);
   assert.equal(revoked, 404, "stopped program manifest must be revoked immediately");
 
   const refreshTitle = `${title} refresh`;
   await ownerPage.locator("#prepare-broadcast-preview").click();
   await ownerPage.locator(".broadcast-heading .status[data-state=ready]").waitFor({ timeout: 20_000 });
+  await ownerPage.locator("#broadcast-start:not([disabled])").waitFor({ timeout: 20_000 });
   ownerPage.once("dialog", (dialog) => dialog.accept());
   await ownerPage.locator("#broadcast-start-summary").evaluate((details) => { details.open = true; });
   await ownerPage.locator("#broadcast-program-title").fill(refreshTitle);
