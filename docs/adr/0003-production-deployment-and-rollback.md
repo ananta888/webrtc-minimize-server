@@ -13,6 +13,15 @@ Diese Platzierung priorisiert den bereits funktionierenden Meet-Pfad und niedrig
 
 Secrets werden nicht in Compose oder Images geschrieben. `TURN_SHARED_SECRET_FILE`, `EDGE_TURN_SERVERS_JSON_FILE` und `MEDIA_EDGE_AGENTS_JSON_FILE` lesen begrenzte Secret-Mounts; gleichzeitige Direkt- und Dateikonfiguration ist ein Fehler. Rotation ersetzt den Mount atomar, erzeugt den Container neu und widerruft alte Grants/Credentials.
 
+Der Broadcast-Signierschlüssel besitzt einen eigenen bestätigungspflichtigen
+Rotationspfad. Er erzeugt P-256-Material ausschließlich im nicht versionierten
+Deployment-Verzeichnis mit Modus 0600, tauscht die Datei atomar, recreatet nur
+die Control Plane und verlangt denselben externen Health-Gate wie ein Release.
+Da Broadcastzustand flüchtig ist, beendet die Rotation absichtlich alle
+Programme und Grants. Bei einem Fehler wird die unmittelbar vorherige Datei
+zurückgesetzt und erneut gegatet; nach Erfolg bleibt keine Klartextvorversion
+im Deployment-Verzeichnis liegen.
+
 ## Release und Rollback
 
 `scripts/production-deploy.sh deploy` baut ein unveränderlich mit Git-SHA benanntes Image, verankert das aktuell laufende Image vor jedem Build unter dem lokalen Tag `webrtc-minimize-server:rollback`, ersetzt nur den App-Container und verlangt Docker-Readiness plus externen HTTPS-Smoke-Test. Der feste lokale Rollback-Tag ist nötig, weil ein nackter BuildKit-Manifest-Digest beim erneuten Build desselben Revisionstags unreferenziert werden und von Compose fälschlich als Registry-Image behandelt werden kann. Der Smoke-Test prüft Health, getrennte Readiness, OIDC required, SFrame required, 20er-Limit, Runtime-Config, CSP und Angular-Shell. Scheitert ein Gate, wird automatisch das verankerte vorherige Image gestartet und erneut extern geprüft. `rollback` ist auch manuell verfügbar.
@@ -29,6 +38,17 @@ Dies ist ein health-gated atomarer Recreate mit automatischem Rollback, kein ver
 ## Netzwerk
 
 Die verbindliche Default-deny-Matrix steht in `infra/deployment/port-firewall-matrix.v1.json`. Nur Caddy 443 (und 80, falls für ACME/Redirect benötigt) sowie aktiviertes TURN werden öffentlich exponiert. WHIP, HLS-Upstream, Gateway-API/-Metriken und Node 8080 bleiben privat. UDP 443 für MoQ wird erst nach tatsächlicher Capability und externem Test geöffnet.
+
+Der kanonische Virtual Host liegt in
+`infra/reverse-proxy/Caddyfile.webrtc.production`. Er akzeptiert nur die
+benötigten HTTP-Methoden, begrenzt Request-Bodies vor Node auf 256 KiB,
+entfernt nicht benötigte URL-Rewrite-Header, fixiert den weitergereichten Host,
+setzt äußere Security-Header und besitzt begrenzte Dial-/Response-Timeouts.
+Feingranulare Rate-, Origin-, Schema-, Pfad-, Body- und
+Autorisierungsentscheidungen bleiben in der zuständigen Node-Grenze, weil der
+verwendete stock Caddy kein ungeprüftes Rate-Limit-Plugin erhält. Gateway-API,
+Metrics, Debug und MediaMTX werden von diesem öffentlichen Host nie direkt
+proxied.
 
 Ausgehende Ziele werden im Produktionsprofil zusätzlich erzwungen. Control Plane
 und Native-Packager erhalten je ein ausschließlich von ihnen verwendetes,

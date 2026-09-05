@@ -8,11 +8,12 @@ proxy_network=${WEBRTC_REVERSE_PROXY_NETWORK:-webrtc-edge}
 state_dir="$project_dir/.deploy"
 previous_file="$state_dir/previous-image"
 rollback_image="webrtc-minimize-server:rollback"
+signing_key="$state_dir/secrets/broadcast-signing-private-key.pem"
 compose_files="-f compose.yaml -f infra/reverse-proxy/compose.caddy-network.yaml -f infra/deployment/compose.production.yaml"
 
 cd "$project_dir"
 mkdir -p "$state_dir"
-node scripts/ensure-broadcast-signing-key.mjs "$state_dir/secrets/broadcast-signing-private-key.pem"
+node scripts/ensure-broadcast-signing-key.mjs "$signing_key"
 native_broadcast=$(node scripts/native-broadcast-deployment-enabled.mjs)
 
 smoke() {
@@ -44,12 +45,50 @@ rollback() {
   smoke
 }
 
+rotate_broadcast_key() {
+  if [ "${CONFIRM_BROADCAST_KEY_ROTATION:-}" != "1" ]; then
+    echo "Refusing signing-key rotation without CONFIRM_BROADCAST_KEY_ROTATION=1" >&2
+    return 1
+  fi
+  next_key="$signing_key.next"
+  previous_key="$signing_key.previous"
+  if [ -e "$next_key" ] || [ -e "$previous_key" ]; then
+    echo "Refusing signing-key rotation with stale temporary key material" >&2
+    return 1
+  fi
+  current_container=$(docker compose $compose_files ps -q webrtc 2>/dev/null || true)
+  if [ -z "$current_container" ]; then
+    echo "Cannot rotate the signing key without a running control plane" >&2
+    return 1
+  fi
+  current_image=$(docker inspect --format '{{.Config.Image}}' "$current_container")
+  docker image inspect "$current_image" >/dev/null
+  node scripts/ensure-broadcast-signing-key.mjs "$next_key"
+  mv -Tf "$signing_key" "$previous_key"
+  mv -Tf "$next_key" "$signing_key"
+  if ! WEBRTC_IMAGE="$current_image" WEBRTC_REVERSE_PROXY_NETWORK="$proxy_network" \
+    docker compose $compose_files up -d --no-build --force-recreate --wait webrtc || ! smoke; then
+    echo "Signing-key rotation failed; restoring the previous key" >&2
+    rm -f "$signing_key"
+    mv -Tf "$previous_key" "$signing_key"
+    WEBRTC_IMAGE="$current_image" WEBRTC_REVERSE_PROXY_NETWORK="$proxy_network" \
+      docker compose $compose_files up -d --no-build --force-recreate --wait webrtc
+    smoke
+    return 1
+  fi
+  rm -f "$previous_key"
+  echo "Broadcast signing key rotated; all pre-rotation grants and programs are invalid."
+}
+
 case "$action" in
   smoke)
     smoke
     ;;
   rollback)
     rollback
+    ;;
+  rotate-broadcast-key)
+    rotate_broadcast_key
     ;;
   deploy)
     if [ -n "$(git status --porcelain)" ]; then
@@ -84,7 +123,7 @@ case "$action" in
     fi
     ;;
   *)
-    echo "Usage: $0 {deploy|smoke|rollback}" >&2
+    echo "Usage: $0 {deploy|smoke|rollback|rotate-broadcast-key}" >&2
     exit 2
     ;;
 esac

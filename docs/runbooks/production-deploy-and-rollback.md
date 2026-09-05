@@ -8,6 +8,14 @@
 6. Bei später erkannter Regression `scripts/production-deploy.sh rollback` ausführen. Danach `/healthz`, `/readyz`, `/config`, Login, Raumbeitritt, Medien-Stopp und Leave-Cleanup prüfen.
 7. Fehler nur mit Commit, Image-Digest, Zeit, anonymisiertem Alertcode und Readiness-Komponente dokumentieren. Keine Tokens, Raumcodes, IPs, SDP/ICE, Medien oder Captions erfassen.
 
+Der produktive Caddy-Virtual-Host muss inhaltlich
+`infra/reverse-proxy/Caddyfile.webrtc.production` entsprechen. Vor Reload mit
+`caddy validate` prüfen; danach müssen GET `/healthz`, der WebSocket-Upgrade
+und OIDC weiter funktionieren, während TRACE/CONNECT 405 liefern und ein
+Request-Body über dem kleineren anwendbaren Caddy-/Node-Limit verworfen wird
+(die Node-JSON-Grenze antwortet bereits vor 256 KiB mit 400). Gateway-API,
+Metrics und Debugpfade dürfen nicht zum MediaMTX-Container geroutet werden.
+
 Nach einem Netzwerk- oder DNS-Wechsel zeigt folgender Check ausschließlich die
 Regelstruktur und Paketzaehler, keine Secrets:
 
@@ -24,6 +32,27 @@ muss scheitern; Keycloak-Discovery und Packager-Control/TURN muessen danach
 weiter funktionieren. Der Guard aktualisiert aufgeloeste Zieladressen alle
 fuenf Minuten und aktiviert die neue Chain erst, nachdem alle Hostnamen
 erfolgreich aufgeloest wurden.
+
+## Broadcast-Signierschlüssel rotieren
+
+Die Rotation beendet bewusst alle flüchtigen Broadcast-Programme und macht
+sämtliche zuvor ausgegebenen Publisher-, Packager- und Playback-Grants sofort
+ungültig. Sie ändert weder OIDC- noch TURN-Schlüssel. Vorher muss deshalb ein
+Wartungsfenster beziehungsweise ein sichtbarer Broadcast-Stop bestätigt sein:
+
+```bash
+CONFIRM_BROADCAST_KEY_ROTATION=1 \
+WEBRTC_REVERSE_PROXY_NETWORK=bbb-edge \
+PRODUCTION_ORIGIN=https://webrtc.ananta.de \
+scripts/production-deploy.sh rotate-broadcast-key
+```
+
+Der Runner erzeugt den neuen P-256-Schlüssel in einer Datei mit Modus 0600,
+tauscht ihn atomar aus, startet ausschließlich die Control Plane mit demselben
+unveränderlichen Image neu und verlangt Readiness sowie den externen Smoke.
+Scheitert einer dieser Schritte, setzt er den alten Schlüssel atomar zurück und
+prüft auch den Rückweg. Nach Erfolg wird die temporäre Vorversion entfernt; sie
+darf nicht in Backups, Logs oder Deployment-Ausgaben übernommen werden.
 
 Der feste lokale Tag `webrtc-minimize-server:rollback` wird vor jedem Build
 atomar als einzig akzeptiertes Rücksprungziel hinterlegt. Er darf nicht durch

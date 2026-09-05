@@ -544,10 +544,10 @@
     {
       "id": "TBP-018",
       "title": "Gateway-, Control- und Media-Pfade mit Least Privilege isolieren",
-      "status": "partial",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 85,
+      "progress_percent": 92,
       "depends_on": ["TBP-006", "TBP-007", "TBP-008", "TBP-017"],
       "acceptance_criteria": [
         "MediaMTX-Control-API und Metrics sind nicht öffentlich erreichbar, benötigen intern Auth/Netzwerkpolicy und akzeptieren nur den minimalen orchestrierenden Dienst; Browser sprechen ausschließlich freigegebene Media-/Playback-Endpunkte an.",
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 22, "blocked": 0, "done": 17 },
+    "by_status": { "todo": 0, "in_progress": 2, "partial": 21, "blocked": 0, "done": 17 },
     "progress_percent_done": 42.5,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -964,8 +964,8 @@
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 1,
-    "partial": 22,
+    "in_progress": 2,
+    "partial": 21,
     "blocked": 0,
     "done": 17
   },
@@ -1037,6 +1037,7 @@
     "TBP-036 wurde auf 98 Prozent und TBP-038 auf 65 Prozent weitergefuehrt. Commit 8754bfd wurde ueber den gesicherten Rollback-/Health-Runner auf dem Mini-PC ausgerollt; externer Health, Readiness, Trusted-Packager, HLS-Origin und Keycloak-Issuer waren gruen und der isolierte Agent meldete exakt dieselbe Revision. Der echte Headless-Chromium-Produktionsgate bestand danach Authorization Code/PKCE, explizites Kamera-/Mikrofon-Capture, eigene Room-Membership, bestaetigten Packager-Consent, native VP8/Opus-zu-H.264/AAC-Ausgabe, dekodierbaren privaten Owner-Playback, Wechsel auf Public, anonymen P-256-gebundenen Playback ohne Room-Membership, sofortiges Manifest-404 nach Stop sowie normalen API-Widerruf des Agenten. Alle isolierten Smoke-Container und State-Volumes wurden auf Laptop und Mini-PC entfernt, der fluechtige res_-Output war leer und der Testnutzer wurde ueber Keycloaks Admin-API geloescht. Offen bleiben fuer TBP-036 nur die erzwungene Host-Egress-Allowlist und fuer TBP-038 die ehrlich unverified physischen Safari-/Mobil-/WAN-/Netzwechsel-/Wahrnehmungsgates.",
     "TBP-036 wurde auf 99 Prozent weitergefuehrt. Control Plane und Native-Packager erhalten im Produktionsprofil jetzt je ein exklusives fixes Egress-Subnetz. Ein digest-gepinnter, read-only Firewall-Guard mit ausschliesslich NET_ADMIN tauscht zwei DOCKER-USER-Regelgenerationen erst nach erfolgreicher DNS-Aufloesung aus: Control darf neue Verbindungen nur zum OIDC-/JWKS-Host auf TCP 443 beginnen, der Packager nur zu Control-WSS auf TCP 443 sowie konfigurierten TURN-Zielen auf UDP/TCP 3478 und TCP/TLS 5349; alle anderen neuen Ziele werden verworfen. Der Agent akzeptiert dafuer die geschlossene ICE-Policy all oder relay, und Produktion erzwingt relay ohne direkten Fallback. Der echte Regelaufbau und ein zweifacher A/B-Tausch bestanden in einem isolierten NET_ADMIN-Netznamespace; npm run check bestand mit 329 Angular-, 277 Node-/Browser-/Integrationstests, Go-Test/Vet, Produktionsbuild, Leakage- und allen sichtbaren Infrastrukturgates. Offen ist nur noch der Produktionsrollout mit positivem Keycloak-/Control-/TURN-Pfad und negativem Fremdzieltest.",
     "TBP-036 wurde abgeschlossen. Commit efcb8ec lief ueber den health-gesteuerten Produktionsrunner ohne Rollback auf dem Mini-PC ein; Webserver, Packager, Origin und Egress-Guard waren danach gesund und die oeffentliche Readiness blieb controlPlane ready sowie broadcast ready. Die laufenden Container besitzen ausschliesslich ihre festen 10.203.0.0/28- beziehungsweise 10.203.0.16/28-Egress-Netze; der Agent meldet exakt Revision efcb8ec und ICETransportPolicy relay. Reale Firewallzaehler belegen erlaubtes OIDC/JWKS-HTTPS, Control-WSS, TURN TCP 3478 und TURN UDP 3478 sowie verworfene neue Fremdzielverbindungen beider Subnetze. Ein neuer Keycloak-Discovery-Aufbau lieferte 200, Control und Packager konnten example.com dagegen nicht erreichen, waehrend /healthz, /readyz, Keycloak-Issuer und Native-Packager-Control gesund blieben. Zusammen mit dem bereits bestandenen produktiven PKCE-/TURN-, Rollback-unter-Last- und privaten/oeffentlichen Playback-/Stop-/Cleanup-Gate sind damit alle Akzeptanzkriterien von TBP-036 reproduzierbar erfuellt.",
+    "TBP-018 wurde auf 92 Prozent weitergefuehrt. Eine versionierte produktive Caddy-Grenze erlaubt nur die benoetigten HTTP-Methoden, begrenzt Request-Bodies auf 256 KiB, setzt Security-Header, entfernt interne Rewrite-Header, normalisiert den Forwarded Host und exponiert weder MediaMTX-Admin/Metrics noch Debugpfade. Dieselbe Grenze wurde ohne Ueberschreiben der vorhandenen BBB-/Jupyter-Erweiterungen auf dem Mini-PC adaptiert und durch gezieltes Recreate des Caddy-Dienstes aktiviert; Health blieb gruen, TRACE lieferte 405, uebergrosse JSON-Nutzlasten wurden vom strengeren Node-Limit mit 400 verworfen und BBB blieb mit 200 erreichbar. Der Deployment-Runner besitzt nun eine explizit bestaetigungspflichtige, atomare P-256-Broadcast-Signing-Key-Rotation mit Recreate des exakten laufenden Images, Health-Gate und automatischer Wiederherstellung des alten Schluessels bei Fehler; ein Fake-Docker-Integrationstest beweist Erfolgs-, Verweigerungs- und Cleanup-Pfad ohne Schluesselausgabe. Der volle npm-run-check-Gate bestand mit 329 Angular- sowie 278 Node-/Browser-/Integrationstests, Go-Test/Vet, Produktionsbuild und Leakage-Gate. Offen bleiben der reale Signing-Key-Rotationslauf sowie ein produktionsnaher MediaMTX-Publish-/Read-/Revoke-Gate mit Action-, Pfad- und Epoch-Autorisierung.",
     "tasks[] ist die Source of Truth; Summen werden bei jedem Statuswechsel gemeinsam aktualisiert und mit npm run todos:validate geprüft."
   ]
 }

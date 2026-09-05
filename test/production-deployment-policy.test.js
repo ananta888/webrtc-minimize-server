@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -105,4 +105,69 @@ exit 0
   calls = readFileSync(log, "utf8");
   assert.match(calls, /image inspect webrtc-minimize-server:rollback/);
   assert.match(calls, /WEBRTC_IMAGE=webrtc-minimize-server:rollback/);
+});
+
+test("broadcast signing-key rotation is confirmed, atomic and removes the previous key", (context) => {
+  const directory = mkdtempSync(path.join(tmpdir(), "production-key-rotation-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const scripts = path.join(directory, "scripts");
+  const secrets = path.join(directory, ".deploy", "secrets");
+  const bin = path.join(directory, "bin");
+  const log = path.join(directory, "docker.log");
+  mkdirSync(scripts, { recursive: true });
+  mkdirSync(secrets, { recursive: true });
+  mkdirSync(bin);
+  const ensure = new URL("../scripts/ensure-broadcast-signing-key.mjs", import.meta.url).pathname;
+  copyFileSync(ensure, path.join(scripts, "ensure-broadcast-signing-key.mjs"));
+  const key = path.join(secrets, "broadcast-signing-private-key.pem");
+  execFileSync(process.execPath, [ensure, key]);
+  const previous = readFileSync(key, "utf8");
+
+  writeFileSync(path.join(bin, "node"), `#!/bin/sh
+case "$*" in
+  *ensure-broadcast-signing-key.mjs*) exec ${process.execPath} "$@" ;;
+  *native-broadcast-deployment-enabled.mjs*) printf 'disabled\\n'; exit 0 ;;
+  *production-smoke-gate.mjs*) exit 0 ;;
+esac
+exit 2
+`);
+  writeFileSync(path.join(bin, "docker"), `#!/bin/sh
+printf '%s|WEBRTC_IMAGE=%s\\n' "$*" "\${WEBRTC_IMAGE:-}" >> "$FAKE_DOCKER_LOG"
+if [ "$1" = "compose" ] && printf '%s' "$*" | grep -q 'ps -q webrtc'; then
+  printf 'container-id\\n'
+elif [ "$1" = "inspect" ] && [ "$2" = "--format" ]; then
+  printf 'webrtc-minimize-server:current\\n'
+fi
+exit 0
+`);
+  for (const name of ["node", "docker"]) chmodSync(path.join(bin, name), 0o755);
+  const deploy = new URL("../scripts/production-deploy.sh", import.meta.url).pathname;
+  assert.throws(() => execFileSync("sh", [deploy, "rotate-broadcast-key"], {
+    cwd: directory,
+    stdio: "pipe",
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, PROJECT_DIR: directory, FAKE_DOCKER_LOG: log },
+  }));
+  try {
+    execFileSync("sh", [deploy, "rotate-broadcast-key"], {
+      cwd: directory,
+      encoding: "utf8",
+      env: {
+        ...process.env, PATH: `${bin}:${process.env.PATH}`, PROJECT_DIR: directory,
+        FAKE_DOCKER_LOG: log, CONFIRM_BROADCAST_KEY_ROTATION: "1",
+      },
+    });
+  } catch (error) {
+    assert.fail(`rotation failed: ${error.stderr || ""} ${error.stdout || ""} ${error.message}`);
+  }
+  assert.notEqual(readFileSync(key, "utf8"), previous);
+  assert.equal(readFileSync(log, "utf8").includes("--force-recreate --wait webrtc"), true);
+  assert.equal(readFileSync(path.join(directory, ".deploy", "secrets", "broadcast-signing-private-key.pem"), "utf8")
+    .includes("BEGIN PRIVATE KEY"), true);
+  assert.equal(readFileSync(key, "utf8").length < 16 * 1024, true);
+  assert.equal(readFileSync(log, "utf8").includes("WEBRTC_IMAGE=webrtc-minimize-server:current"), true);
+  assert.equal(readFileSync(key, "utf8").includes("PRIVATE KEY"), true);
+  assert.equal(readFileSync(key, "utf8").includes(previous), false);
+  assert.equal(readFileSync(key, "utf8").trim().length > 0, true);
+  assert.throws(() => readFileSync(`${key}.previous`, "utf8"), /ENOENT/);
+  assert.throws(() => readFileSync(`${key}.next`, "utf8"), /ENOENT/);
 });

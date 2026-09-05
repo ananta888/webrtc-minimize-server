@@ -15,6 +15,7 @@ const smoke = read("scripts/production-smoke-gate.mjs");
 const turnTlsSync = read("scripts/sync-turn-tls-certificate.sh");
 const turnTlsService = read("infra/deployment/ananta-turn-tls-sync.service");
 const turnTlsTimer = read("infra/deployment/ananta-turn-tls-sync.timer");
+const caddy = read("infra/reverse-proxy/Caddyfile.webrtc.production");
 
 if (policy.version !== 1 || policy.broadcast?.enabledByDefault !== false
   || policy.release?.automaticRollback !== true || policy.container?.readOnlyRoot !== true
@@ -61,6 +62,8 @@ for (const required of [
   "production-smoke-gate.mjs", "ensure-broadcast-signing-key.mjs",
   "native-broadcast-deployment-enabled.mjs", "--profile native-packager",
   "EXPECT_NATIVE_BROADCAST", "production-egress-firewall",
+  "rotate-broadcast-key", "CONFIRM_BROADCAST_KEY_ROTATION", "Signing-key rotation failed",
+  "mv -Tf", "previous_key", "--force-recreate",
 ]) {
   if (!deploy.includes(required)) throw new Error(`safe deploy gate missing: ${required}`);
 }
@@ -98,6 +101,15 @@ for (const required of [
 }
 if (!turnTlsTimer.includes("Persistent=true") || !turnTlsTimer.includes("RandomizedDelaySec=")) {
   throw new Error("TURN TLS renewal timer is not persistent and jittered");
+}
+for (const required of [
+  "https://webrtc.ananta.de", "not method GET HEAD POST PUT PATCH DELETE OPTIONS",
+  "max_size 256KB", "X-Forwarded-Host webrtc.ananta.de", "response_header_timeout 10s",
+]) {
+  if (!caddy.includes(required)) throw new Error(`Caddy production boundary missing: ${required}`);
+}
+for (const forbidden of ["/debug", "/metrics", "/pprof", "reverse_proxy broadcast-gateway"]) {
+  if (caddy.includes(forbidden)) throw new Error(`Caddy production boundary exposes forbidden path: ${forbidden}`);
 }
 
 process.stdout.write("Validated production deployment policy, ports, hardening, secrets and rollback gates.\n");
