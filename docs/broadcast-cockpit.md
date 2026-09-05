@@ -26,8 +26,13 @@ nennt Publikum, Quellen, konkreten Packager und dass der Broadcast nicht die
 Raum-SFrame-E2EE-Eigenschaft besitzt. Restore, Panelöffnung, Deep Link oder
 Remotesignal rufen den Action-Port nicht auf.
 
-Änderungen an Visibility, Delivery oder Packager während einer Sendung laufen
-über denselben Bestätigungstyp und markieren die erwartete Unterbrechung. Die
+Eine Änderung der Visibility während einer Sendung verlangt eine sichtbare
+Bestätigung und führt kontrolliert über Stop, terminalen Agent-ACK, neuen
+Own-Source-Preview und eine neue Publikation. Alte Grants, Writer-Leases,
+Assignment und HLS-Ressource werden dadurch vollständig gefencet; vorhandene
+Kamera-/Mikrofon-/Bildschirmfreigaben werden nicht neu angefordert. Ein
+direkter Policy-PATCH auf ein aktives Programm wird serverseitig abgelehnt.
+Delivery- oder Packagerwechsel verwenden dieselbe Unterbrechungsgrenze. Die
 Program-State-Anzeige kennt dauerhaft:
 
 ```text

@@ -285,7 +285,7 @@ test("owner creates a draft, obtains a device-bound publisher grant and becomes 
   assert.equal(visible[0].availability, "live");
 });
 
-test("only the owner can change visibility or stop and each action updates directory access", () => {
+test("visibility changes require a fenced stop and remain owner-only", () => {
   const owner = identity("owner", "Ada");
   const other = identity("other", "Grace");
   const runtime = new BroadcastRuntimeRegistry({ grantAuthority: authority(), clock: () => NOW });
@@ -298,18 +298,24 @@ test("only the owner can change visibility or stop and each action updates direc
     }, NOW),
     (error) => error instanceof BroadcastRuntimeError && error.code === "broadcast_not_available",
   );
+  assert.throws(
+    () => runtime.changeVisibility(owner, "prg_eeeeeeeeeeeeeeee", {
+      requestVersion: 1,
+      visibility: "public",
+    }, NOW + 1),
+    (error) => error instanceof BroadcastRuntimeError && error.code === "broadcast_visibility_restart_required",
+  );
+  const stopped = runtime.stopProgram(owner, "prg_eeeeeeeeeeeeeeee", NOW + 2);
+  assert.equal(stopped.availability, "ended");
   const visible = runtime.changeVisibility(owner, "prg_eeeeeeeeeeeeeeee", {
     requestVersion: 1,
     visibility: "public",
-  }, NOW + 1);
+  }, NOW + 3);
   assert.equal(visible.visibility, "public");
   assert.equal(visible.playback, "public");
-  assert.equal(runtime.listPublic(broadcastTenantRef(ISSUER)).length, 1);
-
-  const stopped = runtime.stopProgram(owner, "prg_eeeeeeeeeeeeeeee", NOW + 2);
-  assert.equal(stopped.availability, "ended");
+  assert.equal(visible.availability, "ended");
   assert.equal(runtime.listPublic(broadcastTenantRef(ISSUER)).length, 0);
-  assert.equal(runtime.stopProgram(owner, "prg_eeeeeeeeeeeeeeee", NOW + 3).availability, "ended");
+  assert.equal(runtime.stopProgram(owner, "prg_eeeeeeeeeeeeeeee", NOW + 4).availability, "ended");
 });
 
 test("publisher device departure stops only programs bound to that room device", async () => {

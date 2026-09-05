@@ -32,6 +32,7 @@ function fixture(createProgram?: (signal: AbortSignal) => Promise<typeof draft>)
     stop: vi.fn(async () => {}),
   };
   const preflight = {
+    preparePreview: vi.fn(async () => {}),
     stopPreview: vi.fn(async () => {}),
     resetForSession: vi.fn(async () => {}),
   };
@@ -105,5 +106,22 @@ describe("BroadcastPublisherWorkflowService", () => {
     expect(context.control.prepareStart).not.toHaveBeenCalled();
     expect(context.coordinator.start).not.toHaveBeenCalled();
     expect(context.preflight.resetForSession).toHaveBeenCalledOnce();
+  });
+
+  it("fences the old program and rebuilds preview before a visibility restart", async () => {
+    const context = fixture();
+    await context.service.start(request);
+    context.coordinator.programState.value.mockReturnValue({ lifecycle: "running", program: prepared });
+
+    await context.service.setVisibility("public");
+
+    expect(context.coordinator.stop).toHaveBeenCalledWith("visibility-change");
+    expect(context.control.stopProgram).toHaveBeenCalledWith(draft.programId, expect.any(AbortSignal));
+    expect(context.control.changeVisibility).not.toHaveBeenCalled();
+    expect(context.preflight.preparePreview).toHaveBeenCalledWith("user-action");
+    expect(context.control.createProgram).toHaveBeenLastCalledWith(
+      request.roomId, request.title, "public", expect.any(AbortSignal),
+    );
+    expect(context.coordinator.start).toHaveBeenCalledTimes(2);
   });
 });

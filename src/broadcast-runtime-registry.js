@@ -305,6 +305,9 @@ export class BroadcastRuntimeRegistry {
     const record = this.#records.get(key);
     if (!record || record.snapshot.machine.scope.ownerSubjectRef !== refs.subjectRef) unavailable();
     const { machine, policy } = record.snapshot;
+    if (!new Set(["draft", "stopped", "failed"]).has(machine.program.state)) {
+      fail("broadcast_visibility_restart_required", 409);
+    }
     const request = {
       requestVersion: 1,
       tenantId: refs.tenantId,

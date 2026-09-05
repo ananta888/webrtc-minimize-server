@@ -8,7 +8,7 @@ Der normale Raum bleibt ein interaktives WebRTC-Meet für höchstens 20 Teilnehm
 - **Trusted Program** setzt mehrere ausdrücklich freigegebene Quellen zu einer Sendung zusammen. Der gewählte Packager kann diese Quellen im Klartext verarbeiten. Er braucht daher gesonderten Consent und kann beim eigenen Gerät CPU, Akku und Upload beanspruchen.
 - Ein normaler Zuschauer wird dadurch nicht zum Raumteilnehmer und erhält weder Mikrofon-, Kamera- noch Moderationsrechte.
 
-`private` erlaubt nur ausdrücklich autorisierte Zuschauer, `unlisted` ist nur über den kontrollierten Link auffindbar, und `public` darf im öffentlichen Verzeichnis erscheinen. Eine Sichtbarkeitsänderung widerruft alte Viewer-Grants und erzeugt eine neue Broadcast-Epoche. Der Raum selbst bleibt davon getrennt.
+`private` erlaubt nur ausdrücklich autorisierte Zuschauer, `unlisted` ist nur über den kontrollierten Link auffindbar, und `public` darf im öffentlichen Verzeichnis erscheinen. Eine bestätigte Sichtbarkeitsänderung stoppt die bisherige Ausgabe, wartet auf den Packager-Cleanup und startet mit denselben gewählten Quellen als neues Programm. Alte Viewer-Grants, Writer-Leases und Medienpfade sind damit widerrufen; die kurze Unterbrechung ist beabsichtigt. Der Raum selbst und seine laufenden Freigaben bleiben davon getrennt.
 
 Untertitel stammen nur aus einer lokal gestarteten Quelle. Du entscheidest getrennt, ob sie nur bei dir sichtbar, im Raum geteilt oder in das Trusted Program übernommen werden. Ohne einen eigenen späteren Retention-Track werden weder Aufnahme noch Transcript gespeichert.
 
@@ -16,4 +16,4 @@ LL-HLS spart gegenüber einem großen Peer-Mesh Upload am Sender, fügt aber typ
 
 Mit **Broadcast stoppen** werden Publication, kurzlebige Grants, Writer-Leases, lokale Klone, AudioNodes und Gateway-Muxer beendet. Bei einem Fehler zeigt die Oberfläche entweder Wiederaufnahme mit Player-Neustart oder einen sichtbaren Stop; sie darf nicht unbemerkt auf einen weniger sicheren Pfad wechseln.
 
-Aktueller Produktionsstand: Das interaktive Meet ist aktiv, der Broadcast-Zweig ist serverseitig deaktiviert. Chromium und Firefox sind lokal geprüft; Safari, iOS/Android, WAN/CDN und die mehrstündige Belastung fehlen noch. Daher gibt es noch keine öffentliche Broadcast-Freigabe und keine zugesagte maximale Zuschauerzahl.
+Aktueller Produktionsstand: Das interaktive Meet und der native Broadcast-Pilot sind aktiv; Browser-WHIP/MediaMTX, CDN und MoQ bleiben deaktiviert. Chromium ist gegen den echten Produktionspfad geprüft; Safari, iOS/Android, WAN/CDN und die mehrstündige Belastung fehlen noch. Daher gibt es keine zugesagte maximale Zuschauerzahl.

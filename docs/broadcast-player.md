@@ -47,7 +47,8 @@ und behandelt 404/Widerruf ohne Ausfall von Bild und Ton.
 Abort, Schließen, Tab-Hintergrund, Navigation und Component-Destroy stoppen
 Loads, zerstören hls.js, entfernen Listener und eigene Texttracks, pausieren das
 Video und löschen `src`. Nach Sichtbarkeitswechsel ist ein neuer lokaler Klick
-erforderlich.
+zur Bestätigung erforderlich; das Cockpit fencet die alte Ausgabe und startet
+danach eine neue Publikation, während ein geöffneter alter Player sicher endet.
 
 Noch nicht vollständig freigegeben sind Poster sowie reale Safari/iOS-,
 Android-, Chromium- und Firefox-Langzeitgates. Der native HLS-/WebVTT-Pfad ist

@@ -124,9 +124,7 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
     }
     try {
       await this.publisher.setVisibility(this.preflight.audience());
-    } catch (error) {
-      this.preflight.setAudience(previous);
-    }
+    } catch { /* A failed restart remains visible and never restores a misleading live policy. */ }
   }
 
   async startBroadcast(): Promise<void> {

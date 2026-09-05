@@ -251,18 +251,27 @@ try {
   await refreshUntilProgramVisible(ownerPage, "section[aria-labelledby=own-broadcasts-heading]", title);
   playerManifest = await startVisiblePlayer(ownerPage, "section[aria-labelledby=own-broadcasts-heading]");
   await ownerPage.locator("app-broadcast-player .controls button", { hasText: "Schließen" }).click();
+  const captureCallsBeforeVisibility = await ownerPage.evaluate(() => [...window.__captureCalls]);
 
   ownerPage.once("dialog", (dialog) => dialog.accept());
-  const visibilityResponse = ownerPage.waitForResponse((response) => (
-    response.request().method() === "PATCH"
+  const visibilityStopResponse = ownerPage.waitForResponse((response) => (
+    response.request().method() === "DELETE"
     && new URL(response.url()).pathname.startsWith("/api/broadcasts/prg_")
-  ), { timeout: 20_000 });
+  ), { timeout: 30_000 });
+  const visibilityCreateResponse = ownerPage.waitForResponse((response) => {
+    if (response.request().method() !== "POST" || new URL(response.url()).pathname !== "/api/broadcasts") return false;
+    try { return response.request().postDataJSON()?.visibility === "public"; } catch { return false; }
+  }, { timeout: 30_000 });
   await ownerPage.locator("select#broadcast-audience").selectOption("public");
-  const changed = await visibilityResponse;
-  const changedBody = await changed.json();
-  assert.equal(changed.status(), 200, `public visibility update failed: ${changed.status()}`);
-  assert.equal(changedBody?.program?.visibility, "public", "visibility response did not commit public policy");
-  assert.match(changedBody?.program?.availability || "", /^(?:live|degraded)$/);
+  const [visibilityStop, visibilityCreate] = await Promise.all([
+    visibilityStopResponse,
+    visibilityCreateResponse,
+  ]);
+  assert.equal(visibilityStop.status(), 200, "old program was not fenced before its visibility restart");
+  assert.equal(visibilityCreate.status(), 201, "public replacement program was not created");
+  await waitForProgramRunning(ownerPage);
+  assert.deepEqual(await ownerPage.evaluate(() => window.__captureCalls), captureCallsBeforeVisibility,
+    "visibility restart must reuse explicit sources without requesting capture again");
   const publicDirectory = await ownerPage.evaluate(async () => {
     const response = await fetch("/api/broadcasts/public", { cache: "no-store", credentials: "omit" });
     return { status: response.status, body: await response.json() };

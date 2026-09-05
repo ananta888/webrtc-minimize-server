@@ -31,6 +31,7 @@ export class BroadcastPublisherWorkflowService {
   private controller: AbortController | null = null;
   private startTask: Promise<void> | null = null;
   private stopTask: Promise<void> | null = null;
+  private lastStartRequest: BroadcastPublisherStartRequest | null = null;
 
   constructor(
     readonly coordinator: BroadcastCoordinatorService,
@@ -69,18 +70,26 @@ export class BroadcastPublisherWorkflowService {
   }
 
   async setVisibility(visibility: BroadcastPreflightAudience): Promise<void> {
-    const programId = this.activeProgramId() || this.coordinator.programState.value().program?.programId || "";
-    if (!programId || this.busy()) throw new BroadcastBrowserPortError("broadcast_lifecycle_busy");
+    const request = this.lastStartRequest;
+    const state = this.coordinator.programState.value();
+    const programId = this.activeProgramId() || state.program?.programId || "";
+    if (!programId || !request || !new Set(["running", "degraded", "reconnecting", "handing_over"]).has(state.lifecycle)
+      || this.busy() || this.startTask || this.stopTask) {
+      throw new BroadcastBrowserPortError("broadcast_lifecycle_busy");
+    }
     this.busy.set(true);
     this.errorCode.set("");
     try {
-      await this.control.changeVisibility(programId, visibility, new AbortController().signal);
+      await this.runStop("visibility-change");
+      this.busy.set(true);
+      await this.preflight.preparePreview("user-action");
     } catch (error) {
       this.errorCode.set(error instanceof Error ? error.message : "broadcast_visibility_update_failed");
       throw error;
     } finally {
       this.busy.set(false);
     }
+    await this.start({ ...request, visibility });
   }
 
   async stop(reason = "user-stop"): Promise<void> {
@@ -152,6 +161,7 @@ export class BroadcastPublisherWorkflowService {
         sourceIds: request.sourceIds,
         adapterId,
       });
+      this.lastStartRequest = Object.freeze({ ...request, sourceIds: Object.freeze([...request.sourceIds]) });
     } catch (error) {
       if (programId) {
         try { await this.control.stopProgram(programId, new AbortController().signal); } catch { /* bounded orphan cleanup */ }
@@ -182,6 +192,7 @@ export class BroadcastPublisherWorkflowService {
     }
     this.activeProgramId.set("");
     this.busy.set(false);
+    if (reason !== "visibility-change") this.lastStartRequest = null;
     if (firstError) {
       this.errorCode.set(firstError instanceof Error ? firstError.message : "broadcast_stop_failed");
       throw firstError;

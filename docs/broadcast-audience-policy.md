@@ -31,8 +31,12 @@ darstellen.
 ## Atomarer Policy-Wechsel
 
 `BroadcastAudienceRegistry.changeVisibility()` akzeptiert nur geschlossene,
-idempotente v1-Kommandos und eine aktuelle serverseitige Rollenprojektion. Ein
-erfolgreicher Wechsel:
+idempotente v1-Kommandos und eine aktuelle serverseitige Rollenprojektion.
+Aktive Programme müssen vorher vollständig gestoppt werden; ein direkter
+Wechsel mit noch aktivem Writer wird mit
+`broadcast_visibility_restart_required` abgelehnt. Das Angular-Cockpit setzt
+dies als bestätigten Stop mit terminalem Assignment-ACK und anschließende neue
+Publikation um. Ein erfolgreicher Policy-Wechsel auf einem inaktiven Programm:
 
 1. prüft Tenant, Raum, Subject, Rolle und Membership-Epoch;
 2. prüft erwartete Programmrevision, Program-Epoch und Policy-Revision;
