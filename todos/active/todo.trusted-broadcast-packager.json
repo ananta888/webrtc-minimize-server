@@ -263,13 +263,13 @@
       "id": "TBP-M09",
       "title": "Abuse-Schutz, Observability, HA und Deployment",
       "task_ids": ["TBP-033", "TBP-034", "TBP-035", "TBP-036"],
-      "status": "todo"
+      "status": "in_progress"
     },
     {
       "id": "TBP-M10",
       "title": "Verifikation, Lastnachweis und Produktionsfreigabe",
       "task_ids": ["TBP-037", "TBP-038", "TBP-039", "TBP-040"],
-      "status": "todo"
+      "status": "in_progress"
     }
   ],
   "tasks": [
@@ -882,7 +882,7 @@
     {
       "id": "TBP-039",
       "title": "Last-, Langzeit-, Qualitäts-, Chaos- und Kosten-Gates durchführen",
-      "status": "partial",
+      "status": "in_progress",
       "priority": "P1",
       "risk": "high",
       "progress_percent": 55,
@@ -954,22 +954,28 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 0, "in_progress": 5, "partial": 14, "blocked": 0, "done": 21 },
+    "by_status": { "todo": 0, "in_progress": 6, "partial": 13, "blocked": 0, "done": 21 },
     "progress_percent_done": 52.5,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
     "critical_path": { "total": 36, "done": 20, "remaining": 16 },
-    "milestones": { "total": 10, "todo": 2, "in_progress": 5, "blocked": 0, "done": 3 }
+    "milestones": { "total": 10, "todo": 0, "in_progress": 7, "blocked": 0, "done": 3 }
   },
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 5,
-    "partial": 14,
+    "in_progress": 6,
+    "partial": 13,
     "blocked": 0,
     "done": 21
   },
   "summary_notes": [
+    "Die unabhaengige Keycloak-Nachkontrolle nach dem Produktionsgate bestaetigte null verbleibende webrtc-gate-Testnutzer. Die ausschliesslich fuer den Attestations-/Bytevergleich geladenen temporaeren CI-/Produktionsdownloadkopien wurden entfernt; sie sind aus GitHub beziehungsweise dem verifizierten Release erneut beziehbar. Die oeffentliche Instanz war nach dem Gate gesund und leer. Die zwei neuen 7200-Sekunden-Prozesse laufen weiterhin; sie sind nicht beendet und werden nicht als bestanden gewertet. Produktionscode bleibt exakt 62c46cb, die folgenden Aenderungen betreffen nur Evidenzdokumentation und Todo-Caches.",
+    "Revision 62c46cb wurde nach vollstaendig gruener CI 34033937123 am 2026-09-06 produktiv auf dem Mini-PC ausgerollt. Alle drei Images tragen exakt diese Revision; externer Smoke bestaetigt Control Plane und Native-Broadcast ready, die vorhandene Packager-Identitaet blieb im nicht ausgegebenen Vorher-/Nachhervergleich unveraendert, die Operation-Sperre blieb nicht zurueck. Runtime bestaetigt AUTH_MODE=required, MEDIA_E2EE_MODE=required und deaktivierte Maschinenaufnahme. Das public Release-Manifest ist bytegleich mit dem unabhaengig keyless gegen Repository, Workflow, refs/heads/main, Quellrevision und GitHub-hosted Runner verifizierten CI-Manifest; auch der oeffentliche Linux-amd64-Download ist bytegleich mit dem attestierten Release-Artefakt. Danach bestand der isolierte Produktionsgate mit Chromium-Publisher, Firefox-Privat-/Anonymzuschauer, Playback-Renewal, gefenctem Sichtbarkeitswechsel, terminalem Stop, Refresh ohne neues Capture und normalem Packager-Widerruf. Die getrennte Mini-PC-Nachkontrolle fand keine Gate-Container, Identity-Volumes oder res_-Ausgaben. TBP-M09 wird entsprechend den bereits implementierten und laufenden Betriebsarbeiten ebenfalls in_progress statt todo gefuehrt; keine offene Teilfaehigkeit wird dadurch done.",
+    "TBP-039 und TBP-M10 werden fuer den naechsten mehrstuendigen Abschnitt in_progress; TBP-039 bleibt bei 55 Prozent. Die zwei zuvor gestarteten 3600-Sekunden-Compositor-Gates endeten erfolgreich und ohne Skip: Chromium 151.0.7922.34 mit 684 Proben, mindestens 48 Ausgangsframes je Probe und Heap-Schaetzung von anfangs 16,1 bis maximal 20,5 MB; Firefox 153.0 mit 670 Proben, mindestens 36 Frames je Probe und nicht verfuegbarer Heapmessung. Beide binden exakt Bundle-SHA256 7de0589a6125f2e04d830a99265e094a8f4f82c9997273da5bacc51137e1ebf6, nicht nachtraeglich den neueren Release-Build. Pixelwechsel, monotone Medienzeit, begrenzte Livequellen und Cleanup bestanden; CPU, RSS, Audio-/Caption-Sync, Worker und physisches Capture bleiben ungemessen. Fuer den aktuellen Code wird als naechster begrenzter Schritt derselbe synthetische Videogate mit 7200 Sekunden je Browser aufgenommen. Er bleibt bis zum terminalen Ergebnis unverifiziert und ersetzt keine vollständige Broadcast-/Chaos-/CDN-Lastpruefung.",
+    "Auch der ergaenzende ad hoc Windows-Edge-Audio-Lifecycle-Lauf bestand mit Edge 152.0.4191.62, Windows 10.0.26200 und Bundle-SHA256 f455e4605f2e853d057a0762ea4d318ebb3b32669e504ab1c0b910139d24b765: Abort, lokales source-stop und injiziertes pending-resume enden mit geschlossenem Bus-Kontext und Ausgang; die separate Quellautoritaet bleibt erhalten und captureCalls bleibt null. Es gab keine Lautsprecherausgabe oder physische Capture-API. Runner /tmp/webrtc-edge-audio-gate.mjs ist wie der Video-Einmallauf nicht Teil des portablen CI-Gates. TBP-014/038 bleiben wegen ihrer weitergehenden Kriterien offen.",
+    "Der zusaetzliche lokale Einmallauf mit echtem Microsoft Edge 152.0.4191.62 unter Windows 10.0.26200 bestand am 2026-09-06 alle sieben Compositor-Pixel-/Layoutpruefungen, Einblendung/Widerruf, lokales Quellenende, 33 monotone Ausgangsframes und terminale Tracks; captureCalls blieb null. Der tatsaechlich ausgefuehrte Bundle-SHA256 ist 9f91f08d13838012ad231e0e7cce1fdfaa86c59d91abb20802c6c3e8202ff05f. Das isolierte Wegwerfprofil wurde durch Playwright geschlossen; kein menschliches Profil, Mikrofon oder Desktop wurde geoeffnet. Der ad hoc Windows-Runner liegt lokal unter /tmp/webrtc-edge-compositor-gate.mjs und ist noch kein versionierter portabler CI-Gate; dieses Ergebnis ersetzt weder Edge-HLS/Auth-Interop noch Langzeit-, WAN- oder physische Audiomessungen. TBP-038 bleibt in_progress/75.",
+    "TBP-038 bleibt in_progress/75: Zusaetzlicher lokaler Windows-Edge-Gate fuer den bestehenden Compositor mit isoliertem temporaerem Browserprofil, ausschliesslich synthetischen Quellen, allen sieben Layouts, realen Ausgangsframes und Stop-Cleanup. Akzeptanz: keine physischen Capture-Aufrufe, live und monotoner Framefortschritt, Layout-/Pixelwechsel sowie terminale Tracks; Browser-/OS-Version und exakter Bundlehash werden erfasst. Das ist kein Nachweis fuer Edge-Login, HLS, physisches Audio oder WAN. Der Release-Kandidat 62c46cb bleibt waehrenddessen unveraendert in CI.",
     "Der gemeinsame Upstream-Stand 2eba930 wurde ohne Konflikte per Fast-forward uebernommen; keine fremden Aenderungen wurden umgeschrieben. Der Dockerkontext-/Audio-CI-Abschnitt bestand danach am 2026-09-06 erneut npm run check inklusive echtem Windows-PowerShell-Parser, Angular-Build, Go, Chromium/Firefox sowie aller statischen Gates. Die Maschinen-Medienfixture und externe opt-in Infrastruktur bleiben bei fehlender expliziter Testkonfiguration sichtbar Skip. Der neu hinzugekommene Maschinenzugang bleibt ohne Betreiber-Key/Issuer default-denied; seine Aktivierung ist nicht Teil dieses Deployments. Der virtuelle CI-Audiotakt und anschliessende Rollout werden erst nach realem GitHub-Lauf als verifiziert erfasst. Die beiden zuvor gestarteten Compositor-Stundenlaeufe bleiben bis zum terminalen Ergebnis offen.",
     "Der Firefox-CI-Timeout ist durch einen absichtlich unerreichbaren lokalen PULSE_SERVER als abort:source-resume reproduziert; mit vorhandenem Audio-Taktgeber bestehen beide Browser. Der neue Gate begrenzt auch die synthetische Quellkontext-Vorbereitung/Bereinigung auf fuenf Sekunden und meldet inhaltsfreie Phasen. CI erhaelt einen ausschließlich virtuellen PulseAudio-Null-Sink ohne Hardwaremodule; kein Skip oder abgeschwaechtes Pegel-/Cleanup-Assertion. Der echte Docker-Scratch-Canary-Gate und alle fuenf Produktionsdeploymenttests bestehen. Voller Check, erneute CI und Rollout bleiben bis zur tatsaechlichen Verifikation offen.",
     "TBP-016/014 bleiben in_progress: Der Deployment-Audit zeigt fehlende .deploy-/data-Ausschluesse im Docker-Buildkontext; explizite Dockerfile-COPYs belegen keinen finalen Image-Leak, trotzdem muessen private Deploymentdateien schon vor dem Builder ausgeschlossen sein. Akzeptanz dieses Abschnitts: echter Scratch-Build mit synthetischen Secret-Canaries, verschachtelten Statepfaden und erhaltenen Source-/Beispieldateien; Produktionsvalidator und Runbook ergaenzen. CI 34033020544 fuer cadc189 brach im Firefox-AudioContext-Test nach 25 Sekunden ab, waehrend lokal 719 Tests bestanden. Der Test erhaelt begrenzte Quellkontext-Operationen und inhaltsfreie Phasendiagnostik, bevor ein erneuter CI-Nachweis und Deployment erfolgen. Mini-PC-Commit c1e05b1 bleibt unberuehrt und wird nicht ungeprueft uebernommen.",

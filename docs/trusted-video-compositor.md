@@ -93,3 +93,29 @@ Akzeptanzgates halten TBP-015 offen.
 Automatische quellengebundene VAD-/Sprecherzuordnung ist weiterhin offen. Der
 Active-Speaker-Renderer akzeptiert bisher eine ausdrücklich gewählte Quell-ID.
 TBP-015 bleibt während dieser Arbeiten `in_progress`, nicht abgeschlossen.
+
+## Gemessener Zwischenstand vom 6. September 2026
+
+Zwei parallele, vollständig beendete Läufe über jeweils 3.600 Sekunden bestanden
+die regelmäßigen Bildwechsel-/Framefortschrittsprüfungen und den finalen Cleanup:
+
+| Browser | Proben | Kleinster Framefortschritt je Probe | Heap-Schätzung |
+|---|---:|---:|---|
+| Chromium 151.0.7922.34 | 684 | 48 | anfangs 16,1 MB, maximal 20,5 MB |
+| Firefox 153.0 | 670 | 36 | nicht verfügbar |
+
+Beide Läufe binden ausschließlich den tatsächlich beim Start gebündelten Stand
+`7de0589a6125f2e04d830a99265e094a8f4f82c9997273da5bacc51137e1ebf6`.
+Die danach ergänzten Setup-/Cleanup-Schutzpfade waren darin noch nicht enthalten;
+der Nachweis wird nicht nachträglich dem neueren Release zugeschrieben. Die oben
+genannten Audio-, CPU-, RSS-, Worker- und physischen Qualitätsgrenzen bleiben offen.
+
+Ein separater lokaler Einmallauf mit Microsoft Edge 152.0.4191.62 auf Windows
+10.0.26200 bestand alle sieben Pixel-/Layoutfälle, Einblendung/Widerruf,
+Quellenende und Track-Cleanup mit 33 monotonen Ausgangsframes und null
+Capture-Aufrufen. Er bindet den neueren Bundle-Hash
+`9f91f08d13838012ad231e0e7cce1fdfaa86c59d91abb20802c6c3e8202ff05f`.
+Dieser ad hoc Windows-Lauf ist noch kein portabler CI-Gate und belegt weder
+Edge-HLS/-Login noch physische Audioqualität. Zwei zusätzliche 7.200-Sekunden-Läufe
+für den aktuellen Code wurden gestartet; bis zu deren terminalem Ergebnis sind
+sie ausdrücklich **unverifiziert**.
