@@ -176,5 +176,17 @@ geprüften Wachstumsbudget von 64 MiB.
 
 Für den Live-Regie-Stand von Commit `843ae54` mit Bundle-SHA-256
 `5085fbd59c11016c601feab1e99c8f7c2f5d359e1621c9df16374b51a1a8ba58`
-werden getrennte 7.200-Sekunden-Läufe ausgeführt. Bis zu deren terminalem
-Ergebnis bleibt dieser neuere Langzeitnachweis **unverifiziert**.
+wurden am 2026-09-06 beide getrennten 7.200-Sekunden-Läufe mit Exit 0 beendet,
+jeweils ein bestandener Test ohne Skip, einschließlich abschließendem Cleanup:
+
+| Browser | Proben | Kleinster Framefortschritt je Probe | Heap-Schätzung |
+|---|---:|---:|---|
+| Chromium | 1.368 | 38 | anfangs 18,2 MB, maximal 47,4 MB |
+| Firefox | 1.340 | 27 | nicht verfügbar |
+
+Die Laufzeiten betrugen 7.200,019 bzw. 7.200,025 Sekunden. Dieser Nachweis bindet
+den obigen Fixture-Hash und Start-Commit `843ae54`, nicht nachträgliche Player-
+oder Handoff-Änderungen. Audio-Sync, physischer Capture, CPU, Prozess-RSS und
+Workerpfad wurden dabei nicht gemessen und bleiben unverifiziert. Insbesondere
+ist die Chromium-Heap-Schätzung kein Prozess-RSS-Wert und der lokale
+Compositor-Lauf kein Zwei-Packager-/WAN-/HLS-Langzeitnachweis.

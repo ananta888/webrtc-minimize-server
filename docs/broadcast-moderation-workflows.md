@@ -132,7 +132,7 @@ sein gemeinsamer Mini-PC-Origin beweist keinen beliebigen Cross-Host-Origin.
 Revision `f6be45be8ca4586f378c51ed3caa551fe91f15cb` wurde am 2026-09-06 nach
 [allen sieben erfolgreichen CI-Gates](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34044416649)
 auf `webrtc.ananta.de` ausgerollt. Web-App, nativer Packager und HLS-Origin
-laufen auf dieser identischen Revision. Die Umschaltung erfolgte ohne aktive
+liefen auf dieser identischen Revision. Die Umschaltung erfolgte ohne aktive
 Teilnehmer oder Broadcast-Ausgabe; der persistente Geräteschlüssel blieb
 unverändert. OIDC bleibt `required`, Maschinenzulassung default-aus.
 
@@ -149,6 +149,43 @@ fand null Testcontainer, Test-Identity-Volumes, Ausgabe-Ressourcen und temporär
 Keycloak-Testnutzer. Das belegt den unverändert funktionierenden **einzelnen**
 Packager-Pfad auf dem neuen Release, nicht den weiterhin ausstehenden realen
 Zwei-Packager-Medienwechsel.
+
+Revision `0e37b9911d1727aee3052b41b4810eadc4d4e8ad` folgte am 2026-09-06 nach
+[allen sieben erfolgreichen CI-Gates](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34046987480)
+auf allen drei Diensten. Der Vorab-Build erfolgte ohne Dienstwechsel; vor der
+Aktivierung waren Räume, Teilnehmer und Ausgaben leer. Die externe Readiness
+bestand, der native Geräteschlüssel blieb unverändert, OIDC `required` und
+Maschinenzulassung ausgeschaltet. Alle fünf Image-Binaries stimmen mit den
+unabhängig attestierten CI-Dateien überein. Das öffentliche Manifest ist
+bytegleich (SHA-256 `22d3f507460e52561f70c8ae7bf7b2bff79a2a61c98b81be67aa24cc888dd473`),
+ebenso der separat geprüfte Linux-amd64-Download.
+
+Ein isolierter Ein-Packager-Produktionslauf auf diesem Release bestand mit
+privaten und anonymen Firefox-Zuschauern, dekodierter Bildregie, Renewal, Stop,
+Refresh/Restore und normalem Widerruf. Der erste Zwei-Packager-Lauf scheiterte
+vor dem Handoff an `native-packager-output-timeout`. Ein zweiter erreichte die
+fertige Publikation, scheiterte beim Playback-Bootstrap aber an einem realen
+Chromium-`ERR_NETWORK_CHANGED`. Gleichzeitig ausgeführte lokale Docker-Tests
+sind dafür eine plausible, nicht bewiesene Ursache. Diese Fehler bleiben
+verzeichnet; sie werden weder als erfolgreicher Handoff noch als endgültig
+diagnostizierter Produktfehler gewertet. Weitere Mediengates laufen getrennt
+von lokalen Container-Tests. Die Testfixture sammelt nur begrenzte ICE-/DTLS-
+Zustände und RTP-Zähler, keine Adressen, SDP, Token oder Medieninhalte.
+
+Ein dritter Zwei-Packager-Lauf ohne parallele lokale Container-Tests endete
+bereits beim OIDC-Login, vor Capture und Publikation. Die Quellprüfung zeigt
+eine dazu passende offene UI-Start-Race: Der sichtbare Login-Schalter prüft
+bislang nur `auth.busy()`, während `auth.configure()` erst nach dem asynchronen
+Laden von `/config` aufgerufen wird. Dieser Befund ist noch kein Beweis, dass
+alle drei unterschiedlichen Fehlversuche dieselbe Ursache haben. Die
+Runtime-/Login-Bereitschaft muss separat gehärtet und getestet werden, bevor
+der Zwei-Packager-Nachweis erneut bewertet wird.
+
+Nach terminalem Ende aller Läufe bestätigte eine unabhängige Prüfung null
+Testcontainer, Test-Identity-Volumes, `res_`-Ausgaben und temporäre Keycloak-
+Gate-Nutzer. Health meldete `ok`, null Räume und null Teilnehmer. Es wurden
+ausschließlich die von der Suite angelegten Testressourcen entfernt; bestehende
+kontogebundene Agenten und ihre Identitäten blieben erhalten.
 
 ## Bereits angeschlossene lokale Bildregie
 
