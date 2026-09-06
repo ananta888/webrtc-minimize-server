@@ -185,7 +185,64 @@ Basisverzeichnis **nicht bei mehreren Installationen ausführen**: Sie können
 alle dort liegenden Identitäten entfernen. Bestehende Installationen werden
 nicht automatisch verschoben oder neu registriert. Eine Migration muss die
 jeweiligen Dienste stoppen und deren Identitäten, Startpfade und Schreibrechte
-gezielt erhalten; automatische Migration, Update und Rollback bleiben offen.
+gezielt erhalten; eine automatische Migration bleibt offen.
+
+Neue Linux-Benutzerinstallationen enthalten jetzt zusätzlich `update-<packagerId>`
+im eigenen ID-Verzeichnis. Nach einem bewusst beendeten Broadcast und bei aktivem
+Benutzerdienst kann der Besitzer dort ausführen:
+
+```sh
+./update-<packagerId> update <verifizierter-sha256-des-neuen-linux-artefakts>
+./update-<packagerId> rollback
+./update-<packagerId> recover
+```
+
+Die Downloadadresse stammt vom bei Installation festgelegten HTTPS-Origin und
+Plattformziel; Redirects dürfen ausschließlich HTTPS verwenden. Der Download ist
+auf 128 MiB/120 Sekunden begrenzt und vor Ausführung SHA-256-geprüft.
+**Den erwarteten Hash aus einem unabhängig geprüften Release
+übernehmen**; der Hash einer beliebigen selbst heruntergeladenen Datei beweist
+keine vertrauenswürdige Herkunft. Die App liefert derzeit noch keine separate
+Update-Metadaten-/Signaturprüfung. Wird zwischen Hashausgabe und Download ein
+anderes Artefakt deployed, schlägt der Vergleich sicher fehl.
+
+Kandidat und aktuelle Rücksprungdatei müssen `preflight` unterstützen und bestehen.
+Danach stoppt der Updater nur den eigenen systemd-Benutzerdienst, tauscht die
+Binärdatei per Rename auf demselben Dateisystem und verlangt fünf erfolgreiche
+Aktivitätsprüfungen im Abstand von zwei Sekunden. Das ist lokale Dienstgesundheit,
+kein WSS-, Enrollment-, Consent- oder Mediennachweis. Identitätsdatei, Konfiguration
+und Registrierung werden nicht geändert; es findet kein erneutes Enrollment statt.
+Nach Erfolg verweist `.rollback-ref` auf genau eine gesicherte Vorversion.
+Ältere bekannte Backup-Dateien werden gezielt entfernt, unbekannte Dateien niemals
+rekursiv gelöscht. `rollback` tauscht auf die verifizierte Vorversion zurück.
+
+Fehler nach Beginn des Wechsels lösen einen automatischen Rückweg aus. Scheitert
+auch dieser oder wird der Updater hart beendet, bleibt `.update-active` erhalten;
+weitere Updates und die neue Deinstallation verweigern dann Änderungen, bis der
+Besitzer `recover` erfolgreich ausgeführt hat. `recover` prüft die gespeicherte
+Rücksprungdatei erneut und erhält einen bereits veröffentlichten Backup-Verweis.
+Update, Rollback, Recovery und Uninstall teilen eine nichtblockierende `flock`-
+Sperre. Nach einem Stromausfall ist Dateisystem-Dauerhaftigkeit durch Shell-Rename
+allein nicht bewiesen; Backups und Marker dürfen nicht blind entfernt werden.
+
+Voraussetzungen sind `curl`, `sha256sum`, `timeout`, `flock` und der vorhandene
+systemd-Benutzerdienst. Alte Installer/Installationen erhalten das neue Script
+nicht automatisch. Windows-/macOS-Updater, automatische Migration, signierte
+Update-Metadaten, UI-Anbindung und reale Reboot-Gates bleiben offen.
+Die ausgeführten Script-Gates verwenden synthetische Binaries und einen simulierten
+Dienstcontroller, jedoch echte Dateisystemoperationen, Prozesssperren und SIGKILL.
+Zusätzlich bestand auf dem Linux/WSL-Laptop ein echter systemd-Benutzerlauf mit
+zwei zufälligen Test-IDs: Installation, Update, manueller Rollback und automatischer
+Rückweg nach einem abstürzenden Kandidaten. Der zweite Dienst behielt seine PID,
+beide synthetischen Identitäten blieben unverändert. Nur Download, Enrollment und
+Binärdateien waren synthetisch; die erzeugten Benutzerunits und alle Dienstwechsel
+liefen tatsächlich. Die temporären Dienste wurden danach deaktiviert und entfernt.
+Das beweist keine reale Konto-/WSS-Authentisierung dieser Testbinaries und keine
+Power-Loss-Dauerhaftigkeit.
+
+```bash
+RUN_LINUX_PACKAGER_LIFECYCLE=1 node scripts/live-native-packager-linux-lifecycle-gate.mjs
+```
 
 Als lokale Voraussetzung für einen späteren Versionswechsel unterstützt der
 Agent `preflight` mit derselben `NATIVE_PACKAGER_*`-Konfiguration wie der Dienst.

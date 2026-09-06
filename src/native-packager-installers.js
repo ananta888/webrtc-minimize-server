@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { windowsPackagerPrivateAcl, windowsPackagerUninstaller } from "./native-packager-windows-lifecycle.js";
+import { linuxPackagerUpdater } from "./native-packager-linux-updater.js";
 
 const TARGETS = Object.freeze([
   Object.freeze({ id: "linux-amd64", platform: "linux", label: "Linux · Intel/AMD 64-Bit", artifact: "native-broadcast-packager-linux-amd64", installer: "ananta-native-packager-linux-amd64.sh" }),
@@ -51,6 +52,7 @@ function posix({ enrollment, target, sha256, artifactUrl, controlUrl, stunUrls }
     'binary="$packager_root/native-broadcast-packager"',
     `identity="$packager_root/${identity}"`,
     'temporary="$packager_root/native-broadcast-packager.download"',
+    ...(target.platform === "linux" ? ['command -v flock >/dev/null 2>&1 || { printf "%s\\n" "flock wird fuer sichere Wartung benoetigt." >&2; exit 1; }'] : []),
     'command -v ffmpeg >/dev/null 2>&1 || { printf "%s\\n" "FFmpeg 6 oder neuer wird benötigt." >&2; exit 1; }',
     `packager_base="${base}"`,
     '[ ! -L "$packager_base" ] || { printf "%s\\n" "Agent-Basis darf kein Symlink sein." >&2; exit 1; }',
@@ -75,6 +77,10 @@ function posix({ enrollment, target, sha256, artifactUrl, controlUrl, stunUrls }
   ];
   if (target.platform === "linux") {
     lines.push(
+      '[ ! -L "$packager_root/.maintenance.lock" ] || exit 1',
+      '[ ! -e "$packager_root/.maintenance.lock" ] || [ -f "$packager_root/.maintenance.lock" ] || exit 1',
+      'exec 9>"$packager_root/.maintenance.lock"', 'flock -n 9 || { printf "%s\\n" "Maintenance aktiv; keine Entfernung." >&2; exit 1; }',
+      '[ ! -e "$packager_root/.update-active" ] && [ ! -L "$packager_root/.update-active" ] || { printf "%s\\n" "Update-Wiederherstellung erforderlich; keine Entfernung." >&2; exit 1; }',
       `systemctl --user disable --now ${quote(`${service}.service`)}`,
       `rm -f "$HOME/.config/systemd/user/${service}.service"`, "systemctl --user daemon-reload >/dev/null 2>&1 || true",
     );
@@ -87,6 +93,9 @@ function posix({ enrollment, target, sha256, artifactUrl, controlUrl, stunUrls }
   );
   if (target.platform === "linux") {
     lines.push(
+      `cat > "$packager_root/update-${enrollment.packagerId}" <<'ANANTA_PACKAGER_UPDATER'`,
+      linuxPackagerUpdater({ enrollment, artifactUrl, controlUrl, stunUrls }),
+      "ANANTA_PACKAGER_UPDATER", `chmod 700 "$packager_root/update-${enrollment.packagerId}"`,
       'unit_dir="$HOME/.config/systemd/user"', 'mkdir -p "$unit_dir"',
       `cat > "$unit_dir/${service}.service" <<'ANANTA_PACKAGER_UNIT'`, "[Unit]", "Description=Ananta voluntary trusted broadcast packager", "After=network-online.target", "Wants=network-online.target", "", "[Service]", "Type=simple",
       `ExecStart="%h/.local/share/ananta-native-packager/${enrollment.packagerId}/${launcher}"`, "Restart=on-failure", "RestartSec=5", "NoNewPrivileges=true", "PrivateTmp=true", "ProtectSystem=strict", "ProtectHome=read-only", `ReadWritePaths="%h/.local/share/ananta-native-packager/${enrollment.packagerId}"`, "MemoryMax=2G", "TasksMax=128", "", "[Install]", "WantedBy=default.target", "ANANTA_PACKAGER_UNIT",

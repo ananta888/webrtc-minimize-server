@@ -288,7 +288,9 @@ test("two Chromium pages negotiate SFrame chat and media then clean every captur
   await ada.waitForFunction(() => {
     const cameraTrackIds = new Set(Object.entries(window.__localTrackSources)
       .filter(([, source]) => source === "camera").map(([trackId]) => trackId));
-    return window.__appliedTrackConstraints.filter((event) => cameraTrackIds.has(event.trackId)).length >= 2;
+    const applied = window.__appliedTrackConstraints.filter((event) => cameraTrackIds.has(event.trackId)).at(-1);
+    return applied?.constraints.width?.max === 426 && applied?.constraints.height?.max === 240
+      && applied?.constraints.frameRate?.max === 2;
   });
   assert.deepEqual(await ada.evaluate(() => window.__captureCalls), ["getUserMedia"]);
   const cameraApplied = await ada.evaluate(() => {
@@ -395,7 +397,9 @@ test("two Chromium pages negotiate SFrame chat and media then clean every captur
   await ada.waitForFunction(() => {
     const screenTrackIds = new Set(Object.entries(window.__localTrackSources)
       .filter(([, source]) => source === "screen").map(([trackId]) => trackId));
-    return window.__appliedTrackConstraints.filter((event) => screenTrackIds.has(event.trackId)).length >= 2;
+    const applied = window.__appliedTrackConstraints.filter((event) => screenTrackIds.has(event.trackId)).at(-1);
+    return applied?.constraints.width?.max === 640 && applied?.constraints.height?.max === 360
+      && applied?.constraints.frameRate?.max === 5;
   });
   assert.deepEqual(await ada.evaluate(() => window.__captureCalls), ["getUserMedia", "getUserMedia", "getDisplayMedia"]);
   const screenApplied = await ada.evaluate(() => {
