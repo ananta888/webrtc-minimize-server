@@ -1,0 +1,149 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": "1.0",
+  "owner": "Ananta Meet maintainers",
+  "track": "ananta-machine-dialog-screen",
+  "status": "todo",
+  "purpose": "Meet-seitige Erweiterung der vorhandenen KI-Teilnahme um separat autorisierten Empfang, Raumchat-Ereignisse, agenteneigenes Bildschirmteilen und erneuerbare, widerrufbare Sitzungen.",
+  "scope": {
+    "kind": "repository_development_track",
+    "implementation_started": false,
+    "runtime_authorization_granted": false,
+    "note": "Dieser Plan aktiviert weder Hub-Trust noch Projektfreigaben oder Capture. Alle Tasks beschreiben noch zu verifizierende Erweiterungen, nicht den Abschluss des vorhandenen Maschinen-Slice."
+  },
+  "related_tracks": [
+    {"repository": "webrtc-minimize-server", "path": "todos/archive/todo.ananta-machine-participant.json", "relationship": "Vorhandene Admission und begrenzte synthetische Publikation wiederverwenden; historischen Abschluss nicht verändern."},
+    {"repository": "ananta", "path": "todos/todo.meet-autonomous-agent-persona-media.json", "relationship": "Hub-Policy, Worker, ASR, Dialog und isolierte Browserquelle bleiben dort; lokale depends_on referenzieren ausschließlich Tasks dieses Tracks."}
+  ],
+  "architecture_decisions": [
+    "Meet besitzt Membership und Raumrechte, Anantas Hub Tasks und Projektpolicy; beide Autorisierungen sind notwendig. Worker dürfen keine der beiden erweitern.",
+    "KI-Empfang ist ein bewusst entschlüsselnder Endpunkt, kein blinder Relay. Signaling und Blind-Agenten erhalten weder Klartextmedien noch Chattexte oder Frame-Schlüssel.",
+    "LLM, ASR, TTS, Dialogentscheidungen und Browserbetrieb gehören nicht in Meets Server oder Angular-Policy. Getrennte Admission-, Subscription-, Event-, Source- und Lifecycle-Ports schützen SRP/ISP/DIP.",
+    "Human-OIDC, lokaler Capture-Klick, 20-Teilnehmer-Grenze und Pair-Grenzen bleiben unverändert. Keine menschlichen Kamera-, Mikrofon-, Display- oder Browserprofilquellen im Maschinenpfad.",
+    "Empfangsrechte müssen auch Schlüsselverteilung und Publikationsbindung begrenzen; ein ausgeblendeter UI-Schalter oder ausgelassener Callback allein ist keine kryptografische Empfangssperre.",
+    "Widerruf verhindert künftigen Empfang durch Stop und erforderliche Schlüsselrotation. Bereits beim berechtigten KI-Endpunkt entschlüsselte Inhalte können nicht rückwirkend zurückgerufen werden."
+  ],
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {"id": "MDS-M1", "title": "Verträge und Autorisierung", "status": "todo", "task_ids": ["MDS-01", "MDS-02"]},
+    {"id": "MDS-M2", "title": "Empfang, Chat und Bildschirmquelle", "status": "todo", "task_ids": ["MDS-03", "MDS-04", "MDS-05"]},
+    {"id": "MDS-M3", "title": "Lebenszyklus und sichtbare Kontrolle", "status": "todo", "task_ids": ["MDS-06", "MDS-07"]},
+    {"id": "MDS-M4", "title": "Verifikation und kontrollierter Rollout", "status": "todo", "task_ids": ["MDS-08", "MDS-09"]}
+  ],
+  "tasks": [
+    {
+      "id": "MDS-01", "title": "Versionierten Maschinen-Contract mit Ananta abstimmen",
+      "status": "todo", "progress_percent": 0, "priority": "P0", "risk": "critical", "depends_on": [],
+      "ananta_task_refs": ["MAP-02", "MAP-03", "MAP-06", "MAP-08"],
+      "acceptance_criteria": [
+        "Getrennte Fähigkeiten für Audioempfang, Chatlesen/-senden und agenteneigene Bildschirmveröffentlichung inklusive Raum, Task, Tenant, Projekt, Publikation, Runtime und Lease-Generation definieren; Aufzeichnung und Tools bleiben separat verboten.",
+        "Geschlossene additive Contract-Version, Capability-Probe, Byte-/Rate-/Queue-/Zeitgrenzen, Cancel und ACK festlegen; unbekannte Felder/Versionen fail-closed, bisheriger begrenzter MP4-Pfad bleibt kompatibel.",
+        "Gemeinsame positive und negative Contract-Fixtures mit Ananta vereinbaren; technische Peer-ID nicht als bewiesene menschliche Identität ausgeben."
+      ]
+    },
+    {
+      "id": "MDS-02", "title": "Hub-Trust und raumseitige Empfangs-/Quellrechte durchsetzen",
+      "status": "todo", "progress_percent": 0, "priority": "P0", "risk": "critical", "depends_on": ["MDS-01"],
+      "ananta_task_refs": ["MAP-05", "MAP-06", "MAP-12", "MAP-25"],
+      "acceptance_criteria": [
+        "Bestehende MACHINE_HUB_PUBLIC_KEY_FILE-/MACHINE_HUB_ISSUER-Konfiguration wiederverwenden; Operator-Trust, Projekt-/Task-Freigabe und zulässige Raum-/Publikationsfreigabe explizit trennen.",
+        "Freigabe durch berechtigte Raumakteure und betroffene Publisher spezifizieren und durchsetzen; Join oder Hub-Signatur allein erlaubt nicht pauschales Zuhören. Änderungen prüfen aktuelle Membership und Policy-Revision.",
+        "P-256-Nachweis, einmaliges Ticket, exakter Issuer/Audience, Ablauf und Replay-Prüfung bleiben erhalten; niemals private Hub-Schlüssel nach Meet oder Worker übertragen.",
+        "Schlüsselverteilung und Subscription prüfen Receive-Scope. Tests verhindern Schlüssel-/Medienlieferung an nicht freigegebene KI-Empfänger, einschließlich Direct-/Agent-Pfad und Membership-Wechsel."
+      ]
+    },
+    {
+      "id": "MDS-03", "title": "Begrenzten Audioempfang für den autorisierten KI-Client bereitstellen",
+      "status": "todo", "progress_percent": 0, "priority": "P1", "risk": "critical", "depends_on": ["MDS-02"],
+      "ananta_task_refs": ["MAP-25", "MAP-27"],
+      "acceptance_criteria": [
+        "Erst im berechtigten Teilnehmerclient entschlüsselte Audiochunks über einen isolierten Subscription-Port an das gebundene Ananta-Ausführungsprofil geben; keine Klartext-HTTP-Route am Signaling-Server.",
+        "Peer-, Publikations-, Quellen- und Epoch-Bindung, Format, Sample-Rate, monotone Zeitstempel, maximale Chunkgröße und Pufferdauer definieren; Mikrofon- und Bildschirmton unterscheiden.",
+        "Eigene KI-Ausgabe erkennbar ausschließen; Stummschaltung, Entzug, Leave, Decoderfehler und Lease-Verlust stoppen Lieferung und leeren Puffer. Keine ASR oder Transkriptpersistenz in Meet hinzufügen.",
+        "Zwei isolierte Testidentitäten weisen echte dekodierte Audiosamples sowie null Samples ohne Recht und nach Ablauf des definierten Widerrufsbudgets nach; required-SFrame bleibt ohne Klartext-Fallback."
+      ]
+    },
+    {
+      "id": "MDS-04", "title": "Autorisierte Raumchat-Ereignisse und Antworttransport ergänzen",
+      "status": "todo", "progress_percent": 0, "priority": "P1", "risk": "high", "depends_on": ["MDS-02"],
+      "ananta_task_refs": ["MAP-26", "MAP-27"],
+      "acceptance_criteria": [
+        "Bestehenden DataChannel-Chat um isoliert abonnierbare Ereignisse mit Message-ID, Senderbindung, Raum-/Sessiongeneration und begrenztem Cursor/ACK ergänzen; keine Nachrichtentexte in Signaling oder Produktionslogs.",
+        "Duplikate, Reihenfolge, Reconnect-Lücken, Oversize, Rate-Limits und langsame Konsumenten definiert behandeln; keine unbeschränkte Historie oder Wiederholung alter Raumchats.",
+        "Antworten enthalten Korrelation zum Eingangsereignis; deduplizierte Publikation und Kennzeichnung eigener KI-Nachrichten ermöglichen Anantas Schleifenschutz. Meet entscheidet nicht, wann ein LLM antwortet.",
+        "Disconnect und Widerruf entfernen Subscriber; unerlaubte Controller, fremde Räume und manipulierte Events negativ testen."
+      ]
+    },
+    {
+      "id": "MDS-05", "title": "Agenteneigenen Browserstream als separate Bildschirm-Publikation anbinden",
+      "status": "todo", "progress_percent": 0, "priority": "P1", "risk": "high", "depends_on": ["MDS-02"],
+      "ananta_task_refs": ["MAP-13", "MAP-14", "MAP-15", "MAP-16", "MAP-24"],
+      "acceptance_criteria": [
+        "Neuen Source-Adapter ausschließlich für die vom Hub gebundene isolierte Agentenansicht integrieren; keine simulierte Bestätigung eines menschlichen getDisplayMedia-Dialogs, kein Host-Capture.",
+        "Bildschirmvideo und optionaler ausdrücklich freigegebener Quellton besitzen eigene Publikations-IDs und Start/Stop-Lifecycles neben Avatar und synthetischer Sprache.",
+        "Codec-/Envelope-Aushandlung, SFrame-ACK, Auflösung/FPS/Bitrate und Backpressure begrenzen; Browsermatrix und nicht unterstützte Kombinationen ehrlich ausweisen.",
+        "Empfänger zeigt bewegte Testseite mit KI-/Quellkennzeichnung; Pause, Quellenwechsel, Stream-Ende und Revocation entfernen alte Frames ohne Avatar/Audio unberechtigt neu zu starten."
+      ]
+    },
+    {
+      "id": "MDS-06", "title": "Erneuerbare Sessions mit Fencing und wirksamem Widerruf implementieren",
+      "status": "todo", "progress_percent": 0, "priority": "P0", "risk": "critical", "depends_on": ["MDS-02"],
+      "ananta_task_refs": ["MAP-09", "MAP-11", "MAP-12"],
+      "acceptance_criteria": [
+        "Lang laufende Teilnahme besteht aus kurzlebigen neu autorisierten Leases, nicht aus verlängerten Dauertokens; jede Erneuerung prüft aktuellen Hub-Auftrag und Meet-Policy.",
+        "Generation/Fencing, maximale Sitzungsgesamtdauer und Stop-Budget definieren; kein doppelter Teilnehmer bei Refresh-Rennen, verspätetem ACK, Reconnect oder Worker-Neustart.",
+        "Lease-Ablauf, Raumwiderruf, Projektentzug oder Hub-Ausfall stoppen Empfang/Veröffentlichung und verwerfen Schlüssel/Puffer innerhalb des Budgets; Reconnect hebt einen Widerruf nicht auf.",
+        "Erforderliche Schlüsselrotation gegen künftigen Empfang testen; flüchtiger Room-State und Restart-Grenzen bleiben ehrlich dokumentiert. Mindestens drei Lease-Wechsel plus Ausfallszenarien automatisiert prüfen."
+      ]
+    },
+    {
+      "id": "MDS-07", "title": "KI-Aktivitäten und berechtigte Steuerung in Angular sichtbar machen",
+      "status": "todo", "progress_percent": 0, "priority": "P1", "risk": "high", "depends_on": ["MDS-03", "MDS-04", "MDS-05", "MDS-06"],
+      "ananta_task_refs": ["MAP-12", "MAP-25", "MAP-32"],
+      "acceptance_criteria": [
+        "Teilnehmeransicht und Analyse zeigen KI-Identität, Zuhören, Chat-Antwortfähigkeit, Bildschirmquelle, Freigaben und tatsächlich bestätigten Status getrennt von bloßer Capability.",
+        "Berechtigte Nutzer können eigene Empfangsfreigaben beziehungsweise erlaubte Raumrechte widerrufen; Pending/Denied/Expired/Unsupported sind sichtbar und serverseitig geprüft.",
+        "Datenschutzhinweis benennt Ananta als verarbeitenden Endpunkt und getrennte Speicher-/Providerfreigaben. Bedienung ist tastaturzugänglich und löst beim Öffnen keinen Capture aus.",
+        "UI besitzt keine Token-/PeerConnection-Policy; schmale Services nutzen vorhandene Gestaltung und Testmuster."
+      ]
+    },
+    {
+      "id": "MDS-08", "title": "Headless-Sicherheits- und Ende-zu-Ende-Matrix verifizieren",
+      "status": "todo", "progress_percent": 0, "priority": "P1", "risk": "high", "depends_on": ["MDS-07"],
+      "ananta_task_refs": ["MAP-29", "MAP-30", "MAP-31"],
+      "acceptance_criteria": [
+        "Ephemere Issuer, Policy-Fixtures und synthetische Quellen erlauben Tests ohne menschlichen Klick oder produktive Secrets; fehlende Infrastruktur endet begrenzt und sichtbar blocked/skipped.",
+        "Echter Empfang von Chat, Audio und Bildschirm über direkte ICE- und autorisierte Agent-/erzwungene TURN-Pfade getrennt nachweisen; mehrere Lease-Wechsel und mindestens zweistündigen begrenzten Soak mit definierten Ressourcen-/Stop-Schwellen prüfen.",
+        "Negativmatrix umfasst falsche Tenant/Room/Task/Quelle, Replay, unbekannte Felder/Codecs, ausstehende SFrame-ACKs, Widerruf, Schlüsselrotation, Queue-Overflow und menschliche Capture-Versuche.",
+        "Chromium/Firefox-Capabilities, Human-Join, Pair, 20-Teilnehmer-Grenze und bestehende Publikationen regressionsprüfen; npm run check und npm run todos:validate ausführen. Keine Testevidenz als ungeprüfte Produktionsfreigabe darstellen."
+      ]
+    },
+    {
+      "id": "MDS-09", "title": "Vorautorisierte Aktivierung, Preflight und Rollback dokumentieren und prüfen",
+      "status": "todo", "progress_percent": 0, "priority": "P1", "risk": "high", "depends_on": ["MDS-08"],
+      "ananta_task_refs": ["MAP-05", "MAP-31", "MAP-32"],
+      "acceptance_criteria": [
+        "Passende Meet-/Ananta-Revisionen, Contract-Version, Trust-Key-Fingerprint und exakte Projekt-/Raumfreigabe als separate Readiness-Bedingungen prüfen; keine Secrets oder Grants in Diagnoseausgaben.",
+        "Erst nach expliziter Betreiberpolicy automatisierter Rollout mit Schlüsselrotation und Widerruf; fehlende Freigabe ist ein maschinenlesbarer Blocker, kein Anlass für Datenbankmanipulation oder Auth-Abschaltung.",
+        "Stufenweise Chat-, Receive- und Screen-Aktivierung samt einzelnem Rollback dokumentieren; produktive Räume unangetastet lassen und nur eigene vorautorisierte Testressourcen verwenden.",
+        "Tatsächliches Deployment und unabhängige Netzwerk-/TURN-Nachweise separat festhalten; gemeinsame Abschlusskriterien mit Ananta verknüpfen, offene Tasks nicht aufgrund eines grünen Healthchecks schließen."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["MDS-01", "MDS-02", "MDS-03", "MDS-07", "MDS-08", "MDS-09"],
+  "tasks_status_summary": {
+    "total": 9,
+    "by_status": {"todo": 9, "in_progress": 0, "partial": 0, "blocked": 0, "done": 0},
+    "progress_percent_done": 0,
+    "by_priority": {"P0": 3, "P1": 6, "P2": 0, "P3": 0},
+    "by_risk": {"low": 0, "medium": 0, "high": 5, "critical": 4},
+    "critical_path": {"total": 6, "done": 0, "remaining": 6},
+    "milestones": {"total": 4, "todo": 4, "in_progress": 0, "blocked": 0, "done": 0}
+  },
+  "summary_notes": [
+    "Reiner Planungsauftrag vom 2026-09-06: keine Implementierung, Produktionsaktivierung oder erfolgreiche Medienabnahme durch diesen Track behauptet.",
+    "Anantas übergeordnete MAP-Aufgaben behalten ihre Historie; MDS-Tasks sind die ausführbaren Meet-seitigen Teilaufgaben. Ihr Abschluss schließt die korrespondierenden Ananta-Kriterien nicht automatisch ab."
+  ]
+}
