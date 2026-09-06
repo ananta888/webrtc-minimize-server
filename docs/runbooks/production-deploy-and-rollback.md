@@ -100,6 +100,28 @@ Der frühere, ausschließlich auf die Web-App bezogene Produktionsdrill vom
 das Vorgängerimage und anschließend wieder auf die aktuelle Revision. Alle
 2.913 HTTPS-Anfragen blieben erfolgreich; der abschließende Status war 200.
 
+Am 6. September 2026 bestand zusätzlich der reale Drei-Dienste-Drill mit
+`d13cfff` auf dem Mini-PC. Nach vollständig grüner CI einschließlich echtem
+Keycloak-/TURN-Gate wurde der neue Runner deployed. Er sicherte den laufenden
+Satz und bewältigte dabei den dokumentierten Containerd-Index-Sonderfall;
+der Native-Kandidat bestand `preflight` vor der Aktivierung.
+Bei leerer, gesunder Instanz wurden anschließend Web-App, Native-Packager und
+Origin auf die drei gespeicherten Rollback-Tags zurückgesetzt. Die tatsächlichen
+Container-Image-Referenzen entsprachen danach exakt dem gespeicherten Satz.
+Der externe Smoke bestätigte Control Plane und Broadcast als bereit.
+Der anschließende erneute Deploy stellte alle drei Dienste auf `d13cfff` und
+bestand denselben externen Smoke. Ein nicht ausgegebener SHA-256-Vergleich der
+vorhandenen Geräteidentität vor dem Drill, nach Rollback und nach erneutem
+Deploy bestätigte unveränderten Schlüsselinhalt. Die Operation-Lock blieb nicht
+zurück. Es wurden keine Identitäts- oder Medienvolumes gelöscht.
+
+Beim ersten Beobachtungslauf brach die SSH-Ausgabe ab. Nach Prüfung, dass der
+Vorgang tatsächlich beendet und die Instanz wieder gesund war, wurde der Drill
+mit serverseitiger, inhaltsfreier Ausgabe wiederholt und vollständig bestätigt.
+Das ist ein Versions-/Readiness-/Identitätserhalt-Gate bei null Teilnehmern,
+kein Nachweis für unterbrechungsfreie laufende Räume, Medien-Handoff,
+Konfigurationsmigrationen oder den Desktop-Updater.
+
 Zertifikatsprüfung ist Bestandteil von `curl`/Node TLS beim externen Smoke. Keycloak-, TURN-, private/public Playback- und optionale MoQ-Live-Gates benötigen ausdrücklich bereitgestellte Testkonten beziehungsweise aktivierte Adapter und werden sonst sichtbar übersprungen.
 
 Ein isolierter, nach dem Lauf zu widerrufender Produktionsnutzer und ein nur
