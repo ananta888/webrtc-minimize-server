@@ -159,11 +159,13 @@ func TestConfigOutputDefaultsArePortableAndIsolatedPerIdentity(t *testing.T) {
 	}
 	resource := "res_0123456789abcdef"
 	for _, cfg := range []config{first, second} {
-		if err := os.MkdirAll(filepath.Join(cfg.outputRoot, resource), 0o700); err != nil {
+		ownership, err := acquireOutputOwnership(cfg.outputRoot, resource, cfg.packagerID)
+		if err != nil {
 			t.Fatal(err)
 		}
+		_ = ownership.file.Close() // Simulate a dead writer, retaining its marker.
 	}
-	if err := cleanOutputRoot(first.outputRoot); err != nil {
+	if err := cleanOutputRoot(first.outputRoot, first.packagerID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(first.outputRoot, resource)); !os.IsNotExist(err) {

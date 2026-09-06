@@ -750,7 +750,7 @@ func main() {
 		}
 		return
 	}
-	if err = cleanOutputRoot(cfg.outputRoot); err != nil {
+	if err = cleanOutputRoot(cfg.outputRoot, cfg.packagerID); err != nil {
 		log.Fatal("native packager output unavailable")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

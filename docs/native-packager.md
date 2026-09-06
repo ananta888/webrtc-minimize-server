@@ -417,9 +417,29 @@ OS-Tempverzeichnis mit `ananta-native-packager/<packagerId>` als Unterpfad.
 Das ist auch unter Windows absolut und trennt die flüchtigen Medienausgaben
 verschiedener Identitäten. Konfigurierte Produktions-Volumes bleiben
 unverändert. Startup-Cleanup lehnt Dateisystem-/Laufwerkswurzeln und einen
-Symlink als Ausgabeverzeichnis ab und entfernt nur `res_`-Einträge der eigenen
-Ausgabebasis. Bei gemeinsam konfigurierten Volumes muss weiterhin jeder
-Packager eine eigene Basis erhalten.
+Symlink als Ausgabeverzeichnis ab. Eine kurze gemeinsame Root-Sperre schützt
+Verzeichnisänderungen; jede laufende Ressource hält zusätzlich eine exklusive
+OS-Dateisperre auf ihrem versionierten Besitzmarker. Nur entsperrte, gültig
+markierte Ausgaben derselben Packager-Identität dürfen bereinigt werden.
+Laufende, fremde, unmarkierte oder beschädigt markierte Ausgaben bleiben
+unangetastet. Verschiedene Ressourcen können dadurch auch in einer gemeinsam
+konfigurierten Basis unabhängig laufen; dieselbe Ressource wird nicht ersetzt.
+
+Unter POSIX erbt der Encoder den gesperrten Dateihandle, sodass das Schließen
+des Agent-Handles allein die laufende Ausgabe nicht freigibt. Unter Windows
+bleibt die bestehende Kill-on-close-Job-Object-Prozessbegrenzung erforderlich;
+Windows-Dateisperren werden nicht als vererbbar behandelt. Stop beendet zuerst
+den Encoder und löscht danach ausschließlich die unveränderte eigene
+Ausgabegeneration. Bei Dateisystemfehlern kann eine eigene verwaiste Ausgabe
+für die spätere Startup-Bereinigung zurückbleiben.
+
+Dies ist kooperative Dateisystemkoordination, keine Autorisierung gegen einen
+böswilligen Prozess mit denselben Schreibrechten. Server-Leases, aktuelle
+Room-Membership und ausdrücklicher Consent bleiben zwingend. Beim Upgrade
+gemeinsam schreibender Altversionen müssen zunächst alle alten Writer regulär
+gestoppt sein: Alte Binaries beachten die neuen Sperren noch nicht.
+Unmarkierte Altbestände werden weder automatisch übernommen noch gelöscht;
+eine nötige Bereinigung erfordert eine getrennte, genau abgegrenzte Prüfung.
 
 Der folgende opt-in Gate baut ein Windows-amd64-Testbinary und führt dessen
 Konfigurations-/Output-/Named-Pipe-Tests auf dem tatsächlichen Windows-Host unter WSL aus.
@@ -655,8 +675,10 @@ löscht die `res_`-Ausgabe bei Stop. Ein separater statischer
 die bereits von der Node-Control-Plane geprüfte Bearer-Grenze und akzeptiert
 nur geschlossene Manifest-, Init-, Segment- und WebVTT-Dateinamen. Beide
 Container besitzen keine Host-Ports; nur der Node-Proxy ist mit dem internen
-Origin-Netz verbunden. Nach einem Prozessneustart entfernt der Agent verwaiste
-`res_`-Verzeichnisse, ohne Identität oder andere Dateien anzufassen.
+Origin-Netz verbunden. Nach einem Prozessneustart entfernt der Agent nur eigene,
+gültig markierte und nicht mehr gesperrte `res_`-Verzeichnisse. Fremde und
+unmarkierte Ausgaben sowie Identität und andere Dateien bleiben erhalten.
+Ein leerer, stabiler Root-Lock verbleibt absichtlich für spätere Koordination.
 
 Der zusätzliche reale Gate benötigt FFmpeg 6+:
 

@@ -104,7 +104,7 @@ func testLiveTranscode(t *testing.T, withAudio bool) {
 	if withAudio {
 		audioCodec = webrtc.RTPCodecParameters{RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2}}
 	}
-	pipeline, err := startTranscodePipeline(config{ffmpegPath: ffmpeg, outputRoot: root}, assignment,
+	pipeline, err := startTranscodePipeline(config{ffmpegPath: ffmpeg, outputRoot: root, packagerID: "pkr_aaaaaaaaaaaaaaaa"}, assignment,
 		webrtc.RTPCodecParameters{RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90000}},
 		audioCodec, "libx264", func() { close(ready) }, func() { failed.Store(true) })
 	if err != nil {
@@ -311,7 +311,7 @@ exec %q "$@"
 	assignment.expiresAt.Store(time.Now().Add(time.Minute).UnixMilli())
 	statuses := make(chan map[string]any, 8)
 	packager := &client{
-		cfg:        config{ffmpegPath: wrapper, outputRoot: root},
+		cfg:        config{ffmpegPath: wrapper, outputRoot: root, packagerID: "pkr_aaaaaaaaaaaaaaaa"},
 		assignment: assignment,
 		sendOverride: func(value any) error {
 			statuses <- value.(map[string]any)
@@ -371,7 +371,28 @@ func TestTranscodeOutputCannotEscapeConfiguredRoot(t *testing.T) {
 	}
 }
 
-func TestOutputCleanupRemovesOnlyBoundedResourceDirectories(t *testing.T) {
+func TestOutputOwnershipReleasedAfterEncoderStartFailure(t *testing.T) {
+	root := t.TempDir()
+	assignment := transcodeAssignment()
+	_, err := startTranscodePipeline(config{packagerID: outputTestOwner, outputRoot: root, ffmpegPath: filepath.Join(root, "missing-ffmpeg")},
+		assignment, webrtc.RTPCodecParameters{RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8}},
+		webrtc.RTPCodecParameters{}, "libx264", nil, nil)
+	if err == nil {
+		t.Fatal("missing encoder started")
+	}
+	if _, err = os.Stat(filepath.Join(root, assignment.ResourceRef)); !os.IsNotExist(err) {
+		t.Fatal("failed startup retained output")
+	}
+	retry, err := acquireOutputOwnership(root, assignment.ResourceRef, outputTestOther)
+	if err != nil {
+		t.Fatal("failed startup retained writer exclusivity")
+	}
+	if err = retry.close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOutputCleanupPreservesUnattributedResourceDirectories(t *testing.T) {
 	root := t.TempDir()
 	resource := filepath.Join(root, "res_0123456789abcdef")
 	keep := filepath.Join(root, "identity.pem")
@@ -381,16 +402,16 @@ func TestOutputCleanupRemovesOnlyBoundedResourceDirectories(t *testing.T) {
 	if err := os.WriteFile(keep, []byte("keep"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := cleanOutputRoot(root); err != nil {
+	if err := cleanOutputRoot(root, "pkr_aaaaaaaaaaaaaaaa"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(resource); !os.IsNotExist(err) {
-		t.Fatal("stale resource output survived startup cleanup")
+	if _, err := os.Stat(resource); err != nil {
+		t.Fatal("startup cleanup removed an unattributed resource")
 	}
 	if value, err := os.ReadFile(keep); err != nil || string(value) != "keep" {
 		t.Fatal("startup cleanup touched a non-resource file")
 	}
-	if err := cleanOutputRoot(string(filepath.Separator)); err == nil {
+	if err := cleanOutputRoot(string(filepath.Separator), "pkr_aaaaaaaaaaaaaaaa"); err == nil {
 		t.Fatal("filesystem root accepted for cleanup")
 	}
 }
@@ -406,7 +427,7 @@ func TestOutputCleanupRejectsRootSymlink(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Skipf("OS account cannot create directory symlinks: %v", err)
 	}
-	if err := cleanOutputRoot(link); err == nil {
+	if err := cleanOutputRoot(link, "pkr_aaaaaaaaaaaaaaaa"); err == nil {
 		t.Fatal("output cleanup followed a root symlink")
 	}
 	if _, err := os.Stat(resource); err != nil {
@@ -423,7 +444,7 @@ func TestOutputScopeRejectsOSRootsAndMalformedPaths(t *testing.T) {
 		if _, err := validatedOutputDirectory(invalid, "res_0123456789abcdef"); err == nil {
 			t.Fatal("unsafe root accepted for resource")
 		}
-		if err := cleanOutputRoot(invalid); err == nil {
+		if err := cleanOutputRoot(invalid, "pkr_aaaaaaaaaaaaaaaa"); err == nil {
 			t.Fatal("unsafe root accepted for cleanup")
 		}
 	}

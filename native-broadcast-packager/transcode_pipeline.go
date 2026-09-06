@@ -66,6 +66,7 @@ type transcodePipeline struct {
 	onReady     func()
 	onFailure   func()
 	closeInputs func()
+	ownership   *outputOwnership
 }
 
 func validOutputRoot(root string) bool {
@@ -83,35 +84,6 @@ func validatedOutputDirectory(root, resourceRef string) (string, error) {
 		return "", errors.New("invalid native-packager output scope")
 	}
 	return output, nil
-}
-
-func cleanOutputRoot(root string) error {
-	if !validOutputRoot(root) {
-		return errors.New("invalid native-packager output root")
-	}
-	cleanRoot := filepath.Clean(root)
-	if err := os.MkdirAll(cleanRoot, 0o700); err != nil {
-		return err
-	}
-	info, err := os.Lstat(cleanRoot)
-	if err != nil {
-		return err
-	}
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("native-packager output root must be a real directory")
-	}
-	entries, err := os.ReadDir(cleanRoot)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if resourceIDPattern.MatchString(entry.Name()) {
-			if err := os.RemoveAll(filepath.Join(cleanRoot, entry.Name())); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func selectedVideoEncoder(profile assignmentProfile) string {
@@ -221,35 +193,36 @@ func startTranscodePipeline(cfg config, assignment *packagerAssignment, videoCod
 	if !oneOf(encoder, "libx264", "h264_nvenc", "h264_videotoolbox") {
 		return nil, errors.New("native packager video encoder unavailable")
 	}
-	output, err := validatedOutputDirectory(cfg.outputRoot, assignment.ResourceRef)
+	ownership, err := acquireOutputOwnership(cfg.outputRoot, assignment.ResourceRef, cfg.packagerID)
 	if err != nil {
 		return nil, err
 	}
-	if err = os.RemoveAll(output); err != nil {
-		return nil, errors.New("native packager output cleanup failed")
-	}
-	if err = os.MkdirAll(output, 0o700); err != nil {
-		return nil, errors.New("native packager output unavailable")
-	}
+	output := ownership.output
+	committed := false
+	defer func() {
+		if !committed {
+			_ = ownership.close()
+		}
+	}()
 	inputs, err := newTranscodeInputs(hasVideo, hasAudio)
 	if err != nil {
-		_ = os.RemoveAll(output)
 		return nil, errors.New("native packager inputs unavailable")
 	}
 	cmd := exec.Command(cfg.ffmpegPath, ffmpegTranscodeArgumentsForInputs(assignment, output, hasVideo, hasAudio, encoder, inputs.videoURL, inputs.audioURL)...)
 	cmd.Dir = output
 	diagnostic := &boundedDiagnostic{}
 	inputs.configure(cmd)
+	inheritOutputLock(cmd, ownership.file)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = diagnostic
 	if err = cmd.Start(); err != nil {
 		inputs.close()
-		_ = os.RemoveAll(output)
 		return nil, errors.New("native packager transcode start failed")
 	}
 	pipeline := &transcodePipeline{
 		cmd: cmd, done: make(chan error, 1), output: output, encoder: encoder,
 		onReady: onReady, onFailure: onFailure, diagnostic: diagnostic, closeInputs: inputs.close,
+		ownership: ownership,
 	}
 	if hasVideo {
 		pipeline.video, err = ivfwriter.NewWith(inputs.video, ivfwriter.WithCodec(webrtc.MimeTypeVP8))
@@ -261,7 +234,6 @@ func startTranscodePipeline(cfg config, assignment *packagerAssignment, videoCod
 		inputs.close()
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
-		_ = os.RemoveAll(output)
 		return nil, errors.New("native packager media writer unavailable")
 	}
 	inputs.started(cmd)
@@ -274,6 +246,7 @@ func startTranscodePipeline(cfg config, assignment *packagerAssignment, videoCod
 		pipeline.audioQ = make(chan *rtp.Packet, queueSize)
 		pipeline.startWriter(pipeline.audio, pipeline.audioQ)
 	}
+	committed = true
 	go func() {
 		waitErr := cmd.Wait()
 		inputs.close()
@@ -412,5 +385,7 @@ func (pipeline *transcodePipeline) close() {
 	if pipeline.closeInputs != nil {
 		pipeline.closeInputs()
 	}
-	_ = os.RemoveAll(pipeline.output)
+	if pipeline.ownership != nil {
+		_ = pipeline.ownership.close()
+	}
 }

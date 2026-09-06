@@ -72,7 +72,10 @@ exakte interne Origin konfiguriert sind. Er erzeugt beim ersten Lauf einen
 P-256-Signaturschlüssel mit Modus `0600` unter dem ignorierten
 `.deploy/secrets/`-Pfad, prüft ihn bei jedem Folge-Deploy und bindet ihn nur
 read-only in die Node-Control-Plane ein. Agentenidentität und Medienfenster
-liegen in getrennten Volumes; nur die Identität überlebt absichtlich, während
-verwaiste `res_`-Ausgaben beim Agentstart entfernt werden.
+liegen in getrennten Volumes; nur die Identität überlebt absichtlich. Beim
+Agentstart werden ausschließlich eigene, gültig markierte und nicht mehr
+OS-gesperrte `res_`-Ausgaben entfernt. Laufende, fremde und unmarkierte Ausgaben
+bleiben erhalten; Details zur Shared-Root-Koordination und zum Upgrade alter
+Writer stehen in `docs/native-packager.md`.
 
 Details: Architektur/Trust in `docs/adr/0001-separated-interactive-broadcast-delivery-planes.md`, Ports in `infra/deployment/port-firewall-matrix.v1.json`, Codecs in `docs/broadcast-codec-admission.md`, Player in `docs/broadcast-player.md`, Captions in `docs/broadcast-live-captions.md`, Failover in `docs/broadcast-failover-and-disaster-recovery.md`, Datenschutz in `infra/security/broadcast-review.v1.json` und Rollout in `infra/deployment/broadcast-rollout.v1.json`.
