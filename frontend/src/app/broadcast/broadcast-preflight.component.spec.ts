@@ -6,6 +6,12 @@ const template = readFileSync("frontend/src/app/broadcast/broadcast-preflight.co
 const component = readFileSync("frontend/src/app/broadcast/broadcast-preflight.component.ts", "utf8");
 
 describe("BroadcastPreflightComponent audio policy", () => {
+  it("connects only active local video direction and never advertises remote moderation", () => {
+    expect(template).toContain('[localVideoDirection]="publisher.coordinator.videoDirection()"');
+    expect(template).toContain('(applyLocalVideo)="directLocalVideo($event)"');
+    expect(template).toContain('[connected]="false"');
+    expect(component).toContain('this.publisher.coordinator.directVideo(request, "user-action")');
+  });
   it("shows delivery, packager, resource and trust summaries without pretending runtime readiness", () => {
     expect(template).toContain('id="broadcast-delivery-profile"');
     expect(template).toContain('id="broadcast-packager-profile"');

@@ -4,6 +4,7 @@ import {
   BroadcastModerationConfirmationView,
   BroadcastModerationDraft,
 } from "./broadcast-moderation-workflow";
+import { BroadcastVideoDirectionRequest, BroadcastVideoDirectionView } from "./broadcast-video-direction";
 
 export interface BroadcastModerationSourceView {
   readonly sourceId: string;
@@ -34,6 +35,9 @@ export interface BroadcastModerationPackagerView {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BroadcastModerationPanelComponent {
+  readonly layoutLabels = { single: "Einzelquelle", "screen-presenter": "Bildschirm + Presenter",
+    "side-by-side": "Nebeneinander", "active-speaker": "Sprecheransicht (manuell)", grid: "Raster",
+    "waiting-slate": "Wartebild", "end-slate": "Endbild" };
   readonly connected = input(false);
   readonly live = input(false);
   readonly actorRole = input<"owner" | "moderator" | "presenter" | "packager" | "viewer">("viewer");
@@ -43,6 +47,10 @@ export class BroadcastModerationPanelComponent {
   readonly confirmation = input<BroadcastModerationConfirmationView | null>(null);
   readonly conflictCode = input<string | null>(null);
   readonly busy = input(false);
+  readonly localVideoDirection = input<BroadcastVideoDirectionView | null>(null);
+  readonly localVideoError = input("");
+  readonly applyLocalVideo = output<BroadcastVideoDirectionRequest>();
+  readonly activeVideoSourceId = signal("");
   readonly requestAction = output<BroadcastModerationDraft>();
   readonly confirmAction = output<string>();
   readonly cancelAction = output<void>();
@@ -75,6 +83,14 @@ export class BroadcastModerationPanelComponent {
   requestLayout(): void {
     if (!this.available() || !this.canModerate() || !this.layout()) return;
     this.requestAction.emit({ action: "layout-change", targetLabel: this.layout()!, layout: this.layout() });
+  }
+
+  directLocalVideo(): void {
+    const current = this.localVideoDirection();
+    if (!current || this.busy() || !this.layout()) return;
+    this.applyLocalVideo.emit({ version: 1, compositionId: current.compositionId,
+      expectedRevision: current.revision, layout: this.layout()!,
+      activeSourceId: this.layout() === "single" || this.layout() === "active-speaker" ? this.activeVideoSourceId() : "" });
   }
 
   selectPrimary(agentId: string): void {

@@ -171,7 +171,7 @@ export function trustedVideoLayoutRects(
   const fit = (sourceKind: "camera" | "screen") => sourceKind === "screen" ? profile.screenFit : profile.cameraFit;
   const rect = (input: typeof inputs[number], x: number, y: number, w: number, h: number, layer: "primary" | "secondary") =>
     Object.freeze({ sourceId: input.sourceId, x, y, width: w, height: h, fit: fit(input.sourceKind), layer });
-  if (layout === "single") return Object.freeze([rect(inputs[0], 0, 0, width, height, "primary")]);
+  if (layout === "single") return Object.freeze([rect(inputs.find(({ sourceId }) => sourceId === activeSourceId) || inputs[0], 0, 0, width, height, "primary")]);
   if (layout === "screen-presenter") {
     const screen = inputs.find(({ sourceKind }) => sourceKind === "screen") || inputs[0];
     const presenter = inputs.find(({ sourceKind, sourceId }) => sourceKind === "camera" && sourceId !== screen.sourceId);
@@ -409,7 +409,7 @@ export class BrowserTrustedVideoCompositorFactory implements TrustedVideoComposi
           if (!LAYOUTS.has(nextLayout)
             || (nextActiveSourceId && !videos.has(nextActiveSourceId))) fail("invalid_trusted_video_layout");
           currentLayout = nextLayout;
-          if (nextActiveSourceId) activeSourceId = nextActiveSourceId;
+          activeSourceId = nextActiveSourceId;
         },
         setOverlay(value: TrustedVideoOverlayPolicy) {
           if (closed) fail("trusted_video_compositor_closed");

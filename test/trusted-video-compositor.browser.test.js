@@ -40,6 +40,8 @@ for (const [name, engine] of [["Chromium", chromium], ["Firefox", firefox]]) tes
   };
   const red = [255, 0, 0], green = [0, 255, 0], blue = [0, 0, 255], background = [9, 19, 31];
   await nextFrames(); await pixels([[480, 10], [200, 100]], [red, red]); // portrait camera is cropped, not stretched
+  await layout("single", "src_camerabbbbbbbbbb"); await pixels([[200, 100]], [blue]);
+  await layout("single"); await pixels([[200, 100]], [red]); // clear manual choice restores the first live source
   await layout("screen-presenter"); await pixels([[40, 100], [200, 100], [800, 450]], [background, green, red]); // 4:3 screen is contained
   for (const value of ["side-by-side", "grid"]) {
     await layout(value); await pixels([[240, 135], [720, 135], [240, 405], [720, 405]], [red, green, blue, background]);

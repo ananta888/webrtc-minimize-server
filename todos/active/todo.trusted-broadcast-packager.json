@@ -736,7 +736,7 @@
     {
       "id": "TBP-030",
       "title": "Moderator-, Quellen-, Packager- und Handoff-Workflows umsetzen",
-      "status": "partial",
+      "status": "in_progress",
       "priority": "P1",
       "risk": "high",
       "progress_percent": 75,
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 0, "in_progress": 6, "partial": 13, "blocked": 0, "done": 21 },
+    "by_status": { "todo": 0, "in_progress": 7, "partial": 12, "blocked": 0, "done": 21 },
     "progress_percent_done": 52.5,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -964,12 +964,14 @@
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 6,
-    "partial": 13,
+    "in_progress": 7,
+    "partial": 12,
     "blocked": 0,
     "done": 21
   },
   "summary_notes": [
+    "Die lokale Bildregie bestand am 2026-09-06 den abschliessenden Gesamtcheck mit 376 Angular- und 365 Node-/Browser-/Integrationstests, Go-Test/Vet, echtem PowerShell-Parser und allen statischen Gates. Die getrennte Maschinen-Medienfixture bleibt mangels expliziter Zulassung sichtbar SKIP, ebenso nicht aktivierte externe Infrastruktur. Echte Chromium-/Firefox-Pixelgates bestaetigen zudem explizite Einzelquellenwahl und Rueckkehr zur ersten verfuegbaren Quelle; der dabei ausgefuehrte Compositor-Bundlehash ist 5085fbd59c11016c601feab1e99c8f7c2f5d359e1621c9df16374b51a1a8ba58. Die UI zeigt die bereits freigegebenen eigenen Bildquellen und erklaert, dass Warte-/Endbild weder Ton noch Sendung stoppen. CI, Rollout und der erweiterte echte HLS-Bildwechselgate folgen noch. Die laufenden 7200-Sekunden-Prozesse bleiben an den vorherigen 62c46cb-Compositor gebunden und beweisen diese nachtraegliche Renderer-Erweiterung nicht.",
+    "TBP-030 wird in_progress/75 weitergefuehrt: Das bisher fest disconnected eingebaute Regiepanel erhaelt einen echten, getrennten lokalen Bildregie-Port fuer die aktive bereits autorisierte Komposition. Akzeptanz: alle sieben Layouts und explizite Wahl einer bereits freigegebenen Videoquelle waehrend laufendem Browser-/Native-Broadcast, ohne neue Capture-Aufrufe, Tracks, PeerConnections oder Program-POSTs; geschlossene Kompositions-/Revisionsbindung, Ablehnung alter Handles, unbekannter Felder, beendeter/fremder Quellen und Aktionen nach Stop/Destroy. UI nennt dies lokale Bildregie, nicht serververbundene Fremdquellenmoderation oder automatische VAD. Gegen Source-Consent, Quellenwiderruf, Standby und echte epochgebundene Uebergabe bestehen weiterhin eigene offene Implementierungsschritte; sie werden weder entfernt noch durch Stop/Neuanlage als vollstaendiges Handoff ersetzt. Unit-, Komponenten-, reale Medien- und Produktionsgates werden mitgefuehrt.",
     "Die unabhaengige Keycloak-Nachkontrolle nach dem Produktionsgate bestaetigte null verbleibende webrtc-gate-Testnutzer. Die ausschliesslich fuer den Attestations-/Bytevergleich geladenen temporaeren CI-/Produktionsdownloadkopien wurden entfernt; sie sind aus GitHub beziehungsweise dem verifizierten Release erneut beziehbar. Die oeffentliche Instanz war nach dem Gate gesund und leer. Die zwei neuen 7200-Sekunden-Prozesse laufen weiterhin; sie sind nicht beendet und werden nicht als bestanden gewertet. Produktionscode bleibt exakt 62c46cb, die folgenden Aenderungen betreffen nur Evidenzdokumentation und Todo-Caches.",
     "Revision 62c46cb wurde nach vollstaendig gruener CI 34033937123 am 2026-09-06 produktiv auf dem Mini-PC ausgerollt. Alle drei Images tragen exakt diese Revision; externer Smoke bestaetigt Control Plane und Native-Broadcast ready, die vorhandene Packager-Identitaet blieb im nicht ausgegebenen Vorher-/Nachhervergleich unveraendert, die Operation-Sperre blieb nicht zurueck. Runtime bestaetigt AUTH_MODE=required, MEDIA_E2EE_MODE=required und deaktivierte Maschinenaufnahme. Das public Release-Manifest ist bytegleich mit dem unabhaengig keyless gegen Repository, Workflow, refs/heads/main, Quellrevision und GitHub-hosted Runner verifizierten CI-Manifest; auch der oeffentliche Linux-amd64-Download ist bytegleich mit dem attestierten Release-Artefakt. Danach bestand der isolierte Produktionsgate mit Chromium-Publisher, Firefox-Privat-/Anonymzuschauer, Playback-Renewal, gefenctem Sichtbarkeitswechsel, terminalem Stop, Refresh ohne neues Capture und normalem Packager-Widerruf. Die getrennte Mini-PC-Nachkontrolle fand keine Gate-Container, Identity-Volumes oder res_-Ausgaben. TBP-M09 wird entsprechend den bereits implementierten und laufenden Betriebsarbeiten ebenfalls in_progress statt todo gefuehrt; keine offene Teilfaehigkeit wird dadurch done.",
     "TBP-039 und TBP-M10 werden fuer den naechsten mehrstuendigen Abschnitt in_progress; TBP-039 bleibt bei 55 Prozent. Die zwei zuvor gestarteten 3600-Sekunden-Compositor-Gates endeten erfolgreich und ohne Skip: Chromium 151.0.7922.34 mit 684 Proben, mindestens 48 Ausgangsframes je Probe und Heap-Schaetzung von anfangs 16,1 bis maximal 20,5 MB; Firefox 153.0 mit 670 Proben, mindestens 36 Frames je Probe und nicht verfuegbarer Heapmessung. Beide binden exakt Bundle-SHA256 7de0589a6125f2e04d830a99265e094a8f4f82c9997273da5bacc51137e1ebf6, nicht nachtraeglich den neueren Release-Build. Pixelwechsel, monotone Medienzeit, begrenzte Livequellen und Cleanup bestanden; CPU, RSS, Audio-/Caption-Sync, Worker und physisches Capture bleiben ungemessen. Fuer den aktuellen Code wird als naechster begrenzter Schritt derselbe synthetische Videogate mit 7200 Sekunden je Browser aufgenommen. Er bleibt bis zum terminalen Ergebnis unverifiziert und ersetzt keine vollständige Broadcast-/Chaos-/CDN-Lastpruefung.",

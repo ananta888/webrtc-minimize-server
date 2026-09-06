@@ -1,4 +1,5 @@
-import { Inject, Injectable, OnDestroy, signal } from "@angular/core";
+import { Inject, Injectable, OnDestroy, Optional, signal } from "@angular/core";
+import { BROADCAST_VIDEO_DIRECTION_PORT, BroadcastVideoDirectionPort, BroadcastVideoDirectionRequest, BroadcastVideoDirectionView } from "./broadcast-video-direction";
 
 import { BroadcastDeliveryCapabilityService } from "./broadcast-delivery-capability.service";
 import { normalizeBroadcastStartPlan } from "./broadcast-browser-validation";
@@ -63,6 +64,7 @@ function validStatsSample(sample: BroadcastStatsSample): boolean {
 @Injectable()
 export class BroadcastCoordinatorService implements OnDestroy {
   readonly latestStats = signal<BroadcastStatsSample | null>(null);
+  readonly videoDirection = signal<BroadcastVideoDirectionView | null>(null);
   private resources = emptyResources();
   private startController: AbortController | null = null;
   private startTask: Promise<void> | null = null;
@@ -77,7 +79,24 @@ export class BroadcastCoordinatorService implements OnDestroy {
     @Inject(BROADCAST_CAPTURE_FORK_PORT) private readonly captureFork: BroadcastCaptureForkPort,
     @Inject(BROADCAST_COMPOSITION_PORT) private readonly composition: BroadcastCompositionPort,
     @Inject(BROADCAST_STATS_PORT) private readonly stats: BroadcastStatsPort,
+    @Optional() @Inject(BROADCAST_VIDEO_DIRECTION_PORT) private readonly direction: BroadcastVideoDirectionPort | null = null,
   ) {}
+
+  directVideo(request: BroadcastVideoDirectionRequest, trigger: unknown): void {
+    if (trigger !== "user-action") throw new BroadcastBrowserPortError("explicit_broadcast_video_direction_required");
+    if (this.destroyed || this.startTask || this.stopTask || !this.resources.composition || !this.direction
+      || !["running", "degraded", "reconnecting"].includes(this.programState.value().lifecycle)) {
+      throw new BroadcastBrowserPortError("broadcast_video_direction_unavailable");
+    }
+    this.videoDirection.set(this.direction.directVideo(this.resources.composition, request));
+  }
+
+  private refreshVideoDirection(): void {
+    if (!this.direction || !this.resources.composition || this.destroyed || this.stopTask
+      || !["running", "degraded", "reconnecting"].includes(this.programState.value().lifecycle)) return;
+    try { this.videoDirection.set(this.direction.videoDirection(this.resources.composition)); }
+    catch { this.videoDirection.set(null); }
+  }
 
   setPanelVisible(visible: boolean): void {
     this.programState.setPanelVisible(visible);
@@ -200,13 +219,17 @@ export class BroadcastCoordinatorService implements OnDestroy {
       this.resources.unsubscribeStats = this.stats.subscribe(
         this.resources.session,
         (sample) => {
-          if (validStatsSample(sample)) this.latestStats.set(Object.freeze({ ...sample }));
+          if (validStatsSample(sample)) {
+            this.latestStats.set(Object.freeze({ ...sample }));
+            this.refreshVideoDirection();
+          }
         },
       );
       if (typeof this.resources.unsubscribeStats !== "function") {
         throw new BroadcastBrowserPortError("invalid_broadcast_stats_subscription");
       }
       this.programState.running(this.resources.session);
+      this.refreshVideoDirection();
     } catch (error) {
       try {
         await this.cleanup();
@@ -222,6 +245,7 @@ export class BroadcastCoordinatorService implements OnDestroy {
   }
 
   private async runStop(reason: string): Promise<void> {
+    this.videoDirection.set(null);
     this.startController?.abort(new DOMException(reason, "AbortError"));
     this.programState.stopping();
     if (this.startTask) {
@@ -241,6 +265,7 @@ export class BroadcastCoordinatorService implements OnDestroy {
   }
 
   private async cleanup(): Promise<void> {
+    this.videoDirection.set(null);
     const errors: unknown[] = [];
     if (this.resources.unsubscribeStats) {
       try {

@@ -6,6 +6,16 @@ const template = readFileSync("frontend/src/app/broadcast/broadcast-moderation-p
 const component = readFileSync("frontend/src/app/broadcast/broadcast-moderation-panel.component.ts", "utf8");
 
 describe("BroadcastModerationPanelComponent", () => {
+  it("distinguishes live local picture controls from consent and warns that slates do not mute audio", () => {
+    expect(template).toContain('id="broadcast-local-video-status"');
+    expect(template).toContain('id="broadcast-local-video-apply"');
+    expect(template).toContain('id="broadcast-local-video-source"');
+    expect(template).toContain('id="broadcast-local-video-error" role="alert"');
+    expect(template).toContain("Lokale Bildregie bereit");
+    expect(template).toContain("Ton und Sendung laufen weiter");
+    expect(template).toContain("keine automatische Sprechererkennung");
+    expect(component).toContain("expectedRevision: current.revision");
+  });
   it("shows source consent, layout, one primary, standbys, handoff and stop controls", () => {
     for (const id of [
       "broadcast-moderation-panel", "broadcast-moderation-layout", "broadcast-layout-request",

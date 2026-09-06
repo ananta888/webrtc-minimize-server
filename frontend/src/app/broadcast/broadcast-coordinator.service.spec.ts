@@ -12,6 +12,7 @@ import {
 } from "./broadcast-ports";
 import { BroadcastProgramStateService } from "./broadcast-program-state.service";
 import { BroadcastSourceSelectionService } from "./broadcast-source-selection.service";
+import { BroadcastVideoDirectionPort, BroadcastVideoDirectionView } from "./broadcast-video-direction";
 
 const SOURCE_A = "src_aaaaaaaaaaaaaaaa";
 const SOURCE_B = "src_bbbbbbbbbbbbbbbb";
@@ -59,6 +60,7 @@ function fixture(options: {
   failPublication?: boolean;
   failStopOnce?: boolean;
   consent?: BroadcastConsentPort;
+  direction?: BroadcastVideoDirectionPort;
 } = {}) {
   const events: string[] = [];
   let failPublication = options.failPublication === true;
@@ -152,6 +154,7 @@ function fixture(options: {
     capture,
     composition,
     stats,
+    options.direction,
   );
   return {
     coordinator,
@@ -170,6 +173,37 @@ function fixture(options: {
 }
 
 describe("BroadcastCoordinatorService", () => {
+  it("binds explicit live video direction to the current composition and withdraws it before stopping", async () => {
+    const view: BroadcastVideoDirectionView = { version: 1, compositionId: "composition-1", revision: 1,
+      layout: "screen-presenter", activeSourceId: "", sources: [{ sourceId: SOURCE_A, kind: "camera" }] };
+    const direction = { videoDirection: vi.fn(() => view), directVideo: vi.fn(() => ({ ...view, revision: 2, layout: "waiting-slate" as const })) };
+    const f = fixture({ direction });
+    const request = { version: 1 as const, compositionId: view.compositionId, expectedRevision: 1, layout: "waiting-slate" as const, activeSourceId: "" };
+    expect(f.coordinator.videoDirection()).toBeNull();
+    expect(() => f.coordinator.directVideo(request, "user-action")).toThrow("broadcast_video_direction_unavailable");
+    await f.coordinator.start(plan());
+    expect(f.coordinator.videoDirection()).toEqual(view);
+    expect(() => f.coordinator.directVideo(request, "remote-signal")).toThrow("explicit_broadcast_video_direction_required");
+    const before = [...f.events];
+    f.coordinator.directVideo(request, "user-action");
+    expect(direction.directVideo).toHaveBeenCalledWith({ compositionId: "composition-1", sourceIds: [SOURCE_A, SOURCE_B] }, request);
+    expect(f.coordinator.videoDirection()?.revision).toBe(2);
+    expect(f.events).toEqual(before);
+    const stopping = f.coordinator.stop();
+    expect(f.coordinator.videoDirection()).toBeNull();
+    expect(() => f.coordinator.directVideo(request, "user-action")).toThrow("broadcast_video_direction_unavailable");
+    await stopping; await f.coordinator.destroy();
+    expect(() => f.coordinator.directVideo(request, "user-action")).toThrow("broadcast_video_direction_unavailable");
+    expect(direction.directVideo).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not advertise live direction when the selected composition adapter has no director port", async () => {
+    const f = fixture(); await f.coordinator.start(plan());
+    expect(f.coordinator.videoDirection()).toBeNull();
+    expect(() => f.coordinator.directVideo({ version: 1, compositionId: "composition-1", expectedRevision: 1,
+      layout: "single", activeSourceId: "" }, "user-action")).toThrow("broadcast_video_direction_unavailable");
+    await f.coordinator.stop();
+  });
   it("does not capture in its constructor or when its panel opens", () => {
     const context = fixture();
     const capture = vi.spyOn(context.capture, "fork");

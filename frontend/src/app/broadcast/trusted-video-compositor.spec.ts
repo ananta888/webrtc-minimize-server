@@ -19,6 +19,13 @@ afterEach(() => {
 });
 
 describe("trustedVideoLayoutRects", () => {
+  it("honors an explicitly selected single source and safely reflows when it ends", () => {
+    const inputs = [camera, screen, secondCamera], profile = TRUSTED_VIDEO_PROFILES.balanced;
+    expect(trustedVideoLayoutRects("single", inputs, 1280, 720, profile, screen.sourceId)[0])
+      .toMatchObject({ sourceId: screen.sourceId, fit: "contain", width: 1280, height: 720 });
+    expect(trustedVideoLayoutRects("single", [camera], 1280, 720, profile, screen.sourceId)[0].sourceId).toBe(camera.sourceId);
+    expect(trustedVideoLayoutRects("single", inputs, 1280, 720, profile)[0].sourceId).toBe(camera.sourceId);
+  });
   it("keeps screen text full-frame and a presenter above the configured thumbnail floor", () => {
     const profile = TRUSTED_VIDEO_PROFILES["screen-text"];
     const rectangles = trustedVideoLayoutRects("screen-presenter", [camera, screen], 1920, 1080, profile);

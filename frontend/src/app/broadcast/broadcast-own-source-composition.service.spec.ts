@@ -10,6 +10,7 @@ import {
 import {
   TrustedVideoCompositorFactory,
   TrustedVideoProgramSettingsService,
+  TrustedVideoLayout,
 } from "./trusted-video-compositor";
 
 function fork(id: string, kind: "camera" | "microphone" | "screen" | "screen-audio"): BroadcastCaptureForkHandle {
@@ -54,7 +55,8 @@ function audioFactory(): TrustedAudioProgramBusFactory {
   };
 }
 
-function videoFactory(close = vi.fn(async () => {})): TrustedVideoCompositorFactory {
+function videoFactory(close = vi.fn(async () => {}), setLayout = vi.fn()): TrustedVideoCompositorFactory {
+  let layout: TrustedVideoLayout = "screen-presenter";
   return {
     supported: true,
     async create(_program, inputs) {
@@ -64,11 +66,11 @@ function videoFactory(close = vi.fn(async () => {})): TrustedVideoCompositorFact
         stream,
         track: stream.getTracks()[0],
         snapshot: () => ({
-          layout: "screen-presenter", profileId: "balanced", width: 1280, height: 720,
+          layout, profileId: "balanced", width: 1280, height: 720,
           targetFramesPerSecond: 24, effectiveFramesPerSecond: 24,
           framesRendered: 1, framesSkipped: 0, sourceCount: inputs.length, degradedReason: "none",
         }),
-        setLayout() {}, setOverlay() {}, close,
+        setLayout(value, active) { layout = value; setLayout(value, active); }, setOverlay() {}, close,
       };
     },
   };
@@ -95,6 +97,62 @@ describe("BroadcastOwnSourceCompositionService", () => {
       constructor(private readonly tracks: MediaStreamTrack[]) {}
       getTracks() { return this.tracks; }
     });
+  });
+
+  async function directed() {
+    const camera = fork("camera", "camera"), screen = fork("screen", "screen");
+    const streams = [source("video"), source("video")], setLayout = vi.fn(), controller = new AbortController();
+    const capture = { stream: vi.fn((value: BroadcastCaptureForkHandle) => streams[value.kind === "camera" ? 0 : 1]) };
+    const instance = service(capture as unknown as BroadcastOwnSourceCaptureService, audioFactory(), videoFactory(undefined, setLayout));
+    const handle = await instance.compose({ tenantId: "tn_aaaaaaaaaaaaaaaa", roomId: "room-alpha", programId: "prg_aaaaaaaaaaaaaaaa",
+      programRevision: 1, programEpoch: 1 }, [camera, screen], consent([camera, screen]), controller.signal);
+    return { instance, handle, camera, screen, streams, setLayout, capture, controller };
+  }
+
+  it("directs all seven live layouts on the existing output without reforking or replacing tracks", async () => {
+    const f = await directed(), before = await f.instance.resolve(f.handle, new AbortController().signal);
+    let revision = 1;
+    for (const layout of ["single", "screen-presenter", "side-by-side", "active-speaker", "grid", "waiting-slate", "end-slate"] as const) {
+      const activeSourceId = layout === "single" || layout === "active-speaker" ? f.screen.sourceId : "";
+      const view = f.instance.directVideo(f.handle, { version: 1, compositionId: f.handle.compositionId,
+        expectedRevision: revision, layout, activeSourceId });
+      expect(view.layout).toBe(layout); expect(view.revision).toBe(++revision);
+      expect(view.activeSourceId).toBe(activeSourceId);
+      expect(f.setLayout).toHaveBeenLastCalledWith(layout, activeSourceId || f.camera.sourceId);
+    }
+    const after = await f.instance.resolve(f.handle, new AbortController().signal);
+    expect(after.stream).toBe(before.stream); expect(after.tracks[0].track).toBe(before.tracks[0].track);
+    expect(f.capture.stream).toHaveBeenCalledTimes(2);
+    await f.instance.release(f.handle);
+  });
+
+  it("rejects stale, forged, foreign-source and unknown-field direction commands before rendering", async () => {
+    const f = await directed();
+    const request = { version: 1 as const, compositionId: f.handle.compositionId, expectedRevision: 1, layout: "single" as const, activeSourceId: "" };
+    for (const change of [{ version: 2 }, { compositionId: "other-composition" }, { expectedRevision: 2 },
+      { activeSourceId: "src_unknownaaaaaaaaa" }, { layout: "unknown" }, { authorizeRemote: true },
+      { activeSourceId: f.camera.sourceId, layout: "grid" }]) {
+      expect(() => f.instance.directVideo(f.handle, { ...request, ...change } as never)).toThrow();
+    }
+    expect(() => f.instance.directVideo({ ...f.handle, sourceIds: [f.camera.sourceId] }, request)).toThrow();
+    expect(f.setLayout).not.toHaveBeenCalled();
+    f.instance.directVideo(f.handle, request);
+    expect(() => f.instance.directVideo(f.handle, request)).toThrow("stale_broadcast_video_direction");
+    expect(f.setLayout).toHaveBeenCalledTimes(1);
+    await f.instance.release(f.handle);
+  });
+
+  it("withdraws ended sources and aborts local direction immediately with its owning composition", async () => {
+    const f = await directed();
+    Object.assign(f.streams[0].getTracks()[0], { readyState: "ended" });
+    expect(f.instance.videoDirection(f.handle)?.sources).toEqual([{ sourceId: f.screen.sourceId, kind: "screen" }]);
+    const request = { version: 1 as const, compositionId: f.handle.compositionId, expectedRevision: 1, layout: "single" as const, activeSourceId: f.camera.sourceId };
+    expect(() => f.instance.directVideo(f.handle, request)).toThrow("broadcast_video_source_unavailable");
+    f.controller.abort();
+    expect(f.instance.videoDirection(f.handle)).toBeNull();
+    expect(() => f.instance.directVideo(f.handle, { ...request, activeSourceId: "" })).toThrow("broadcast_video_direction_unavailable");
+    expect(f.setLayout).not.toHaveBeenCalled();
+    await f.instance.release(f.handle);
   });
 
   it("resolves one audio and one video fork as a single WHIP MediaStream without stopping either track", async () => {

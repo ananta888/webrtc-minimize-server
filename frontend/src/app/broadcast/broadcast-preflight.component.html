@@ -247,7 +247,10 @@
   />
 </section>
 
-<app-broadcast-moderation-panel [connected]="false" />
+<app-broadcast-moderation-panel [connected]="false"
+  [localVideoDirection]="publisher.coordinator.videoDirection()"
+  [localVideoError]="localVideoError()" [busy]="controlBusy()"
+  (applyLocalVideo)="directLocalVideo($event)" />
 
 <app-broadcast-audience
   [enabled]="enabled()"

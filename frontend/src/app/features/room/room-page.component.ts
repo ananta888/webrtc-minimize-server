@@ -14,6 +14,7 @@ import {
   ExplicitBroadcastConsentService,
 } from "../../broadcast/broadcast-browser-runtime.service";
 import { BroadcastCoordinatorService } from "../../broadcast/broadcast-coordinator.service";
+import { BROADCAST_VIDEO_DIRECTION_PORT } from "../../broadcast/broadcast-video-direction";
 import { BroadcastDeliveryCapabilityService } from "../../broadcast/broadcast-delivery-capability.service";
 import { BroadcastOwnSourceCaptureService } from "../../broadcast/broadcast-own-source-capture.service";
 import { BroadcastOwnSourceCompositionService } from "../../broadcast/broadcast-own-source-composition.service";
@@ -87,6 +88,7 @@ type AppSection = "rooms" | "live" | "broadcast" | "captions" | "analysis" | "ch
     { provide: BROADCAST_CONSENT_PORT, useExisting: ExplicitBroadcastConsentService },
     { provide: BROADCAST_CAPTURE_FORK_PORT, useExisting: BroadcastOwnSourceCaptureService },
     { provide: BROADCAST_COMPOSITION_PORT, useExisting: BroadcastOwnSourceCompositionService },
+    { provide: BROADCAST_VIDEO_DIRECTION_PORT, useExisting: BroadcastOwnSourceCompositionService },
     {
       provide: BROADCAST_PUBLICATION_ADAPTERS,
       useFactory: (whip: BrowserWhipBroadcastRuntimeService, native: NativePackagerBroadcastRuntimeService) => Object.freeze([whip, native]),

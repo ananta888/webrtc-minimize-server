@@ -197,6 +197,13 @@ try {
   ownerContext = await browser.newContext({ permissions: ["camera", "microphone"] });
   await ownerContext.addInitScript(() => {
     window.__captureCalls = [];
+    window.__broadcastGateConnections = [];
+    const NativeConnection = window.RTCPeerConnection;
+    window.RTCPeerConnection = new Proxy(NativeConnection, { construct(Target, args) {
+      const connection = Reflect.construct(Target, args);
+      window.__broadcastGateConnections.push(connection);
+      return connection;
+    } });
     const devices = navigator.mediaDevices;
     if (!devices) return;
     for (const method of ["getUserMedia", "getDisplayMedia"]) {
@@ -302,6 +309,43 @@ try {
 
   await refreshUntilProgramVisible(ownerPage, "section[aria-labelledby=own-broadcasts-heading]", title);
   playerManifest = await startVisiblePlayer(ownerPage, "section[aria-labelledby=own-broadcasts-heading]");
+  const directionBefore = await ownerPage.evaluate(() => ({
+    capture: [...window.__captureCalls], connections: window.__broadcastGateConnections.length,
+    senderTracks: window.__broadcastGateConnections.flatMap(pc => pc.getSenders().map(sender => sender.track?.id || "")).sort(),
+  }));
+  const programsBeforeDirection = programCreateRequests;
+  const isWaitingImage = (expected = true) => {
+    const video = document.querySelector("app-broadcast-player video");
+    if (!(video instanceof HTMLVideoElement) || video.readyState < 2) return false;
+    const canvas = document.createElement("canvas"); canvas.width = 64; canvas.height = 36;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return false;
+    context.drawImage(video, 0, 0, 64, 36);
+    const waiting = [[4, 4], [60, 4], [4, 32], [60, 32]].every(([x, y]) => {
+      const pixel = context.getImageData(x, y, 1, 1).data;
+      return [9, 19, 31].every((value, index) => Math.abs(pixel[index] - value) <= 18);
+    });
+    return waiting === expected;
+  };
+  assert.equal(await ownerPage.evaluate(isWaitingImage, false), true, "synthetic source must differ from the waiting slate before direction");
+  for (const layout of ["single", "screen-presenter", "side-by-side", "active-speaker", "grid", "end-slate", "waiting-slate"]) {
+    await ownerPage.locator("#broadcast-moderation-layout").selectOption(layout);
+    await ownerPage.locator("#broadcast-local-video-apply").click();
+    await ownerPage.locator(`#broadcast-local-video-status[data-layout="${layout}"]`).waitFor({ timeout: 5000 });
+  }
+  await ownerPage.waitForFunction(isWaitingImage, undefined, { timeout: 30_000 });
+  await ownerPage.locator("#broadcast-moderation-layout").selectOption("screen-presenter");
+  await ownerPage.locator("#broadcast-local-video-apply").click();
+  // Evaluate the same actual decoded HLS pixels, not only the local layout label.
+  await ownerPage.waitForFunction(isWaitingImage, false, { timeout: 30_000 });
+  assert.equal(await ownerPage.locator("#broadcast-local-video-error").count(), 0);
+  assert.equal((await ownerPage.locator("#broadcast-program-status").innerText()).trim(), "Live");
+  assert.equal(programCreateRequests, programsBeforeDirection, "live direction must not create a replacement program");
+  assert.deepEqual(await ownerPage.evaluate(() => ({
+    capture: [...window.__captureCalls], connections: window.__broadcastGateConnections.length,
+    senderTracks: window.__broadcastGateConnections.flatMap(pc => pc.getSenders().map(sender => sender.track?.id || "")).sort(),
+  })), directionBefore, "live direction must preserve capture, PeerConnections and sender tracks");
+  console.log("PASS production local video direction: decoded HLS slate and source return without new program, capture, connection or track");
   await ownerPage.locator("app-broadcast-player .controls button", { hasText: "Schließen" }).click();
   if (verifyPrivateViewer) {
     privateViewerContext = await newViewerContext();

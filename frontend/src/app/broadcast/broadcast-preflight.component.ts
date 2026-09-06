@@ -6,6 +6,8 @@ import { MediaStreamDirective } from "../shared/media-stream.directive";
 import { BroadcastAudienceComponent } from "./broadcast-audience.component";
 import { BroadcastCaptionDestination, BroadcastCaptionSettingsService } from "./broadcast-caption-settings.service";
 import { BroadcastModerationPanelComponent } from "./broadcast-moderation-panel.component";
+import { BroadcastVideoDirectionRequest } from "./broadcast-video-direction";
+import { BroadcastBrowserPortError } from "./broadcast-ports";
 import { BroadcastOwnSourcePreflightService } from "./broadcast-own-source-preflight.service";
 import { BroadcastPublisherWorkflowService } from "./broadcast-publisher-workflow.service";
 import { NativePackagerOnboardingService } from "./native-packager-onboarding.service";
@@ -43,6 +45,7 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
   readonly programTitle = signal("Meine Live-Sendung");
   readonly controlError = this.publisher.errorCode;
   readonly controlBusy = this.publisher.busy;
+  readonly localVideoError = signal("");
   readonly activeProgramId = this.publisher.activeProgramId;
   readonly programState = computed(() => this.publisher.coordinator.programState.value());
   readonly programActive = computed(() => new Set([
@@ -129,6 +132,7 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
 
   async startBroadcast(): Promise<void> {
     if (!this.canStart()) return;
+    this.localVideoError.set("");
     if (!window.confirm(
       "Jetzt werden ausschließlich die gewählten eigenen Quellen an den Trusted Broadcast-Gateway gesendet. "
       + "Dieser Broadcast-Zweig ist nicht SFrame-E2EE. Wirklich starten?",
@@ -154,6 +158,15 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
         } : {}),
       });
     } catch { /* The workflow publishes a bounded visible error code. */ }
+  }
+
+  directLocalVideo(request: BroadcastVideoDirectionRequest): void {
+    try {
+      this.publisher.coordinator.directVideo(request, "user-action");
+      this.localVideoError.set("");
+    } catch (error) {
+      this.localVideoError.set(error instanceof BroadcastBrowserPortError ? error.code : "broadcast_video_direction_failed");
+    }
   }
 
   setPackagerProfile(value: unknown): void {

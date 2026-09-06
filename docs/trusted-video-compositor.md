@@ -96,6 +96,35 @@ TBP-015 bleibt während dieser Arbeiten `in_progress`, nicht abgeschlossen.
 
 ## Gemessener Zwischenstand vom 6. September 2026
 
+### Lokale Live-Bildregie
+
+Das Regiepanel erhält während einer aktiven Own-Source-Sendung einen getrennten
+lokalen Bildregie-Port. Über „Layout sofort anwenden“ können alle sieben Layouts
+auf dem bestehenden Ausgang gewechselt werden. Einzel-/Sprecheransicht erlauben
+zusätzlich die explizite Wahl einer bereits freigegebenen, noch lebenden eigenen
+Videoquelle. Ein leeres Auswahlfeld verwendet die erste verfügbare Quelle.
+Das ist keine automatische VAD-Auswahl und keine Fremdquellenfreigabe.
+
+Kompositions-ID, exakte Quellbindung und monotone lokale Regierevision verhindern
+die Anwendung alter oder fremder Befehle. Stopp/Destroy zieht das UI-Angebot sofort
+zurück. Es entstehen weder ein neues Programm, ein neuer Capture-Aufruf noch ein
+neuer Medienausgang oder eine neue PeerConnection. Der kontrollierte Pfad gilt
+sowohl für WHIP-Browser als auch für die browserseitige Komposition vor dem
+Native-Packager. Auflösung/FPS bleiben an das beim Start gewählte Profil gebunden.
+
+Warte-/Endbilder verändern nur Video: Audio und Publikation laufen weiter, bis
+der separate Stopp-Schalter verwendet wird. Das Publikum sieht Bildwechsel mit
+der jeweiligen HLS-/Auslieferungslatenz. Die serverseitige Moderation fremder
+Quellen, deren Widerruf, Standby und echtes Writer-Handoff bleiben separate offene
+Teile von TBP-030; das Panel stellt sie nicht als verbunden dar.
+
+Der erweiterte Produktionsgate muss alle Layoutaktionen sowie dekodierte
+HLS-Pixel beim Wechsel zum Wartebild und zurück prüfen, bei unveränderten
+Capture-Aufrufen, Sender-Track-IDs, PeerConnection-Anzahl und Program-POST-Zähler.
+Dieser neue öffentliche Nachweis steht bis zum Rollout und tatsächlichen Lauf aus.
+
+### Bisher abgeschlossene Langzeit- und Plattformläufe
+
 Zwei parallele, vollständig beendete Läufe über jeweils 3.600 Sekunden bestanden
 die regelmäßigen Bildwechsel-/Framefortschrittsprüfungen und den finalen Cleanup:
 
