@@ -41,6 +41,7 @@ start_service() {
     sleep 1
   done
   started_pid=$(service_state) || return 1
+  printf '%s\n' "$started_pid" | grep -Eq '^[1-9][0-9]*$' || return 1
   observations=0
   while [ "$observations" -lt 5 ]; do
     sleep 2

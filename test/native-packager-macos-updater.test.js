@@ -42,6 +42,11 @@ list)
     if [ -f "$MAC_STATES/$label" ]; then
       value=$(cat "$MAC_STATES/$label")
       if [ "$label" = de.ananta.native-packager.${id} ] && grep -q '# version=churn' "$MAC_BINARY"; then value=$((value+1)); printf '%s' "$value" > "$MAC_STATES/$label"; fi
+      if [ "$label" = de.ananta.native-packager.${id} ] && grep -q '# version=pid-disappears' "$MAC_BINARY"; then
+        count=0; if [ -f "$MAC_STATES/pid-observations" ]; then count=$(cat "$MAC_STATES/pid-observations"); fi
+        count=$((count+1)); printf '%s' "$count" > "$MAC_STATES/pid-observations"
+        if [ "$count" -ge 2 ]; then value=-; fi
+      fi
       printf '%s 0 %s\\n' "$value" "$label"
     fi
   done ;;
@@ -88,12 +93,16 @@ test("macOS adapter updates and rolls back with real hashes/renames and simulate
   assert.doesNotMatch(script,/systemctl|mv -Tf|launchctl print|enrollmentToken/);
   assert.equal(script.includes("\r"),false); f.unchanged();
 });
-for(const scenario of ["bad-hash","bad-preflight","bad-start","churn","stop-fail","list-fail"]) {
+for(const scenario of ["bad-hash","bad-preflight","bad-start","churn","pid-disappears","stop-fail","list-fail"]) {
   test(`macOS ${scenario} fails closed and preserves both identities`,t=>{
-    const f=fixture(t); const hash=f.prepare(["bad-preflight","bad-start","churn"].includes(scenario)?scenario:"new");
+    const f=fixture(t); const hash=f.prepare(["bad-preflight","bad-start","churn","pid-disappears"].includes(scenario)?scenario:"new");
     assert.throws(()=>f.run(["update",scenario==="bad-hash"?"0".repeat(64):hash],
       scenario==="stop-fail"?{MAC_STOP_FAIL:"1"}:scenario==="list-fail"?{MAC_LIST_FAIL:"1"}:{}));
     assert.equal(f.read("native-broadcast-packager"),content("old"));
+    if(scenario==="pid-disappears") {
+      assert.equal(fs.readFileSync(path.join(f.env.MAC_STATES,`de.ananta.native-packager.${id}`),"utf8"),"500");
+      assert.equal(fs.existsSync(path.join(f.root,".update-active")),false);
+    }
     if(scenario==="stop-fail") {
       assert.equal(fs.existsSync(path.join(f.root,".update-active")),true);
       assert.match(f.run(["recover"]),/recovered/);

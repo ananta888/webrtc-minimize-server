@@ -306,7 +306,11 @@ unabhängige Release-Herkunft oder den authentisierten Agentbetrieb. Ohne expliz
 Origin wird dieser zusätzliche Zweig sichtbar übersprungen.
 
 Neue macOS-Installer enthalten ebenfalls `update-<packagerId>` im eigenen
-ID-Verzeichnis. Sie verwenden denselben POSIX-Transaktionskern wie Linux:
+ID-Verzeichnis. Der Stabilitaetsvergleich akzeptiert nur eine erneut gepruefte
+numerische PID; stirbt ein Kandidat zwischen Statusabfragen, darf der launchd-
+Platzhalter `-` nicht als stabiler Prozess gelten.
+
+Sie verwenden denselben POSIX-Transaktionskern wie Linux:
 expliziten unabhängig geprüften SHA-256, begrenzten HTTPS-Download, Preflight,
 Journal, Vorversion, `update`/`rollback`/`recover` und gemeinsame Uninstall-Sperre.
 Der macOS-Adapter verwendet `shasum -a 256`, BSD-kompatibles `mv -f` und
