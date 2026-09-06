@@ -19,7 +19,7 @@ const CONFIRMATION_TTL_MS = 120_000;
 const CLOCK_SKEW_MS = 5_000;
 const SUBJECT = BROADCAST_DOMAIN_PATTERNS.subjectRef;
 const SOURCE = BROADCAST_DOMAIN_PATTERNS.sourceId;
-const AGENT = /^[a-z0-9][a-z0-9-]{0,31}$/;
+const AGENT = /^(?:pkr_[A-Za-z0-9_-]{16,64}|[a-z0-9][a-z0-9-]{0,31})$/;
 const CONFIRMATION = /^bcf_[A-Za-z0-9_-]{16,64}$/;
 const ACTION_ID = /^bma_[A-Za-z0-9_-]{16,64}$/;
 const LAYOUTS = new Set([
@@ -93,7 +93,7 @@ function normalizeConfirmation(value, now) {
     || !Object.hasOwn(value, "confirmationId")
     || !Object.hasOwn(value, "confirmedAt")
     || !Object.hasOwn(value, "expiresAt")
-    || !CONFIRMATION.test(value.confirmationId || "")
+    || typeof value.confirmationId !== "string" || !CONFIRMATION.test(value.confirmationId)
     || !Number.isSafeInteger(value.confirmedAt) || !Number.isSafeInteger(value.expiresAt)
     || value.confirmedAt > now + CLOCK_SKEW_MS || value.expiresAt <= now
     || value.expiresAt > value.confirmedAt + CONFIRMATION_TTL_MS) {
@@ -116,13 +116,14 @@ export function authorizeBroadcastModerationAction(programValue, actorValue, inp
   if (program.type !== "broadcast-program") fail("invalid_broadcast_program");
   const actor = normalizeBroadcastServerActor(actorValue);
   const action = cloneBounded(input);
-  const actionFields = ACTION_FIELDS[action?.action];
+  const actionFields = typeof action?.action === "string" && Object.hasOwn(ACTION_FIELDS, action.action)
+    ? ACTION_FIELDS[action.action] : undefined;
   if (!action || typeof action !== "object" || Array.isArray(action) || !actionFields
     || action.workflowVersion !== 1 || action.type !== "broadcast-moderation-action"
     || action.trigger !== "user-action"
     || Object.keys(action).some((field) => !new Set([...COMMON_ACTION_FIELDS, ...actionFields]).has(field))
     || [...COMMON_ACTION_FIELDS, ...actionFields].some((field) => action[field] === undefined)
-    || !ACTION_ID.test(action.actionId || "")) {
+    || typeof action.actionId !== "string" || !ACTION_ID.test(action.actionId)) {
     fail("invalid_broadcast_moderation_action");
   }
   for (const field of ["tenantId", "roomId", "programId", "actorSubjectRef"]) {
@@ -271,7 +272,7 @@ export function evaluateNativePackagerCandidates(candidateValues, request, now =
     || !new Set(["under-5mbit", "5-15mbit", "over-15mbit"]).has(value.minimumUploadClass)
     || !Array.isArray(value.operatorAllowedAgentIds) || value.operatorAllowedAgentIds.length > MAX_CANDIDATES
     || new Set(value.operatorAllowedAgentIds).size !== value.operatorAllowedAgentIds.length
-    || value.operatorAllowedAgentIds.some((agentId) => !AGENT.test(agentId))
+    || value.operatorAllowedAgentIds.some((agentId) => typeof agentId !== "string" || !AGENT.test(agentId))
     || !Number.isSafeInteger(value.maximumStandbys) || value.maximumStandbys < 0
     || value.maximumStandbys > MAX_STANDBYS) fail("invalid_broadcast_packager_policy");
 
@@ -340,15 +341,16 @@ export function planPackagerWriterSelection(evaluationValue, selection, expected
     || evaluation.maximumStandbys > MAX_STANDBYS
     || !selection || typeof selection !== "object" || Array.isArray(selection)
     || Object.keys(selection).length !== 2
-    || !AGENT.test(selection.primaryAgentId || "")
+    || typeof selection.primaryAgentId !== "string" || !AGENT.test(selection.primaryAgentId)
     || !Array.isArray(selection.standbyAgentIds)
     || selection.standbyAgentIds.length > evaluation.maximumStandbys
     || new Set(selection.standbyAgentIds).size !== selection.standbyAgentIds.length
-    || selection.standbyAgentIds.some((agentId) => !AGENT.test(agentId))
+    || selection.standbyAgentIds.some((agentId) => typeof agentId !== "string" || !AGENT.test(agentId))
     || selection.standbyAgentIds.includes(selection.primaryAgentId)) {
     fail("invalid_broadcast_packager_selection");
   }
   positiveInteger(expectedLeaseEpoch, "invalid_broadcast_packager_selection");
+  if (expectedLeaseEpoch === Number.MAX_SAFE_INTEGER) fail("invalid_broadcast_packager_selection");
   const eligible = new Map(evaluation.eligible.map((candidate) => [candidate.agentId, candidate]));
   const ids = [selection.primaryAgentId, ...selection.standbyAgentIds];
   if (ids.some((agentId) => !eligible.has(agentId))) fail("broadcast_packager_not_eligible", 403);
@@ -374,8 +376,15 @@ export class BroadcastModerationAuditLog {
 
   record(actionValue, outcome, errorCode = null, now = Date.now()) {
     if (!actionValue || typeof actionValue !== "object"
-      || !ACTION_ROLE_MAP[actionValue.action] || !new Set(["accepted", "denied", "conflict", "failed"]).has(outcome)
-      || (errorCode !== null && !/^[a-z][a-z0-9_]{1,63}$/.test(errorCode))) {
+      || typeof actionValue.action !== "string" || !Object.hasOwn(ACTION_ROLE_MAP, actionValue.action)
+      || !new Set(["accepted", "denied", "conflict", "failed"]).has(outcome)
+      || (errorCode !== null && (typeof errorCode !== "string" || !/^[a-z][a-z0-9_]{1,63}$/.test(errorCode)))
+      || !Number.isSafeInteger(now) || now < 0
+      || !Number.isSafeInteger(actionValue.expectedProgramRevision) || actionValue.expectedProgramRevision < 1
+      || !Number.isSafeInteger(actionValue.expectedProgramEpoch) || actionValue.expectedProgramEpoch < 1
+      || [["actionId", ACTION_ID], ["tenantId", BROADCAST_DOMAIN_PATTERNS.tenantId],
+        ["roomId", BROADCAST_DOMAIN_PATTERNS.roomId], ["programId", BROADCAST_DOMAIN_PATTERNS.programId],
+        ["actorSubjectRef", SUBJECT]].some(([field, expression]) => typeof actionValue[field] !== "string" || !expression.test(actionValue[field]))) {
       fail("invalid_broadcast_moderation_audit");
     }
     const record = deepFreeze({

@@ -290,3 +290,46 @@ test("audit stays bounded and records no labels, captions, keys or media", () =>
   }
   assert.equal(Object.isFrozen(log.list()), true);
 });
+
+test("moderation accepts enrolled native packager IDs without weakening candidate consent", () => {
+  const primary = "pkr_AAAAAAAAAAAAAAAA", standby = "pkr_bbbbbbbbbbbbbbbb", foreign = "pkr_cccccccccccccccc";
+  const request = { ...selectionRequest(), operatorAllowedAgentIds: [primary, standby, foreign] };
+  const evaluated = evaluateNativePackagerCandidates([
+    capability(primary, "a"), capability(standby, "b"), capability(foreign, "c", { ownerSubjectRef: OTHER }),
+  ], request, NOW);
+  assert.equal(evaluated.eligible.length, 2);
+  assert.deepEqual(evaluated.rejected, [{ agentId: foreign, reasonCode: "native_packager_owner_scope_mismatch" }]);
+  const plan = planPackagerWriterSelection(evaluated, { primaryAgentId: primary, standbyAgentIds: [standby] }, 23);
+  assert.equal(plan.activeWriter.agentId, primary);
+  assert.equal(plan.standbys[0].agentId, standby);
+  assert.equal(plan.standbys[0].mayReceiveDecryptKeys, false);
+  assert.throws(() => planPackagerWriterSelection(evaluated, { primaryAgentId: primary, standbyAgentIds: [foreign] }, 23), errorCode("broadcast_packager_not_eligible", 403));
+  assert.throws(() => evaluateNativePackagerCandidates([], { ...request, operatorAllowedAgentIds: [[primary]] }, NOW), errorCode("invalid_broadcast_packager_policy"));
+  assert.throws(() => planPackagerWriterSelection(evaluated, { primaryAgentId: [primary], standbyAgentIds: [] }, 23), errorCode("invalid_broadcast_packager_selection"));
+  assert.throws(() => planPackagerWriterSelection(evaluated, { primaryAgentId: primary, standbyAgentIds: [] }, Number.MAX_SAFE_INTEGER), errorCode("invalid_broadcast_packager_selection"));
+});
+
+test("moderation rejects prototype action names and coerced identifier arrays with closed errors", () => {
+  const stop = action("program-stop", "owner", OWNER, { reasonCode: "OWNER_STOP" });
+  for (const patch of [{ action: "constructor" }, { action: "__proto__" }, { action: ["program-stop"] }, { actionId: [stop.actionId] }]) {
+    assert.throws(() => authorizeBroadcastModerationAction(program, actor("owner", OWNER), { ...stop, ...patch }, NOW), errorCode("invalid_broadcast_moderation_action"));
+  }
+  assert.throws(() => authorizeBroadcastModerationAction(program, actor("owner", OWNER), {
+    ...stop, confirmation: { ...stop.confirmation, confirmationId: [stop.confirmation.confirmationId] },
+  }, NOW), errorCode("invalid_broadcast_moderation_confirmation"));
+});
+
+test("audit rejects unbounded or raw identity fields instead of retaining caller content", () => {
+  const log = new BroadcastModerationAuditLog();
+  const stop = action("program-stop", "owner", OWNER, { reasonCode: "OWNER_STOP" });
+  for (const patch of [{ action: "constructor" }, { action: ["program-stop"] }, { actionId: "x".repeat(100_000) },
+    { tenantId: "arbitrary private text" }, { roomId: [ROOM] }, { programId: "not-a-program" },
+    { actorSubjectRef: "Human name or media text" }, { expectedProgramRevision: 0 }, { expectedProgramEpoch: NaN }]) {
+    assert.throws(() => log.record({ ...stop, ...patch }, "denied", null, NOW), errorCode("invalid_broadcast_moderation_audit"));
+  }
+  assert.throws(() => log.record(stop, "failed", ["network_error"], NOW), errorCode("invalid_broadcast_moderation_audit"));
+  assert.throws(() => log.record(stop, "failed", null, Infinity), errorCode("invalid_broadcast_moderation_audit"));
+  assert.equal(log.list().length, 0);
+  log.record({ ...stop, targetLabel: "PRIVATE LABEL", mediaPayload: "PRIVATE CONTENT" }, "accepted", null, NOW);
+  assert.equal(JSON.stringify(log.list()).includes("PRIVATE"), false);
+});

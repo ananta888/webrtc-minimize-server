@@ -41,6 +41,31 @@ Ihre Schalter bleiben getrennt von der lokalen Bildregie deaktiviert.
 - Stale Revision, Program-Epoche oder Lease-Epoche ist ein sichtbarer Konflikt.
   Die UI darf die Aktion nicht still gegen einen neueren Stand wiederholen.
 
+### Browser-/Server-Vertrag und begrenzter Lebenszyklus
+
+Das lokale `targetLabel` bleibt ausschließlich im Bestätigungsdialog und wird
+nicht in den geschlossenen Server-Envelope übernommen. Jede der acht Aktionen
+erlaubt nur ihre eigenen Pflichtfelder. Snapshot und Adapterergebnis werden
+ebenfalls typstreng und geschlossen geprüft; rückläufige Revisionen/Epochen
+sind keine gültigen Ergebnisse. Ein gemeinsamer Vertragstest kompiliert den
+tatsächlichen Browserworkflow und übergibt seine serialisierten Nachrichten an
+die produktive Serverpolicy. Er beweist Vertragskompatibilität, keine bereits
+angeschlossene HTTP-Route oder vollzogene Writer-Übergabe.
+
+Es gibt genau eine aktive Aktion pro Workflow mit einem standardmäßig zehn
+Sekunden langen Gesamtbudget einschließlich lokalem Quellenstopp. Beide Ports
+erhalten dasselbe AbortSignal. Destroy beendet auch bei ignorierendem Adapter
+die lokale Warteoperation und ist terminal; verspätete Antworten dürfen keine
+Folgeaktion oder erfolgreiche UI-Rückmeldung erzeugen. Nach ausstehendem lokalen
+Widerruf wird vor dem Netzwerk nochmals die Bestätigungsfrist geprüft.
+
+Ein Timeout während des Serveraufrufs beweist **keinen** Rollback: Die zukünftige
+HTTP-Anbindung muss den autoritativen Stand neu laden und für einen weiteren
+Versuch eine neue Bestätigung verlangen. Sie darf einen unklaren Ausgang nicht
+als erfolgreiche Rücknahme darstellen. Die lokale Safety-Implementierung muss
+selbst synchron fencen und ihr Cleanup abbrechbar ausführen; das Zeitlimit dieses
+Workflows kann einen fehlerhaften externen Adapter nicht rückwirkend stoppen.
+
 ## Sofortiger eigener Quellenwiderruf
 
 Der lokale Sicherheitsport läuft vor dem Netzwerkaufruf. Dadurch bleibt der
@@ -69,6 +94,13 @@ filtert vor der Auswahl:
 - AAC plus `libx264` als Software-Fallback,
 - CPU-, Pixel-, Rendition- und optionale Hardwareencoder-Grenzen.
 
+Regie und Kandidatenpolicy akzeptieren die tatsächlich registrierten
+`pkr_…`-Geräte-IDs sowie kompatibel die bisherigen kurzen Agent-Slugs.
+Ein passendes ID-Format allein verleiht keine Freigabe: Owner, Tenant, Raum,
+Consent, Operatorpolicy und Capability müssen weiterhin übereinstimmen.
+Array-Coercion ist verboten; die nächste Fencing-Revision darf den sicheren
+Ganzzahlbereich nicht überschreiten.
+
 Aus den verbleibenden Kandidaten wird genau ein aktiver Writer gewählt. Er
 erhält die nächste Fencing-Revision und darf nach separatem Quellenconsent die
 nötigen Decrypt-Schlüssel erhalten. Höchstens zwei Standbys werden als
@@ -82,6 +114,11 @@ Das begrenzte Audit hält höchstens 256 Datensätze mit Aktion, pseudonymen
 Tenant-/Room-/Program-/Subject-Referenzen, erwarteter Revision/Epoche, Ergebnis,
 Fehlercode und Zeitpunkt. Namen, Labels, SDP/ICE, Captions, Schlüssel,
 Audio-/Videodaten und Nutzinhalte gehören nicht hinein.
+Referenzen, Revisionen, Zeit und Fehlercode werden vor Aufnahme typstreng und
+längenbegrenzt geprüft. Unbekannte/prototypgeerbte Aktionen, Array-Coercion oder
+Rohtext als Identität erzeugen keinen Auditdatensatz; zusätzliche lokale Labels
+und Nutzlastfelder werden nicht übernommen. Die künftige HTTP-Anbindung darf
+abgewiesene Rohrequests nicht ungeprüft als Auditereignisse weiterreichen.
 
 ## Noch offene Gates
 
