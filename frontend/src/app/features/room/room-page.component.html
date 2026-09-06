@@ -10,8 +10,8 @@
         <span id="connection-status">{{ connectionLabel() }}</span>
       </div>
       @if (config.value()?.auth?.mode !== 'disabled' && !auth.authenticated()) {
-        <button id="login" class="button ghost compact" type="button" [disabled]="auth.busy()" (click)="auth.login()">Anmelden</button>
-        <button id="register" class="button primary compact" type="button" [disabled]="auth.busy()" (click)="auth.register()">Konto erstellen</button>
+        <button id="login" class="button ghost compact" type="button" [disabled]="auth.busy() || !auth.authorizationReady()" (click)="auth.login()">Anmelden</button>
+        <button id="register" class="button primary compact" type="button" [disabled]="auth.busy() || !auth.authorizationReady()" (click)="auth.register()">Konto erstellen</button>
       } @else if (auth.authenticated()) {
         <div class="user-chip"><span class="avatar" aria-hidden="true">{{ auth.username().slice(0, 1).toUpperCase() }}</span><span>{{ auth.username() }}</span></div>
         <button id="logout" class="icon-button" type="button" title="Abmelden" aria-label="Abmelden" (click)="logout()">
@@ -31,6 +31,17 @@
       </a>
     </div>
   </header>
+
+  <div id="runtime-config-status" role="status" aria-live="polite" [attr.data-state]="ready() ? 'ready' : pageError() ? 'failed' : 'loading'">
+    @if (!ready()) {
+      @if (pageError()) {
+        <p>Konfiguration nicht bereit. Anmeldung und Freigaben bleiben gesperrt.</p>
+        <button id="runtime-config-reload" class="button ghost" type="button" (click)="reloadPage()">Seite neu laden</button>
+      } @else {
+        <p>Konfiguration wird geladen. Anmeldung ist anschließend verfügbar.</p>
+      }
+    }
+  </div>
 
   <div class="app-body">
     <aside class="side-menu">
@@ -654,7 +665,7 @@
                   </ul>
 
                   @if (!auth.authenticated()) {
-                    <div class="agent-signin-callout"><p>Zum sicheren Registrieren wird der Agent an dein Keycloak-Konto gebunden.</p><button class="button primary" type="button" (click)="auth.login('/?section=analysis')">Anmelden &amp; Agent installieren</button></div>
+                    <div class="agent-signin-callout"><p>Zum sicheren Registrieren wird der Agent an dein Keycloak-Konto gebunden.</p><button class="button primary" type="button" [disabled]="auth.busy() || !auth.authorizationReady()" (click)="auth.login('/?section=analysis')">Anmelden &amp; Agent installieren</button></div>
                   } @else if (config.value()!.mediaAgents.targets.length === 0) {
                     <p class="agent-risk">Die geprüften Installationspakete sind auf diesem Server momentan nicht verfügbar. Es wurde nichts heruntergeladen oder installiert.</p>
                   } @else {
@@ -789,7 +800,7 @@
                 <li><strong>Begrenzt:</strong> FFmpeg ≥ 6, maximal drei Renditions, CPU-/Upload-/Energieklassen und harte Prozessgrenzen.</li>
               </ul>
               @if (!auth.authenticated()) {
-                <div class="agent-signin-callout"><p>Die Geräteidentität wird an dein Keycloak-Konto gebunden.</p><button class="button primary" type="button" (click)="auth.login('/?section=analysis')">Anmelden &amp; Packager installieren</button></div>
+                <div class="agent-signin-callout"><p>Die Geräteidentität wird an dein Keycloak-Konto gebunden.</p><button class="button primary" type="button" [disabled]="auth.busy() || !auth.authorizationReady()" (click)="auth.login('/?section=analysis')">Anmelden &amp; Packager installieren</button></div>
               } @else if (config.value()!.nativePackagers.targets.length === 0) {
                 <p class="agent-risk">Auf diesem Server ist momentan kein prüfbares Packager-Artefakt verfügbar.</p>
               } @else {
@@ -848,7 +859,7 @@
               <button class="button ghost" type="button" (click)="logout()">Abmelden</button>
             } @else {
               <p>Neue Nutzer können ihr Konto direkt bei Keycloak registrieren und danach eigene Räume verwalten.</p>
-              <div class="inline-actions"><button class="button ghost" type="button" (click)="auth.login()">Anmelden</button><button class="button primary" type="button" (click)="auth.register()">Konto erstellen</button></div>
+              <div class="inline-actions"><button class="button ghost" type="button" [disabled]="auth.busy() || !auth.authorizationReady()" (click)="auth.login()">Anmelden</button><button class="button primary" type="button" [disabled]="auth.busy() || !auth.authorizationReady()" (click)="auth.register()">Konto erstellen</button></div>
             }
           </section>
           }

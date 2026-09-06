@@ -164,10 +164,18 @@ export class RuntimeConfigService {
   readonly value = signal<RuntimeConfig | null>(null);
 
   async load(): Promise<RuntimeConfig> {
-    const response = await fetch("/config", { credentials: "same-origin" });
-    if (!response.ok) throw new Error("runtime_config_unavailable");
-    const config = await response.json() as RuntimeConfig;
-    if (!config.auth || !Array.isArray(config.iceServers) || !config.mediaE2ee
+    const lifetime = AbortSignal.timeout(15_000);
+    let config: RuntimeConfig;
+    try {
+      const response = await fetch("/config", { credentials: "same-origin", redirect: "error", signal: lifetime });
+      if (!response.ok) throw new Error("runtime_config_unavailable");
+      config = await response.json() as RuntimeConfig;
+      lifetime.throwIfAborted();
+    } catch {
+      throw new Error(lifetime.aborted ? "runtime_config_timeout" : "runtime_config_unavailable");
+    }
+    if (!config || typeof config !== "object" || Array.isArray(config)
+      || !config.auth || !Array.isArray(config.iceServers) || !config.mediaE2ee
       || !new Set(["disabled", "preferred", "required"]).has(config.mediaE2ee.mode)
       || config.mediaE2ee.cipherSuite !== "AES_128_GCM_SHA256_128"
       || config.mediaE2ee.frameEnvelope !== "codec-prefix-v1"

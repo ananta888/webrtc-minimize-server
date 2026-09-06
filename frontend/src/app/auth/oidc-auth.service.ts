@@ -78,6 +78,7 @@ export class OidcAuthService {
   readonly accessToken = signal<string | null>(sessionStorage.getItem(TOKEN_KEY));
   readonly idToken = signal<string | null>(sessionStorage.getItem(ID_TOKEN_KEY));
   readonly busy = signal(false);
+  readonly authorizationReady = signal(false);
   readonly error = signal("");
   readonly claims = computed(() => this.accessToken() ? decodeJwt(this.accessToken()!) : null);
   readonly authenticated = computed(() => {
@@ -94,6 +95,7 @@ export class OidcAuthService {
   private expiryHandle: ReturnType<typeof setTimeout> | null = null;
 
   configure(config: RuntimeConfig): void {
+    this.authorizationReady.set(false);
     this.config = config;
     const claims = this.claims();
     if (
@@ -103,6 +105,7 @@ export class OidcAuthService {
       || !audienceMatches(claims?.["aud"], config.auth.audience)
     ) this.clearTokens();
     else if (this.accessToken()) this.scheduleTokenRenewal(this.accessToken()!);
+    this.authorizationReady.set(config.auth.mode !== "disabled" && Boolean(config.auth.issuer && config.auth.clientId));
   }
 
   authorizationHeader(): Record<string, string> {
@@ -124,17 +127,21 @@ export class OidcAuthService {
   }
 
   private async beginAuthorization(intent: AuthorizationIntent, returnUrl: string): Promise<void> {
-    const auth = this.requireAuthConfig();
+    if (this.busy()) return;
     this.busy.set(true);
     this.error.set("");
     try {
+      const auth = this.requireAuthConfig();
+      if (!this.authorizationReady()) throw new Error("oidc_configuration_missing");
       const metadata = await this.loadMetadata(auth.issuer);
+      if (this.config?.auth !== auth || !this.authorizationReady()) throw new Error("oidc_configuration_missing");
       const verifier = randomBase64Url(48);
       const state = randomBase64Url(24);
       const nonce = randomBase64Url(24);
       const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
       const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
         .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      if (this.config?.auth !== auth || !this.authorizationReady()) throw new Error("oidc_configuration_missing");
       const transaction: PkceTransaction = {
         verifier, state, nonce, returnUrl, issuer: auth.issuer,
         clientId: auth.clientId, tokenEndpoint: metadata.token_endpoint,
@@ -148,7 +155,8 @@ export class OidcAuthService {
         nonce,
       }, intent));
     } catch (error) {
-      this.error.set(error instanceof Error ? error.message : "oidc_login_failed");
+      this.error.set(error instanceof Error && ["oidc_configuration_missing", "oidc_discovery_failed", "oidc_discovery_invalid"]
+        .includes(error.message) ? error.message : "oidc_login_failed");
       this.busy.set(false);
     }
   }
@@ -267,7 +275,7 @@ export class OidcAuthService {
 
   private requireAuthConfig() {
     const auth = this.config?.auth;
-    if (!auth?.issuer || !auth.clientId) throw new Error("oidc_configuration_missing");
+    if (!auth?.issuer || !auth.clientId || auth.mode === "disabled") throw new Error("oidc_configuration_missing");
     return auth;
   }
 
@@ -283,9 +291,13 @@ export class OidcAuthService {
 
   private async loadMetadata(issuer: string): Promise<OidcMetadata> {
     if (this.metadata?.issuer === issuer) return this.metadata;
-    const response = await fetch(`${issuer}/.well-known/openid-configuration`);
+    const lifetime = AbortSignal.timeout(15_000);
+    const response = await fetch(`${issuer}/.well-known/openid-configuration`, {
+      signal: lifetime, credentials: "omit", redirect: "error",
+    });
     if (!response.ok) throw new Error("oidc_discovery_failed");
     const metadata = await response.json() as OidcMetadata;
+    lifetime.throwIfAborted();
     if (metadata.issuer !== issuer || !metadata.authorization_endpoint || !metadata.token_endpoint) {
       throw new Error("oidc_discovery_invalid");
     }

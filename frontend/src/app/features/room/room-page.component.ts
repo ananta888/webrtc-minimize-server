@@ -190,6 +190,8 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     readonly workspaces: PairWorkspaceService,
   ) {}
 
+  reloadPage(): void { location.reload(); }
+
   async ngOnInit(): Promise<void> {
     window.addEventListener("beforeunload", this.beforeUnload);
     window.addEventListener("pagehide", this.pageHide);

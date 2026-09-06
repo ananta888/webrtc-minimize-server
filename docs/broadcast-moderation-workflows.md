@@ -181,6 +181,25 @@ alle drei unterschiedlichen Fehlversuche dieselbe Ursache haben. Die
 Runtime-/Login-Bereitschaft muss separat gehärtet und getestet werden, bevor
 der Zwei-Packager-Nachweis erneut bewertet wird.
 
+Die folgende Runtime-/Login-Härtung ist inzwischen lokal implementiert:
+Anmelde- und Registrierungsbuttons benötigen explizite Auth-Bereitschaft.
+Auch ein direkter Methodenaufruf vor Konfiguration oder bei deaktiviertem OIDC
+endet ohne Request, Redirect oder PKCE-Transaktion in einem sichtbaren,
+begrenzten Fehler. Eine laufende Anmeldung blockiert konkurrierende Starts;
+ein Konfigurationswechsel während Discovery oder PKCE-Erzeugung verhindert
+die Verwendung des alten Auth-Snapshots. Runtime und Discovery besitzen
+15-Sekunden-Fristen und akzeptieren keine nach Ablauf gelieferten Bodies.
+Fehlgeschlagener Runtime-Start bietet ausschließlich einen lokalen Seiten-
+Reload; dessen Abschluss startet weder Login noch Capture automatisch.
+
+Die Produktionsfixtures warten nun auf den ausdrücklich gesetzten
+`runtime-config-status[data-state=ready]`, nicht auf bloße Login-Button-
+Sichtbarkeit. Vier echte Chromium-/Firefox-Fälle mit verzögerter bzw.
+fehlgeschlagener Config und lokalem Reload bestanden ohne Capture, Redirect
+oder PKCE-State. Zwölf gezielte Service-Tests bestehen einschließlich der
+bestehenden PKCE-URL-Fälle. Dieser lokale Nachweis ersetzt noch nicht das
+Deployment bzw. den weiterhin offenen Zwei-Packager-Mediennachweis.
+
 Nach terminalem Ende aller Läufe bestätigte eine unabhängige Prüfung null
 Testcontainer, Test-Identity-Volumes, `res_`-Ausgaben und temporäre Keycloak-
 Gate-Nutzer. Health meldete `ok`, null Räume und null Teilnehmer. Es wurden

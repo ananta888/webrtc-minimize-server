@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildAuthorizationUrl } from "./oidc-auth.service";
+import { buildAuthorizationUrl, OidcAuthService } from "./oidc-auth.service";
+import { RuntimeConfig } from "../core/runtime-config.service";
 
 const request = {
   clientId: "webrtc-browser",
@@ -13,6 +14,60 @@ const request = {
 };
 
 describe("OIDC authorization entry", () => {
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); sessionStorage.clear(); });
+  const config = (mode = "required") => ({ auth: { mode, issuer: "https://identity.example/realms/test",
+    clientId: "browser", audience: "server" } }) as RuntimeConfig;
+
+  it("keeps unconfigured and disabled entry closed without rejected promises, requests or PKCE state", async () => {
+    const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
+    const auth = new OidcAuthService();
+    expect(auth.authorizationReady()).toBe(false);
+    await expect(auth.login()).resolves.toBeUndefined();
+    expect(auth.error()).toBe("oidc_configuration_missing");
+    expect(auth.busy()).toBe(false);
+    auth.configure(config("disabled"));
+    await expect(auth.register()).resolves.toBeUndefined();
+    expect(auth.authorizationReady()).toBe(false);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("webrtc.oidc.pkce")).toBeNull();
+  });
+
+  it("serializes entry and rejects reconfiguration before storing a PKCE transaction", async () => {
+    let release!: (response: Response) => void;
+    const fetcher = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => new Promise<Response>(resolve => { release = resolve; }));
+    vi.stubGlobal("fetch", fetcher);
+    const auth = new OidcAuthService(); auth.configure(config());
+    expect(auth.authorizationReady()).toBe(true);
+    const first = auth.login();
+    await auth.register();
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(auth.busy()).toBe(true);
+    expect(fetcher.mock.calls[0][1]).toMatchObject({ credentials: "omit", redirect: "error", signal: expect.any(AbortSignal) });
+    auth.configure(config("disabled"));
+    release(new Response(JSON.stringify({ issuer: config().auth.issuer,
+      authorization_endpoint: "https://identity.example/auth", token_endpoint: "https://identity.example/token" })));
+    await first;
+    expect(auth.busy()).toBe(false);
+    expect(auth.error()).toBe("oidc_configuration_missing");
+    expect(sessionStorage.getItem("webrtc.oidc.pkce")).toBeNull();
+  });
+
+  it("does not consume a discovery body delivered after the bounded request expired", async () => {
+    const abort = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(abort.signal);
+    let release!: (response: Response) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(resolve => { release = resolve; })));
+    const auth = new OidcAuthService(); auth.configure(config());
+    const pending = auth.login();
+    abort.abort();
+    release(new Response(JSON.stringify({ issuer: config().auth.issuer,
+      authorization_endpoint: "https://identity.example/auth", token_endpoint: "https://identity.example/token" })));
+    await pending;
+    expect(timeout).toHaveBeenCalledWith(15_000);
+    expect(auth.error()).toBe("oidc_login_failed");
+    expect(auth.busy()).toBe(false);
+    expect(sessionStorage.getItem("webrtc.oidc.pkce")).toBeNull();
+  });
   it("builds the existing login request as Authorization Code with PKCE", () => {
     const url = new URL(buildAuthorizationUrl(
       "https://keycloak.ananta.de/realms/ananta/protocol/openid-connect/auth",

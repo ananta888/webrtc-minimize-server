@@ -53,6 +53,7 @@ async function login(page) {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
       await page.goto(`${appOrigin}/?section=analysis`, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      await page.locator('#runtime-config-status[data-state="ready"]').waitFor({ state: "attached", timeout: 20_000 });
       await page.waitForFunction(() => document.querySelector("#login") || document.querySelector("#logout"), null, {
         timeout: 20_000,
       });

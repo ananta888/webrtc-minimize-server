@@ -99,6 +99,7 @@ async function login(page) {
     try {
       const response = await page.goto(origin, { waitUntil: "domcontentloaded", timeout: 30_000 });
       assert.equal(response?.status(), 200, "application shell must return HTTP 200");
+      await page.locator('#runtime-config-status[data-state="ready"]').waitFor({ state: "attached", timeout: 20_000 });
       await page.locator("#login").waitFor({ state: "visible", timeout: 15_000 });
       await page.locator("#login").click();
       await page.waitForURL((url) => url.origin === new URL(issuer).origin, { timeout: 30_000 });
