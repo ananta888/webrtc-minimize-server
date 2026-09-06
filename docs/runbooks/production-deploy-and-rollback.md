@@ -84,8 +84,10 @@ unterbrechungsfrei. Raum-/Broadcast-Sessions sind flüchtig und müssen nach ein
 Neustart neu freigegeben werden. Datenbank-, Compose-, Firewall-, Secret- und
 Konfigurationsmigrationen werden nicht zurückgesetzt und müssen separat kompatibel
 geplant werden. Die [Desktop-Agent-Updater](../native-packager.md) verwenden
-getrennte ID-lokale Wartungsdateien und keine Docker-Images; Linux und Windows
-besitzen eigene Update-/Recovery-Pfade, macOS und Bestandsmigration bleiben offen.
+getrennte ID-lokale Wartungsdateien und keine Docker-Images. Linux und Windows
+besitzen real geprüfte Update-/Recovery-Pfade; für den ergänzten macOS-Adapter
+ist zusätzlich der macOS-CI-Lifecycle maßgeblich. Bestandsmigration und die
+getrennten Plattform-/Reboot-Freigaben bleiben offen.
 Ein Fehler im Rückweg bleibt ausdrücklich ein Fehler, keine erfolgreiche Freigabe.
 
 `.deploy/operation.lock` schließt parallele Deployments, Rollbacks und

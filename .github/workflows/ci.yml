@@ -45,6 +45,22 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  macos-packager-lifecycle:
+    name: macOS packager lifecycle
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Verify real launchd and stock macOS maintenance tools
+        env:
+          RUN_MACOS_PACKAGER_LIFECYCLE: "1"
+        run: node scripts/live-native-packager-macos-lifecycle-gate.mjs
+
   docker:
     name: Docker build
     needs: test

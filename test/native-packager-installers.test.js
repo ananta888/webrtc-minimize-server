@@ -95,6 +95,7 @@ cp "$INSTALLER_TEST_ARTIFACT" "$destination"`);
 case "$*" in *disable*|*bootout*) [ "\${INSTALLER_TEST_STOP_FAIL:-0}" != 1 ] ;; esac`;
   command("systemctl", controller);
   command("launchctl", controller);
+  command("lockf", '[ "$*" = "-s -t 0 9" ] || exit 1; exec flock -n 9');
   const env = { ...process.env, HOME: userDirectory, PATH: `${commands}:${process.env.PATH}`,
     INSTALLER_TEST_ARTIFACT: path.join(directory, ARTIFACTS[0]),
     INSTALLER_TEST_RUNS: path.join(directory, "runs"),

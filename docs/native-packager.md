@@ -227,7 +227,7 @@ allein nicht bewiesen; Backups und Marker dürfen nicht blind entfernt werden.
 
 Voraussetzungen sind `curl`, `sha256sum`, `timeout`, `flock` und der vorhandene
 systemd-Benutzerdienst. Alte Installer/Installationen erhalten das neue Script
-nicht automatisch. macOS-Updater, automatische Migration, signierte
+nicht automatisch. Automatische Migration, signierte
 Update-Metadaten, UI-Anbindung und reale Reboot-Gates bleiben offen.
 Die ausgeführten Script-Gates verwenden synthetische Binaries und einen simulierten
 Dienstcontroller, jedoch echte Dateisystemoperationen, Prozesssperren und SIGKILL.
@@ -304,6 +304,57 @@ HTTPS-Artefakt. Dabei wird nur die PE-Dateistruktur erkannt; keine EXE ausgefüh
 und keine Kontoidentität angelegt. Dies beweist den TLS-/HTTP-Transport, nicht die
 unabhängige Release-Herkunft oder den authentisierten Agentbetrieb. Ohne expliziten
 Origin wird dieser zusätzliche Zweig sichtbar übersprungen.
+
+Neue macOS-Installer enthalten ebenfalls `update-<packagerId>` im eigenen
+ID-Verzeichnis. Sie verwenden denselben POSIX-Transaktionskern wie Linux:
+expliziten unabhängig geprüften SHA-256, begrenzten HTTPS-Download, Preflight,
+Journal, Vorversion, `update`/`rollback`/`recover` und gemeinsame Uninstall-Sperre.
+Der macOS-Adapter verwendet `shasum -a 256`, BSD-kompatibles `mv -f` und
+[`lockf` auf dem geöffneten FD 9](https://github.com/apple-oss-distributions/shell_cmds/blob/main/lockf/lockf.1).
+Der Installer prüft diese FD-Fähigkeit **vor** Download und Enrollment. Ein
+älteres `lockf` ohne FD-Modus führt zum Abbruch, nicht zu einer ungesperrten
+Installation. Die Sperrdatei wird während der Wartung nicht gelöscht.
+
+Wartung muss in der GUI-Anmeldung desselben Benutzers stattfinden. Nur dessen
+Job `gui/<uid>/de.ananta.native-packager.<id>` wird mit `bootout` entfernt und
+aus seiner unveränderten LaunchAgents-Plist mit `bootstrap` wieder gestartet.
+Die Plist und ihr direktes Verzeichnis dürfen keine Symlinks sein. Die Prüfung
+verwendet die dokumentierten PID/Status/Label-Spalten von
+[`launchctl list`](https://github.com/apple-oss-distributions/launchd/blob/main/man/launchctl.1),
+nicht das Debugformat von `print`. Nach dem Start muss dieselbe PID über fünf
+Prüfungen im Abstand von zwei Sekunden bestehen bleiben. Ein fehlgeschlagener
+List-Aufruf wird nicht als abwesender Dienst interpretiert.
+
+`perl` samt POSIX-Modul begrenzt Preflight auf 15 und einzelne launchctl-Aufrufe
+auf 30 Sekunden. Der Helfer startet ohne Shell-Eval eine eigene Prozessgruppe;
+bei Timeout/TERM/INT folgt TERM und nach einer Sekunde KILL an diese Gruppe.
+Er hat weder Konto- noch Raumautorität. Ein Dienst, den launchd aufgrund eines
+bereits übermittelten Befehls startet, gehört nicht zu dieser kurzlebigen
+CLI-Prozessgruppe; unbekannte IPC-Zustände bleiben durch Journal und erneute
+Dienstprüfung zu behandeln. Reboot/Power-Loss ist nicht atomar abgesichert.
+Wie auf Linux kann nach einem Abbruch die alte oder die bereits hashgeprüfte neue
+Datei laufen; `recover` stellt ausdrücklich die gesicherte Vorversion her.
+Das ist keine allgemeine macOS-Autostart-Sperre und kein Medien-/WSS-Nachweis.
+
+Dreizehn Linux-ausgeführte Mac-/POSIX-Gates bestanden mit simuliertem launchd und
+einem auf echtes `flock` abgebildeten lockf-Testadapter. Dateisystem, Hashes,
+SIGKILL, TERM-Isolation und Prozessgruppen-Zeitlimits waren dabei real, macOS selbst nicht.
+Der Linux-systemd-Gate bestand nach der Extraktion erneut. Zusätzlich gibt es
+einen verpflichtenden CI-Job `macos-packager-lifecycle` auf `macos-15`, der
+stock `lockf`, `perl`, `mv` und echte eigene launchd-Jobs prüft. In diesem Gate
+bleiben Binary, Download, Enrollment und FFmpeg-Präsenz synthetisch; es werden
+keine Medien verarbeitet oder bestehenden Kontoidentitäten verändert. Der erste
+reale CI-Nachweis steht bei Einführung dieses Abschnitts noch aus. Ohne explizite
+Aktivierung meldet der lokale Gate SKIP; auf einem explizit aktivierten falschen
+OS oder ohne GUI-Domain muss er fehlschlagen.
+
+```bash
+RUN_MACOS_PACKAGER_LIFECYCLE=1 node scripts/live-native-packager-macos-lifecycle-gate.mjs
+```
+
+Physische macOS-/ARM-/Intel-Medienläufe, Quarantäne/Gatekeeper/Notarisierung,
+Keychain, Bestandsmigration, verifizierte Update-Metadaten/UI und Reboot-Tests
+bleiben davon getrennte offene Freigabekriterien.
 
 Als lokale Voraussetzung für einen späteren Versionswechsel unterstützt der
 Agent `preflight` mit derselben `NATIVE_PACKAGER_*`-Konfiguration wie der Dienst.

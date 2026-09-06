@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { windowsPackagerPrivateAcl, windowsPackagerUninstaller } from "./native-packager-windows-lifecycle.js";
 import { linuxPackagerUpdater } from "./native-packager-linux-updater.js";
+import { posixPackagerUpdater } from "./native-packager-posix-updater.js";
 import { windowsPackagerUpdater } from "./native-packager-windows-updater.js";
 
 const TARGETS = Object.freeze([
@@ -54,12 +55,14 @@ function posix({ enrollment, target, sha256, artifactUrl, controlUrl, stunUrls }
     `identity="$packager_root/${identity}"`,
     'temporary="$packager_root/native-broadcast-packager.download"',
     ...(target.platform === "linux" ? ['command -v flock >/dev/null 2>&1 || { printf "%s\\n" "flock wird fuer sichere Wartung benoetigt." >&2; exit 1; }'] : []),
+    ...(target.platform === "macos" ? ['for utility in lockf perl shasum launchctl; do command -v "$utility" >/dev/null 2>&1 || { printf "%s\\n" "macOS-Wartungswerkzeug fehlt." >&2; exit 1; }; done'] : []),
     'command -v ffmpeg >/dev/null 2>&1 || { printf "%s\\n" "FFmpeg 6 oder neuer wird benötigt." >&2; exit 1; }',
     `packager_base="${base}"`,
     '[ ! -L "$packager_base" ] || { printf "%s\\n" "Agent-Basis darf kein Symlink sein." >&2; exit 1; }',
     'mkdir -p "$packager_base"',
     'mkdir "$packager_root" || { printf "%s\\n" "Installation existiert bereits; keine Identität wird überschrieben." >&2; exit 1; }',
     'chmod 700 "$packager_root"',
+    ...(target.platform === "macos" ? ['(exec 9>"$packager_root/.maintenance.lock"; lockf -s -t 0 9) || { printf "%s\\n" "lockf ohne FD-Unterstuetzung; keine Registrierung." >&2; exit 1; }'] : []),
     'curl --fail --location --proto "=https" --tlsv1.2 --output "$temporary" "$artifact_url"',
     'if command -v sha256sum >/dev/null 2>&1; then actual_sha256=$(sha256sum "$temporary" | awk \'{print $1}\'); else actual_sha256=$(shasum -a 256 "$temporary" | awk \'{print $1}\'); fi',
     'if [ "$actual_sha256" != "$expected_sha256" ]; then rm -f "$temporary"; printf "%s\\n" "SHA-256-Prüfung fehlgeschlagen." >&2; exit 1; fi',
@@ -75,13 +78,14 @@ function posix({ enrollment, target, sha256, artifactUrl, controlUrl, stunUrls }
     `cat > "$packager_root/${uninstall}" <<'ANANTA_PACKAGER_UNINSTALL'`, "#!/bin/sh", "set -eu",
     `packager_root="${root}"`,
     `[ ! -L "${base}" ] && [ ! -L "$packager_root" ] || { printf "%s\\n" "Agent-Pfad darf kein Symlink sein." >&2; exit 1; }`,
+    '[ ! -L "$packager_root/.maintenance.lock" ] || exit 1',
+    '[ ! -e "$packager_root/.maintenance.lock" ] || [ -f "$packager_root/.maintenance.lock" ] || exit 1',
+    'exec 9>"$packager_root/.maintenance.lock"',
+    `${target.platform === "linux" ? "flock -n 9" : "lockf -s -t 0 9"} || { printf "%s\\n" "Maintenance aktiv; keine Entfernung." >&2; exit 1; }`,
+    '[ ! -e "$packager_root/.update-active" ] && [ ! -L "$packager_root/.update-active" ] || { printf "%s\\n" "Update-Wiederherstellung erforderlich; keine Entfernung." >&2; exit 1; }',
   ];
   if (target.platform === "linux") {
     lines.push(
-      '[ ! -L "$packager_root/.maintenance.lock" ] || exit 1',
-      '[ ! -e "$packager_root/.maintenance.lock" ] || [ -f "$packager_root/.maintenance.lock" ] || exit 1',
-      'exec 9>"$packager_root/.maintenance.lock"', 'flock -n 9 || { printf "%s\\n" "Maintenance aktiv; keine Entfernung." >&2; exit 1; }',
-      '[ ! -e "$packager_root/.update-active" ] && [ ! -L "$packager_root/.update-active" ] || { printf "%s\\n" "Update-Wiederherstellung erforderlich; keine Entfernung." >&2; exit 1; }',
       `systemctl --user disable --now ${quote(`${service}.service`)}`,
       `rm -f "$HOME/.config/systemd/user/${service}.service"`, "systemctl --user daemon-reload >/dev/null 2>&1 || true",
     );
@@ -91,12 +95,13 @@ function posix({ enrollment, target, sha256, artifactUrl, controlUrl, stunUrls }
   }
   lines.push(
     'rm -rf -- "$packager_root"', "ANANTA_PACKAGER_UNINSTALL", `chmod 700 "$packager_root/${uninstall}"`,
+    `cat > "$packager_root/update-${enrollment.packagerId}" <<'ANANTA_PACKAGER_UPDATER'`,
+    target.platform === "linux" ? linuxPackagerUpdater({ enrollment, artifactUrl, controlUrl, stunUrls })
+      : posixPackagerUpdater({ platform: "macos", enrollment, artifactUrl, controlUrl, stunUrls }),
+    "ANANTA_PACKAGER_UPDATER", `chmod 700 "$packager_root/update-${enrollment.packagerId}"`,
   );
   if (target.platform === "linux") {
     lines.push(
-      `cat > "$packager_root/update-${enrollment.packagerId}" <<'ANANTA_PACKAGER_UPDATER'`,
-      linuxPackagerUpdater({ enrollment, artifactUrl, controlUrl, stunUrls }),
-      "ANANTA_PACKAGER_UPDATER", `chmod 700 "$packager_root/update-${enrollment.packagerId}"`,
       'unit_dir="$HOME/.config/systemd/user"', 'mkdir -p "$unit_dir"',
       `cat > "$unit_dir/${service}.service" <<'ANANTA_PACKAGER_UNIT'`, "[Unit]", "Description=Ananta voluntary trusted broadcast packager", "After=network-online.target", "Wants=network-online.target", "", "[Service]", "Type=simple",
       `ExecStart="%h/.local/share/ananta-native-packager/${enrollment.packagerId}/${launcher}"`, "Restart=on-failure", "RestartSec=5", "NoNewPrivileges=true", "PrivateTmp=true", "ProtectSystem=strict", "ProtectHome=read-only", `ReadWritePaths="%h/.local/share/ananta-native-packager/${enrollment.packagerId}"`, "MemoryMax=2G", "TasksMax=128", "", "[Install]", "WantedBy=default.target", "ANANTA_PACKAGER_UNIT",
