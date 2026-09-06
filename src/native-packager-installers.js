@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { windowsPackagerPrivateAcl, windowsPackagerUninstaller } from "./native-packager-windows-lifecycle.js";
 import { linuxPackagerUpdater } from "./native-packager-linux-updater.js";
+import { windowsPackagerUpdater } from "./native-packager-windows-updater.js";
 
 const TARGETS = Object.freeze([
   Object.freeze({ id: "linux-amd64", platform: "linux", label: "Linux · Intel/AMD 64-Bit", artifact: "native-broadcast-packager-linux-amd64", installer: "ananta-native-packager-linux-amd64.sh" }),
@@ -137,12 +138,19 @@ function windows({ enrollment, sha256, artifactUrl, controlUrl, stunUrls }) {
     `$env:NATIVE_PACKAGER_IDENTITY_FILE = Join-Path $root ${psQuote(`identity-${id}.pem`)}`, `$env:NATIVE_PACKAGER_ENROLLMENT_TOKEN = ${psQuote(enrollment.enrollmentToken)}`,
     "try { & $binary enroll; if ($LASTEXITCODE -ne 0) { throw 'Registrierung fehlgeschlagen.' } } finally { Remove-Item Env:NATIVE_PACKAGER_ENROLLMENT_TOKEN -ErrorAction SilentlyContinue }",
     `$launcher = Join-Path $root ${psQuote(`run-${id}.ps1`)}`, "$launcherContent = @'",
+    "param([string]$MaintenanceTransaction)",
     "$ErrorActionPreference = 'Stop'",
     `$agentRoot = Join-Path $env:LOCALAPPDATA ${psQuote(`Ananta\\NativePackager\\${id}`)}`,
     "$runningLock = $null",
     "try { $runningLock = [IO.File]::Open((Join-Path $agentRoot '.running.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) } catch [IO.IOException] { exit 0 }",
     "try {",
     "if (Test-Path -LiteralPath (Join-Path $agentRoot '.uninstalling')) { exit 0 }",
+    "$transactionFile = Join-Path $agentRoot '.update-active'",
+    "if (Test-Path -LiteralPath $transactionFile) {",
+    "  $entry = Get-Item -LiteralPath $transactionFile -Force",
+    "  if ($entry.PSIsContainer -or ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $entry.Length -gt 48) { exit 1 }",
+    "  if ($MaintenanceTransaction -cnotmatch '^\\.update-[0-9a-f]{32}$' -or [IO.File]::ReadAllText($transactionFile).TrimEnd(\"`r\",\"`n\") -cne $MaintenanceTransaction) { exit 0 }",
+    "} elseif ($MaintenanceTransaction) { exit 0 }",
     `$env:NATIVE_PACKAGER_CONTROL_URL = ${psQuote(controlUrl)}`, `$env:NATIVE_PACKAGER_ID = ${psQuote(id)}`,
     `$env:NATIVE_PACKAGER_IDENTITY_FILE = Join-Path $env:LOCALAPPDATA ${psQuote(`Ananta\\NativePackager\\${id}\\identity-${id}.pem`)}`,
     `$env:NATIVE_PACKAGER_STUN_URLS = ${psQuote(stunUrls.join(","))}`,
@@ -151,6 +159,8 @@ function windows({ enrollment, sha256, artifactUrl, controlUrl, stunUrls }) {
     "} finally { $runningLock.Dispose() }", "'@", "Set-Content -Encoding UTF8 -Path $launcher -Value $launcherContent",
     `$uninstaller = Join-Path $root ${psQuote(`uninstall-${id}.ps1`)}`, "$uninstallerContent = @'",
     windowsPackagerUninstaller(id), "'@", "Set-Content -Encoding UTF8 -Path $uninstaller -Value $uninstallerContent",
+    `$updater = Join-Path $root ${psQuote(`update-${id}.ps1`)}`, "$updaterContent = @'",
+    windowsPackagerUpdater({ enrollment, artifactUrl, controlUrl, stunUrls }), "'@", "Set-Content -Encoding UTF8 -Path $updater -Value $updaterContent",
     "$startup = Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs\\Startup'", `$startupFile = Join-Path $startup ${psQuote(`ananta-native-packager-${id}.cmd`)}`,
     "if (Test-Path -LiteralPath $startupFile) { throw 'Autostart existiert bereits; er wird nicht ueberschrieben.' }",
     `$startupContent = ${psQuote(`@start "" /min powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\\Ananta\\NativePackager\\${id}\\run-${id}.ps1"`)}`,

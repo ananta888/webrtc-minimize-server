@@ -227,7 +227,7 @@ allein nicht bewiesen; Backups und Marker dürfen nicht blind entfernt werden.
 
 Voraussetzungen sind `curl`, `sha256sum`, `timeout`, `flock` und der vorhandene
 systemd-Benutzerdienst. Alte Installer/Installationen erhalten das neue Script
-nicht automatisch. Windows-/macOS-Updater, automatische Migration, signierte
+nicht automatisch. macOS-Updater, automatische Migration, signierte
 Update-Metadaten, UI-Anbindung und reale Reboot-Gates bleiben offen.
 Die ausgeführten Script-Gates verwenden synthetische Binaries und einen simulierten
 Dienstcontroller, jedoch echte Dateisystemoperationen, Prozesssperren und SIGKILL.
@@ -243,6 +243,67 @@ Power-Loss-Dauerhaftigkeit.
 ```bash
 RUN_LINUX_PACKAGER_LIFECYCLE=1 node scripts/live-native-packager-linux-lifecycle-gate.mjs
 ```
+
+Neue Windows-Benutzerinstallationen enthalten analog `update-<packagerId>.ps1`
+im eigenen `%LOCALAPPDATA%\Ananta\NativePackager\<packagerId>`-Verzeichnis:
+
+```powershell
+.\update-<packagerId>.ps1 update <unabhaengig-verifizierter-sha256>
+.\update-<packagerId>.ps1 rollback
+.\update-<packagerId>.ps1 recover
+```
+
+Vor Wartung einen laufenden Broadcast bewusst beenden; genau ein eigener Agent
+muss für Update/Rollback laufen. Der Download verwendet TLS 1.2, lehnt Redirects
+ab und begrenzt deklarierte sowie tatsächlich gelesene Daten auf 128 MiB.
+Für Verbindungs-/Leseoperationen gelten 15 Sekunden, für den Download ein
+120-Sekunden-Budget, das nach jeder Leseoperation geprüft wird. Ein blockierender
+Read kann dieses Gesamtbudget höchstens um sein 15-Sekunden-Limit überschreiten.
+Die temporäre TLS-Protokollauswahl betrifft nur den aufrufenden PowerShell-Prozess
+und wird im `finally` wiederhergestellt; Zertifikatsprüfung wird nie deaktiviert.
+Prüfsumme und begrenzter, ausgabefreier `preflight` von Kandidat und Vorversion
+müssen vor dem Prozessstopp bestehen. Ohne unabhängig geprüften erwarteten Hash
+ist dieser Weg keine Herkunftsprüfung.
+
+Die private `.maintenance.lock` schließt Update, Rollback und Deinstallation
+gegenseitig aus; `.running.lock` besitzt weiter der jeweilige Launcher. Vor dem
+Stopp wird ein ID-lokaler Journalmarker veröffentlicht. Ein normaler Autostart
+verweigert bei vorhandenem Marker das Starten. Nur der für genau diese Transaktion
+gestartete Wartungslauncher darf die Kandidaten-/Rücksprungdatei ausführen.
+Das ist lokale Prozesskoordination, keine zusätzliche Raum-/Kontoberechtigung.
+Der Updater beendet nur über exakten EXE-Pfad zugeordnete Prozesse, bindet dabei
+deren Handles und wartet auf die Freigabe des alten Launcher-Locks.
+NTFS `File.Replace` tauscht die Datei; PowerShell 5.1 benötigt hierfür ausdrücklich
+`NullString.Value` statt des als Leerstring marshalierten `$null`-Backupnamens.
+Der neue konkrete Prozess muss zehn Sekunden weiterleben. Das ist kein WSS-,
+Consent-, Medien- oder Langzeit-Gesundheitsnachweis.
+
+Fehler führen zur verifizierten Vorversion zurück. Misslingt das, bleiben
+Journal und Backup für `recover` erhalten. Unbekannte Referenzen, beschädigte
+Backups und Reparse Points brechen geschlossen ab. Nach erfolgreicher Wartung
+bleibt eine referenzierte Vorversion erhalten; Uninstall kennt die begrenzten
+Wartungsdateien, verweigert aber unbekannte Inhalte und offene Transaktionen.
+Identitätsdatei, Konto-Enrollment und Autostartdatei werden nicht neu erzeugt.
+Bestehende Installationen erhalten diesen neuen Launcher/Updater nicht automatisch.
+
+Der opt-in Gate arbeitet auf echtem Windows PowerShell/NTFS mit zwei isolierten
+Testinstallationen. Binärdateien, Registrierung und die im Testprozess registrierte
+HTTPS-Antwort sind synthetisch; Prozesse, EXE-Tausch, private ACLs, Locks und
+Cleanup sind real. Unterbrochene Journalzustände werden gezielt hergestellt,
+nicht als tatsächlich gemessener Stromausfall oder Reboot bezeichnet. Reales
+Enrollment beim Update, Authenticode/Keystore, signierte Update-Metadaten, die
+UI-Steuerung und Reboot-/Power-Loss-Gates bleiben offen.
+
+```bash
+RUN_WINDOWS_PACKAGER_UPDATER=1 node scripts/live-native-packager-windows-updater-gate.mjs
+```
+
+Mit `WINDOWS_PACKAGER_DOWNLOAD_ORIGIN=https://webrtc.ananta.de` prüft derselbe
+Gate zusätzlich die unveränderte generierte Downloadfunktion gegen das reale
+HTTPS-Artefakt. Dabei wird nur die PE-Dateistruktur erkannt; keine EXE ausgeführt
+und keine Kontoidentität angelegt. Dies beweist den TLS-/HTTP-Transport, nicht die
+unabhängige Release-Herkunft oder den authentisierten Agentbetrieb. Ohne expliziten
+Origin wird dieser zusätzliche Zweig sichtbar übersprungen.
 
 Als lokale Voraussetzung für einen späteren Versionswechsel unterstützt der
 Agent `preflight` mit derselben `NATIVE_PACKAGER_*`-Konfiguration wie der Dienst.
