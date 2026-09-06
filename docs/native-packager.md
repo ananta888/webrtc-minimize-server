@@ -185,7 +185,9 @@ Basisverzeichnis **nicht bei mehreren Installationen ausführen**: Sie können
 alle dort liegenden Identitäten entfernen. Bestehende Installationen werden
 nicht automatisch verschoben oder neu registriert. Eine Migration muss die
 jeweiligen Dienste stoppen und deren Identitäten, Startpfade und Schreibrechte
-gezielt erhalten; eine automatische Migration bleibt offen.
+gezielt erhalten. Für das unveränderte historische Linux-Benutzerdienst-Layout
+steht der unten beschriebene explizite Migrationspfad bereit. Andere Layouts und
+eine automatische Migration bleiben offen.
 
 Neue Linux-Benutzerinstallationen enthalten jetzt zusätzlich `update-<packagerId>`
 im eigenen ID-Verzeichnis. Nach einem bewusst beendeten Broadcast und bei aktivem
@@ -531,9 +533,81 @@ Ein gültiger alter Main-Nachweis beweist keine Aktualität, keinen vollständig
 CI-Erfolg und keine Operatorfreigabe. Automatische Freshness-/Anti-Rollback-Policy
 und ein signiertes Freigabesignal sind weiterhin getrennte Arbeiten. Fehlende
 lokale Updater dürfen nicht durch erneutes Enrollment oder alte gemeinsame
-Uninstaller ersetzt werden; Bestandsmigration bleibt offen. Docker-Geräte
+Uninstaller ersetzt werden; nur das unten beschriebene Linux-Legacy-Layout ist
+bereits migrierbar. Docker-Geräte
 verwenden weiterhin ihren Deployment-Runner. Plattformsignaturen, Keystore,
 Reboot und laufender Medien-Handoff werden dadurch nicht nachgewiesen.
+
+### Bestehenden Linux-Benutzerdienst ohne erneute Registrierung migrieren
+
+Unter **Analyse → Meine Broadcast-Packager → Update und Herkunft prüfen** zuerst
+Release laden und die Architektur des eigenen Linux-Geräts auswählen. Unter
+**Alte Linux-Installation migrieren** lässt sich die persönliche Migrationsdatei
+herunterladen. Der Download verlangt das eigene authentisierte Konto, einen
+nicht widerrufenen Agenten, unveränderte Release-/Hash-Daten und keine aktuell
+zugewiesene Broadcast-Publikation. Er führt nichts aus, stellt kein Enrollment
+aus und verändert weder Konto noch Raumconsent. Zwischen Download und lokaler
+Ausführung darf keine neue Broadcast-Zuweisung gestartet werden; der Download
+ist keine dauerhafte Wartungslease.
+
+Unterstützt wird ausschließlich das historische gemeinsame Linux-Layout:
+`~/.local/share/ananta-native-packager/native-broadcast-packager`,
+`identity-<id>.pem`, `run-<id>`, `uninstall-<id>` und der dazugehörige unveränderte
+systemd-Benutzerdienst. Abweichende Units/Drop-ins, geänderte Control-/STUN-Werte,
+unsichere Rechte, Symlinks oder ein bereits existierendes ID-Verzeichnis führen
+zum Abbruch vor dem Dienstwechsel. Docker und bereits isolierte Installationen
+ohne Updater sind nicht Ziel dieses Skripts.
+
+Manifest **und Binary** wie oben unabhängig mit `gh attestation verify` prüfen.
+Die personalisierte Shell-Datei stammt separat aus dem authentisierten
+HTTPS-Download; sie ist **nicht** durch die Binary-Attestation mit signiert.
+Datei lokal prüfen und auf dem Agent-Rechner als derselbe Benutzer ausführen:
+
+```sh
+sh ./migrate-<id>.sh migrate <unabhaengig-gepruefter-sha256>
+```
+
+Das Skript lädt einen begrenzten HTTPS-Kandidaten, prüft Hash und lokalen
+Preflight und kopiert die bestehende private Identität mit privaten Rechten in
+das ID-Verzeichnis. Es registriert keinen neuen Schlüssel. Nur der eigene
+Dienst wird auf den isolierten Runtime-Satz umgestellt; das gemeinsame Binary
+und alle Dateien anderer Agenten bleiben unverändert. Zehn Sekunden stabile
+PID belegen den lokalen Dienststart, **nicht** dessen Konto-/WSS-/Mediengesundheit.
+Die ausgewählten alten Launcher-/Uninstaller-Pfade werden durch abbrechende
+Hinweise ersetzt. Andere alte gemeinsame Uninstaller bleiben gefährlich und
+dürfen weiterhin nicht ausgeführt werden.
+
+Ein privates `.migration-<id>`-Journal bewahrt Originaldateien sowie eine Kopie
+des genauen Migrationsskripts. Bei Fehlern erfolgt vor dem Commit ein begrenzter
+Rückweg. Nach Prozessabbruch:
+
+```sh
+sh ./migrate-<id>.sh recover
+# Alternativ die erhaltene Kopie:
+sh "$HOME/.local/share/ananta-native-packager/.migration-<id>/migration.sh" recover
+```
+
+Vor dem Commit stellt Recovery den alten Dienst wieder her; nach dem Commit
+schließt es die unterbrochene erfolgreiche Migration ab. Ein ausstehender
+Migrationsmarker sperrt den neuen Updater und Uninstaller. Unbekannte Dateien,
+veränderte Identitäten oder nicht sicher stoppbare Dienste werden zur lokalen
+Prüfung erhalten. Das ist keine fsync-/Stromausfallgarantie.
+
+Erst nach Prüfung des bisherigen Agenten im eigenen Konto kann ausdrücklich
+`sh ./migrate-<id>.sh purge` die privaten Journal-Backups entfernen. Diese
+Löschung ist nicht rückgängig zu machen; die ursprüngliche private Schlüsseldatei
+im gemeinsamen Basisverzeichnis bleibt zusätzlich erhalten. Ihre spätere
+Entfernung ist bewusst eine getrennte lokale Entscheidung. Kein Schlüssel
+darf dafür hochgeladen oder in Logs ausgegeben werden.
+
+`RUN_LINUX_PACKAGER_MIGRATION=1 node scripts/live-native-packager-linux-migration-gate.mjs`
+prüft echte systemd-Benutzerdienste mit zwei zufälligen Test-IDs. Der Gate
+verweigert ein vorhandenes gemeinsames Binary, benutzt ausschließlich synthetische
+Schlüssel/Binaries und einen simulierten Download; er registriert keine Konten.
+Er belegt Dienstwechsel, unveränderten zweiten Prozess, Startfehler-Rollback und
+explizites Backup-Purge. Unit-Tests ergänzen echte SIGKILL-Unterbrechungen,
+Sperren, Teil-Cleanup und negative Pfadprüfungen. Windows-/macOS-Migration,
+OS-Keystore und physische Langzeit-/Reboot-Gates bleiben offen.
 
 Capability und Live-Gate akzeptieren jetzt tatsächlich nur FFmpeg ab Major 6;
 eine bloß vorhandene ältere Binärdatei reicht nicht mehr. Neben dem lokalen

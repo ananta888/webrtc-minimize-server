@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/migration.v1.schema.json",
+  "title": "Owner-authorized Linux migration download; no enrollment or execution",
+  "$defs": {
+    "target": { "enum": ["linux-amd64", "linux-arm64"] },
+    "revision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "request": {
+      "type": "object", "additionalProperties": false,
+      "required": ["target", "revision", "sha256"],
+      "properties": {
+        "target": { "$ref": "#/$defs/target" },
+        "revision": { "$ref": "#/$defs/revision" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  },
+  "type": "object", "additionalProperties": false,
+  "required": ["version", "type", "packagerId", "target", "revision", "artifactSha256", "filename", "script"],
+  "properties": {
+    "version": { "const": 1 },
+    "type": { "const": "native-packager-migration" },
+    "packagerId": { "type": "string", "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$" },
+    "target": { "$ref": "#/$defs/target" },
+    "revision": { "$ref": "#/$defs/revision" },
+    "artifactSha256": { "$ref": "#/$defs/sha256" },
+    "filename": { "type": "string", "pattern": "^migrate-pkr_[A-Za-z0-9_-]{16,64}\\.sh$" },
+    "script": { "type": "string", "minLength": 100, "maxLength": 131072, "pattern": "^#!/bin/sh\n" }
+  }
+}

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { nativePackagerUpdateCommand, nativePackagerVerificationCommand, parseNativePackagerRelease } from "./native-packager-release";
 import { NativePackagerReleaseService } from "./native-packager-release.service";
+import { NativePackagerMigrationService } from "./native-packager-migration.service";
+import { OidcAuthService } from "../auth/oidc-auth.service";
 
 const fixture = () => ({ version: 1, type: "native-packager-release", repository: "ananta888/webrtc-minimize-server",
   workflow: "ananta888/webrtc-minimize-server/.github/workflows/ci.yml", revision: "a".repeat(40),
@@ -59,5 +61,47 @@ describe("native packager release trust boundary", () => {
     const pending = service.load(); await service.load();
     await vi.advanceTimersByTimeAsync(15001); await pending;
     expect(fetch).toHaveBeenCalledTimes(1); expect(service.busy()).toBe(false); expect(service.release()).toBe(null);
+  });
+});
+
+describe("native packager migration download boundary", () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
+  const id = "pkr_0123456789abcdef";
+  const create = () => new NativePackagerMigrationService({ authorizationHeader: () => ({ Authorization: "Bearer synthetic" }) } as OidcAuthService);
+  it("does nothing until explicitly called and rejects foreign, platform or metadata inputs before fetching", async () => {
+    const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock);
+    const service = create(), release = parseNativePackagerRelease(fixture());
+    expect(fetchMock).not.toHaveBeenCalled();
+    for (const [agent, artifact] of [["../foreign", release.artifacts[0]], [id, release.artifacts[4]], [id, { ...release.artifacts[0] }]] as const) {
+      await service.download(agent, release, artifact); expect(service.error()).not.toBe("");
+      expect(service.filename()).toBe(""); expect(service.busy()).toBe(false);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it("fails closed on stale bindings, unknown fields, malformed and oversized responses", async () => {
+    const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock);
+    const service = create(), release = parseNativePackagerRelease(fixture()), artifact = release.artifacts[0];
+    const body = { version: 1, type: "native-packager-migration", packagerId: id, target: artifact.target,
+      revision: release.revision, artifactSha256: artifact.sha256, filename: `migrate-${id}.sh`, script: `#!/bin/sh\n#${"x".repeat(100)}` };
+    for (const value of [{ ...body, packagerId: "pkr_fedcba9876543210" }, { ...body, revision: "c".repeat(40) },
+      { ...body, artifactSha256: "d".repeat(64) }, { ...body, filename: "../other.sh" }, { ...body, verified: true },
+      { ...body, script: "#!/bin/sh\nshort" }, { ...body, script: "x".repeat(262145) }]) {
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(value), { headers: { "content-type": "application/json" } }));
+      service.filename.set("stale.sh"); await service.download(id, release, artifact);
+      expect(service.filename()).toBe(""); expect(service.error()).not.toBe(""); expect(service.busy()).toBe(false);
+    }
+    expect(fetchMock).toHaveBeenCalledWith(`/api/native-packagers/${id}/migration`, expect.objectContaining({
+      method: "POST", cache: "no-store", redirect: "error", body: JSON.stringify({ target: artifact.target, revision: release.revision, sha256: artifact.sha256 }),
+    }));
+  });
+  it("bounds a stalled response and refuses concurrent downloads", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn(async (_url, options: RequestInit) => new Response(new ReadableStream({
+      start(controller) { options.signal?.addEventListener("abort", () => controller.error(new Error("aborted"))); },
+    }), { headers: { "content-type": "application/json" } })));
+    const service = create(), release = parseNativePackagerRelease(fixture());
+    const pending = service.download(id, release, release.artifacts[0]); await service.download(id, release, release.artifacts[0]);
+    await vi.advanceTimersByTimeAsync(15001); await pending;
+    expect(fetch).toHaveBeenCalledTimes(1); expect(service.busy()).toBe(false); expect(service.filename()).toBe("");
   });
 });

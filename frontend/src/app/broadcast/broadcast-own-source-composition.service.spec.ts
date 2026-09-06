@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BroadcastOwnSourceCaptureService } from "./broadcast-own-source-capture.service";
 import { BroadcastOwnSourceCompositionService } from "./broadcast-own-source-composition.service";
@@ -89,6 +89,7 @@ function service(
 }
 
 describe("BroadcastOwnSourceCompositionService", () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); vi.restoreAllMocks(); });
   beforeEach(() => {
     vi.stubGlobal("MediaStream", class {
       constructor(private readonly tracks: MediaStreamTrack[]) {}
@@ -179,5 +180,63 @@ describe("BroadcastOwnSourceCompositionService", () => {
     expect(media.tracks[0].sourceKind).toBe("program-audio");
     await composition.release(handle);
     expect(close).toHaveBeenCalledOnce();
+  });
+
+  for (const scenario of ["destroy", "abort", "expired-consent", "video-failure"]) it(`closes partial asynchronous composition on ${scenario} without regaining ownership`, async () => {
+    const capture = { stream: (handle: BroadcastCaptureForkHandle) => source(handle.kind === "microphone" ? "audio" : "video") } as BroadcastOwnSourceCaptureService;
+    const audio = audioFactory(), audioClose = vi.fn(async () => {}), videoClose = vi.fn(async () => {});
+    const originalAudio = audio.create.bind(audio);
+    vi.spyOn(audio, "create").mockImplementation(async (...args) => ({ ...await originalAudio(...args), close: audioClose }));
+    const video = videoFactory(videoClose), originalVideo = video.create.bind(video);
+    let complete!: () => Promise<void>, fail!: (reason: Error) => void;
+    vi.spyOn(video, "create").mockImplementation((...args) => new Promise((resolve, reject) => {
+      complete = async () => resolve(await originalVideo(...args)); fail = reject;
+    }));
+    const composition = service(capture, audio, video), controller = new AbortController();
+    const forks = [fork("microphone", "microphone"), fork("camera", "camera")], grant = consent(forks);
+    const program = { tenantId: "tn_aaaaaaaaaaaaaaaa", roomId: "room-alpha", programId: "prg_aaaaaaaaaaaaaaaa", programRevision: 1, programEpoch: 1 };
+    const pending = composition.compose(program, forks, grant, controller.signal);
+    const rejected = expect(pending).rejects.toThrow();
+    await vi.waitFor(() => expect(complete).toBeTypeOf("function"));
+    if (scenario === "destroy") composition.ngOnDestroy();
+    if (scenario === "abort") controller.abort();
+    if (scenario === "expired-consent") {
+      const expiresAt = grant.expiresAt; grant.expiresAt += 3_600_000;
+      const now = vi.spyOn(Date, "now").mockReturnValue(expiresAt + 1);
+      await complete(); await rejected; now.mockRestore();
+    }
+    if (scenario === "video-failure") fail(new Error("synthetic video failure"));
+    await rejected;
+    if (scenario === "destroy" || scenario === "abort") await complete();
+    await vi.waitFor(() => expect(audioClose).toHaveBeenCalledOnce());
+    if (scenario !== "video-failure") await vi.waitFor(() => expect(videoClose).toHaveBeenCalledOnce());
+    composition.ngOnDestroy(); expect(audioClose).toHaveBeenCalledOnce();
+  });
+
+  it("revokes composition access on external abort and rejects forged caption handles", async () => {
+    const capture = { stream: () => source("video") } as unknown as BroadcastOwnSourceCaptureService;
+    const video = videoFactory(), original = video.create.bind(video), overlay = vi.fn();
+    vi.spyOn(video, "create").mockImplementation(async (...args) => ({ ...await original(...args), setOverlay: overlay }));
+    const composition = service(capture, audioFactory(), video), controller = new AbortController(), forks = [fork("camera", "camera")];
+    const handle = await composition.compose({ tenantId: "tn_aaaaaaaaaaaaaaaa", roomId: "room-alpha", programId: "prg_aaaaaaaaaaaaaaaa",
+      programRevision: 1, programEpoch: 1 }, forks, consent(forks), controller.signal);
+    expect(composition.setCaptionOverlay({ ...handle, sourceIds: [] }, "synthetic", "large", 88)).toBe(false);
+    expect(overlay).not.toHaveBeenCalled();
+    expect(composition.setCaptionOverlay(handle, "synthetic", "large", 88)).toBe(true);
+    controller.abort();
+    await expect(composition.resolve(handle, new AbortController().signal)).rejects.toThrow("unknown_broadcast_composition");
+    expect(composition.setCaptionOverlay(handle, "synthetic", "large", 88)).toBe(false);
+  });
+
+  it("retains failed cleanup only for retry, never for media or captions", async () => {
+    const capture = { stream: () => source("video") } as unknown as BroadcastOwnSourceCaptureService;
+    const close = vi.fn(async () => {}); close.mockRejectedValueOnce(new Error("synthetic cleanup failure"));
+    const composition = service(capture, audioFactory(), videoFactory(close)), forks = [fork("camera", "camera")];
+    const handle = await composition.compose({ tenantId: "tn_aaaaaaaaaaaaaaaa", roomId: "room-alpha", programId: "prg_aaaaaaaaaaaaaaaa",
+      programRevision: 1, programEpoch: 1 }, forks, consent(forks), new AbortController().signal);
+    await expect(composition.release(handle)).rejects.toThrow("broadcast_composition_cleanup_failed");
+    await expect(composition.resolve(handle, new AbortController().signal)).rejects.toThrow("unknown_broadcast_composition");
+    expect(composition.setCaptionOverlay(handle, "synthetic", "large", 88)).toBe(false);
+    await composition.release(handle); await composition.release(handle); expect(close).toHaveBeenCalledTimes(2);
   });
 });

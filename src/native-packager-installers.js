@@ -6,6 +6,7 @@ import { linuxPackagerUpdater } from "./native-packager-linux-updater.js";
 import { posixPackagerUpdater } from "./native-packager-posix-updater.js";
 import { windowsPackagerUpdater } from "./native-packager-windows-updater.js";
 import { readNativePackagerRelease } from "./native-packager-release.js";
+import { linuxPackagerMigration } from "./native-packager-linux-migration.js";
 
 const TARGETS = Object.freeze([
   Object.freeze({ id: "linux-amd64", platform: "linux", label: "Linux · Intel/AMD 64-Bit", artifact: "native-broadcast-packager-linux-amd64", installer: "ananta-native-packager-linux-amd64.sh" }),
@@ -84,6 +85,7 @@ function posix({ enrollment, target, sha256, artifactUrl, controlUrl, stunUrls }
     'exec 9>"$packager_root/.maintenance.lock"',
     `${target.platform === "linux" ? "flock -n 9" : "lockf -s -t 0 9"} || { printf "%s\\n" "Maintenance aktiv; keine Entfernung." >&2; exit 1; }`,
     '[ ! -e "$packager_root/.update-active" ] && [ ! -L "$packager_root/.update-active" ] || { printf "%s\\n" "Update-Wiederherstellung erforderlich; keine Entfernung." >&2; exit 1; }',
+    '[ ! -e "$packager_root/.migration-pending" ] && [ ! -L "$packager_root/.migration-pending" ] || { printf "%s\\n" "Migration-Wiederherstellung erforderlich; keine Entfernung." >&2; exit 1; }',
   ];
   if (target.platform === "linux") {
     lines.push(
@@ -197,6 +199,16 @@ export class NativePackagerInstallerService {
   release() {
     try { return readNativePackagerRelease(this.#directory, id => this.artifact(id)); }
     catch { throw new NativePackagerInstallerError("native_packager_release_unavailable", 503); }
+  }
+  migration({ packagerId, targetId, publicOrigin, stunUrls = [] }) {
+    const target = this.target(targetId);
+    if (target.platform !== "linux") throw new NativePackagerInstallerError("native_packager_migration_platform_unavailable", 409);
+    const installer = this.installer({ enrollment: { packagerId, platform: "linux", enrollmentToken: "unused-migration-render-only" }, targetId, publicOrigin, stunUrls });
+    const { origin, controlUrl } = endpoints(publicOrigin);
+    const content = linuxPackagerMigration({ id: packagerId, installer: installer.content,
+      artifactUrl: `${origin}/downloads/native-packager/${target.id}`, sha256: installer.artifactSha256, controlUrl, stunUrls });
+    if (Buffer.byteLength(content) > 131072) throw new NativePackagerInstallerError("native_packager_migration_unavailable", 503);
+    return { filename: `migrate-${packagerId}.sh`, content };
   }
   installer({ enrollment, targetId, publicOrigin, stunUrls = [] }) {
     if (typeof enrollment.packagerId !== "string" || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(enrollment.packagerId)) {

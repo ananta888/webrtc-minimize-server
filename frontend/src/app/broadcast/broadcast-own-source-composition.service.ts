@@ -1,6 +1,7 @@
 import { Inject, Injectable, OnDestroy } from "@angular/core";
 
 import { BroadcastOwnSourceCaptureService } from "./broadcast-own-source-capture.service";
+import { BroadcastCompositionLifetime } from "./broadcast-composition-lifetime";
 import { BroadcastCaptionStyle } from "./broadcast-caption-packager";
 import {
   BroadcastBrowserPortError,
@@ -29,6 +30,7 @@ interface OwnedComposition {
   readonly media: WhipResolvedMedia;
   readonly audioBus: TrustedAudioProgramHandle | null;
   readonly videoCompositor: TrustedVideoCompositorHandle | null;
+  readonly lifetime: BroadcastCompositionLifetime;
 }
 
 function compositionId(): string {
@@ -41,6 +43,7 @@ function compositionId(): string {
 export class BroadcastOwnSourceCompositionService
 implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
   private readonly compositions = new Map<string, OwnedComposition>();
+  private readonly lifetimes = new Set<BroadcastCompositionLifetime>();
   private destroyed = false;
 
   constructor(
@@ -69,7 +72,10 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
       || !forks.every(({ sourceId }) => consent.sourceIds.includes(sourceId))) {
       throw new BroadcastBrowserPortError("invalid_broadcast_composition_sources");
     }
-    const resolved = forks.map((fork) => {
+    const authorizedExpiresAt = consent.expiresAt;
+    const sourceIds = Object.freeze(forks.map(({ sourceId }) => sourceId));
+    const resolved = forks.map((value) => {
+      const fork = Object.freeze({ forkId: value.forkId, sourceId: value.sourceId, kind: value.kind });
       const sourceStream = this.capture.stream(fork);
       const sourceTracks = sourceStream.getTracks();
       if (sourceTracks.length !== 1 || sourceTracks[0].readyState !== "live") {
@@ -83,9 +89,15 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
     const audioInputs = resolved.filter(({ track }) => track.kind === "audio");
     let audioBus: TrustedAudioProgramHandle | null = null;
     let videoCompositor: TrustedVideoCompositorHandle | null = null;
+    let ownedId = "";
+    const lifetime = new BroadcastCompositionLifetime(signal, () => {}, () => {
+      this.lifetimes.delete(lifetime);
+      if (ownedId) this.compositions.delete(ownedId);
+    });
+    this.lifetimes.add(lifetime);
     try {
     if (audioInputs.length > 0) {
-      audioBus = await this.audioBusFactory.create(
+      audioBus = await lifetime.acquire(setupSignal => this.audioBusFactory.create(
         _program,
         audioInputs.map(({ fork, sourceStream }) => ({
           sourceId: fork.sourceId,
@@ -94,13 +106,13 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
         })),
         this.audioSettings.profile(),
         this.audioSettings.monitoringMode(),
-        signal,
-      );
-      signal.throwIfAborted();
+        setupSignal,
+      ));
+      lifetime.signal.throwIfAborted();
     }
     const videoInputs = resolved.filter(({ track }) => track.kind === "video");
     if (videoInputs.length > 0) {
-      videoCompositor = await this.videoCompositorFactory.create(
+      videoCompositor = await lifetime.acquire(setupSignal => this.videoCompositorFactory.create(
         _program,
         videoInputs.map(({ fork, sourceStream }) => ({
           sourceId: fork.sourceId,
@@ -110,9 +122,9 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
         this.videoSettings.profile(),
         this.videoSettings.layout(),
         this.videoSettings.overlay(),
-        signal,
-      );
-      signal.throwIfAborted();
+        setupSignal,
+      ));
+      lifetime.signal.throwIfAborted();
     }
     const descriptors = [
       ...(videoCompositor ? [{
@@ -139,26 +151,24 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
     ];
     const handle = Object.freeze({
       compositionId: compositionId(),
-      sourceIds: Object.freeze(forks.map(({ sourceId }) => sourceId)),
+      sourceIds,
     });
+    if (this.destroyed || authorizedExpiresAt <= Date.now()) throw new BroadcastBrowserPortError("broadcast_composition_authority_expired");
+    ownedId = handle.compositionId;
     this.compositions.set(handle.compositionId, Object.freeze({
       handle,
       audioBus,
       videoCompositor,
+      lifetime,
       media: Object.freeze({
         stream: new MediaStream(descriptors.map(({ track }) => track)),
         tracks: Object.freeze(descriptors.map((descriptor) => Object.freeze(descriptor))),
       }),
     }));
-    if (signal.aborted) {
-      this.compositions.delete(handle.compositionId);
-      await audioBus?.close();
-      await videoCompositor?.close();
-      signal.throwIfAborted();
-    }
+    lifetime.signal.throwIfAborted();
     return handle;
     } catch (error) {
-      await Promise.allSettled([audioBus?.close(), videoCompositor?.close()].filter(Boolean) as Promise<void>[]);
+      await lifetime.close().catch(() => {});
       throw error;
     }
   }
@@ -166,7 +176,7 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
   async resolve(composition: BroadcastCompositionHandle, signal: AbortSignal): Promise<WhipResolvedMedia> {
     signal.throwIfAborted();
     const owned = this.compositions.get(composition.compositionId);
-    if (!owned || owned.handle.sourceIds.length !== composition.sourceIds.length
+    if (!owned || owned.lifetime.signal.aborted || owned.handle.sourceIds.length !== composition.sourceIds.length
       || !owned.handle.sourceIds.every((sourceId, index) => sourceId === composition.sourceIds[index])) {
       throw new BroadcastBrowserPortError("unknown_broadcast_composition");
     }
@@ -180,7 +190,9 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
     positionPercent: number,
   ): boolean {
     const owned = this.compositions.get(composition.compositionId);
-    if (!owned || !owned.videoCompositor || typeof text !== "string" || text.length > 240) return false;
+    if (!owned || owned.lifetime.signal.aborted || !owned.videoCompositor || typeof text !== "string" || text.length > 240
+      || owned.handle.sourceIds.length !== composition.sourceIds.length
+      || !owned.handle.sourceIds.every((sourceId, index) => sourceId === composition.sourceIds[index])) return false;
     owned.videoCompositor.setOverlay({
       ...this.videoSettings.overlay(),
       showCaptions: text.length > 0,
@@ -198,16 +210,11 @@ implements BroadcastCompositionPort, WhipMediaStreamPort, OnDestroy {
       || !owned.handle.sourceIds.every((sourceId, index) => sourceId === handle.sourceIds[index])) {
       throw new BroadcastBrowserPortError("invalid_broadcast_composition_handle");
     }
-    this.compositions.delete(handle.compositionId);
-    await Promise.all([owned.audioBus?.close(), owned.videoCompositor?.close()]);
+    await owned.lifetime.close();
   }
 
   ngOnDestroy(): void {
     this.destroyed = true;
-    for (const owned of this.compositions.values()) {
-      void owned.audioBus?.close();
-      void owned.videoCompositor?.close();
-    }
-    this.compositions.clear();
+    for (const lifetime of this.lifetimes) void lifetime.close().catch(() => {});
   }
 }

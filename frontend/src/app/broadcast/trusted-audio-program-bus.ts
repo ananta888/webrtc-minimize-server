@@ -1,6 +1,7 @@
 import { InjectionToken, Injectable, signal } from "@angular/core";
 
 import { BroadcastBrowserPortError, BroadcastProgramRef } from "./broadcast-ports";
+import { boundedBroadcastMediaStart } from "./broadcast-media-start";
 
 export type TrustedAudioProgramProfileId = "speech" | "balanced" | "music";
 export type TrustedAudioProgramPriority = "speech" | "screen-audio" | "balanced";
@@ -149,16 +150,20 @@ export class BrowserTrustedAudioProgramBusFactory implements TrustedAudioProgram
     }
 
     const context = new AudioContext({ latencyHint: "interactive", sampleRate: 48_000 });
-    const mix = context.createGain();
-    const limiter = context.createDynamicsCompressor();
-    const outputMeter = context.createAnalyser();
-    const destination = context.createMediaStreamDestination();
+    const ownedNodes: AudioNode[] = [];
+    let ownedDestination: MediaStreamAudioDestinationNode | null = null;
     const graphs = new Map<string, InputGraph>();
     let timer = 0;
     let closed = false;
+    let closePromise: Promise<void> | null = null;
+    let detachAbort = () => {};
     let monitorGain: GainNode | null = null;
     const levels: Record<string, number> = {};
     try {
+      const mix = context.createGain(); ownedNodes.push(mix);
+      const limiter = context.createDynamicsCompressor(); ownedNodes.push(limiter);
+      const outputMeter = context.createAnalyser(); ownedNodes.push(outputMeter);
+      const destination = context.createMediaStreamDestination(); ownedDestination = destination;
       mix.gain.value = 1;
       mix.channelCount = profile.channelCount;
       mix.channelCountMode = "explicit";
@@ -204,7 +209,8 @@ export class BrowserTrustedAudioProgramBusFactory implements TrustedAudioProgram
           configuredGain,
         });
       }
-      if (context.state === "suspended") await context.resume();
+      if (context.state === "suspended") await boundedBroadcastMediaStart(() => context.resume(), signal,
+        "trusted_audio_resume_timeout", "trusted_audio_resume_failed");
       signal.throwIfAborted();
       const outputTracks = destination.stream.getAudioTracks();
       if (outputTracks.length !== 1 || outputTracks[0].readyState !== "live") {
@@ -216,6 +222,7 @@ export class BrowserTrustedAudioProgramBusFactory implements TrustedAudioProgram
         if (closed) return;
         let microphoneActive = false;
         for (const graph of graphs.values()) {
+          if (graph.track.readyState === "ended") { graph.ended?.(); continue; }
           const level = graph.muted ? 0 : sourceLevel(graph.analyser, graph.samples);
           levels[graph.input.sourceId] = level;
           if (graph.input.sourceKind === "microphone" && level >= profile.duckingThreshold) {
@@ -234,9 +241,10 @@ export class BrowserTrustedAudioProgramBusFactory implements TrustedAudioProgram
       const disconnect = (node: AudioNode) => {
         try { node.disconnect(); } catch { /* cleanup is idempotent */ }
       };
-      const close = async () => {
-        if (closed) return;
+      const close = (): Promise<void> => {
+        if (closePromise) return closePromise;
         closed = true;
+        detachAbort();
         window.clearInterval(timer);
         for (const graph of graphs.values()) {
           if (graph.ended) graph.track.removeEventListener("ended", graph.ended);
@@ -251,24 +259,29 @@ export class BrowserTrustedAudioProgramBusFactory implements TrustedAudioProgram
         disconnect(outputMeter);
         if (monitorGain) disconnect(monitorGain);
         if (track.readyState !== "ended") track.stop();
-        if (context.state !== "closed") await context.close();
         for (const sourceId of Object.keys(levels)) delete levels[sourceId];
+        closePromise = (context.state === "closed" ? Promise.resolve() : context.close()).catch(error => {
+          closePromise = null; throw error;
+        });
+        return closePromise;
       };
       for (const [sourceId, graph] of graphs) {
         graph.ended = () => {
           if (closed || graphs.get(sourceId) !== graph) return;
+          if (graph.ended) graph.track.removeEventListener("ended", graph.ended);
           disconnect(graph.source);
           disconnect(graph.gain);
           disconnect(graph.analyser);
           disconnect(graph.duck);
           graphs.delete(sourceId);
           delete levels[sourceId];
-          if (graphs.size === 0) void close();
+          if (graphs.size === 0) void close().catch(() => {});
         };
         graph.track.addEventListener("ended", graph.ended, { once: true });
       }
-      const abort = () => { void close(); };
+      const abort = () => { void close().catch(() => {}); };
       signal.addEventListener("abort", abort, { once: true });
+      detachAbort = () => signal.removeEventListener("abort", abort);
       return Object.freeze({
         outputSourceId: outputSourceId(),
         stream: destination.stream,
@@ -303,6 +316,7 @@ export class BrowserTrustedAudioProgramBusFactory implements TrustedAudioProgram
         },
       });
     } catch (error) {
+      detachAbort();
       window.clearInterval(timer);
       for (const graph of graphs.values()) {
         try { graph.source.disconnect(); } catch { /* best effort */ }
@@ -310,11 +324,9 @@ export class BrowserTrustedAudioProgramBusFactory implements TrustedAudioProgram
         try { graph.analyser.disconnect(); } catch { /* best effort */ }
         try { graph.duck.disconnect(); } catch { /* best effort */ }
       }
-      try { mix.disconnect(); } catch { /* best effort */ }
-      try { limiter.disconnect(); } catch { /* best effort */ }
-      try { outputMeter.disconnect(); } catch { /* best effort */ }
+      for (const node of ownedNodes) try { node.disconnect(); } catch { /* best effort */ }
       try { monitorGain?.disconnect(); } catch { /* best effort */ }
-      for (const track of destination.stream.getTracks()) if (track.readyState !== "ended") track.stop();
+      for (const track of ownedDestination?.stream.getTracks() || []) if (track.readyState !== "ended") track.stop();
       try { if (context.state !== "closed") await context.close(); } catch { /* preserve setup error */ }
       throw error;
     }

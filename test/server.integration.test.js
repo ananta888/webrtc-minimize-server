@@ -5,6 +5,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import Ajv2020 from "ajv/dist/2020.js";
 import { WebSocket } from "ws";
 
 import { createAppServer } from "../src/server.js";
@@ -78,6 +79,56 @@ test("native release endpoint preserves exact provenance bytes and fails closed 
   fs.writeFileSync(file, "{}");
   assert.equal((await fetch(enabled.httpUrl + resource)).status, 503);
   assert.equal((await fetch(enabled.httpUrl + "/healthz")).status, 200);
+});
+
+test("native migration download enforces owner, idle assignment, exact release and closed contract without enrollment", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "native-migration-http-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  for (const target of RELEASE_TARGETS) fs.writeFileSync(path.join(directory, artifactFilename(target)), `synthetic:${target}`);
+  const bytes = buildNativePackagerRelease(directory, { revision: "a".repeat(40), builtAt: "2026-09-06T10:00:00Z", agentVersion: "0.7.0", goVersion: "go1.24.13" });
+  fs.writeFileSync(path.join(directory, RELEASE_FILENAME), bytes);
+  const service = new NativePackagerInstallerService({ directory });
+  const issuer = "https://identity.test/realms/ananta", id = "pkr_0123456789abcdef", origin = "https://webrtc.example";
+  let revokedAt = 0, active = false;
+  const app = await startTestServer({ publicOrigin: origin, authMode: "required", oidcIssuer: issuer,
+    oidcJwksUrl: "https://identity.test/certs", oidcAudience: "webrtc-room-server", nativePackagerSelfServiceEnabled: true }, {
+    nativePackagerInstallerService: service,
+    nativePackagerEnrollmentStore: { definitions: () => [], list: principal => principal === `${issuer}|owner` ? [{ id, platform: "linux", revokedAt }] : [],
+      createEnrollment() { assert.fail("Migration must never enroll"); } },
+    oidcVerifier: { async verify(token) {
+      if (!["owner", "other"].includes(token)) throw new AuthenticationError("invalid_access_token");
+      return { issuer, subject: token, displayName: "Synthetic" };
+    } },
+  });
+  t.after(() => app.close());
+  app.nativePackagerAssignments.activeForPackager = () => active ? { assignmentId: "synthetic" } : null;
+  const request = { target: "linux-amd64", revision: "a".repeat(40), sha256: service.target("linux-amd64").sha256 };
+  const post = (body = request, token = "owner", requestOrigin = origin, suffix = "") => fetch(`${app.httpUrl}/api/native-packagers/${id}/migration${suffix}`, {
+    method: "POST", headers: { "content-type": "application/json", origin: requestOrigin, ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body),
+  });
+  const response = await post(); assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store");
+  const migration = await response.json();
+  const schema = JSON.parse(fs.readFileSync(new URL("../contracts/native-packager/migration.v1.schema.json", import.meta.url), "utf8"));
+  const ajv = new Ajv2020({ strict: true }); const valid = ajv.compile(schema);
+  assert.equal(valid(migration), true, JSON.stringify(valid.errors));
+  const validRequest = ajv.compile({ ...schema, $id: `${schema.$id}/request`, ...schema.$defs.request });
+  assert.equal(validRequest(request), true); assert.equal(validRequest({ ...request, consent: true }), false);
+  assert.equal(valid({ ...migration, enrollmentToken: "forbidden" }), false);
+  assert.equal(migration.filename, `migrate-${id}.sh`); assert.doesNotMatch(migration.script, /unused-migration-render-only|\"\$binary\" enroll/);
+  assert.equal((await post(request, "")).status, 401);
+  assert.equal((await post(request, "invalid")).status, 401);
+  assert.equal((await post(request, "other")).status, 404);
+  revokedAt = 1; assert.equal((await post()).status, 404); revokedAt = 0;
+  for (const body of [{ ...request, revision: "c".repeat(40) }, { ...request, sha256: "d".repeat(64) },
+    { ...request, target: "windows-amd64" }]) assert.equal((await post(body)).status, 409);
+  assert.equal((await post({ ...request, consent: true })).status, 400);
+  for (const body of [{ ...request, target: ["linux-amd64"] }, { ...request, sha256: null }, { ...request, revision: "invalid" }]) {
+    assert.equal((await post(body)).status, 400);
+  }
+  assert.equal((await post(request, "owner", "https://foreign.example")).status, 400);
+  assert.equal((await post(request, "owner", origin, "?extra=1")).status, 404);
+  active = true; assert.equal((await post()).status, 409); active = false;
+  fs.writeFileSync(path.join(directory, RELEASE_FILENAME), "{}"); assert.equal((await post()).status, 503);
 });
 
 function connect(url, origin) {

@@ -50,11 +50,19 @@ Transcode und keine behauptete Browser-WHIP-Ausgabe.
 - Abbruch, Stop, Navigation, Sessionwechsel und Destroy schließen Timer,
   AudioNodes, Ausgangstrack und `AudioContext` idempotent.
 - Das Ende des letzten Eingangs beendet den Ausgang; ein Gerätewechsel kann
-  dadurch keinen alten Graph parallel behalten.
+  dadurch keinen alten Graph parallel behalten. Auch `track.stop()` ohne ein
+  `ended`-Ereignis wird beim nächsten Pegel-Sample erkannt.
+- Ein ausstehendes `AudioContext.resume()` ist auf fünf Sekunden begrenzt und
+  abbrechbar. Setupfehler schließen auch einen bereits teilweise aufgebauten
+  Kontext, Monitoring-Zweige und erzeugte Ausgangstracks.
+- Gleichzeitige Close-Aufrufe warten auf denselben Kontext-Abschluss. Ein
+  fehlgeschlagener Kontext-Abschluss kann wiederholt werden, ohne Tracks,
+  Monitoring oder Verarbeitung erneut zu starten.
 - Maximal vier eindeutige, aktive Eingänge sind zulässig.
 - Der Compositor akzeptiert Consent und Forks nur bei exakt gleicher
   Source-Menge, aktuellem Program-Epoch und noch nicht abgelaufenem Consent.
-- Mehr als ein Videotrack bleibt bis TBP-015 fail-closed.
+- Videoforks werden durch den getrennten
+  [Trusted-Video-Compositor](trusted-video-compositor.md) auf einen Ausgang reduziert.
 
 ## Verifikation
 
@@ -65,7 +73,15 @@ den Produktions-Bundle, startet Mikrofon und Kamera ausschließlich per Klick,
 erzeugt den realen AudioContext samt Program-Meter und räumt ihn wieder auf,
 ohne einen weiteren Capture-Aufruf auszulösen.
 
+`node --test test/trusted-audio-lifecycle.browser.test.js` prüft zusätzlich echte
+Chromium-/Firefox-AudioContexts mit einem ausschließlich lokal erzeugten Testton,
+ohne Mikrofonzugriff oder Lautsprecherausgabe. Abort und lokales Quellenende
+beenden den Bus-Ausgang und Kontext; eine injizierte hängende Resume-Antwort
+prüft denselben Fehlerpfad mit echten Nodes. Der ursprüngliche Quellkontext bleibt
+bis zur separaten Fixture-Bereinigung im Besitz des Aufrufers. Diese Injektion
+ist kein Nachweis für einen physisch reproduzierten Treiber-/Bluetoothfehler.
+
 Der physische Akustik-/Lippensynchronitätstest mit Kopfhörer und Lautsprecher,
 gleichzeitigem Bildschirmton, Mikrofon und einem zweiten realen Gerät ist noch
-nicht reproduzierbar durchgeführt. TBP-014 bleibt deshalb `partial`; technische
+nicht reproduzierbar durchgeführt. TBP-014 bleibt deshalb `in_progress`; technische
 Track-Aktivität allein wird nicht als Echo- oder Qualitätsnachweis ausgegeben.

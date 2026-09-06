@@ -1,6 +1,7 @@
 import { InjectionToken, Injectable, signal } from "@angular/core";
 
 import { BroadcastBrowserPortError, BroadcastProgramRef } from "./broadcast-ports";
+import { playTrustedVideo } from "./trusted-video-playback";
 
 export type TrustedVideoLayout =
   | "single"
@@ -63,7 +64,7 @@ export interface TrustedVideoSnapshot {
   readonly framesRendered: number;
   readonly framesSkipped: number;
   readonly sourceCount: number;
-  readonly degradedReason: "none" | "hidden-tab" | "render-backpressure" | "source-ended";
+  readonly degradedReason: "none" | "hidden-tab" | "render-backpressure" | "source-ended" | "render-error";
 }
 
 export interface TrustedVideoCompositorHandle {
@@ -137,6 +138,7 @@ function boundedText(value: unknown, maximum: number): string {
 
 export function normalizeTrustedVideoOverlay(value: TrustedVideoOverlayPolicy): TrustedVideoOverlayPolicy {
   if (!value || value.policyVersion !== 1
+    || Object.keys(value).some(key => !["policyVersion", "showSourceLabels", "showProgramTitle", "showCaptions", "programTitle", "captionText", "captionStyle", "captionPositionPercent"].includes(key))
     || typeof value.showSourceLabels !== "boolean"
     || typeof value.showProgramTitle !== "boolean"
     || typeof value.showCaptions !== "boolean"
@@ -267,7 +269,24 @@ export class BrowserTrustedVideoCompositorFactory implements TrustedVideoComposi
     let framesSkipped = 0;
     let slowFrames = 0;
     let sourceEnded = false;
+    let renderFailed = false;
+    let output: MediaStream | null = null;
     let effectiveFramesPerSecond = profile.framesPerSecond;
+    const close = async () => {
+      if (closed) return;
+      closed = true;
+      signal.removeEventListener("abort", abort);
+      window.clearTimeout(timer);
+      for (const { video, track: inputTrack, ended } of videos.values()) {
+        inputTrack.removeEventListener("ended", ended);
+        video.pause(); video.srcObject = null;
+      }
+      videos.clear();
+      for (const track of output?.getTracks() || []) if (track.readyState !== "ended") track.stop();
+      canvas.width = 1; canvas.height = 1;
+    };
+    const abort = () => { void close(); };
+    signal.addEventListener("abort", abort, { once: true });
     try {
       for (const input of inputs) {
         const video = document.createElement("video");
@@ -277,18 +296,19 @@ export class BrowserTrustedVideoCompositorFactory implements TrustedVideoComposi
         const track = input.stream.getVideoTracks()[0];
         const ended = () => {
           sourceEnded = true;
+          track.removeEventListener("ended", ended);
           videos.delete(input.sourceId);
           video.pause();
           video.srcObject = null;
         };
         track.addEventListener("ended", ended, { once: true });
         videos.set(input.sourceId, { input, video, track, ended });
-        await video.play();
+        await playTrustedVideo(video, signal);
         signal.throwIfAborted();
       }
-      const output = canvas.captureStream(profile.framesPerSecond);
+      output = canvas.captureStream(profile.framesPerSecond);
       const outputTracks = output.getVideoTracks();
-      if (outputTracks.length !== 1) fail("trusted_video_output_unavailable");
+      if (outputTracks.length !== 1 || outputTracks[0].readyState !== "live") fail("trusted_video_output_unavailable");
       const track = outputTracks[0];
       try { track.contentHint = inputs.some(({ sourceKind }) => sourceKind === "screen") ? "detail" : "motion"; } catch { /* optional */ }
 
@@ -315,8 +335,9 @@ export class BrowserTrustedVideoCompositorFactory implements TrustedVideoComposi
           context.textAlign = "start";
         }
       };
-      const draw = () => {
+      const render = () => {
         if (closed) return;
+        for (const entry of videos.values()) if (entry.track.readyState === "ended") entry.ended();
         const started = performance.now();
         context.fillStyle = profile.background;
         context.fillRect(0, 0, canvas.width, canvas.height);
@@ -362,57 +383,42 @@ export class BrowserTrustedVideoCompositorFactory implements TrustedVideoComposi
         const nextRate = document.hidden ? Math.min(5, effectiveFramesPerSecond) : effectiveFramesPerSecond;
         timer = window.setTimeout(draw, Math.round(1_000 / nextRate));
       };
-      draw();
-      const close = async () => {
-        if (closed) return;
-        closed = true;
-        window.clearTimeout(timer);
-        for (const { video, track: inputTrack, ended } of videos.values()) {
-          inputTrack.removeEventListener("ended", ended);
-          video.pause();
-          video.srcObject = null;
+      const draw = () => {
+        try { render(); }
+        catch {
+          renderFailed = true;
+          void close();
         }
-        videos.clear();
-        if (track.readyState !== "ended") track.stop();
-        canvas.width = 1;
-        canvas.height = 1;
       };
-      const abort = () => { void close(); };
-      signal.addEventListener("abort", abort, { once: true });
+      render();
+      signal.throwIfAborted();
       return Object.freeze({
         outputSourceId: generatedSourceId(), stream: output, track,
         snapshot: () => Object.freeze({
           layout: currentLayout, profileId: profile.profileId,
           width: profile.width, height: profile.height,
           targetFramesPerSecond: profile.framesPerSecond,
-          effectiveFramesPerSecond: document.hidden ? Math.min(5, effectiveFramesPerSecond) : effectiveFramesPerSecond,
+          effectiveFramesPerSecond: closed ? 0 : document.hidden ? Math.min(5, effectiveFramesPerSecond) : effectiveFramesPerSecond,
           framesRendered, framesSkipped, sourceCount: videos.size,
-          degradedReason: document.hidden ? "hidden-tab"
+          degradedReason: renderFailed ? "render-error" : document.hidden ? "hidden-tab"
             : effectiveFramesPerSecond < profile.framesPerSecond ? "render-backpressure"
               : sourceEnded ? "source-ended" : "none",
         }),
         setLayout(nextLayout: TrustedVideoLayout, nextActiveSourceId = "") {
+          if (closed) fail("trusted_video_compositor_closed");
           if (!LAYOUTS.has(nextLayout)
             || (nextActiveSourceId && !videos.has(nextActiveSourceId))) fail("invalid_trusted_video_layout");
           currentLayout = nextLayout;
           if (nextActiveSourceId) activeSourceId = nextActiveSourceId;
         },
-        setOverlay(value: TrustedVideoOverlayPolicy) { overlay = normalizeTrustedVideoOverlay(value); },
-        close: async () => {
-          signal.removeEventListener("abort", abort);
-          await close();
+        setOverlay(value: TrustedVideoOverlayPolicy) {
+          if (closed) fail("trusted_video_compositor_closed");
+          overlay = normalizeTrustedVideoOverlay(value);
         },
+        close,
       });
     } catch (error) {
-      window.clearTimeout(timer);
-      for (const { video, track, ended } of videos.values()) {
-        track.removeEventListener("ended", ended);
-        video.pause();
-        video.srcObject = null;
-      }
-      videos.clear();
-      canvas.width = 1;
-      canvas.height = 1;
+      await close();
       throw error;
     }
   }

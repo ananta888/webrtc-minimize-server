@@ -105,6 +105,7 @@ describe("BrowserTrustedAudioProgramBusFactory", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("builds one limited program output, ducks screen audio for speech and never monitors by default", async () => {
@@ -171,6 +172,56 @@ describe("BrowserTrustedAudioProgramBusFactory", () => {
     ], TRUSTED_AUDIO_PROGRAM_PROFILES.speech, "off", new AbortController().signal))
       .rejects.toThrow("invalid_trusted_audio_program");
     expect(FakeAudioContext.instances).toHaveLength(0);
+  });
+
+  for (const action of ["abort", "timeout"]) it(`cleans a suspended audio graph and headphone monitoring on setup ${action}`, async () => {
+    class SuspendedContext extends FakeAudioContext { override state: AudioContextState = "suspended"; override resume() { return new Promise<void>(() => {}); } }
+    vi.stubGlobal("AudioContext", SuspendedContext);
+    const controller = new AbortController(), input = stream(0.08);
+    const pending = new BrowserTrustedAudioProgramBusFactory().create(program, [
+      { sourceId: "src_microphoneaaaaaa", sourceKind: "microphone", stream: input },
+    ], TRUSTED_AUDIO_PROGRAM_PROFILES.speech, "headphones", controller.signal);
+    const rejected = expect(pending).rejects.toThrow();
+    if (action === "abort") controller.abort(); else await vi.advanceTimersByTimeAsync(5001);
+    await rejected;
+    const context = FakeAudioContext.instances[0]; expect(context.state).toBe("closed");
+    expect(context.gains.every(node => node.disconnected)).toBe(true); expect(context.outputTrack.stop).toHaveBeenCalledOnce();
+    expect(input.getAudioTracks()[0].readyState).toBe("live"); expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("closes an AudioContext even when graph construction fails before destination creation", async () => {
+    vi.spyOn(FakeAudioContext.prototype, "createDynamicsCompressor").mockImplementation(() => { throw new Error("synthetic node failure"); });
+    await expect(new BrowserTrustedAudioProgramBusFactory().create(program, [
+      { sourceId: "src_microphoneaaaaaa", sourceKind: "microphone", stream: stream(0.08) },
+    ], TRUSTED_AUDIO_PROGRAM_PROFILES.speech, "off", new AbortController().signal)).rejects.toThrow("synthetic node failure");
+    expect(FakeAudioContext.instances[0].state).toBe("closed");
+    expect(FakeAudioContext.instances[0].gains[0].disconnected).toBe(true);
+  });
+
+  it("detects local track.stop without an ended event and shares the pending context close", async () => {
+    const input = stream(0.08), controller = new AbortController();
+    let finish!: () => void;
+    vi.spyOn(FakeAudioContext.prototype, "close").mockImplementation(function(this: FakeAudioContext) {
+      return new Promise<void>(resolve => { finish = () => { this.state = "closed"; resolve(); }; });
+    });
+    const handle = await new BrowserTrustedAudioProgramBusFactory().create(program, [
+      { sourceId: "src_microphoneaaaaaa", sourceKind: "microphone", stream: input },
+    ], TRUSTED_AUDIO_PROGRAM_PROFILES.speech, "off", controller.signal);
+    input.getAudioTracks()[0].stop(); await vi.advanceTimersByTimeAsync(51);
+    expect(handle.track.readyState).toBe("ended"); expect(vi.getTimerCount()).toBe(0);
+    let resolved = false; const closing = handle.close().then(() => { resolved = true; });
+    await Promise.resolve(); expect(resolved).toBe(false); finish(); await closing;
+    expect(FakeAudioContext.prototype.close).toHaveBeenCalledOnce(); expect(handle.snapshot().sourceLevels).toEqual({});
+  });
+  it("retries a failed context close without restarting tracks or processing", async () => {
+    vi.spyOn(FakeAudioContext.prototype, "close").mockRejectedValueOnce(new Error("synthetic close failure"));
+    const handle = await new BrowserTrustedAudioProgramBusFactory().create(program, [
+      { sourceId: "src_microphoneaaaaaa", sourceKind: "microphone", stream: stream(0.08) },
+    ], TRUSTED_AUDIO_PROGRAM_PROFILES.speech, "off", new AbortController().signal);
+    await expect(handle.close()).rejects.toThrow("synthetic close failure"); await handle.close();
+    expect(FakeAudioContext.prototype.close).toHaveBeenCalledTimes(2);
+    expect(FakeAudioContext.instances[0].state).toBe("closed"); expect(handle.track.stop).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 

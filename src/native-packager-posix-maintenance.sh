@@ -11,6 +11,7 @@ root="$base/$packager_id"
 binary="$root/native-broadcast-packager"
 identity="$root/identity-$packager_id.pem"
 export NATIVE_PACKAGER_IDENTITY_FILE="$identity"
+[ ! -e "$root/.migration-pending" ] && [ ! -L "$root/.migration-pending" ] || die 'Migration recovery is required before updating.'
 for scope in "$base" "$root"; do [ -d "$scope" ] && [ ! -L "$scope" ] || die 'Unsafe installation directory.'; done
 for file in "$binary" "$identity"; do [ -f "$file" ] && [ ! -L "$file" ] || die 'Existing binary and identity are required.'; done
 init_platform || die 'Required maintenance utility or service configuration is unavailable.'

@@ -17,6 +17,7 @@
     "test:mediamtx-adapter": "node scripts/live-mediamtx-adapter-gate.mjs",
     "test:native-packager": "node scripts/live-native-packager-gate.mjs",
     "test:native-packager-onboarding": "node scripts/live-native-packager-onboarding-gate.mjs",
+    "test:native-packager-migration:linux": "node scripts/live-native-packager-linux-migration-gate.mjs",
     "test:production-broadcast-suite": "bash scripts/live-production-broadcast-suite.sh",
     "test:llhls:mediamtx": "node scripts/live-mediamtx-llhls-gate.mjs",
     "test:load:mediamtx-origin": "node scripts/live-mediamtx-origin-load-gate.mjs",
