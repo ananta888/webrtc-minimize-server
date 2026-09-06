@@ -24,7 +24,14 @@ for (const [name, engine] of [["Chromium", chromium], ["Firefox", firefox]]) {
     const manifest = { version: 1, type: "native-packager-release", repository: "ananta888/webrtc-minimize-server",
       workflow: "ananta888/webrtc-minimize-server/.github/workflows/ci.yml", revision: "a".repeat(40), builtAt: "2026-09-06T10:00:00Z", agentVersion: "0.7.0", goVersion: "go1.24.13",
       artifacts: RELEASE_TARGETS.map(target => ({ target, filename: artifactFilename(target), sha256: "b".repeat(64), bytes: 1234 })) };
-    let fetches = 0, enrollments = 0, invalid = false;
+    let fetches = 0, enrollments = 0, migrations = 0, invalid = false;
+    const script = `#!/bin/sh\n# Synthetic download; never executed. ${"x".repeat(100)}\nexit 0\n`;
+    await page.route(`**/api/native-packagers/${packager.id}/migration`, route => {
+      migrations++;
+      assert.deepEqual(route.request().postDataJSON(), { target: "linux-amd64", revision: manifest.revision, sha256: manifest.artifacts[0].sha256 });
+      return route.fulfill({ json: { version: 1, type: "native-packager-migration", packagerId: packager.id, target: "linux-amd64",
+        revision: manifest.revision, artifactSha256: manifest.artifacts[0].sha256, filename: `migrate-${packager.id}.sh`, script } });
+    });
     await page.route("**/api/native-packagers", route => route.fulfill({ json: { packagers: [packager], assignments: [] } }));
     await page.route("**/api/native-packagers/enrollments", route => { enrollments++; return route.fulfill({ status: 403, json: {} }); });
     await page.route("**/downloads/native-packager/release.json", route => { fetches++; return route.fulfill({ json: invalid ? { ...manifest, verified: true } : manifest }); });
@@ -33,7 +40,7 @@ for (const [name, engine] of [["Chromium", chromium], ["Firefox", firefox]]) {
     const panel = page.locator("#native-packager-analysis-panel");
     await panel.getByRole("button", { name: "Aktualisieren", exact: true }).click();
     const update = panel.locator("app-native-packager-update");
-    await update.locator("summary").focus(); await page.keyboard.press("Enter");
+    await update.locator("summary").first().focus(); await page.keyboard.press("Enter");
     assert.equal(fetches, 0);
     await update.getByRole("button", { name: "Release-Daten laden" }).click();
     await update.getByText("Noch nicht unabhängig verifiziert.", { exact: false }).waitFor();
@@ -45,6 +52,19 @@ for (const [name, engine] of [["Chromium", chromium], ["Firefox", firefox]]) {
     assert.ok(text.includes(`--source-digest ${manifest.revision}`)); assert.ok(text.includes(manifest.artifacts[0].sha256));
     assert.ok(text.includes("--source-ref refs/heads/main --deny-self-hosted-runners"));
     assert.equal(await update.getByRole("link", { name: "Binärdatei zur Prüfung" }).getAttribute("href"), "/downloads/native-packager/linux-amd64");
+    await update.locator(".legacy-migration > summary").click();
+    assert.equal(migrations, 0);
+    const downloaded = page.waitForEvent("download");
+    await update.getByRole("button", { name: "Linux-Migrationsdatei herunterladen" }).click();
+    const download = await downloaded;
+    assert.equal(download.suggestedFilename(), `migrate-${packager.id}.sh`);
+    const stream = await download.createReadStream(), chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    assert.equal(Buffer.concat(chunks).toString("utf8"), script);
+    assert.equal(migrations, 1);
+    await update.getByText("Datei prüfen und auf dem Linux-Agenten speichern.", { exact: false }).waitFor();
+    await select.selectOption("linux-arm64");
+    assert.equal(await update.getByText("Datei prüfen und auf dem Linux-Agenten speichern.", { exact: false }).count(), 0);
     invalid = true; await update.getByRole("button", { name: "Release-Daten laden" }).click();
     await update.getByRole("alert").waitFor(); assert.equal(await update.locator("pre").count(), 0);
     assert.equal(await page.evaluate(() => window.__releaseCaptureCalls), 0); assert.equal(enrollments, 0); assert.equal(fetches, 2);

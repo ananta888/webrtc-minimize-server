@@ -491,6 +491,31 @@ function createHttpHandler(config, registry, services) {
         }, securityHeaders(config));
         return;
       }
+      const nativePackagerMigrationMatch = url.pathname.match(/^\/api\/native-packagers\/(pkr_[A-Za-z0-9_-]{16,64})\/migration$/);
+      if (nativePackagerMigrationMatch && request.method === "POST") {
+        if (!config.nativePackagerSelfServiceEnabled || !nativePackagerEnrollmentStore || !nativePackagerInstallerService || url.search
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          throw new NativePackagerEnrollmentError("native_packager_migration_unavailable", 404);
+        }
+        if (!requestOriginAllowed(request, config)) throw new ProtocolError("origin_denied");
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const owned = nativePackagerEnrollmentStore.list(principalFor(identity)).find(item => item.id === nativePackagerMigrationMatch[1] && !item.revokedAt);
+        if (!owned) throw new NativePackagerEnrollmentError("native_packager_migration_unavailable", 404);
+        const input = await readJsonBody(request);
+        assertAllowedKeys(input, new Set(["target", "revision", "sha256"]));
+        if (typeof input.target !== "string" || typeof input.revision !== "string" || !/^[a-f0-9]{40}$/.test(input.revision)
+          || typeof input.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(input.sha256)) throw new ProtocolError("invalid_request");
+        const target = nativePackagerInstallerService.target(input.target);
+        const release = nativePackagerInstallerService.release().manifest;
+        if (owned.platform !== target.platform || input.revision !== release.revision || input.sha256 !== target.sha256) {
+          throw new NativePackagerInstallerError("native_packager_migration_release_mismatch", 409);
+        }
+        if (nativePackagerAssignments.activeForPackager(owned.id)) throw new NativePackagerControlError("native_packager_migration_requires_idle", 409);
+        const migration = nativePackagerInstallerService.migration({ packagerId: owned.id, targetId: target.id, publicOrigin: config.publicOrigin, stunUrls: config.stunUrls });
+        sendJson(response, 200, { version: 1, type: "native-packager-migration", packagerId: owned.id, target: target.id,
+          revision: release.revision, artifactSha256: target.sha256, filename: migration.filename, script: migration.content }, securityHeaders(config));
+        return;
+      }
       const nativePackagerConsentMatch = url.pathname.match(
         /^\/api\/native-packagers\/(pkr_[A-Za-z0-9_-]{16,64})\/room-consents\/([A-Za-z0-9_-]{4,64})$/,
       );

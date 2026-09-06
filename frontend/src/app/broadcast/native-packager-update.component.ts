@@ -3,11 +3,13 @@ import { FormsModule } from "@angular/forms";
 import { OwnedNativePackager } from "./native-packager-onboarding.service";
 import { nativePackagerUpdateCommand, nativePackagerVerificationCommand } from "./native-packager-release";
 import { NativePackagerReleaseService } from "./native-packager-release.service";
+import { NativePackagerMigrationService } from "./native-packager-migration.service";
 
 @Component({
   selector: "app-native-packager-update",
   standalone: true,
   imports: [FormsModule],
+  providers: [NativePackagerMigrationService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [":host{display:block;grid-column:1/-1;min-width:0} details{padding:.75rem;border:1px solid var(--border);border-radius:.75rem} pre,code{overflow-wrap:anywhere;white-space:pre-wrap} select,button{margin:.4rem} .warning{font-weight:600}"],
   template: `
@@ -36,6 +38,21 @@ import { NativePackagerReleaseService } from "./native-packager-release.service"
           <p>3. Erst danach den bereits lokal installierten Updater starten. Er lädt erneut und prüft diesen exakten Hash. Bei einem zwischenzeitlichen Deployment bricht er ab.</p>
           <pre>{{ update(packager.id, packager.platform, artifact) }}</pre>
           <p>Fehlt update-{{ packager.id }}, nicht neu registrieren oder alte Uninstaller ausführen: Diese Bestandsinstallation benötigt eine Migration. Docker-Installationen verwenden stattdessen ihren Deployment-Runner. Keine automatische Plattformsignatur-, Keystore- oder Reboot-Freigabe.</p>
+          @if (packager.platform === 'linux') {
+            <details class="legacy-migration">
+              <summary>Alte gemeinsame Linux-Installation migrieren</summary>
+              <p>Nur für das historische gemeinsame Benutzerverzeichnis, nicht für Docker oder bereits ID-isolierte Installationen. Eigene Geräteidentität bleibt erhalten, keine neue Registrierung. Angepasste Units oder abweichende Konfiguration werden abgelehnt.</p>
+              <p>Andere noch alte Uninstaller können das gesamte Basisverzeichnis löschen: nicht ausführen. Vorher Broadcast-Zuweisungen beenden. Die Migrationsdatei stammt über HTTPS aus dieser Anwendung; der GitHub-Nachweis oben gilt nur für Manifest und Binärdatei, nicht für das personalisierte Skript.</p>
+              <button type="button" [disabled]="migration.busy()" (click)="migration.download(packager.id, release, artifact)">Linux-Migrationsdatei herunterladen</button>
+              @if (migration.error()) { <p role="alert">{{ migration.error() }}</p> }
+              @if (migration.filenameFor(packager.id, release, artifact); as filename) {
+                <p>Datei prüfen und auf dem Linux-Agenten speichern. Erst nach unabhängiger Prüfung der Binärdatei lokal ausführen:</p>
+                <pre>sh ./{{ filename }} migrate {{ artifact.sha256 }}</pre>
+                <p>Bei Abbruch dieselbe gespeicherte Datei mit <code>recover</code> aufrufen. Eine Kopie liegt im privaten Verzeichnis <code>.migration-{{ packager.id }}</code> neben den alten Dateien.</p>
+                <p>Nach Erfolg Online-Status und Konto in dieser App prüfen. Erst danach entfernt <code>purge</code> die private Migrationssicherung. Der alte private Schlüssel bleibt zunächst zusätzlich im Legacy-Verzeichnis erhalten und darf niemals hochgeladen werden.</p>
+              }
+            </details>
+          }
         }
       }
     </details>`,
@@ -46,5 +63,5 @@ export class NativePackagerUpdateComponent {
   readonly selected = computed(() => this.catalog.release()?.artifacts.find(item => item.target === this.target()) || null);
   readonly verify = nativePackagerVerificationCommand;
   readonly update = nativePackagerUpdateCommand;
-  constructor(readonly catalog: NativePackagerReleaseService) {}
+  constructor(readonly catalog: NativePackagerReleaseService, readonly migration: NativePackagerMigrationService) {}
 }
