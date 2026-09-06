@@ -8,8 +8,9 @@ Own-Source-Komposition lässt sich über einen getrennten lokalen Bildregie-Port
 steuern. Für eigenes natives Publishing ist die unten beschriebene serverseitige
 Same-Program-Übergabe einschließlich Angular-Übergabedialog angeschlossen.
 Kontrollierter Player-Generationswechsel ist lokal implementiert und getestet.
-Fremdquellenmoderation und Standby bleiben offen; ein realer Zwei-Packager-
-Mediennachweis steht noch aus.
+Fremdquellenmoderation und Standby bleiben offen. Private Zwei-Packager-
+Übergaben sind inzwischen real nachgewiesen; der vollständige Gate mit
+öffentlicher Rückübergabe ist weiterhin offen.
 
 ## Angeschlossene native Übergabe-API
 
@@ -105,12 +106,32 @@ manuelle maximale Höhe und Untertitelwahl bleiben erhalten. Ein anderer
 Programm-Link startet niemals automatisch. Browser-Autoplayregeln bleiben wirksam.
 
 Die Wiederherstellung versucht höchstens sechs Autorisierungen in 75 Sekunden;
-höchstens drei neue Generationen pro Minute sind erlaubt. 429, Scopewechsel und
+höchstens drei Session-Ersetzungen pro Minute sind erlaubt. 429, Scopewechsel und
 unbekannte Fehler lösen keine Wiederholung aus. Stop, Destroy, Logout und
 Seitenausblendung brechen Timer und laufende Requests ab. Alte asynchrone
 Player-/Caption-Antworten können keinen Nachfolger verändern. Ein fehlgeschlagener
 Remote-Widerruf wird nicht als bestätigt ausgegeben; lokal bleibt die Sitzung
 geschlossen und ihre Serverberechtigung läuft spätestens mit dem Grant ab.
+
+Nach einer vorübergehenden Unterbrechung darf die Control Plane auch dieselbe
+weiterhin laufende Ausgabe erneut autorisieren: Program-ID, Epoch, Policy,
+Sichtbarkeit, Playbackmodus und Resource müssen dann exakt gleich bleiben.
+Die alte Cookie-Sitzung wird geschlossen und eine **neue** Sitzung angelegt.
+Der Player bindet seinen Lifecycle deshalb zusätzlich an die Playback-Session-ID;
+auch bei unveränderter Manifest-URL entsteht ein neues MediaSource-Objekt.
+Ein bloß wieder erreichbares Manifest, ein alter Cookie oder eine veränderte
+Policy genügen nicht. Ohne vorherigen Play-Klick erfolgt keine Wiederaufnahme.
+
+Diese Ergänzung reagiert auf einen realen Fehlversuch: Nach einer einmaligen
+404-Autorisierung antwortete die Control Plane wiederholt mit 201 für dieselbe
+Sendung; der bisherige Viewer wartete dennoch ausschließlich auf eine höhere
+Generation. Lokale Tests prüfen jetzt Wiederaufnahme, folgende normale Renewal,
+Ablehnung wiederverwendeter Session-IDs, Offline-Zustand und das gemeinsame
+Wiederholungsbudget. `LIVE_PRODUCTION_VIEWER_RECOVERY=1` ergänzt einen realen
+isolierten Lauf um genau eine im Testbrowser injizierte Autorisierungsablehnung;
+die anschließenden Grants/Cookies müssen vom echten Server stammen und
+dekodierte Frames der identischen Ausgabe müssen wieder fortschreiten. Dieser
+neue Fault-Injection-Gate ist bis zu seinem erfolgreichen Lauf unverifiziert.
 
 Browser-Gateway-Tests prüfen späte open-/renew-Antworten nach close, getrennte
 alte/neue Handles und begrenztes Cleanup. Der Server prüft nach asynchroner
@@ -205,6 +226,38 @@ Testcontainer, Test-Identity-Volumes, `res_`-Ausgaben und temporäre Keycloak-
 Gate-Nutzer. Health meldete `ok`, null Räume und null Teilnehmer. Es wurden
 ausschließlich die von der Suite angelegten Testressourcen entfernt; bestehende
 kontogebundene Agenten und ihre Identitäten blieben erhalten.
+
+### Ausgelieferte Runtime-Härtung und private Handoff-Evidence
+
+`cb0b0562845b4df349f41ecad3a7a97eaf9421f5` wurde nach
+[allen sieben erfolgreichen CI-Gates](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34049122053)
+auf Web-App, Native-Packager und Origin ausgerollt. Vorher waren Räume,
+Teilnehmer und Ausgaben leer; danach waren externe Health/Readiness grün.
+Der Geräteschlüssel blieb identisch, OIDC `required`, Maschinenzulassung aus.
+Alle fünf Image-Binaries entsprechen den unabhängig attestierten CI-Dateien;
+öffentliches Manifest und Linux-amd64-Download sind byte-/hashgleich.
+Manifest-SHA-256: `b937fb65c97f277d94802b49eda91f75f550cdea562f5569785145a440291aa0`.
+
+Drei isolierte Läufe auf diesem Release bestätigten normale Anmeldung,
+Enrollment/Inventar zweier Testagenten, dekodierte Regie und private Firefox-
+Übergabe derselben Sendung. Die zwei späteren Läufe prüften zusätzlich den
+Fortschritt des Video-Framezählers nach Wechsel des MediaSource-Objekts.
+Stop-ACK des Vorgängers, höhere Epoch/Fence, neue Ressource, Widerruf der alten
+Manifest-URL, erhaltene Qualitätswahl sowie ausbleibender neuer Capture- oder
+Play-Klick wurden geprüft. Beide nativen Agenten nutzten den gemeinsamen
+Mini-PC-Origin; das ist **kein** Cross-Host-Origin-Nachweis.
+
+Alle drei Gesamtläufe endeten trotzdem mit Fehler: zweimal fehlte die
+Handoff-Antwort bei der späteren öffentlichen Rückübergabe; beim dritten Lauf
+scheiterte zuvor das anonyme Renewal an der oben beschriebenen Same-Resource-
+Recovery-Lücke. Die neue Diagnose trennt abgewiesene Kontrollantwort, fehlenden
+Request, Transportfehler, abgewiesene Mutation und fehlende neue Medien.
+Vier reine Unit-Tests prüfen diese Diagnose ohne vorgetäuschte Real-PASS-Logs.
+Nach Ende der Läufe fand die unabhängige Kontrolle null Testcontainer,
+Testvolumes, Ausgaben und temporäre Keycloak-Nutzer; ein kurzzeitig nicht
+routbarer Mini-PC-SSH-Pfad war wieder erreichbar, Health war `ok` mit null
+Räumen/Teilnehmern. Die Same-Resource-Recovery ist eine **nachfolgende lokale**
+Änderung und wird diesem ausgelieferten Release nicht rückwirkend zugeschrieben.
 
 ## Bereits angeschlossene lokale Bildregie
 

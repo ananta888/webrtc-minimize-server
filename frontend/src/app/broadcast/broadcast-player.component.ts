@@ -26,6 +26,7 @@ export class BroadcastPlayerComponent implements OnChanges, OnDestroy {
   readonly moqCapability = MOQ_UI_CAPABILITY_STATUS;
   readonly manifestUrl = input.required<string>();
   readonly programId = input.required<string>();
+  readonly playbackSessionId = input.required<string>();
   readonly suspended = input(false);
   readonly title = input("Live-Broadcast");
   readonly captionsAvailable = input(false);
@@ -44,6 +45,7 @@ export class BroadcastPlayerComponent implements OnChanges, OnDestroy {
   private playbackIntent = false;
   private playedProgramId = "";
   private activeManifest = "";
+  private activePlaybackSessionId = "";
   private interruptionReported = "";
   private preferredHeight: number | null = null;
   private preferencesApplied = -1;
@@ -59,7 +61,8 @@ export class BroadcastPlayerComponent implements OnChanges, OnDestroy {
   ngOnChanges(_changes: SimpleChanges): void {
     if (this.playbackIntent && this.playedProgramId !== this.programId()) { void this.stop(false); return; }
     if (this.suspended()) { void this.suspend(); return; }
-    if (this.playbackIntent && this.manifestUrl() !== this.activeManifest) void this.openSource();
+    if (this.playbackIntent && (this.manifestUrl() !== this.activeManifest
+      || this.playbackSessionId() !== this.activePlaybackSessionId)) void this.openSource();
   }
 
   private createPlayer(generation: number): BroadcastHlsPlayer {
@@ -106,6 +109,7 @@ export class BroadcastPlayerComponent implements OnChanges, OnDestroy {
     const player = this.createPlayer(generation);
     this.player = player;
     this.activeManifest = this.manifestUrl();
+    this.activePlaybackSessionId = this.playbackSessionId();
     this.interruptionReported = "";
     try {
       await old.destroy();
@@ -171,6 +175,7 @@ export class BroadcastPlayerComponent implements OnChanges, OnDestroy {
   async stop(emit = true): Promise<void> {
     this.playbackIntent = false;
     this.activeManifest = "";
+    this.activePlaybackSessionId = "";
     const generation = this.generation + 1;
     await this.suspend();
     if (emit && !this.destroyed && generation === this.generation) this.closed.emit();

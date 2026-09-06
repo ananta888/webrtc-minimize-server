@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { chromium, firefox } from "playwright";
 import { verifyProductionHandoff } from "./live-production-handoff-gate.mjs";
+import { verifyProductionViewerRecovery } from "./live-production-viewer-recovery-gate.mjs";
 
 if (process.env.RUN_LIVE_PRODUCTION_BROADCAST !== "1") {
   console.log("SKIP production broadcast gate: provide an isolated test identity and packager");
@@ -480,6 +481,7 @@ try {
   assert.equal(renewalResponse.status(), 200, "active anonymous playback session was not renewed");
   assert.equal(viewerPlayback.sessionRenewals, 1,
     "one scoped playback-session renewal was expected before the first grant expired");
+  if (process.env.LIVE_PRODUCTION_VIEWER_RECOVERY === "1") await verifyProductionViewerRecovery(viewer, playerManifest);
   if (handoffId) playerManifest = await verifyProductionHandoff({ owner: ownerPage, viewer,
     targetId: verifyPrivateViewer ? packagerId : handoffId, programCreates: () => programCreateRequests,
     statuses: assignmentStatuses, manifest: playerManifest });

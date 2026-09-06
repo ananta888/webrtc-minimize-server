@@ -8,7 +8,7 @@ interface Watch {
   readonly programId: string;
   resourceRef: string;
   started: boolean;
-  generations: number[];
+  replacements: number[];
 }
 
 function wait(ms: number, signal: AbortSignal): Promise<void> {
@@ -28,6 +28,7 @@ function wait(ms: number, signal: AbortSignal): Promise<void> {
 export class BroadcastViewerWorkflowService {
   readonly selected = signal<BroadcastDirectoryEntry | null>(null);
   readonly manifestUrl = signal("");
+  readonly playbackSessionId = signal("");
   readonly opening = signal(false);
   readonly reconnecting = signal(false);
   readonly errorCode = signal("");
@@ -43,7 +44,7 @@ export class BroadcastViewerWorkflowService {
     if (this.destroyed || this.opening() || !["live", "degraded"].includes(entry.availability)) return;
     this.clear();
     const watch: Watch = { controller: new AbortController(), programId: entry.programId,
-      resourceRef: "", started: false, generations: [] };
+      resourceRef: "", started: false, replacements: [] };
     this.watch = watch;
     this.opening.set(true);
     this.errorCode.set("");
@@ -59,6 +60,7 @@ export class BroadcastViewerWorkflowService {
       watch.resourceRef = bootstrap.resourceRef;
       this.selected.set(bootstrap.program);
       this.manifestUrl.set(session.manifestUrl);
+      this.playbackSessionId.set(session.playbackSessionId);
       this.schedule(watch, session.expiresAt);
     } catch (error) {
       if (this.watch === watch) await this.fail(watch, error);
@@ -87,7 +89,7 @@ export class BroadcastViewerWorkflowService {
     this.watch?.controller.abort(new DOMException("watch-closed", "AbortError"));
     this.watch = null;
     this.cancelWork();
-    this.selected.set(null); this.manifestUrl.set(""); this.opening.set(false); this.reconnecting.set(false);
+    this.selected.set(null); this.manifestUrl.set(""); this.playbackSessionId.set(""); this.opening.set(false); this.reconnecting.set(false);
   }
 
   private cancelWork(): void {
@@ -117,7 +119,7 @@ export class BroadcastViewerWorkflowService {
       this.current(watch, lifetime);
       if (this.isNewGeneration(watch, bootstrap)) {
         this.reconnecting.set(true);
-        await this.installGeneration(watch, bootstrap, lifetime);
+        await this.installAuthorizedSession(watch, bootstrap, lifetime);
       } else {
         const session = await this.gateway.renew(watch.resourceRef, bootstrap.playbackGrant, lifetime);
         this.current(watch, lifetime);
@@ -135,7 +137,8 @@ export class BroadcastViewerWorkflowService {
 
   private isNewGeneration(watch: Watch, bootstrap: BroadcastPlaybackBootstrap): boolean {
     const previous = this.selected(), next = bootstrap.program;
-    if (!previous || next.programId !== watch.programId || next.visibility !== previous.visibility
+    if (!previous || !["live", "degraded"].includes(next.availability)
+      || next.programId !== watch.programId || next.visibility !== previous.visibility
       || next.playback !== previous.playback || next.programEpoch < previous.programEpoch
       || next.policyRevision < previous.policyRevision) throw new Error("broadcast_playback_scope_changed");
     const newer = next.programEpoch > previous.programEpoch;
@@ -146,17 +149,20 @@ export class BroadcastViewerWorkflowService {
     return newer;
   }
 
-  private async installGeneration(watch: Watch, bootstrap: BroadcastPlaybackBootstrap, lifetime: AbortSignal): Promise<void> {
-    watch.generations = watch.generations.filter((at) => at > Date.now() - 60_000);
-    if (watch.generations.length >= 3) throw new Error("broadcast_playback_generation_limit");
+  private async installAuthorizedSession(watch: Watch, bootstrap: BroadcastPlaybackBootstrap, lifetime: AbortSignal): Promise<void> {
+    watch.replacements = watch.replacements.filter((at) => at > Date.now() - 60_000);
+    if (watch.replacements.length >= 3) throw new Error("broadcast_playback_generation_limit");
+    const previousSessionId = this.playbackSessionId();
     await this.gateway.close();
     this.current(watch, lifetime);
     const session = await this.gateway.open(bootstrap.resourceRef, bootstrap.playbackGrant, lifetime);
     this.current(watch, lifetime);
-    watch.generations.push(Date.now());
+    if (session.playbackSessionId === previousSessionId) throw new Error("broadcast_playback_scope_changed");
+    watch.replacements.push(Date.now());
     watch.resourceRef = bootstrap.resourceRef;
     this.selected.set(bootstrap.program);
     this.manifestUrl.set(session.manifestUrl);
+    this.playbackSessionId.set(session.playbackSessionId);
     this.reconnecting.set(false);
     this.errorCode.set("");
     this.schedule(watch, session.expiresAt);
@@ -175,7 +181,7 @@ export class BroadcastViewerWorkflowService {
     const lifetime = AbortSignal.any([watch.controller.signal, controller.signal, AbortSignal.timeout(75_000)]);
     this.reconnecting.set(true);
     try {
-      // Suspend media and retire the old cookie before any new-generation authorization.
+      // Suspend media and retire the old cookie before any replacement authorization.
       await this.gateway.close();
       this.current(watch, lifetime);
       for (const delay of [0, 2_000, 5_000, 10_000, 20_000, 25_000]) {
@@ -184,8 +190,10 @@ export class BroadcastViewerWorkflowService {
         try {
           const bootstrap = await this.directory.authorize(watch.programId, lifetime);
           this.current(watch, lifetime);
-          if (!this.isNewGeneration(watch, bootstrap)) continue;
-          await this.installGeneration(watch, bootstrap, lifetime);
+          // Fresh authority may confirm the exact same live output after a transient outage.
+          // It may never silently widen its policy, roll back an epoch or reuse an old cookie.
+          this.isNewGeneration(watch, bootstrap);
+          await this.installAuthorizedSession(watch, bootstrap, lifetime);
           return;
         } catch (error) { if (!this.retryable(error)) throw error; }
       }

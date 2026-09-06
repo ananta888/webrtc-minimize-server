@@ -17,13 +17,13 @@ function fixture() {
     Reflect.get(this, "update").call(this, { lifecycle: "idle", qualities: [] });
   });
   const component = runInInjectionContext(Injector.create({ providers: [] }), () => new BroadcastPlayerComponent());
-  const source = signal(url), program = signal("prg_aaaaaaaaaaaaaaaa"), suspended = signal(false);
-  Object.assign(component, { manifestUrl: source, programId: program, suspended,
+  const source = signal(url), program = signal("prg_aaaaaaaaaaaaaaaa"), suspended = signal(false), session = signal("pbs_aaaaaaaaaaaaaaaaaaaaaaaa");
+  Object.assign(component, { manifestUrl: source, programId: program, playbackSessionId: session, suspended,
     video: signal({ nativeElement: document.createElement("video") }) });
   const started = vi.fn(), closed = vi.fn(), interrupted = vi.fn();
   component.started.subscribe(started); component.closed.subscribe(closed); component.interrupted.subscribe(interrupted);
   instances.push(component);
-  return { component, source, program, suspended, opened, destroyed, started, closed, interrupted };
+  return { component, source, program, session, suspended, opened, destroyed, started, closed, interrupted };
 }
 
 describe("Explicit player continuation across output generations", () => {
@@ -51,6 +51,26 @@ describe("Explicit player continuation across output generations", () => {
     expect(f.component.state()).toMatchObject({ adaptiveMode: "data-saver", selectedQuality: 1 });
     expect(f.started).toHaveBeenCalledExactlyOnceWith(url);
     expect(f.closed).not.toHaveBeenCalled();
+  });
+
+  it("rebuilds the player for a newly authorized cookie even when the manifest stays the same", async () => {
+    const f = fixture();
+    await f.component.start();
+    const old = f.opened.mock.instances[0];
+    f.suspended.set(true); f.component.ngOnChanges({});
+    await Promise.resolve();
+    f.session.set("pbs_bbbbbbbbbbbbbbbbbbbbbbbb");
+    f.suspended.set(false); f.component.ngOnChanges({});
+    await vi.waitFor(() => expect(f.opened).toHaveBeenCalledTimes(2));
+    expect(f.opened.mock.calls[1][1]).toBe(url);
+    Reflect.get(old, "update").call(old, { lifecycle: "ended", errorCode: "broadcast_ended" });
+    await Promise.resolve();
+    expect(f.component.state().lifecycle).toBe("playing");
+    expect(f.interrupted).not.toHaveBeenCalled();
+    expect(f.started).toHaveBeenCalledExactlyOnceWith(url);
+    await f.component.stop();
+    f.session.set("pbs_cccccccccccccccccccccccc"); f.component.ngOnChanges({});
+    expect(f.opened).toHaveBeenCalledTimes(2);
   });
 
   it("cannot automatically play a different program or restart after Stop", async () => {

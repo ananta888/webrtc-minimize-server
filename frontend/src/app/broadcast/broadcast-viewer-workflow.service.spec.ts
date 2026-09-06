@@ -12,9 +12,10 @@ function bootstrap(epoch = 1): BroadcastPlaybackBootstrap {
 const services: BroadcastViewerWorkflowService[] = [];
 function fixture() {
   const directory = { authorize: vi.fn(async () => bootstrap()) };
-  const session = (resource: string) => ({ playbackSessionId: "pbs_aaaaaaaaaaaaaaaaaaaaaaaa",
+  let sequence = 0;
+  const session = (resource: string) => ({ playbackSessionId: `pbs_${String(sequence).padStart(24, "0")}`,
     manifestUrl: `/broadcast/play/${resource}/index.m3u8`, expiresAt: Date.now() + 60_000 });
-  const gateway = { close: vi.fn(async () => {}), open: vi.fn(async (resource: string) => session(resource)),
+  const gateway = { close: vi.fn(async () => {}), open: vi.fn(async (resource: string) => { sequence++; return session(resource); }),
     renew: vi.fn(async (resource: string) => session(resource)) };
   const service = new BroadcastViewerWorkflowService(directory as never, gateway as never);
   services.push(service);
@@ -126,15 +127,52 @@ describe("BroadcastViewerWorkflowService", () => {
     expect(f.gateway.renew).not.toHaveBeenCalled();
   });
 
-  it("bounds unavailable recovery to six attempts and never opens the same generation again", async () => {
+  it("bounds unavailable recovery to six attempts without unapproved session creation", async () => {
     const f = fixture();
     await f.service.open(entry, "user-action");
     f.service.playbackStarted(f.service.manifestUrl());
+    f.directory.authorize.mockRejectedValue(new Error("broadcast_not_available"));
     const recovery = f.service.interrupted(f.service.manifestUrl());
     await vi.advanceTimersByTimeAsync(62_000);
     await recovery;
     expect(f.directory.authorize).toHaveBeenCalledTimes(7);
     expect(f.gateway.open).toHaveBeenCalledOnce();
+    expect(f.service.selected()).toBeNull();
+  });
+
+  it("recovers a transient renewal denial with fresh same-scope authority and a new session", async () => {
+    const f = fixture();
+    await f.service.open(entry, "user-action");
+    f.service.playbackStarted(f.service.manifestUrl());
+    const previousSessionId = f.service.playbackSessionId(), previousManifest = f.service.manifestUrl();
+    f.directory.authorize.mockRejectedValueOnce(new Error("broadcast_not_available"));
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(f.directory.authorize).toHaveBeenCalledTimes(3);
+    expect(f.gateway.open).toHaveBeenCalledTimes(2);
+    expect(f.gateway.renew).not.toHaveBeenCalled();
+    expect(f.service.playbackSessionId()).not.toBe(previousSessionId);
+    expect(f.service.manifestUrl()).toBe(previousManifest);
+    expect(f.service.selected()).toEqual(entry);
+    expect(f.service.reconnecting()).toBe(false);
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(f.gateway.renew).toHaveBeenCalledOnce();
+  });
+
+  it("rejects offline authority and reused cookies and bounds same-generation recovery", async () => {
+    const f = fixture();
+    await f.service.open(entry, "user-action"); f.service.playbackStarted(f.service.manifestUrl());
+    f.directory.authorize.mockResolvedValueOnce({ ...bootstrap(), program: { ...entry, availability: "offline" } });
+    await f.service.interrupted(f.service.manifestUrl());
+    expect(f.service.errorCode()).toBe("broadcast_playback_scope_changed");
+    await f.service.open(entry, "user-action"); f.service.playbackStarted(f.service.manifestUrl());
+    const previous = { playbackSessionId: f.service.playbackSessionId(), manifestUrl: f.service.manifestUrl(), expiresAt: Date.now() + 60_000 };
+    f.gateway.open.mockResolvedValueOnce(previous);
+    await f.service.interrupted(f.service.manifestUrl());
+    expect(f.service.errorCode()).toBe("broadcast_playback_scope_changed");
+    expect(f.service.playbackSessionId()).toBe("");
+    await f.service.open(entry, "user-action"); f.service.playbackStarted(f.service.manifestUrl());
+    for (let index = 0; index < 4; index++) await f.service.interrupted(f.service.manifestUrl());
+    expect(f.service.errorCode()).toBe("broadcast_playback_generation_limit");
     expect(f.service.selected()).toBeNull();
   });
 
