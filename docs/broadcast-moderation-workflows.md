@@ -1,10 +1,31 @@
 # Broadcast-Regie, Quellenwiderruf und Packager-Handoff
 
-Stand: 2026-09-04. Dieses Dokument beschreibt den implementierten TBP-030-
-Zwischenstand. Die Domain- und Browsergrenzen sind implementiert und getestet;
-die öffentliche Control-Plane-API, ein produktiver Native-Packager und reale
-Accessibility-/Handoff-Gates fehlen noch. Deshalb zeigt die ausgelieferte
-Angular-Ansicht die Regie, hält ihre mutierenden Schalter aber deaktiviert.
+Stand: 2026-09-06. Dieses Dokument beschreibt den TBP-030-Zwischenstand.
+Die Domainpolicy für serverseitige Moderation ist vorbereitet, aber noch nicht
+an eine öffentliche Moderations-API angeschlossen. Der native Packager besitzt
+inzwischen einen realen Enrollment-/Publish-/Playback-Pfad. Eine laufende
+Own-Source-Komposition lässt sich über einen getrennten lokalen Bildregie-Port
+steuern; Fremdquellenmoderation, Standby und echtes Writer-Handoff bleiben offen.
+
+## Bereits angeschlossene lokale Bildregie
+
+Während einer aktiven Own-Source-Sendung zeigt die Angular-Regie die bereits
+freigegebenen eigenen Videoquellen. „Layout sofort anwenden“ wechselt zwischen
+allen sieben Layouts. Einzel-/Sprecheransicht erlauben die manuelle Hauptquelle;
+eine automatische Sprechererkennung wird nicht behauptet. Der lokale Klick
+ändert ausschließlich die Darstellung der bestehenden Komposition, nicht ihre
+Quellfreigaben, Writer-Zuordnung oder Ausgabeprofile.
+
+Kompositions-ID, vollständige Quellbindung und eine lokale Revision schützen vor
+veralteten Befehlen. Stopp/Destroy entfernt das Angebot sofort. Es gibt keinen
+erneuten Capture-Aufruf, Program-POST oder Wechsel der Sendertracks. Warte-/Endbild
+ändert nur Video; Audio und Publikation laufen bis zum separaten Stopp weiter.
+Der Broadcast-Zweig bleibt ausdrücklich ein Trusted-Packager-Pfad, kein blinder
+SFrame-Relay. Siehe [Compositor und gemessene Gates](trusted-video-compositor.md).
+
+Die folgenden Rollen-, Consent- und Handoff-Abschnitte beschreiben weiterhin die
+vorbereitete, noch nicht vollständig produktiv verdrahtete Servermoderation.
+Ihre Schalter bleiben getrennt von der lokalen Bildregie deaktiviert.
 
 ## Rollen und Bestätigung
 
@@ -64,14 +85,17 @@ Audio-/Videodaten und Nutzinhalte gehören nicht hinein.
 
 ## Noch offene Gates
 
-- persistente, OIDC- und Membership-gebundene Control-Plane-API sowie
-  serverseitige Composition-Root,
-- produktiver Native-Packager aus TBP-016 einschließlich Enrollment,
-  Keystore, Receive-/Publish-Pfad und signierten Artefakten,
-- vollständige Verdrahtung der sichtbaren Angular-Regie mit Serverzustand,
+- OIDC- und Membership-gebundene Moderations-API sowie serverseitige
+  Composition-Root; Raum-/Medienzustand bleibt flüchtig,
+- verbleibende Plattform-/Keystore-/Betriebsgates aus TBP-016; Enrollment und
+  nativer Publish-/Playback-Pfad sind bereits separat implementiert und getestet,
+- vollständige Verdrahtung der serverseitigen Angular-Regie mit Serverzustand,
   Consent-Authority, Writer-Lease und Program-Compositor,
 - echte Handoff-/Lease-Loss-/Netzunterbrechungstests mit zwei Geräten,
 - manueller Tastatur-, Fokus-, Screenreader- und Mobile-Accessibility-Gate.
 
-Bis diese Punkte bestehen, bleibt `[connected]="false"` die öffentliche
-Voreinstellung. Weder der Sendestart noch eine Regieaktion wird simuliert.
+Bis diese Punkte bestehen, bleibt `[connected]="false"` für die Servermoderation
+die öffentliche Voreinstellung. Die unabhängig angebundene lokale Bildregie
+meldet ausdrücklich „Lokale Bildregie bereit“, nicht „Control Plane verbunden“.
+Weder Sendestart noch Regieaktion werden simuliert; ein Stop mit Neuanlage gilt
+nicht als vollständiges Writer-Handoff.

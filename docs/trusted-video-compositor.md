@@ -118,10 +118,22 @@ der jeweiligen HLS-/Auslieferungslatenz. Die serverseitige Moderation fremder
 Quellen, deren Widerruf, Standby und echtes Writer-Handoff bleiben separate offene
 Teile von TBP-030; das Panel stellt sie nicht als verbunden dar.
 
-Der erweiterte Produktionsgate muss alle Layoutaktionen sowie dekodierte
-HLS-Pixel beim Wechsel zum Wartebild und zurück prüfen, bei unveränderten
-Capture-Aufrufen, Sender-Track-IDs, PeerConnection-Anzahl und Program-POST-Zähler.
-Dieser neue öffentliche Nachweis steht bis zum Rollout und tatsächlichen Lauf aus.
+Der erweiterte Produktionsgate bestand am 6. September 2026 nach dem Rollout von
+`057ead05616d5cbc6bc1cf953866297d687cc1c6` auf `https://webrtc.ananta.de`.
+Er prüfte alle sieben Layoutaktionen sowie tatsächlich dekodierte HLS-Pixel beim
+Wechsel zum Wartebild und zurück, bei unveränderten Capture-Aufrufen,
+Sender-Track-IDs, PeerConnection-Anzahl und Program-POST-Zähler. Die Bildprüfung
+lief im Chromium-Owner-Player; die anschließenden separaten privaten und anonymen
+Zuschauer verwendeten Firefox. Playback-Erneuerung, Sichtbarkeitswechsel,
+terminaler Stopp, Refresh ohne neues Capture und normaler Packager-Widerruf
+bestanden ebenfalls. Der Lauf nutzte ausschließlich eine ephemere Testidentität
+und synthetische Quellen, keine menschlichen Kamera-/Mikrofonprofile.
+
+Die vollständige CI `34036505572` bestand alle sieben Jobs. Packager-Identität
+blieb beim Rollout unverändert; das öffentliche Release-Manifest und der
+Linux-amd64-Download waren bytegleich mit den unabhängig attestierten CI-Dateien.
+Der Nachweis ersetzt weder Fremdquellen-Consent, echtes Writer-Handoff noch
+physische A/V-, Accessibility- oder mehrstündige Broadcast-Gates.
 
 ### Bisher abgeschlossene Langzeit- und Plattformläufe
 
