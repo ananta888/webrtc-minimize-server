@@ -116,3 +116,73 @@ describe("BrowserTrustedVideoCompositorFactory", () => {
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledOnce();
   });
 });
+
+describe("trusted compositor failure boundaries", () => {
+  function setup() {
+    vi.useFakeTimers();
+    const track = () => {
+      const value = Object.assign(new EventTarget(), { kind: "video", readyState: "live", stop: vi.fn(), contentHint: "" });
+      value.stop.mockImplementation(() => { value.readyState = "ended"; }); return value;
+    };
+    const input = track(), output = track(), context = { fillStyle: "", font: "", textAlign: "", textBaseline: "",
+      fillRect: vi.fn(), fillText: vi.fn(), drawImage: vi.fn(), save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(), rect: vi.fn(), clip: vi.fn() };
+    const stream = (tracks: ReturnType<typeof track>[]) => ({ getVideoTracks: () => tracks, getTracks: () => tracks }) as unknown as MediaStream;
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context as unknown as CanvasRenderingContext2D);
+    const capture = vi.fn(() => stream([output]));
+    Object.defineProperty(HTMLCanvasElement.prototype, "captureStream", { configurable: true, value: capture });
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    const controller = new AbortController();
+    const create = () => new BrowserTrustedVideoCompositorFactory().create({ tenantId: "tn_aaaaaaaaaaaaaaaa", roomId: "room-alpha",
+      programId: "prg_aaaaaaaaaaaaaaaa", programRevision: 1, programEpoch: 1 }, [{ ...camera, stream: stream([input]) }],
+      TRUSTED_VIDEO_PROFILES.balanced, "single", new TrustedVideoProgramSettingsService().overlay(), controller.signal);
+    return { input, output, context, capture, play, pause, controller, create, stream, track };
+  }
+  it("bounds stalled playback and never starts output after timeout", async () => {
+    const f = setup(); f.play.mockImplementation(() => new Promise(() => {}));
+    const pending = expect(f.create()).rejects.toThrow("trusted_video_play_timeout");
+    await vi.advanceTimersByTimeAsync(5001); await pending;
+    expect(f.capture).not.toHaveBeenCalled(); expect(f.pause).toHaveBeenCalledOnce();
+    expect(f.input.stop).not.toHaveBeenCalled(); expect(vi.getTimerCount()).toBe(0);
+  });
+  it("aborts pending playback immediately and removes its timer and owned video", async () => {
+    const f = setup(); f.play.mockImplementation(() => new Promise(() => {}));
+    const pending = expect(f.create()).rejects.toThrow(); f.controller.abort(); await pending;
+    expect(f.capture).not.toHaveBeenCalled(); expect(f.pause).toHaveBeenCalledOnce(); expect(vi.getTimerCount()).toBe(0);
+  });
+  it("stops every unexpected output track if canvas capture returns an invalid track set", async () => {
+    const f = setup(), extra = f.track(); f.capture.mockReturnValue(f.stream([f.output, extra]));
+    await expect(f.create()).rejects.toThrow("trusted_video_output_unavailable");
+    expect(f.output.stop).toHaveBeenCalledOnce(); expect(extra.stop).toHaveBeenCalledOnce(); expect(f.input.stop).not.toHaveBeenCalled();
+  });
+  it("releases canvas output on initial or subsequent renderer failure", async () => {
+    const f = setup(); f.context.fillRect.mockImplementationOnce(() => { throw new Error("initial render failed"); });
+    await expect(f.create()).rejects.toThrow("initial render failed"); expect(f.output.stop).toHaveBeenCalledOnce();
+    const second = setup(), handle = await second.create();
+    second.context.fillRect.mockImplementationOnce(() => { throw new Error("runtime render failed"); });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(handle.snapshot()).toMatchObject({ degradedReason: "render-error", effectiveFramesPerSecond: 0, sourceCount: 0 });
+    expect(second.output.stop).toHaveBeenCalledOnce(); expect(vi.getTimerCount()).toBe(0);
+    expect(() => handle.setLayout("single")).toThrow("trusted_video_compositor_closed");
+    expect(() => handle.setOverlay(new TrustedVideoProgramSettingsService().overlay())).toThrow("trusted_video_compositor_closed");
+    expect(second.input.stop).not.toHaveBeenCalled(); await handle.close(); expect(second.output.stop).toHaveBeenCalledOnce();
+  });
+  it("detects a locally stopped input even when no ended event is dispatched", async () => {
+    const f = setup(), handle = await f.create(); f.input.stop();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(handle.snapshot()).toMatchObject({ sourceCount: 0, degradedReason: "source-ended" });
+    expect(f.context.fillText).toHaveBeenCalledWith("Sendung beginnt gleich", 640, 360, 1200);
+    f.controller.abort(); expect(f.output.stop).toHaveBeenCalledOnce(); expect(vi.getTimerCount()).toBe(0);
+  });
+  it("rejects unknown overlay authority fields", () => {
+    expect(() => normalizeTrustedVideoOverlay({ ...new TrustedVideoProgramSettingsService().overlay(), remoteConsent: true } as never))
+      .toThrow("invalid_trusted_video_overlay");
+  });
+  it("rejects an empty playback rejection and an already ended canvas output", async () => {
+    const f = setup(); f.play.mockRejectedValueOnce(undefined);
+    await expect(f.create()).rejects.toThrow("trusted_video_play_failed"); expect(f.capture).not.toHaveBeenCalled();
+    f.output.readyState = "ended";
+    await expect(f.create()).rejects.toThrow("trusted_video_output_unavailable");
+    expect(f.input.stop).not.toHaveBeenCalled(); expect(vi.getTimerCount()).toBe(0);
+  });
+});

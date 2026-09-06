@@ -495,10 +495,10 @@
     {
       "id": "TBP-015",
       "title": "Trusted-Video-Compositor für Kamera, Bildschirm, Layout und Slate entwickeln",
-      "status": "partial",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 70,
+      "progress_percent": 75,
       "depends_on": ["TBP-010", "TBP-013", "TBP-014"],
       "acceptance_criteria": [
         "Der Compositor nimmt nur consentierte Quellen auf und unterstützt mindestens Single Source, Screen plus Presenter, Side-by-Side, Active Speaker, Grid, Waiting Slate und End Slate.",
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 0, "in_progress": 3, "partial": 16, "blocked": 0, "done": 21 },
+    "by_status": { "todo": 0, "in_progress": 4, "partial": 15, "blocked": 0, "done": 21 },
     "progress_percent_done": 52.5,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -964,12 +964,15 @@
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 3,
-    "partial": 16,
+    "in_progress": 4,
+    "partial": 15,
     "blocked": 0,
     "done": 21
   },
   "summary_notes": [
+    "TBP-015 steht nun auf in_progress/75. Der abschliessende lokale Gesamtcheck bestand mit 351 Angular- und 349 Node-/Browser-/Integrationstests ohne Node-Skip sowie Go-Test/Vet und allen statischen Gates; externe nicht aktivierte Infrastruktur bleibt sichtbar SKIP. Ein SFrame-Interop-Timeout im vorherigen Gesamtcheck liess sich im gezielten Wiederholungslauf nicht reproduzieren; auch der erneute Gesamtcheck bestand diesen bestehenden Gate. Dreizehn Compositor-Unit-Tests decken nun zusaetzlich leere Playback-Rejection und bereits beendeten Canvas-Ausgang ab. Die laufenden Stundenlaeufe sind an ihr Bundle 7de0589a6125f2e04d830a99265e094a8f4f82c9997273da5bacc51137e1ebf6 vor diesen letzten beiden Negativguards gebunden; sie sind weder beendet noch als finaler Vollumfangs-/A/V-Nachweis gewertet. CI, Langzeitabschluss und Deployment bleiben getrennt nachzuweisen.",
+    "TBP-015: Zwoelf fokussierte Compositor-Tests sowie echte Chromium-/Firefox-Pixelgates bestehen fuer alle sieben Layouts, Portrait-Cropping, 4:3-Screen-Letterboxing, Overlay-Consent, quelleneigenes track.stop ohne ended-Event und Ausgangs-Cleanup. Start ist auf fuenf Sekunden begrenzt und abbrechbar; Setup-/Renderfehler stoppen alle erzeugten Ausgangstracks, nicht die Capture-Eingaenge. Der opt-in Video-Soak prueft echte Output-Frame-Callbacks, monotone Media-Zeit und wechselnde bekannte Quellpixel statt nur Renderzaehler. Zehnsekundige Probeläufe beider Browser bestanden; zwei getrennte 3600-Sekunden-Laeufe wurden gestartet und sind bis zum tatsaechlichen Abschluss NICHT als bestanden verbucht. Die Evidenz bindet Browser-Version und Bundle-SHA; fehlendes Firefox-Heap-Meter bleibt unavailable, physische A/V-/CPU-/Worker-Gates bleiben unverified. Gesamtcheck folgt vor Commit.",
+    "TBP-015 wird unabhaengig vom parallelen Maschinen-Track auf dem Mini-PC weiterbearbeitet. Naechster pruefbarer Abschnitt: begrenzter und abbrechbarer HTMLVideo-Start, vollstaendiges Cleanup bei Setup-/Renderfehler und Abbruch, keine weiterlaufenden Canvas-Tracks nach Fehler, sowie reale Chromium-/Firefox-Pixelgates fuer alle sieben Layouts, Fit/Crop, Overlay-Consent und Quellenende. Ein eigener Langzeitgate soll echte Canvas-Ausgabe und Fortschritt beobachten, ohne synthetische Quellen als physische Kamera-/Lippensynchronitaetsevidenz auszugeben. Automatische quellengebundene Sprecherwahl, Worker-Strategie und physische A/V-Langzeitnachweise bleiben bis eigener Verifikation offen. Die Linux-Migration 75fc40e ist vollstaendig CI-gruen inklusive Keycloak/TURN und Docker-/Attestationsabgleich; Deployment pausiert wegen fremder uncommitteter Mini-PC-Aenderungen.",
     "Linux-Legacy-Migration: Der abschliessende lokale npm-run-check-Gate am 2026-09-06 bestand mit 344 Angular- und 347 Node-/Browser-/Integrationstests ohne Node-Skip, einschliesslich echtem PowerShell-Parser, Go-Test/Vet und allen statischen Gates. Der echte systemd-Migrationsgate bestand nochmals auf dem finalen Kandidaten; seine synthetischen Dienste und Dateien wurden kontrolliert entfernt, produktive Identitaeten blieben unveraendert. Sechzehn Shell-Tests decken Erfolg, falschen Hash, Preflight-/Start-/Stoppfehler, echte SIGKILLs, Teil-Cleanup/Purge, fremde Dateien, echte flock-Konkurrenz, nachtraegliche Symlinks und veraenderten Commit-Kandidaten ab. Chromium/Firefox pruefen echten Download, Architekturwechsel ohne veralteten Ausfuehrungsbefehl und kein Capture/Enrollment. Der HTTP-Gate bestaetigt Konto-/Widerrufs-/Assignment-/Release-/Origin-Grenzen; eine anschliessende strikte Typpruefung gegen Array-Target-Coercion wurde separat nochmals erfolgreich getestet. Nicht aktivierte externe Infrastruktur bleibt sichtbar SKIP. Commit, CI und Deployment folgen; TBP-016 bleibt wegen der dokumentierten weiteren Plattform-/Keystore-/Hardwarearbeiten in_progress/99.",
     "TBP-016 bleibt in_progress/99. Der erste Linux-Legacy-Migrationsabschnitt besitzt nun einen geschlossenen konto-/ID-/Release-/Hash-gebundenen Download ohne Enrollment, mit Sperre bei aktuellem Assignment, und einen expliziten lokalen migrate/recover/purge-Lifecycle. Der echte lokale systemd-Gate bestand mit zwei zufaelligen IDs, synthetischen Identitaeten und unveraendertem zweiten Prozess sowie realem Startfehler-Rollback und Backup-Purge; Download und Binary waren bewusst synthetisch. Wiederherstellung folgt keinem nachtraeglich eingeschleusten Identitaets-/Binary-/Launcher-Symlink. Frontend und Browser testen expliziten Download ohne Capture oder Enrollment. Wartungslease zwischen Download und Ausfuehrung, Stromausfallfestigkeit, Windows-/macOS-Bestandsmigration und bereits isolierte Installationen ohne Updater bleiben offen. SOLID-Schuld (SRP): Die Linux-Migration extrahiert vier exakt begrenzte Runtime-Here-Docs aus dem bestehenden Installer-Renderer, um keinen zweiten Runtime-Generator einzufuehren. Spaeterer Extraktionspfad ist ein strukturierter Runtime-Dateisatz, den Installer und Migrator gemeinsam rendern; unbekannte Abschnittsformen scheitern bereits jetzt geschlossen. Gesamtcheck und neue CI-/Deployment-Evidenz folgen vor Abschluss dieses Abschnitts.",
     "TBP-016 bleibt in_progress/99. Bestandsmigration wird nun mit dem belegten Linux-Legacy-Layout aus d8ebb4c^ begonnen: gemeinsames Binary/Basisverzeichnis, ID-spezifische Identitaet und Launcher sowie systemd-Unit mit unisoliertem Schreibpfad. Akzeptanz dieses ersten Plattformabschnitts: explizites lokales migrate/recover, unveraenderte bestehende Identitaet ohne Enrollment, neuer ID-lokaler Runtime-Satz aus denselben Vorlagen wie Neuinstallation, SHA-gebundener Kandidat, private Sperren/Journal/Backups, Wiederherstellung bei Start-/Stoppfehler und Prozessabbruch, nur eigener Dienst wird umgeschaltet, zweiter Agent bleibt aktiv und unveraendert. Eigener alter Launcher/Uninstaller werden nach Erfolg zu nichtdestruktiven Hinweisen; andere noch nicht migrierte Legacy-Uninstaller bleiben ausdruecklich gefaehrlich und duerfen nicht ausgefuehrt werden. Angepasste/symlinkbasierte/mehrdeutige Bestandskonfigurationen scheitern vor Umschaltung. Windows/macOS-Migration und Migration bereits isolierter Installationen ohne Updater folgen getrennt; ein lokaler Dienststatus ist kein Konto-/Medienbeweis.",
