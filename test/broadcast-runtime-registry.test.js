@@ -493,3 +493,42 @@ test("a live native output ACK without a writer cannot claim success", () => {
   ), /stale_broadcast_packager_output/);
   assert.deepEqual(runtime.listMine(owner), before);
 });
+
+test("same-program native output restart invalidates a real signed playback grant before successor activation", async () => {
+  const owner = identity("owner", "Ada");
+  const grants = authority();
+  let issued;
+  const issue = grants.issue.bind(grants);
+  grants.issue = async (...args) => { issued = await issue(...args); return issued; };
+  const runtime = new BroadcastRuntimeRegistry({ grantAuthority: grants, clock: () => NOW });
+  const device = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const member = { principal: `${owner.issuer}|${owner.subject}`, roomId: "room-alpha", creator: true,
+    id: "0123456789abcdef", deviceFingerprint: deviceFingerprint(device.publicKey.export({ format: "jwk" })) };
+  const created = runtime.createProgram(owner, member, { requestVersion: 1, roomId: member.roomId,
+    title: "Unchanged", visibility: "private" }, NOW);
+  const programId = created.control.programId, packagerId = "pkr_aaaaaaaaaaaaaaaa";
+  const prepared = runtime.prepareNativePublisher(owner, member, programId, { requestVersion: 1,
+    trigger: "user-action", packagerId, sourceIds: ["src_aaaaaaaaaaaaaaaa"], requestedRenditions: 2,
+    allowHardwareAcceleration: false }, request => request, NOW);
+  runtime.markNativeOutputReady(prepared.admission.resourceRef, packagerId, prepared.lease.fencingRevision, NOW);
+  const challenge = await runtime.createPlaybackChallenge(owner, programId, NOW);
+  const bootstrap = await runtime.authorizePlayback(owner, { requestVersion: 1, challengeId: challenge.challengeId,
+    deviceProof: proof(device, challenge.proofContext) }, NOW);
+  const grant = issued.grant;
+  const expectation = { audience: grant.tokenAudience, action: "playback:manifest", tenantId: grant.tenantId,
+    subjectRef: broadcastSubjectRef(owner), audienceRef: grant.audienceRef, deviceRef: grant.deviceRef,
+    roomId: grant.roomId, programId, programRevision: challenge.proofContext.programRevision,
+    programEpoch: grant.programEpoch, resourceRef: grant.resourceRef, policyId: grant.policyId,
+    policyRevision: grant.policyRevision, path: `/broadcast/play/${grant.resourceRef}/index.m3u8` };
+  await grants.authorizeBearer(`Bearer ${bootstrap.playbackGrant}`, expectation, NOW);
+  const control = runtime.nativeControl(owner, member, programId);
+  const pending = runtime.beginNativeHandoff(owner, member, programId, { requestVersion: 1, trigger: "user-action",
+    packagerId: "pkr_bbbbbbbbbbbbbbbb", expectedProgramRevision: control.programRevision,
+    expectedProgramEpoch: control.programEpoch, expectedFencingRevision: control.writer.fencingRevision,
+    requestedRenditions: 2, allowHardwareAcceleration: false }, request => request, NOW + 1);
+  await assert.rejects(grants.authorizeBearer(`Bearer ${bootstrap.playbackGrant}`, expectation, NOW + 2), /revoked_broadcast_program_epoch/);
+  assert.equal(runtime.programCount, 1);
+  assert.equal(runtime.listMine(owner).owned[0].visibility, "private");
+  assert.equal(runtime.listMine(owner).owned[0].availability, "offline");
+  runtime.cancelNativeHandoff(owner, pending, NOW + 2);
+});

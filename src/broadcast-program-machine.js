@@ -255,6 +255,20 @@ function applySourceChange(state, command, now) {
   };
 }
 
+function applyOutputRestart(state, command, now) {
+  if (!new Set(["live", "degraded"]).has(state.program.state)) fail("invalid_broadcast_output_restart_state");
+  if (command.expectedLeaseEpoch !== state.epochs.lease) fail("stale_broadcast_lease_epoch");
+  const next = rollProgramEpoch(state, { state: "preparing" }, now);
+  return {
+    state: next,
+    effects: [
+      effect(next, "fence-previous-writers", { previousLeaseEpoch: state.epochs.lease }),
+      effect(next, "revoke-program-grants", { previousProgramEpoch: state.epochs.broadcast, reasonCode: command.reasonCode }),
+      effect(next, "prepare-output-generation"),
+    ],
+  };
+}
+
 function applyHandoff(state, command, now) {
   if (new Set(["stopping", "stopped", "failed"]).has(state.program.state)) {
     fail("invalid_broadcast_handoff_state");
@@ -485,6 +499,9 @@ export function applyBroadcastProgramCommand(value, input, now = Date.now()) {
       break;
     case "source-change":
       result = applySourceChange(state, command, now);
+      break;
+    case "output-restart":
+      result = applyOutputRestart(state, command, now);
       break;
     case "handoff":
       result = applyHandoff(state, command, now);

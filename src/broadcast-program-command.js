@@ -23,6 +23,7 @@ const COMMAND_FIELDS = Object.freeze({
   start: ["expectedRevision", "expectedBroadcastEpoch", "requiresConsent"],
   advance: ["expectedRevision", "expectedBroadcastEpoch", "toState"],
   "source-change": ["expectedRevision", "expectedBroadcastEpoch", "sourceIds"],
+  "output-restart": ["expectedRevision", "expectedBroadcastEpoch", "expectedLeaseEpoch", "reasonCode"],
   handoff: ["expectedRevision", "expectedBroadcastEpoch", "expectedLeaseEpoch", "lease"],
   revoke: ["expectedRevision", "expectedBroadcastEpoch", "target", "targetRef", "reasonCode"],
   stop: ["expectedRevision", "expectedBroadcastEpoch", "reasonCode"],
@@ -148,6 +149,10 @@ export function normalizeBroadcastProgramCommand(value) {
     case "handoff":
       positiveInteger(command.expectedLeaseEpoch);
       assertPlainObject(command.lease);
+      break;
+    case "output-restart":
+      positiveInteger(command.expectedLeaseEpoch);
+      if (command.reasonCode !== "PACKAGER_HANDOFF") broadcastProgramFail("invalid_broadcast_command");
       break;
     case "revoke":
       if (!new Set(["consent", "source"]).has(command.target)) {

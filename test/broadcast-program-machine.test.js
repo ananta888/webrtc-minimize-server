@@ -76,6 +76,26 @@ function createDraft() {
   return apply(empty, "create", { visibility: "private", title: "Pilot" }).state;
 }
 
+test("output restart keeps program identity, sources and audience but fences its entire media generation", () => {
+  const live = createLive();
+  const state = validateBroadcastProgramMachine({ ...live, program: { ...live.program,
+    sourceIds: ["src_aaaaaaaaaaaaaaaa"] } });
+  const input = command(state, "output-restart", { expectedLeaseEpoch: state.epochs.lease, reasonCode: "PACKAGER_HANDOFF" });
+  const result = applyBroadcastProgramCommand(state, input, NOW + 10);
+  assert.equal(result.state.program.state, "preparing");
+  for (const field of ["programId", "title", "visibility", "ownerSubjectRef", "viewerPolicyId", "sourceIds"]) {
+    assert.deepEqual(result.state.program[field], state.program[field]);
+  }
+  assert.equal(result.state.epochs.broadcast, state.epochs.broadcast + 1);
+  assert.equal(result.state.epochs.lease, state.epochs.lease + 1);
+  assert.deepEqual(result.state.writerLeases, []);
+  for (const field of ["membership", "route", "topology"]) assert.equal(result.state.epochs[field], state.epochs[field]);
+  assert.equal(applyBroadcastProgramCommand(result.state, input, NOW + 11).duplicate, true);
+  assert.throws(() => apply(state, "output-restart", { expectedLeaseEpoch: state.epochs.lease - 1, reasonCode: "PACKAGER_HANDOFF" }), /stale_broadcast_lease_epoch/);
+  assert.throws(() => apply(createDraft(), "output-restart", { expectedLeaseEpoch: INITIAL_EPOCHS.lease, reasonCode: "PACKAGER_HANDOFF" }), /invalid_broadcast_output_restart_state/);
+  assert.throws(() => apply(state, "output-restart", { expectedLeaseEpoch: state.epochs.lease, reasonCode: "OTHER" }), /invalid_broadcast_command/);
+});
+
 function createPreparing() {
   return apply(createDraft(), "start", { requiresConsent: true }, NOW + 1).state;
 }

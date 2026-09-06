@@ -685,8 +685,10 @@ den Publisher weitergemeldet. Auch bei bereits laufendem Programm erfordert
 ein wiederholter ACK denselben Holder, dieselbe Fencing-Revision und eine noch
 nicht abgelaufene Lease. Gültige Wiederholungen sind idempotent; ein veralteter
 ACK erzeugt weder eine neue Programmrevision noch eine erfolgreiche
-Bereitschaftsmeldung im Browser. Dies ersetzt nicht die noch offene
-Same-Program-Übergabe zwischen zwei Packagern.
+Bereitschaftsmeldung im Browser. Die neue serverseitige Same-Program-
+Übergaberoute verwendet diese Grenze nach einem bestätigten Stop des alten
+Writers; Browser-/Player-Anbindung und ein echter Medienübergabe-Nachweis
+bleiben offen (siehe `docs/broadcast-moderation-workflows.md`).
 
 Der zusätzliche reale Gate benötigt FFmpeg 6+:
 

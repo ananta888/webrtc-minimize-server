@@ -5,7 +5,56 @@ Die Domainpolicy für serverseitige Moderation ist vorbereitet, aber noch nicht
 an eine öffentliche Moderations-API angeschlossen. Der native Packager besitzt
 inzwischen einen realen Enrollment-/Publish-/Playback-Pfad. Eine laufende
 Own-Source-Komposition lässt sich über einen getrennten lokalen Bildregie-Port
-steuern; Fremdquellenmoderation, Standby und echtes Writer-Handoff bleiben offen.
+steuern. Für eigenes natives Publishing ist die unten beschriebene serverseitige
+Same-Program-Übergabe angeschlossen. Angular-Übergabedialog, Player-Neustart,
+Fremdquellenmoderation und Standby bleiben offen.
+
+## Angeschlossene native Übergabe-API
+
+`POST /api/broadcasts/:programId/native-handoff-control` liefert dem aktuellen
+Owner-Gerät den geschlossenen Programm-/Writer-Snapshot. Der Body enthält nur
+`requestVersion: 1` und den Fingerprint des bereits P-256-geprüften Raumgeräts.
+`POST /api/broadcasts/:programId/native-handoffs` bindet die ausdrücklich
+angeforderte Übernahme an diesen Snapshot: `expectedProgramRevision`,
+`expectedProgramEpoch`, `expectedFencingRevision`, Ziel-`packagerId`,
+`requestedRenditions`, `allowHardwareAcceleration`, `deviceFingerprint`,
+`requestVersion: 1` und `trigger: "user-action"`. Der JSON-Schema-Vertrag liegt
+unter `contracts/native-packager/handoff.v1.schema.json`.
+
+Beide Routen benötigen OIDC, den exakten Origin und aktive Creator-Membership
+derselben Browser-Peer-/Gerätebindung wie die laufende native Publikation.
+Zielgerät, Kontobindung, Room-Consent, Health, Capability und freie Kapazität
+werden vor dem Eingriff und unmittelbar vor Nachfolgeraktivierung geprüft.
+
+Der `output-restart`-Befehl erhält Programm-ID, Titel, Quellen und Audience.
+Er erhöht ausdrücklich Broadcast-/Lease-Epoch, entzieht alle alten Writer und
+Grants und weist eine noch nie verwendete opaque Ausgabe-Ressource zu. Alte
+HLS-Init-/Segment-URLs werden nicht wiederverwendet. Dann sendet ausschließlich
+der Server `assignment-stop` und wartet maximal zwölf Sekunden auf den echten
+terminalen `stopped`-ACK. `failed`, Disconnect oder ein verschwundener Eintrag
+zählen nicht als bestätigter Stop. Erst danach entsteht ein neues Assignment.
+Ein internes, nicht serialisiertes Fortsetzungsobjekt verhindert doppelte oder
+gefälschte Abschlüsse. Abort, Deadline, Membership-/Consentverlust und
+Zustellfehler enden ohne verspäteten Nachfolgerstart; nach bereits begonnener
+Umstellung bleibt die Sendung sichtbar beendet statt unbemerkt zurückzufallen.
+Der Abschluss bindet außerdem die exakte vorbereitete Revision, Epoch und
+Ausgabe. Das Drain-Budget verwendet zusätzlich eine monotone Uhr. Vor dem
+Eingriff werden genügend Plätze im begrenzten Command-Ledger für Nachfolger,
+Readiness und terminalen Cleanup reserviert; bei Erschöpfung wird eine weitere
+Übergabe abgewiesen, während der laufende Writer noch regulär stoppbar bleibt.
+Die Ownership-Prüfung erfolgt vor jedem Blick auf fremden Assignment-State,
+sodass private Programme nicht über unterschiedliche Übergabefehler aufgezählt
+werden können.
+
+Lokale HTTP-/WebSocket-Tests mit zwei getrennten P-256-Packagern belegen diese
+Reihenfolge und einen abgebrochenen HTTP-Aufruf mit verspätetem Stop-ACK.
+Ein separater Test prüft den Widerruf eines tatsächlich signierten Playback-
+Grants vor Nachfolgeraktivierung. Das ist noch **kein** Nachweis dekodierbarer
+Medien über die Übergabe: Der neue Origin-Pfad, Browser-Publikationswechsel,
+bewusste UI-Bestätigung und kontrollierte Player-Reautorisierung/-Neustart
+müssen noch zusammen angeschlossen und real geprüft werden. Insbesondere
+ist ein Agent auf einem beliebigen anderen Host nicht allein durch seine
+Registrierung an den aktuell konfigurierten HLS-Origin angebunden.
 
 ## Bereits angeschlossene lokale Bildregie
 

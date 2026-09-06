@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ananta.de/contracts/native-packager/handoff.v1.schema.json",
+  "title": "Owner-device-bound native packager handoff HTTP contracts",
+  "oneOf": [
+    { "$ref": "#/$defs/controlRequest" },
+    { "$ref": "#/$defs/handoffRequest" },
+    { "$ref": "#/$defs/controlResponse" }
+  ],
+  "$defs": {
+    "positive": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "packager": { "type": "string", "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$" },
+    "fingerprint": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+    "controlRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["requestVersion", "deviceFingerprint"],
+      "properties": {
+        "requestVersion": { "const": 1 },
+        "deviceFingerprint": { "$ref": "#/$defs/fingerprint" }
+      }
+    },
+    "handoffRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["requestVersion", "trigger", "deviceFingerprint", "packagerId", "expectedProgramRevision", "expectedProgramEpoch", "expectedFencingRevision", "requestedRenditions", "allowHardwareAcceleration"],
+      "properties": {
+        "requestVersion": { "const": 1 }, "trigger": { "const": "user-action" },
+        "deviceFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "packagerId": { "$ref": "#/$defs/packager" },
+        "expectedProgramRevision": { "$ref": "#/$defs/positive" },
+        "expectedProgramEpoch": { "$ref": "#/$defs/positive" },
+        "expectedFencingRevision": { "$ref": "#/$defs/positive" },
+        "requestedRenditions": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "allowHardwareAcceleration": { "type": "boolean" }
+      }
+    },
+    "controlResponse": {
+      "type": "object", "additionalProperties": false,
+      "required": ["controlVersion", "programId", "programRevision", "programEpoch", "state", "handoffPending", "writer"],
+      "properties": {
+        "controlVersion": { "const": 1 },
+        "programId": { "type": "string", "pattern": "^prg_[A-Za-z0-9_-]{16,64}$" },
+        "programRevision": { "$ref": "#/$defs/positive" },
+        "programEpoch": { "$ref": "#/$defs/positive" },
+        "state": { "enum": ["draft", "preparing", "awaiting_consent", "publishing", "live", "degraded", "stopping", "stopped", "failed"] },
+        "handoffPending": { "type": "boolean" },
+        "writer": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object", "additionalProperties": false,
+              "required": ["packagerId", "fencingRevision"],
+              "properties": {
+                "packagerId": { "$ref": "#/$defs/packager" },
+                "fencingRevision": { "$ref": "#/$defs/positive" }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

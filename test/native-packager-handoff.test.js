@@ -1,0 +1,194 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
+import { BroadcastRuntimeRegistry } from "../src/broadcast-runtime-registry.js";
+import { NativePackagerAssignmentRegistry } from "../src/native-packager-assignment.js";
+import { handoffNativePackager } from "../src/native-packager-handoff.js";
+import { broadcastSubjectRef, broadcastTenantRef } from "../src/broadcast-identifiers.js";
+
+const FIRST = "pkr_aaaaaaaaaaaaaaaa", SECOND = "pkr_bbbbbbbbbbbbbbbb";
+const NOW = 1_800_000_000_000;
+
+function fixture() {
+  let now = NOW;
+  let resourceSequence = 0, forcedResource = null;
+  const identity = { issuer: "https://identity.example/realms/ananta", subject: "owner", displayName: "Owner" };
+  const ownerPrincipal = `${identity.issuer}|${identity.subject}`;
+  let member = { principal: ownerPrincipal, roomId: "room-alpha", creator: true,
+    deviceFingerprint: "a".repeat(43), id: "0123456789abcdef" };
+  const revoked = [], sent = [], unavailableDelivery = new Set();
+  const runtime = new BroadcastRuntimeRegistry({ clock: () => now,
+    resourceIdFactory: () => forcedResource || `res_${String(++resourceSequence).padStart(16, "0")}`, grantAuthority: {
+    issue() {}, issueAnonymousPlayback() {}, revokeProgramEpoch(...args) { revoked.push(args); },
+  } });
+  const capabilities = new Map([FIRST, SECOND].map(agentId => [agentId, {
+    capabilityVersion: 1, agentId, tenantId: broadcastTenantRef(identity.issuer), ownerSubjectRef: broadcastSubjectRef(identity),
+    deviceRef: `dev_${agentId.slice(4)}`, agentVersion: "0.7.0", ffmpegVersion: "6.1.1",
+    videoEncoders: ["libx264"], audioEncoders: ["aac"], hardwareClass: "medium", cpuClass: "medium",
+    gpuClass: "none", uploadClass: "5-15mbit", energyClass: "ac", health: "healthy", maximumRenditions: 2,
+    maximumPixelsPerSecond: 1280 * 720 * 30, consentedRoomIds: [member.roomId], observedAt: NOW, expiresAt: NOW + 30_000,
+  }]));
+  const assignments = new NativePackagerAssignmentRegistry({ controlRegistry: {
+    candidate(owner, id) {
+      assert.equal(owner, ownerPrincipal);
+      return { online: capabilities.has(id), capability: capabilities.get(id) };
+    },
+  }, iceServersForPackager: () => [{ urls: ["stun:stun.example:3478"] }] });
+  const created = runtime.createProgram(identity, member, { requestVersion: 1, roomId: member.roomId,
+    title: "Stable program", visibility: "private" }, now);
+  const programId = created.control.programId;
+  const sourceIds = ["src_aaaaaaaaaaaaaaaa"];
+  const prepared = runtime.prepareNativePublisher(identity, member, programId, { requestVersion: 1,
+    trigger: "user-action", packagerId: FIRST, sourceIds, requestedRenditions: 2, allowHardwareAcceleration: false,
+  }, request => assignments.admit(ownerPrincipal, FIRST, request, now), now);
+  const first = assignments.prepare(ownerPrincipal, FIRST, prepared.admission, prepared.lease, member.id, now);
+  function status(assignment, state, reasonCode) {
+    assignments.acknowledge(assignment.packagerId, { version: 1, type: "assignment-status",
+      assignmentId: assignment.assignmentId, programEpoch: assignment.programEpoch,
+      fencingRevision: assignment.fencingRevision, state, reasonCode, observedAt: now }, now);
+  }
+  for (const [state, reason] of [["ready", "CAPABILITY_READY"], ["starting", "INGRESS_STARTING"], ["running", "OUTPUT_READY"]]) {
+    status(first.snapshot, state, reason);
+  }
+  runtime.markNativeOutputReady(prepared.admission.resourceRef, FIRST, prepared.lease.fencingRevision, now);
+  const control = runtime.nativeControl(identity, member, programId);
+  const input = { requestVersion: 1, trigger: "user-action", packagerId: SECOND,
+    expectedProgramRevision: control.programRevision, expectedProgramEpoch: control.programEpoch,
+    expectedFencingRevision: control.writer.fencingRevision, requestedRenditions: 2, allowHardwareAcceleration: false };
+  const abort = new AbortController();
+  const args = { runtime, assignments, identity, ownerPrincipal, programId, input, getMember: () => member,
+    signal: abort.signal, clock: () => now, send(id, message) { sent.push({ id, message }); return !unavailableDelivery.has(id); } };
+  return { runtime, assignments, identity, ownerPrincipal, programId, first, prepared, input, args, abort,
+    sent, revoked, capabilities, status, unavailableDelivery, setMember: value => { member = value; }, member,
+    setNow: value => { now = value; }, setResource: value => { forcedResource = value; } };
+}
+
+test("real assignment stop ACK fences one same-program successor with a fresh output generation", async () => {
+  const f = fixture();
+  const before = f.runtime.listMine(f.identity).owned[0];
+  const task = handoffNativePackager(f.args);
+  assert.equal(f.sent.length, 1);
+  assert.equal(f.sent[0].message.type, "assignment-stop");
+  assert.equal(f.assignments.activeForProgram(f.programId).state, "draining");
+  assert.equal(f.assignments.activeForPackager(SECOND), null);
+  assert.equal(f.runtime.nativeControl(f.identity, f.member, f.programId).handoffPending, true);
+  assert.ok(f.revoked.some(([, program, epoch]) => program === f.programId && epoch === before.programEpoch));
+  assert.throws(() => f.runtime.markNativeOutputReady(f.prepared.admission.resourceRef, FIRST,
+    f.first.snapshot.fencingRevision, NOW), /broadcast_not_available/);
+  await assert.rejects(handoffNativePackager(f.args), /stale_broadcast_handoff_writer/);
+  await delay(35);
+  assert.equal(f.sent.length, 1, "successor must not start before the old writer confirms stop");
+  f.status(f.first.snapshot, "stopped", "ASSIGNMENT_STOPPED");
+  const next = await task;
+  assert.equal(next.program.programId, f.programId);
+  assert.equal(next.program.programEpoch, before.programEpoch + 1);
+  assert.ok(next.assignment.fencingRevision > f.first.snapshot.fencingRevision);
+  const command = f.sent[1].message;
+  assert.equal(command.type, "assignment-prepare");
+  assert.notEqual(command.resourceRef, f.prepared.admission.resourceRef);
+  assert.equal(f.assignments.activeForPackager(FIRST), null);
+  assert.equal(f.runtime.nativeControl(f.identity, f.member, f.programId).handoffPending, false);
+  for (const [state, reason] of [["ready", "CAPABILITY_READY"], ["starting", "INGRESS_STARTING"], ["running", "OUTPUT_READY"]]) {
+    f.status(next.assignment, state, reason);
+  }
+  const live = f.runtime.markNativeOutputReady(command.resourceRef, SECOND, next.assignment.fencingRevision, NOW);
+  assert.equal(live.availability, "live");
+  assert.equal(live.title, before.title);
+  assert.equal(live.visibility, before.visibility);
+  assert.equal(f.runtime.programCount, 1);
+  assert.throws(() => f.assignments.authorizePackagerSignal(FIRST, {
+    assignmentId: f.first.snapshot.assignmentId, programEpoch: f.first.snapshot.programEpoch,
+    fencingRevision: f.first.snapshot.fencingRevision,
+  }, NOW), /stale_native_packager_signal/);
+});
+
+for (const reason of ["abort", "deadline", "disconnect", "membership", "consent", "delivery", "prepare-failure"]) {
+  test(`handoff ${reason} cannot start a late successor`, async () => {
+    const f = fixture();
+    const task = handoffNativePackager(f.args);
+    const rejected = assert.rejects(task);
+    if (reason === "abort") f.abort.abort();
+    if (reason === "deadline") f.setNow(NOW + 12_000);
+    if (reason === "disconnect") f.assignments.failPackager(FIRST, "CONTROL_DISCONNECTED", NOW);
+    if (reason === "membership") f.setMember({ ...f.member, id: "fedcba9876543210" });
+    if (reason === "consent") f.capabilities.get(SECOND).consentedRoomIds = [];
+    if (reason === "delivery") f.unavailableDelivery.add(SECOND);
+    if (!["abort", "deadline", "disconnect"].includes(reason)) f.status(f.first.snapshot, "stopped", "ASSIGNMENT_STOPPED");
+    if (reason === "prepare-failure") f.assignments.prepare = () => { throw new Error("prepare_failed"); };
+    await rejected;
+    assert.equal(f.assignments.activeForPackager(SECOND), null);
+    assert.equal(f.runtime.listMine(f.identity).owned[0].availability, "ended");
+    assert.equal(f.runtime.nativeControl(f.identity, f.member, f.programId).handoffPending, false);
+  });
+}
+
+test("invalid owner/device, stale commands and target admission failures preserve the current live writer", async () => {
+  for (const variant of ["owner", "device", "revision", "epoch", "fence", "unknown", "offline", "busy", "resource-reuse"]) {
+    const f = fixture();
+    const before = f.runtime.listMine(f.identity);
+    const args = { ...f.args, input: { ...f.input } };
+    if (variant === "owner") args.identity = { ...f.identity, subject: "foreign" };
+    if (variant === "device") args.getMember = () => ({ ...f.member, deviceFingerprint: "b".repeat(43) });
+    if (variant === "revision") args.input.expectedProgramRevision++;
+    if (variant === "epoch") args.input.expectedProgramEpoch++;
+    if (variant === "fence") args.input.expectedFencingRevision++;
+    if (variant === "unknown") args.input.extra = true;
+    if (variant === "offline") f.capabilities.delete(SECOND);
+    if (variant === "busy") f.assignments.activeForPackager = () => ({});
+    if (variant === "resource-reuse") f.setResource(f.prepared.admission.resourceRef);
+    await assert.rejects(handoffNativePackager(args), undefined, variant);
+    assert.deepEqual(f.runtime.listMine(f.identity), before, variant);
+    assert.equal(f.sent.length, 0, variant);
+  }
+});
+
+test("foreign handoff requests cannot enumerate assignment presence or writer state", async () => {
+  const f = fixture();
+  let assignmentReads = 0;
+  f.assignments.activeForProgram = () => { assignmentReads++; return null; };
+  for (const programId of [f.programId, "prg_zzzzzzzzzzzzzzzz"]) {
+    await assert.rejects(handoffNativePackager({ ...f.args, programId,
+      identity: { ...f.identity, subject: "foreign" } }), error => error.code === "broadcast_not_available" && error.status === 404);
+  }
+  assert.equal(assignmentReads, 0);
+});
+
+test("handoff continuation is internal, non-replayable and invalid after cancellation", () => {
+  const f = fixture();
+  const admit = request => f.assignments.admit(f.ownerPrincipal, SECOND, request, NOW);
+  const pending = f.runtime.beginNativeHandoff(f.identity, f.member, f.programId, f.input, admit, NOW);
+  assert.throws(() => f.runtime.completeNativeHandoff(f.identity, f.member, { ...pending }, admit, NOW), /stale_broadcast_handoff/);
+  f.runtime.cancelNativeHandoff(f.identity, { ...pending }, NOW);
+  assert.equal(f.runtime.nativeControl(f.identity, f.member, f.programId).handoffPending, true);
+  f.runtime.cancelNativeHandoff(f.identity, pending, NOW);
+  assert.throws(() => f.runtime.completeNativeHandoff(f.identity, f.member, pending, admit, NOW), /stale_broadcast_handoff/);
+});
+
+test("repeated handoffs reserve terminal cleanup instead of exhausting the command ledger mid-transfer", async () => {
+  const f = fixture();
+  let current = f.first.snapshot, rejected = false;
+  for (let index = 0; index < 64; index++) {
+    const control = f.runtime.nativeControl(f.identity, f.member, f.programId);
+    const input = { ...f.input, packagerId: current.packagerId === FIRST ? SECOND : FIRST,
+      expectedProgramRevision: control.programRevision, expectedProgramEpoch: control.programEpoch,
+      expectedFencingRevision: control.writer.fencingRevision };
+    const before = f.sent.length;
+    const task = handoffNativePackager({ ...f.args, input });
+    if (f.sent.length === before) {
+      await assert.rejects(task, /broadcast_handoff_capacity_exhausted/);
+      rejected = true;
+      break;
+    }
+    f.status(current, "stopped", "ASSIGNMENT_STOPPED");
+    const result = await task;
+    current = result.assignment;
+    for (const [state, reason] of [["ready", "CAPABILITY_READY"], ["starting", "INGRESS_STARTING"], ["running", "OUTPUT_READY"]]) {
+      f.status(current, state, reason);
+    }
+    f.runtime.markNativeOutputReady(f.sent.at(-1).message.resourceRef, current.packagerId, current.fencingRevision, NOW);
+  }
+  assert.equal(rejected, true);
+  assert.equal(f.assignments.activeForProgram(f.programId).state, "running");
+  assert.equal(f.runtime.listMine(f.identity).owned[0].availability, "live");
+  assert.equal(f.runtime.stopProgram(f.identity, f.programId, NOW).availability, "ended");
+});

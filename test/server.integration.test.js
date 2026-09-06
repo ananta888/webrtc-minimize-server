@@ -1799,9 +1799,12 @@ test("authorized sessions keep Edge-TURN credentials in the second ICE tier", as
   assert.equal(JSON.stringify(authorization.body).includes("0123456789abcdef0123456789abcdef"), false);
 });
 
-for (const rejectOutput of [false, true]) test(rejectOutput
+for (const variant of ["normal", "reject", "handoff", "handoff-http-abort"]) test(variant === "reject"
   ? "native output rejected by program authority is never advertised ready to the publisher"
+  : variant === "handoff-http-abort" ? "aborted HTTP handoff cannot start a successor after a late stop ACK"
+  : variant === "handoff" ? "two authenticated native packagers hand off one program only after the old stop ACK"
   : "native packager assignment is owner-, room-, device- and fence-bound end to end", async (context) => {
+  const rejectOutput = variant === "reject";
   const issuer = "https://identity.test/realms/ananta";
   const identity = { issuer, subject: "owner", displayName: "Owner" };
   const ownerPrincipal = `${issuer}|owner`;
@@ -1817,15 +1820,20 @@ for (const rejectOutput of [false, true]) test(rejectOutput
     publicKey,
     keyFingerprint: "A".repeat(43),
   };
-  const nativePackagers = new NativePackagerControlRegistry({ definitions: [definition] });
+  const secondId = "pkr_fedcba9876543210";
+  const secondKeys = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const secondDefinition = { ...definition, id: secondId, label: "Second packager",
+    publicKey: { ...secondKeys.publicKey.export({ format: "jwk" }), ext: true }, keyFingerprint: "C".repeat(43) };
+  const definitions = [definition, secondDefinition];
+  const nativePackagers = new NativePackagerControlRegistry({ definitions });
   const enrollmentStore = {
     list(principal) {
-      return principal === ownerPrincipal ? [{
+      return principal === ownerPrincipal ? definitions.map(definition => ({
         ...definition,
         createdAt: 1,
         lastAuthenticatedAt: 1,
         revokedAt: 0,
-      }] : [];
+      })) : [];
     },
   };
   const broadcastRuntime = new BroadcastRuntimeRegistry({
@@ -1837,6 +1845,7 @@ for (const rejectOutput of [false, true]) test(rejectOutput
   });
   const oidcVerifier = {
     async verify(token) {
+      if (token === "handoff-foreign-token") return { ...identity, subject: "handoff-foreign" };
       if (token !== "owner-token") throw new AuthenticationError("invalid_access_token");
       return identity;
     },
@@ -1853,6 +1862,7 @@ for (const rejectOutput of [false, true]) test(rejectOutput
   context.after(() => app.close());
 
   const agent = connect(`${app.wsUrl}/native-packager`);
+  context.after(() => agent.socket.terminate());
   const challenge = await agent.next((message) => message.type === "packager-challenge");
   const authenticationTimestamp = Date.now();
   const authenticationProof = crypto.sign(
@@ -2022,6 +2032,95 @@ for (const rejectOutput of [false, true]) test(rejectOutput
   }
   sendStatus("running", "OUTPUT_READY");
   await browser.next((message) => message.type === "native-packager-status" && message.reasonCode === "OUTPUT_READY");
+
+  if (variant.startsWith("handoff")) {
+    const nextAgent = connect(`${app.wsUrl}/native-packager`);
+    context.after(() => nextAgent.socket.terminate());
+    const nextChallenge = await nextAgent.next(message => message.type === "packager-challenge");
+    const timestamp = Date.now();
+    nextAgent.socket.send(JSON.stringify({ version: 1, type: "authenticate", packagerId: secondId, timestamp,
+      proof: crypto.sign("sha256", Buffer.from(nativePackagerAuthMessage(secondId, nextChallenge.nonce, timestamp)),
+        { key: secondKeys.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url") }));
+    await nextAgent.next(message => message.type === "packager-authenticated");
+    await nextAgent.next(message => message.type === "room-consent-sync");
+    const headers = { "content-type": "application/json", origin: publicOrigin, authorization: "Bearer owner-token" };
+    const consent = await fetch(`${app.httpUrl}/api/native-packagers/${secondId}/room-consents/${room.roomId}`, {
+      method: "PUT", headers, body: JSON.stringify({ enabled: true }),
+    });
+    assert.equal(consent.status, 200);
+    await nextAgent.next(message => message.type === "room-consent-sync" && message.roomIds.includes(room.roomId));
+    nextAgent.socket.send(JSON.stringify({ version: 1, type: "capability", capability: {
+      ...nativePackagers.candidate(ownerPrincipal, packagerId).capability, agentId: secondId,
+      deviceRef: `dev_${"C".repeat(43)}`, observedAt: Date.now(), expiresAt: Date.now() + 30_000,
+    } }));
+    await nextAgent.next(message => message.type === "capability-accepted");
+    const base = `${app.httpUrl}/api/broadcasts/${program.control.programId}`;
+    const controlResponse = await fetch(`${base}/native-handoff-control`, { method: "POST", headers,
+      body: JSON.stringify({ requestVersion: 1, deviceFingerprint: fingerprint }) });
+    assert.equal(controlResponse.status, 200);
+    const current = await controlResponse.json();
+    const validateHandoff = new Ajv2020({ strict: true }).compile(JSON.parse(fs.readFileSync(
+      new URL("../contracts/native-packager/handoff.v1.schema.json", import.meta.url), "utf8")));
+    assert.equal(validateHandoff(current), true, JSON.stringify(validateHandoff.errors));
+    assert.equal(current.writer.packagerId, packagerId);
+    const body = { requestVersion: 1, trigger: "user-action", packagerId: secondId, deviceFingerprint: fingerprint,
+      expectedProgramRevision: current.programRevision, expectedProgramEpoch: current.programEpoch,
+      expectedFencingRevision: current.writer.fencingRevision, requestedRenditions: 2, allowHardwareAcceleration: false };
+    assert.equal(validateHandoff(body), true, JSON.stringify(validateHandoff.errors));
+    assert.equal(validateHandoff({ ...body, extra: true }), false);
+    for (const privateProgramId of [program.control.programId, "prg_zzzzzzzzzzzzzzzz"]) {
+      const privateResponse = await fetch(`${app.httpUrl}/api/broadcasts/${privateProgramId}/native-handoffs`, {
+        method: "POST", headers: { ...headers, authorization: "Bearer handoff-foreign-token" }, body: JSON.stringify(body),
+      });
+      assert.equal(privateResponse.status, 404);
+    }
+    const rejected = await fetch(`${base}/native-handoffs`, { method: "POST", headers, body: JSON.stringify({ ...body, extra: true }) });
+    assert.equal(rejected.status, 400);
+    const transferController = new AbortController();
+    const transfer = fetch(`${base}/native-handoffs`, { method: "POST", headers, body: JSON.stringify(body), signal: transferController.signal });
+    const stop = await agent.next(message => message.type === "assignment-stop");
+    assert.equal(stop.reasonCode, "PACKAGER_HANDOFF");
+    await assert.rejects(nextAgent.next(message => message.type === "assignment-prepare", 150), /timed out/);
+    if (variant === "handoff-http-abort") {
+      const aborted = assert.rejects(transfer, { name: "AbortError" });
+      transferController.abort();
+      await aborted;
+      const deadline = Date.now() + 2000;
+      while (broadcastRuntime.listMine(identity).owned[0].availability !== "ended" && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      assert.equal(broadcastRuntime.listMine(identity).owned[0].availability, "ended");
+      sendStatus("stopped", "ASSIGNMENT_STOPPED");
+      await assert.rejects(nextAgent.next(message => message.type === "assignment-prepare", 150), /timed out/);
+      assert.equal(app.nativePackagerAssignments.activeForPackager(secondId), null);
+      browser.socket.close(); nextAgent.socket.close(); agent.socket.close();
+      return;
+    }
+    sendStatus("stopped", "ASSIGNMENT_STOPPED");
+    const response = await transfer;
+    assert.equal(response.status, 201, JSON.stringify(await response.clone().json()));
+    const transferred = await response.json();
+    const nextPrepare = await nextAgent.next(message => message.type === "assignment-prepare");
+    assert.equal(transferred.program.programId, program.control.programId);
+    assert.equal(transferred.program.programEpoch, current.programEpoch + 1);
+    assert.notEqual(nextPrepare.resourceRef, prepare.resourceRef);
+    assert.ok(nextPrepare.fencingRevision > prepare.fencingRevision);
+    for (const [state, reasonCode] of [["ready", "CAPABILITY_READY"], ["starting", "INGRESS_STARTING"], ["running", "OUTPUT_READY"]]) {
+      nextAgent.socket.send(JSON.stringify({ version: 1, type: "assignment-status", assignmentId: nextPrepare.assignmentId,
+        programEpoch: nextPrepare.programEpoch, fencingRevision: nextPrepare.fencingRevision, state, reasonCode, observedAt: Date.now() }));
+      await browser.next(message => message.type === "native-packager-status" && message.assignmentId === nextPrepare.assignmentId && message.state === state);
+    }
+    assert.equal(broadcastRuntime.programCount, 1);
+    assert.equal(broadcastRuntime.listMine(identity).owned[0].availability, "live");
+    const replay = await fetch(`${base}/native-handoffs`, { method: "POST", headers, body: JSON.stringify(body) });
+    assert.equal(replay.status, 409);
+    agent.socket.send(JSON.stringify({ version: 1, type: "assignment-signal", assignmentId: prepare.assignmentId,
+      programEpoch: prepare.programEpoch, fencingRevision: prepare.fencingRevision, description: { type: "answer", sdp: "v=0\r\n" } }));
+    assert.equal((await agent.next(message => message.type === "packager-error")).code, "stale_native_packager_signal");
+    assert.equal(broadcastRuntime.listMine(identity).owned[0].availability, "live");
+    browser.socket.close(); nextAgent.socket.close();
+    return;
+  }
   assert.equal(broadcastRuntime.listMine(identity).owned[0].availability, "live");
   sendStatus("running", "OUTPUT_READY");
   await browser.next((message) => message.type === "native-packager-status" && message.reasonCode === "OUTPUT_READY");

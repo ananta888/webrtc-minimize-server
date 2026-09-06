@@ -67,6 +67,7 @@ import {
   NativePackagerAssignmentError,
   NativePackagerAssignmentRegistry,
 } from "./native-packager-assignment.js";
+import { handoffNativePackager } from "./native-packager-handoff.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
@@ -733,6 +734,44 @@ function createHttpHandler(config, registry, services) {
       const broadcastNativeAssignmentMatch = url.pathname.match(
         /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/native-assignments$/,
       );
+      const nativeHandoffMatch = url.pathname.match(
+        /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/(native-handoff-control|native-handoffs)$/,
+      );
+      if (nativeHandoffMatch) {
+        if (!broadcastRuntime || !config.nativePackagerSelfServiceEnabled || request.method !== "POST"
+          || url.search || !requestOriginAllowed(request, config)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" }); response.end(); return;
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const ownerPrincipal = principalFor(identity);
+        const input = await readJsonBody(request);
+        const controlOnly = nativeHandoffMatch[2] === "native-handoff-control";
+        assertAllowedKeys(input, new Set(controlOnly ? ["requestVersion", "deviceFingerprint"] : [
+          "requestVersion", "trigger", "deviceFingerprint", "packagerId", "expectedProgramRevision",
+          "expectedProgramEpoch", "expectedFencingRevision", "requestedRenditions", "allowHardwareAcceleration",
+        ]));
+        if (input.requestVersion !== 1 || typeof input.deviceFingerprint !== "string"
+          || !/^[A-Za-z0-9_-]{43}$/.test(input.deviceFingerprint)) throw new BroadcastRuntimeError("invalid_native_packager_handoff");
+        const getMember = () => registry.membersForPrincipal(ownerPrincipal)
+          .find(candidate => candidate.deviceFingerprint === input.deviceFingerprint);
+        if (controlOnly) {
+          sendJson(response, 200, broadcastRuntime.nativeControl(identity, getMember(), nativeHandoffMatch[1]), securityHeaders(config));
+          return;
+        }
+        const abort = new AbortController();
+        const onClose = () => abort.abort();
+        response.once("close", onClose);
+        if (response.destroyed) abort.abort();
+        try {
+          const { deviceFingerprint: _, ...handoffInput } = input;
+          const prepared = await handoffNativePackager({ runtime: broadcastRuntime, assignments: nativePackagerAssignments,
+            identity, ownerPrincipal, programId: nativeHandoffMatch[1], input: handoffInput, getMember,
+            send: (packagerId, message) => safeSend(nativePackagers.socketFor(packagerId), message), signal: abort.signal });
+          sendJson(response, 201, { ...prepared, ownerSubjectRef: broadcastSubjectRef(identity) }, securityHeaders(config));
+        } finally { response.off("close", onClose); }
+        return;
+      }
       if (broadcastNativeAssignmentMatch) {
         if (!broadcastRuntime || !config.nativePackagerSelfServiceEnabled
           || request.method !== "POST" || url.search || !requestOriginAllowed(request, config)

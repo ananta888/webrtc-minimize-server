@@ -320,6 +320,12 @@ export class NativePackagerAssignmentRegistry {
     return record && ACTIVE_STATES.has(record.state) ? snapshot(record) : null;
   }
 
+  handoffStopStatus(ownerPrincipal, assignmentId) {
+    const record = this.#assignments.get(assignmentId);
+    if (!record || record.ownerPrincipal !== ownerPrincipal) fail("native_packager_assignment_not_found", 404);
+    return record.state === "stopped" ? "stopped" : record.state === "failed" ? "failed" : "waiting";
+  }
+
   activeForPackager(packagerId) {
     const record = this.#byPackager.get(packagerId);
     return record && ACTIVE_STATES.has(record.state) ? snapshot(record) : null;

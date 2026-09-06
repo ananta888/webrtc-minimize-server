@@ -6,10 +6,13 @@ Die folgenden Übernahmeregeln beschreiben den implementierten und getesteten
 Domain-Koordinator, nicht bereits eine durchgehend angeschlossene produktive
 Same-Program-Übergabe. Der produktive Native-Pfad prüft derzeit Writer-Leases
 und Readiness-ACKs; native OS-Ausgabesperren verhindern konkurrierende
-kooperative Writer derselben Ressource. Die eigentliche Übergabe-API,
-Stop-ACK-/Recovery-Koordination und HLS-Generations-/Player-Umschaltung zwischen
-zwei Packagern bleiben in TBP-030 offen. Stop und Neuanlage einer Sendung sind
-kein Nachweis für diese Fähigkeit.
+kooperative Writer derselben Ressource. Die native Owner-Übergabe-API ist nun
+mit echter Stop-ACK-Barriere und neuer Ausgabe-Ressource innerhalb derselben
+Sendung verbunden; Details und lokale Nachweise stehen in
+[Moderations-Workflows](broadcast-moderation-workflows.md). Die
+Angular-/Player-Umschaltung, automatische Recovery und tatsächliche
+Mehr-Packager-Medienausgabe bleiben in TBP-030 offen. Stop und Neuanlage einer
+Sendung sind kein Nachweis für diese Fähigkeit.
 
 ## Writer-Modell
 

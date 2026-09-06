@@ -10,6 +10,7 @@ export const BROADCAST_PROGRAM_ACTIONS = Object.freeze([
   "start",
   "advance",
   "source-change",
+  "output-restart",
   "handoff",
   "revoke",
   "stop",

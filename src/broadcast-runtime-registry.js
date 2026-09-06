@@ -17,7 +17,7 @@ import {
   initializeBroadcastProgramMachine,
   renewBroadcastWriterLeases,
 } from "./broadcast-program-machine.js";
-import { validateBroadcastProgramMachine } from "./broadcast-program-model.js";
+import { MAX_BROADCAST_IDEMPOTENCY_RECORDS, validateBroadcastProgramMachine } from "./broadcast-program-model.js";
 
 const PROGRAM = /^prg_[A-Za-z0-9_-]{16,64}$/;
 const RESOURCE = /^res_[A-Za-z0-9_-]{16,64}$/;
@@ -137,6 +137,7 @@ export class BroadcastRuntimeRegistry {
   #resourceIdFactory;
   #leaseIdFactory;
   #anonymousSubjectFactory;
+  #resourceRefs = new Set();
 
   constructor({
     grantAuthority,
@@ -251,6 +252,7 @@ export class BroadcastRuntimeRegistry {
     if (this.#records.size >= MAX_PROGRAMS) fail("broadcast_program_capacity_reached", 429);
     const key = `${machine.scope.tenantId}\0${machine.scope.programId}`;
     if (this.#records.has(key)) fail("broadcast_program_already_registered", 409);
+    if (this.#resourceRefs.has(input.resourceRef)) fail("broadcast_resource_already_registered", 409);
     const snapshot = this.#audience.register({
       machine,
       policy: input.policy,
@@ -269,6 +271,7 @@ export class BroadcastRuntimeRegistry {
       publisherFingerprint: null,
     });
     this.#records.set(key, record);
+    this.#resourceRefs.add(input.resourceRef);
     return entry(record);
   }
 
@@ -380,7 +383,7 @@ export class BroadcastRuntimeRegistry {
         now,
       );
     }
-    return this.#synchronizeRecord(key, record, machine, now);
+    return this.#synchronizeRecord(key, { ...record, pendingHandoff: null }, machine, now);
   }
 
   async createPlaybackChallenge(identity, programId, now = this.#clock(), anonymousContext = null) {
@@ -706,11 +709,16 @@ export class BroadcastRuntimeRegistry {
     candidate = applyBroadcastProgramCommand(candidate, command(candidate, "start", {
       requiresConsent: false,
     }), now).state;
+    return this.#installNativeWriter(key, record, candidate, input, admit, member, now);
+  }
+
+  #installNativeWriter(key, record, candidate, input, admit, member, now) {
+    const programId = candidate.scope.programId;
     const admission = admit(Object.freeze({
       requestVersion: 1,
       trigger: "user-action",
-      tenantId: refs.tenantId,
-      ownerSubjectRef: refs.subjectRef,
+      tenantId: candidate.scope.tenantId,
+      ownerSubjectRef: candidate.scope.ownerSubjectRef,
       roomId: candidate.scope.roomId,
       programId,
       programEpoch: candidate.program.programEpoch,
@@ -743,7 +751,11 @@ export class BroadcastRuntimeRegistry {
       expectedLeaseEpoch: candidate.epochs.lease,
       lease,
     }), now).state;
-    this.#synchronizeRecord(key, record, candidate, now);
+    this.#synchronizeRecord(key, {
+      ...record, pendingHandoff: null,
+      publisherPrincipal: member.principal, publisherFingerprint: member.deviceFingerprint,
+      publisherPeerId: member.id,
+    }, candidate, now);
     return Object.freeze({
       admission,
       lease: Object.freeze({
@@ -759,6 +771,93 @@ export class BroadcastRuntimeRegistry {
         programEpoch: candidate.program.programEpoch,
       }),
     });
+  }
+
+  #nativeOwned(identity, member, programId) {
+    const refs = identityRefs(identity);
+    if (!PROGRAM.test(programId || "")) unavailable();
+    const key = `${refs.tenantId}\0${programId}`;
+    const record = this.#records.get(key);
+    if (!record || record.snapshot.machine.scope.ownerSubjectRef !== refs.subjectRef) unavailable();
+    if (!member || member.principal !== refs.principal || member.creator !== true
+      || member.roomId !== record.snapshot.machine.scope.roomId
+      || !/^[A-Za-z0-9_-]{43}$/.test(member.deviceFingerprint || "")
+      || record.publisherPrincipal !== member.principal
+      || record.publisherFingerprint !== member.deviceFingerprint
+      || record.publisherPeerId !== member.id || !/^[a-f0-9]{16}$/.test(member.id || "")) {
+      fail("broadcast_publisher_membership_required", 403);
+    }
+    return { key, record };
+  }
+
+  nativeControl(identity, member, programId) {
+    const { record } = this.#nativeOwned(identity, member, programId);
+    const machine = record.snapshot.machine;
+    const writer = machine.writerLeases.find(({ role }) => role === "packager-writer");
+    return Object.freeze({
+      controlVersion: 1, programId, programRevision: machine.program.revision,
+      programEpoch: machine.program.programEpoch, state: machine.program.state,
+      handoffPending: Boolean(record.pendingHandoff),
+      writer: writer ? Object.freeze({ packagerId: writer.holderRef, fencingRevision: writer.fencingRevision }) : null,
+    });
+  }
+
+  beginNativeHandoff(identity, member, programId, value, admit, now = this.#clock()) {
+    const { key, record } = this.#nativeOwned(identity, member, programId);
+    const input = clone(value, "invalid_native_packager_handoff");
+    const fields = new Set(["requestVersion", "trigger", "packagerId", "expectedProgramRevision",
+      "expectedProgramEpoch", "expectedFencingRevision", "requestedRenditions", "allowHardwareAcceleration"]);
+    closed(input, fields, "invalid_native_packager_handoff");
+    if (Object.keys(input).length !== fields.size || input.requestVersion !== 1 || input.trigger !== "user-action"
+      || typeof input.packagerId !== "string" || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(input.packagerId)
+      || ![input.expectedProgramRevision, input.expectedProgramEpoch, input.expectedFencingRevision].every(n => Number.isSafeInteger(n) && n > 0)
+      || !Number.isSafeInteger(input.requestedRenditions) || input.requestedRenditions < 1 || input.requestedRenditions > 3
+      || typeof input.allowHardwareAcceleration !== "boolean" || typeof admit !== "function") fail("invalid_native_packager_handoff");
+    const machine = record.snapshot.machine;
+    if (record.pendingHandoff || machine.program.revision !== input.expectedProgramRevision
+      || machine.program.programEpoch !== input.expectedProgramEpoch) fail("stale_broadcast_handoff", 409);
+    // Reserve restart, successor, readiness and terminal cleanup before fencing anything.
+    if (machine.appliedCommands.length > MAX_BROADCAST_IDEMPOTENCY_RECORDS - 8) {
+      fail("broadcast_handoff_capacity_exhausted", 409);
+    }
+    const writer = machine.writerLeases.find(({ role }) => role === "packager-writer");
+    if (!writer || writer.holderRef === input.packagerId || writer.fencingRevision !== input.expectedFencingRevision
+      || writer.expiresAt <= now) fail("stale_broadcast_handoff_writer", 409);
+    const resourceRef = this.#resourceIdFactory();
+    if (!RESOURCE.test(resourceRef || "") || this.#resourceRefs.has(resourceRef)) fail("invalid_broadcast_runtime_identifier", 500);
+    const candidate = applyBroadcastProgramCommand(machine, command(machine, "output-restart", {
+      expectedLeaseEpoch: machine.epochs.lease, reasonCode: "PACKAGER_HANDOFF",
+    }), now).state;
+    admit(Object.freeze({ requestVersion: 1, trigger: "user-action", tenantId: candidate.scope.tenantId,
+      ownerSubjectRef: candidate.scope.ownerSubjectRef, roomId: candidate.scope.roomId, programId,
+      programEpoch: candidate.program.programEpoch, resourceRef,
+      requestedRenditions: input.requestedRenditions, allowHardwareAcceleration: input.allowHardwareAcceleration }));
+    const pending = Object.freeze({ ...input, programId, previousPackagerId: writer.holderRef,
+      previousProgramEpoch: machine.program.programEpoch, previousFencingRevision: writer.fencingRevision,
+      nextProgramRevision: candidate.program.revision, nextProgramEpoch: candidate.program.programEpoch, resourceRef,
+      publisherPeerId: member.id, expiresAt: now + 12_000 });
+    this.#synchronizeRecord(key, { ...record, resourceRef, pendingHandoff: pending }, candidate, now);
+    this.#resourceRefs.add(resourceRef);
+    return pending; // Internal capability, never serialized or accepted from a client.
+  }
+
+  completeNativeHandoff(identity, member, pending, admit, now = this.#clock()) {
+    const { key, record } = this.#nativeOwned(identity, member, pending?.programId);
+    if (!pending || record.pendingHandoff !== pending || pending.expiresAt <= now
+      || record.snapshot.machine.program.state !== "preparing"
+      || record.snapshot.machine.program.revision !== pending.nextProgramRevision
+      || record.snapshot.machine.program.programEpoch !== pending.nextProgramEpoch || record.resourceRef !== pending.resourceRef
+      || member.id !== pending.publisherPeerId || typeof admit !== "function") fail("stale_broadcast_handoff", 409);
+    return this.#installNativeWriter(key, record, record.snapshot.machine, pending, admit, member, now);
+  }
+
+  cancelNativeHandoff(identity, pending, now = this.#clock()) {
+    const refs = identityRefs(identity);
+    const key = `${refs.tenantId}\0${pending?.programId}`;
+    const record = this.#records.get(key);
+    if (pending && record?.pendingHandoff === pending && record.snapshot.machine.scope.ownerSubjectRef === refs.subjectRef) {
+      this.#stopRecord(key, record, "HANDOFF_FAILED", now);
+    }
   }
 
   markPublished(resourceRef, now = this.#clock()) {
