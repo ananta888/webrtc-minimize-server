@@ -8,6 +8,8 @@ import test from "node:test";
 import { WebSocket } from "ws";
 
 import { createAppServer } from "../src/server.js";
+import { NativePackagerInstallerService } from "../src/native-packager-installers.js";
+import { artifactFilename, buildNativePackagerRelease, RELEASE_FILENAME, RELEASE_TARGETS } from "../src/native-packager-release.js";
 import { deviceFingerprint, deviceProofMessage } from "../src/device-proof.js";
 import {
   mediaAgentAuthProof,
@@ -53,6 +55,30 @@ async function startTestServer(overrides = {}, serverOptions = {}) {
     },
   };
 }
+
+test("native release endpoint preserves exact provenance bytes and fails closed without metadata or capability", async context => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "native-release-http-"));
+  context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  for (const target of RELEASE_TARGETS) fs.writeFileSync(path.join(directory, artifactFilename(target)), `synthetic:${target}`);
+  const bytes = buildNativePackagerRelease(directory, { revision: "a".repeat(40), builtAt: "2026-09-06T10:00:00Z", agentVersion: "0.7.0", goVersion: "go1.24.13" });
+  const file = path.join(directory, RELEASE_FILENAME); fs.writeFileSync(file, bytes);
+  const service = new NativePackagerInstallerService({ directory });
+  const enabled = await startTestServer({ nativePackagerSelfServiceEnabled: true }, { nativePackagerInstallerService: service });
+  const disabled = await startTestServer({}, { nativePackagerInstallerService: service });
+  context.after(async () => { await enabled.close(); await disabled.close(); });
+  const resource = "/downloads/native-packager/release.json";
+  const response = await fetch(enabled.httpUrl + resource);
+  assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes);
+  const binary = await fetch(enabled.httpUrl + "/downloads/native-packager/linux-amd64");
+  assert.equal(binary.status, 200); assert.equal(binary.headers.get("cache-control"), "no-store");
+  assert.equal(await binary.text(), "synthetic:linux-amd64");
+  assert.equal((await fetch(disabled.httpUrl + resource)).status, 404);
+  assert.equal((await fetch(enabled.httpUrl + resource + "?other=1")).status, 404);
+  fs.writeFileSync(file, "{}");
+  assert.equal((await fetch(enabled.httpUrl + resource)).status, 503);
+  assert.equal((await fetch(enabled.httpUrl + "/healthz")).status, 200);
+});
 
 function connect(url, origin) {
   const socket = new WebSocket(url, { origin });

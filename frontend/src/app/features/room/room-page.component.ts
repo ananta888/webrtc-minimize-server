@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, effect, signal } from "@angular/core";
 import { FormsModule } from "@angular/forms";
+import { NativePackagerUpdateComponent } from "../../broadcast/native-packager-update.component";
 
 import { OidcAuthService } from "../../auth/oidc-auth.service";
 import { BroadcastOwnSourcePreflightService } from "../../broadcast/broadcast-own-source-preflight.service";
@@ -65,6 +66,7 @@ type AppSection = "rooms" | "live" | "broadcast" | "captions" | "analysis" | "ch
   selector: "app-room-page",
   standalone: true,
   imports: [
+    NativePackagerUpdateComponent,
     FormsModule,
     BroadcastPreflightComponent,
     MediaControlBarComponent,

@@ -28,7 +28,8 @@ for (const workflowName of workflowNames) {
   if (workflow.permissions?.contents !== "read" || Object.keys(workflow.permissions).length !== 1) {
     throw new Error(`${workflowName}: workflow permissions must be exactly contents: read`);
   }
-  if (!workflow.jobs?.test || !workflow.jobs?.docker || workflow.jobs.docker.needs !== "test") {
+  if (!workflow.jobs?.test || !workflow.jobs?.docker || !Array.isArray(workflow.jobs.docker.needs)
+    || workflow.jobs.docker.needs.length !== 2 || !["test", "native-packager"].every(name => workflow.jobs.docker.needs.includes(name))) {
     throw new Error(`${workflowName}: test and dependent docker jobs are required`);
   }
   for (const [jobName, job] of Object.entries(workflow.jobs)) {

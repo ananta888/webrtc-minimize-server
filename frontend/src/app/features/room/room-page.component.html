@@ -815,6 +815,7 @@
                     @if (!packager.revokedAt) {
                       <label class="agent-consent"><input type="checkbox" [disabled]="!session.joined() || !packager.online || nativePackagerOnboarding.busy()" [ngModel]="session.joined() && packager.consentedRoomIds.includes(session.roomId())" (ngModelChange)="setNativePackagerRoomConsent(packager.id, $event)"><span><strong>Für diesen Raum</strong><small>Bewusster, jederzeit widerrufbarer Trusted-Consent. {{ packager.consentedRoomIds.includes(session.roomId()) && !packager.confirmedRoomIds.includes(session.roomId()) ? 'Bestätigung des Agenten ausstehend.' : '' }}</small></span></label>
                       <button class="button ghost compact" type="button" [disabled]="nativePackagerOnboarding.busy()" (click)="revokeNativePackager(packager.id)">Widerrufen</button>
+                      <app-native-packager-update [packager]="packager" />
                     }
                   </article>
                 } @empty { <p class="hint">Noch kein Native-Packager registriert.</p> }

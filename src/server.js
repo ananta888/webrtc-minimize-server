@@ -403,6 +403,17 @@ function createHttpHandler(config, registry, services) {
         sendJson(response, 200, publicRuntimeConfig(config, services), securityHeaders(config));
         return;
       }
+      if (url.pathname === "/downloads/native-packager/release.json" && request.method === "GET") {
+        if (url.search || !config.nativePackagerSelfServiceEnabled || !nativePackagerInstallerService) {
+          throw new NativePackagerInstallerError("native_packager_release_unavailable", 404);
+        }
+        const { body } = nativePackagerInstallerService.release();
+        response.writeHead(200, { ...securityHeaders(config), "content-type": "application/json",
+          "content-length": body.length, "content-disposition": 'attachment; filename="native-packager-release.v1.json"',
+          "cache-control": "no-store" });
+        response.end(body);
+        return;
+      }
       const nativePackagerArtifactMatch = url.pathname.match(
         /^\/downloads\/native-packager\/([a-z0-9-]+)$/,
       );
@@ -421,7 +432,7 @@ function createHttpHandler(config, registry, services) {
           "content-type": "application/octet-stream",
           "content-length": artifact.size,
           "content-disposition": `attachment; filename="${artifact.artifact}"`,
-          "cache-control": "public, max-age=300, immutable",
+          "cache-control": "no-store",
           "x-content-sha256": artifact.sha256,
           ...securityHeaders(config),
         });

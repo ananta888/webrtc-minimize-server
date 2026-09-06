@@ -40,7 +40,8 @@ FROM native-packager-source AS native-packager-runtime-build
 ARG SOURCE_REVISION
 ARG SOURCE_TIMESTAMP
 RUN linker_flags="-s -w -X main.buildRevision=${SOURCE_REVISION} -X main.buildTimestamp=${SOURCE_TIMESTAMP}" \
-    && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="$linker_flags" -o /native-broadcast-packager .
+    && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="$linker_flags" -o /native-broadcast-packager . \
+    && /native-broadcast-packager version > /native-packager-build.json
 
 FROM native-packager-runtime-build AS native-packager-artifacts
 ARG SOURCE_REVISION
@@ -48,10 +49,22 @@ ARG SOURCE_TIMESTAMP
 RUN mkdir -p /out
 RUN linker_flags="-s -w -X main.buildRevision=${SOURCE_REVISION} -X main.buildTimestamp=${SOURCE_TIMESTAMP}" \
     && cp /native-broadcast-packager /out/native-broadcast-packager-linux-amd64 \
-    && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="$linker_flags" -o /out/native-broadcast-packager-linux-arm64 . \
-    && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="$linker_flags" -o /out/native-broadcast-packager-macos-amd64 . \
-    && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="$linker_flags" -o /out/native-broadcast-packager-macos-arm64 . \
-    && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="$linker_flags" -o /out/native-broadcast-packager-windows-amd64.exe .
+    && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags="$linker_flags" -o /out/native-broadcast-packager-linux-arm64 . \
+    && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="$linker_flags" -o /out/native-broadcast-packager-macos-amd64 . \
+    && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags="$linker_flags" -o /out/native-broadcast-packager-macos-arm64 . \
+    && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="$linker_flags" -o /out/native-broadcast-packager-windows-amd64.exe .
+
+FROM node:22-alpine AS native-packager-release
+WORKDIR /release
+COPY package.json ./package.json
+COPY --from=native-packager-artifacts /out ./artifacts
+COPY --from=native-packager-runtime-build /native-packager-build.json ./build.json
+COPY src/native-packager-release.js ./src/native-packager-release.js
+COPY scripts/build-native-packager-release.mjs ./scripts/build-native-packager-release.mjs
+RUN node scripts/build-native-packager-release.mjs artifacts build.json --allow-unversioned
+
+FROM scratch AS native-packager-release-export
+COPY --from=native-packager-release /release/artifacts/ /
 
 FROM golang:1.24-alpine AS broadcast-origin-build
 WORKDIR /src
@@ -93,7 +106,7 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY package.json ./
 COPY --from=build /app/dist ./dist
 COPY --from=media-agent-artifacts /out ./media-agent-downloads
-COPY --from=native-packager-artifacts /out ./native-packager-downloads
+COPY --from=native-packager-release /release/artifacts ./native-packager-downloads
 COPY src ./src
 COPY contracts ./contracts
 RUN mkdir -p /app/data && chown node:node /app/data

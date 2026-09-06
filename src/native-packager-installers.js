@@ -5,6 +5,7 @@ import { windowsPackagerPrivateAcl, windowsPackagerUninstaller } from "./native-
 import { linuxPackagerUpdater } from "./native-packager-linux-updater.js";
 import { posixPackagerUpdater } from "./native-packager-posix-updater.js";
 import { windowsPackagerUpdater } from "./native-packager-windows-updater.js";
+import { readNativePackagerRelease } from "./native-packager-release.js";
 
 const TARGETS = Object.freeze([
   Object.freeze({ id: "linux-amd64", platform: "linux", label: "Linux · Intel/AMD 64-Bit", artifact: "native-broadcast-packager-linux-amd64", installer: "ananta-native-packager-linux-amd64.sh" }),
@@ -176,8 +177,10 @@ function windows({ enrollment, sha256, artifactUrl, controlUrl, stunUrls }) {
 
 export class NativePackagerInstallerService {
   #artifacts = new Map();
+  #directory;
   constructor({ directory }) {
     const root = path.resolve(directory);
+    this.#directory = root;
     for (const target of TARGETS) {
       const filename = path.join(root, target.artifact);
       try {
@@ -191,6 +194,10 @@ export class NativePackagerInstallerService {
   availableTargets() { return TARGETS.filter(({ id }) => this.#artifacts.has(id)).map(({ id, platform, label }) => Object.freeze({ id, platform, label })); }
   target(id) { const target = this.#artifacts.get(String(id || "")); if (!target) throw new NativePackagerInstallerError("native_packager_artifact_unavailable", 409); return target; }
   artifact(id) { return this.target(id); }
+  release() {
+    try { return readNativePackagerRelease(this.#directory, id => this.artifact(id)); }
+    catch { throw new NativePackagerInstallerError("native_packager_release_unavailable", 503); }
+  }
   installer({ enrollment, targetId, publicOrigin, stunUrls = [] }) {
     if (typeof enrollment.packagerId !== "string" || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(enrollment.packagerId)) {
       throw new NativePackagerInstallerError("invalid_native_packager_id");

@@ -483,6 +483,58 @@ werden derzeit als nur für den jeweiligen unprivilegierten Benutzer lesbare
 Datei mit Modus `0600` gespeichert; eine Keychain-/TPM-Anbindung bleibt ein
 Hardening-Schritt.
 
+### Release-Manifest und Update-Hilfe
+
+Unter **Analyse → Meine Broadcast-Packager → Update und Herkunft prüfen**
+lädt ein bewusster Klick die Release-Daten. Die Architektur ist die des
+Agent-Rechners, nicht die des Browsers, und wird deshalb nicht geraten.
+Die Anzeige nennt die angebotene Agent-/Go-Version, Revision, Buildzeit,
+Dateigröße und SHA-256. Sie liest keine lokale Installation aus und behauptet
+weder eine neuere Version noch eine erfolgreiche Signaturprüfung im Browser.
+
+`/downloads/native-packager/release.json` liefert exakt die Bytes von
+`native-packager-release.v1.json` aus dem Image, ohne erneute JSON-Serialisierung
+und mit `Cache-Control: no-store`. Der geschlossene
+[Contract](../contracts/native-packager/release.v1.schema.json) enthält nur
+technische Release-Metadaten und alle fünf festen Targets. Vor der Ausgabe
+müssen Hash, Größe und Dateiname zu den angebotenen Artefakten passen.
+Fehlende, zu große, symlinkbasierte oder abweichende Metadaten sperren das
+Updateangebot; sie deaktivieren nicht Authentisierung oder Raumfunktionen.
+Unversionierte Entwicklungsimages überspringen das Manifest sichtbar.
+Auch die veränderlichen Native-Binary-URLs verwenden jetzt `no-store`, damit
+kein absichtlich unveränderlicher Browsercache eine alte Datei zum neuen
+Manifest festhält. Die Hashprüfung bleibt unabhängig davon verpflichtend.
+
+CI und Docker erzeugen das Manifest mit demselben Generator aus der eingebetteten
+Buildauskunft und den tatsächlich gebauten Dateien. `-buildvcs=false` entfernt
+die sonst vom vorhandenen `.git`-Verzeichnis abhängigen Go-Zusatzmetadaten;
+die ausdrücklich gesetzte Revision und Commitzeit bleiben erhalten. Bei
+vertrauenswürdigen Main-Builds attestiert GitHub sowohl die Dateien als auch
+das Manifest. Der Docker-CI-Job wartet auf diesen Build, exportiert seinen
+eigenen Artefaktsatz und prüft dessen Manifest gegen denselben Nachweis.
+Erfolg belegt dadurch die Byte-Gleichheit aller fünf Hashes/Größen, nicht nur
+eine gleiche Versionsbeschriftung. Ein Pull Request kann diesen Main-Nachweis
+nicht ausstellen und überspringt ausschließlich die Attestationsprüfung.
+
+Die angezeigten GitHub-CLI-Befehle verlangen das feste Repository und den festen
+Workflow, die konkrete Quellrevision, `refs/heads/main` und einen GitHub-gehosteten
+Runner. Eine aktuelle CLI mit `gh attestation verify` ist Voraussetzung;
+ältere Installationen dürfen den Schritt nicht als bestanden ausgeben.
+Die [offizielle CLI-Dokumentation](https://cli.github.com/manual/gh_attestation_verify)
+beschreibt diese getrennten Prüfkriterien. Manifest und Binärdatei werden in
+einen eigenen Prüfpfad geladen; erst nach beiden erfolgreichen Prüfungen und
+Abgleich mit der beabsichtigten Revision darf der getrennt angezeigte lokale
+Updater mit dem geprüften Hash ausgeführt werden. Er lädt erneut und bricht
+bei einem zwischenzeitlichen Artefaktwechsel ab.
+
+Ein gültiger alter Main-Nachweis beweist keine Aktualität, keinen vollständigen
+CI-Erfolg und keine Operatorfreigabe. Automatische Freshness-/Anti-Rollback-Policy
+und ein signiertes Freigabesignal sind weiterhin getrennte Arbeiten. Fehlende
+lokale Updater dürfen nicht durch erneutes Enrollment oder alte gemeinsame
+Uninstaller ersetzt werden; Bestandsmigration bleibt offen. Docker-Geräte
+verwenden weiterhin ihren Deployment-Runner. Plattformsignaturen, Keystore,
+Reboot und laufender Medien-Handoff werden dadurch nicht nachgewiesen.
+
 Capability und Live-Gate akzeptieren jetzt tatsächlich nur FFmpeg ab Major 6;
 eine bloß vorhandene ältere Binärdatei reicht nicht mehr. Neben dem lokalen
 FFmpeg-6.1.1-Lauf bestand derselbe synthetische Drei-Rendition-Gate auf

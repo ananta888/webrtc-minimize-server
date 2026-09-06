@@ -72,7 +72,7 @@ jobs:
 
   docker:
     name: Docker build
-    needs: test
+    needs: [test, native-packager]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -89,8 +89,24 @@ jobs:
       - name: Build production OCI archive with provenance and SBOM
         run: |
           docker buildx build --build-arg SOURCE_REVISION=${{ github.sha }} \
+            --build-arg SOURCE_TIMESTAMP="$(git show -s --format=%cI HEAD)" \
             --provenance=mode=max --sbom=true \
             --output type=oci,dest=/tmp/webrtc-minimize-server.oci.tar .
+      - name: Export exact Docker native release artifacts
+        run: |
+          docker buildx build --target native-packager-release-export \
+            --build-arg SOURCE_REVISION=${{ github.sha }} \
+            --build-arg SOURCE_TIMESTAMP="$(git show -s --format=%cI HEAD)" \
+            --output type=local,dest=/tmp/native-packager-docker-release .
+      - name: Verify Docker release equals independently attested CI artifacts
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh attestation verify /tmp/native-packager-docker-release/native-packager-release.v1.json \
+            --repo ananta888/webrtc-minimize-server \
+            --signer-workflow ananta888/webrtc-minimize-server/.github/workflows/ci.yml \
+            --source-digest "$GITHUB_SHA" --source-ref refs/heads/main --deny-self-hosted-runners
       - name: Scan OCI archive for synthetic leakage canaries
         run: BROADCAST_LEAKAGE_SCOPE=image BROADCAST_IMAGE_ARCHIVE=/tmp/webrtc-minimize-server.oci.tar node scripts/broadcast-leakage-gate.mjs
 
@@ -168,18 +184,29 @@ jobs:
           cp LICENSE.go-winio "$artifact_root/LICENSE.go-winio"
           build_timestamp=$(git show -s --format=%cI "$GITHUB_SHA")
           linker_flags="-s -w -X main.buildRevision=$GITHUB_SHA -X main.buildTimestamp=$build_timestamp"
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="$linker_flags" -o "$artifact_bin/native-broadcast-packager-linux-amd64" .
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="$linker_flags" -o "$artifact_bin/native-broadcast-packager-linux-arm64" .
-          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="$linker_flags" -o "$artifact_bin/native-broadcast-packager-macos-amd64" .
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="$linker_flags" -o "$artifact_bin/native-broadcast-packager-macos-arm64" .
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="$linker_flags" -o "$artifact_bin/native-broadcast-packager-windows-amd64.exe" .
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="$linker_flags" -o "$artifact_bin/native-broadcast-packager-linux-amd64" .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags="$linker_flags" -o "$artifact_bin/native-broadcast-packager-linux-arm64" .
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="$linker_flags" -o "$artifact_bin/native-broadcast-packager-macos-amd64" .
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags="$linker_flags" -o "$artifact_bin/native-broadcast-packager-macos-arm64" .
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="$linker_flags" -o "$artifact_bin/native-broadcast-packager-windows-amd64.exe" .
           (cd "$artifact_bin" && sha256sum ./*) > "$artifact_root/sha256sums.txt"
           "$artifact_bin/native-broadcast-packager-linux-amd64" version > "$artifact_root/linux-amd64-build.json"
+      - name: Build deterministic native release manifest
+        run: node scripts/build-native-packager-release.mjs "$RUNNER_TEMP/native-packager-artifacts/bin" "$RUNNER_TEMP/native-packager-artifacts/linux-amd64-build.json"
       - name: Attest native packager binaries
         if: github.event_name != 'pull_request'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: ${{ runner.temp }}/native-packager-artifacts/bin/*
+      - name: Verify release provenance policy
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh attestation verify "$RUNNER_TEMP/native-packager-artifacts/bin/native-packager-release.v1.json" \
+            --repo ananta888/webrtc-minimize-server \
+            --signer-workflow ananta888/webrtc-minimize-server/.github/workflows/ci.yml \
+            --source-digest "$GITHUB_SHA" --source-ref refs/heads/main --deny-self-hosted-runners
       - name: Upload native packager binaries and checksums
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:

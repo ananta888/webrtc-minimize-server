@@ -1,5 +1,12 @@
 # Native-Packager-Control
 
+`release.v1.schema.json` ist ein davon getrennter, öffentlicher Release-Contract:
+fünf feste Artefakte, Hash/Größe, Revision und technische Buildversionen. Er
+enthält keine Geräte-, Konto-, Raum- oder Updateautorität. Seine unveränderten
+Bytes sind Gegenstand einer separat zu prüfenden GitHub-Attestation; ein gültiges
+JSON oder eine HTTPS-Antwort ist selbst noch kein Signatur-, Aktualitäts- oder
+Freigabenachweis. Siehe [Update-Hilfe](../../docs/native-packager.md).
+
 Diese Verträge gehören ausschließlich zur freiwilligen Trusted-Broadcast-Packager-Rolle. Sie sind weder mit dem blinden `media-agent`-Protokoll noch mit Room-Membership gleichzusetzen. Challenge, Authentisierung, Capability, Status und Signaling bleiben v1. `assignment-prepare.v2` ergänzt ausschließlich die vom Server gewählte Videoencoder- und Software-Fallback-Bindung; Agenten vor 0.6.0 erhalten weiterhin den geschlossenen v1-Auftrag mit `libx264`.
 
 Der Agent verbindet sich ausgehend über `/native-packager`, authentisiert eine nicht exportierte P-256-Geräteidentität und meldet eine geschlossene Capability. `consentedRoomIds` wird serverseitig stets mit den durch den Kontoinhaber gesetzten flüchtigen Raumfreigaben geschnitten. Ein Report erzeugt niemals selbst Autorität.
