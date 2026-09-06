@@ -29,6 +29,7 @@ function createStore(overrides = {}) {
   };
   return {
     calls,
+    authority,
     revoke: () => { revoked = true; },
     store: new BroadcastPlaybackSessionStore({
       authority, publicOrigin: "https://webrtc.ananta.de",
@@ -52,6 +53,59 @@ test("playback grant becomes a path-bound Secure HttpOnly cookie without token i
   assert.ok(session.setCookie.every((value) => /Secure; HttpOnly; SameSite=Strict$/.test(value)));
   assert.equal(calls[0].expectation.action, "playback:manifest");
   assert.equal(calls[1].expectation.action, "playback:segment");
+});
+
+function pauseNextAuthorization(context, action) {
+  let release, entered;
+  const ready = new Promise((resolve) => { entered = resolve; });
+  const paused = new Promise((resolve) => { release = resolve; });
+  const original = context.authority.authorizeGatewayBearer.bind(context.authority);
+  let first = true;
+  context.authority.authorizeGatewayBearer = async (...args) => {
+    const grant = await original(...args);
+    if (first && args[1].action === action) { first = false; entered(); await paused; }
+    return grant;
+  };
+  return { ready, release };
+}
+
+for (const ending of ["close", "prune", "replacement", "renewal"]) test(`pending renewal cannot overwrite ${ending}`, async () => {
+  const context = createStore(), { store } = context;
+  const origin = "https://webrtc.ananta.de";
+  const session = await store.create({ authorizationHeader: "Bearer playback-grant", resourceRef, origin, now });
+  const cookieHeader = session.setCookie[0].split(";", 1)[0];
+  const request = { authorizationHeader: "Bearer renewed-playback-grant", sessionId: session.playbackSessionId,
+    resourceRef, cookieHeader, origin, now: now + 20_000 };
+  const pause = pauseNextAuthorization(context, "playback:segment");
+  const pending = store.renew(request);
+  const rejected = assert.rejects(pending, /not_found/);
+  await pause.ready;
+  if (ending === "renewal") await store.renew({ ...request, now: now + 21_000 });
+  else if (ending === "prune") await assert.rejects(store.authorize({ cookieHeader, method: "GET", resourceRef,
+    file: "index.m3u8", origin, now: now + 60_001 }), /not_found/);
+  else {
+    store.close({ sessionId: session.playbackSessionId, cookieHeader, origin, now: now + 21_000 });
+    if (ending === "replacement") await store.create({ authorizationHeader: "Bearer playback-grant", resourceRef, origin, now: now + 21_000 });
+  }
+  pause.release();
+  await rejected;
+  assert.equal(store.size, ["replacement", "renewal"].includes(ending) ? 1 : 0);
+});
+
+for (const ending of ["close", "renewal"]) test(`in-flight media authorization respects ${ending}`, async () => {
+  const context = createStore(), { store } = context;
+  const origin = "https://webrtc.ananta.de";
+  const session = await store.create({ authorizationHeader: "Bearer playback-grant", resourceRef, origin, now });
+  const cookieHeader = session.setCookie[0].split(";", 1)[0];
+  const pause = pauseNextAuthorization(context, "playback:manifest");
+  const pending = store.authorize({ cookieHeader, method: "GET", resourceRef, file: "index.m3u8", origin, now });
+  const checked = ending === "close" ? assert.rejects(pending, /not_found/) : pending;
+  await pause.ready;
+  if (ending === "close") store.close({ sessionId: session.playbackSessionId, cookieHeader, origin, now });
+  else await store.renew({ authorizationHeader: "Bearer renewed-playback-grant", sessionId: session.playbackSessionId,
+    resourceRef, cookieHeader, origin, now });
+  pause.release();
+  await checked;
 });
 
 test("renewal rotates only the bearer and expiry of the same cookie-, device- and epoch-bound session", async () => {

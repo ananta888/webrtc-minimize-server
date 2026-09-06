@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const template = readFileSync("frontend/src/app/broadcast/broadcast-audience.component.html", "utf8");
 const component = readFileSync("frontend/src/app/broadcast/broadcast-audience.component.ts", "utf8");
+const workflow = readFileSync("frontend/src/app/broadcast/broadcast-viewer-workflow.service.ts", "utf8");
 
 describe("BroadcastAudienceComponent", () => {
   it("separates public, entitled private, owned and unavailable programs", () => {
@@ -28,11 +29,12 @@ describe("BroadcastAudienceComponent", () => {
     expect(component).toContain("this.directory.deepLink(entry.programId)");
     expect(component).not.toContain("deepLink(bootstrap.playbackGrant");
     expect(component).not.toContain("getUserMedia");
-    expect(component).toContain("scheduleRenewal(bootstrap.program, bootstrap.resourceRef, session.expiresAt)");
-    expect(component).toContain("this.directory.authorize(program.programId, controller.signal)");
-    expect(component).toContain("this.playbackGateway.renew(");
-    expect(component).toContain('error.code === "broadcast_playback_not_found"');
-    expect(component).toContain('? "broadcast_ended" : "broadcast_playback_renewal_failed"');
+    expect(component).toContain('this.viewer.open(entry, "user-action")');
+    expect(component).toContain("providers: [BroadcastViewerWorkflowService, BroadcastPlaybackGatewayService]");
+    expect(workflow).toContain("this.directory.authorize(watch.programId, lifetime)");
+    expect(workflow).toContain("this.gateway.renew(");
+    expect(template).toContain('(started)="viewer.playbackStarted($event)"');
+    expect(template).toContain('[suspended]="viewer.reconnecting()"');
   });
 
   it("uses native buttons and alert/status semantics for accessible recovery", () => {

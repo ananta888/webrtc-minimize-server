@@ -6,7 +6,9 @@
 
   <div class="stage">
     <video #video playsinline [muted]="muted()" aria-label="Live-Broadcast"></video>
-    @if (state().lifecycle === 'idle') {
+    @if (suspended()) {
+      <p class="player-message" role="status">Ausgabe wird neu autorisiert…</p>
+    } @else if (state().lifecycle === 'idle') {
       <button id="broadcast-player-start" class="primary-action" type="button" (click)="start()">Live-Wiedergabe starten</button>
     } @else if (state().lifecycle === 'awaiting-user') {
       <button id="broadcast-player-continue" class="primary-action" type="button" (click)="continuePlayback()">Wiedergabe erlauben</button>

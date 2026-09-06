@@ -166,6 +166,7 @@ export class BroadcastDirectoryService {
       },
     );
     if (challengeResponse.status === 401) throw new Error("broadcast_directory_sign_in_required");
+    if (challengeResponse.status === 429) throw new Error("broadcast_temporarily_unavailable");
     if (challengeResponse.status === 404 || challengeResponse.status === 403) {
       throw new Error("broadcast_not_available");
     }
@@ -197,6 +198,7 @@ export class BroadcastDirectoryService {
       }),
     });
     if (response.status === 401) throw new Error("broadcast_directory_sign_in_required");
+    if (response.status === 429) throw new Error("broadcast_temporarily_unavailable");
     if (response.status === 404 || response.status === 403) throw new Error("broadcast_not_available");
     if (response.status === 410) throw new Error("broadcast_ended");
     if (response.status === 503) throw new Error("broadcast_offline");

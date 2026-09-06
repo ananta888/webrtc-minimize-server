@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { chromium, firefox } from "playwright";
+import { verifyProductionHandoff } from "./live-production-handoff-gate.mjs";
 
 if (process.env.RUN_LIVE_PRODUCTION_BROADCAST !== "1") {
   console.log("SKIP production broadcast gate: provide an isolated test identity and packager");
@@ -11,6 +12,13 @@ const issuer = process.env.LIVE_OIDC_ISSUER || "https://keycloak.ananta.de/realm
 const username = process.env.LIVE_OIDC_USERNAME || "";
 const password = process.env.LIVE_OIDC_PASSWORD || "";
 const packagerId = process.env.LIVE_NATIVE_PACKAGER_ID || "";
+const handoffId = process.env.LIVE_NATIVE_PACKAGER_HANDOFF_ID || "";
+if ((process.env.LIVE_PRODUCTION_NATIVE_HANDOFF === "1" && !handoffId)
+  || (handoffId && (!/^pkr_[A-Za-z0-9_-]{16,64}$/.test(handoffId) || handoffId === packagerId))) {
+  throw new Error("isolated handoff gate requires two distinct packagers");
+}
+const packagerIds = handoffId ? [packagerId, handoffId] : [packagerId];
+const assignmentStatuses = [];
 const verifyRefreshRestore = process.env.LIVE_PRODUCTION_REFRESH_RESTORE === "1";
 const verifyPrivateViewer = process.env.LIVE_PRODUCTION_PRIVATE_VIEWER === "1";
 const viewerBrowserName = process.env.LIVE_PRODUCTION_VIEWER_BROWSER || "chromium";
@@ -216,6 +224,16 @@ try {
     }
   });
   ownerPage = await ownerContext.newPage();
+  ownerPage.on("websocket", socket => socket.on("framereceived", ({ payload }) => {
+    try {
+      const message = JSON.parse(String(payload));
+      if (message.type === "native-packager-status") {
+        assignmentStatuses.push({ programId: message.programId, programEpoch: message.programEpoch,
+          packagerId: message.packagerId, state: message.state, reasonCode: message.reasonCode });
+        if (assignmentStatuses.length > 128) assignmentStatuses.shift();
+      }
+    } catch { /* Non-status signaling is neither recorded nor interpreted by this gate. */ }
+  }));
   let programCreateRequests = 0;
   ownerPage.on("request", (request) => {
     const url = new URL(request.url());
@@ -250,7 +268,8 @@ try {
   await ownerPage.locator("#toggle-microphone[aria-pressed=true]").waitFor();
 
   await ownerPage.locator("#mesh-analysis-navigation").click();
-  const packager = ownerPage.locator("#native-packager-analysis-panel .owned-agent", { hasText: packagerId });
+  for (const id of packagerIds) {
+  const packager = ownerPage.locator("#native-packager-analysis-panel .owned-agent", { hasText: id });
   await packager.getByText("online", { exact: false }).waitFor({ timeout: 30_000 });
   const roomConsent = packager.locator(".agent-consent input");
   await roomConsent.check();
@@ -264,10 +283,11 @@ try {
       const input = card?.querySelector(".agent-consent input");
       return input instanceof HTMLInputElement && input.checked && !input.disabled
         && !card?.textContent?.includes("Bestätigung des Agenten ausstehend");
-    }, packagerId, { timeout: 5_000 });
+    }, id, { timeout: 5_000 });
   } catch (error) {
     const status = (await packager.innerText()).replaceAll(/\s+/g, " ").slice(0, 500);
     throw new Error(`native_packager_consent_not_confirmed:${status}`, { cause: error });
+  }
   }
 
   await ownerPage.locator("#broadcast-navigation").click();
@@ -355,7 +375,9 @@ try {
     await login(privateViewer);
     await privateViewer.locator("#broadcast-navigation").click();
     await refreshUntilProgramVisible(privateViewer, "section[aria-labelledby=own-broadcasts-heading]", title);
-    await startVisiblePlayer(privateViewer, "section[aria-labelledby=own-broadcasts-heading]");
+    const privateManifest = await startVisiblePlayer(privateViewer, "section[aria-labelledby=own-broadcasts-heading]");
+    if (handoffId) await verifyProductionHandoff({ owner: ownerPage, viewer: privateViewer, targetId: handoffId,
+      programCreates: () => programCreateRequests, statuses: assignmentStatuses, manifest: privateManifest });
     assert.equal(await privateViewer.locator("#leave-room").count(), 0,
       "authenticated private viewers must not receive room membership");
     await privateViewer.locator("app-broadcast-player .controls button", { hasText: "Schließen" }).click();
@@ -426,6 +448,9 @@ try {
   assert.equal(renewalResponse.status(), 200, "active anonymous playback session was not renewed");
   assert.equal(viewerPlayback.sessionRenewals, 1,
     "one scoped playback-session renewal was expected before the first grant expired");
+  if (handoffId) playerManifest = await verifyProductionHandoff({ owner: ownerPage, viewer,
+    targetId: verifyPrivateViewer ? packagerId : handoffId, programCreates: () => programCreateRequests,
+    statuses: assignmentStatuses, manifest: playerManifest });
 
   await ownerPage.locator("#broadcast-stop").click();
   await ownerPage.locator("#broadcast-start", {
@@ -494,10 +519,12 @@ try {
   assert.deepEqual(pageErrors, []);
 
   await ownerPage.locator("#mesh-analysis-navigation").click();
-  const currentPackager = ownerPage.locator("#native-packager-analysis-panel .owned-agent", { hasText: packagerId });
+  for (const id of packagerIds) {
+  const currentPackager = ownerPage.locator("#native-packager-analysis-panel .owned-agent", { hasText: id });
   ownerPage.once("dialog", (dialog) => dialog.accept());
   await currentPackager.getByRole("button", { name: "Widerrufen" }).click();
   await currentPackager.getByText("widerrufen", { exact: false }).waitFor();
+  }
   const leaveRoom = ownerPage.locator("#leave-room");
   if (await leaveRoom.isVisible()) await leaveRoom.click();
 

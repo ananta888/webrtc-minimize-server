@@ -83,6 +83,8 @@ export class BroadcastHlsPlayer {
   private stalledSamples = 0;
   private recoveries: number[] = [];
   private abortListener: (() => void) | null = null;
+  private abortSignal: AbortSignal | null = null;
+  private generation = 0;
   private listeners: Array<readonly [keyof HTMLMediaElementEventMap, EventListener]> = [];
   private captionPoll: ReturnType<typeof setInterval> | null = null;
   private captionController: AbortController | null = null;
@@ -112,17 +114,20 @@ export class BroadcastHlsPlayer {
       || options.volume < 0 || options.volume > 1) {
       throw new BroadcastBrowserPortError("invalid_broadcast_player_options");
     }
+    const generation = ++this.generation;
     this.video = video;
     video.muted = options.muted;
     video.volume = options.volume;
     video.playsInline = true;
     this.update({ lifecycle: "loading", errorCode: "" });
     this.installMediaListeners(video);
-    this.abortListener = () => { void this.destroy(); };
+    this.abortListener = () => { if (generation === this.generation) void this.destroy(); };
+    this.abortSignal = signal;
     signal.addEventListener("abort", this.abortListener, { once: true });
     try {
       const module = await this.loadHlsModule(signal);
       signal.throwIfAborted();
+      if (generation !== this.generation) throw new DOMException("player-superseded", "AbortError");
       if (module.default.isSupported()) {
         const config: Partial<HlsConfig> = {
           lowLatencyMode: true,
@@ -136,10 +141,11 @@ export class BroadcastHlsPlayer {
         const hls = new module.default(config);
         this.hls = hls;
         hls.on(module.Events.MANIFEST_PARSED, () => {
+          if (generation !== this.generation) return;
           this.update({ qualities: qualities(hls.levels) });
         });
-        hls.on(module.Events.LEVEL_SWITCHED, () => this.updateLiveEdge());
-        hls.on(module.Events.ERROR, (_event, data) => this.handleHlsError(data));
+        hls.on(module.Events.LEVEL_SWITCHED, () => { if (generation === this.generation) this.updateLiveEdge(); });
+        hls.on(module.Events.ERROR, (_event, data) => { if (generation === this.generation) this.handleHlsError(data); });
         hls.attachMedia(video);
         const manifestReady = this.waitForHlsManifest(hls, module, signal);
         hls.loadSource(source);
@@ -151,10 +157,13 @@ export class BroadcastHlsPlayer {
       } else {
         throw new BroadcastBrowserPortError("broadcast_hls_unsupported");
       }
+      signal.throwIfAborted();
+      if (generation !== this.generation) throw new DOMException("player-superseded", "AbortError");
       if (options.captions === true) this.startCaptionPolling(source);
       this.startWatchdog();
       await this.play();
     } catch (error) {
+      if (generation !== this.generation) throw new DOMException("player-superseded", "AbortError");
       if (signal.aborted) {
         await this.destroy();
         signal.throwIfAborted();
@@ -166,13 +175,16 @@ export class BroadcastHlsPlayer {
 
   async play(): Promise<void> {
     const video = this.video;
+    const generation = this.generation;
     if (!video) throw new BroadcastBrowserPortError("broadcast_player_not_open");
     try {
       await video.play();
+      if (generation !== this.generation) return;
       if (this.snapshotValue.lifecycle !== "failed") {
         this.update({ lifecycle: "playing", errorCode: "" });
       }
     } catch (error) {
+      if (generation !== this.generation) return;
       if (error instanceof DOMException && error.name === "NotAllowedError") {
         this.update({ lifecycle: "awaiting-user", errorCode: "broadcast_player_user_activation_required" });
         return;
@@ -230,6 +242,10 @@ export class BroadcastHlsPlayer {
   }
 
   async destroy(): Promise<void> {
+    ++this.generation;
+    if (this.abortListener) this.abortSignal?.removeEventListener("abort", this.abortListener);
+    this.abortSignal = null;
+    this.abortListener = null;
     const video = this.video;
     if (!video) return;
     if (this.watchdog) clearInterval(this.watchdog);
@@ -270,6 +286,7 @@ export class BroadcastHlsPlayer {
   }
 
   private startCaptionPolling(manifestUrl: string): void {
+    const generation = this.generation;
     const url = new URL(manifestUrl);
     url.pathname = url.pathname.replace(/\/(?:index|master)\.m3u8$/, "/captions_live.vtt");
     const poll = async () => {
@@ -289,7 +306,8 @@ export class BroadcastHlsPlayer {
         const raw = await response.arrayBuffer();
         if (raw.byteLength < 8 || raw.byteLength > 64 * 1024) return;
         const body = new TextDecoder("utf-8", { fatal: true }).decode(raw);
-        if (!body.startsWith("WEBVTT\n\n") || body === this.captionBody || !this.video) return;
+        if (controller.signal.aborted || generation !== this.generation
+          || !body.startsWith("WEBVTT\n\n") || body === this.captionBody || !this.video) return;
         const nextUrl = URL.createObjectURL(new Blob([body], { type: "text/vtt" }));
         const previousUrl = this.captionObjectUrl;
         let track = this.captionTrack;

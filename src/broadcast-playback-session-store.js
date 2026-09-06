@@ -162,7 +162,8 @@ export class BroadcastPlaybackSessionStore {
     }
     if (!grant || grant.grantKind !== "playback" || grant.resourceRef !== session.resourceRef
       || !Number.isSafeInteger(grant.expiresAt) || grant.expiresAt <= now
-      || !sameGrantScope(session.grantScope, grant)) notFound();
+      || !sameGrantScope(session.grantScope, grant)
+      || this.#sessions.get(sessionId) !== session) notFound();
     const renewed = Object.freeze({
       ...session, authorizationHeader, audienceRef: grant.audienceRef, expiresAt: grant.expiresAt,
     });
@@ -195,6 +196,9 @@ export class BroadcastPlaybackSessionStore {
     } catch {
       notFound();
     }
+    // A close/prune during async authorization must not release another media request.
+    // A normal renewal preserves the immutable grantScope object and remains compatible.
+    if (this.#sessions.get(session.sessionId)?.grantScope !== session.grantScope) notFound();
     return Object.freeze({
       sessionId: session.sessionId,
       upstreamPath: `/${resourceRef}/${file}${normalizedQuery ? `?${normalizedQuery}` : ""}`,

@@ -7,8 +7,9 @@ inzwischen einen realen Enrollment-/Publish-/Playback-Pfad. Eine laufende
 Own-Source-Komposition lässt sich über einen getrennten lokalen Bildregie-Port
 steuern. Für eigenes natives Publishing ist die unten beschriebene serverseitige
 Same-Program-Übergabe einschließlich Angular-Übergabedialog angeschlossen.
-Kontrollierter Player-Generationswechsel, Fremdquellenmoderation und Standby
-bleiben offen; ein realer Zwei-Packager-Mediennachweis steht noch aus.
+Kontrollierter Player-Generationswechsel ist lokal implementiert und getestet.
+Fremdquellenmoderation und Standby bleiben offen; ein realer Zwei-Packager-
+Mediennachweis steht noch aus.
 
 ## Angeschlossene native Übergabe-API
 
@@ -88,9 +89,43 @@ Assignment-Stop/Bestätigung und zwölf Sekunden für Program-Stop. Diese
 Sicherheitsbereinigung kann über das 75-Sekunden-Startbudget hinauslaufen.
 
 Unit- und Template-Gates prüfen diese Grenzen. Das ist noch kein realer
-Medien-Handoff-/Accessibility-Nachweis. Bis zur Player-Erweiterung müssen
-Zuschauer die Wiedergabe gegebenenfalls bewusst neu starten; die Oberfläche
-verspricht weder nahtlosen Wechsel noch automatische Standby-Übernahme.
+Medien-Handoff-/Accessibility-Nachweis. Die folgende Player-Erweiterung versucht
+die autorisierte Fortsetzung mit Unterbrechung; die Oberfläche verspricht weder
+nahtlosen Wechsel noch automatische Standby-Übernahme.
+
+### Kontrollierte Zuschauer-Fortsetzung
+
+`BroadcastViewerWorkflowService` besitzt den Zuschauer-Lifecycle getrennt von
+der Oberfläche. Erst der lokale Wiedergabe-Klick erlaubt automatisches Fortsetzen
+derselben Sendung. Ein neuer Output benötigt eine frische Autorisierung, dieselbe
+Program-ID und Sichtbarkeits-/Playbackpolicy, eine höhere Program-Epoch und
+Policy-Revision sowie eine andere opaque Ressource. Alte Cookies und Player
+werden geschlossen; bestehende Lautstärke, Stummschaltung, Qualitätsmodus,
+manuelle maximale Höhe und Untertitelwahl bleiben erhalten. Ein anderer
+Programm-Link startet niemals automatisch. Browser-Autoplayregeln bleiben wirksam.
+
+Die Wiederherstellung versucht höchstens sechs Autorisierungen in 75 Sekunden;
+höchstens drei neue Generationen pro Minute sind erlaubt. 429, Scopewechsel und
+unbekannte Fehler lösen keine Wiederholung aus. Stop, Destroy, Logout und
+Seitenausblendung brechen Timer und laufende Requests ab. Alte asynchrone
+Player-/Caption-Antworten können keinen Nachfolger verändern. Ein fehlgeschlagener
+Remote-Widerruf wird nicht als bestätigt ausgegeben; lokal bleibt die Sitzung
+geschlossen und ihre Serverberechtigung läuft spätestens mit dem Grant ab.
+
+Browser-Gateway-Tests prüfen späte open-/renew-Antworten nach close, getrennte
+alte/neue Handles und begrenztes Cleanup. Der Server prüft nach asynchroner
+Grantvalidierung erneut die aktuelle Session-Identität: paralleles close,
+Prune, ID-Neuvergabe und konkurrierende Renewals können keinen alten Eintrag
+wiederbeleben. Normale Verlängerung invalidiert nicht unnötig laufende
+Medienautorisierungen derselben unveränderten Grant-Scope.
+
+Das optionale Gate `LIVE_PRODUCTION_NATIVE_HANDOFF=1` der isolierten
+Produktionssuite provisioniert zwei eigene temporäre native Packager. Es prüft
+private und öffentliche Zuschauer-Fortsetzung, Stop-ACK vor Nachfolger-Readiness,
+neue tatsächlich abgespielte Ausgabe, alten Manifest-Widerruf und unveränderte
+Capture-Aufrufzahl. Beide Agenten werden regulär widerrufen und entfernt.
+Das Gate ist erst nach einem erfolgreichen realen Lauf Produktionsnachweis;
+sein gemeinsamer Mini-PC-Origin beweist keinen beliebigen Cross-Host-Origin.
 
 ### Ausgelieferter Stand und getrennte Produktionsnachweise
 

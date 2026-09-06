@@ -200,7 +200,7 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
     if (!target || !window.confirm(
       `Sendung an „${target.label}“ übergeben? Dieser Trusted Packager erhält die bereits gewählten eigenen Quellen `
       + "unverschlüsselt auf Medienebene; dieser Broadcast-Zweig ist nicht SFrame-E2EE. Die Sendungs-ID und Sichtbarkeit bleiben erhalten. "
-      + "Es entsteht eine Unterbrechung; Zuschauer müssen die Wiedergabe gegebenenfalls erneut starten. "
+      + "Es entsteht eine Unterbrechung; bereits gestartete Zuschauer versuchen begrenzt, dieselbe Sendung frisch autorisiert fortzusetzen. "
       + "Der Zielrechner benötigt eine eingerichtete Verbindung zum Broadcast-Origin. Fortfahren?",
     )) return;
     if (!this.canHandoff() || this.handoffTargetId() !== target.id || !this.nativePackagers.select(target.id)) return;

@@ -33,27 +33,35 @@ gate_packager_id=""
 gate_container=""
 gate_volume=""
 gate_revoked=0
+gate_packager_ids=()
+gate_containers=()
+gate_volumes=()
+gate_count=1
+if [ "${LIVE_PRODUCTION_NATIVE_HANDOFF:-0}" = 1 ]; then gate_count=2; fi
 
 cleanup() {
   exit_status=$?
   set +e
-  if [ "$exit_status" -ne 0 ] && [ -n "$gate_container" ]; then
+  if [ "$exit_status" -ne 0 ] && [ "${#gate_containers[@]}" -gt 0 ]; then
     printf '%s\n' "Isolated native-packager failure log follows" >&2
-    ssh -i "$ssh_key" "$packager_target" "docker logs --tail 500 '$gate_container' 2>&1" >&2
+    for gate_container in "${gate_containers[@]}"; do
+      ssh -i "$ssh_key" "$packager_target" "docker logs --tail 500 '$gate_container' 2>&1" >&2
+    done
   fi
-  if [ -n "$gate_packager_id" ] && [ "$gate_revoked" -eq 0 ]; then
+  if [ "${#gate_packager_ids[@]}" -gt 0 ] && [ "$gate_revoked" -eq 0 ]; then
+    gate_ids=$(IFS=,; printf '%s' "${gate_packager_ids[*]}")
     RUN_LIVE_NATIVE_PACKAGER_ONBOARDING=1 \
       LIVE_OIDC_USERNAME="$gate_user" LIVE_OIDC_PASSWORD="$gate_password" \
-      LIVE_NATIVE_PACKAGER_ACTION=revoke LIVE_NATIVE_PACKAGER_IDS="$gate_packager_id" \
+      LIVE_NATIVE_PACKAGER_ACTION=revoke LIVE_NATIVE_PACKAGER_IDS="$gate_ids" \
       node scripts/live-native-packager-onboarding-gate.mjs >/dev/null 2>&1
   fi
-  if [ -n "$gate_container" ]; then
+  for gate_container in "${gate_containers[@]}"; do
     ssh -i "$ssh_key" "$packager_target" \
       "docker stop -t 5 '$gate_container' >/dev/null 2>&1 || true; docker container rm '$gate_container' >/dev/null 2>&1 || true"
-  fi
-  if [ -n "$gate_volume" ]; then
+  done
+  for gate_volume in "${gate_volumes[@]}"; do
     ssh -i "$ssh_key" "$packager_target" "docker volume rm '$gate_volume' >/dev/null 2>&1 || true"
-  fi
+  done
   if [ -n "$gate_user_id" ]; then
     ssh -i "$ssh_key" "$keycloak_target" \
       "docker exec '$keycloak_container' sh -lc 'c=/tmp/kcadm-webrtc-cleanup-$gate_user_id.config; trap \"rm -f \$c\" EXIT; /opt/keycloak/bin/kcadm.sh config credentials --config \"\$c\" --server http://127.0.0.1:8080 --realm master --user \"\$KC_BOOTSTRAP_ADMIN_USERNAME\" --password \"\$KC_BOOTSTRAP_ADMIN_PASSWORD\" >/dev/null 2>&1; /opt/keycloak/bin/kcadm.sh delete users/$gate_user_id --config \"\$c\" -r $keycloak_realm >/dev/null 2>&1 || true'"
@@ -107,17 +115,23 @@ printf '%s\n' "Isolated Keycloak identity prepared"
 RUN_LIVE_NATIVE_PACKAGER_ONBOARDING=1 \
   LIVE_OIDC_USERNAME="$gate_user" LIVE_OIDC_PASSWORD="$gate_password" \
   LIVE_NATIVE_PACKAGER_ACTION=download LIVE_NATIVE_PACKAGER_OUTPUT_DIR="$gate_directory" \
-  LIVE_NATIVE_PACKAGER_TARGET=linux-amd64 \
+  LIVE_NATIVE_PACKAGER_TARGET=linux-amd64 LIVE_NATIVE_PACKAGER_COUNT="$gate_count" \
   node scripts/live-native-packager-onboarding-gate.mjs
 
-gate_packager_id="$(jq -r '.entries[0].packagerId' "$gate_directory/manifest.json")"
-installer="$(find "$gate_directory" -maxdepth 1 -type f -name '1-ananta-native-packager-*.sh' -print -quit)"
+mapfile -t gate_packager_ids < <(jq -r '.entries[].packagerId' "$gate_directory/manifest.json")
+test "${#gate_packager_ids[@]}" -eq "$gate_count"
+for gate_index in "${!gate_packager_ids[@]}"; do
+gate_packager_id=${gate_packager_ids[$gate_index]}
+[[ "$gate_packager_id" =~ ^pkr_[A-Za-z0-9_-]{16,64}$ ]]
+installer="$(find "$gate_directory" -maxdepth 1 -type f -name "$((gate_index + 1))-ananta-native-packager-*.sh" -print -quit)"
 gate_token="$(sed -n "s/^enrollment_token='\([^']*\)'$/\1/p" "$installer")"
 case "$gate_packager_id" in pkr_[A-Za-z0-9_-]*) ;; *) printf '%s\n' "invalid packager id" >&2; exit 1 ;; esac
 test "${#gate_token}" -eq 43
 gate_suffix="${gate_packager_id#pkr_}"
 gate_container="webrtc-gate-packager-${gate_suffix}"
 gate_volume="webrtc-gate-identity-${gate_suffix}"
+gate_containers+=("$gate_container")
+gate_volumes+=("$gate_volume")
 
 {
   printf 'gate_packager_id=%q\n' "$gate_packager_id"
@@ -144,15 +158,17 @@ docker run -d --name "$gate_container" "${common[@]}" \
   -e NATIVE_PACKAGER_LABEL='Isolated Production Gate' "$packager_image" >/dev/null
 REMOTE
 } | ssh -i "$ssh_key" "$packager_target" bash -s
+done
 unset gate_token password_base64
+gate_ids=$(IFS=,; printf '%s' "${gate_packager_ids[*]}")
 
 RUN_LIVE_NATIVE_PACKAGER_ONBOARDING=1 \
   LIVE_OIDC_USERNAME="$gate_user" LIVE_OIDC_PASSWORD="$gate_password" \
-  LIVE_NATIVE_PACKAGER_ACTION=verify-online LIVE_NATIVE_PACKAGER_IDS="$gate_packager_id" \
+  LIVE_NATIVE_PACKAGER_ACTION=verify-online LIVE_NATIVE_PACKAGER_IDS="$gate_ids" \
   node scripts/live-native-packager-onboarding-gate.mjs
 RUN_LIVE_PRODUCTION_BROADCAST=1 \
   LIVE_OIDC_USERNAME="$gate_user" LIVE_OIDC_PASSWORD="$gate_password" \
-  LIVE_NATIVE_PACKAGER_ID="$gate_packager_id" \
+  LIVE_NATIVE_PACKAGER_ID="${gate_packager_ids[0]}" LIVE_NATIVE_PACKAGER_HANDOFF_ID="${gate_packager_ids[1]:-}" \
   node scripts/live-production-broadcast-gate.mjs
 gate_revoked=1
 printf '%s\n' "PASS isolated production broadcast suite with normal revocation"

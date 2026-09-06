@@ -61,6 +61,37 @@ const fakeModule = {
 };
 
 describe("BroadcastHlsPlayer", () => {
+  it("does not let old abort signals or old HLS events terminate a newer output", async () => {
+    FakeHls.instances = [];
+    const controller = new AbortController(), element = video();
+    const player = new BroadcastHlsPlayer(() => undefined, async () => fakeModule as never);
+    await player.open(element, "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8", { muted: true, volume: 1 }, controller.signal);
+    const old = FakeHls.instances[0];
+    await player.destroy();
+    await player.open(element, "/broadcast/play/res_bbbbbbbbbbbbbbbb/index.m3u8", { muted: true, volume: 1 }, new AbortController().signal);
+    controller.abort();
+    old.emit("hlsError", { type: "networkError", fatal: true, response: { code: 403 } });
+    expect(player.snapshot().lifecycle).toBe("playing");
+    expect(FakeHls.instances[1].destroy).not.toHaveBeenCalled();
+    await player.destroy();
+  });
+
+  it("does not attach or clean a successor after a retired engine load completes", async () => {
+    FakeHls.instances = [];
+    let release!: (value: unknown) => void;
+    const loader = vi.fn().mockReturnValueOnce(new Promise((resolve) => { release = resolve; })).mockResolvedValueOnce(fakeModule);
+    const player = new BroadcastHlsPlayer(() => undefined, loader), element = video();
+    const pending = player.open(element, "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8", { muted: true, volume: 1 }, new AbortController().signal);
+    const rejected = expect(pending).rejects.toBeInstanceOf(DOMException);
+    await player.destroy();
+    await player.open(element, "/broadcast/play/res_bbbbbbbbbbbbbbbb/index.m3u8", { muted: true, volume: 1 }, new AbortController().signal);
+    release(fakeModule);
+    await rejected;
+    expect(FakeHls.instances).toHaveLength(1);
+    expect(player.snapshot().lifecycle).toBe("playing");
+    expect(FakeHls.instances[0].destroy).not.toHaveBeenCalled();
+    await player.destroy();
+  });
   afterEach(() => {
     FakeHls.autoManifest = true;
     FakeHls.supported = true;
