@@ -340,11 +340,16 @@ Dreizehn Linux-ausgeführte Mac-/POSIX-Gates bestanden mit simuliertem launchd u
 einem auf echtes `flock` abgebildeten lockf-Testadapter. Dateisystem, Hashes,
 SIGKILL, TERM-Isolation und Prozessgruppen-Zeitlimits waren dabei real, macOS selbst nicht.
 Der Linux-systemd-Gate bestand nach der Extraktion erneut. Zusätzlich gibt es
-einen verpflichtenden CI-Job `macos-packager-lifecycle` auf `macos-15`, der
+einen verpflichtenden CI-Job `macos-packager-lifecycle` auf `macos-15` (ARM64)
+und `macos-15-intel` (x64), der die jeweilige Prozessarchitektur explizit prüft und
 stock `lockf`, `perl`, `mv` und echte eigene launchd-Jobs prüft. In diesem Gate
 bleiben Binary, Download, Enrollment und FFmpeg-Präsenz synthetisch; es werden
 keine Medien verarbeitet oder bestehenden Kontoidentitäten verändert. Der erste
-reale CI-Nachweis steht bei Einführung dieses Abschnitts noch aus. Ohne explizite
+reale Lauf bestand am 6. September 2026 auf macOS 15.7.9 ARM64 mit Revision
+`08fa3fc`: Update, Rollback, Crash-Recovery, FD-Sperren, private Rechte sowie
+Erhalt und unabhängige Deinstallation des zweiten Jobs. Der separate Intel-Zweig
+wird zusätzlich geprüft; ein grüner ARM-Lauf wird nicht als Intel-Nachweis gezählt.
+Ohne explizite
 Aktivierung meldet der lokale Gate SKIP; auf einem explizit aktivierten falschen
 OS oder ohne GUI-Domain muss er fehlschlagen.
 

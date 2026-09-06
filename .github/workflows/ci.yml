@@ -46,8 +46,16 @@ jobs:
           retention-days: 30
 
   macos-packager-lifecycle:
-    name: macOS packager lifecycle
-    runs-on: macos-15
+    name: macOS packager lifecycle (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     steps:
       - name: Check out repository
@@ -59,6 +67,7 @@ jobs:
       - name: Verify real launchd and stock macOS maintenance tools
         env:
           RUN_MACOS_PACKAGER_LIFECYCLE: "1"
+          EXPECT_MACOS_PACKAGER_ARCH: ${{ matrix.arch }}
         run: node scripts/live-native-packager-macos-lifecycle-gate.mjs
 
   docker:

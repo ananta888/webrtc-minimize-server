@@ -12,6 +12,10 @@ if (process.env.RUN_MACOS_PACKAGER_LIFECYCLE !== "1") {
   process.exit(0);
 }
 assert.equal(process.platform,"darwin");
+if (process.env.EXPECT_MACOS_PACKAGER_ARCH) {
+  assert.ok(["arm64","x64"].includes(process.env.EXPECT_MACOS_PACKAGER_ARCH));
+  assert.equal(process.arch,process.env.EXPECT_MACOS_PACKAGER_ARCH);
+}
 const run=(command,args,options={})=>execFileSync(command,args,{encoding:"utf8",stdio:"pipe",timeout:90_000,...options});
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),"packager-launchd-gate-"));
 const ids=Array.from({length:2},()=>`pkr_${crypto.randomBytes(12).toString("hex")}`);
