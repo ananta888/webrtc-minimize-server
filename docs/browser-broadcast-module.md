@@ -101,6 +101,26 @@ Simulcast bleibt bis `TBP-012` ehrlich als nicht verfügbar gemeldet.
 
 ## Verifikation
 
+### Ergänzung: asynchroner Kompositionsbesitz (2026-09-06)
+
+`BroadcastCompositionLifetime` besitzt sowohl ausstehende Factory-Aufrufe als
+auch bereits erworbene Audio-/Videohandles. Externes Abort oder Destroy widerruft
+die Ausgabeautorität sofort; `resolve` und Caption-Änderungen lehnen den Handle
+dann ab. Ein ignoriertes Abort darf durch eine spät zurückkehrende Ressource
+keinen neuen Composition-Eintrag erzeugen; ihr Close wird begrenzt versucht.
+Factory-Aufrufe sind auf zehn Sekunden, jeder Cleanup-Versuch auf fünf Sekunden
+begrenzt. Bereits erworbene Ressourcen werden auch nach Teilfehlern geschlossen.
+Fehlgeschlagenes Cleanup bleibt ausschließlich für einen erneuten Stop erreichbar;
+erfolgreich geschlossene Ressourcen werden dabei nicht nochmals geschlossen.
+Ein fehlerhafter Adapter, der auch Close verweigert, wird dadurch nicht als
+erfolgreich bereinigt behauptet.
+
+Die ursprüngliche Consent-Ablaufzeit und Quell-IDs werden vor dem ersten Await
+gesichert; nach Setup muss der ursprüngliche Consent noch frisch sein. Das
+ändert keine laufenden Control-Plane-Leases und erfindet keine neue Medienfreigabe.
+Caption-Änderungen verlangen den exakten Composition-Handle samt Quell-IDs.
+Konstruktor und Lifetime-Verwaltung rufen keine Capture-API auf.
+
 Die Unit-Tests prüfen insbesondere:
 
 - kein Capture oder Playback durch Konstruktor oder Panel-Öffnung,

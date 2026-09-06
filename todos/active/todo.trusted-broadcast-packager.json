@@ -479,7 +479,7 @@
     {
       "id": "TBP-014",
       "title": "Trusted-Audio-Programmbus mit Echo-, Pegel- und Sprachpriorität bauen",
-      "status": "partial",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "high",
       "progress_percent": 90,
@@ -954,7 +954,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 0, "in_progress": 4, "partial": 15, "blocked": 0, "done": 21 },
+    "by_status": { "todo": 0, "in_progress": 5, "partial": 14, "blocked": 0, "done": 21 },
     "progress_percent_done": 52.5,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -964,12 +964,16 @@
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 4,
-    "partial": 15,
+    "in_progress": 5,
+    "partial": 14,
     "blocked": 0,
     "done": 21
   },
   "summary_notes": [
+    "Der Kompositions-/Audio-Lifetime-Abschnitt bestand am 2026-09-06 den vollen npm-run-check-Gate mit 368 Angular- und 351 Node-/Browser-/Integrationstests ohne Node-Skip, einschliesslich explizit aktiviertem echtem PowerShell-Parser, Go-Test/Vet und allen statischen Gates. 38 fokussierte Audio-/Video-/Kompositions-Tests sowie die neuen echten Chromium-/Firefox-AudioContext-Tests sind gruen. Cleanupfehler und haengende Close-Aufrufe behalten ausschliesslich einen widerrufenen Retry-Pfad; kein erneutes resolve oder Caption-Update ist moeglich. Die CI von e8a1875 ist vollstaendig gruen. Neue CI und Deployment dieses Abschnitts folgen; die Produktion wurde wegen parallel veraenderter Mini-PC-Dateien weiterhin nicht ueberschrieben. Die zwei laufenden Compositor-Stundenprozesse sind noch nicht terminal und bleiben unverifiziert; weder TBP-014 noch TBP-015 oder der Gesamttrack wird als done behauptet.",
+    "TBP-014/015: Echte Chromium-/Firefox-AudioContext-Gates bestehen mit synthetischem 440-Hz-Eingang, messbarem lokalem Pegel, Abort, lokalem track.stop ohne ended-Event und injizierter haengender Resume-Antwort. Bus-Kontext und Ausgang enden, der separate Quellkontext bleibt beim Aufrufer; es entsteht kein physischer Capture-Aufruf oder Lautsprechermonitor. Asynchrone Komposition besitzt nun einen eigenen begrenzten Lifetime: zehn Sekunden Factory-Aufbau, fuenf Sekunden je Cleanup-Versuch, sofortiger Autoritaetswiderruf, spaete Ergebnisse ohne erneute Publikation und Cleanup-Retry nur fuer fehlgeschlagene Ressourcen. Originale Consent-Ablaufzeit und Quell-IDs werden vor Await gesichert; Caption-Handles werden exakt geprueft. Defaults bleiben fail-closed und Source-Forks gehoeren weiter dem Capture-Lifecycle. Fokus-/Gesamtcheck und CI werden vor Abschluss nachgewiesen; physische Echo-/Bluetooth-/A/V- und automatische Sprecher-/Worker-Gates bleiben offen.",
+    "TBP-014 wird fuer den zugehoerigen lokalen Audio-Setup-Abbruch ebenfalls in_progress/90 gesetzt. Der konkrete Default-Adapter darf bei haengendem AudioContext.resume nach Destroy/Abort keine AudioNodes oder opt-in Monitorverbindung behalten; Resume wird begrenzt/abbrechbar, Kontext und bereits erzeugter Ausgang werden im Fehlerfall geschlossen. Physischer Echo-/Bluetooth-/Lippensynchronitaets-Gate bleibt separat offen.",
+    "TBP-015/Kompositions-Lifecycle: Vor weiterer automatischer Sprechersteuerung wird der asynchrone Besitzpfad geschlossen. Akzeptanz: Destroy und externes Abort brechen ausstehende Factory-Aufrufe begrenzt ab; spaet zurueckkehrende Ressourcen werden geschlossen und niemals nach Destroy publiziert. Aufgebaute Audio-/Videoressourcen besitzen genau einen gemeinsamen, idempotenten Lifetime mit allen Listenern/Timeouts; Setupfehler schliessen bereits erworbene Ressourcen. Consent wird nach asynchronem Aufbau erneut vor Ausgabe geprueft, und Caption-Aenderungen akzeptieren nur den exakten bestehenden Composition-Handle. Tests muessen verzogerte/ignorierte Abbrueche, Teilerfolg, Timeout, externes Abort, Destroy und falsche Handle-Source-IDs abdecken. Der Capture-Lifecycle und laufende Raum-/Consent-Leases werden nicht neu definiert.",
     "TBP-015 steht nun auf in_progress/75. Der abschliessende lokale Gesamtcheck bestand mit 351 Angular- und 349 Node-/Browser-/Integrationstests ohne Node-Skip sowie Go-Test/Vet und allen statischen Gates; externe nicht aktivierte Infrastruktur bleibt sichtbar SKIP. Ein SFrame-Interop-Timeout im vorherigen Gesamtcheck liess sich im gezielten Wiederholungslauf nicht reproduzieren; auch der erneute Gesamtcheck bestand diesen bestehenden Gate. Dreizehn Compositor-Unit-Tests decken nun zusaetzlich leere Playback-Rejection und bereits beendeten Canvas-Ausgang ab. Die laufenden Stundenlaeufe sind an ihr Bundle 7de0589a6125f2e04d830a99265e094a8f4f82c9997273da5bacc51137e1ebf6 vor diesen letzten beiden Negativguards gebunden; sie sind weder beendet noch als finaler Vollumfangs-/A/V-Nachweis gewertet. CI, Langzeitabschluss und Deployment bleiben getrennt nachzuweisen.",
     "TBP-015: Zwoelf fokussierte Compositor-Tests sowie echte Chromium-/Firefox-Pixelgates bestehen fuer alle sieben Layouts, Portrait-Cropping, 4:3-Screen-Letterboxing, Overlay-Consent, quelleneigenes track.stop ohne ended-Event und Ausgangs-Cleanup. Start ist auf fuenf Sekunden begrenzt und abbrechbar; Setup-/Renderfehler stoppen alle erzeugten Ausgangstracks, nicht die Capture-Eingaenge. Der opt-in Video-Soak prueft echte Output-Frame-Callbacks, monotone Media-Zeit und wechselnde bekannte Quellpixel statt nur Renderzaehler. Zehnsekundige Probeläufe beider Browser bestanden; zwei getrennte 3600-Sekunden-Laeufe wurden gestartet und sind bis zum tatsaechlichen Abschluss NICHT als bestanden verbucht. Die Evidenz bindet Browser-Version und Bundle-SHA; fehlendes Firefox-Heap-Meter bleibt unavailable, physische A/V-/CPU-/Worker-Gates bleiben unverified. Gesamtcheck folgt vor Commit.",
     "TBP-015 wird unabhaengig vom parallelen Maschinen-Track auf dem Mini-PC weiterbearbeitet. Naechster pruefbarer Abschnitt: begrenzter und abbrechbarer HTMLVideo-Start, vollstaendiges Cleanup bei Setup-/Renderfehler und Abbruch, keine weiterlaufenden Canvas-Tracks nach Fehler, sowie reale Chromium-/Firefox-Pixelgates fuer alle sieben Layouts, Fit/Crop, Overlay-Consent und Quellenende. Ein eigener Langzeitgate soll echte Canvas-Ausgabe und Fortschritt beobachten, ohne synthetische Quellen als physische Kamera-/Lippensynchronitaetsevidenz auszugeben. Automatische quellengebundene Sprecherwahl, Worker-Strategie und physische A/V-Langzeitnachweise bleiben bis eigener Verifikation offen. Die Linux-Migration 75fc40e ist vollstaendig CI-gruen inklusive Keycloak/TURN und Docker-/Attestationsabgleich; Deployment pausiert wegen fremder uncommitteter Mini-PC-Aenderungen.",
