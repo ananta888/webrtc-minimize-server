@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 
 import { loadConfig } from "./config.js";
+import { MachineAdmission, machineMessageAllowed } from "./machine-admission.js";
 import { DeviceProofError, DeviceProofVerifier } from "./device-proof.js";
 import { MediaAgentEnrollmentError, MediaAgentEnrollmentStore } from "./media-agent-enrollment-store.js";
 import { MediaAgentInstallerError, MediaAgentInstallerService } from "./media-agent-installers.js";
@@ -368,6 +369,7 @@ function errorStatus(error) {
 
 function createHttpHandler(config, registry, services) {
   const {
+    machineAdmission,
     oidcVerifier,
     deviceProofVerifier,
     ticketStore,
@@ -1180,19 +1182,23 @@ function createHttpHandler(config, registry, services) {
         sendJson(response, 200, { room }, securityHeaders(config));
         return;
       }
-      if (request.method === "POST" && url.pathname === "/api/sessions") {
+      if (request.method === "POST" && ["/api/sessions", "/api/machine/sessions"].includes(url.pathname)) {
         if (!requestOriginAllowed(request, config)) throw new ProtocolError("origin_denied");
         const input = await readJsonBody(request);
         assertAllowedKeys(input, SESSION_REQUEST_FIELDS);
         const roomId = normalizeRoomId(input.roomId);
         const mode = normalizeMode(input.mode);
         const requestedName = normalizeDisplayName(input.displayName);
-        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const humanIdentity = url.pathname === "/api/sessions"
+          ? await authenticateRequest(request, config, oidcVerifier) : null;
         const device = deviceProofVerifier.verify(input.deviceProof, {
           roomId,
           mode,
           displayName: requestedName,
         });
+        const identity = url.pathname === "/api/machine/sessions"
+          ? await machineAdmission.verify(request.headers.authorization, { roomId, mode, displayName: requestedName })
+          : humanIdentity;
         const principal = identity
           ? `${identity.issuer}|${identity.subject}`
           : `anonymous:${device.fingerprint}`;
@@ -1214,6 +1220,7 @@ function createHttpHandler(config, registry, services) {
           origin,
           workspaceId: workspace?.workspaceId || "",
           workspaceRole: workspace?.role || "",
+          ...(identity?.machineExpiresAt ? { machineExpiresAt: identity.machineExpiresAt } : {}),
         });
         const directIceServers = config.stunUrls.map((urls) => ({ urls }));
         const peerRelayIceServers = createEdgeTurnCredentials(config, principal);
@@ -1225,6 +1232,9 @@ function createHttpHandler(config, registry, services) {
           ticket: issued.ticket,
           expiresAt: issued.expiresAt,
           signalingPath: `/signal?ticket=${encodeURIComponent(issued.ticket)}`,
+          ...(identity?.machineExpiresAt ? {
+            machineExpiresAt: identity.machineExpiresAt, controllerOrigin: identity.controllerOrigin,
+          } : {}),
           identity: identity ? { authenticated: true, displayName: identity.displayName } : { authenticated: false },
           workspace,
           icePolicy: {
@@ -1499,6 +1509,9 @@ function configureSignaling(
       identity = ticketStore.consume(url.searchParams.get("ticket") || "", {
         origin: request.headers.origin || "",
       });
+      if (identity.machineExpiresAt && identity.machineExpiresAt <= Date.now()) {
+        throw new SessionTicketError("machine_session_expired");
+      }
     } catch (error) {
       rejectUpgrade(socket, error instanceof SessionTicketError ? 401 : 400, error.code || "invalid_join");
       return;
@@ -1509,6 +1522,10 @@ function configureSignaling(
   });
 
   webSocketServer.on("connection", (socket, _request, identity) => {
+    const machineExpiry = identity.machineExpiresAt ? setTimeout(() => {
+      socket.close(1008, "machine_session_expired");
+    }, Math.max(1, identity.machineExpiresAt - Date.now())) : null;
+    socket.once("close", () => clearTimeout(machineExpiry));
     let joined;
     try {
       joined = registry.join(identity.roomId, socket, identity.name, Date.now(), {
@@ -1575,6 +1592,9 @@ function configureSignaling(
         try { message = parseClientMessage(raw); } catch (error) {
           if (!(error instanceof ProtocolError)) throw error;
           message = parseBrowserMediaAgentMessage(raw);
+        }
+        if (identity.machineExpiresAt && (Date.now() >= identity.machineExpiresAt || !machineMessageAllowed(message))) {
+          throw new ProtocolError("machine_operation_denied");
         }
         if (message.type === "leave") {
           leave();
@@ -2206,6 +2226,7 @@ export function createAppServer(options = {}) {
     idleTtlMs: config.roomIdleTtlMs,
   });
   const oidcVerifier = options.oidcVerifier || createOidcVerifier(config);
+  const machineAdmission = new MachineAdmission({ publicKey: config.machineHubPublicKey, issuer: config.machineHubIssuer });
   const deviceProofVerifier = options.deviceProofVerifier || new DeviceProofVerifier({
     maxAgeMs: config.deviceProofMaxAgeMs,
   });
@@ -2317,6 +2338,7 @@ export function createAppServer(options = {}) {
     throw new Error("BROADCAST_GATEWAY_AUTH_ENABLED requires a MediaMTX external auth service");
   }
   const services = {
+    machineAdmission,
     oidcVerifier,
     deviceProofVerifier,
     ticketStore,

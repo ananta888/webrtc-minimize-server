@@ -748,6 +748,10 @@ export class PeerMeshService {
     this.addChat(this.ownName || "Du", value, false);
   }
 
+  clearChatHistory(): void {
+    this.chat.set([]);
+  }
+
   sendCaption(
     message: Omit<CaptionWireMessage, "version" | "type">,
     shareWithRoom = true,

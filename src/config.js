@@ -508,6 +508,8 @@ export function loadConfig(env = process.env) {
       minimum: 10, maximum: 1000, name: "SIGNAL_RATE_LIMIT",
     }),
     authMode,
+    machineHubPublicKey: environmentOrFile(env, "MACHINE_HUB_PUBLIC_KEY") || "",
+    machineHubIssuer: String(env.MACHINE_HUB_ISSUER || ""),
     oidcIssuer,
     oidcAudience,
     oidcClientId,

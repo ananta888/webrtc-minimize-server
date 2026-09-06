@@ -1,0 +1,133 @@
+{
+  "version": "1.0",
+  "owner": "ANANTA Meet maintainers",
+  "track": "ananta-machine-participant",
+  "status": "done",
+  "purpose": "Additive, ausdrücklich vorautorisierte KI-Teilnahme für eigene synthetische Audio-/Videoquellen und Chat; Ananta-Hub bleibt externe Taskautorität.",
+  "related_track": "../ananta/todos/todo.meet-autonomous-agent-persona-media.json",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "milestones": [
+    {
+      "id": "AMP-M1",
+      "title": "Sicherer lokaler vertikaler Slice",
+      "status": "done",
+      "task_ids": [
+        "AMP-01",
+        "AMP-02",
+        "AMP-03"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "AMP-01",
+      "title": "Separaten signierten Maschinenbeitritt ergänzen",
+      "status": "done",
+      "progress_percent": 100,
+      "priority": "P0",
+      "risk": "critical",
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Standardmäßig deaktivierter, explizit konfigurierter Ed25519-Hub-Trust; exakte Audience, Raum-, Task-, Projekt-, Tenant- und Zeitbindung.",
+        "Frischer Gerätebeweis und Einmal-Ticket bleiben erforderlich; Replay und Sitzungsablauf werden fail-closed geprüft.",
+        "Human-OIDC, Capture-Klick und erforderliches SFrame bleiben unverändert; synthetische Identität ist sichtbar als KI bezeichnet."
+      ]
+    },
+    {
+      "id": "AMP-02",
+      "title": "Autorisierte generierte Quellen und Chat im Browserclient anbinden",
+      "status": "done",
+      "progress_percent": 100,
+      "priority": "P1",
+      "risk": "high",
+      "depends_on": [
+        "AMP-01"
+      ],
+      "acceptance_criteria": [
+        "Separater Maschinenclient verwendet vorhandenes Peer-Mesh und SFrame; kein getUserMedia/getDisplayMedia.",
+        "Nur der konfigurierte Hub-Controller darf die Quelle steuern; Größen-, Laufzeit- und Cleanup-Grenzen gelten.",
+        "Chatinhalt bleibt im DataChannel, niemals im Signaling-Server."
+      ]
+    },
+    {
+      "id": "AMP-03",
+      "title": "Headless-Tests, Kompatibilität und Aktivierungsgrenzen dokumentieren",
+      "status": "done",
+      "progress_percent": 100,
+      "priority": "P1",
+      "risk": "high",
+      "depends_on": [
+        "AMP-01",
+        "AMP-02"
+      ],
+      "acceptance_criteria": [
+        "Positive und negative Auth-/Replay-/Expiry-Tests vollständig automatisch.",
+        "Realer Browser-Medienempfang oder ausdrücklich unverified; lokale Checks nicht als öffentliche Freigabe ausgeben.",
+        "npm run check und Todo-Validierung ausführen; Produktionsaktivierung und Trust separat dokumentieren."
+      ]
+    }
+  ],
+  "tasks_status_summary": {
+    "total": 3,
+    "by_status": {
+      "todo": 0,
+      "in_progress": 0,
+      "partial": 0,
+      "blocked": 0,
+      "done": 3
+    },
+    "progress_percent_done": 100,
+    "by_priority": {
+      "P0": 1,
+      "P1": 2,
+      "P2": 0
+    },
+    "by_risk": {
+      "critical": 1,
+      "high": 2,
+      "medium": 0,
+      "low": 0
+    },
+    "critical_path": {
+      "total": 3,
+      "done": 3,
+      "remaining": 0
+    },
+    "milestones": {
+      "total": 1,
+      "todo": 0,
+      "in_progress": 0,
+      "blocked": 0,
+      "done": 1
+    }
+  },
+  "critical_path_tasks": [
+    "AMP-01",
+    "AMP-02",
+    "AMP-03"
+  ],
+  "summary_notes": [
+    "Implementierung auf expliziten Nutzerauftrag; keine Änderung laufender Produktions-Trusts oder menschlicher Aufnahmefreigaben.",
+    "Bestehender server.js bleibt eine umfangreiche Composition-Datei (SRP-Altlast). Neue Tokenprüfung wird in ein eigenes Modul ausgelagert.",
+    "Lokaler begrenzter Slice verifiziert: npm run check erfolgreich (341 Frontendtests, 343 Node-Tests bestanden, 1 optionaler Node-Skip; externe Infrastruktur-Gates separat sichtbar übersprungen).",
+    "Realer GPU-Demo-Clip in zwei isolierten Chromium-Kontexten mit Chatempfang, dekodierten Video-/Audiodaten, erforderlichem SFrame und null menschlichen Capture-Aufrufen geprüft.",
+    "Die öffentliche Instanz ist nicht verändert. Anantas größerer Persona-/Dialog-/Browserstream-Track bleibt offen; der Abschluss betrifft nur die drei lokalen Aufgaben dieses Companion-Tracks."
+  ]
+}

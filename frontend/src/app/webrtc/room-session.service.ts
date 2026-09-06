@@ -10,6 +10,7 @@ import { ServerMessage, SignalingService } from "./signaling.service";
 export type RoomMode = "room" | "pair";
 
 interface SessionResponse {
+  readonly machineExpiresAt?: number;
   readonly signalingPath: string;
   readonly iceServers: readonly RTCIceServer[];
   readonly icePolicy: unknown;
@@ -30,6 +31,7 @@ export class RoomSessionService {
   readonly workspaceRole = signal<"owner" | "editor" | "viewer" | "">("");
   readonly roomCreator = signal(false);
   readonly icePolicy = signal<IceTierPolicy | null>(null);
+  readonly machineExpiresAt = signal(0);
   private workspaceInvite = "";
 
   constructor(
@@ -62,16 +64,17 @@ export class RoomSessionService {
     this.workspaceInvite = value.slice(0, 128);
   }
 
-  async join(roomId: string, displayName: string, mode: RoomMode): Promise<void> {
+  async join(roomId: string, displayName: string, mode: RoomMode, machineGrant?: string): Promise<void> {
     this.leave();
     this.error.set("");
     const normalizedRoom = roomId.trim().toLowerCase();
     const normalizedName = displayName.trim().replace(/\s+/g, " ");
     try {
       const deviceProof = await this.device.createProof({ roomId: normalizedRoom, mode, displayName: normalizedName });
-      const response = await fetch("/api/sessions", {
+      const response = await fetch(machineGrant ? "/api/machine/sessions" : "/api/sessions", {
         method: "POST",
-        headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
+        headers: { "content-type": "application/json", ...(machineGrant
+          ? { Authorization: `Bearer ${machineGrant}` } : this.auth.authorizationHeader()) },
         body: JSON.stringify({
           roomId: normalizedRoom,
           displayName: normalizedName,
@@ -85,6 +88,12 @@ export class RoomSessionService {
       if (!response.ok || !body.signalingPath || !Array.isArray(body.iceServers) || !icePolicy) {
         throw new Error(body.error || "session_authorization_failed");
       }
+      if (machineGrant && (!Number.isSafeInteger(body.machineExpiresAt)
+          || Number(body.machineExpiresAt) <= Date.now() || Number(body.machineExpiresAt) > Date.now() + 600_000
+          || this.config.value()?.mediaE2ee.mode !== "required")) {
+        throw new Error("machine_session_policy_invalid");
+      }
+      this.machineExpiresAt.set(body.machineExpiresAt || 0);
       this.roomId.set(normalizedRoom);
       const authorizedName = body.identity?.authenticated && body.identity.displayName
         ? body.identity.displayName
@@ -113,6 +122,7 @@ export class RoomSessionService {
   }
 
   leave(): void {
+    this.machineExpiresAt.set(0);
     this.joined.set(false);
     this.workspaceId.set("");
     this.workspaceRole.set("");

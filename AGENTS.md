@@ -93,6 +93,8 @@ Ein Track kommt nur ins Archiv, wenn alle Tasks und Milestones `done` sind und d
 
 - Default deny und Least Privilege anwenden.
 - Keine Capture-API beim Laden, beim Öffnen eines Panels oder allein durch ein Remotesignal aufrufen. Nur ein sichtbarer lokaler Benutzerklick darf Browserrechte anfordern.
+- Additiver Maschinenpfad: Ein ausdrücklich vom Betreiber vertrauter Hub darf kurzlebige, raum-/taskgebundene KI-Teilnahme für ausschließlich agenteneigene synthetische Quellen autorisieren. Dieser getrennte Pfad benötigt keine menschliche Capture-Freigabe, darf aber niemals menschliche Kamera, Mikrofon, Desktop oder Browserprofile öffnen. Human-OIDC und die obige Klickregel bleiben unverändert.
+- Tests laufen vollständig headless mit automatischen Policy-Fixtures oder ephemeren Testidentitäten. Fehlende Zulassung beendet einen Lauf begrenzt und maschinenlesbar; niemand muss klicken, freigeben oder einen Test entsperren. Auch produktive Maschinenläufe benötigen explizite Vorautorisierung und dürfen Sicherheitsregeln nicht umgehen.
 - Mikrofon, Kamera und Bildschirm als getrennte, idempotent stoppbare Publikationen behandeln.
 - Sessionwechsel, Leave und Seitenende müssen alle lokalen Tracks stoppen.
 - SDP, ICE, Room-Codes, Namen, Chat und Metadaten nie in Produktionslogs ausgeben.
@@ -173,4 +175,4 @@ Die Herkunftsmatrix in `docs/ananta-webrtc-adoption.md` ist die lokale Referenz 
 
 ## Oberste Regel
 
-**Die Control Plane besitzt Membership und Policy. Browser führen nur autorisierte, explizit vom lokalen Benutzer gestartete Datenpfade aus. Nicht implementierte Sicherheit wird niemals behauptet.**
+**Die Control Plane besitzt Membership und Policy. Menschliche Capture-Pfade benötigen den expliziten lokalen Benutzerstart; getrennte agenteneigene Quellen eine explizite Maschinenpolicy. Nicht implementierte Sicherheit wird niemals behauptet.**
