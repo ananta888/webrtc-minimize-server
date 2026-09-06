@@ -8,6 +8,15 @@
 6. Bei später erkannter Regression `scripts/production-deploy.sh rollback` ausführen. Danach `/healthz`, `/readyz`, `/config`, Login, Raumbeitritt, Medien-Stopp und Leave-Cleanup prüfen.
 7. Fehler nur mit Commit, Image-Digest, Zeit, anonymisiertem Alertcode und Readiness-Komponente dokumentieren. Keine Tokens, Raumcodes, IPs, SDP/ICE, Medien oder Captions erfassen.
 
+Der Docker-Buildkontext schließt `.deploy`, Laufzeit-`data`, `.env`-Varianten,
+Private-Key-/Zertifikatscontainer (`pem`, `key`, `p12`, `pfx`) sowie verschachtelte
+Git-/Dependency-Verzeichnisse aus. `.env.example` bleibt als öffentliche Vorlage
+erlaubt. Das ersetzt keine sichere Secret-Ablage: Andere Secret-Dateinamen
+gehören ebenfalls außerhalb des Buildkontexts. Der echte Scratch-Build in
+`test/docker-build-context.test.js` prüft mit ausschließlich synthetischen
+Canaries, dass Docker diese Dateien schon vor `COPY` herausfiltert und normale
+Quellen erhält. Die Produktionsimages verwenden zusätzlich explizite COPY-Pfade.
+
 Der produktive Caddy-Virtual-Host muss inhaltlich
 `infra/reverse-proxy/Caddyfile.webrtc.production` entsprechen. Vor Reload mit
 `caddy validate` prüfen; danach müssen GET `/healthz`, der WebSocket-Upgrade

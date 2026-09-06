@@ -81,6 +81,16 @@ prüft denselben Fehlerpfad mit echten Nodes. Der ursprüngliche Quellkontext bl
 bis zur separaten Fixture-Bereinigung im Besitz des Aufrufers. Diese Injektion
 ist kein Nachweis für einen physisch reproduzierten Treiber-/Bluetoothfehler.
 
+Auch ein synthetischer Echtzeit-AudioContext braucht einen funktionierenden
+Audio-Taktgeber. Auf einem Linux-CI-Runner ohne Audiogerät stellt daher ein
+isolierter PulseAudio-Daemon ausschließlich einen
+[Null-Sink](https://wiki.freedesktop.org/www/Software/PulseAudio/Documentation/User/Modules/)
+bereit; es wird kein physisches Mikrofon oder Ausgabegerät geladen. Ein lokal
+absichtlich unerreichbarer `PULSE_SERVER` reproduziert den Fehler
+`abort:source-resume`. Quellen-Resume und Fixture-Cleanup sind auf jeweils fünf
+Sekunden begrenzt; die inhaltsfreie Phasendiagnostik ersetzt keine Prüfung.
+Ein fehlender Audio-Taktgeber wird als Fehler gemeldet, nicht als bestandener Test.
+
 Der physische Akustik-/Lippensynchronitätstest mit Kopfhörer und Lautsprecher,
 gleichzeitigem Bildschirmton, Mikrofon und einem zweiten realen Gerät ist noch
 nicht reproduzierbar durchgeführt. TBP-014 bleibt deshalb `in_progress`; technische

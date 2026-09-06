@@ -6,3 +6,16 @@ dist
 *.log
 coverage
 test-results
+
+# Runtime state and credentials must not even reach the builder.
+**/.deploy
+**/data
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/node_modules
+**/.git

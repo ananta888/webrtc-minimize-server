@@ -33,6 +33,15 @@ jobs:
         run: npm audit --omit=dev
       - name: Install Chromium, Firefox and system dependencies
         run: npx playwright install --with-deps chromium firefox
+      - name: Provide a synthetic audio clock for real Firefox AudioContext tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y pulseaudio pulseaudio-utils
+          pulseaudio -n --daemonize=yes --exit-idle-time=-1 \
+            --load="module-native-protocol-unix" \
+            --load="module-null-sink sink_name=webrtc_ci_audio rate=48000 channels=2"
+          pactl set-default-sink webrtc_ci_audio
+          pactl info > /dev/null
       - name: Run todo, unit, integration and browser gates
         run: npm run check
       - name: Generate production dependency SBOM

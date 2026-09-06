@@ -53,7 +53,8 @@ if (!baseCompose.includes("${WEBRTC_BIND_ADDRESS:-127.0.0.1}:${PORT:-8080}:8080"
 }
 if (!dockerfile.includes("USER node") || !dockerfile.includes("org.opencontainers.image.revision")
   || /COPY\s+\.\s+\./.test(dockerfile)) throw new Error("runtime image policy mismatch");
-for (const ignored of [".env", ".git", "node_modules", "dist"]) {
+for (const ignored of [".env", ".git", "node_modules", "dist", "**/.deploy", "**/data",
+  "**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx"]) {
   if (!dockerignore.split(/\r?\n/).includes(ignored)) throw new Error(`Docker context must ignore ${ignored}`);
 }
 for (const required of [
