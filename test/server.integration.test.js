@@ -20,7 +20,7 @@ import {
 import { AuthenticationError } from "../src/oidc-verifier.js";
 import { MediaMtxExternalAuthError } from "../src/mediamtx-external-auth.js";
 import { BroadcastHlsProxyError } from "../src/broadcast-hls-proxy.js";
-import { BroadcastRuntimeRegistry } from "../src/broadcast-runtime-registry.js";
+import { BroadcastRuntimeError, BroadcastRuntimeRegistry } from "../src/broadcast-runtime-registry.js";
 import { broadcastSubjectRef, broadcastTenantRef } from "../src/broadcast-identifiers.js";
 import {
   NativePackagerControlRegistry,
@@ -1799,7 +1799,9 @@ test("authorized sessions keep Edge-TURN credentials in the second ICE tier", as
   assert.equal(JSON.stringify(authorization.body).includes("0123456789abcdef0123456789abcdef"), false);
 });
 
-test("native packager assignment is owner-, room-, device- and fence-bound end to end", async (context) => {
+for (const rejectOutput of [false, true]) test(rejectOutput
+  ? "native output rejected by program authority is never advertised ready to the publisher"
+  : "native packager assignment is owner-, room-, device- and fence-bound end to end", async (context) => {
   const issuer = "https://identity.test/realms/ananta";
   const identity = { issuer, subject: "owner", displayName: "Owner" };
   const ownerPrincipal = `${issuer}|owner`;
@@ -1998,6 +2000,31 @@ test("native packager assignment is owner-, room-, device- and fence-bound end t
     headers: { authorization: "Bearer owner-token" },
   }).then((response) => response.json());
   assert.equal(listed.assignments[0].state, "ready");
+
+  const sendStatus = (state, reasonCode) => agent.socket.send(JSON.stringify({
+    version: 1, type: "assignment-status", assignmentId: prepare.assignmentId,
+    programEpoch: prepare.programEpoch, fencingRevision: prepare.fencingRevision,
+    state, reasonCode, observedAt: Date.now(),
+  }));
+  sendStatus("starting", "INGRESS_STARTING");
+  await browser.next((message) => message.type === "native-packager-status" && message.state === "starting");
+  if (rejectOutput) {
+    broadcastRuntime.markNativeOutputReady = () => {
+      throw new BroadcastRuntimeError("stale_broadcast_packager_output", 409);
+    };
+    sendStatus("running", "OUTPUT_READY");
+    const error = await agent.next((message) => message.type === "packager-error");
+    assert.equal(error.code, "stale_broadcast_packager_output");
+    await assert.rejects(browser.next((message) => message.type === "native-packager-status"
+      && message.reasonCode === "OUTPUT_READY", 150), /timed out/);
+    browser.socket.close();
+    return;
+  }
+  sendStatus("running", "OUTPUT_READY");
+  await browser.next((message) => message.type === "native-packager-status" && message.reasonCode === "OUTPUT_READY");
+  assert.equal(broadcastRuntime.listMine(identity).owned[0].availability, "live");
+  sendStatus("running", "OUTPUT_READY");
+  await browser.next((message) => message.type === "native-packager-status" && message.reasonCode === "OUTPUT_READY");
 
   const stopResponse = await fetch(
     `${app.httpUrl}/api/native-packagers/${packagerId}/assignments/${prepare.assignmentId}`,

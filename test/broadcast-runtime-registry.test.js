@@ -435,6 +435,17 @@ test("native output becomes live only for the assigned fresh writer fence", () =
     profileId: "h264-aac-720p-v1", renditions: [], maximumQueueFrames: 60,
     keyframeIntervalSeconds: 2,
   }), NOW);
+  const beforeReady = runtime.listMine(owner);
+  for (const [holder, fence, observedAt] of [
+    ["pkr_xxxxxxxxxxxxxxxx", prepared.lease.fencingRevision, NOW + 1],
+    [packagerId, prepared.lease.fencingRevision + 1, NOW + 1],
+    [packagerId, prepared.lease.fencingRevision, prepared.lease.expiresAt],
+  ]) {
+    assert.throws(() => runtime.markNativeOutputReady(
+      "res_hhhhhhhhhhhhhhhh", holder, fence, observedAt,
+    ), /stale_broadcast_packager_output/);
+    assert.deepEqual(runtime.listMine(owner), beforeReady);
+  }
   assert.throws(() => runtime.markNativeOutputReady(
     "res_hhhhhhhhhhhhhhhh", packagerId, prepared.lease.fencingRevision + 1, NOW + 1,
   ), /stale_broadcast_packager_output/);
@@ -442,12 +453,43 @@ test("native output becomes live only for the assigned fresh writer fence", () =
     "res_hhhhhhhhhhhhhhhh", packagerId, prepared.lease.fencingRevision, NOW + 1,
   );
   assert.equal(live.availability, "live");
+  const afterReady = runtime.listMine(owner);
+  assert.deepEqual(runtime.markNativeOutputReady(
+    "res_hhhhhhhhhhhhhhhh", packagerId, prepared.lease.fencingRevision, NOW + 2,
+  ), live);
+  for (const [holder, fence, observedAt] of [
+    ["pkr_xxxxxxxxxxxxxxxx", prepared.lease.fencingRevision, NOW + 2],
+    [packagerId, prepared.lease.fencingRevision + 1, NOW + 2],
+    [packagerId, prepared.lease.fencingRevision, prepared.lease.expiresAt],
+  ]) {
+    assert.throws(() => runtime.markNativeOutputReady(
+      "res_hhhhhhhhhhhhhhhh", holder, fence, observedAt,
+    ), /stale_broadcast_packager_output/);
+    assert.deepEqual(runtime.listMine(owner), afterReady);
+  }
   const renewed = runtime.renewNativeOutput(
     "res_hhhhhhhhhhhhhhhh", packagerId, prepared.lease.fencingRevision, NOW + 90_000, NOW + 30_000,
   );
   assert.equal(renewed.availability, "live");
+  assert.deepEqual(runtime.markNativeOutputReady(
+    "res_hhhhhhhhhhhhhhhh", packagerId, prepared.lease.fencingRevision, NOW + 60_000,
+  ), renewed);
+  assert.throws(() => runtime.markNativeOutputReady(
+    "res_hhhhhhhhhhhhhhhh", packagerId, prepared.lease.fencingRevision, NOW + 90_000,
+  ), /stale_broadcast_packager_output/);
   assert.throws(() => runtime.renewNativeOutput(
     "res_hhhhhhhhhhhhhhhh", "pkr_xxxxxxxxxxxxxxxx", prepared.lease.fencingRevision,
     NOW + 120_000, NOW + 60_000,
   ), /stale_broadcast_lease_renewal/);
+});
+
+test("a live native output ACK without a writer cannot claim success", () => {
+  const owner = identity("owner", "Ada");
+  const runtime = new BroadcastRuntimeRegistry({ grantAuthority: authority(), clock: () => NOW });
+  runtime.register(registration(owner, "a"), NOW);
+  const before = runtime.listMine(owner);
+  assert.throws(() => runtime.markNativeOutputReady(
+    "res_aaaaaaaaaaaaaaaa", "pkr_aaaaaaaaaaaaaaaa", 1, NOW + 1,
+  ), /stale_broadcast_packager_output/);
+  assert.deepEqual(runtime.listMine(owner), before);
 });

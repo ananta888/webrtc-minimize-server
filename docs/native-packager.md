@@ -680,6 +680,14 @@ gültig markierte und nicht mehr gesperrte `res_`-Verzeichnisse. Fremde und
 unmarkierte Ausgaben sowie Identität und andere Dateien bleiben erhalten.
 Ein leerer, stabiler Root-Lock verbleibt absichtlich für spätere Koordination.
 
+`OUTPUT_READY` wird erst nach Prüfung der aktuellen Program-Writer-Lease an
+den Publisher weitergemeldet. Auch bei bereits laufendem Programm erfordert
+ein wiederholter ACK denselben Holder, dieselbe Fencing-Revision und eine noch
+nicht abgelaufene Lease. Gültige Wiederholungen sind idempotent; ein veralteter
+ACK erzeugt weder eine neue Programmrevision noch eine erfolgreiche
+Bereitschaftsmeldung im Browser. Dies ersetzt nicht die noch offene
+Same-Program-Übergabe zwischen zwei Packagern.
+
 Der zusätzliche reale Gate benötigt FFmpeg 6+:
 
 ```bash

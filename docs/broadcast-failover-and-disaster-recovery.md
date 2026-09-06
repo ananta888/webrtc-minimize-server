@@ -1,6 +1,15 @@
 # Broadcast-Failover und Disaster-Recovery
 
-Stand: 2026-09-04. Diese Beschreibung gilt für den optionalen Trusted-Broadcast-Zweig. Das interaktive WebRTC-Meet und seine SFrame-Verbindungen bleiben davon unabhängig.
+Stand: 2026-09-06. Diese Beschreibung gilt für den optionalen Trusted-Broadcast-Zweig. Das interaktive WebRTC-Meet und seine SFrame-Verbindungen bleiben davon unabhängig.
+
+Die folgenden Übernahmeregeln beschreiben den implementierten und getesteten
+Domain-Koordinator, nicht bereits eine durchgehend angeschlossene produktive
+Same-Program-Übergabe. Der produktive Native-Pfad prüft derzeit Writer-Leases
+und Readiness-ACKs; native OS-Ausgabesperren verhindern konkurrierende
+kooperative Writer derselben Ressource. Die eigentliche Übergabe-API,
+Stop-ACK-/Recovery-Koordination und HLS-Generations-/Player-Umschaltung zwischen
+zwei Packagern bleiben in TBP-030 offen. Stop und Neuanlage einer Sendung sind
+kein Nachweis für diese Fähigkeit.
 
 ## Writer-Modell
 

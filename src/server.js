@@ -2133,6 +2133,12 @@ function configureSignaling(
         }
         if (message.type === "assignment-status") {
           nativePackagerAssignments.acknowledge(connection.id, message);
+          if (message.state === "running" && message.reasonCode === "OUTPUT_READY") {
+            const output = nativePackagerAssignments.readyOutput(connection.id, message);
+            broadcastRuntime.markNativeOutputReady(
+              output.resourceRef, output.packagerId, output.fencingRevision,
+            );
+          }
           const target = nativePackagerAssignments.statusTarget(connection.id, message);
           const publisher = registry.members(target.assignment.roomId)
             .find((candidate) => candidate.id === target.publisherPeerId);
@@ -2148,12 +2154,6 @@ function configureSignaling(
             reasonCode: target.assignment.reasonCode,
             observedAt: target.assignment.updatedAt,
           });
-          if (message.state === "running" && message.reasonCode === "OUTPUT_READY") {
-            const output = nativePackagerAssignments.readyOutput(connection.id, message);
-            broadcastRuntime.markNativeOutputReady(
-              output.resourceRef, output.packagerId, output.fencingRevision,
-            );
-          }
           return;
         }
         if (message.type === "assignment-signal") {

@@ -810,13 +810,13 @@ export class BroadcastRuntimeRegistry {
     if (!found) unavailable();
     const [key, record] = found;
     let machine = record.snapshot.machine;
-    if (machine.program.state === "live") return entry(record);
-    if (machine.program.state !== "preparing") fail("broadcast_program_not_preparing", 409);
     const packagerLease = machine.writerLeases.find(({ role }) => role === "packager-writer");
     if (!packagerLease || packagerLease.holderRef !== packagerId
       || packagerLease.fencingRevision !== fencingRevision || packagerLease.expiresAt <= now) {
       fail("stale_broadcast_packager_output", 409);
     }
+    if (machine.program.state === "live") return entry(record);
+    if (machine.program.state !== "preparing") fail("broadcast_program_not_preparing", 409);
     machine = applyBroadcastProgramCommand(machine, command(machine, "advance", {
       toState: "awaiting_consent",
     }), now).state;
