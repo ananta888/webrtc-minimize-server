@@ -38,10 +38,14 @@ zu einem begrenzten Fehler.
 Verifikation: `test/machine-admission.test.js` prüft synthetische Grants,
 falsche Scope-/Zeit-/Key-Bindungen, Human-Auth, Gerät und echten WebSocket-
 Ablauf. `test/machine.browser.e2e.test.js` verwendet zwei isolierte Browser
-mit verweigerten menschlichen Capture-APIs und ein ausdrücklich synthetisches
-lokales GPU-Demo-MP4 aus Ananta. Es prüft Chatempfang, dekodierte Videoframes,
-empfangene Audiosamples und SFrame. Aktivieren über `MACHINE_E2E_VIDEO`;
-ohne Datei wird dieser Hardware-Integrationsgate sichtbar übersprungen.
+mit getrennten Rollen: eine kryptografisch geprüfte synthetische menschliche
+Identität empfängt von einem v1-Maschinenpublisher. Der Maschinenbrowser verweigert
+menschliche Capture-APIs. Ein ausdrücklich synthetischer lokaler MP4-Clip prüft
+Chatempfang, dekodierte Videoframes, Audiosamples und SFrame. Aktivieren über
+`MACHINE_E2E_VIDEO`; ohne Datei wird dieser Mediengate sichtbar übersprungen.
+Ein CPU-generierter Testclip ist hierfür zulässig, beweist aber keine GPU-Inferenz
+oder Ausführung von Anantas Modellprofil. Der separate v2-Dialogtest steht in
+`test/machine-dialog.browser.e2e.test.js` und benötigt keinen MP4-Clip.
 
 Die laufende öffentliche Instanz wurde nicht automatisch neu deployed oder
 mit einem Testschlüssel freigeschaltet. Lokaler Erfolg ersetzt keinen

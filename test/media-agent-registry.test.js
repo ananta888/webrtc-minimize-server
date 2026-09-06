@@ -468,6 +468,16 @@ test("large rooms receive control-plane-owned publisher sharding across bounded 
     revision: 2,
     ready: true,
   }, 11_002).selectedLayer, "low");
+  assert.equal(registry.revokeSubscriptions(members[0].roomId, () => true), false);
+  assert.equal(registry.revokeSubscriptions(members[0].roomId, plan => plan.subscriberPeerId !== subscriber.id), true);
+  const revoked = registry.subscriptionPlan(members[0].roomId, "helper-edge", state.routeEpoch,
+    subscriber.id, helperPublisher, "camera-track", 11_002);
+  assert.equal(revoked.enabled, false); assert.equal(revoked.revision, 3);
+  assert.throws(() => registry.acknowledgeSubscription(subscriber, {
+    agentId: "helper-edge", roomId: members[0].roomId, routeEpoch: state.routeEpoch,
+    publisherPeerId: helperPublisher, publicationId: "camera-track", revision: 2, ready: true,
+  }, 11_002), /stale_agent_subscription/);
+  assert.equal(registry.revokeSubscriptions(members[0].roomId, () => false), false);
   assert.throws(() => registry.setSubscriptionIntent(subscriber, {
     type: "media-agent-subscription-intent",
     agentId: "helper-edge",

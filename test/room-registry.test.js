@@ -3,6 +3,18 @@ import test from "node:test";
 
 import { RoomAdmissionError, RoomFullError, RoomRegistry } from "../src/room-registry.js";
 
+test("publication epochs distinguish source replacement from repeated announcements", () => {
+  const registry = new RoomRegistry(), peer = registry.join("room-source", {}, "Human").peer;
+  const announce = trackId => registry.setMediaState(peer, { source: "microphone", active: true, trackId });
+  announce("one"); assert.equal(registry.publication(peer.id, "one", peer.roomId).publicationEpoch, 1);
+  announce("one"); assert.equal(registry.publication(peer.id, "one", peer.roomId).publicationEpoch, 1);
+  announce("two"); assert.equal(registry.publication(peer.id, "one", peer.roomId), null);
+  assert.equal(registry.publication(peer.id, "two", peer.roomId).publicationEpoch, 2);
+  registry.setMediaState(peer, { source: "microphone", active: false }); announce("two");
+  assert.equal(registry.publication(peer.id, "two", peer.roomId).publicationEpoch, 3);
+  registry.leave(peer); assert.equal(registry.publication(peer.id, "two", peer.roomId), null);
+});
+
 test("RoomRegistry isolates rooms, caps membership and removes empty rooms", () => {
   const registry = new RoomRegistry({ maxParticipants: 2 });
   const first = registry.join("room-alpha", {}, "Ada").peer;

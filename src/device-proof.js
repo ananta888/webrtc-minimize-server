@@ -10,7 +10,13 @@ export class DeviceProofError extends Error {
     this.code = code;
   }
 }
-export function deviceProofMessage({ roomId, mode, displayName, timestamp, nonce }) {
+export function deviceProofMessage({ roomId, mode, displayName, timestamp, nonce, machineSessionId, expectedGeneration }) {
+  if (machineSessionId !== undefined || expectedGeneration !== undefined) {
+    if (!/^ms_[A-Za-z0-9_-]{32}$/.test(machineSessionId || "") || !Number.isSafeInteger(expectedGeneration)
+      || expectedGeneration < 1 || mode !== "room" || displayName !== "Ananta (KI)"
+      || !/^room-[a-f0-9]{18}$/.test(roomId || "")) throw new DeviceProofError("invalid_machine_renewal_context");
+    return `webrtc-machine-renew-v1\n${roomId}\n${machineSessionId}\n${expectedGeneration}\n${timestamp}\n${nonce}`;
+  }
   return `webrtc-join-v1\n${roomId}\n${mode}\n${displayName}\n${timestamp}\n${nonce}`;
 }
 

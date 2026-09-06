@@ -1,0 +1,75 @@
+import { signal } from "@angular/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MachineAudioSessionService } from "./machine-audio-session.service";
+import { MachinePcmConsumer } from "./machine-audio-graph";
+
+const now = 1_788_000_000_000, own = "2".repeat(16), human = "1".repeat(16);
+function setup() {
+  let consume: MachinePcmConsumer = () => {}, allowed = true;
+  const close = vi.fn(async () => {}), track = {};
+  const session = { joined: signal(true), roomId: () => "room-aaaaaaaaaaaaaaaaaa",
+    machineContext: () => ({ tenantId: "tenant", projectId: "project", taskId: "task", runtimeId: "runtime", hubSessionId: "session" }),
+    machineLease: signal({ sessionId: "ms_" + "a".repeat(32), generation: 1, expiresAt: now + 60_000 }) };
+  const mesh = { ownPeerId: () => own, membershipEpoch: signal(1), machineReceive: { revision: signal(1),
+    supports: vi.fn(() => true),
+    grants: () => [{ machinePeerId: own, publisherPeerId: human, publicationIds: ["audio"], expiresAt: now + 60_000 }] },
+    sendMachineChatReply: vi.fn(() => ({ messageId: "a".repeat(32), queuedPeers: 1 })),
+    machineAudioSource: () => { if (!allowed) throw new Error("meet_audio_source_denied"); return { peerId: human, source: "screen-audio", track }; } };
+  const graphs = { supported: () => true, connect: vi.fn(async (_track, callback) => { consume = callback; return { close }; }) };
+  const service = new MachineAudioSessionService(session as never, mesh as never, graphs as never);
+  return { service, session, mesh, graphs, close, deny: () => { allowed = false; }, consume: (start: number, pcm = new ArrayBuffer(3200)) => { consume(start, pcm); return pcm; } };
+}
+describe("machine audio subscription", () => {
+  it("allows one source-bound reply only after completion and while authority remains current", async () => {
+    const f = setup(), sub = await f.service.open("audio", 1);
+    expect(() => f.service.reply(sub.subscriptionId, "Answer")).toThrow("meet_audio_reply_denied");
+    for (let i = 0; i < 10; i++) f.consume(i * 1600);
+    expect(() => f.service.reply("other", "Answer")).toThrow();
+    f.service.reply(sub.subscriptionId, "Answer");
+    expect(f.mesh.sendMachineChatReply).toHaveBeenCalledWith("Answer", sub.subscriptionId);
+    expect(() => f.service.reply(sub.subscriptionId, "Answer")).toThrow();
+    f.service.close(); expect(() => f.service.reply(sub.subscriptionId, "Answer")).toThrow();
+  });
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); });
+  afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+  it("binds the current lease and source; exports bounded PCM chunks and wipes acknowledged bytes", async () => {
+    const f = setup(), result = await f.service.open("audio", 1);
+    expect(result).toMatchObject({ sampleRate: 16000, channels: 1, chunkSamples: 1600, binding: { source: "screen_audio", receive_revision: 1 } });
+    const pcm = new ArrayBuffer(3200); new Uint8Array(pcm).fill(127); f.consume(0, pcm);
+    expect(() => f.service.ack(1)).toThrow("meet_audio_ack_invalid");
+    expect(f.service.poll().chunks[0]).toMatchObject({ sequence: 1, startSample: 0 });
+    f.service.ack(1); expect(new Uint8Array(pcm).every(byte => byte === 0)).toBe(true);
+    expect(f.service.poll().chunks).toEqual([]); f.service.close(); expect(f.close).toHaveBeenCalled();
+  });
+  it("never opens a graph without rights and stops on mute or revocation within 100ms", async () => {
+    const denied = setup(); denied.deny(); await expect(denied.service.open("audio")).rejects.toThrow();
+    expect(denied.graphs.connect).not.toHaveBeenCalled();
+    const f = setup(); await f.service.open("audio"); const pcm = f.consume(0); new Uint8Array(pcm).fill(9);
+    f.deny(); vi.advanceTimersByTime(100);
+    expect(f.service.status().open).toBe(false); expect(new Uint8Array(pcm).every(byte => byte === 0)).toBe(true);
+    expect(() => f.service.poll()).toThrow();
+  });
+  it("rejects timeline gaps, queue overflow and membership/lease generations", async () => {
+    const f = setup(); await f.service.open("audio"); expect(() => f.consume(1600)).toThrow();
+    await f.service.open("audio"); for (let i = 0; i < 10; i++) f.consume(i * 1600);
+    expect(() => f.consume(16_000)).toThrow();
+    await f.service.open("audio"); f.mesh.membershipEpoch.set(2); expect(() => f.service.poll()).toThrow();
+    await f.service.open("audio"); f.session.machineLease.update(v => ({ ...v, generation: 2 }));
+    expect(() => f.service.poll()).toThrow();
+  });
+  it("finishes at the sample budget, retains only bounded drainable chunks, then expires", async () => {
+    const f = setup(); await f.service.open("audio", 1);
+    for (let i = 0; i < 10; i++) f.consume(i * 1600);
+    expect(f.service.poll()).toMatchObject({ completed: true, chunks: expect.any(Array) });
+    expect(f.service.poll().chunks).toHaveLength(5); expect(f.close).toHaveBeenCalledOnce();
+    f.service.ack(5); expect(f.service.poll().chunks[0].sequence).toBe(6);
+    vi.advanceTimersByTime(30_000); expect(f.service.status().open).toBe(false);
+  });
+  it("fences callbacks from a previous graph after a new source session", async () => {
+    const f = setup(); await f.service.open("audio");
+    const stale = f.graphs.connect.mock.calls[0][1] as MachinePcmConsumer;
+    await f.service.open("audio"); const bytes = new ArrayBuffer(3200); new Uint8Array(bytes).fill(1); stale(0, bytes);
+    expect(f.service.poll().chunks).toEqual([]); expect(new Uint8Array(bytes).every(byte => byte === 0)).toBe(true);
+    f.service.close();
+  });
+});

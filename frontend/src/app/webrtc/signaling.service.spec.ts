@@ -79,4 +79,21 @@ describe("signaling server-message envelope", () => {
     expect(socket.closes).toEqual([{ code: 1000, reason: "client_leave" }]);
     expect(service.status()).toBe("idle");
   });
+
+  it("fences old socket messages, opens, errors and subscriber dispatch after a session switch", () => {
+    const service = new SignalingService(), oldHandler = vi.fn(), currentHandler = vi.fn(), subscriber = vi.fn();
+    service.subscribe(subscriber);
+    service.connect("/old", oldHandler);
+    const old = FakeWebSocket.latest!;
+    service.connect("/new", currentHandler);
+    old.onopen?.(); old.onerror?.();
+    old.onmessage?.({ data: JSON.stringify({ version: 1, type: "welcome" }) } as MessageEvent);
+    expect(service.status()).toBe("connecting");
+    expect(service.lastError()).toBe("");
+    expect(oldHandler).not.toHaveBeenCalled(); expect(currentHandler).not.toHaveBeenCalled();
+    expect(subscriber).not.toHaveBeenCalled();
+    service.connect("/third", () => service.close());
+    FakeWebSocket.latest!.onmessage?.({ data: JSON.stringify({ version: 1, type: "welcome" }) } as MessageEvent);
+    expect(subscriber).not.toHaveBeenCalled();
+  });
 });

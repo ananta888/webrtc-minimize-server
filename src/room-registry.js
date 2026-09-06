@@ -43,6 +43,7 @@ export class RoomRegistry {
     const mode = admission.mode || "room";
     const capacity = mode === "pair" ? 2 : this.#maxParticipants;
     if (!new Set(["room", "pair"]).has(mode)) throw new RoomAdmissionError("invalid_room_mode");
+    if (admission.machine === true && admission.machineReceiveVersion !== 1) throw new RoomAdmissionError("machine_client_upgrade_required");
     let room = this.#rooms.get(roomId);
     if (!room) {
       room = {
@@ -55,6 +56,11 @@ export class RoomRegistry {
       this.#rooms.set(roomId, room);
     }
     if (room.mode !== mode || room.capacity !== capacity) throw new RoomAdmissionError("room_mode_mismatch");
+    if ((admission.machine === true && (admission.machineReceiveVersion !== 1
+      || [...room.peers.values()].some(peer => peer.machineReceiveVersion !== 1)))
+      || (admission.machineReceiveVersion !== 1 && [...room.peers.values()].some(peer => peer.machine))) {
+      throw new RoomAdmissionError("machine_client_upgrade_required");
+    }
     if (
       mode === "pair" && admission.deviceFingerprint
       && [...room.peers.values()].some((candidate) => candidate.deviceFingerprint === admission.deviceFingerprint)
@@ -62,8 +68,8 @@ export class RoomRegistry {
     if (room.peers.size >= room.capacity) throw new RoomFullError();
     let peerId;
     do peerId = crypto.randomBytes(8).toString("hex"); while (room.peers.has(peerId));
-    const existingPeers = [...room.peers.values()].map(({ id, name: peerName }) => ({
-      id, name: peerName,
+    const existingPeers = [...room.peers.values()].map(({ id, name: peerName, machine, machineCapabilities }) => ({
+      id, name: peerName, ...(machine ? { machine: true, machineCapabilities } : {}),
     }));
     const peer = {
       id: peerId,
@@ -75,8 +81,13 @@ export class RoomRegistry {
       mode,
       principal: admission.principal || "anonymous",
       deviceFingerprint: admission.deviceFingerprint || "",
+      authenticated: admission.authenticated === true,
+      machine: admission.machine === true,
+      machineReceiveVersion: admission.machineReceiveVersion === 1 ? 1 : 0,
+      machineCapabilities: Object.freeze([...(admission.machineCapabilities || [])]),
       creator: (admission.principal || "anonymous") === room.creatorPrincipal,
       publications: new Map(),
+      publicationEpoch: 0,
       relayConsent: false,
       relayCapability: {
         visible: true,
@@ -144,10 +155,14 @@ export class RoomRegistry {
         peer.publications.delete(publicationId);
       }
     }
-    if (media.active) peer.publications.set(media.trackId, Object.freeze({
-      publicationId: media.trackId,
-      source: media.source,
-    }));
+    if (media.active) {
+      const current = peer.publications.get(media.trackId);
+      if (!current || current.source !== media.source) {
+        if (peer.publicationEpoch >= Number.MAX_SAFE_INTEGER) throw new RoomAdmissionError("publication_epoch_exhausted");
+        peer.publications.set(media.trackId, Object.freeze({ publicationId: media.trackId,
+          source: media.source, publicationEpoch: ++peer.publicationEpoch }));
+      }
+    }
     room.updatedAt = now;
   }
 

@@ -4,6 +4,8 @@ export interface JoinProofInput {
   readonly roomId: string;
   readonly mode: "room" | "pair";
   readonly displayName: string;
+  readonly machineSessionId?: string;
+  readonly expectedGeneration?: number;
 }
 
 export interface BroadcastGrantProofContext {
@@ -51,6 +53,12 @@ export function normalizeDevicePublicJwk(value: JsonWebKey): JsonWebKey {
 }
 
 export function deviceProofMessage(input: JoinProofInput, timestamp: number, nonce: string): string {
+  if (input.machineSessionId !== undefined || input.expectedGeneration !== undefined) {
+    if (!/^ms_[A-Za-z0-9_-]{32}$/.test(input.machineSessionId || "") || !Number.isSafeInteger(input.expectedGeneration)
+      || Number(input.expectedGeneration) < 1 || input.mode !== "room" || input.displayName !== "Ananta (KI)"
+      || !/^room-[a-f0-9]{18}$/.test(input.roomId)) throw new Error("invalid_machine_renewal_context");
+    return `webrtc-machine-renew-v1\n${input.roomId}\n${input.machineSessionId}\n${input.expectedGeneration}\n${timestamp}\n${nonce}`;
+  }
   return `webrtc-join-v1\n${input.roomId}\n${input.mode}\n${input.displayName}\n${timestamp}\n${nonce}`;
 }
 

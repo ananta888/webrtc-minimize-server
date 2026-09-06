@@ -39,6 +39,10 @@ const KEY_ID = /^[a-f0-9]{16}$/;
 const encryptors = new Map<string, SFrameEncryptContext>();
 const decryptors = new Map<string, SFrameDecryptContext>();
 const decryptorKeyIds = new Map<string, Set<string>>();
+// Retired IDs contain no key material. Keep them for the context lifetime so
+// an out-of-order key message cannot reset a replay window or sender nonce.
+const seenKeyIds = new Map<string, Set<string>>();
+const MAX_CONTEXT_KEYS = 512;
 const reportedTransformFailures = new Set<string>();
 
 function reportTransformFailure(contextId: string, direction: "encrypt" | "decrypt", error: unknown): void {
@@ -46,7 +50,7 @@ function reportTransformFailure(contextId: string, direction: "encrypt" | "decry
     ? String((error as { code: unknown }).code)
     : "media_transform_failed";
   if (!new Set([
-    "media_frame_type", "media_codec_unsupported", "media_frame_too_short", "media_envelope_version",
+    "media_frame_type", "media_codec_unsupported", "media_frame_too_short", "media_envelope_version", "media_key_budget_exhausted",
   ]).has(code)) return;
   const key = `${contextId}\0${direction}\0${code}`;
   if (reportedTransformFailures.has(key)) return;
@@ -60,6 +64,7 @@ function destroyContext(contextId: string): void {
   encryptors.delete(contextId);
   decryptors.delete(contextId);
   decryptorKeyIds.delete(contextId);
+  seenKeyIds.delete(`encrypt:${contextId}`); seenKeyIds.delete(`decrypt:${contextId}`);
   for (const key of reportedTransformFailures) if (key.startsWith(`${contextId}\0`)) reportedTransformFailures.delete(key);
 }
 
@@ -69,6 +74,7 @@ function clearAll(): void {
   encryptors.clear();
   decryptors.clear();
   decryptorKeyIds.clear();
+  seenKeyIds.clear();
   reportedTransformFailures.clear();
 }
 
@@ -83,10 +89,24 @@ addEventListener("message", ({ data }: MessageEvent<WorkerCommand>) => {
     destroyContext(data.contextId);
     return;
   }
-  if (data.type !== "set-key" || !data.direction || !data.keyId || !KEY_ID.test(data.keyId)
+  if (data.type !== "set-key" || !["encrypt", "decrypt"].includes(data.direction || "") || !data.keyId || !KEY_ID.test(data.keyId)
     || !(data.baseKey instanceof ArrayBuffer) || data.baseKey.byteLength !== 16) return;
   const kid = BigInt(`0x${data.keyId}`);
   const key = new Uint8Array(data.baseKey);
+  const direction = data.direction as "encrypt" | "decrypt";
+  const historyId = `${direction}:${data.contextId}`;
+  let seen = seenKeyIds.get(historyId);
+  if (!seen) { seen = new Set(); seenKeyIds.set(historyId, seen); }
+  if (seen.has(data.keyId)) { key.fill(0); return; }
+  if (seen.size >= MAX_CONTEXT_KEYS) {
+    // Fail closed and retain the exhausted fence until explicit teardown.
+    encryptors.get(data.contextId)?.destroy(); encryptors.delete(data.contextId);
+    decryptors.get(data.contextId)?.destroy(); decryptors.delete(data.contextId);
+    decryptorKeyIds.delete(data.contextId); key.fill(0);
+    reportTransformFailure(data.contextId, direction, { code: "media_key_budget_exhausted" });
+    return;
+  }
+  seen.add(data.keyId);
   if (data.direction === "encrypt") {
     encryptors.get(data.contextId)?.destroy();
     encryptors.set(data.contextId, new SFrameEncryptContext(kid, key));
@@ -102,6 +122,12 @@ addEventListener("message", ({ data }: MessageEvent<WorkerCommand>) => {
     if (!keyIds.has(data.keyId)) {
       context.setKey(kid, key);
       keyIds.add(data.keyId);
+      // Keep a short overlap for independently ordered policy/key messages,
+      // but never retain an unbounded history during long-lived renewals.
+      while (keyIds.size > 8) {
+        const oldest = keyIds.values().next().value!;
+        context.removeKey(BigInt(`0x${oldest}`)); keyIds.delete(oldest);
+      }
     }
   }
   key.fill(0);
@@ -119,6 +145,10 @@ addEventListener("rtctransform", ((event: TransformEvent) => {
   const transform = new TransformStream<EncodedFrame, EncodedFrame>({
     async transform(frame, controller) {
       try {
+        // Chromium can deliver empty Opus receive frames during startup. There
+        // is no envelope or media to process: drop, never enqueue/pass through.
+        // Nonempty malformed envelopes still follow the fail-closed error path.
+        if (frame.data.byteLength === 0) return;
         const context = direction === "encrypt" ? encryptors.get(contextId) : decryptors.get(contextId);
         if (!context) return;
         const output = direction === "encrypt"

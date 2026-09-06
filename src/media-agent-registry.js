@@ -838,6 +838,20 @@ export class MediaAgentRegistry {
     return plan;
   }
 
+  revokeSubscriptions(roomId, allowed) {
+    const state = this.#rooms.get(roomId);
+    if (!state) return false;
+    let changed = false;
+    for (const [key, plan] of state.subscriptions) {
+      if (!plan.enabled || allowed(plan)) continue;
+      state.subscriptionRevision += 1;
+      state.subscriptions.set(key, Object.freeze({ ...plan, enabled: false, revision: state.subscriptionRevision }));
+      state.agentSubscriptions.delete(key);
+      changed = true;
+    }
+    return changed;
+  }
+
   subscriptionPlan(roomId, agentId, routeEpoch, subscriberPeerId, publisherPeerId, publicationId, now = Date.now()) {
     const state = this.#rooms.get(roomId);
     if (!state || state.routeEpoch !== routeEpoch || state.leaseExpiresAt < now) return null;

@@ -43,6 +43,31 @@ function createService(initialProfile: ReceiveQualityProfile = "auto") {
 }
 
 describe("PeerMeshService media-agent fallback", () => {
+  it("rotates only publisher keys and denied inbound contexts on a receive-policy change", () => {
+    const { service } = createService();
+    const internals = service as unknown as {
+      publications: Map<string, object>; activeReceiverMediaContexts: Set<string>;
+      clearAgentMediaKeys: () => void; clearPublicationMediaKeys: (publication: object) => void;
+      inboundMediaContext: (root: string, id: string) => string;
+      mediaE2eeController: { clearContext: (id: string) => void };
+      reconcileAllPublications: () => void; provisionAgentMediaKeys: () => void;
+      refreshMediaE2eeState: () => void; refreshMachineReceiveKeys: () => void;
+    };
+    const local = { id: "local", local: true }, allowed = { id: "allowed", local: false, rootPeerId: "human", source: "microphone" };
+    const denied = { id: "denied", local: false, rootPeerId: "human", source: "microphone" };
+    internals.publications = new Map([["local", local], ["allowed", allowed], ["denied", denied]]);
+    internals.clearAgentMediaKeys = vi.fn(); internals.clearPublicationMediaKeys = vi.fn();
+    internals.inboundMediaContext = (_root, id) => id;
+    internals.mediaE2eeController = { clearContext: vi.fn() };
+    internals.activeReceiverMediaContexts = new Set(["allowed", "denied"]);
+    internals.reconcileAllPublications = vi.fn(); internals.provisionAgentMediaKeys = vi.fn(); internals.refreshMediaE2eeState = vi.fn();
+    vi.spyOn(service.machineReceive, "mediaAllowed").mockImplementation((_receiver, _publisher, id) => id !== "denied");
+    internals.refreshMachineReceiveKeys();
+    expect(internals.clearAgentMediaKeys).toHaveBeenCalledOnce();
+    expect(internals.clearPublicationMediaKeys).toHaveBeenCalledExactlyOnceWith(local);
+    expect(internals.mediaE2eeController.clearContext).toHaveBeenCalledExactlyOnceWith("denied");
+    expect(internals.activeReceiverMediaContexts).toEqual(new Set(["allowed"]));
+  });
   it("retires direct SFrame per acknowledged subscriber instead of waiting for the whole room", () => {
     const mediaAgents = {
       assignedAgentId: () => "owner-edge",

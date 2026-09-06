@@ -129,7 +129,7 @@ export class MediaE2eeController {
           || !CONTEXT_ID.test(String(value["contextId"] || ""))
           || !new Set(["encrypt", "decrypt"]).has(String(value["direction"] || ""))
           || !new Set([
-            "media_frame_type", "media_codec_unsupported", "media_frame_too_short", "media_envelope_version",
+            "media_frame_type", "media_codec_unsupported", "media_frame_too_short", "media_envelope_version", "media_key_budget_exhausted",
           ]).has(String(value["code"] || ""))) return;
         this.onTransformFailure(String(value["contextId"]), String(value["code"]));
       });

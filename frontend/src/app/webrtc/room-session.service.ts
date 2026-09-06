@@ -3,6 +3,7 @@ import { Injectable, signal } from "@angular/core";
 import { OidcAuthService } from "../auth/oidc-auth.service";
 import { RuntimeConfigService } from "../core/runtime-config.service";
 import { DeviceIdentityService } from "../identity/device-identity.service";
+import { MachineSessionContext, MachineSessionLease, parseMachineSessionContext, parseMachineSessionLease } from "./machine-session-contract";
 import { IceTierPolicy, parseIceTierPolicy } from "./ice-policy";
 import { PeerMeshService } from "./peer-mesh.service";
 import { ServerMessage, SignalingService } from "./signaling.service";
@@ -11,6 +12,8 @@ export type RoomMode = "room" | "pair";
 
 interface SessionResponse {
   readonly machineExpiresAt?: number;
+  readonly machineLease?: unknown;
+  readonly machineContext?: unknown;
   readonly signalingPath: string;
   readonly iceServers: readonly RTCIceServer[];
   readonly icePolicy: unknown;
@@ -32,6 +35,11 @@ export class RoomSessionService {
   readonly roomCreator = signal(false);
   readonly icePolicy = signal<IceTierPolicy | null>(null);
   readonly machineExpiresAt = signal(0);
+  readonly machineLease = signal<MachineSessionLease | null>(null);
+  readonly machineContext = signal<MachineSessionContext | null>(null);
+  private machineRenewal: AbortController | null = null;
+  private joinOperation: AbortController | null = null;
+  private sessionGeneration = 0;
   private workspaceInvite = "";
 
   constructor(
@@ -66,13 +74,19 @@ export class RoomSessionService {
 
   async join(roomId: string, displayName: string, mode: RoomMode, machineGrant?: string): Promise<void> {
     this.leave();
+    const generation = this.sessionGeneration;
+    const controller = new AbortController();
+    this.joinOperation = controller;
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]);
     this.error.set("");
     const normalizedRoom = roomId.trim().toLowerCase();
     const normalizedName = displayName.trim().replace(/\s+/g, " ");
     try {
       const deviceProof = await this.device.createProof({ roomId: normalizedRoom, mode, displayName: normalizedName });
+      signal.throwIfAborted();
       const response = await fetch(machineGrant ? "/api/machine/sessions" : "/api/sessions", {
         method: "POST",
+        signal, credentials: "same-origin", redirect: "error",
         headers: { "content-type": "application/json", ...(machineGrant
           ? { Authorization: `Bearer ${machineGrant}` } : this.auth.authorizationHeader()) },
         body: JSON.stringify({
@@ -80,10 +94,13 @@ export class RoomSessionService {
           displayName: normalizedName,
           mode,
           deviceProof,
+          machineReceiveVersion: 1,
           ...(this.workspaceInvite ? { workspaceInvite: this.workspaceInvite } : {}),
         }),
       });
       const body = await response.json() as SessionResponse & { error?: string };
+      signal.throwIfAborted();
+      if (generation !== this.sessionGeneration) throw new Error("session_join_cancelled");
       const icePolicy = parseIceTierPolicy(body.icePolicy);
       if (!response.ok || !body.signalingPath || !Array.isArray(body.iceServers) || !icePolicy) {
         throw new Error(body.error || "session_authorization_failed");
@@ -94,6 +111,12 @@ export class RoomSessionService {
         throw new Error("machine_session_policy_invalid");
       }
       this.machineExpiresAt.set(body.machineExpiresAt || 0);
+      if (machineGrant && body.machineLease) {
+        const lease = parseMachineSessionLease(body.machineLease);
+        if (lease.expiresAt !== body.machineExpiresAt || lease.generation !== 1) throw new Error("machine_session_policy_invalid");
+        this.machineLease.set(lease);
+      }
+      if (machineGrant && body.machineContext !== undefined) this.machineContext.set(parseMachineSessionContext(body.machineContext));
       this.roomId.set(normalizedRoom);
       const authorizedName = body.identity?.authenticated && body.identity.displayName
         ? body.identity.displayName
@@ -108,20 +131,64 @@ export class RoomSessionService {
       this.icePolicy.set(icePolicy);
       this.signaling.connect(
         body.signalingPath,
-        (message) => this.handleMessage(message, icePolicy),
+        (message) => { if (generation === this.sessionGeneration) this.handleMessage(message, icePolicy); },
         () => {
+          if (generation !== this.sessionGeneration) return;
+          this.cancelMachineRenewal();
+          this.machineExpiresAt.set(0);
           this.mesh.close();
           this.joined.set(false);
           this.icePolicy.set(null);
         },
       );
     } catch (error) {
-      this.error.set(error instanceof Error ? error.message : "session_join_failed");
+      if (generation === this.sessionGeneration) {
+        this.cancelMachineRenewal(); this.machineExpiresAt.set(0);
+        this.error.set(error instanceof Error ? error.message : "session_join_failed");
+      }
       throw error;
-    }
+    } finally { if (this.joinOperation === controller) this.joinOperation = null; }
+  }
+
+  async renewMachine(grant: string): Promise<MachineSessionLease> {
+    const previous = this.machineLease();
+    if (!this.joined() || !previous || previous.expiresAt <= Date.now() || this.machineRenewal
+      || typeof grant !== "string" || !grant || grant.length > 4096) throw new Error("machine_renewal_unavailable");
+    const controller = new AbortController();
+    this.machineRenewal = controller;
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]);
+    try {
+      const roomId = this.roomId();
+      const deviceProof = await this.device.createProof({ roomId, mode: "room", displayName: "Ananta (KI)",
+        machineSessionId: previous.sessionId, expectedGeneration: previous.generation });
+      signal.throwIfAborted();
+      const response = await fetch("/api/machine/sessions/renew", { method: "POST", credentials: "same-origin",
+        redirect: "error", signal, headers: { "content-type": "application/json", Authorization: `Bearer ${grant}` },
+        body: JSON.stringify({ roomId, sessionId: previous.sessionId, expectedGeneration: previous.generation, deviceProof }) });
+      if (!response.ok) throw new Error("machine_renewal_denied");
+      const next = parseMachineSessionLease(await response.json());
+      signal.throwIfAborted();
+      if (!this.joined() || this.machineLease() !== previous || next.sessionId !== previous.sessionId
+        || next.generation !== previous.generation + 1 || next.absoluteExpiresAt !== previous.absoluteExpiresAt
+        || next.expiresAt <= previous.expiresAt) throw new Error("machine_renewal_scope_changed");
+      this.machineLease.set(next); this.machineExpiresAt.set(next.expiresAt);
+      return next;
+    } catch (error) {
+      // Unknown renewal outcome is not permission to continue on a stale local lease.
+      if (this.machineLease() === previous) this.leave();
+      throw error;
+    } finally { if (this.machineRenewal === controller) this.machineRenewal = null; }
+  }
+
+  private cancelMachineRenewal(): void {
+    this.machineRenewal?.abort(); this.machineRenewal = null; this.machineLease.set(null);
+    this.machineContext.set(null);
   }
 
   leave(): void {
+    ++this.sessionGeneration;
+    this.joinOperation?.abort(); this.joinOperation = null;
+    this.cancelMachineRenewal();
     this.machineExpiresAt.set(0);
     this.joined.set(false);
     this.workspaceId.set("");
@@ -157,21 +224,27 @@ export class RoomSessionService {
         this.config.value()?.mediaE2ee,
       );
       this.roomCreator.set(message["roomCreator"] === true);
-      const peers = Array.isArray(message["peers"]) ? message["peers"] as Array<{ id: string; name: string }> : [];
-      for (const peer of peers) this.mesh.addPeer(peer.id, peer.name);
+      const peers = Array.isArray(message["peers"]) ? message["peers"] as Array<{ id: string; name: string; machine?: boolean; machineCapabilities?: unknown }> : [];
+      this.mesh.machineReceive.setMachine(String(message["peerId"] || ""), message["machine"] === true, message["machineCapabilities"]);
+      for (const peer of peers) this.mesh.addPeer(peer.id, peer.name, peer.machine === true, peer.machineCapabilities);
       this.joined.set(true);
       this.mesh.announcePublications();
       return;
     }
     if (message.type === "peer-joined") {
-      const peer = message["peer"] as { id?: string; name?: string };
-      this.mesh.addPeer(String(peer?.id || ""), String(peer?.name || "Peer"));
+      const peer = message["peer"] as { id?: string; name?: string; machine?: boolean; machineCapabilities?: unknown };
+      this.mesh.addPeer(String(peer?.id || ""), String(peer?.name || "Peer"), peer?.machine === true, peer?.machineCapabilities);
       this.mesh.announcePublications();
       this.mesh.announceOverlayKey();
       return;
     }
     if (message.type === "peer-left") {
+      this.mesh.machineReceive.removePeer(String(message["peerId"] || ""));
       this.mesh.removePeer(String(message["peerId"] || ""));
+      return;
+    }
+    if (message.type === "machine-receive-state") {
+      this.mesh.machineReceive.apply(message, this.roomId());
       return;
     }
     if (message.type === "signal") {

@@ -3,13 +3,13 @@
   "version": "1.0",
   "owner": "Ananta Meet maintainers",
   "track": "ananta-machine-dialog-screen",
-  "status": "todo",
+  "status": "in_progress",
   "purpose": "Meet-seitige Erweiterung der vorhandenen KI-Teilnahme um separat autorisierten Empfang, Raumchat-Ereignisse, agenteneigenes Bildschirmteilen und erneuerbare, widerrufbare Sitzungen.",
   "scope": {
     "kind": "repository_development_track",
-    "implementation_started": false,
+    "implementation_started": true,
     "runtime_authorization_granted": false,
-    "note": "Dieser Plan aktiviert weder Hub-Trust noch Projektfreigaben oder Capture. Alle Tasks beschreiben noch zu verifizierende Erweiterungen, nicht den Abschluss des vorhandenen Maschinen-Slice."
+    "note": "Diese laufende Implementierung aktiviert weder produktiven Hub-Trust noch Projektfreigaben oder menschlichen Capture. Die Tasks bleiben bis zur jeweiligen Integrationsabnahme offen; lokale Draft-Ports sind keine Produktionsfreigabe."
   },
   "related_tracks": [
     {"repository": "webrtc-minimize-server", "path": "todos/archive/todo.ananta-machine-participant.json", "relationship": "Vorhandene Admission und begrenzte synthetische Publikation wiederverwenden; historischen Abschluss nicht verändern."},
@@ -27,15 +27,15 @@
   "priority_scale": ["P0", "P1", "P2", "P3"],
   "risk_scale": ["low", "medium", "high", "critical"],
   "milestones": [
-    {"id": "MDS-M1", "title": "Verträge und Autorisierung", "status": "todo", "task_ids": ["MDS-01", "MDS-02"]},
-    {"id": "MDS-M2", "title": "Empfang, Chat und Bildschirmquelle", "status": "todo", "task_ids": ["MDS-03", "MDS-04", "MDS-05"]},
-    {"id": "MDS-M3", "title": "Lebenszyklus und sichtbare Kontrolle", "status": "todo", "task_ids": ["MDS-06", "MDS-07"]},
-    {"id": "MDS-M4", "title": "Verifikation und kontrollierter Rollout", "status": "todo", "task_ids": ["MDS-08", "MDS-09"]}
+    {"id": "MDS-M1", "title": "Verträge und Autorisierung", "status": "in_progress", "task_ids": ["MDS-01", "MDS-02"]},
+    {"id": "MDS-M2", "title": "Empfang, Chat und Bildschirmquelle", "status": "in_progress", "task_ids": ["MDS-03", "MDS-04", "MDS-05"]},
+    {"id": "MDS-M3", "title": "Lebenszyklus und sichtbare Kontrolle", "status": "in_progress", "task_ids": ["MDS-06", "MDS-07"]},
+    {"id": "MDS-M4", "title": "Verifikation und kontrollierter Rollout", "status": "in_progress", "task_ids": ["MDS-08", "MDS-09"]}
   ],
   "tasks": [
     {
       "id": "MDS-01", "title": "Versionierten Maschinen-Contract mit Ananta abstimmen",
-      "status": "todo", "progress_percent": 0, "priority": "P0", "risk": "critical", "depends_on": [],
+      "status": "in_progress", "progress_percent": 55, "priority": "P0", "risk": "critical", "depends_on": [],
       "ananta_task_refs": ["MAP-02", "MAP-03", "MAP-06", "MAP-08"],
       "acceptance_criteria": [
         "Getrennte Fähigkeiten für Audioempfang, Chatlesen/-senden und agenteneigene Bildschirmveröffentlichung inklusive Raum, Task, Tenant, Projekt, Publikation, Runtime und Lease-Generation definieren; Aufzeichnung und Tools bleiben separat verboten.",
@@ -45,7 +45,7 @@
     },
     {
       "id": "MDS-02", "title": "Hub-Trust und raumseitige Empfangs-/Quellrechte durchsetzen",
-      "status": "todo", "progress_percent": 0, "priority": "P0", "risk": "critical", "depends_on": ["MDS-01"],
+      "status": "in_progress", "progress_percent": 55, "priority": "P0", "risk": "critical", "depends_on": ["MDS-01"],
       "ananta_task_refs": ["MAP-05", "MAP-06", "MAP-12", "MAP-25"],
       "acceptance_criteria": [
         "Bestehende MACHINE_HUB_PUBLIC_KEY_FILE-/MACHINE_HUB_ISSUER-Konfiguration wiederverwenden; Operator-Trust, Projekt-/Task-Freigabe und zulässige Raum-/Publikationsfreigabe explizit trennen.",
@@ -56,7 +56,7 @@
     },
     {
       "id": "MDS-03", "title": "Begrenzten Audioempfang für den autorisierten KI-Client bereitstellen",
-      "status": "todo", "progress_percent": 0, "priority": "P1", "risk": "critical", "depends_on": ["MDS-02"],
+      "status": "in_progress", "progress_percent": 35, "priority": "P1", "risk": "critical", "depends_on": ["MDS-02"],
       "ananta_task_refs": ["MAP-25", "MAP-27"],
       "acceptance_criteria": [
         "Erst im berechtigten Teilnehmerclient entschlüsselte Audiochunks über einen isolierten Subscription-Port an das gebundene Ananta-Ausführungsprofil geben; keine Klartext-HTTP-Route am Signaling-Server.",
@@ -67,7 +67,7 @@
     },
     {
       "id": "MDS-04", "title": "Autorisierte Raumchat-Ereignisse und Antworttransport ergänzen",
-      "status": "todo", "progress_percent": 0, "priority": "P1", "risk": "high", "depends_on": ["MDS-02"],
+      "status": "in_progress", "progress_percent": 65, "priority": "P1", "risk": "high", "depends_on": ["MDS-02"],
       "ananta_task_refs": ["MAP-26", "MAP-27"],
       "acceptance_criteria": [
         "Bestehenden DataChannel-Chat um isoliert abonnierbare Ereignisse mit Message-ID, Senderbindung, Raum-/Sessiongeneration und begrenztem Cursor/ACK ergänzen; keine Nachrichtentexte in Signaling oder Produktionslogs.",
@@ -78,7 +78,7 @@
     },
     {
       "id": "MDS-05", "title": "Agenteneigenen Browserstream als separate Bildschirm-Publikation anbinden",
-      "status": "todo", "progress_percent": 0, "priority": "P1", "risk": "high", "depends_on": ["MDS-02"],
+      "status": "in_progress", "progress_percent": 40, "priority": "P1", "risk": "high", "depends_on": ["MDS-02"],
       "ananta_task_refs": ["MAP-13", "MAP-14", "MAP-15", "MAP-16", "MAP-24"],
       "acceptance_criteria": [
         "Neuen Source-Adapter ausschließlich für die vom Hub gebundene isolierte Agentenansicht integrieren; keine simulierte Bestätigung eines menschlichen getDisplayMedia-Dialogs, kein Host-Capture.",
@@ -89,7 +89,7 @@
     },
     {
       "id": "MDS-06", "title": "Erneuerbare Sessions mit Fencing und wirksamem Widerruf implementieren",
-      "status": "todo", "progress_percent": 0, "priority": "P0", "risk": "critical", "depends_on": ["MDS-02"],
+      "status": "in_progress", "progress_percent": 50, "priority": "P0", "risk": "critical", "depends_on": ["MDS-02"],
       "ananta_task_refs": ["MAP-09", "MAP-11", "MAP-12"],
       "acceptance_criteria": [
         "Lang laufende Teilnahme besteht aus kurzlebigen neu autorisierten Leases, nicht aus verlängerten Dauertokens; jede Erneuerung prüft aktuellen Hub-Auftrag und Meet-Policy.",
@@ -100,7 +100,7 @@
     },
     {
       "id": "MDS-07", "title": "KI-Aktivitäten und berechtigte Steuerung in Angular sichtbar machen",
-      "status": "todo", "progress_percent": 0, "priority": "P1", "risk": "high", "depends_on": ["MDS-03", "MDS-04", "MDS-05", "MDS-06"],
+      "status": "in_progress", "progress_percent": 30, "priority": "P1", "risk": "high", "depends_on": ["MDS-03", "MDS-04", "MDS-05", "MDS-06"],
       "ananta_task_refs": ["MAP-12", "MAP-25", "MAP-32"],
       "acceptance_criteria": [
         "Teilnehmeransicht und Analyse zeigen KI-Identität, Zuhören, Chat-Antwortfähigkeit, Bildschirmquelle, Freigaben und tatsächlich bestätigten Status getrennt von bloßer Capability.",
@@ -111,7 +111,7 @@
     },
     {
       "id": "MDS-08", "title": "Headless-Sicherheits- und Ende-zu-Ende-Matrix verifizieren",
-      "status": "todo", "progress_percent": 0, "priority": "P1", "risk": "high", "depends_on": ["MDS-07"],
+      "status": "in_progress", "progress_percent": 5, "priority": "P1", "risk": "high", "depends_on": ["MDS-07"],
       "ananta_task_refs": ["MAP-29", "MAP-30", "MAP-31"],
       "acceptance_criteria": [
         "Ephemere Issuer, Policy-Fixtures und synthetische Quellen erlauben Tests ohne menschlichen Klick oder produktive Secrets; fehlende Infrastruktur endet begrenzt und sichtbar blocked/skipped.",
@@ -135,14 +135,25 @@
   "critical_path_tasks": ["MDS-01", "MDS-02", "MDS-03", "MDS-07", "MDS-08", "MDS-09"],
   "tasks_status_summary": {
     "total": 9,
-    "by_status": {"todo": 9, "in_progress": 0, "partial": 0, "blocked": 0, "done": 0},
+    "by_status": {"todo": 1, "in_progress": 8, "partial": 0, "blocked": 0, "done": 0},
     "progress_percent_done": 0,
     "by_priority": {"P0": 3, "P1": 6, "P2": 0, "P3": 0},
     "by_risk": {"low": 0, "medium": 0, "high": 5, "critical": 4},
     "critical_path": {"total": 6, "done": 0, "remaining": 6},
-    "milestones": {"total": 4, "todo": 4, "in_progress": 0, "blocked": 0, "done": 0}
+    "milestones": {"total": 4, "todo": 0, "in_progress": 4, "blocked": 0, "done": 0}
   },
   "summary_notes": [
+    "Commit-/Push-Checkpoint auf Nutzerwunsch 2026-09-07, ohne Fortsetzung der Implementierung und ohne Deployment. Aktueller Build, 501 Frontend-Tests, Go-Gates und Konfigurationspruefungen bestanden. Zwei npm-run-check-Versuche dieser Checkpoint-Runde waren NICHT vollstaendig gruen: einmal Chromium-Maschinen-Fetch beim Renewal im Firefox-Gegenstellentest (isolierte Wiederholung bestanden), danach bestehender Firefox-Vosk-Test mit fehlendem erwartetem Modellrequest. Beide Node-Gesamtlaeufe: 446 bestanden, ein Fehler, zwei Skips. Gemeinsame kurze Hub-/Worker-/Browser-Abnahme gegen zusammengefuehrten Ananta-Stand bestanden (31.84s); nach weiterem Upstream-Reply-Budget-Commit zusaetzlich 29 fokussierte Ananta-Tests bestanden. Todo-Konflikt enthielt ausschliesslich zwei neue Summary-Notizen und wurde unter Erhalt beider geloest. Offene Langzeit-/GPU-/SFU-/TURN-Abnahme bleibt offen; Snapshot ist kein Release-PASS.",
+    "Arbeitsunterbrechung auf Nutzerwunsch 2026-09-07: keine weiteren Ananta-Implementierungen, kein Commit/Push/Deploy. Lokale gemeinsame Hub-/Worker-/Meet-Kurzabnahme bestanden (echte TaskQueue/HMAC/TLS, synthetische Policy und Modellantwort, korrelierter Chat, bewegte CDP-Bilder, separates Screen-Pause/Fortsetzen und Hub-Stop). Direkter v2-Browsergate mit Chromium sowie echter Firefox-Gegenstelle prueft 16000 entschluesselte PCM-Samples, Screen-Pixel, drei Renewals und Entzug. npm run check bestand mit 499 Frontend- und 446 Node-Tests, zwei Node-Skips sowie Go-/Konfigurationsgates; externe Live-Gates sichtbar uebersprungen. Ananta: 412 bestanden, acht Infrastruktur-Skips, danach 22 gezielte Source-/Lifecycle-Tests bestanden. Abbruch-/Setup-Cleanup, leere Opus-Frames, privater lautloser PCM-Sink, begrenzte SFrame-KID-Historie ohne Replay-/Nonce-Reset und Aktivierungsablauf zwischen Screen-status/push gehaertet. Fuenfminuten-Soak NICHT bestanden: bewegte Quelle bis 236s/vier Lease-Generationen beobachtet, danach Browser-Laufzeitfehler; zweistuendige Abnahme nicht gestartet. Zuletzt doppelte MachinePage-Ablauftimer durch einen generationsgebundenen Timer-Port ersetzt; dessen kurze Tests/Typcheck separat, Langzeitwirkung noch unverified. Echte GPU-Inferenz, maschinenspezifische SFU/TURN-Matrix, allgemeine Browser-Workspace-Navigation und Sprache/Avatar im v2-Dialog bleiben offen. Keine Produktionsfreigabe aus lokalen Testbeobachtungen ableiten.",
+    "Fortsetzung: aktuelle Hub-/Meet-Autorisierungsabfrage mit echten Publikationsepochen (getrennt von Receive-Revision) implementiert und an Anantas neue TaskQueue-/HMAC-/v2-Worker-Laufzeit angeschlossen. Separater Screen-Canvas-Port open/push/status/close bindet screen:<Hub-Session>, 640x360/5FPS/256KiB, einen Decode, 1s Decode-/2s Frame-Stall-/30s Quellenbudget; falsche Dimensionen, Replay, Scopewechsel und spaete Bitmaps geprueft. Ananta liefert eigene Offline-CDP-Taskansicht, noch keine beliebige Browsernavigation oder Source-Wechselsteuerung. Audio-Antworten sind an eine einmalige abgeschlossene Subscription gebunden; lokale ASR-Kindtaskadmission trennt Hub- und Meet-Leases. Gezielt gruen: 29 Node-Admission/Registry/Receive-Tests, zehn Angular-Audio/Screen-Tests und ngc; Ananta 13 Dialog/Source-, acht Audio-Mapping-Tests sowie echter isolierter TaskQueue-CAS-Test. Gemeinsame Browser-/GPU-/Direct/SFU/TURN-/Soak-Abnahme bleibt offen, ebenso generische Browseradmission und Sprache/Avatar-Koordination. Capability-Probes weiterhin konservativ; keine Produktionsaktivierung, kein Commit/Push/Deploy.",
+    "Vollausbauauftrag: Hub-/Worker-Gesamtpfad, eigene Bildschirmquelle und gemeinsame Integrationsabnahme abschliessen. Zuerst aktuelle Meet-Autorisierungsabfrage fuer den Hub, damit Workerbehauptungen keine Receive-Autoritaet erzeugen; dann Task-/Runtime-/Lease- und Source-Bindungen in beiden Repositories komponieren. Keine neue produktive Trust-/Projektpolicy allein durch Implementierung; lange Matrix folgt gebuendelt nach den Code-Bausteinen.",
+    "Fortsetzung 2026-09-06: MDS-04 ist jetzt am echten DataChannel angeschlossen: additives geschlossenes Chat-v2 mit Room/Epoch, zufaelliger Message-ID und replyTo, Verbindungs-Senderbindung, Frische, 60 Nachrichten/Minute/Peer und Dedup. V1 bleibt fuer normale Human-Raeume erhalten, aber erzeugt keine maschinellen Events. Im isolierten Client stehen Draft-open/poll/ack/reply/close zur Verfuegung; nur neue freigegebene Human-Ereignisse, maximal acht pro Batch, Antworten nur einmal zu bereits gelieferten Eingaben. Authority kommt aus verifiziertem HTTP-v2-Kontext, laufender Lease und serverbestaetigten Publisherrechten; niemand kann scope im open-Aufruf selbst vorgeben. Entzug/Scopewechsel schliesst und leert innerhalb 250ms. Vollstaendiger Hub-Authority-/TaskQueue-/Worker-Adapter ist weiterhin offen, Capability-Probe daher konservativ false.",
+    "MDS-03: separater entschluesselnder Browser-Audio-Port und AudioWorklet implementiert. AudioContext resampelt tatsaechlich auf 16000Hz mono; PCM16LE wird in 1600-Sample-/3200-Byte-Paketen mit einem Worklet-In-Flight, maximal 10 Queue-Paketen, fuenf pro Poll und ACK/Wipe geliefert. Ein Aufruf hat 1-10s Samplebudget und hoechstens 30s Gesamtdauer, Setup 5s; Quell-/Trackwechsel, Mute, Lease-/Membership-/Policywechsel und Uhr-Ruecksprung schliessen. Pruefung vor jedem Chunk/Poll/ACK plus 100ms Watchdog, alte Graph-Callbacks gefencet. Kein menschlicher Capture, keine ASR/Medienroute am Signaling-Server. Wire bleibt draft1: receive_revision ist NICHT still Anantas publication_epoch, Meet-lease_id ist NICHT Hub-Dispatch-Lease. Authentisierter Mapping-/Taskadapter und echte SFrame-dekodierte Browser-/ASR-Abnahme fehlen weiterhin.",
+    "MDS-02/06/07 nachgezogen: native SFU-Subscriptions pruefen dieselben aktuellen Publisherrechte, Entzug deaktiviert Plans mit neuer Revision und entwertet alte Agent-ACKs. Browser schaltet Subscription-Intent aus und rotiert Schluessel. Bereits erlaubte Inbound-Schluessel bleiben bei separat geordneten Policy-/DataChannel-Nachrichten erhalten, damit eine frische bestaetigte Rotation nicht durch ein spaetes Policiesignal geloescht wird; Worker-Keyring auf acht ueberlappende KIDs begrenzt. Alte Socket-/Channel-Callbacks gelangen nicht in die neue Sitzung. Analyse-UI bestaetigt nur exakt passende Serverreceipts, begrenzt Pending auf 5s und setzt Quellenauswahl beim KI-Wechsel zurueck. Gezielt bestanden: 36 Node-Policy/Lease/SFU-Tests (2,7s), neuer echter HTTP/WS-v2-Receipt-Test (74ms Testzeit), 29 Chat/Audio/Session/Mesh-Tests (1,1s), zehn UI/Keyring/Context-Tests (0,7s), drei PCM-Worklet-Tests (54ms Prozesszeit), 17 gemeinsame Chat-Fixtures/Queue-Tests und Angular-Template/Typcheck. Keine lange Suite, kein Commit/Push/Deploy in dieser Fortsetzung; produktive Aktivierung unveraendert aus.",
+    "MDS-02/07: v2-Hub-Grants erhalten getrennte explizite Capabilities und Runtime-/Hub-Session-Bindung; Renewal darf diese nicht wechseln. Metadaten klassifizieren Maschinen ausschliesslich aus autorisierter Membership. Ein Receive-Policy-Port erlaubt nur aktuelle eigene Audio-Publikationen/Chat mit Hub-Capability plus expliziter Publisherfreigabe, CAS-Revision und maximal 10min. Browsergate sperrt Direct-Sender, Direct-/SFU-Schluesselausgabe und -annahme, Chat, Caption-/Bulk-Empfang standardmaessig; Widerruf rotiert auch den gemeinsamen Agent-Key. Normale Raeume bleiben kompatibel, aber gemischte Altclients ohne machineReceiveVersion=1 werden in Raeumen mit Maschinen abgelehnt. Die alte Zwei-Maschinen-E2E-Fixture ist dadurch kein gueltiger Receive-Nachweis mehr und wird in der abschliessenden Matrix auf echte getrennte Human-/Maschinenrollen aktualisiert. Analyse-Freigabe-UI beginnt jetzt; Freigabe/Support werden getrennt von tatsaechlichem ASR-/Dialogempfang ausgewiesen. Keine Produktionsaktivierung.",
+    "MDS-06-Lifecycle ist im HTTP-/WebSocket-Server und window.anantaMachine.renew verbunden: frischer unveraenderter v1-Hub-Grant, unveraenderte Task-/Projekt-/Tenant-/Raum-/Device-Bindung, separater signierter Renewal-Kontext und CAS-Generation; 30s unbenutzter Join, 10min je Lease, 2h/512 Generationen gesamt. Ablauf/Leave/Membership-Verlust loeschen Autoritaet vor Socket-Close. Browser-Join/Refresh besitzen Abort und Generation-Fences; spaete Antworten beleben keine verlassene Sitzung. 36 gezielte Node-Tests inkl. echtem P-256/HTTP und drei Renewals derselben WebSocket-Membership bestanden in 2,7s, 12 Angular-/Proof-Tests in 0,7s und App-Typecheck ebenfalls. Capability-Probe benennt getrennt Support und Operator-Aktivierung und meldet noch nicht angebundenen Chat-/Audio-/Screen-Empfang ehrlich false. Gesamttests/Deployment bleiben bis zum Ende der Implementierungsrunde aus. MDS-02 startet jetzt die separate Capability- und Publisher-Policy; alte v1-Grant-Validierung wird nicht still in allgemeine Receive-Autoritaet umgedeutet.",
+    "MDS-01: browserneutraler Parser uebernimmt exakt Anantas Chat-draft1-Fixtures; doppelte/escaped Felder, UTF-8, Unicode-Zeichen-/Bytegrenzen, Scope und Frische werden geprueft. Ein endpoint-lokaler Queue-Port begrenzt 32 Ereignisse/128 KiB, acht pro Poll, 512 Dedup-Eintraege und ACK bis zur tatsaechlich gelieferten Grenze; Entzug, Ablauf, Scopewechsel und Uhrenruecksprung schliessen und leeren. 17 gezielte Tests bestanden in unter einer Sekunde. Noch kein produktiver Receive-Port. MDS-06 beginnt unabhaengig mit der Rechte-erhaltenden Lebenszyklus-Basis: frischer Hub-Grant, exakte Task-/Tenant-/Projekt-/Geraetebindung, generationsgebundener eigener P-256-Renewal-Nachweis, keine zweite Membership und absolute Zwei-Stunden-Grenze. Empfangs-/Quellrechte bleiben bis MDS-02 separat gesperrt; ein erneuerter v1-Grant erweitert keine Rechte.",
+    "Implementierungsauftrag vom 2026-09-06: Ananta-Anbindung zuerst, anschliessend weitere offene Implementierungen in groesserer Runde. Je Slice nur gezielte Unit-/Contract-/Typchecks; npm run check und lange Browser-/TURN-/Soak-Gates erst gebuendelt am Ende der Runde. Kein Einzel-Deployment nach kleinen Aenderungen. MDS-01 beginnt mit Anantas vorhandenem ananta.meet-chat-event.draft1 samt identischen Fixtures, geschlossenen Session-/Capability-Vertraegen und begrenztem ACK/Cursor-Port. Vertragskompatibilitaet ist keine Aktivierung von Empfang, Tools, Recording oder produktivem Hub-Trust.",
     "Reiner Planungsauftrag vom 2026-09-06: keine Implementierung, Produktionsaktivierung oder erfolgreiche Medienabnahme durch diesen Track behauptet.",
     "Anantas übergeordnete MAP-Aufgaben behalten ihre Historie; MDS-Tasks sind die ausführbaren Meet-seitigen Teilaufgaben. Ihr Abschluss schließt die korrespondierenden Ananta-Kriterien nicht automatisch ab."
   ]

@@ -73,6 +73,8 @@ import {
   mediaAgentCameraLayerCeiling,
   receiveVideoEnabled,
 } from "./receive-quality-policy";
+import { MachineReceiveGate } from "./machine-receive-gate";
+import { BoundPeerChat, MachinePeerChatIngress, createMachinePeerChat } from "./machine-peer-chat";
 import { ReceiveQualityPreferenceService } from "./receive-quality-preference.service";
 
 interface PeerState extends ManagedPeer {
@@ -142,6 +144,9 @@ export interface ChatEntry {
   readonly author: string;
   readonly text: string;
   readonly system: boolean;
+  readonly messageId?: string;
+  readonly replyTo?: string;
+  readonly machine?: boolean;
 }
 
 export interface CaptionEntry {
@@ -195,6 +200,11 @@ function agentLayerForTier(tier: VideoTier): "low" | "medium" | "high" {
 
 @Injectable({ providedIn: "root" })
 export class PeerMeshService {
+  private readonly machineChatIngress = new MachinePeerChatIngress();
+  private readonly machineChatSubscribers = new Set<(event: BoundPeerChat) => void>();
+  readonly machineReceive = new MachineReceiveGate(() => {
+    this.refreshMachineReceiveKeys();
+  });
   readonly remoteMedia = signal<readonly RemoteMediaView[]>([]);
   readonly participantCount = signal(0);
   readonly chat = signal<readonly ChatEntry[]>([]);
@@ -377,8 +387,9 @@ export class PeerMeshService {
     // The first key is generated only after the server-authored membership epoch arrives.
   }
 
-  addPeer(peerId: string, name: string): void {
+  addPeer(peerId: string, name: string, machine = false, capabilities: unknown = []): void {
     if (!peerId || peerId === this.ownId || this.peers.has(peerId)) return;
+    this.machineReceive.setMachine(peerId, machine, capabilities);
     const peer = this.connections?.add(peerId, name) as PeerState | null;
     if (!peer) return;
     Object.defineProperty(peer, "overlayQueue", { value: new BoundedOverlayQueue(), enumerable: true });
@@ -393,7 +404,7 @@ export class PeerMeshService {
 
   async acceptSignal(message: ServerMessage): Promise<void> {
     const from = String(message["from"] || "");
-    if (!this.peers.has(from)) this.addPeer(from, String(message["fromName"] || "Peer"));
+    if (!this.peers.has(from)) return; // Only server membership, never SDP, creates a peer.
     await this.connections?.acceptSignal(message);
   }
 
@@ -637,7 +648,7 @@ export class PeerMeshService {
         publisherPeerId: descriptor.rootPeerId,
         publicationId,
         source: descriptor.source,
-        enabled,
+        enabled: enabled && this.machineReceive.mediaAllowed(this.ownId, descriptor.rootPeerId, publicationId, descriptor.source),
         preferredLayer,
         maximumLayer,
       });
@@ -688,6 +699,7 @@ export class PeerMeshService {
   }
 
   async sendOverlayData(destinationPeerId: string, data: Uint8Array, trafficClass: OverlayTrafficClass): Promise<boolean> {
+    if (this.machineReceive.isMachine(destinationPeerId) && ["event", "bulk"].includes(trafficClass)) return false;
     if (!this.optimization.dataOverlayEnabled || !this.peers.has(destinationPeerId)
       || this.membershipEpoch() < 1 || this.routeEpoch() < 1) return false;
     const routedPath = this.topology.path(this.ownId, destinationPeerId);
@@ -712,6 +724,7 @@ export class PeerMeshService {
   removePeer(peerId: string): void {
     const peer = this.peers.get(peerId);
     if (!peer) return;
+    this.machineChatIngress.removePeer(peerId);
     this.membershipStable = false;
     this.clearAllMediaKeys();
     peer.overlayQueue.clear();
@@ -738,14 +751,78 @@ export class PeerMeshService {
   }
 
   sendChat(text: string): void {
+    if (this.machineReceive.isMachine(this.ownId) && !this.machineReceive.supports(this.ownId, "chat.send")) return;
     const value = text.trim();
     if (!value || value.length > 2_000) return;
     const payload = JSON.stringify({ version: 1, type: "chat", text: value });
+    let modernPayload = "";
+    if (this.membershipEpoch() > 0) {
+      try { modernPayload = JSON.stringify(createMachinePeerChat(value, this.roomId, this.membershipEpoch())); }
+      catch { /* A legacy human message may exceed the narrower machine contract. */ }
+    }
     for (const peer of this.peers.values()) {
+      if (!this.machineReceive.chatAllowed(peer.id, this.ownId)) continue;
+      const modern = this.machineReceive.isMachine(peer.id) || this.machineReceive.isMachine(this.ownId);
+      if (modern && !modernPayload) continue;
       const channel = peer.channels.get("chat");
-      if (channel?.readyState === "open" && channel.bufferedAmount < CHAT_BUFFER_LIMIT) channel.send(payload);
+      if (channel?.readyState === "open" && channel.bufferedAmount < CHAT_BUFFER_LIMIT) channel.send(modern ? modernPayload : payload);
     }
     this.addChat(this.ownName || "Du", value, false);
+  }
+
+  ownPeerId(): string { return this.ownId; }
+
+  machineAudioSource(publicationId: string) {
+    const publication = this.publications.get(publicationId), descriptor = this.descriptors.get(publicationId);
+    if (!this.machineReceive.isMachine(this.ownId) || !this.machineReceive.supports(this.ownId, "audio.receive")
+      || !publication || publication.local || !descriptor || descriptor.rootPeerId !== publication.rootPeerId
+      || descriptor.source !== publication.source || !this.peers.has(publication.rootPeerId)
+      || this.machineReceive.isMachine(publication.rootPeerId) || publication.track.kind !== "audio"
+      || publication.track.readyState !== "live" || publication.track.muted || !publication.track.enabled
+      || !this.shouldProtectMedia() || !this.machineReceive.mediaAllowed(this.ownId, publication.rootPeerId, publicationId, publication.source)) {
+      throw new Error("meet_audio_source_denied");
+    }
+    return Object.freeze({ peerId: publication.rootPeerId, source: publication.source, track: publication.track });
+  }
+
+  subscribeMachineChat(listener: (event: BoundPeerChat) => void): () => void {
+    if (this.machineChatSubscribers.size >= 4) throw new Error("meet_chat_subscriber_limit");
+    this.machineChatSubscribers.add(listener);
+    return () => { this.machineChatSubscribers.delete(listener); };
+  }
+
+  sendMachineChatReply(text: string, replyTo: string): Readonly<{ messageId: string; queuedPeers: number }> {
+    if (!this.machineReceive.isMachine(this.ownId) || !this.machineReceive.supports(this.ownId, "chat.send")
+      || typeof text !== "string" || [...text].length > 450 || !/^[a-f0-9]{32}$/.test(replyTo)) throw new Error("meet_chat_reply_denied");
+    const message = createMachinePeerChat(text, this.roomId, this.membershipEpoch(), replyTo);
+    const payload = JSON.stringify(message);
+    let queuedPeers = 0;
+    for (const peer of this.peers.values()) {
+      if (this.machineReceive.isMachine(peer.id)) continue;
+      const channel = peer.channels.get("chat");
+      if (channel?.readyState === "open" && channel.bufferedAmount < CHAT_BUFFER_LIMIT) {
+        try { channel.send(payload); queuedPeers++; } catch { /* No retry after a possibly partial room send. */ }
+      }
+    }
+    this.addChat(this.ownName, text, false, { messageId: message.messageId, replyTo, machine: true });
+    return Object.freeze({ messageId: message.messageId, queuedPeers });
+  }
+
+  ownMachineReceiveGrant(machinePeerId: string) {
+    return this.machineReceive.grants().find(g => g.publisherPeerId === this.ownId && g.machinePeerId === machinePeerId) || null;
+  }
+
+  machineReceiveConsent(machinePeerId: string, microphone: boolean, screenAudio: boolean, chatRead: boolean, minutes: number) {
+    if (!this.peers.has(machinePeerId) || !this.machineReceive.isMachine(machinePeerId)
+      || ![1, 5, 10].includes(minutes)) throw new Error("machine_receive_target_unavailable");
+    if ((microphone || screenAudio) && !this.machineReceive.supports(machinePeerId, "audio.receive")
+      || chatRead && !this.machineReceive.supports(machinePeerId, "chat.read")) throw new Error("machine_receive_hub_capability_missing");
+    const sources = [microphone ? "microphone" : "", screenAudio ? "screen-audio" : ""].filter(Boolean);
+    const publicationIds = [...this.publications.values()].filter(p => p.local && p.track.readyState === "live" && sources.includes(p.source)).map(p => p.id);
+    if (publicationIds.length !== sources.length) throw new Error("machine_receive_source_not_active");
+    return Object.freeze({ type: "machine-receive-consent", trigger: "user-action", machinePeerId,
+      expectedRevision: this.machineReceive.revision(), publicationIds: Object.freeze(publicationIds),
+      chatRead, expiresAt: Date.now() + minutes * 60_000 });
   }
 
   clearChatHistory(): void {
@@ -763,6 +840,7 @@ export class PeerMeshService {
     if (!parsed) return false;
     if (shareWithRoom) {
       for (const peer of this.peers.values()) {
+        if (this.machineReceive.isMachine(peer.id)) continue;
         const channel = peer.channels.get("captions");
         if (channel?.readyState === "open" && channel.bufferedAmount < CAPTION_BUFFER_LIMIT) channel.send(payload);
       }
@@ -776,6 +854,9 @@ export class PeerMeshService {
   }
 
   close(): void {
+    this.machineChatIngress.clear();
+    this.machineChatSubscribers.clear();
+    this.machineReceive.clear();
     this.stopTimers();
     document.removeEventListener("visibilitychange", this.visibilityHandler);
     this.topology.clear();
@@ -1028,6 +1109,7 @@ export class PeerMeshService {
   }
 
   private shouldSend(publication: Publication, targetPeerId: string): boolean {
+    if (!this.machineReceive.mediaAllowed(targetPeerId, publication.rootPeerId, publication.id, publication.source)) return false;
     if (this.mediaE2ee.mode !== "disabled") {
       return publication.local && !this.agentSubscriptionReadyFor(publication.id, targetPeerId);
     }
@@ -1131,6 +1213,7 @@ export class PeerMeshService {
         void this.acceptMediaE2eeEnvelope(result.originPeerId, result.data);
         return;
       }
+      if (this.machineReceive.isMachine(this.ownId)) { result.data.fill(0); return; }
       this.overlayDeliveries.update((items) => [...items.slice(-63), {
         id: ++this.overlaySerial,
         originPeerId: result.originPeerId,
@@ -1179,16 +1262,29 @@ export class PeerMeshService {
       }
     };
     channel.onmessage = ({ data }) => {
+      if (this.peers.get(peer.id) !== peer || peer.channels.get(kind) !== channel) return;
       if (kind === "overlay") {
         void this.acceptOverlayPacket(peer, data);
         return;
       }
       if (kind === "chat") {
+        if (!this.machineReceive.chatAllowed(this.ownId, peer.id)) return;
+        const modern = this.machineChatIngress.accept(data, peer.id, this.machineReceive.isMachine(peer.id), this.roomId, this.membershipEpoch());
+        if (modern) {
+          this.addChat(peer.name, modern.text, false, { messageId: modern.messageId, replyTo: modern.replyTo, machine: modern.senderKind === "machine" });
+          for (const subscriber of this.machineChatSubscribers) {
+            try { subscriber(modern); } catch { /* Endpoint failure must not disable peer transport. */ }
+          }
+          return;
+        }
+        // Legacy messages have no stable ID or epoch and never reach machine subscribers.
+        if (this.machineReceive.isMachine(this.ownId) || this.machineReceive.isMachine(peer.id)) return;
         const message = parsePeerChat(data);
         if (message) this.addChat(peer.name, message.text, false);
         return;
       }
       if (kind === "captions") {
+        if (this.machineReceive.isMachine(this.ownId)) return;
         if (!this.captionRateLimiter.accept(peer.id)) return;
         const message = parseCaptionMessage(data);
         if (message && this.captionRevisions.accept(peer.id, message)) {
@@ -1530,8 +1626,8 @@ export class PeerMeshService {
     }
   }
 
-  private addChat(author: string, text: string, system: boolean): void {
-    this.chat.update((entries) => [...entries.slice(-199), { id: ++this.chatSerial, author, text, system }]);
+  private addChat(author: string, text: string, system: boolean, metadata: Partial<Pick<ChatEntry, "messageId" | "replyTo" | "machine">> = {}): void {
+    this.chat.update((entries) => [...entries.slice(-199), { id: ++this.chatSerial, author, text, system, ...metadata }]);
   }
 
   private upsertCaption(
@@ -1649,6 +1745,10 @@ export class PeerMeshService {
       || state.message.membershipEpoch !== this.membershipEpoch()
       || state.routeEpoch !== this.mediaAgents.routeEpoch() || !this.membershipStable) return;
     await Promise.all([...this.peers.keys()]
+      .filter(peerId => {
+        const publication = this.publications.get(state.message.publicationId);
+        return publication && this.machineReceive.mediaAllowed(peerId, this.ownId, publication.id, publication.source);
+      })
       .filter((peerId) => !state.acknowledgedPeerIds.has(peerId))
       .map((peerId) => this.sendOverlayData(
         peerId,
@@ -1663,7 +1763,7 @@ export class PeerMeshService {
   private activateAgentMediaKey(state: AgentMediaKeyState): void {
     const publication = this.publications.get(state.message.publicationId);
     if (!publication?.local || state.active || [...this.peers.keys()].some((peerId) => (
-      !state.acknowledgedPeerIds.has(peerId)
+      this.machineReceive.mediaAllowed(peerId, this.ownId, publication.id, publication.source) && !state.acknowledgedPeerIds.has(peerId)
     ))) return;
     if (state.timer) clearTimeout(state.timer);
     state.timer = null;
@@ -1693,6 +1793,7 @@ export class PeerMeshService {
   }
 
   private provisionMediaKey(publication: Publication, peer: PeerState): void {
+    if (!this.machineReceive.mediaAllowed(peer.id, this.ownId, publication.id, publication.source)) return;
     if (!publication.local || !this.shouldProtectMedia() || !this.membershipStable
       || this.membershipEpoch() < 1 || this.routeEpoch() < 1 || !this.overlay.hasPeerKey(peer.id)) return;
     const contextId = this.outboundMediaContext(publication.id, peer.id);
@@ -1745,6 +1846,8 @@ export class PeerMeshService {
     if (!message || message.membershipEpoch !== this.membershipEpoch() || !this.membershipStable) return;
     if (message.type === "media-key") {
       if (message.senderPeerId !== originPeerId || !this.peers.has(originPeerId) || !this.shouldProtectMedia()) return;
+      const descriptor = this.descriptors.get(message.publicationId);
+      if (!this.machineReceive.mediaAllowed(this.ownId, originPeerId, message.publicationId, descriptor?.source || "")) return;
       const key = decodeMediaBaseKey(message);
       const installed = this.mediaE2eeController?.setReceiverKey(
         this.inboundMediaContext(originPeerId, message.publicationId),
@@ -1794,6 +1897,7 @@ export class PeerMeshService {
       const descriptor = this.descriptors.get(message.publicationId);
       if (message.senderPeerId !== originPeerId || !this.peers.has(originPeerId)
         || descriptor?.rootPeerId !== originPeerId || !this.shouldProtectMedia()) return;
+      if (!this.machineReceive.mediaAllowed(this.ownId, originPeerId, message.publicationId, descriptor.source)) return;
       const key = decodeMediaAgentBaseKey(message);
       const contextId = this.inboundMediaContext(originPeerId, message.publicationId);
       const installed = this.mediaE2eeController?.setReceiverKey(contextId, message.keyId, key) === true;
@@ -1826,6 +1930,23 @@ export class PeerMeshService {
     this.membershipStable = true;
     this.mediaE2eeState.set("pending");
     for (const peer of this.peers.values()) this.provisionMediaKeysForPeer(peer.id);
+  }
+
+  private refreshMachineReceiveKeys(): void {
+    // Policy messages and DataChannels are independently ordered. Do not clear
+    // still-authorized inbound keys: their fresh ACK may already have arrived.
+    this.clearAgentMediaKeys();
+    for (const publication of this.publications.values()) {
+      if (publication.local) this.clearPublicationMediaKeys(publication);
+      else if (!this.machineReceive.mediaAllowed(this.ownId, publication.rootPeerId, publication.id, publication.source)) {
+        const context = this.inboundMediaContext(publication.rootPeerId, publication.id);
+        this.activeReceiverMediaContexts.delete(context); this.mediaE2eeController?.clearContext(context);
+      }
+    }
+    this.reconcileAllPublications();
+    for (const peer of this.peers.values()) this.provisionMediaKeysForPeer(peer.id);
+    this.provisionAgentMediaKeys(); this.refreshMediaE2eeState();
+    this.refreshAgentSubscriptionIntents();
   }
 
   private clearPublicationMediaKeys(publication: Publication): void {

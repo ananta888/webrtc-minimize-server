@@ -1,3 +1,5 @@
+import { parseMachineReceiveConsent } from "./machine-receive-policy.js";
+
 export const MAX_SIGNAL_BYTES = 96 * 1024;
 export const ROOM_ID_PATTERN = /^[a-z0-9][a-z0-9-]{5,47}$/;
 export const PEER_ID_PATTERN = /^[a-f0-9]{16}$/;
@@ -112,6 +114,10 @@ export function validateCandidate(candidate) {
 
 export function parseClientMessage(raw) {
   const value = parseJson(raw);
+  if (value.type === "machine-receive-consent") {
+    try { return parseMachineReceiveConsent(value); }
+    catch (error) { throw new ProtocolError(error.code || "machine_receive_consent_invalid"); }
+  }
   if (value.type === "leave") {
     if (!hasOnlyKeys(value, new Set(["type"]))) {
       throw new ProtocolError("unknown_message_field");

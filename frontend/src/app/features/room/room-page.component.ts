@@ -60,6 +60,7 @@ import { VideoCapturePreferencesService, VideoCaptureSource } from "../../webrtc
 import { PairWorkspacePanelComponent } from "../../workspace/pair-workspace-panel.component";
 import { PairWorkspaceService, WorkspaceSummary } from "../../workspace/pair-workspace.service";
 import { MeshAnalysisComponent } from "../../mesh-analysis/mesh-analysis.component";
+import { MachinePermissionsPanelComponent } from "../machine/machine-permissions-panel.component";
 
 type AppSection = "rooms" | "live" | "broadcast" | "captions" | "analysis" | "chat" | "settings";
 
@@ -74,6 +75,7 @@ type AppSection = "rooms" | "live" | "broadcast" | "captions" | "analysis" | "ch
     MediaStreamDirective,
     MediaMosaicComponent,
     MeshAnalysisComponent,
+    MachinePermissionsPanelComponent,
     PairWorkspacePanelComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

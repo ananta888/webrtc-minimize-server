@@ -9,6 +9,8 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import { loadConfig } from "./config.js";
 import { MachineAdmission, machineMessageAllowed } from "./machine-admission.js";
+import { MachineLeaseError, MachineSessionLeases } from "./machine-session-leases.js";
+import { MachineReceivePolicy, MachineReceivePolicyError } from "./machine-receive-policy.js";
 import { DeviceProofError, DeviceProofVerifier } from "./device-proof.js";
 import { MediaAgentEnrollmentError, MediaAgentEnrollmentStore } from "./media-agent-enrollment-store.js";
 import { MediaAgentInstallerError, MediaAgentInstallerService } from "./media-agent-installers.js";
@@ -83,7 +85,7 @@ const MAX_HTTP_BODY_BYTES = 16 * 1024;
 const MAX_MEDIA_AGENT_SYNC_BYTES = 32 * 1024 * 1024;
 const ROOM_REQUEST_FIELDS = new Set(["mode", "persistent", "title", "visibility"]);
 const ROOM_UPDATE_FIELDS = new Set(["title", "visibility"]);
-const SESSION_REQUEST_FIELDS = new Set(["roomId", "displayName", "mode", "deviceProof", "workspaceInvite"]);
+const SESSION_REQUEST_FIELDS = new Set(["roomId", "displayName", "mode", "deviceProof", "workspaceInvite", "machineReceiveVersion"]);
 const EVENT_REQUEST_FIELDS = new Set(["eventId", "correlationId", "kind", "payload"]);
 const CURSOR_REQUEST_FIELDS = new Set(["sequence"]);
 const PRESENCE_REQUEST_FIELDS = new Set(["state", "documentId", "line", "column", "leaseId", "epoch", "ttlMs"]);
@@ -352,6 +354,7 @@ function stopProgramForPrincipal(broadcastRuntime, principal, programId) {
 }
 
 function errorStatus(error) {
+  if (error instanceof MachineLeaseError) return error.status;
   if (error instanceof RoomDirectoryError) return error.status;
   if (error instanceof PairWorkspaceError) return error.status;
   if (error instanceof MediaAgentEnrollmentError || error instanceof MediaAgentInstallerError) return error.status;
@@ -371,6 +374,7 @@ function errorStatus(error) {
 function createHttpHandler(config, registry, services) {
   const {
     machineAdmission,
+    machineSessions,
     oidcVerifier,
     deviceProofVerifier,
     ticketStore,
@@ -770,6 +774,15 @@ function createHttpHandler(config, registry, services) {
             send: (packagerId, message) => safeSend(nativePackagers.socketFor(packagerId), message), signal: abort.signal });
           sendJson(response, 201, { ...prepared, ownerSubjectRef: broadcastSubjectRef(identity) }, securityHeaders(config));
         } finally { response.off("close", onClose); }
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/api/machine/capabilities") {
+        sendJson(response, 200, {
+          schema: "ananta.meet-capabilities.v1",
+          admissionEnabled: Boolean(config.machineHubPublicKey && config.machineHubIssuer),
+          publication: "mp4-v1", sessionLease: "ananta.meet-session-lease.v1",
+          chatEvents: false, audioSubscription: false, screenPublication: false,
+        }, { ...securityHeaders(config), "cache-control": "no-store" });
         return;
       }
       if (broadcastNativeAssignmentMatch) {
@@ -1246,10 +1259,43 @@ function createHttpHandler(config, registry, services) {
         sendJson(response, 200, { room }, securityHeaders(config));
         return;
       }
+      if (request.method === "POST" && url.pathname === "/api/machine/sessions/authorization") {
+        if (!requestOriginAllowed(request, config) || url.search) throw new ProtocolError("origin_denied");
+        const input = await readJsonBody(request);
+        assertAllowedKeys(input, new Set(["roomId", "sessionId", "nonce"]));
+        if (typeof input.sessionId !== "string" || !/^ms_[A-Za-z0-9_-]{32}$/.test(input.sessionId)
+          || typeof input.nonce !== "string" || !/^[a-f0-9]{32}$/.test(input.nonce)) throw new ProtocolError("machine_authorization_request_invalid");
+        const roomId = normalizeRoomId(input.roomId);
+        const identity = await machineAdmission.verify(request.headers.authorization, { roomId, mode: "room", displayName: "Ananta (KI)" });
+        const state = machineSessions.authorization(input.sessionId, identity, input.nonce);
+        sendJson(response, 200, state, { ...securityHeaders(config), "cache-control": "no-store" });
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/api/machine/sessions/renew") {
+        if (!requestOriginAllowed(request, config) || url.search) throw new ProtocolError("origin_denied");
+        const input = await readJsonBody(request);
+        assertAllowedKeys(input, new Set(["roomId", "sessionId", "expectedGeneration", "deviceProof"]));
+        const roomId = normalizeRoomId(input.roomId);
+        const context = { roomId, mode: "room", displayName: "Ananta (KI)",
+          machineSessionId: input.sessionId, expectedGeneration: input.expectedGeneration };
+        if (typeof input.sessionId !== "string" || !/^ms_[A-Za-z0-9_-]{32}$/.test(input.sessionId)
+          || !Number.isSafeInteger(input.expectedGeneration) || input.expectedGeneration < 1) {
+          throw new ProtocolError("invalid_machine_renewal_context");
+        }
+        const identity = await machineAdmission.verify(request.headers.authorization, context);
+        const device = deviceProofVerifier.verify(input.deviceProof, context);
+        const lease = machineSessions.renew(input.sessionId, input.expectedGeneration, identity, device.fingerprint);
+        sendJson(response, 200, lease, { ...securityHeaders(config), "cache-control": "no-store" });
+        return;
+      }
       if (request.method === "POST" && ["/api/sessions", "/api/machine/sessions"].includes(url.pathname)) {
         if (!requestOriginAllowed(request, config)) throw new ProtocolError("origin_denied");
         const input = await readJsonBody(request);
         assertAllowedKeys(input, SESSION_REQUEST_FIELDS);
+        if (input.machineReceiveVersion !== undefined && input.machineReceiveVersion !== 1) throw new ProtocolError("machine_client_upgrade_required");
+        if (url.pathname === "/api/machine/sessions" && (input.machineReceiveVersion !== 1 || config.mediaE2eeMode !== "required")) {
+          throw new ProtocolError("machine_client_upgrade_required");
+        }
         const roomId = normalizeRoomId(input.roomId);
         const mode = normalizeMode(input.mode);
         const requestedName = normalizeDisplayName(input.displayName);
@@ -1274,6 +1320,7 @@ function createHttpHandler(config, registry, services) {
         ) || null;
         if (workspace && mode !== "pair") throw new PairWorkspaceError("workspace_pair_mode_required", 409);
         const origin = requestOrigin(request, config);
+        const machineLease = identity?.machineExpiresAt ? machineSessions.issue(identity, device.fingerprint) : null;
         const issued = ticketStore.issue({
           roomId,
           mode,
@@ -1281,10 +1328,12 @@ function createHttpHandler(config, registry, services) {
           principal,
           authenticated: Boolean(identity),
           deviceFingerprint: device.fingerprint,
+          machineReceiveVersion: input.machineReceiveVersion === 1 ? 1 : 0,
           origin,
           workspaceId: workspace?.workspaceId || "",
           workspaceRole: workspace?.role || "",
-          ...(identity?.machineExpiresAt ? { machineExpiresAt: identity.machineExpiresAt } : {}),
+          ...(machineLease ? { machineExpiresAt: identity.machineExpiresAt, machineSessionId: machineLease.sessionId,
+            machineCapabilities: identity.machineCapabilities } : {}),
         });
         const directIceServers = config.stunUrls.map((urls) => ({ urls }));
         const peerRelayIceServers = createEdgeTurnCredentials(config, principal);
@@ -1298,6 +1347,13 @@ function createHttpHandler(config, registry, services) {
           signalingPath: `/signal?ticket=${encodeURIComponent(issued.ticket)}`,
           ...(identity?.machineExpiresAt ? {
             machineExpiresAt: identity.machineExpiresAt, controllerOrigin: identity.controllerOrigin,
+            machineLease,
+            ...(identity.machineBinding.protocolVersion === "v2" ? { machineContext: {
+              schema: "ananta.meet-machine-context.v1",
+              tenantId: identity.machineBinding.tenantId, projectId: identity.machineBinding.projectId,
+              taskId: identity.machineBinding.taskId, runtimeId: identity.machineBinding.runtimeId,
+              hubSessionId: identity.machineBinding.hubSessionId,
+            } } : {}),
           } : {}),
           identity: identity ? { authenticated: true, displayName: identity.displayName } : { authenticated: false },
           workspace,
@@ -1415,11 +1471,22 @@ function configureSignaling(
   broadcastRuntime,
   nativePackagers,
   nativePackagerAssignments,
+  machineSessions,
 ) {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
   const mediaAgentWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
   const nativePackagerWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   const roomEpochs = new Map();
+  const machineReceivePolicy = new MachineReceivePolicy({ members: roomId => registry.members(roomId),
+    changed: (roomId, state) => {
+      const members = registry.members(roomId);
+      const changed = mediaAgents.revokeSubscriptions(roomId, plan => {
+        const receiver = members.find(member => member.id === plan.subscriberPeerId);
+        return machineReceivePolicy.mediaAllowed(receiver, plan.publisherPeerId, plan.publicationId);
+      });
+      if (changed) syncAgents();
+      for (const member of members) safeSend(member.socket, state);
+    } });
   const mediaAgentTracks = new Map();
   const mediaAgentTrackRouteEpochs = new Map();
   const relayHealth = new RelayHealthTracker({
@@ -1573,7 +1640,7 @@ function configureSignaling(
       identity = ticketStore.consume(url.searchParams.get("ticket") || "", {
         origin: request.headers.origin || "",
       });
-      if (identity.machineExpiresAt && identity.machineExpiresAt <= Date.now()) {
+      if (identity.machineExpiresAt && !machineSessions.live(identity.machineSessionId)) {
         throw new SessionTicketError("machine_session_expired");
       }
     } catch (error) {
@@ -1586,16 +1653,18 @@ function configureSignaling(
   });
 
   webSocketServer.on("connection", (socket, _request, identity) => {
-    const machineExpiry = identity.machineExpiresAt ? setTimeout(() => {
-      socket.close(1008, "machine_session_expired");
-    }, Math.max(1, identity.machineExpiresAt - Date.now())) : null;
-    socket.once("close", () => clearTimeout(machineExpiry));
+    socket.once("close", () => {
+      if (identity.machineSessionId) machineSessions.close(identity.machineSessionId);
+    });
     let joined;
     try {
       joined = registry.join(identity.roomId, socket, identity.name, Date.now(), {
         mode: identity.mode,
         principal: identity.principal,
         deviceFingerprint: identity.deviceFingerprint,
+        authenticated: identity.authenticated, machine: Boolean(identity.machineSessionId),
+        machineCapabilities: identity.machineCapabilities,
+        machineReceiveVersion: identity.machineReceiveVersion,
         creatorPrincipal: directory.ownerPrincipal(identity.roomId),
       });
     } catch (error) {
@@ -1607,6 +1676,28 @@ function configureSignaling(
       return;
     }
     const { peer, existingPeers } = joined;
+    if (identity.machineSessionId) {
+      try {
+        machineSessions.attach(identity.machineSessionId,
+          () => registry.members(peer.roomId).includes(peer) && socket.readyState === WebSocket.OPEN,
+          reason => { socket.close(1008, reason); const timer = setTimeout(() => socket.terminate(), 1000); timer.unref?.(); },
+          () => {
+            machineReceivePolicy.prune(peer.roomId);
+            const policy = machineReceivePolicy.snapshot(peer.roomId);
+            const grants = policy.grants.filter(grant => grant.machinePeerId === peer.id);
+            return Object.freeze({ peerId: peer.id, roomId: peer.roomId,
+              membershipEpoch: roomEpochs.get(peer.roomId)?.membership || 1,
+              receiveRevision: policy.revision,
+              grants: Object.freeze(grants),
+              publications: Object.freeze(grants.flatMap(grant => grant.publicationIds.flatMap(id => {
+                const publication = registry.publication(grant.publisherPeerId, id, peer.roomId);
+                return publication ? [Object.freeze({ peerId: grant.publisherPeerId, ...publication })] : [];
+              }))) });
+          });
+      } catch {
+        registry.leave(peer); socket.close(1008, "machine_session_unavailable"); return;
+      }
+    }
     let left = false;
     const leave = () => {
       if (left) return;
@@ -1622,6 +1713,7 @@ function configureSignaling(
       for (const recipient of registry.leave(peer)) {
         safeSend(recipient.socket, { type: "peer-left", peerId: peer.id });
       }
+      machineReceivePolicy.prune(peer.roomId);
       directory.touch(peer.roomId);
       broadcastTopology(peer.roomId, true);
     };
@@ -1635,14 +1727,18 @@ function configureSignaling(
       maxParticipants: identity.mode === "pair" ? 2 : config.maxRoomParticipants,
       mode: identity.mode,
       authenticated: identity.authenticated,
+      machine: peer.machine,
+      ...(peer.machine ? { machineCapabilities: peer.machineCapabilities } : {}),
       workspaceId: identity.workspaceId || "",
       workspaceRole: identity.workspaceRole || "",
       roomCreator: peer.creator,
       mediaAgents: mediaAgents.configuredForPrincipal(peer.principal),
     });
     for (const recipient of registry.recipients(peer)) {
-      safeSend(recipient.socket, { type: "peer-joined", peer: { id: peer.id, name: peer.name } });
+      safeSend(recipient.socket, { type: "peer-joined", peer: { id: peer.id, name: peer.name,
+        ...(peer.machine ? { machine: true, machineCapabilities: peer.machineCapabilities } : {}) } });
     }
+    safeSend(socket, machineReceivePolicy.snapshot(peer.roomId));
     broadcastTopology(peer.roomId, true);
 
     socket.on("pong", () => { socket.isAlive = true; });
@@ -1657,12 +1753,17 @@ function configureSignaling(
           if (!(error instanceof ProtocolError)) throw error;
           message = parseBrowserMediaAgentMessage(raw);
         }
-        if (identity.machineExpiresAt && (Date.now() >= identity.machineExpiresAt || !machineMessageAllowed(message))) {
+        if (identity.machineExpiresAt && (!machineSessions.live(identity.machineSessionId)
+          || !machineMessageAllowed(message, identity.machineCapabilities))) {
           throw new ProtocolError("machine_operation_denied");
         }
         if (message.type === "leave") {
           leave();
           socket.close(1000, "client_leave");
+          return;
+        }
+        if (message.type === "machine-receive-consent") {
+          machineReceivePolicy.update(peer, message);
           return;
         }
         if (message.type === "signal") {
@@ -1693,6 +1794,7 @@ function configureSignaling(
         }
         if (message.type === "media-state") {
           registry.setMediaState(peer, message);
+          machineReceivePolicy.prune(peer.roomId);
           if (!message.active && mediaAgents.removePublisherSource(peer.roomId, peer.id, message.source)) {
             syncAgents();
           }
@@ -1749,6 +1851,9 @@ function configureSignaling(
             message.publisherPeerId, message.publicationId, message.roomId,
           );
           if (!publication) throw new ProtocolError("agent_publication_unauthorized");
+          if (message.enabled && !machineReceivePolicy.mediaAllowed(peer, message.publisherPeerId, message.publicationId)) {
+            throw new ProtocolError("machine_receive_subscription_denied");
+          }
           const plan = mediaAgents.setSubscriptionIntent(peer, message, publication);
           const publisher = registry.members(peer.roomId)
             .find((member) => member.id === message.publisherPeerId);
@@ -1842,7 +1947,7 @@ function configureSignaling(
       } catch (error) {
         safeSend(socket, {
           type: "error",
-          code: error instanceof ProtocolError ? error.code : "invalid_message",
+          code: error instanceof ProtocolError || error instanceof MachineReceivePolicyError ? error.code : "invalid_message",
         });
       }
     });
@@ -2268,6 +2373,7 @@ function configureSignaling(
   }, config.mediaAgentRenewMs);
   mediaAgentRenewal.unref();
   server.on("close", () => {
+    machineReceivePolicy.destroy();
     clearInterval(heartbeat);
     clearInterval(leaseRenewal);
     clearInterval(mediaAgentRenewal);
@@ -2291,6 +2397,7 @@ export function createAppServer(options = {}) {
   });
   const oidcVerifier = options.oidcVerifier || createOidcVerifier(config);
   const machineAdmission = new MachineAdmission({ publicKey: config.machineHubPublicKey, issuer: config.machineHubIssuer });
+  const machineSessions = new MachineSessionLeases();
   const deviceProofVerifier = options.deviceProofVerifier || new DeviceProofVerifier({
     maxAgeMs: config.deviceProofMaxAgeMs,
   });
@@ -2403,6 +2510,7 @@ export function createAppServer(options = {}) {
   }
   const services = {
     machineAdmission,
+    machineSessions,
     oidcVerifier,
     deviceProofVerifier,
     ticketStore,
@@ -2426,6 +2534,7 @@ export function createAppServer(options = {}) {
     broadcastPlaybackSessions,
   };
   const server = http.createServer(createHttpHandler(config, registry, services));
+  server.on("close", () => machineSessions.destroy());
   if (!options.workspaceStore && workspaceStore) server.on("close", () => workspaceStore.close());
   if (!options.mediaAgentEnrollmentStore && mediaAgentEnrollmentStore) {
     server.on("close", () => mediaAgentEnrollmentStore.close());
@@ -2436,7 +2545,7 @@ export function createAppServer(options = {}) {
   if (ownsBroadcastAbuseGuard) server.on("close", () => broadcastAbuseGuard.destroy());
   const signaling = configureSignaling(
     server, config, registry, ticketStore, directory, mediaAgents, mediaAgentEvents, broadcastRuntime,
-    nativePackagers, nativePackagerAssignments,
+    nativePackagers, nativePackagerAssignments, machineSessions,
   );
   return {
     server,

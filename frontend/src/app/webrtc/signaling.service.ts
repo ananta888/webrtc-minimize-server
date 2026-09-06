@@ -12,6 +12,7 @@ export const SERVER_MESSAGE_VERSIONS = Object.freeze({
   "peer-left": 1,
   signal: 1,
   "media-state": 1,
+  "machine-receive-state": 1,
   "topology-state": 1,
   "media-agent-state": 3,
   "media-agent-availability": 1,
@@ -49,8 +50,9 @@ export class SignalingService {
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(`${protocol}//${location.host}${path}`);
     this.socket = socket;
-    socket.onopen = () => this.status.set("connected");
+    socket.onopen = () => { if (this.socket === socket) this.status.set("connected"); };
     socket.onmessage = (event) => {
+      if (this.socket !== socket) return;
       try {
         const message = validateServerMessageEnvelope(JSON.parse(String(event.data)));
         if (!message) {
@@ -58,12 +60,16 @@ export class SignalingService {
           return;
         }
         this.handler?.(message);
-        for (const subscriber of this.subscribers) subscriber(message);
+        for (const subscriber of this.subscribers) {
+          if (this.socket !== socket) break;
+          subscriber(message);
+        }
       } catch {
         this.lastError.set("invalid_server_message");
       }
     };
     socket.onerror = () => {
+      if (this.socket !== socket) return;
       this.lastError.set("signaling_failed");
       this.status.set("error");
     };
