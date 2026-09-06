@@ -157,6 +157,24 @@ Quellenende und Track-Cleanup mit 33 monotonen Ausgangsframes und null
 Capture-Aufrufen. Er bindet den neueren Bundle-Hash
 `9f91f08d13838012ad231e0e7cce1fdfaa86c59d91abb20802c6c3e8202ff05f`.
 Dieser ad hoc Windows-Lauf ist noch kein portabler CI-Gate und belegt weder
-Edge-HLS/-Login noch physische Audioqualität. Zwei zusätzliche 7.200-Sekunden-Läufe
-für den aktuellen Code wurden gestartet; bis zu deren terminalem Ergebnis sind
-sie ausdrücklich **unverifiziert**.
+Edge-HLS/-Login noch physische Audioqualität.
+
+Die zwei zusätzlich gestarteten 7.200-Sekunden-Läufe sind am 2026-09-06 mit
+Exit 0 vollständig beendet, jeweils einschließlich Bildwechselprüfung,
+monotonem Framefortschritt und abschließendem Track-Cleanup:
+
+| Browser | Proben | Kleinster Framefortschritt je Probe | Heap-Schätzung |
+|---|---:|---:|---|
+| Chromium 151.0.7922.34 | 1.368 | 38 | anfangs 16,1 MB, maximal 39,6 MB |
+| Firefox 153.0 | 1.340 | 34 | nicht verfügbar |
+
+Beide binden genau den oben genannten `9f91f08d…`-Bundle-Stand vor der späteren
+Live-Regie-Erweiterung. Sie belegen weder deren nachträglich hinzugefügte
+Quellenwahl noch Audio-Sync, CPU/RSS, einen Worker, WAN/HLS oder physische
+Capture-Qualität. Die Chromium-Heap-Schätzung blieb unter dem ausdrücklich
+geprüften Wachstumsbudget von 64 MiB.
+
+Für den Live-Regie-Stand von Commit `843ae54` mit Bundle-SHA-256
+`5085fbd59c11016c601feab1e99c8f7c2f5d359e1621c9df16374b51a1a8ba58`
+werden getrennte 7.200-Sekunden-Läufe ausgeführt. Bis zu deren terminalem
+Ergebnis bleibt dieser neuere Langzeitnachweis **unverifiziert**.
