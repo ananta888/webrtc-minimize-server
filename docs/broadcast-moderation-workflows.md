@@ -92,6 +92,29 @@ Medien-Handoff-/Accessibility-Nachweis. Bis zur Player-Erweiterung müssen
 Zuschauer die Wiedergabe gegebenenfalls bewusst neu starten; die Oberfläche
 verspricht weder nahtlosen Wechsel noch automatische Standby-Übernahme.
 
+### Ausgelieferter Stand und getrennte Produktionsnachweise
+
+Revision `f6be45be8ca4586f378c51ed3caa551fe91f15cb` wurde am 2026-09-06 nach
+[allen sieben erfolgreichen CI-Gates](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34044416649)
+auf `webrtc.ananta.de` ausgerollt. Web-App, nativer Packager und HLS-Origin
+laufen auf dieser identischen Revision. Die Umschaltung erfolgte ohne aktive
+Teilnehmer oder Broadcast-Ausgabe; der persistente Geräteschlüssel blieb
+unverändert. OIDC bleibt `required`, Maschinenzulassung default-aus.
+
+Das Image enthält dieselben fünf Binärdateien wie die unabhängig attestierten
+CI-Artefakte. Das öffentliche Release-Manifest ist bytegleich; sein SHA-256 ist
+`c29469c519b2e2c538677c6509dec2d82671be94db179bc9f7db358d7d95d3d0`.
+Auch der öffentliche Linux-amd64-Download wurde gegen dieses Manifest geprüft.
+
+Die isolierte Produktionssuite bestand anschließend mit synthetischer
+Chromium-Publikation, dekodierter lokaler HLS-Bildregie, privaten und anonymen
+Firefox-Zuschauern, Session-Renewal, terminalem Stop, Refresh ohne automatischen
+Capture-Neustart und normalem Packager-Widerruf. Die unabhängige Nachprüfung
+fand null Testcontainer, Test-Identity-Volumes, Ausgabe-Ressourcen und temporäre
+Keycloak-Testnutzer. Das belegt den unverändert funktionierenden **einzelnen**
+Packager-Pfad auf dem neuen Release, nicht den weiterhin ausstehenden realen
+Zwei-Packager-Medienwechsel.
+
 ## Bereits angeschlossene lokale Bildregie
 
 Während einer aktiven Own-Source-Sendung zeigt die Angular-Regie die bereits
