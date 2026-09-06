@@ -47,11 +47,19 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
   readonly controlBusy = this.publisher.busy;
   readonly localVideoError = signal("");
   readonly activeProgramId = this.publisher.activeProgramId;
+  readonly handoffTargetId = signal("");
+  readonly handoffCandidates = computed(() => this.eligibleNativePackagers()
+    .filter(({ id }) => id !== this.publisher.activePackagerId()));
+  readonly canHandoff = computed(() => this.nativePublisherEnabled() && this.joined() && this.authenticated()
+    && this.roomCreator() && !this.controlBusy() && Boolean(this.publisher.activePackagerId())
+    && ["running", "degraded"].includes(this.programState().lifecycle)
+    && this.handoffCandidates().some(({ id }) => id === this.handoffTargetId()));
   readonly programState = computed(() => this.publisher.coordinator.programState.value());
-  readonly programActive = computed(() => new Set([
+  readonly programActive = computed(() => this.publisher.handingOver() || new Set([
     "starting", "running", "degraded", "reconnecting", "handing_over", "stopping",
   ]).has(this.programState().lifecycle));
   readonly programStatusLabel = computed(() => {
+    if (this.publisher.handingOver()) return "Packager wird übergeben";
     switch (this.programState().lifecycle) {
       case "starting": return "Start wird vorbereitet";
       case "running": return "Live";
@@ -77,7 +85,7 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
     && !this.controlBusy()
     && !this.programActive());
   readonly canStop = computed(() => Boolean(this.activeProgramId() || this.programState().program?.programId)
-    && this.programState().lifecycle !== "stopping");
+    && (this.publisher.handingOver() || this.programState().lifecycle !== "stopping"));
   readonly estimatedCpuClass = computed(() => {
     const profile = this.videoSettings.profile();
     const pixelsPerSecond = profile.width * profile.height * profile.framesPerSecond;
@@ -170,6 +178,7 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
   }
 
   setPackagerProfile(value: unknown): void {
+    if (this.programActive() || this.controlBusy()) return;
     if (value === "this-browser") {
       this.packagerProfile.set(value);
       return;
@@ -183,6 +192,26 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
 
   async stopBroadcast(): Promise<void> {
     try { await this.publisher.stop("user-stop"); } catch { /* The workflow exposes the failed step. */ }
+  }
+
+  async handoffPackager(): Promise<void> {
+    if (!this.canHandoff()) return;
+    const target = this.handoffCandidates().find(({ id }) => id === this.handoffTargetId());
+    if (!target || !window.confirm(
+      `Sendung an „${target.label}“ übergeben? Dieser Trusted Packager erhält die bereits gewählten eigenen Quellen `
+      + "unverschlüsselt auf Medienebene; dieser Broadcast-Zweig ist nicht SFrame-E2EE. Die Sendungs-ID und Sichtbarkeit bleiben erhalten. "
+      + "Es entsteht eine Unterbrechung; Zuschauer müssen die Wiedergabe gegebenenfalls erneut starten. "
+      + "Der Zielrechner benötigt eine eingerichtete Verbindung zum Broadcast-Origin. Fortfahren?",
+    )) return;
+    if (!this.canHandoff() || this.handoffTargetId() !== target.id || !this.nativePackagers.select(target.id)) return;
+    try {
+      await this.publisher.handoff(target.id, Math.min(3, target.capability?.maximumRenditions || 1), "user-action");
+      this.handoffTargetId.set("");
+    } catch { /* The workflow distinguishes unchanged old writers from a failed transition. */ }
+    finally {
+      const active = this.publisher.activePackagerId();
+      if (active) this.nativePackagers.select(active);
+    }
   }
 
   async preparePreview(): Promise<void> {

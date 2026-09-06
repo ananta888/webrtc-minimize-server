@@ -4,7 +4,7 @@ import { MediaPublicationService } from "../webrtc/media-publication.service";
 import { BroadcastControlPlaneService } from "./broadcast-control-plane.service";
 import { BroadcastCoordinatorService } from "./broadcast-coordinator.service";
 import { BroadcastOwnSourcePreflightService, BroadcastPreflightAudience } from "./broadcast-own-source-preflight.service";
-import { BroadcastBrowserPortError } from "./broadcast-ports";
+import { BroadcastBrowserPortError, BroadcastProgramRef } from "./broadcast-ports";
 
 export interface BroadcastPublisherStartRequest {
   readonly requestVersion: 1;
@@ -28,6 +28,8 @@ export class BroadcastPublisherWorkflowService {
   readonly busy = signal(false);
   readonly errorCode = signal("");
   readonly activeProgramId = signal("");
+  readonly activePackagerId = signal("");
+  readonly handingOver = signal(false);
   private controller: AbortController | null = null;
   private startTask: Promise<void> | null = null;
   private stopTask: Promise<void> | null = null;
@@ -99,6 +101,85 @@ export class BroadcastPublisherWorkflowService {
     try { await task; } finally { if (this.stopTask === task) this.stopTask = null; }
   }
 
+  async handoff(packagerId: string, requestedRenditions: number, trigger: unknown): Promise<void> {
+    if (trigger !== "user-action") throw new BroadcastBrowserPortError("explicit_broadcast_handoff_required");
+    const request = this.lastStartRequest;
+    const state = this.coordinator.programState.value();
+    if (this.busy() || this.startTask || this.stopTask || !request || request.adapterId !== "native-bridge"
+      || !state.program || !["running", "degraded"].includes(state.lifecycle)
+      || typeof packagerId !== "string" || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(packagerId) || packagerId === this.activePackagerId()
+      || !Number.isSafeInteger(requestedRenditions) || requestedRenditions < 1 || requestedRenditions > 3) {
+      throw new BroadcastBrowserPortError("invalid_native_handoff_request");
+    }
+    const controller = new AbortController();
+    this.controller = controller;
+    this.busy.set(true);
+    this.handingOver.set(true);
+    this.errorCode.set("");
+    const timeout = setTimeout(() => controller.abort(new DOMException("broadcast_handoff_timeout", "TimeoutError")), 75_000);
+    const task = this.runHandoff(request, state.program, packagerId, requestedRenditions, controller.signal);
+    this.startTask = task;
+    try { await task; }
+    catch (error) {
+      this.errorCode.set(error instanceof Error ? error.message : "broadcast_handoff_failed");
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      if (this.startTask === task) this.startTask = null;
+      if (this.controller === controller) this.controller = null;
+      this.handingOver.set(false);
+      this.busy.set(false);
+    }
+  }
+
+  private async runHandoff(
+    request: BroadcastPublisherStartRequest, program: BroadcastProgramRef,
+    packagerId: string, requestedRenditions: number, signal: AbortSignal,
+  ): Promise<void> {
+    // A failed read cannot have changed the remote writer. The old publication stays intact.
+    const snapshot = await this.control.nativeHandoffControl(program.programId, signal);
+    signal.throwIfAborted();
+    if (snapshot.programEpoch !== program.programEpoch || snapshot.writer?.packagerId !== this.activePackagerId()
+      || snapshot.handoffPending || !["live", "degraded"].includes(snapshot.state)) {
+      throw new BroadcastBrowserPortError("broadcast_state_conflict");
+    }
+    this.coordinator.programState.handingOver("broadcast_packager_handoff");
+    let successorInstalled = false;
+    try {
+      const prepared = await this.control.prepareNativeHandoff(program, snapshot, packagerId, requestedRenditions, signal);
+      successorInstalled = true;
+      signal.throwIfAborted();
+      // This stops only local forks and the old assignment, never the program itself.
+      await this.coordinator.stop("packager-handoff");
+      signal.throwIfAborted();
+      await this.startPrepared({ ...request, packagerId, requestedRenditions }, prepared, signal);
+    } catch (error) {
+      let unchangedWriter = false;
+      if (!successorInstalled && !signal.aborted) {
+        try {
+          const current = await this.control.nativeHandoffControl(program.programId, AbortSignal.timeout(5_000));
+          signal.throwIfAborted();
+          if (current.programEpoch === snapshot.programEpoch && !current.handoffPending
+            && current.writer?.packagerId === snapshot.writer?.packagerId
+            && current.writer?.fencingRevision === snapshot.writer?.fencingRevision
+            && ["live", "degraded"].includes(current.state)) {
+            this.coordinator.programState.resumeRunning();
+            if (current.state === "degraded") this.coordinator.programState.degraded("broadcast_degraded");
+            unchangedWriter = true;
+          }
+        } catch { /* Unknown writer state is not permission to resume an old publication. */ }
+      }
+      if (unchangedWriter) throw error;
+      try { await this.coordinator.stop("handoff-failed"); } catch { /* Attempt server revoke independently. */ }
+      try { await this.control.stopProgram(program.programId, AbortSignal.timeout(12_000)); } catch { /* Visible failure, no restart. */ }
+      this.control.clear(program.programId);
+      this.activeProgramId.set("");
+      this.activePackagerId.set("");
+      this.lastStartRequest = null;
+      throw error;
+    }
+  }
+
   async resetForSession(): Promise<void> {
     let firstError: unknown = null;
     try { await this.stop("session-reset"); } catch (error) { firstError = error; }
@@ -133,42 +214,55 @@ export class BroadcastPublisherWorkflowService {
           signal,
         )
         : await this.control.prepareStart(created, request.sourceIds, signal);
-      const sources = this.media.localOriginalSources()
-        .filter(({ sourceId }) => request.sourceIds.includes(sourceId))
-        .map((source) => Object.freeze({
-          sourceId: source.sourceId,
-          ownerSubjectRef: prepared.ownerSubjectRef,
-          kind: source.source,
-          local: true,
-          active: true,
-        }));
-      if (sources.length !== request.sourceIds.length) {
-        throw new BroadcastBrowserPortError("broadcast_source_changed");
-      }
-      await this.preflight.stopPreview("broadcast-start");
-      signal.throwIfAborted();
-      await this.coordinator.start({
-        planVersion: 1,
-        trigger: "user-action",
-        program: prepared.program,
-        roomPublication: {
-          snapshotVersion: 1,
-          sessionInstanceId: sessionInstanceId(),
-          roomId: request.roomId,
-          publicationRevision: this.media.localPublicationRevision(),
-          sources,
-        },
-        sourceIds: request.sourceIds,
-        adapterId,
-      });
-      this.lastStartRequest = Object.freeze({ ...request, sourceIds: Object.freeze([...request.sourceIds]) });
+      await this.startPrepared(request, prepared, signal);
     } catch (error) {
+      try { await this.coordinator.stop("start-failed"); } catch { /* Revoke the server independently. */ }
       if (programId) {
         try { await this.control.stopProgram(programId, new AbortController().signal); } catch { /* bounded orphan cleanup */ }
       }
       this.activeProgramId.set("");
+      this.activePackagerId.set("");
       throw error;
     }
+  }
+
+  private async startPrepared(
+    request: BroadcastPublisherStartRequest,
+    prepared: Readonly<{ program: BroadcastProgramRef; ownerSubjectRef: string }>,
+    signal: AbortSignal,
+  ): Promise<void> {
+    signal.throwIfAborted();
+    const sources = this.media.localOriginalSources()
+      .filter(({ sourceId }) => request.sourceIds.includes(sourceId))
+      .map((source) => Object.freeze({
+        sourceId: source.sourceId,
+        ownerSubjectRef: prepared.ownerSubjectRef,
+        kind: source.source,
+        local: true,
+        active: true,
+      }));
+    if (sources.length !== request.sourceIds.length) {
+      throw new BroadcastBrowserPortError("broadcast_source_changed");
+    }
+    await this.preflight.stopPreview("broadcast-start");
+    signal.throwIfAborted();
+    await this.coordinator.start({
+      planVersion: 1,
+      trigger: "user-action",
+      program: prepared.program,
+      roomPublication: {
+        snapshotVersion: 1,
+        sessionInstanceId: sessionInstanceId(),
+        roomId: request.roomId,
+        publicationRevision: this.media.localPublicationRevision(),
+        sources,
+      },
+      sourceIds: request.sourceIds,
+      adapterId: request.adapterId || "whip-browser",
+    }, signal);
+    signal.throwIfAborted();
+    this.activePackagerId.set(request.adapterId === "native-bridge" ? request.packagerId || "" : "");
+    this.lastStartRequest = Object.freeze({ ...request, sourceIds: Object.freeze([...request.sourceIds]) });
   }
 
   private async runStop(reason: string): Promise<void> {
@@ -191,6 +285,7 @@ export class BroadcastPublisherWorkflowService {
       }
     }
     this.activeProgramId.set("");
+    this.activePackagerId.set("");
     this.busy.set(false);
     if (reason !== "visibility-change") this.lastStartRequest = null;
     if (firstError) {

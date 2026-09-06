@@ -18,6 +18,21 @@
   </section>
 }
 @if (controlError()) { <p class="error" role="alert">{{ controlError() }}</p> }
+@if (programActive() && publisher.activePackagerId()) {
+  <section class="panel" aria-labelledby="broadcast-handoff-heading">
+    <h2 id="broadcast-handoff-heading">Trusted Packager wechseln</h2>
+    <p>Gleiche Sendung, neue Ausgabe-Generation. Der bisherige Writer wird zuerst bestätigt gestoppt. Nur eigene, für diesen Raum freigegebene Geräte sind auswählbar; eine kurze Wiedergabeunterbrechung ist zu erwarten.</p>
+    <label class="field" for="broadcast-handoff-target">Zielgerät</label>
+    <select id="broadcast-handoff-target" [value]="handoffTargetId()" [disabled]="controlBusy()" (change)="handoffTargetId.set($any($event.target).value)">
+      <option value="">Bitte wählen</option>
+      @for (packager of handoffCandidates(); track packager.id) {
+        <option [value]="packager.id">{{ packager.label }}</option>
+      }
+    </select>
+    <button id="broadcast-handoff" class="button secondary" type="button" [disabled]="!canHandoff()" (click)="handoffPackager()">Übergabe bestätigen…</button>
+    <p class="policy-note">Der Zielrechner muss den konfigurierten Broadcast-Origin beliefern können. Automatische Standby-Übernahme und nahtlose Zuschauerumschaltung sind noch nicht verfügbar.</p>
+  </section>
+}
 
 <section class="preflight-grid">
   <section class="panel" aria-labelledby="broadcast-sources-heading">
@@ -141,7 +156,7 @@
         </select>
       </label>
       <label class="field">Trusted Packager
-        <select id="broadcast-packager-profile" [value]="packagerProfile() === 'native-agent' ? 'native:' + nativePackagers.selectedPackagerId() : 'this-browser'" (change)="setPackagerProfile($any($event.target).value)">
+        <select id="broadcast-packager-profile" [disabled]="programActive() || controlBusy()" [value]="packagerProfile() === 'native-agent' ? 'native:' + nativePackagers.selectedPackagerId() : 'this-browser'" (change)="setPackagerProfile($any($event.target).value)">
           <option value="this-browser" [disabled]="!browserPublisherEnabled()">Dieser Browser · nur eigene Originalquellen</option>
           @for (packager of eligibleNativePackagers(); track packager.id) {
             <option [value]="'native:' + packager.id" [disabled]="!nativePublisherEnabled()">{{ packager.label }} · {{ packager.capability?.maximumRenditions || 1 }} Rendition(s)</option>

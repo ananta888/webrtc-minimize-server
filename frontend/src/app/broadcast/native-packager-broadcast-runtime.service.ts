@@ -213,6 +213,8 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
 
   private acceptSignal(native: NativeSession, message: ServerMessage): void {
     if (native.stopped || (message.type !== "native-packager-signal" && message.type !== "native-packager-status")) return;
+    // The signaling subscription is shared across assignments. Old terminal ACKs are not current-session errors.
+    if (typeof message["assignmentId"] === "string" && message["assignmentId"] !== native.assignment.assignmentId) return;
     if (message.type === "native-packager-status") {
       if (!exactStatus(message, native.assignment)) {
         native.rejectOutput(new BroadcastBrowserPortError("invalid_native_packager_status"));
@@ -231,6 +233,7 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
       return;
     }
     native.signalTask = native.signalTask.then(async () => {
+      if (native.stopped) return;
       if (Object.hasOwn(message, "description")) {
         const description = message["description"] as Partial<RTCSessionDescriptionInit> | null;
         if (!description || Object.keys(description).some((field) => !new Set(["type", "sdp"]).has(field))

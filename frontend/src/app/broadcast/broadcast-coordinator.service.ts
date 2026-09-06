@@ -102,7 +102,8 @@ export class BroadcastCoordinatorService implements OnDestroy {
     this.programState.setPanelVisible(visible);
   }
 
-  async start(plan: BroadcastStartPlan): Promise<void> {
+  async start(plan: BroadcastStartPlan, lifetime?: AbortSignal): Promise<void> {
+    lifetime?.throwIfAborted();
     if (this.destroyed) throw new BroadcastBrowserPortError("broadcast_coordinator_destroyed");
     const normalizedPlan = normalizeBroadcastStartPlan(plan);
     if (this.startTask || this.stopTask || new Set([
@@ -111,12 +112,16 @@ export class BroadcastCoordinatorService implements OnDestroy {
       throw new BroadcastBrowserPortError("broadcast_lifecycle_busy");
     }
     this.startController = new AbortController();
+    const controller = this.startController;
+    const abort = () => controller.abort(lifetime?.reason);
+    lifetime?.addEventListener("abort", abort, { once: true });
     this.programState.begin(normalizedPlan.program);
     const task = this.runStart(normalizedPlan, this.startController.signal);
     this.startTask = task;
     try {
       await task;
     } finally {
+      lifetime?.removeEventListener("abort", abort);
       if (this.startTask === task) this.startTask = null;
     }
   }
@@ -276,7 +281,7 @@ export class BroadcastCoordinatorService implements OnDestroy {
       }
     }
     this.latestStats.set(null);
-    const cleanupSignal = new AbortController().signal;
+    const cleanupSignal = AbortSignal.timeout(15_000);
     if (this.resources.adapter && this.resources.session) {
       try {
         await this.resources.adapter.stop(this.resources.session, cleanupSignal);

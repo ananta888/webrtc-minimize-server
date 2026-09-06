@@ -6,8 +6,9 @@ an eine öffentliche Moderations-API angeschlossen. Der native Packager besitzt
 inzwischen einen realen Enrollment-/Publish-/Playback-Pfad. Eine laufende
 Own-Source-Komposition lässt sich über einen getrennten lokalen Bildregie-Port
 steuern. Für eigenes natives Publishing ist die unten beschriebene serverseitige
-Same-Program-Übergabe angeschlossen. Angular-Übergabedialog, Player-Neustart,
-Fremdquellenmoderation und Standby bleiben offen.
+Same-Program-Übergabe einschließlich Angular-Übergabedialog angeschlossen.
+Kontrollierter Player-Generationswechsel, Fremdquellenmoderation und Standby
+bleiben offen; ein realer Zwei-Packager-Mediennachweis steht noch aus.
 
 ## Angeschlossene native Übergabe-API
 
@@ -50,11 +51,46 @@ Lokale HTTP-/WebSocket-Tests mit zwei getrennten P-256-Packagern belegen diese
 Reihenfolge und einen abgebrochenen HTTP-Aufruf mit verspätetem Stop-ACK.
 Ein separater Test prüft den Widerruf eines tatsächlich signierten Playback-
 Grants vor Nachfolgeraktivierung. Das ist noch **kein** Nachweis dekodierbarer
-Medien über die Übergabe: Der neue Origin-Pfad, Browser-Publikationswechsel,
+Medien über die Übergabe: Origin-Pfad, Browser-Publikationswechsel,
 bewusste UI-Bestätigung und kontrollierte Player-Reautorisierung/-Neustart
-müssen noch zusammen angeschlossen und real geprüft werden. Insbesondere
+müssen noch zusammen real geprüft werden. Insbesondere
 ist ein Agent auf einem beliebigen anderen Host nicht allein durch seine
 Registrierung an den aktuell konfigurierten HLS-Origin angebunden.
+
+### Angular-Publikationswechsel
+
+Während einer nativen Own-Source-Sendung steht unter der stets sichtbaren
+Stop-Leiste „Trusted Packager wechseln“. Die Zielauswahl enthält nur andere,
+online/gesund gemeldete eigene Geräte mit bestätigtem Room-Consent. Der lokale
+Bestätigungsdialog nennt das Ziel, den nicht SFrame-E2EE-geschützten Broadcast-
+Zweig, die Unterbrechung und die notwendige Origin-Anbindung. Auswahl allein,
+Panelöffnung oder Remotesignale lösen keine Übergabe aus.
+
+Der Workflow lädt einen frischen autoritativen Writer-Snapshot und verwendet
+dessen Revisionen. Nach dem bestätigten Serverwechsel stoppt er ausschließlich
+die alte lokale Publikation und deren Assignment. Er erstellt **kein** neues
+Programm: dieselben bereits laufenden Originalquellen werden für die neue
+Programm-Epoch neu geklont/komponiert. Kamera, Mikrofon und Bildschirm werden
+nicht erneut angefordert; beendete oder fehlende Quellen brechen den Wechsel ab.
+Alte Captions und Kompositionshandles werden beim lokalen Cleanup entfernt.
+
+Ein Gesamtbudget von 75 Sekunden begrenzt Vorbereitung, Drain und Nachfolger-
+Readiness. Stop und Sessionwechsel brechen auch den laufenden Coordinator-Start
+ab. Nach Fehlern darf der alte Stream nur weiterlaufen, wenn eine erneute,
+auf fünf Sekunden begrenzte Serverabfrage denselben frischen Writer/Fence in
+derselben Live-/Degraded-Epoch bestätigt. Ein unklarer oder bereits umgestellter
+Ausgang führt zu lokalem Cleanup und einem unabhängigen serverseitigen Stop-
+Versuch. Fehlgeschlagene Netzwerkzustellung wird nicht als bewiesener Widerruf
+ausgegeben. Verspätete Nachrichten anderer Assignments werden ignoriert;
+fehlerhafte Nachrichten des aktuellen Assignments bleiben fail-closed.
+Unabhängige Cleanup-Aufrufe besitzen eigene Fristen: maximal 15 Sekunden für
+Assignment-Stop/Bestätigung und zwölf Sekunden für Program-Stop. Diese
+Sicherheitsbereinigung kann über das 75-Sekunden-Startbudget hinauslaufen.
+
+Unit- und Template-Gates prüfen diese Grenzen. Das ist noch kein realer
+Medien-Handoff-/Accessibility-Nachweis. Bis zur Player-Erweiterung müssen
+Zuschauer die Wiedergabe gegebenenfalls bewusst neu starten; die Oberfläche
+verspricht weder nahtlosen Wechsel noch automatische Standby-Übernahme.
 
 ## Bereits angeschlossene lokale Bildregie
 

@@ -6,6 +6,16 @@ const template = readFileSync("frontend/src/app/broadcast/broadcast-preflight.co
 const component = readFileSync("frontend/src/app/broadcast/broadcast-preflight.component.ts", "utf8");
 
 describe("BroadcastPreflightComponent audio policy", () => {
+  it("offers an explicit target confirmation without hiding Stop during handoff", () => {
+    expect(template).toContain('id="broadcast-handoff-target"');
+    expect(template).toContain('id="broadcast-handoff"');
+    expect(template).toContain('[disabled]="!canHandoff()"');
+    expect(template).toContain('(click)="handoffPackager()"');
+    expect(component).toContain('this.publisher.handoff(target.id, Math.min(3, target.capability?.maximumRenditions || 1), "user-action")');
+    expect(component).toContain('this.publisher.handingOver() ||');
+    expect(component).toContain('target.id || !this.nativePackagers.select(target.id)');
+    expect(template).toContain("Automatische Standby-Übernahme und nahtlose Zuschauerumschaltung sind noch nicht verfügbar");
+  });
   it("connects only active local video direction and never advertises remote moderation", () => {
     expect(template).toContain('[localVideoDirection]="publisher.coordinator.videoDirection()"');
     expect(template).toContain('(applyLocalVideo)="directLocalVideo($event)"');

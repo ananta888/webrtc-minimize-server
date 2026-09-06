@@ -8,6 +8,7 @@ import {
 } from "../identity/device-identity.service";
 import { BroadcastBrowserPortError, BroadcastProgramRef } from "./broadcast-ports";
 import { parseBroadcastDirectoryEntry } from "./broadcast-directory.service";
+import { NativePackagerHandoffControl, parseNativeHandoffControl } from "./native-packager-handoff-control";
 import {
   WhipAuthorization,
   WhipAuthorizationPort,
@@ -69,7 +70,7 @@ function programRef(value: unknown): BroadcastProgramRef {
     throw new BroadcastBrowserPortError("invalid_broadcast_program_response");
   }
   const program = value as Record<string, unknown>;
-  if (Object.keys(program).length !== 5
+    if (Object.keys(program).length !== 5
     || !/^tn_[A-Za-z0-9_-]{16,64}$/.test(String(program["tenantId"] || ""))
     || !/^[a-z0-9][a-z0-9-]{5,47}$/.test(String(program["roomId"] || ""))
     || !PROGRAM.test(String(program["programId"] || ""))
@@ -177,12 +178,65 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
       }),
     });
     if (!response.ok) throw requestError(response, "native_packager_assignment_failed");
+    return this.acceptNativeAssignment(response, program, packagerId, signal);
+  }
+
+  async nativeHandoffControl(programId: string, signal: AbortSignal): Promise<NativePackagerHandoffControl> {
+    signal.throwIfAborted();
+    const fingerprint = this.device.fingerprint();
+    if (!PROGRAM.test(programId) || !fingerprint) throw new BroadcastBrowserPortError("broadcast_active_device_required");
+    const response = await fetch(`/api/broadcasts/${encodeURIComponent(programId)}/native-handoff-control`, {
+      method: "POST", headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
+      credentials: "same-origin", redirect: "error", signal,
+      body: JSON.stringify({ requestVersion: 1, deviceFingerprint: fingerprint }),
+    });
+    if (!response.ok) throw requestError(response, "native_handoff_control_failed");
+    const value = await json(response, "invalid_native_handoff_control");
+    signal.throwIfAborted();
+    return parseNativeHandoffControl(value, programId);
+  }
+
+  async prepareNativeHandoff(
+    program: BroadcastProgramRef, snapshot: NativePackagerHandoffControl,
+    packagerId: string, requestedRenditions: number, signal: AbortSignal,
+  ): Promise<Readonly<{ program: BroadcastProgramRef; ownerSubjectRef: string }>> {
+    signal.throwIfAborted();
+    const control = parseNativeHandoffControl(snapshot, program.programId);
+    const fingerprint = this.device.fingerprint();
+    if (!fingerprint || typeof packagerId !== "string" || !PACKAGER.test(packagerId) || !control.writer || control.writer.packagerId === packagerId
+      || control.programEpoch !== program.programEpoch || control.handoffPending
+      || !["live", "degraded"].includes(control.state)
+      || !Number.isSafeInteger(requestedRenditions) || requestedRenditions < 1 || requestedRenditions > 3) {
+      throw new BroadcastBrowserPortError("invalid_native_handoff_request");
+    }
+    const response = await fetch(`/api/broadcasts/${encodeURIComponent(program.programId)}/native-handoffs`, {
+      method: "POST", headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
+      credentials: "same-origin", redirect: "error", signal,
+      body: JSON.stringify({ requestVersion: 1, trigger: "user-action", deviceFingerprint: fingerprint, packagerId,
+        expectedProgramRevision: control.programRevision, expectedProgramEpoch: control.programEpoch,
+        expectedFencingRevision: control.writer.fencingRevision, requestedRenditions, allowHardwareAcceleration: true }),
+    });
+    if (!response.ok) throw requestError(response, "native_handoff_failed");
+    return this.acceptNativeAssignment(response, { ...program, programRevision: control.programRevision }, packagerId,
+      signal, control.writer.fencingRevision);
+  }
+
+  private async acceptNativeAssignment(
+    response: Response, program: BroadcastProgramRef, packagerId: string, signal: AbortSignal, previousFence?: number,
+  ): Promise<Readonly<{ program: BroadcastProgramRef; ownerSubjectRef: string }>> {
     const value = await json(response, "invalid_native_packager_assignment_response");
+    signal.throwIfAborted();
     if (Object.keys(value).length !== 3 || !value["assignment"] || !value["program"]
+      || typeof value["ownerSubjectRef"] !== "string"
       || !/^sub_[A-Za-z0-9_-]{16,64}$/.test(String(value["ownerSubjectRef"] || ""))) {
       throw new BroadcastBrowserPortError("invalid_native_packager_assignment_response");
     }
     const returnedProgram = programRef(value["program"]);
+    if (returnedProgram.programId !== program.programId || returnedProgram.roomId !== program.roomId
+      || returnedProgram.tenantId !== program.tenantId || returnedProgram.programRevision <= program.programRevision
+      || returnedProgram.programEpoch !== program.programEpoch + 1) {
+      throw new BroadcastBrowserPortError("invalid_native_packager_assignment_response");
+    }
     const assignment = value["assignment"] as Record<string, unknown>;
     const assignmentFields = new Set([
       "assignmentId", "packagerId", "roomId", "programId", "programEpoch", "fencingRevision",
@@ -191,11 +245,20 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
     if (!assignment || typeof assignment !== "object" || Array.isArray(assignment)
       || Object.keys(assignment).length !== assignmentFields.size
       || Object.keys(assignment).some((field) => !assignmentFields.has(field))
+      || typeof assignment["assignmentId"] !== "string"
       || !ASSIGNMENT.test(String(assignment["assignmentId"] || ""))
       || assignment["packagerId"] !== packagerId || assignment["programId"] !== returnedProgram.programId
       || assignment["roomId"] !== returnedProgram.roomId
       || assignment["programEpoch"] !== returnedProgram.programEpoch
       || !Number.isSafeInteger(assignment["fencingRevision"]) || Number(assignment["fencingRevision"]) < 1
+      || (previousFence !== undefined && Number(assignment["fencingRevision"]) <= previousFence)
+      || assignment["profileId"] !== "h264-aac-720p-v1"
+      || !Array.isArray(assignment["renditionIds"]) || assignment["renditionIds"].length < 1
+      || assignment["renditionIds"].length > 3 || new Set(assignment["renditionIds"]).size !== assignment["renditionIds"].length
+      || assignment["renditionIds"].some((id) => typeof id !== "string" || !["low", "medium", "high"].includes(id))
+      || assignment["state"] !== "preparing" || assignment["reasonCode"] !== "AWAITING_AGENT"
+      || !Number.isSafeInteger(assignment["createdAt"]) || Number(assignment["createdAt"]) <= 0
+      || !Number.isSafeInteger(assignment["updatedAt"]) || Number(assignment["updatedAt"]) < Number(assignment["createdAt"])
       || !Number.isSafeInteger(assignment["expiresAt"]) || Number(assignment["expiresAt"]) <= Date.now()) {
       throw new BroadcastBrowserPortError("invalid_native_packager_assignment_response");
     }
@@ -220,6 +283,8 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
   }
 
   async stopNativeAssignment(assignment: PreparedNativePackagerStart, signal: AbortSignal): Promise<void> {
+    signal = AbortSignal.any([signal, AbortSignal.timeout(15_000)]);
+    signal.throwIfAborted();
     const response = await fetch(
       `/api/native-packagers/${encodeURIComponent(assignment.packagerId)}/assignments/${encodeURIComponent(assignment.assignmentId)}`,
       { method: "DELETE", headers: this.auth.authorizationHeader(), credentials: "same-origin", redirect: "error", signal },
@@ -297,6 +362,8 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
   }
 
   async stopProgram(programId: string, signal: AbortSignal): Promise<void> {
+    signal = AbortSignal.any([signal, AbortSignal.timeout(12_000)]);
+    signal.throwIfAborted();
     if (!PROGRAM.test(programId)) throw new BroadcastBrowserPortError("invalid_broadcast_program");
     const response = await fetch(`/api/broadcasts/${encodeURIComponent(programId)}`, {
       method: "DELETE",

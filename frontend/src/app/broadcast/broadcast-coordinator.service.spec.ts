@@ -261,6 +261,20 @@ describe("BroadcastCoordinatorService", () => {
     expect(context.sources.selected()).toEqual([]);
   });
 
+  it("propagates an outer lifecycle abort before any capture fork and rejects pre-aborted starts", async () => {
+    const controller = new AbortController();
+    const f = fixture({ consent: { authorize: (_program, _sources, signal) => new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    }) } });
+    const task = f.coordinator.start(plan(), controller.signal);
+    const rejected = expect(task).rejects.toBeInstanceOf(DOMException);
+    controller.abort();
+    await rejected;
+    expect(f.events).toEqual([]);
+    await expect(f.coordinator.start(plan(), controller.signal)).rejects.toBeInstanceOf(DOMException);
+    expect(f.events).toEqual([]);
+  });
+
   it("aborts an in-flight start and never proceeds to a capture fork", async () => {
     const consent: BroadcastConsentPort = {
       authorize(_program, _sources, signal) {

@@ -132,6 +132,19 @@ describe("NativePackagerBroadcastRuntimeService", () => {
     expect(composition.setCaptionOverlay).toHaveBeenCalledWith(
       expect.objectContaining({ compositionId: "composition-test" }), "", "high-contrast", 88,
     );
+    for (const type of ["native-packager-status", "native-packager-signal"]) {
+      subscriber?.({ version: 1, type, assignmentId: "asn_old0123456789abcdef", state: "stopped" });
+    }
+    await Promise.resolve();
+    expect(pc.closed).toBe(false);
+    expect(control.stopNativeAssignment).not.toHaveBeenCalled();
+    // A malformed message for THIS assignment still closes its publication fail-closed.
+    subscriber?.({ version: 1, type: "native-packager-status", assignmentId: assignment.assignmentId,
+      packagerId: assignment.packagerId, programId: assignment.programId,
+      programEpoch: assignment.programEpoch, fencingRevision: assignment.fencingRevision - 1,
+      state: "running", reasonCode: "OUTPUT_READY", observedAt: Date.now() });
+    await Promise.resolve();
+    expect(pc.closed).toBe(true);
     await runtime.stop(session, new AbortController().signal);
     expect(pc.closed).toBe(true);
     expect(pc.dataChannel.close).toHaveBeenCalledOnce();
