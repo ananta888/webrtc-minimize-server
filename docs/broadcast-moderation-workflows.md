@@ -12,6 +12,24 @@ Fremdquellenmoderation und Standby bleiben offen. Private Zwei-Packager-
 Übergaben sind inzwischen real nachgewiesen; der vollständige Gate mit
 öffentlicher Rückübergabe ist weiterhin offen.
 
+### Sicherheitsgrenze für wiederholte Quellenfreigaben
+
+Die noch nicht öffentlich angeschlossene `TrustedDecryptConsentAuthority`
+prüft auch bei derselben Request-ID die **aktuelle** Identität, aktive
+Raumzugehörigkeit, Quelle, Programm-Epoche, Packager-Zulassung und Lease.
+Ein gespeicherter Treffer ersetzt diese Autorisierung nicht. Die Wiederholung
+ist zusätzlich an das ursprüngliche Grantor-Konto und dessen konkretes Gerät
+gebunden; die Gerätebindung bleibt interner Zustand und erweitert den
+öffentlichen Consent-Vertrag nicht.
+
+Widerrufene oder abgelaufene Freigaben werden nicht erneut ausgegeben. Eine
+inzwischen kürzere Lease darf keinen länger gültigen alten Consent bestätigen.
+Ein erlaubter identischer Aufruf liefert unverändert denselben Consent, ohne
+seine Laufzeit zu verlängern oder eine weitere Grant-Auditmeldung zu erzeugen.
+Die Negativtests für Autoritätsverlust, fremdes Konto/Gerät und terminale
+Freigaben scheiterten vor der Korrektur und bestehen danach. Das ist ein
+Domain-Nachweis, noch kein angeschlossener Fremdquellen- oder Decrypt-Pfad.
+
 ## Angeschlossene native Übergabe-API
 
 `POST /api/broadcasts/:programId/native-handoff-control` liefert dem aktuellen
@@ -193,6 +211,23 @@ im isolierten Testbrowser installierte Diagnose ergänzt nun monotones Alter,
 SDP-Vorhandensein als Boolean sowie aggregierte ICE-Kandidaten-/Pair-Zustände.
 Sie speichert höchstens acht Stichproben für je drei Verbindungen, ohne
 SDP-Inhalte, Kandidatenadressen, Credentials oder Identifikatoren.
+
+`LIVE_PRODUCTION_BROADCAST_SCENARIO=public-handoff-only` ist ein getrennter
+Diagnoselauf: Er startet direkt öffentlich und benötigt zwei Test-Packager.
+Er lässt sich nicht mit privatem Zuschauer oder Refresh-Restore kombinieren.
+Sein eigener Ergebnistext schließt Privatwiedergabe, Sichtbarkeitswechsel und
+Rückübergabe ausdrücklich aus. Das Standardszenario bleibt `full`; ein Erfolg
+dieser Isolation ersetzt dessen noch fehlende Abnahme nicht. Fehlerzustände
+werden vor dem Browser-Cleanup auf feste UI-Zustände und begrenzte Codes
+reduziert, damit auch ein früher Visibility-Fehler untersuchbar bleibt.
+
+Der erste direkt öffentliche Lauf auf `56cdeb3` bestand Enrollment, Inventar
+und dekodierte HLS-Bildregie. Die Handoff-Kontrollabfrage war erfolgreich,
+aber die eigentliche schreibende Anfrage brach mit `net::ERR_NETWORK_CHANGED`
+ab. Eine angenommene Übergabe oder Zuschauerfortsetzung ist damit nicht
+nachgewiesen. Die Suite endete mit Exit 1, wiederholte den schreibenden Aufruf
+nicht automatisch und entfernte ihre Testressourcen; die separate Kontrolle
+fand keine Testcontainer, Identitätsvolumes, Keycloak-Testnutzer oder Teilnehmer.
 
 Die folgenden Einträge dokumentieren frühere Revisionen und deren jeweilige
 Nachweisgrenzen; sie sind keine Angaben zur aktuell ausgelieferten Version.

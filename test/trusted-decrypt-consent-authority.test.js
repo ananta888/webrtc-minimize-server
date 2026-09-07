@@ -120,6 +120,54 @@ test("prevents replay mutation, silent source extension and concurrent source co
     error("trusted_decrypt_source_already_consented"));
 });
 
+test("an identical request rechecks every current authority before returning a consent", () => {
+  const cases = [
+    [context({ identity: { ...context().identity, authenticated: false } }), "trusted_decrypt_authentication_required"],
+    [context({ membership: { ...context().membership, active: false } }), "invalid_trusted_decrypt_membership"],
+    [context({ membership: { ...context().membership, roomEpoch: 12 } }), "invalid_trusted_decrypt_membership"],
+    [context({ membership: { ...context().membership, sources: [] } }), "trusted_decrypt_source_unauthorized"],
+    [context({ program: { ...context().program, programEpoch: 8 } }), "invalid_trusted_decrypt_program"],
+    [context({ packager: { ...context().packager, authorized: false } }), "invalid_trusted_decrypt_packager"],
+    [context({ lease: { ...context().lease, active: false } }), "invalid_trusted_decrypt_lease"],
+    [context({ lease: { ...context().lease, expiresAt: NOW + 1 } }), "invalid_trusted_decrypt_lease"],
+  ];
+  for (const [authorization, code] of cases) {
+    const authority = new TrustedDecryptConsentAuthority();
+    authority.issue(request(), context(), NOW);
+    assert.throws(() => authority.issue(request(), authorization, NOW + 1), error(code));
+    assert.equal(authority.auditEvents().length, 1, "denied replay must not grant again");
+  }
+});
+
+test("idempotency is bound to the original authenticated grantor and browser device", () => {
+  const authority = new TrustedDecryptConsentAuthority();
+  const consent = authority.issue(request(), context(), NOW);
+  const other = "sub_ffffffffffffffff";
+  for (const authorization of [
+    context({ identity: { ...context().identity, subjectRef: other },
+      membership: { ...context().membership, subjectRef: other } }),
+    context({ membership: { ...context().membership, deviceRef: "dev_bbbbbbbbbbbbbbbb" } }),
+  ]) {
+    assert.throws(() => authority.issue(request(), authorization, NOW + 1), error("trusted_decrypt_request_replay"));
+  }
+  assert.strictEqual(authority.issue(request(), context(), NOW + 2), consent);
+  assert.equal(authority.auditEvents().length, 1);
+});
+
+test("replayed consent never revives revocation, expiry or a shortened lease", () => {
+  for (const mode of ["revoked", "expired", "shortened-lease"]) {
+    const authority = new TrustedDecryptConsentAuthority();
+    const consent = authority.issue(request(), context(), NOW);
+    if (mode === "revoked") authority.revoke(consent.consentId, consent.grantorSubjectRef, "user-revoked", NOW + 1);
+    const authorization = mode === "shortened-lease"
+      ? context({ lease: { ...context().lease, expiresAt: consent.expiresAt - 1 } }) : context();
+    assert.throws(() => authority.issue(request(), authorization, mode === "expired" ? consent.expiresAt : NOW + 2),
+      error(mode === "shortened-lease" ? "invalid_trusted_decrypt_lease" : "inactive_trusted_decrypt_consent"));
+    assert.equal(authority.auditEvents().filter(event => event.eventType === "consent-granted").length, 1);
+    if (mode !== "shortened-lease") assert.equal(authority.list(consent.grantorSubjectRef, consent.expiresAt)[0].status, "revoked");
+  }
+});
+
 test("revocation, expiry, handoff and epoch drift produce bounded content-free audit", () => {
   let sequence = 0;
   const authority = new TrustedDecryptConsentAuthority({

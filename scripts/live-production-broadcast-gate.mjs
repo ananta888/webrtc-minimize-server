@@ -3,6 +3,7 @@ import { chromium, firefox } from "playwright";
 import { verifyProductionHandoff } from "./live-production-handoff-gate.mjs";
 import { verifyProductionViewerRecovery } from "./live-production-viewer-recovery-gate.mjs";
 import { installBroadcastTransportDiagnostics } from "./broadcast-transport-diagnostics.mjs";
+import { productionBroadcastScenario, inspectProductionBroadcastUi } from "./production-broadcast-scenario.mjs";
 
 if (process.env.RUN_LIVE_PRODUCTION_BROADCAST !== "1") {
   console.log("SKIP production broadcast gate: provide an isolated test identity and packager");
@@ -23,6 +24,9 @@ const packagerIds = handoffId ? [packagerId, handoffId] : [packagerId];
 const assignmentStatuses = [];
 const verifyRefreshRestore = process.env.LIVE_PRODUCTION_REFRESH_RESTORE === "1";
 const verifyPrivateViewer = process.env.LIVE_PRODUCTION_PRIVATE_VIEWER === "1";
+const scenario = productionBroadcastScenario(process.env.LIVE_PRODUCTION_BROADCAST_SCENARIO, {
+  hasHandoff: Boolean(handoffId), privateViewer: verifyPrivateViewer, refreshRestore: verifyRefreshRestore,
+});
 const viewerBrowserName = process.env.LIVE_PRODUCTION_VIEWER_BROWSER || "chromium";
 if (!/^https:\/\/[^/]+$/.test(origin) || !/^https:\/\/[^/]+\/realms\/[A-Za-z0-9._-]+$/.test(issuer)
   || !username || !password || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(packagerId)
@@ -304,6 +308,7 @@ try {
   await ownerPage.locator(`#broadcast-packager-profile option[value="native:${packagerId}"]`)
     .waitFor({ state: "attached", timeout: 30_000 });
   await ownerPage.locator("#broadcast-packager-profile").selectOption(`native:${packagerId}`);
+  await ownerPage.locator("select#broadcast-audience").selectOption(scenario.initialVisibility);
   await ownerPage.locator("#prepare-broadcast-preview").click();
   await ownerPage.locator(".broadcast-heading .status[data-state=ready]").waitFor({ timeout: 20_000 });
 
@@ -392,25 +397,27 @@ try {
   }
   const captureCallsBeforeVisibility = await ownerPage.evaluate(() => [...window.__captureCalls]);
 
-  ownerPage.once("dialog", (dialog) => dialog.accept());
-  const visibilityStopResponse = ownerPage.waitForResponse((response) => (
-    response.request().method() === "DELETE"
-    && new URL(response.url()).pathname.startsWith("/api/broadcasts/prg_")
-  ), { timeout: 30_000 });
-  const visibilityCreateResponse = ownerPage.waitForResponse((response) => {
-    if (response.request().method() !== "POST" || new URL(response.url()).pathname !== "/api/broadcasts") return false;
-    try { return response.request().postDataJSON()?.visibility === "public"; } catch { return false; }
-  }, { timeout: 30_000 });
-  await ownerPage.locator("select#broadcast-audience").selectOption("public");
-  const [visibilityStop, visibilityCreate] = await Promise.all([
-    visibilityStopResponse,
-    visibilityCreateResponse,
-  ]);
-  assert.equal(visibilityStop.status(), 200, "old program was not fenced before its visibility restart");
-  assert.equal(visibilityCreate.status(), 201, "public replacement program was not created");
-  await waitForProgramRunning(ownerPage);
-  assert.deepEqual(await ownerPage.evaluate(() => window.__captureCalls), captureCallsBeforeVisibility,
-    "visibility restart must reuse explicit sources without requesting capture again");
+  if (!scenario.publicHandoffOnly) {
+    ownerPage.once("dialog", (dialog) => dialog.accept());
+    const visibilityStopResponse = ownerPage.waitForResponse((response) => (
+      response.request().method() === "DELETE"
+      && new URL(response.url()).pathname.startsWith("/api/broadcasts/prg_")
+    ), { timeout: 30_000 });
+    const visibilityCreateResponse = ownerPage.waitForResponse((response) => {
+      if (response.request().method() !== "POST" || new URL(response.url()).pathname !== "/api/broadcasts") return false;
+      try { return response.request().postDataJSON()?.visibility === "public"; } catch { return false; }
+    }, { timeout: 30_000 });
+    await ownerPage.locator("select#broadcast-audience").selectOption("public");
+    const [visibilityStop, visibilityCreate] = await Promise.all([
+      visibilityStopResponse,
+      visibilityCreateResponse,
+    ]);
+    assert.equal(visibilityStop.status(), 200, "old program was not fenced before its visibility restart");
+    assert.equal(visibilityCreate.status(), 201, "public replacement program was not created");
+    await waitForProgramRunning(ownerPage);
+    assert.deepEqual(await ownerPage.evaluate(() => window.__captureCalls), captureCallsBeforeVisibility,
+      "visibility restart must reuse explicit sources without requesting capture again");
+  }
   const publicDirectory = await ownerPage.evaluate(async () => {
     const response = await fetch("/api/broadcasts/public", { cache: "no-store", credentials: "omit" });
     return { status: response.status, body: await response.json() };
@@ -535,7 +542,20 @@ try {
   const leaveRoom = ownerPage.locator("#leave-room");
   if (await leaveRoom.isVisible()) await leaveRoom.click();
 
-  console.log("PASS production native broadcast: private owner playback, renewable public anonymous playback, terminal stop and packager revoke");
+  console.log(scenario.publicHandoffOnly
+    ? "PASS isolated public handoff only: public start, renewable anonymous playback, handoff, terminal stop and packager revoke; private/visibility/return-handoff excluded"
+    : "PASS production native broadcast: private owner playback, renewable public anonymous playback, terminal stop and packager revoke");
+} catch (error) {
+  if (ownerPage && !ownerPage.isClosed()) {
+    const ui = await ownerPage.evaluate(inspectProductionBroadcastUi).catch(() => ({ unavailable: true }));
+    const native = assignmentStatuses.slice(-12).map(item => ({
+      epoch: Number.isSafeInteger(item.programEpoch) ? item.programEpoch : 0,
+      state: ["ready", "starting", "running", "degraded", "draining", "stopped", "failed"].includes(item.state) ? item.state : "other",
+      reason: typeof item.reasonCode === "string" && /^[A-Z_]{1,64}$/.test(item.reasonCode) ? item.reasonCode : "other",
+    }));
+    console.error(`production_broadcast_failure_state:${JSON.stringify({ ui, native })}`);
+  }
+  throw error;
 } finally {
   if (ownerPage && !ownerPage.isClosed()) {
     try {

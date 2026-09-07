@@ -135,13 +135,22 @@ export class TrustedDecryptConsentAuthority {
 
   issue(input, context, now = Date.now()) {
     const request = normalizeRequest(input);
+    // An idempotency hit is not authority: the authenticated caller, source,
+    // membership, target and lease must still be valid at the time of replay.
+    const checked = authorize(request, context, now);
     const requestHash = JSON.stringify(request);
     const previous = this.#requests.get(request.requestId);
     if (previous) {
-      if (previous.requestHash !== requestHash) fail("trusted_decrypt_request_replay");
-      return this.#records.get(previous.consentId)?.consent || fail("inactive_trusted_decrypt_consent");
+      const record = this.#records.get(previous.consentId);
+      if (previous.requestHash !== requestHash
+        || record?.consent.grantorSubjectRef !== checked.identity.subjectRef
+        || record?.grantorDeviceRef !== checked.membership.deviceRef) fail("trusted_decrypt_request_replay");
+      this.revokeExpired(now);
+      const consent = record.consent;
+      if (consent.status !== "active") fail("inactive_trusted_decrypt_consent");
+      if (consent.expiresAt > checked.lease.expiresAt) fail("invalid_trusted_decrypt_lease");
+      return consent;
     }
-    const checked = authorize(request, context, now);
     this.revokeExpired(now);
     for (const record of this.#records.values()) {
       if (record.consent.status === "active" && record.consent.programId === request.programId
@@ -180,7 +189,9 @@ export class TrustedDecryptConsentAuthority {
     if (!IDS.consent.test(consent.consentId)) {
       fail("invalid_trusted_decrypt_consent_id", 500);
     }
-    this.#records.set(consent.consentId, { consent, requestId: request.requestId });
+    this.#records.set(consent.consentId, {
+      consent, requestId: request.requestId, grantorDeviceRef: checked.membership.deviceRef,
+    });
     this.#requests.set(request.requestId, { requestHash, consentId: consent.consentId });
     this.#emit(consent, "consent-granted", "user-action", now);
     return consent;
