@@ -14,11 +14,13 @@ import { privateMachineTlsProxy } from "./machine-tls-proxy.js";
 import { observeBrowserStartup } from "./machine-browser-startup.mjs";
 import { navigateFixture } from "./machine-browser-navigation.mjs";
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
+import { machinePublicDirectory } from "./machine-public-directory.mjs";
 
 export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", listenPort = 0, hubPublicKey, tlsPortProxy = false,
-  lifetimeSeconds = 180, humanEngine = "chromium", observeStage = () => {} } = {}) {
+  lifetimeSeconds = 180, humanEngine = "chromium", observeStage = () => {}, publicDir = process.env.MEET_TEST_PUBLIC_DIR } = {}) {
   if (!Number.isInteger(lifetimeSeconds) || lifetimeSeconds < 180 || lifetimeSeconds > 7380) throw new Error("test_lifetime_invalid");
   if (!["chromium", "firefox"].includes(humanEngine)) throw new Error("test_engine_invalid");
+  publicDir = await machinePublicDirectory(publicDir); // Fail before creating resources.
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "meet-machine-tls-"));
   let app, browser, humanBrowser, tls, proxy;
   t.after(async () => {
@@ -59,7 +61,7 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
     machineHubPublicKey: hubPublicKey || keys.publicKey.export({ type: "spki", format: "pem" }),
     stunUrls: proxy ? [proxy.stunUrl] : [], turnServers: [], mediaE2eeMode: "required", signalRateLimit: 400 };
   const oidcVerifier = createOidcVerifier(config, { jwks: createLocalJWKSet({ keys: [await exportJWK(humanKeys.publicKey)] }) });
-  observeStage("signaling-server"); app = createAppServer({ config, oidcVerifier });
+  observeStage("signaling-server"); app = createAppServer({ config, oidcVerifier, publicDir });
   tls.on("request", (req, res) => app.server.emit("request", req, res));
   tls.on("upgrade", (req, socket, head) => app.server.emit("upgrade", req, socket, head));
   await new Promise(resolve => app.server.listen(0, "127.0.0.1", resolve));
