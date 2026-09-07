@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/standby-selection.v1.schema.json",
+  "title": "Native Packager standby-selection v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "requestVersion",
+    "deviceFingerprint",
+    "trigger",
+    "expectedProgramRevision",
+    "expectedProgramEpoch",
+    "expectedStandbyRevision",
+    "standbyPackagerIds",
+    "requestedRenditions",
+    "allowHardwareAcceleration"
+  ],
+  "properties": {
+    "requestVersion": {
+      "const": 1
+    },
+    "deviceFingerprint": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "trigger": {
+      "const": "user-action"
+    },
+    "expectedProgramRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "expectedProgramEpoch": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "expectedStandbyRevision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "standbyPackagerIds": {
+      "type": "array",
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$"
+      }
+    },
+    "requestedRenditions": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "allowHardwareAcceleration": {
+      "type": "boolean"
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/standby-control.v1.schema.json",
+  "title": "Native Packager standby-control v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "controlVersion",
+    "programId",
+    "programRevision",
+    "programEpoch",
+    "standbyRevision",
+    "standbyPackagerIds"
+  ],
+  "properties": {
+    "controlVersion": {
+      "const": 1
+    },
+    "programId": {
+      "type": "string",
+      "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+    },
+    "programRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "programEpoch": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "standbyRevision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "standbyPackagerIds": {
+      "type": "array",
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$"
+      }
+    }
+  }
+}

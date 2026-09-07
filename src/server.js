@@ -70,6 +70,7 @@ import {
   NativePackagerAssignmentRegistry,
 } from "./native-packager-assignment.js";
 import { handoffNativePackager } from "./native-packager-handoff.js";
+import { NativePackagerStandbyError } from "./native-packager-standby.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
@@ -360,6 +361,7 @@ function errorStatus(error) {
   if (error instanceof MediaAgentEnrollmentError || error instanceof MediaAgentInstallerError) return error.status;
   if (error instanceof NativePackagerEnrollmentError || error instanceof NativePackagerControlError
     || error instanceof NativePackagerAssignmentError
+    || error instanceof NativePackagerStandbyError
     || error instanceof NativePackagerInstallerError) return error.status;
   if (error instanceof MediaMtxExternalAuthError) return error.status;
   if (error instanceof BroadcastHlsProxyError || error instanceof BroadcastPlaybackSessionError) return error.status;
@@ -741,6 +743,43 @@ function createHttpHandler(config, registry, services) {
       const nativeHandoffMatch = url.pathname.match(
         /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/(native-handoff-control|native-handoffs)$/,
       );
+      const nativeStandbyMatch = url.pathname.match(
+        /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/(native-standby-control|native-standbys)$/,
+      );
+      if (nativeStandbyMatch) {
+        const controlOnly = nativeStandbyMatch[2] === "native-standby-control";
+        if (!broadcastRuntime || !config.nativePackagerSelfServiceEnabled
+          || request.method !== (controlOnly ? "POST" : "PUT") || url.search
+          || !requestOriginAllowed(request, config)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" }); response.end(); return;
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const ownerPrincipal = principalFor(identity);
+        const input = await readJsonBody(request);
+        assertAllowedKeys(input, new Set(controlOnly ? ["requestVersion", "deviceFingerprint"] : [
+          "requestVersion", "deviceFingerprint", "trigger", "expectedProgramRevision", "expectedProgramEpoch",
+          "expectedStandbyRevision", "standbyPackagerIds", "requestedRenditions", "allowHardwareAcceleration",
+        ]));
+        if (input.requestVersion !== 1 || typeof input.deviceFingerprint !== "string"
+          || !/^[A-Za-z0-9_-]{43}$/.test(input.deviceFingerprint)) throw new NativePackagerStandbyError("invalid_native_standby_selection");
+        const member = registry.membersForPrincipal(ownerPrincipal)
+          .find(candidate => candidate.deviceFingerprint === input.deviceFingerprint);
+        if (controlOnly) {
+          sendJson(response, 200, broadcastRuntime.nativeStandbyControl(identity, member, nativeStandbyMatch[1]), securityHeaders(config));
+        } else {
+          const { deviceFingerprint: _, ...selection } = input;
+          const result = broadcastRuntime.selectNativeStandbys(identity, member, nativeStandbyMatch[1], selection,
+            (packagerId, admissionRequest) => {
+              if (nativePackagerAssignments.activeForPackager(packagerId)) {
+                throw new NativePackagerAssignmentError("native_packager_assignment_conflict", 409);
+              }
+              return nativePackagerAssignments.admit(ownerPrincipal, packagerId, admissionRequest);
+            });
+          sendJson(response, 200, result, securityHeaders(config));
+        }
+        return;
+      }
       if (nativeHandoffMatch) {
         if (!broadcastRuntime || !config.nativePackagerSelfServiceEnabled || request.method !== "POST"
           || url.search || !requestOriginAllowed(request, config)

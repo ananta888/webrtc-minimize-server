@@ -8,7 +8,9 @@ Own-Source-Komposition lässt sich über einen getrennten lokalen Bildregie-Port
 steuern. Für eigenes natives Publishing ist die unten beschriebene serverseitige
 Same-Program-Übergabe einschließlich Angular-Übergabedialog angeschlossen.
 Kontrollierter Player-Generationswechsel ist lokal implementiert und getestet.
-Fremdquellenmoderation und Standby bleiben offen. Private Zwei-Packager-
+Fremdquellenmoderation und automatische Standby-Übernahme bleiben offen. Eine
+keylose Standby-Vormerkung ist implementiert; ihr Produktionsnachweis folgt.
+Private Zwei-Packager-
 Übergaben sind inzwischen real nachgewiesen; der vollständige Gate mit
 öffentlicher Rückübergabe ist weiterhin offen.
 
@@ -31,6 +33,49 @@ Freigaben scheiterten vor der Korrektur und bestehen danach. Das ist ein
 Domain-Nachweis, noch kein angeschlossener Fremdquellen- oder Decrypt-Pfad.
 
 ## Angeschlossene native Übergabe-API
+
+### Keylose Standby-Vormerkung
+
+Das Live-Cockpit bietet „Standby-Geräte vormerken“. Erst „Auswahl vom Server
+laden“ liest die aktuelle Auswahl; Panelöffnung und Raumwechsel senden nichts.
+Bis zu zwei weitere eigene, online und für den Raum freigegebene Packager sind
+per nativer Checkbox wählbar. Speichern verlangt einen eigenen lokalen
+Bestätigungsdialog. Alle Geräte abzuwählen und zu bestätigen entfernt die
+Vormerkung; nicht mehr geeignete vormerkte Geräte lassen sich weiterhin entfernen.
+
+`POST /api/broadcasts/:programId/native-standby-control` nimmt ausschließlich
+`requestVersion: 1` und den Fingerprint des bestehenden Raumgeräts an.
+`PUT /api/broadcasts/:programId/native-standbys` ergänzt den expliziten Trigger,
+erwartete Programmrevision/-epoche, `expectedStandbyRevision`, maximal zwei
+eindeutige `standbyPackagerIds` und das zu prüfende Rendition-/Hardwareprofil.
+Die geschlossenen Verträge liegen in `contracts/native-packager/standby-*.v1.schema.json`.
+
+Beide Routen benötigen OIDC, exakten Origin und dieselbe aktive
+Creator-Peer-/Gerätebindung wie der laufende Writer. Die Auswahl besitzt eine
+separate Compare-and-Swap-Revision; veraltete Änderungen liefern 409. Alle
+Kandidaten werden vor einer atomaren Änderung auf aktuelle Kontobindung,
+Raumfreigabe, Capability, Health und freie Assignment-Zuordnung geprüft.
+Der aktuelle Writer darf nicht gleichzeitig Standby sein.
+
+Die Vormerkung lebt nur im flüchtigen Programmrecord. Sie erstellt **keine**
+Lease, kein Assignment, keine Kapazitätsreservierung und kein Agent-Kommando.
+Es fließen weder Medien noch Schlüssel. Stop und Ausgabe-Epochenwechsel
+verwerfen die gesamte Auswahl. Online-Status und Eignung können sich später
+ändern; die Vormerkung autorisiert deshalb keine Übernahme. Der vorhandene
+explizite Handoff prüft beim tatsächlichen Wechsel alle Bedingungen erneut.
+Automatische Übernahme, Standby-Medienvorwärmung und beliebige Cross-Host-
+Origin-Anbindung werden damit nicht behauptet.
+
+Der Browser bricht Metadatenrequests nach 15 Sekunden und bei Scopewechsel ab.
+Verspätete Antworten dürfen weder einen anderen Raum noch ein anderes Konto
+oder Gerät befüllen. Nach einem unklaren Schreibfehler muss der Serverstand
+erneut geladen werden; die Mutation wird nicht automatisch wiederholt.
+Registry- und echte lokale HTTP-/WebSocket-Tests prüfen Auswahl, Ablehnung,
+Revisionen, unveränderten Writer, fehlendes Standby-Assignment und Handoff-
+Invalidierung. Komponenten-/Service-Tests prüfen Bestätigung und Lifecycle;
+die Produktions- und physische Accessibility-Abnahme steht noch aus.
+
+### Native Handoff-Routen
 
 `POST /api/broadcasts/:programId/native-handoff-control` liefert dem aktuellen
 Owner-Gerät den geschlossenen Programm-/Writer-Snapshot. Der Body enthält nur

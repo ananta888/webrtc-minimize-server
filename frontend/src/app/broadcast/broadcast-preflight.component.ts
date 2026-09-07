@@ -11,6 +11,7 @@ import { BroadcastBrowserPortError } from "./broadcast-ports";
 import { BroadcastOwnSourcePreflightService } from "./broadcast-own-source-preflight.service";
 import { BroadcastPublisherWorkflowService } from "./broadcast-publisher-workflow.service";
 import { NativePackagerOnboardingService } from "./native-packager-onboarding.service";
+import { NativePackagerStandbyComponent } from "./native-packager-standby.component";
 import {
   TrustedDecryptConsentCandidate,
   TrustedDecryptConsentPanelComponent,
@@ -22,7 +23,7 @@ import { TrustedVideoProgramSettingsService } from "./trusted-video-compositor";
 @Component({
   selector: "app-broadcast-preflight",
   standalone: true,
-  imports: [MediaStreamDirective, TrustedDecryptConsentPanelComponent, BroadcastModerationPanelComponent, BroadcastAudienceComponent],
+  imports: [MediaStreamDirective, TrustedDecryptConsentPanelComponent, BroadcastModerationPanelComponent, BroadcastAudienceComponent, NativePackagerStandbyComponent],
   templateUrl: "./broadcast-preflight.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

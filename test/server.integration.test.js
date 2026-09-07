@@ -2055,6 +2055,49 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort"]) tes
     } }));
     await nextAgent.next(message => message.type === "capability-accepted");
     const base = `${app.httpUrl}/api/broadcasts/${program.control.programId}`;
+    const standbyReadBody = { requestVersion: 1, deviceFingerprint: fingerprint };
+    const readStandbys = () => fetch(`${base}/native-standby-control`, { method: "POST", headers,
+      body: JSON.stringify(standbyReadBody) }).then(response => {
+      assert.equal(response.status, 200); return response.json();
+    });
+    const standbyBefore = await readStandbys();
+    const standbyBody = { ...standbyReadBody, trigger: "user-action",
+      expectedProgramRevision: standbyBefore.programRevision, expectedProgramEpoch: standbyBefore.programEpoch,
+      expectedStandbyRevision: standbyBefore.standbyRevision, standbyPackagerIds: [secondId],
+      requestedRenditions: 2, allowHardwareAcceleration: false };
+    const standbyRequestSchema = new Ajv2020({ strict: true }).compile(JSON.parse(fs.readFileSync(
+      new URL("../contracts/native-packager/standby-selection.v1.schema.json", import.meta.url), "utf8")));
+    const standbyControlSchema = new Ajv2020({ strict: true }).compile(JSON.parse(fs.readFileSync(
+      new URL("../contracts/native-packager/standby-control.v1.schema.json", import.meta.url), "utf8")));
+    assert.equal(standbyRequestSchema(standbyBody), true);
+    assert.equal(standbyRequestSchema({ ...standbyBody, extra: true }), false);
+    for (const [body, expectedStatus] of [
+      [{ ...standbyBody, extra: true }, 400],
+      [{ ...standbyBody, standbyPackagerIds: [packagerId] }, 400],
+      [{ ...standbyBody, deviceFingerprint: "z".repeat(43) }, 403],
+      [{ ...standbyBody, expectedProgramEpoch: standbyBody.expectedProgramEpoch + 1 }, 409],
+    ]) {
+      const rejected = await fetch(`${base}/native-standbys`, { method: "PUT", headers, body: JSON.stringify(body) });
+      assert.equal(rejected.status, expectedStatus);
+    }
+    for (const [changedHeaders, expectedStatus] of [
+      [{ ...headers, authorization: "Bearer handoff-foreign-token" }, 404],
+      [{ ...headers, origin: "https://foreign.example" }, 404],
+      [{ ...headers, authorization: "" }, 401],
+    ]) {
+      const rejected = await fetch(`${base}/native-standbys`, { method: "PUT", headers: changedHeaders, body: JSON.stringify(standbyBody) });
+      assert.equal(rejected.status, expectedStatus);
+    }
+    const standbyResponse = await fetch(`${base}/native-standbys`, { method: "PUT", headers, body: JSON.stringify(standbyBody) });
+    assert.equal(standbyResponse.status, 200);
+    const standbyAfter = await standbyResponse.json();
+    assert.equal(standbyControlSchema(standbyAfter), true);
+    assert.deepEqual(standbyAfter.standbyPackagerIds, [secondId]);
+    assert.equal(standbyAfter.standbyRevision, standbyBefore.standbyRevision + 1);
+    assert.deepEqual(await readStandbys(), standbyAfter);
+    await assert.rejects(nextAgent.next(message => message.type === "assignment-prepare", 100), /timed out/);
+    const staleStandbys = await fetch(`${base}/native-standbys`, { method: "PUT", headers, body: JSON.stringify(standbyBody) });
+    assert.equal(staleStandbys.status, 409);
     const controlResponse = await fetch(`${base}/native-handoff-control`, { method: "POST", headers,
       body: JSON.stringify({ requestVersion: 1, deviceFingerprint: fingerprint }) });
     assert.equal(controlResponse.status, 200);
@@ -2080,6 +2123,7 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort"]) tes
     const transfer = fetch(`${base}/native-handoffs`, { method: "POST", headers, body: JSON.stringify(body), signal: transferController.signal });
     const stop = await agent.next(message => message.type === "assignment-stop");
     assert.equal(stop.reasonCode, "PACKAGER_HANDOFF");
+    assert.deepEqual((await readStandbys()).standbyPackagerIds, [], "handoff must discard the previous epoch's standby metadata");
     await assert.rejects(nextAgent.next(message => message.type === "assignment-prepare", 150), /timed out/);
     if (variant === "handoff-http-abort") {
       const aborted = assert.rejects(transfer, { name: "AbortError" });

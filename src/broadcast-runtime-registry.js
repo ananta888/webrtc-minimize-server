@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { normalizeNativeStandbySelection, nativeStandbyProjection } from "./native-packager-standby.js";
 
 import { BroadcastAudienceRegistry } from "./broadcast-audience-registry.js";
 import { deviceFingerprint } from "./device-proof.js";
@@ -802,6 +803,39 @@ export class BroadcastRuntimeRegistry {
     });
   }
 
+  nativeStandbyControl(identity, member, programId) {
+    const { record } = this.#nativeOwned(identity, member, programId);
+    return nativeStandbyProjection(record.snapshot.machine, record.standbyPlan);
+  }
+
+  selectNativeStandbys(identity, member, programId, value, admit, now = this.#clock()) {
+    const { key, record } = this.#nativeOwned(identity, member, programId);
+    const input = normalizeNativeStandbySelection(value);
+    const machine = record.snapshot.machine;
+    const current = nativeStandbyProjection(machine, record.standbyPlan);
+    const writer = machine.writerLeases.find(lease => lease.role === "packager-writer");
+    if (!ACTIVE.has(machine.program.state) || record.pendingHandoff || !writer || writer.expiresAt <= now
+      || input.expectedProgramRevision !== current.programRevision
+      || input.expectedProgramEpoch !== current.programEpoch
+      || input.expectedStandbyRevision !== current.standbyRevision
+      || current.standbyRevision === Number.MAX_SAFE_INTEGER) fail("stale_native_standby_selection", 409);
+    if (typeof admit !== "function" || input.standbyPackagerIds.includes(writer.holderRef)) {
+      fail("invalid_native_standby_selection");
+    }
+    // Validate every candidate before committing any metadata. No prepare/send calls.
+    for (const packagerId of input.standbyPackagerIds) {
+      admit(packagerId, Object.freeze({ requestVersion: 1, trigger: "user-action",
+        tenantId: machine.scope.tenantId, ownerSubjectRef: machine.scope.ownerSubjectRef,
+        roomId: machine.scope.roomId, programId, programEpoch: machine.program.programEpoch,
+        resourceRef: record.resourceRef, requestedRenditions: input.requestedRenditions,
+        allowHardwareAcceleration: input.allowHardwareAcceleration }));
+    }
+    const standbyPlan = Object.freeze({ programEpoch: current.programEpoch,
+      revision: current.standbyRevision + 1, packagerIds: input.standbyPackagerIds });
+    this.#records.set(key, Object.freeze({ ...record, standbyPlan }));
+    return nativeStandbyProjection(machine, standbyPlan);
+  }
+
   beginNativeHandoff(identity, member, programId, value, admit, now = this.#clock()) {
     const { key, record } = this.#nativeOwned(identity, member, programId);
     const input = clone(value, "invalid_native_packager_handoff");
@@ -989,7 +1023,9 @@ export class BroadcastRuntimeRegistry {
       policy,
       authorizedViewerSubjectRefs: record.authorizedViewerSubjectRefs,
     }, now);
-    const next = Object.freeze({ ...record, snapshot });
+    const next = Object.freeze({ ...record, snapshot,
+      standbyPlan: ACTIVE.has(machine.program.state)
+        && record.standbyPlan?.programEpoch === machine.program.programEpoch ? record.standbyPlan : null });
     this.#records.set(key, next);
     return next;
   }

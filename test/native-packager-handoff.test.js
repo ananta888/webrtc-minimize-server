@@ -63,6 +63,74 @@ function fixture() {
     setNow: value => { now = value; }, setResource: value => { forcedResource = value; } };
 }
 
+function standbyRequest(control, standbyPackagerIds = [SECOND]) {
+  return { requestVersion: 1, trigger: "user-action", expectedProgramRevision: control.programRevision,
+    expectedProgramEpoch: control.programEpoch, expectedStandbyRevision: control.standbyRevision,
+    standbyPackagerIds, requestedRenditions: 2, allowHardwareAcceleration: false };
+}
+
+test("standby selection is keyless, versioned metadata and never changes the live writer", () => {
+  const f = fixture();
+  const writer = f.runtime.nativeControl(f.identity, f.member, f.programId);
+  const initial = f.runtime.nativeStandbyControl(f.identity, f.member, f.programId);
+  assert.deepEqual(initial.standbyPackagerIds, []);
+  assert.equal(initial.standbyRevision, 0);
+  const revokedBefore = f.revoked.length;
+  const admit = (id, request) => f.assignments.admit(f.ownerPrincipal, id, request, NOW);
+  const next = f.runtime.selectNativeStandbys(f.identity, f.member, f.programId, standbyRequest(initial), admit);
+  assert.deepEqual(next.standbyPackagerIds, [SECOND]);
+  assert.equal(next.standbyRevision, 1);
+  assert.deepEqual(f.runtime.nativeControl(f.identity, f.member, f.programId), writer);
+  assert.equal(f.assignments.activeForPackager(SECOND), null);
+  assert.equal(f.sent.length, 0);
+  assert.equal(f.revoked.length, revokedBefore);
+  assert.throws(() => f.runtime.selectNativeStandbys(f.identity, f.member, f.programId, standbyRequest(initial), admit),
+    /stale_native_standby_selection/);
+  const cleared = f.runtime.selectNativeStandbys(f.identity, f.member, f.programId, standbyRequest(next, []), admit);
+  assert.deepEqual(cleared.standbyPackagerIds, []);
+  assert.equal(cleared.standbyRevision, 2);
+});
+
+test("standby selection validates all candidates atomically with fresh consent and owner-device scope", () => {
+  const f = fixture();
+  const initial = f.runtime.nativeStandbyControl(f.identity, f.member, f.programId);
+  const admit = (id, request) => f.assignments.admit(f.ownerPrincipal, id, request, NOW);
+  const select = (input, identity = f.identity, member = f.member) =>
+    f.runtime.selectNativeStandbys(identity, member, f.programId, input, admit);
+  for (const bad of [
+    { ...standbyRequest(initial), extra: true }, { ...standbyRequest(initial), trigger: "remote-signal" },
+    standbyRequest(initial, [FIRST]), standbyRequest(initial, [SECOND, SECOND]),
+    standbyRequest(initial, [SECOND, "pkr_cccccccccccccccc", "pkr_dddddddddddddddd"]),
+  ]) assert.throws(() => select(bad), /invalid_native_standby_selection/);
+  assert.throws(() => select(standbyRequest(initial), { ...f.identity, subject: "stranger" }), /broadcast_not_available/);
+  for (const member of [null, { ...f.member, id: "fedcba9876543210" }, { ...f.member, creator: false },
+    { ...f.member, deviceFingerprint: "b".repeat(43) }]) {
+    assert.throws(() => select(standbyRequest(initial), f.identity, member), /broadcast_publisher_membership_required/);
+  }
+  f.capabilities.get(SECOND).consentedRoomIds = [];
+  assert.throws(() => select(standbyRequest(initial)), /native_packager_room_consent_required/);
+  f.capabilities.get(SECOND).consentedRoomIds = [f.member.roomId];
+  assert.throws(() => select(standbyRequest(initial, [SECOND, "pkr_cccccccccccccccc"])), /native_packager_offline/);
+  assert.deepEqual(f.runtime.nativeStandbyControl(f.identity, f.member, f.programId), initial);
+  assert.equal(f.assignments.activeForPackager(SECOND), null);
+});
+
+test("stop and native handoff fence the whole previous standby plan", () => {
+  for (const operation of ["stop", "handoff"]) {
+    const f = fixture();
+    const initial = f.runtime.nativeStandbyControl(f.identity, f.member, f.programId);
+    const admit = (id, request) => f.assignments.admit(f.ownerPrincipal, id, request, NOW);
+    f.runtime.selectNativeStandbys(f.identity, f.member, f.programId, standbyRequest(initial), admit);
+    if (operation === "stop") f.runtime.stopProgram(f.identity, f.programId);
+    else f.runtime.beginNativeHandoff(f.identity, f.member, f.programId, f.input, request => admit(SECOND, request));
+    const next = f.runtime.nativeStandbyControl(f.identity, f.member, f.programId);
+    assert.deepEqual(next.standbyPackagerIds, []);
+    assert.equal(next.standbyRevision, 0);
+    assert.throws(() => f.runtime.selectNativeStandbys(f.identity, f.member, f.programId, standbyRequest(initial), admit),
+      /stale_native_standby_selection/);
+  }
+});
+
 test("real assignment stop ACK fences one same-program successor with a fresh output generation", async () => {
   const f = fixture();
   const before = f.runtime.listMine(f.identity).owned[0];
