@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/broadcast-source-requests/response.v1.schema.json",
+  "title": "Scoped source invitations, never a decrypt consent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "responseVersion",
+    "requests"
+  ],
+  "properties": {
+    "responseVersion": {
+      "const": 1
+    },
+    "requests": {
+      "type": "array",
+      "maxItems": 40,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requestId",
+          "roomId",
+          "programId",
+          "programRevision",
+          "programEpoch",
+          "ownerPeerId",
+          "targetPeerId",
+          "packagerRef",
+          "sourceKind",
+          "state",
+          "createdAt",
+          "expiresAt",
+          "authority"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^bsr_[A-Za-z0-9_-]{24}$"
+          },
+          "roomId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{5,47}$"
+          },
+          "programId": {
+            "type": "string",
+            "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+          },
+          "programRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "programEpoch": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "ownerPeerId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{16}$"
+          },
+          "targetPeerId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{16}$"
+          },
+          "packagerRef": {
+            "type": "string",
+            "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$"
+          },
+          "sourceKind": {
+            "enum": [
+              "microphone",
+              "camera",
+              "screen",
+              "screen-audio"
+            ]
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "declined",
+              "cancelled",
+              "invalidated"
+            ]
+          },
+          "createdAt": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "expiresAt": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "authority": {
+            "const": "none"
+          }
+        }
+      }
+    }
+  }
+}

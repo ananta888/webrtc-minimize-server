@@ -808,6 +808,17 @@ export class BroadcastRuntimeRegistry {
     return nativeStandbyProjection(record.snapshot.machine, record.standbyPlan);
   }
 
+  nativeSourceRequestContext(identity, member, programId, now = this.#clock()) {
+    const { record } = this.#nativeOwned(identity, member, programId);
+    const machine = record.snapshot.machine;
+    const writer = machine.writerLeases.find(lease => lease.role === "packager-writer");
+    if (!ACTIVE.has(machine.program.state) || record.pendingHandoff || !writer || writer.expiresAt <= now) {
+      fail("broadcast_source_request_program_unavailable", 409);
+    }
+    return Object.freeze({ programRevision: machine.program.revision, programEpoch: machine.program.programEpoch,
+      packagerRef: writer.holderRef, fencingRevision: writer.fencingRevision });
+  }
+
   selectNativeStandbys(identity, member, programId, value, admit, now = this.#clock()) {
     const { key, record } = this.#nativeOwned(identity, member, programId);
     const input = normalizeNativeStandbySelection(value);

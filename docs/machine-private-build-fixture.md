@@ -22,8 +22,10 @@ diagnostic identified an underrun during a 287.9-ms Python/browser RPC. That
 producer-cadence work remains in Ananta; do not infer a new Meet transport fix
 or a complete dialog/soak/production acceptance from this fixture change.
 
-One deterministic helper test checks absent/relative/missing/directory-valued
-index rejection, explicit private directory selection and unchanged contents.
+The initial directory helper and its test were consolidated into the concurrently
+published `machineFixtureAssets` validator and its five asset/HTTP tests. It
+additionally checks bounded index content and its local JavaScript entry files;
+the shared fixture uses that single validation path before creating resources.
 The Ananta preflight additionally rejects obviously stale builds by timestamp;
 that conservative check is not cryptographic build provenance. No media,
 credential, participant identity or production authorization is generated here.

@@ -14,10 +14,14 @@ export async function openTestAvatar(sourceId) {
   try { return await pending; } catch (error) { phase.stop(); throw error; }
 }
 
-export async function startAvatarCompanions(sessionId) {
+export async function startAvatarCompanions(input) {
+  const sessionId = typeof input === "string" ? input : input.sessionId;
+  const screenColor = typeof input === "string" ? "green" : input.screenColor;
+  if (!["red", "green"].includes(screenColor)) throw new Error("test_companion_color_invalid");
   const machine = window.anantaMachine;
   const canvas = document.createElement("canvas"); canvas.width = 640; canvas.height = 360;
-  const drawing = canvas.getContext("2d"); drawing.fillStyle = "rgb(20,220,20)"; drawing.fillRect(0, 0, 640, 360);
+  const drawing = canvas.getContext("2d"); drawing.fillStyle = screenColor === "red" ? "rgb(220,20,20)" : "rgb(20,220,20)";
+  drawing.fillRect(0, 0, 640, 360);
   const jpeg = canvas.toDataURL("image/jpeg", .7).split(",")[1]; canvas.width = canvas.height = 0;
   const screen = machine.screen.open("screen:" + sessionId);
   const state = { closed: false, failed: false, speechDone: false };
@@ -70,11 +74,14 @@ export function avatarAbsent() {
   return !document.querySelector('#media-grid .remote-media[data-source="camera"]');
 }
 
-export function decodedGreenScreen() {
+export function decodedCompanionScreen(expectedColor) {
   const video = [...document.querySelectorAll("video")].find(v => v.videoWidth === 640 && v.videoHeight === 360);
   if (!video) return false;
   const canvas = document.createElement("canvas"); canvas.width = canvas.height = 1;
   const drawing = canvas.getContext("2d"); drawing.drawImage(video, 0, 0, 1, 1);
   const pixel = drawing.getImageData(0, 0, 1, 1).data; canvas.width = canvas.height = 0;
-  return pixel[0] < 80 && pixel[1] > 150 && pixel[2] < 80;
+  return expectedColor === "red" ? pixel[0] > 150 && pixel[1] < 80 && pixel[2] < 80
+    : pixel[0] < 80 && pixel[1] > 150 && pixel[2] < 80;
 }
+
+export const decodedGreenScreen = decodedCompanionScreen;

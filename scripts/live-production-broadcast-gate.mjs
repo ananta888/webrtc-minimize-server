@@ -4,6 +4,7 @@ import { verifyProductionHandoff } from "./live-production-handoff-gate.mjs";
 import { verifyProductionViewerRecovery } from "./live-production-viewer-recovery-gate.mjs";
 import { installBroadcastTransportDiagnostics } from "./broadcast-transport-diagnostics.mjs";
 import { productionBroadcastScenario, inspectProductionBroadcastUi } from "./production-broadcast-scenario.mjs";
+import { verifyProductionStandby } from "./live-production-standby-gate.mjs";
 
 if (process.env.RUN_LIVE_PRODUCTION_BROADCAST !== "1") {
   console.log("SKIP production broadcast gate: provide an isolated test identity and packager");
@@ -387,8 +388,11 @@ try {
     await privateViewer.locator("#broadcast-navigation").click();
     await refreshUntilProgramVisible(privateViewer, "section[aria-labelledby=own-broadcasts-heading]", title);
     const privateManifest = await startVisiblePlayer(privateViewer, "section[aria-labelledby=own-broadcasts-heading]");
-    if (handoffId) await verifyProductionHandoff({ owner: ownerPage, viewer: privateViewer, targetId: handoffId,
-      programCreates: () => programCreateRequests, statuses: assignmentStatuses, manifest: privateManifest });
+    if (handoffId) {
+      await verifyProductionStandby({ owner: ownerPage, targetId: handoffId, programCreates: () => programCreateRequests });
+      await verifyProductionHandoff({ owner: ownerPage, viewer: privateViewer, targetId: handoffId,
+        programCreates: () => programCreateRequests, statuses: assignmentStatuses, manifest: privateManifest });
+    }
     assert.equal(await privateViewer.locator("#leave-room").count(), 0,
       "authenticated private viewers must not receive room membership");
     await privateViewer.locator("app-broadcast-player .controls button", { hasText: "Schließen" }).click();
@@ -462,9 +466,12 @@ try {
   assert.equal(viewerPlayback.sessionRenewals, 1,
     "one scoped playback-session renewal was expected before the first grant expired");
   if (process.env.LIVE_PRODUCTION_VIEWER_RECOVERY === "1") await verifyProductionViewerRecovery(viewer, playerManifest);
-  if (handoffId) playerManifest = await verifyProductionHandoff({ owner: ownerPage, viewer,
-    targetId: verifyPrivateViewer ? packagerId : handoffId, programCreates: () => programCreateRequests,
-    statuses: assignmentStatuses, manifest: playerManifest });
+  if (handoffId) {
+    const targetId = verifyPrivateViewer ? packagerId : handoffId;
+    await verifyProductionStandby({ owner: ownerPage, targetId, programCreates: () => programCreateRequests });
+    playerManifest = await verifyProductionHandoff({ owner: ownerPage, viewer,
+      targetId, programCreates: () => programCreateRequests, statuses: assignmentStatuses, manifest: playerManifest });
+  }
 
   await ownerPage.locator("#broadcast-stop").click();
   await ownerPage.locator("#broadcast-start", {

@@ -71,6 +71,7 @@ import {
 } from "./native-packager-assignment.js";
 import { handoffNativePackager } from "./native-packager-handoff.js";
 import { NativePackagerStandbyError } from "./native-packager-standby.js";
+import { BroadcastSourceRequests, BroadcastSourceRequestError } from "./broadcast-source-requests.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
@@ -355,6 +356,7 @@ function stopProgramForPrincipal(broadcastRuntime, principal, programId) {
 }
 
 function errorStatus(error) {
+  if (error instanceof BroadcastSourceRequestError) return error.status;
   if (error instanceof MachineLeaseError) return error.status;
   if (error instanceof RoomDirectoryError) return error.status;
   if (error instanceof PairWorkspaceError) return error.status;
@@ -396,6 +398,7 @@ function createHttpHandler(config, registry, services) {
     broadcastAbuseGuard,
     broadcastHealthRegistry,
     broadcastRuntime,
+    broadcastSourceRequests,
   } = services;
   return async (request, response) => {
     try {
@@ -778,6 +781,18 @@ function createHttpHandler(config, registry, services) {
             });
           sendJson(response, 200, result, securityHeaders(config));
         }
+        return;
+      }
+      if (url.pathname === "/api/broadcast-source-requests") {
+        if (!broadcastSourceRequests || config.authMode !== "required" || !config.nativePackagerSelfServiceEnabled || request.method !== "POST"
+          || url.search || !requestOriginAllowed(request, config)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" }); response.end(); return;
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const input = await readJsonBody(request);
+        sendJson(response, input.action === "create" ? 201 : 200,
+          broadcastSourceRequests.execute(identity, input), securityHeaders(config));
         return;
       }
       if (nativeHandoffMatch) {
@@ -2521,6 +2536,10 @@ export function createAppServer(options = {}) {
   }
   const broadcastRuntime = options.broadcastRuntime || (broadcastGrantAuthority
     ? new BroadcastRuntimeRegistry({ grantAuthority: broadcastGrantAuthority }) : null);
+  const broadcastSourceRequests = broadcastRuntime ? new BroadcastSourceRequests({
+    members: roomId => registry.members(roomId),
+    program: (...args) => broadcastRuntime.nativeSourceRequestContext(...args),
+  }) : null;
   const mediaMtxExternalAuthService = options.mediaMtxExternalAuthService
     || (broadcastGrantAuthority && config.broadcastGatewayAuthEnabled
       ? new MediaMtxExternalAuthService({
@@ -2571,9 +2590,15 @@ export function createAppServer(options = {}) {
     broadcastHealthRegistry,
     broadcastRuntime,
     broadcastGrantAuthority,
+    broadcastSourceRequests,
     broadcastPlaybackSessions,
   };
   const server = http.createServer(createHttpHandler(config, registry, services));
+  if (broadcastSourceRequests) {
+    const sourceRequestPrune = setInterval(() => broadcastSourceRequests.prune(), 5000);
+    sourceRequestPrune.unref();
+    server.on("close", () => { clearInterval(sourceRequestPrune); broadcastSourceRequests.destroy(); });
+  }
   server.on("close", () => machineSessions.destroy());
   if (!options.workspaceStore && workspaceStore) server.on("close", () => workspaceStore.close());
   if (!options.mediaAgentEnrollmentStore && mediaAgentEnrollmentStore) {

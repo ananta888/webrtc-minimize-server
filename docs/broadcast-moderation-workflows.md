@@ -2,17 +2,67 @@
 
 Stand: 2026-09-07. Dieses Dokument beschreibt den TBP-030-Zwischenstand.
 Die Domainpolicy für serverseitige Moderation ist vorbereitet, aber noch nicht
-an eine öffentliche Moderations-API angeschlossen. Der native Packager besitzt
+vollständig an eine öffentliche Moderations-API angeschlossen. Eine getrennte
+Quellenanfrage-API ist jetzt verbunden, ohne Consent oder Medienrechte zu erteilen.
+Der native Packager besitzt
 inzwischen einen realen Enrollment-/Publish-/Playback-Pfad. Eine laufende
 Own-Source-Komposition lässt sich über einen getrennten lokalen Bildregie-Port
 steuern. Für eigenes natives Publishing ist die unten beschriebene serverseitige
 Same-Program-Übergabe einschließlich Angular-Übergabedialog angeschlossen.
 Kontrollierter Player-Generationswechsel ist lokal implementiert und getestet.
 Fremdquellenmoderation und automatische Standby-Übernahme bleiben offen. Eine
-keylose Standby-Vormerkung ist implementiert; ihr Produktionsnachweis folgt.
+keylose Standby-Vormerkung ist implementiert und per Produktionstastaturtest belegt.
 Private Zwei-Packager-
 Übergaben sind inzwischen real nachgewiesen; der vollständige Gate mit
 öffentlicher Rückübergabe ist weiterhin offen.
+
+## Angeschlossene Quellenanfragen (noch ohne Medienübernahme)
+
+`POST /api/broadcast-source-requests` akzeptiert den geschlossenen Vertrag unter
+`contracts/broadcast-source-requests/request.v1.schema.json`. Er ist nur bei
+erforderlichem OIDC und aktiviertem Native-Packager-Selfservice verfügbar.
+Exakter Origin, JSON-Body-Grenze und aktuelle Human-Mitgliedschaft desselben
+Raums und Gerätefingerprints werden vor der Aktion geprüft.
+
+Alle Aktionen enthalten `requestVersion: 1`, `action`, `roomId` und
+`deviceFingerprint`. `create` ergänzt den sichtbaren lokalen Trigger
+`user-action`, Programm-ID, erwartete Programmrevision/-epoche, `targetPeerId`
+und `sourceKind` (`microphone`, `camera`, `screen`, `screen-audio`). Ausschließlich
+der tatsächliche aktive native Program-Publisher darf einen anderen aktuellen
+Human-Peer seines Raums anfragen. Ein bestehender Writer mit gültiger Lease ist
+erforderlich; während einer Übergabe gibt es keine neue Anfrage.
+
+`list` liest nur die an das eigene konkrete Peer-/Gerät gerichteten oder von ihm
+gesendeten Anfragen. `decline` ist dem Zielgerät vorbehalten, `cancel` dem
+anfragenden Publisher; beide benötigen `requestId` und `trigger: user-action`.
+Ein identisches terminales Ablehnen/Zurückziehen ist idempotent. Ein fremder
+Request liefert denselben Unavailable-Fehler wie ein unbekannter. Nach
+Leave/Rejoin erhält auch dasselbe Konto/Gerät alte Anfragen nicht zurück.
+
+Die Antwort enthält ausschließlich die geschlossenen Metadaten und immer
+`authority: none`. Es gibt bewusst **keine** `approve`-Aktion, keinen Consent,
+keinen Capture-Aufruf, keine Schlüsselweitergabe und kein neues Assignment.
+Die nächste UI-/Consent-/Medienintegration muss diese getrennten Rechte erst
+explizit einholen und durchsetzen; diese API allein ermöglicht noch keinen
+Trusted-Program-Broadcast fremder Quellen.
+
+Anfragen laufen nach 120 Sekunden ab. Lesen/Aktionen prüfen erneut Membership,
+Publishergerät, Programmrevision/-epoche, Writer/Fence und dessen Lease;
+Abweichungen invalidieren die Anfrage. Ein Fünf-Sekunden-Pruner entfernt
+abgelaufene Metadaten auch ohne weitere Requests, Serverende löscht den Zustand
+und sperrt weitere Aktionen. Maximal 20 Anfragen je Senderkonto, Zielkonto oder
+Programm pro Lebenszeitfenster sowie 1.024 insgesamt begrenzen Speicher und
+Flapping; terminale Anfragen verbrauchen ihr Budget bis Ablauf weiter. Zusätzlich
+sind 60 Aktionen je Principal/Minute und 2.048 aktive Rate-Zähler begrenzt.
+Diese Grenzen betreffen nur Broadcast-Anfragen, nicht die Anzahl von Räumen.
+Namen, OIDC-Tokens, Fingerprints, Medien und Decrypt-Schlüssel fehlen in der
+Antwort; alle Antworten verwenden `no-store`. Es gibt keine Persistenz.
+
+Unit-/Contracttests und ein echter lokaler HTTP-Lauf mit kryptografisch
+verifizierten ephemeren OIDC-Tokens prüfen diese Grenzen. Room-Admission und
+Packager-Admission sind in diesem isolierten HTTP-Test explizite Fixtures, keine
+neue Produktionszulassung. Angular-Bedienung, Publisher-Consent und die tatsächliche
+Remotequellen-Verarbeitung bleiben als nächste Implementierungsschritte offen.
 
 ### Sicherheitsgrenze für wiederholte Quellenfreigaben
 
@@ -73,7 +123,35 @@ erneut geladen werden; die Mutation wird nicht automatisch wiederholt.
 Registry- und echte lokale HTTP-/WebSocket-Tests prüfen Auswahl, Ablehnung,
 Revisionen, unveränderten Writer, fehlendes Standby-Assignment und Handoff-
 Invalidierung. Komponenten-/Service-Tests prüfen Bestätigung und Lifecycle;
-die Produktions- und physische Accessibility-Abnahme steht noch aus.
+die zusätzliche physische Accessibility-Abnahme steht noch aus.
+
+Der isolierte Zwei-Packager-Produktionsgate ergänzt vor jeder Übergabe einen
+Standby-Schritt mit echten Tastaturaktionen: Laden per Enter, Setzen/Entfernen/
+erneutes Setzen per Space und jeweils bestätigtes Speichern per Enter. Er
+akzeptiert ausschließlich gleich-originige Antworten des geschlossenen
+Control-Vertrags und exakt fortschreitende Standby-Revisionen bei unveränderter
+Programmrevision/-epoche. Capture-Aufrufliste, PeerConnection-Anzahl und
+Programm-Erstellungen müssen unverändert bleiben. Sechs reine Beobachtertests
+prüfen diese Auswertung einschließlich Fehlantwort und unerlaubter Capture-
+Änderung; sie ersetzen keinen erfolgreichen tatsächlichen Produktionslauf.
+
+Der erste Versuch nach dem Rollout scheiterte schon beim temporären Keycloak-
+Provisioning mit 401; eine getrennte Anmeldung und Cleanup-Prüfung danach waren
+erfolgreich. Der nächste Lauf erreichte Standby-Control und Checkboxbedienung,
+beobachtete aber keine Antwort auf Speichern. Der Tastatur-Gate wartet jetzt
+zusätzlich auf den aktivierten Button: Ein echter lokaler Chromium-Test belegt,
+dass `press("Enter")` auf einem deaktivierten Button nicht auf dessen Freigabe
+wartet und keinen Klick erzeugt. Fehlende Commit-Antworten werden anhand von
+Request-/Dialog-Flags, geschlossenen Transportcodes und begrenzten UI-Codes
+unterschieden. Der anschließende isolierte Lauf auf Produktionsrevision
+`c20f453` bestand die tatsächliche Standby-Auswahl: Setzen, Entfernen und erneutes
+Setzen mit drei bestätigten HTTP-200-Antworten, fortschreitender CAS-Revision und
+unverändertem Programm, Capture und Verbindungen. Zwei echte Enrollment-Vorgänge
+und dekodierte HLS-Wartebild-/Quellenrückkehr bestanden ebenfalls. Erst der
+nachfolgende öffentliche Handoff scheiterte erneut an `net::ERR_NETWORK_CHANGED`;
+der Gesamtlauf bleibt Exit 1, nicht Handoff-PASS. Unabhängige Nachprüfung fand
+keine Testcontainer, Identity-Volumes, Ausgabe-Ressourcen oder Keycloak-Testnutzer;
+der öffentliche Healthcheck meldete null Räume und Teilnehmer.
 
 ### Native Handoff-Routen
 
@@ -215,13 +293,13 @@ sein gemeinsamer Mini-PC-Origin beweist keinen beliebigen Cross-Host-Origin.
 
 ### Ausgelieferter Stand und getrennte Produktionsnachweise
 
-Aktuell ausgeliefert ist `56cdeb335d015fed2e60b06ce594d72da1a37581`, nach
-[allen sieben erfolgreichen CI-Jobs](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34136555441).
+Aktuell ausgeliefert ist `c20f4533308ee783807af7c9396f5b51fea965a1`, nach
+[allen sieben erfolgreichen CI-Jobs](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34142790479).
 Web-App, Native-Packager und HLS-Origin laufen auf genau dieser Revision;
 externer Smoke, Identitätserhalt und unabhängiger Artefaktvergleich sind bestanden.
 Die fünf Binaries im Image entsprechen dem attestierten CI-Manifest; das
 öffentliche Manifest und der Linux-Download sind bytegleich. Manifest-SHA-256:
-`a52cbff4770e97e47f01bacb463a2f569bd16b594205f42b90de2a0ee1da92e7`.
+`b7cd6c8a94d7ac61a756330d56fbea7b999fd6466e339183ba72652f1870cd2d`.
 Auth und SFrame bleiben `required`, Maschinenaufnahme bleibt deaktiviert.
 Dies ist kein neuer erfolgreicher Handoff-Lauf.
 
