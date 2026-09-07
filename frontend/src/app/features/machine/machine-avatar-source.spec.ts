@@ -25,7 +25,9 @@ describe("independent bounded avatar lifecycle", () => {
     const f = setup(), receipt = await f.open();
     expect(receipt).toMatchObject({ schema: "ananta.meet-avatar-source.v1", profile: "neutral-ai-v1", width: 256, height: 256, fps: 5, expiresAt: now + 30_000 });
     vi.advanceTimersByTime(999); expect(f.surface.frame).toHaveBeenCalledTimes(5);
-    vi.advanceTimersByTime(29_001); expect(f.surface.frame).toHaveBeenCalledTimes(150);
+    f.source.pulse(receipt.generation);
+    for (let i = 0; i < 14; i++) { vi.advanceTimersByTime(2000); f.source.pulse(receipt.generation); }
+    vi.advanceTimersByTime(1001); expect(f.surface.frame).toHaveBeenCalledTimes(150);
     expect(f.source.status().state).toBe("failed"); expect(f.surface.close).toHaveBeenCalledOnce();
     vi.advanceTimersByTime(1000); expect(f.surface.frame).toHaveBeenCalledTimes(150);
     expect(vi.getTimerCount()).toBe(0);
@@ -33,7 +35,9 @@ describe("independent bounded avatar lifecycle", () => {
   it("waits only ten seconds for protection and never renders before readiness", async () => {
     const f = setup(); f.surface.ready.mockReturnValue(false);
     const pending = expect(f.open()).rejects.toThrow("meet_avatar_setup_timeout");
-    vi.advanceTimersByTime(10_000); await pending;
+    const generation = f.source.status().generation;
+    for (let i = 0; i < 4; i++) { vi.advanceTimersByTime(2000); f.source.pulse(generation); }
+    vi.advanceTimersByTime(2000); await pending;
     expect(f.surface.frame).not.toHaveBeenCalled(); expect(f.surface.close).toHaveBeenCalledOnce();
     f.surface.ready.mockReturnValue(true); vi.advanceTimersByTime(100);
     expect(f.source.status().state).toBe("failed");
@@ -93,5 +97,21 @@ describe("independent bounded avatar lifecycle", () => {
   it("closed polling does not consume generations or authority", async () => {
     const f = setup(); for (let i = 0; i < 4000; i++) { f.source.close(); f.source.status(); }
     expect(f.ports.authority).not.toHaveBeenCalled(); expect((await f.open()).generation).toBe(1); f.source.close();
+  });
+  it("stops on a missing controller pulse and a late pulse cannot revive it", async () => {
+    const f = setup(), lease = await f.open();
+    expect(lease.heartbeatMs).toBe(2500); vi.advanceTimersByTime(2500);
+    expect(f.source.status().state).toBe("failed"); expect(f.surface.close).toHaveBeenCalledOnce();
+    expect(() => f.source.pulse(lease.generation)).toThrow(); expect(f.surface.frame).toHaveBeenCalledTimes(13);
+    const fresh = await f.open(); expect(() => f.source.pulse(lease.generation)).toThrow("meet_avatar_pulse_stale");
+    vi.advanceTimersByTime(2000); f.source.pulse(fresh.generation); vi.advanceTimersByTime(1000);
+    expect(f.source.status().state).toBe("open"); f.source.close();
+  });
+  it("never uses a pulse to extend expired authority or continue a pending setup after controller loss", async () => {
+    const f = setup(); f.surface.ready.mockReturnValue(false);
+    const pending = expect(f.open()).rejects.toThrow("meet_avatar_authority_expired");
+    vi.advanceTimersByTime(2500); await pending; expect(f.surface.frame).not.toHaveBeenCalled();
+    f.surface.ready.mockReturnValue(true); const fresh = await f.open(); f.authority.leaseGeneration++;
+    expect(() => f.source.pulse(fresh.generation)).toThrow(); expect(f.source.status().state).toBe("failed");
   });
 });

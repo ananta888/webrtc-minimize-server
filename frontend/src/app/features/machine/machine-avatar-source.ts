@@ -14,7 +14,7 @@ interface AvatarPorts {
 }
 export interface MachineAvatarReceipt {
   schema: "ananta.meet-avatar-source.v1"; profile: "neutral-ai-v1";
-  generation: number; width: 256; height: 256; fps: 5; expiresAt: number;
+  generation: number; width: 256; height: 256; fps: 5; heartbeatMs: 2500; expiresAt: number;
 }
 export class MachineAvatarSource {
   private generation = 0;
@@ -29,6 +29,7 @@ export class MachineAvatarSource {
   private expiresAt = 0;
   private frames = 0;
   private protectionLostAt = 0;
+  private controllerUntil = 0;
   private readonly clock: () => number;
 
   constructor(private readonly ports: AvatarPorts) { this.clock = ports.clock ?? Date.now; }
@@ -44,6 +45,7 @@ export class MachineAvatarSource {
     this.scope = { ...authority }; this.generation++; this.state = "opening";
     this.started = this.lastClock = now; this.lastFrame = 0; this.frames = 0; this.protectionLostAt = 0;
     this.expiresAt = Math.min(authority.expiresAt, now + 30_000);
+    this.controllerUntil = now + 2500;
     try { this.surface = this.ports.create(); }
     catch (error) { this.release("failed"); throw error; }
     return new Promise((resolve, reject) => {
@@ -55,7 +57,7 @@ export class MachineAvatarSource {
 
   private check(): number {
     const current = this.ports.authority(), scope = this.scope, now = this.clock();
-    if (!scope || !Number.isFinite(now) || now < this.lastClock || now >= this.expiresAt
+    if (!scope || !Number.isFinite(now) || now < this.lastClock || now >= this.expiresAt || now >= this.controllerUntil
       || current.sourceId !== scope.sourceId || current.sessionId !== scope.sessionId
       || current.leaseGeneration !== scope.leaseGeneration || current.membershipEpoch !== scope.membershipEpoch
       || current.expiresAt !== scope.expiresAt) throw new Error("meet_avatar_authority_expired");
@@ -82,7 +84,7 @@ export class MachineAvatarSource {
       if (this.pending) {
         const pending = this.pending; this.pending = undefined;
         pending.resolve({ schema: "ananta.meet-avatar-source.v1", profile: "neutral-ai-v1", generation: this.generation,
-          width: 256, height: 256, fps: 5, expiresAt: this.expiresAt });
+          width: 256, height: 256, fps: 5, heartbeatMs: 2500, expiresAt: this.expiresAt });
       }
     } catch (error) { this.release("failed", error instanceof Error ? error : new Error("meet_avatar_failed")); }
   }
@@ -95,6 +97,12 @@ export class MachineAvatarSource {
   close(expectedGeneration?: number): boolean {
     if (expectedGeneration !== undefined && (!Number.isSafeInteger(expectedGeneration) || expectedGeneration !== this.generation)) return false;
     this.release("closed"); return true;
+  }
+
+  pulse(expectedGeneration: number): void {
+    if (!Number.isSafeInteger(expectedGeneration) || expectedGeneration !== this.generation) throw new Error("meet_avatar_pulse_stale");
+    try { this.controllerUntil = this.check() + 2500; }
+    catch (error) { this.release("failed"); throw error; }
   }
 
   private release(state: "closed" | "failed", error = new Error("meet_avatar_closed")): void {

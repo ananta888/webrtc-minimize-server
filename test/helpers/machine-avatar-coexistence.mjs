@@ -1,5 +1,19 @@
 // Closed synthetic source producer, installed only in the private browser test.
 // No device capture, model, arbitrary URL or production endpoint.
+export async function openTestAvatar(sourceId) {
+  window.__avatarTestPulse?.stop();
+  const source = window.anantaMachine.avatar, pending = source.open(sourceId, "neutral-ai-v1");
+  const generation = source.status().generation;
+  const phase = { failed: false, timer: null, stop() { clearInterval(this.timer); } };
+  window.__avatarTestPulse = phase;
+  // Explicit fixture controller only; productive Worker pulses must follow a
+  // fresh authenticated Hub exchange, never an autonomous page timer.
+  phase.timer = setInterval(() => {
+    try { source.pulse(generation); } catch { phase.failed = true; phase.stop(); }
+  }, 1000);
+  try { return await pending; } catch (error) { phase.stop(); throw error; }
+}
+
 export async function startAvatarCompanions(sessionId) {
   const machine = window.anantaMachine;
   const canvas = document.createElement("canvas"); canvas.width = 640; canvas.height = 360;

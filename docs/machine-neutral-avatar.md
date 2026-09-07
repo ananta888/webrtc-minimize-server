@@ -7,7 +7,8 @@ a human capture permission is implied by this client adapter.
 
 `open("avatar:" + hubSessionId, "neutral-ai-v1")` requires current verified
 membership, the exact machine session/lease and `avatar.publish`. It returns
-`ananta.meet-avatar-source.v1`, profile, generation, width/height 256, fps 5 and
+`ananta.meet-avatar-source.v1`, profile, generation, width/height 256, fps 5,
+heartbeatMs 2500 and
 absolute expiry only after its concrete camera track is SFrame-protected and
 the first requested source frame succeeds. No text, URL or image argument is
 accepted. The fixed drawing includes `ANANTA / KI` and a moving liveness bar;
@@ -18,6 +19,14 @@ frame count and expiry. Frames requested are not a remote-delivery guarantee.
 `close(generation)` returns false for a stale or malformed generation and never
 removes a newer activation. Argument-free close is reserved for whole-session
 cleanup in the same isolated controller context.
+
+`pulse(generation)` is an additional controller-liveness bound. The source must
+receive a pulse within 2.5 seconds, including while setup is pending. The Worker
+may pulse only after a fresh authenticated Hub exchange, never from an autonomous
+browser timer. A pulse verifies the unchanged source authority and cannot revive
+an expired or replaced generation, extend the 30-second activation or grant a
+capability. It is not itself a cryptographic Hub receipt; the Worker remains
+responsible for verifying that receipt before forwarding a pulse.
 
 ## Bounds and responsibility
 
@@ -54,3 +63,10 @@ calls are counted and forbidden in this test.
 These are private technical/synthetic observations. The neutral port does not
 complete Ananta's independent Hub controls, approved image/profile switching,
 public TURN, long-running soak or production release gates.
+
+MDS-11's port acceptance is complete: 17 source/adapter checks and the actual
+Chromium/Firefox matrix pass, including controller-loss closure at 2442.96 and
+2407.64 ms in the targeted run (11.70 seconds total). The subsequent mandatory
+check passed 558 frontend tests and 497 Node checks (495 passed, two explicit
+skips), with the same controller-loss cases repeated successfully. External
+infrastructure gates remain explicit skips, not production evidence.
