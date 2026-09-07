@@ -49,3 +49,20 @@ Verwaltung. Die Maschinenroute wird bedarfsgeladen, ohne Build-Budgets anzuheben
 Offen in MDS-10/Ananta MAP-22: Hub-eigener, leasegebundener PCM-Ergebnistransfer
 aus echten Piper-Antworten sowie gemeinsame Sprach-/Bildschirm- und weitere
 Abbruch-/Last-Akzeptanz. Der öffentliche Capability-Claim bleibt konservativ.
+
+## Tatsächlicher Piper-Transport im privaten Test
+
+`test/helpers/machine-speech-bridge.mjs` ist ausschließlich mit
+`MEET_SPEECH_CROSS_GATE=1` aktiv. Er nutzt die vorhandene private TLS-/STUN-
+Fixture, verifiziert signierte synthetische Hub-Zulassung und akzeptiert einen
+geschlossenen lokalen stdio-Vertrag für open/status/push/close/probe. Keine
+Aufträge, URLs, JavaScript-Ausdrücke, Schlüssel oder Grants werden vom Aufrufer
+angenommen. Der Probe-Report enthält nur Decoderzählwerte, kein PCM.
+
+Anantas `tests/test_meet_speech_cross_repository.py` hat am 2026-09-07 tatsächliche
+Piper/CUDA-Ausgabe einer festen deutschen Testphrase über seinen Worker-Sink
+hierher übertragen. Chromium und Firefox bestanden in zusammen 29.52 s;
+79 beziehungsweise 75 nichtstille entfernte Messfenster, null Capture- und
+Transformfehler. Das ist mehr als ein synthetischer Oszillatortest, bleibt aber
+eine technische Probe mit Testzulassung: der produktive Hub-Dialogcallback,
+Sprachqualität und exakte entfernte Sample-Zustellung werden nicht behauptet.
