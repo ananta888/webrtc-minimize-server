@@ -27,3 +27,11 @@ index rejection, explicit private directory selection and unchanged contents.
 The Ananta preflight additionally rejects obviously stale builds by timestamp;
 that conservative check is not cryptographic build provenance. No media,
 credential, participant identity or production authorization is generated here.
+
+The complete Node matrix now defaults to two concurrent test processes. Two
+default-concurrency full checks each produced the same Chromium avatar/churn
+timeouts (524 passed, two failed, three skipped); all four affected Chromium
+and Firefox cases passed serially. The complete two-process matrix passed
+526 tests with three existing skips in 128.40 seconds. This bounds aggregate
+browser contention without omitting tests or relaxing any media deadline.
+It is a test-runner resource budget, not a production transport correction.
