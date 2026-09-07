@@ -1,5 +1,8 @@
 // Private fixture bootstrap only: never wrap room creation, join or task work.
-export async function navigateFixture(page, url, ready, { clock = () => performance.now(), budgetMs = 30000 } = {}) {
+export async function navigateFixture(page, url, ready, {
+  clock = () => performance.now(), budgetMs = 30000,
+  pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
+} = {}) {
   const deadline = clock() + budgetMs;
   const remaining = () => {
     const value = deadline - clock();
@@ -24,6 +27,9 @@ export async function navigateFixture(page, url, ready, { clock = () => performa
       return attempt;
     } catch (error) {
       if (attempt === 2 || error !== changed && !/\bnet::ERR_NETWORK_CHANGED\b/.test(String(error.message))) throw error;
+      // Docker route notifications may arrive in a burst. Do not spend the
+      // only retry immediately on that same burst; never extend the deadline.
+      await pause(Math.min(500, remaining()));
       remaining();
     } finally {
       current = false;

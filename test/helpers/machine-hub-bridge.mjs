@@ -125,6 +125,7 @@ try {
   }
 } catch (error) {
   const code = ["screen_not_moving", "test_private_frame_or_stop_failed", "test_tls_proxy_not_ready",
+    "test_navigation_network_changed", "test_navigation_deadline",
     "test_stun_start_failed", "test_docker_command_failed", "test_private_proxy_network_invalid"].includes(error.message)
     ? error.message : error.name === "TimeoutError" ? "test_browser_timeout" : "synthetic_meet_bridge_failed";
   process.stdout.write(JSON.stringify({ bridge_error: code, stage,

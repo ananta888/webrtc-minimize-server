@@ -101,9 +101,16 @@ sichtbar übersprungen; keine öffentliche Instanz wurde neu gestartet/deployt.
 
 Die private Fixture behandelt `ERR_NETWORK_CHANGED` beim Bootstrap mit höchstens
 zwei Navigationen unter einem gemeinsamen 30-s-Limit. Das umfasst fehlgeschlagene
-Modulrequests, aber ausschließlich vor Raumerstellung/Join/Aufträgen. Auth- und
+Modulrequests, aber ausschließlich vor Raumerstellung/Join/Aufträgen. Zwischen
+beiden Versuchen liegt einmalig ein 500-ms-Abstand innerhalb desselben Budgets,
+damit beide Versuche nicht denselben Docker-Netzwerk-Ereignisschub treffen. Auth- und
 Policyfehler, andere Netzfehler, Zeitüberschreitungen und Fachaktionen erhalten
-keine Wiederholung. Zehn deterministische Tests prüfen diese Grenze samt
+keine Wiederholung. Elf deterministische Tests prüfen diese Grenze samt
 Listener-Cleanup; die Fehlerbeobachtung enthält weiterhin nur begrenzte Codes.
 Danach `npm run check` erneut grün: 541 Frontendtests, 484 Node-Prüfungen,
 0 Fehler, 2 explizite Skips (Node 67.04 s); externe Live-Gates weiter übersprungen.
+Nach dem Backoff-Nachtrag bestanden Anantas beide sequenziellen privaten
+Text-/Sprach-Browserfälle in 72.03 s; vorherige fehlgeschlagene Startversuche
+bleiben als solche in den Todo-Notizen erhalten.
+Finaler Check mit Backoff: 541 Frontendtests und 485 Node-Prüfungen bestanden,
+0 Fehler, 2 explizite Skips (Node 64.00 s); externe Live-Gates bleiben übersprungen.

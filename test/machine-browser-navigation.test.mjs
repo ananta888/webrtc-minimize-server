@@ -65,3 +65,13 @@ test("exhausted shared deadline cannot be extended by a network retry", async ()
   await assert.rejects(navigateFixture(page, url, ready, { clock: () => now, budgetMs: 1000 }), /deadline/);
   assert.equal(page.waits.length, 0); assert.equal(page.listenerCount("requestfailed"), 0);
 });
+
+test("network backoff consumes the existing deadline and occurs only once", async () => {
+  const page = fixture(), go = page.goto, pauses = []; let now = 0;
+  page.goto = async (...args) => { await go(...args);
+    if (page.navigations.length === 1) { now += 100; throw new Error("net::ERR_NETWORK_CHANGED"); } };
+  assert.equal(await navigateFixture(page, url, ready, { clock: () => now, budgetMs: 1000,
+    pause: async ms => { pauses.push(ms); now += ms; } }), 2);
+  assert.deepEqual(pauses, [500]); assert.equal(page.navigations[1].options.timeout, 400);
+  assert.equal(page.listenerCount("requestfailed"), 0);
+});
