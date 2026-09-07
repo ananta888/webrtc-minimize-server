@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/broadcast-source-requests/request.v1.schema.json",
+  "title": "Broadcast source invitation command (no consent or media authority)",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/create"
+    },
+    {
+      "$ref": "#/$defs/list"
+    },
+    {
+      "$ref": "#/$defs/decline"
+    },
+    {
+      "$ref": "#/$defs/cancel"
+    }
+  ],
+  "$defs": {
+    "common": {
+      "type": "object",
+      "required": [
+        "requestVersion",
+        "action",
+        "roomId",
+        "deviceFingerprint"
+      ],
+      "properties": {
+        "requestVersion": {
+          "const": 1
+        },
+        "action": {
+          "type": "string"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{5,47}$"
+        },
+        "deviceFingerprint": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        }
+      }
+    },
+    "create": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/common"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "const": "create"
+            },
+            "trigger": {
+              "const": "user-action"
+            },
+            "programId": {
+              "type": "string",
+              "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+            },
+            "expectedProgramRevision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "expectedProgramEpoch": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "targetPeerId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{16}$"
+            },
+            "sourceKind": {
+              "enum": [
+                "microphone",
+                "camera",
+                "screen",
+                "screen-audio"
+              ]
+            }
+          },
+          "required": [
+            "trigger",
+            "programId",
+            "expectedProgramRevision",
+            "expectedProgramEpoch",
+            "targetPeerId",
+            "sourceKind"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "list": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/common"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "const": "list"
+            }
+          },
+          "required": []
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "decline": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/common"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "const": "decline"
+            },
+            "trigger": {
+              "const": "user-action"
+            },
+            "requestId": {
+              "type": "string",
+              "pattern": "^bsr_[A-Za-z0-9_-]{24}$"
+            }
+          },
+          "required": [
+            "trigger",
+            "requestId"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "cancel": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/common"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "const": "cancel"
+            },
+            "trigger": {
+              "const": "user-action"
+            },
+            "requestId": {
+              "type": "string",
+              "pattern": "^bsr_[A-Za-z0-9_-]{24}$"
+            }
+          },
+          "required": [
+            "trigger",
+            "requestId"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

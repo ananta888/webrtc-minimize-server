@@ -2,7 +2,9 @@
 
 Stand: 2026-09-07. Dieses Dokument beschreibt den TBP-030-Zwischenstand.
 Die Domainpolicy für serverseitige Moderation ist vorbereitet, aber noch nicht
-an eine öffentliche Moderations-API angeschlossen. Der native Packager besitzt
+vollständig an eine öffentliche Moderations-API angeschlossen. Eine getrennte
+Quellenanfrage-API ist jetzt verbunden, ohne Consent oder Medienrechte zu erteilen.
+Der native Packager besitzt
 inzwischen einen realen Enrollment-/Publish-/Playback-Pfad. Eine laufende
 Own-Source-Komposition lässt sich über einen getrennten lokalen Bildregie-Port
 steuern. Für eigenes natives Publishing ist die unten beschriebene serverseitige
@@ -13,6 +15,54 @@ keylose Standby-Vormerkung ist implementiert und per Produktionstastaturtest bel
 Private Zwei-Packager-
 Übergaben sind inzwischen real nachgewiesen; der vollständige Gate mit
 öffentlicher Rückübergabe ist weiterhin offen.
+
+## Angeschlossene Quellenanfragen (noch ohne Medienübernahme)
+
+`POST /api/broadcast-source-requests` akzeptiert den geschlossenen Vertrag unter
+`contracts/broadcast-source-requests/request.v1.schema.json`. Er ist nur bei
+erforderlichem OIDC und aktiviertem Native-Packager-Selfservice verfügbar.
+Exakter Origin, JSON-Body-Grenze und aktuelle Human-Mitgliedschaft desselben
+Raums und Gerätefingerprints werden vor der Aktion geprüft.
+
+Alle Aktionen enthalten `requestVersion: 1`, `action`, `roomId` und
+`deviceFingerprint`. `create` ergänzt den sichtbaren lokalen Trigger
+`user-action`, Programm-ID, erwartete Programmrevision/-epoche, `targetPeerId`
+und `sourceKind` (`microphone`, `camera`, `screen`, `screen-audio`). Ausschließlich
+der tatsächliche aktive native Program-Publisher darf einen anderen aktuellen
+Human-Peer seines Raums anfragen. Ein bestehender Writer mit gültiger Lease ist
+erforderlich; während einer Übergabe gibt es keine neue Anfrage.
+
+`list` liest nur die an das eigene konkrete Peer-/Gerät gerichteten oder von ihm
+gesendeten Anfragen. `decline` ist dem Zielgerät vorbehalten, `cancel` dem
+anfragenden Publisher; beide benötigen `requestId` und `trigger: user-action`.
+Ein identisches terminales Ablehnen/Zurückziehen ist idempotent. Ein fremder
+Request liefert denselben Unavailable-Fehler wie ein unbekannter. Nach
+Leave/Rejoin erhält auch dasselbe Konto/Gerät alte Anfragen nicht zurück.
+
+Die Antwort enthält ausschließlich die geschlossenen Metadaten und immer
+`authority: none`. Es gibt bewusst **keine** `approve`-Aktion, keinen Consent,
+keinen Capture-Aufruf, keine Schlüsselweitergabe und kein neues Assignment.
+Die nächste UI-/Consent-/Medienintegration muss diese getrennten Rechte erst
+explizit einholen und durchsetzen; diese API allein ermöglicht noch keinen
+Trusted-Program-Broadcast fremder Quellen.
+
+Anfragen laufen nach 120 Sekunden ab. Lesen/Aktionen prüfen erneut Membership,
+Publishergerät, Programmrevision/-epoche, Writer/Fence und dessen Lease;
+Abweichungen invalidieren die Anfrage. Ein Fünf-Sekunden-Pruner entfernt
+abgelaufene Metadaten auch ohne weitere Requests, Serverende löscht den Zustand
+und sperrt weitere Aktionen. Maximal 20 Anfragen je Senderkonto, Zielkonto oder
+Programm pro Lebenszeitfenster sowie 1.024 insgesamt begrenzen Speicher und
+Flapping; terminale Anfragen verbrauchen ihr Budget bis Ablauf weiter. Zusätzlich
+sind 60 Aktionen je Principal/Minute und 2.048 aktive Rate-Zähler begrenzt.
+Diese Grenzen betreffen nur Broadcast-Anfragen, nicht die Anzahl von Räumen.
+Namen, OIDC-Tokens, Fingerprints, Medien und Decrypt-Schlüssel fehlen in der
+Antwort; alle Antworten verwenden `no-store`. Es gibt keine Persistenz.
+
+Unit-/Contracttests und ein echter lokaler HTTP-Lauf mit kryptografisch
+verifizierten ephemeren OIDC-Tokens prüfen diese Grenzen. Room-Admission und
+Packager-Admission sind in diesem isolierten HTTP-Test explizite Fixtures, keine
+neue Produktionszulassung. Angular-Bedienung, Publisher-Consent und die tatsächliche
+Remotequellen-Verarbeitung bleiben als nächste Implementierungsschritte offen.
 
 ### Sicherheitsgrenze für wiederholte Quellenfreigaben
 
