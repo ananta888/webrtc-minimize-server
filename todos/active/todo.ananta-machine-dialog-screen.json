@@ -28,7 +28,7 @@
   "risk_scale": ["low", "medium", "high", "critical"],
   "milestones": [
     {"id": "MDS-M1", "title": "Verträge und Autorisierung", "status": "in_progress", "task_ids": ["MDS-01", "MDS-02"]},
-    {"id": "MDS-M2", "title": "Empfang, Chat und Bildschirmquelle", "status": "in_progress", "task_ids": ["MDS-03", "MDS-04", "MDS-05"]},
+    {"id": "MDS-M2", "title": "Empfang, Chat und Medienquellen", "status": "in_progress", "task_ids": ["MDS-03", "MDS-04", "MDS-05", "MDS-10"]},
     {"id": "MDS-M3", "title": "Lebenszyklus und sichtbare Kontrolle", "status": "in_progress", "task_ids": ["MDS-06", "MDS-07"]},
     {"id": "MDS-M4", "title": "Verifikation und kontrollierter Rollout", "status": "in_progress", "task_ids": ["MDS-08", "MDS-09"]}
   ],
@@ -111,7 +111,7 @@
     },
     {
       "id": "MDS-08", "title": "Headless-Sicherheits- und Ende-zu-Ende-Matrix verifizieren",
-      "status": "in_progress", "progress_percent": 5, "priority": "P1", "risk": "high", "depends_on": ["MDS-07"],
+      "status": "in_progress", "progress_percent": 5, "priority": "P1", "risk": "high", "depends_on": ["MDS-07", "MDS-10"],
       "ananta_task_refs": ["MAP-29", "MAP-30", "MAP-31"],
       "acceptance_criteria": [
         "Ephemere Issuer, Policy-Fixtures und synthetische Quellen erlauben Tests ohne menschlichen Klick oder produktive Secrets; fehlende Infrastruktur endet begrenzt und sichtbar blocked/skipped.",
@@ -119,6 +119,18 @@
         "Negativmatrix umfasst falsche Tenant/Room/Task/Quelle, Replay, unbekannte Felder/Codecs, ausstehende SFrame-ACKs, Widerruf, Schlüsselrotation, Queue-Overflow und menschliche Capture-Versuche.",
         "Chromium/Firefox-Capabilities, Human-Join, Pair, 20-Teilnehmer-Grenze und bestehende Publikationen regressionsprüfen; npm run check und npm run todos:validate ausführen. Keine Testevidenz als ungeprüfte Produktionsfreigabe darstellen."
       ]
+    },
+    {
+      "id": "MDS-10", "title": "Separat stoppbaren synthetischen PCM-Sprachausgang bereitstellen",
+      "status": "in_progress", "progress_percent": 1, "priority": "P1", "risk": "high", "depends_on": ["MDS-02", "MDS-06"],
+      "ananta_task_refs": ["MAP-22", "MAP-24", "MAP-26"],
+      "acceptance_criteria": [
+        "Eigener PCM-Source-Port fuer lokal von Ananta erzeugte Sprache, getrennt vom bisherigen gekoppelten MP4-Pfad, Avatar und Screen. Nur aktuelle speech.publish-Capability und verifizierte Hub-Session erlauben Oeffnen; keine Capture-API oder Modellinferenz in Meet.",
+        "Geschlossenes PCM16LE/22050-Hz-Mono-Profil, exakte Sample-Uhr, maximal 40 Sekunden je Ausgabe, begrenzte Nachrichten-/Worklet-Puffer und Backpressure; unbekannte Formate, Reihenfolgefehler, Queue-Overflow und Ressourcenfehler schlagen geschlossen fehl.",
+        "Quellen-/Lease-/Membership-Generation sowie aktuelle Rechte vor Annahme und Ausgabe pruefen; Stop, Leave, Ablauf, Renewal, spaete Worklet-/Setup-Callbacks und konkurrierender MP4-Start verwerfen alte Samples und loesen die eigene Mikrofonpublikation ohne fremde Quellen zu stoppen.",
+        "Headless Vertrags-/Worklet-/Lifecycle-Tests und wirklicher dekodierter Sprachtransport zwischen isolierten Identitaeten unter required-SFrame pruefen. Ein synthetischer Ton beweist nur Transport, keine TTS-Qualitaet; Anantas reale Piper-Ausgabe und Hub-Autoritaet separat integrieren und verifizieren."
+      ],
+      "implementation_note": "Quellstandabgleich 2026-09-07: vorhandene MachinePage.publish koppelt Video/Audio/Chat; audio-Port ist nur Empfang, screen-Port unabhaengig. PCM-Ausgang fehlt. Kleine Source-/Graph-/Worklet-Ports statt weiterer Audio-Logik in der Page; bestehende Mikrofonpublikations-Ownership muss vor paralleler Nutzung explizit getrennt werden. Keine produktive Aktivierung oder weitergehender Capture-/Trust-Grant."
     },
     {
       "id": "MDS-09", "title": "Vorautorisierte Aktivierung, Preflight und Rollback dokumentieren und prüfen",
@@ -134,15 +146,16 @@
   ],
   "critical_path_tasks": ["MDS-01", "MDS-02", "MDS-03", "MDS-07", "MDS-08", "MDS-09"],
   "tasks_status_summary": {
-    "total": 9,
-    "by_status": {"todo": 1, "in_progress": 8, "partial": 0, "blocked": 0, "done": 0},
+    "total": 10,
+    "by_status": {"todo": 1, "in_progress": 9, "partial": 0, "blocked": 0, "done": 0},
     "progress_percent_done": 0,
-    "by_priority": {"P0": 3, "P1": 6, "P2": 0, "P3": 0},
-    "by_risk": {"low": 0, "medium": 0, "high": 5, "critical": 4},
+    "by_priority": {"P0": 3, "P1": 7, "P2": 0, "P3": 0},
+    "by_risk": {"low": 0, "medium": 0, "high": 6, "critical": 4},
     "critical_path": {"total": 6, "done": 0, "remaining": 6},
     "milestones": {"total": 4, "todo": 0, "in_progress": 4, "blocked": 0, "done": 0}
   },
   "summary_notes": [
+    "2026-09-07: Ausfuehrbaren MDS-10 fuer den noch fehlenden eigenstaendigen PCM-Sprachausgang aus Anantas MAP-22/24/26 abgeleitet, vor Codeaenderungen. Vorhandene MP4-Kompatibilitaet, getrennte Quellen, speech.publish-Recht, begrenzte Puffer und Widerruf sind verbindlich; Anantas fertiggestellter gespeicherter Clip-Pfad (MAP-23) ersetzt diese Live-Sprachaufgabe nicht. Keine laufenden Dienste/Secrets/Trust-Konfiguration aendern.",
     "Fortsetzung nach 98d158f: Fixture meldet nur geschlossene, inhaltsfreie Fehlerphasen statt generischem Setupfehler. Ananta-Worker korrigiert Chat-Read/ACK- und Browser-/HTTP-Freigaberennen; Kurzgate prueft nun auch erneuerte Freigabe mit echtem Hub-Cooldown. Spaeterer Antwortfehler war eine fehlende synthetische Projekt-FK-Fixture in Ananta, ohne Abschalten der Datenbankpruefung behoben. Gemeinsamer Fuenf-Minuten-Gate bestanden in 310,18s: 295 aktive Sekunden, vier Lease-Generationen, fuenf bewegte Screen-Stichproben, drei korrelierte Chatantworten und sauberer Stop; eigene Testcontainer und Netz entfernt. 76 gezielte Ananta-Tests bestanden in 56,08s; sechs TLS-/STUN-Unitchecks erneut bestanden. Modelle/Projektpolicy sind ausdrueckliche Testdoubles. Zwei-Stunden-/GPU-/TURN-/Produktionsmatrix und MDS-08 bleiben offen; kein Deployment oder Release-PASS.",
     "MDS-08 Fortsetzung 2026-09-07: Gemeinsamer Ananta-Browsergate auf Basis 17cbdf8 mit privatem internem Docker-Netz, opakem TLS-Proxy, STUN-only-Coturn und separat sandboxed Ananta-Chromium verbunden; keine Host-Port-443-Annahme, Capture- oder Produktionspolicy-Aenderung. Kurzgate in 33,00 Sekunden bestanden. Fuenf-Minuten-Ananta-Soak nach 306,20 Sekunden bei erneuerter Chatfreigabe mit meet_chat_authority_changed fehlgeschlagen; Worker-Korrektur und Wiederholung bleiben offen. npm run check zunaechst erfolgreich; nach Fixture-Erweiterung 501 Frontend-Tests, Build, Go- und statische Gates erfolgreich, ein Node-Zwischenlauf hatte einen nicht erneut reproduzierten Fehler. Vollstaendige Node-Wiederholung: 454 passed, 2 skipped, 0 failed in 65,35 Sekunden; externe Infrastruktur-Gates weiterhin explizit skipped. Sechs neue private TLS-/STUN-Unitchecks bestanden. Keine Archivierung, keine produktive Freigabe oder Deployment.",
     "Commit-/Push-Checkpoint auf Nutzerwunsch 2026-09-07, ohne Fortsetzung der Implementierung und ohne Deployment. Aktueller Build, 501 Frontend-Tests, Go-Gates und Konfigurationspruefungen bestanden. Zwei npm-run-check-Versuche dieser Checkpoint-Runde waren NICHT vollstaendig gruen: einmal Chromium-Maschinen-Fetch beim Renewal im Firefox-Gegenstellentest (isolierte Wiederholung bestanden), danach bestehender Firefox-Vosk-Test mit fehlendem erwartetem Modellrequest. Beide Node-Gesamtlaeufe: 446 bestanden, ein Fehler, zwei Skips. Gemeinsame kurze Hub-/Worker-/Browser-Abnahme gegen zusammengefuehrten Ananta-Stand bestanden (31.84s); nach weiterem Upstream-Reply-Budget-Commit zusaetzlich 29 fokussierte Ananta-Tests bestanden. Todo-Konflikt enthielt ausschliesslich zwei neue Summary-Notizen und wurde unter Erhalt beider geloest. Offene Langzeit-/GPU-/SFU-/TURN-Abnahme bleibt offen; Snapshot ist kein Release-PASS.",
