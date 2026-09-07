@@ -28,7 +28,7 @@
   "risk_scale": ["low", "medium", "high", "critical"],
   "milestones": [
     {"id": "MDS-M1", "title": "Verträge und Autorisierung", "status": "in_progress", "task_ids": ["MDS-01", "MDS-02"]},
-    {"id": "MDS-M2", "title": "Empfang, Chat und Medienquellen", "status": "in_progress", "task_ids": ["MDS-03", "MDS-04", "MDS-05", "MDS-10"]},
+    {"id": "MDS-M2", "title": "Empfang, Chat und Medienquellen", "status": "in_progress", "task_ids": ["MDS-03", "MDS-04", "MDS-05", "MDS-10", "MDS-11"]},
     {"id": "MDS-M3", "title": "Lebenszyklus und sichtbare Kontrolle", "status": "in_progress", "task_ids": ["MDS-06", "MDS-07"]},
     {"id": "MDS-M4", "title": "Verifikation und kontrollierter Rollout", "status": "in_progress", "task_ids": ["MDS-08", "MDS-09"]}
   ],
@@ -133,6 +133,18 @@
       "implementation_note": "2026-09-07: Getrennter speech-Port mit Session-/Quellen-/Lease-/Membership-Bindung, PCM16LE/22050 Mono, 441-Sample-Frames, maximal 40 s/200 ms Queue und eigenem Worklet implementiert. Mikrofonreservierung trennt PCM von gekoppeltem MP4; spaetes MP4-Cleanup kann keinen neuen Besitzer stoppen. Eigene Track-SFrame-Readiness vor Start, kein Capture/Modell/Signalinginhalt. 65 gezielte Frontend- und sechs Worklet-Tests bestanden. Zwei echte Receiver-Browser (Chromium/Firefox) decodieren je 66150 synthetische Samples am lokalen Ausgang mit tatsaechlich gemessenem entferntem PCM, null Capture; Wiedereroeffnung/Renewal/altes Generationstoken geprueft. Private TLS-/STUN-Fixture mit unveraenderlichem vorhandenen Image-Digest ebenfalls fuer beide Browser bestanden (17.66 s), eigens erzeugte Container bereinigt. Gefundenen zweiten-Context-Startfehler (Hauptthread 256 Samples vor Worklet-Uhr) durch getrenntes relatives Worklet-Budget behoben und regressionsgesichert. Initialer Buildfehler durch bedarfsgeladene Maschinenroute behoben, harte Budgets unveraendert. Erster Gesamtlauf fand den Startfehler in zwei Browserfaellen; korrigierter Gesamtlauf wird separat protokolliert. docs/machine-speech-source.md. Offen bleiben Hub-eigener PCM-Ergebnistransfer/echte Piper-Dialogausgabe, kombinierte Sprach-/Bildschirm- und weitere Abbruch-/Lastabnahme. Keine produktive Aktivierung, entfernte Sample-Zustellgarantie oder weitergehender Capture-/Trust-Grant. Abschlussnachtrag 2026-09-07: nachfolgende Commits implementieren/verifizieren den damals offenen echten Hub/Piper-Transfer (GPU-Kurzgate 97.88 s, danach zweimal wiederholt erfolgreich), unabhängigen Screen/Sprachbetrieb und aktuellen Hub-Stop waehrend laufender Ausgabe (91.31 s fuer Pause/Cancel). Room-Audio bleibt auch im Chat aktiv; Chromium/Firefox-Navigationsregression gruen. Begrenzte Bootstrap-Korrekturen separat dokumentiert, gescheiterte Versuche bleiben erhalten. Alle vier hiesigen Akzeptanzkriterien mit Source-/Worklet-/Ownership-Units, realem Decoder, Piper/Hub-Integration und Live-Unterbrechung erfuellt; npm run check 541 Frontend-/485 Node-Pruefungen gruen, zwei sichtbare Skips. Weitergehende Stimmen/Persona, Last/Soak und Produktivrollout sind keine abgeschlossenen Claims dieses Ports und bleiben in ihren uebergreifenden Tasks offen."
     },
     {
+      "id": "MDS-11", "title": "Unabhaengige neutrale KI-Avatarquelle bereitstellen",
+      "status": "in_progress", "progress_percent": 1, "priority": "P1", "risk": "high", "depends_on": ["MDS-02", "MDS-06", "MDS-10"],
+      "ananta_task_refs": ["MAP-12", "MAP-20", "MAP-21", "MAP-24"],
+      "acceptance_criteria": [
+        "Expliziter neutral-ai-v1-Port rendert nur eigenen sichtbar als KI gekennzeichneten 256x256-Canvas mit maximal 5 FPS; keine fremden Texte, URLs, Assets, menschlichen Capture-APIs oder stiller Persona-Fallback.",
+        "Aktuelle avatar.publish-Autoritaet, exakte Session/Lease/Membership, eigene Generation, maximal 30 s inklusive 10 s Setup, 100-ms-Watchdog und konkrete SFrame-Track-Readiness durchsetzen; unbekannte Profile und veraltete Operationen geschlossen ablehnen.",
+        "Eigene Camera-Ownership trennt Avatar von PCM/Screen und konkurrierendem MP4. Stop, Leave, Ablauf, Renewal und spaetes Setup bereinigen ausschliesslich eigene Ressourcen, ohne neuere Aktivierung zu entfernen.",
+        "Deterministische Source-/Adapter-Tests und echte Chromium-/Firefox-Decodierung unter required-SFrame pruefen unabhaengige Quelle, gleichzeitige Publikationen, Renewal/Stop und null menschlichen Capture. npm run check bleibt Pflicht; keine Hub-Integration oder generative Videoqualitaet aus reinem Porttest ableiten."
+      ],
+      "implementation_note": "2026-09-07: Quellstand geprueft: bisheriges MP4 koppelt camera/microphone/chat, PCM und Screen sind separat. Neue abgegrenzte Quelle vor Implementierung geplant; Hub-Steuerung und genehmigte Persona-Bilder bleiben Ananta-Folgearbeit. SRP/DIP durch getrennte Source, Browser-Adapter und Sessionprojektion; vorhandene Ownership wiederverwenden."
+    },
+    {
       "id": "MDS-09", "title": "Vorautorisierte Aktivierung, Preflight und Rollback dokumentieren und prüfen",
       "status": "todo", "progress_percent": 0, "priority": "P1", "risk": "high", "depends_on": ["MDS-08"],
       "ananta_task_refs": ["MAP-05", "MAP-31", "MAP-32"],
@@ -146,11 +158,11 @@
   ],
   "critical_path_tasks": ["MDS-01", "MDS-02", "MDS-03", "MDS-07", "MDS-08", "MDS-09"],
   "tasks_status_summary": {
-    "total": 10,
-    "by_status": {"todo": 1, "in_progress": 8, "partial": 0, "blocked": 0, "done": 1},
-    "progress_percent_done": 10,
-    "by_priority": {"P0": 3, "P1": 7, "P2": 0, "P3": 0},
-    "by_risk": {"low": 0, "medium": 0, "high": 6, "critical": 4},
+    "total": 11,
+    "by_status": {"todo": 1, "in_progress": 9, "partial": 0, "blocked": 0, "done": 1},
+    "progress_percent_done": 9.09,
+    "by_priority": {"P0": 3, "P1": 8, "P2": 0, "P3": 0},
+    "by_risk": {"low": 0, "medium": 0, "high": 7, "critical": 4},
     "critical_path": {"total": 6, "done": 0, "remaining": 6},
     "milestones": {"total": 4, "todo": 0, "in_progress": 4, "blocked": 0, "done": 0}
   },
