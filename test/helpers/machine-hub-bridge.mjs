@@ -17,7 +17,7 @@ try {
     hubPublicKey: await fs.readFile(process.env.MEET_TEST_HUB_PUBLIC_KEY, "utf8"),
   });
   f.human.setDefaultTimeout(12000);
-  if (process.env.MEET_DIALOG_GPU_GATE === "1") {
+  if (process.env.MEET_DIALOG_GPU_GATE === "1" || process.env.MEET_DIALOG_OBSERVE === "1") {
     await f.human.evaluate(installDialogObservation);
     cleanup.push(() => f.human.evaluate(() => window.__dialogObservation.close()));
   }
@@ -47,6 +47,9 @@ try {
       reply(await f.human.evaluate(() => window.__dialogObservation.answer()));
     } else if (line === "audio_reset") {
       await f.human.evaluate(() => window.__dialogObservation.resetAudio()); reply({ reset: true });
+    } else if (line === "audio_absent") {
+      await f.human.waitForFunction(() => !document.querySelector("#room-audio audio"), null, { timeout: 4000 });
+      reply({ audio_absent: true });
     } else if (line === "audio_probe") {
       // Return diagnostics after a bounded observation even when audio is absent;
       // the parent asserts success instead of losing the cause in a timeout.

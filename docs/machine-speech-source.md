@@ -114,3 +114,23 @@ Text-/Sprach-Browserfälle in 72.03 s; vorherige fehlgeschlagene Startversuche
 bleiben als solche in den Todo-Notizen erhalten.
 Finaler Check mit Backoff: 541 Frontendtests und 485 Node-Prüfungen bestanden,
 0 Fehler, 2 explizite Skips (Node 64.00 s); externe Live-Gates bleiben übersprungen.
+
+## Unterbrechung während laufender Sprache
+
+Der private Hub-Treiber kann seinen Beobachter unabhängig von GPU-Klassifikation
+mit `MEET_DIALOG_OBSERVE=1` aktivieren. Das feste `audio_absent`-Kommando prüft
+höchstens vier Sekunden auf das Ende der entfernten Testpublikation. Es löst
+selbst weder einen Stop noch eine Freigabe oder Taskaktion aus.
+
+Anantas zwei aktuelle private Browserfälle mit echtem Hub-CAS und ausdrücklich
+synthetischem Ton bestanden in 91.31 s. Sprachpause: lokaler Stop 1.600 s,
+Remote-Publikationsende 1.603 s; Parent-Cancel: 1.650/1.669 s. Bildschirm und
+neue Textantwort blieben bei Sprachpause verfügbar. Nach Parent-Cancel verließ
+die Maschine den Raum. Das ist keine GPU-/Voice-Qualitätsmessung und keine
+Garantie physischer Lautsprecherstille; die produktiven Stop-Pfade blieben
+unverändert und werden nicht durch Testeingriffe in Worker-State ersetzt.
+
+MDS-10 ist damit nach seinen vier Port-/Lifecycle-/Transportkriterien abgeschlossen.
+Letzter Gesamtcheck: 541 Frontendtests, 485 Node-Prüfungen, 0 Fehler, 2 explizite
+Skips (Node 63.97 s). Neun andere Track-Tasks sowie Anantas breitere Persona-/
+Stimmen-/Last-/Produktionsarbeit bleiben offen; der Track wird nicht archiviert.
