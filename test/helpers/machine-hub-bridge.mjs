@@ -15,7 +15,7 @@ try {
   });
   f.human.setDefaultTimeout(12000);
   const reply = value => process.stdout.write(JSON.stringify(value) + "\n");
-  reply({ origin: f.origin, room_id: f.roomId, certificate: f.certificatePath });
+  reply({ origin: f.origin, room_id: f.roomId, certificate: f.certificatePath, test_network: f.testNetwork });
   const panel = f.human.locator("app-machine-permissions-panel");
   let answersExpected = 0;
   for await (const line of readline.createInterface({ input: process.stdin, crlfDelay: Infinity })) {
@@ -52,7 +52,21 @@ try {
         if (fingerprint !== null) fingerprints.add(fingerprint);
         await f.human.waitForTimeout(250);
       }
-      if (fingerprints.size < 2) throw new Error("screen_not_moving");
+      if (fingerprints.size < 2) {
+        const error = new Error("screen_not_moving");
+        // State/counts only: never ICE addresses, SDP, peer IDs, frames or keys.
+        error.observation = await f.human.evaluate(async () => ({
+          iceCounts: window.__testIce,
+          videos: [...document.querySelectorAll("video")].map(v => ({ width: v.videoWidth, ready: v.readyState })),
+          peers: await Promise.all(window.__pcs.map(async pc => ({
+            connection: pc.connectionState, ice: pc.iceConnectionState, signaling: pc.signalingState,
+            localDescription: Boolean(pc.localDescription), remoteDescription: Boolean(pc.remoteDescription),
+            video: [...(await pc.getStats()).values()].filter(s => s.type === "inbound-rtp" && s.kind === "video")
+              .map(s => ({ packets: s.packetsReceived, frames: s.framesDecoded })),
+          }))),
+        }));
+        throw error;
+      }
       reply({ moving_screen: true });
     } else if (line === "screen_absent") {
       await f.human.locator(".nav-item").filter({ hasText: /^Live/ }).click();
@@ -81,10 +95,12 @@ try {
     } else throw new Error("unknown_bridge_command");
   }
 } catch (error) {
-  const code = ["screen_not_moving", "test_private_frame_or_stop_failed", "test_tls_proxy_not_ready"].includes(error.message)
+  const code = ["screen_not_moving", "test_private_frame_or_stop_failed", "test_tls_proxy_not_ready",
+    "test_stun_start_failed", "test_docker_command_failed", "test_private_proxy_network_invalid"].includes(error.message)
     ? error.message : error.name === "TimeoutError" ? "test_browser_timeout" : "synthetic_meet_bridge_failed";
   process.stdout.write(JSON.stringify({ bridge_error: code,
-    kind: ["Error", "TypeError", "TimeoutError"].includes(error.name) ? error.name : "Error" }) + "\n");
+    kind: ["Error", "TypeError", "TimeoutError"].includes(error.name) ? error.name : "Error",
+    ...(code === "screen_not_moving" && error.observation ? { observation: error.observation } : {}) }) + "\n");
   process.stderr.write("synthetic_meet_bridge_failed\n"); process.exitCode = 1;
 } finally {
   for (const close of cleanup.reverse()) { try { await close(); } catch { process.exitCode = 1; } }

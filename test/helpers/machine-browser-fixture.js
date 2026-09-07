@@ -10,13 +10,14 @@ import { SignJWT, createLocalJWKSet, exportJWK } from "jose";
 import { chromium, firefox } from "playwright";
 import { createAppServer } from "../../src/server.js";
 import { createOidcVerifier } from "../../src/oidc-verifier.js";
+import { privateMachineTlsProxy } from "./machine-tls-proxy.js";
 
 export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", listenPort = 0, hubPublicKey, tlsPortProxy = false,
   lifetimeSeconds = 180, humanEngine = "chromium" } = {}) {
   if (!Number.isInteger(lifetimeSeconds) || lifetimeSeconds < 180 || lifetimeSeconds > 7380) throw new Error("test_lifetime_invalid");
   if (!["chromium", "firefox"].includes(humanEngine)) throw new Error("test_engine_invalid");
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "meet-machine-tls-"));
-  let app, browser, humanBrowser, tls, proxyName;
+  let app, browser, humanBrowser, tls, proxy;
   t.after(async () => {
     try {
       await browser?.close();
@@ -28,39 +29,29 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
       if (tls?.listening) { tls.closeAllConnections(); await new Promise(resolve => tls.close(resolve)); }
       if (app?.server.listening) { app.server.closeAllConnections(); await new Promise(resolve => app.server.close(resolve)); }
     } finally {
-      if (proxyName) { try { execFileSync("docker", ["stop", "-t", "1", proxyName], { stdio: "ignore" }); } catch { /* Bounded self-expiry. */ } }
-      await fs.rm(directory, { recursive: true, force: true });
+      try { proxy?.close(); } finally { await fs.rm(directory, { recursive: true, force: true }); }
     }
   });
+  if (tlsPortProxy) {
+    proxy = privateMachineTlsProxy(lifetimeSeconds);
+    listenHost = proxy.listenHost;
+  }
+  const originHost = proxy?.originHost || listenHost;
   execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-    "-subj", `/CN=${listenHost}`, "-addext", `subjectAltName=IP:${listenHost}`,
+    "-subj", `/CN=${originHost}`, "-addext", `subjectAltName=IP:${originHost}`,
     "-keyout", path.join(directory, "key.pem"), "-out", path.join(directory, "cert.pem")], { stdio: "ignore" });
   tls = https.createServer({ key: await fs.readFile(path.join(directory, "key.pem")),
     cert: await fs.readFile(path.join(directory, "cert.pem")) });
   await new Promise((resolve, reject) => { tls.once("error", reject); tls.listen(listenPort, listenHost, resolve); });
-  const origin = `https://${listenHost}${tlsPortProxy || tls.address().port === 443 ? "" : ":" + tls.address().port}`;
-  if (tlsPortProxy) {
-    // Own loopback-only opaque TLS forwarder; no global sysctl/capability change,
-    // host filesystem mount, production certificate or existing container edit.
-    const image = execFileSync("docker", ["image", "inspect", process.env.MEET_TEST_PROXY_IMAGE || "webrtc-ci-local-webrtc:latest",
-      "--format", "{{.Id}}"], { encoding: "utf8" }).trim();
-    if (!/^sha256:[a-f0-9]{64}$/.test(image)) throw new Error("test_proxy_image_missing");
-    const name = "meet-test-tls-" + randomUUID();
-    proxyName = name;
-    const code = `const net=require('node:net');const server=net.createServer(s=>{const o=net.connect(${tls.address().port},${JSON.stringify(listenHost)});
-      s.setTimeout(120000,()=>s.destroy());s.on('error',()=>o.destroy());o.on('error',()=>s.destroy());s.on('close',()=>o.destroy());o.on('close',()=>s.destroy());s.pipe(o);o.pipe(s)});
-      server.maxConnections=16;server.listen(443,${JSON.stringify(listenHost)});setTimeout(()=>process.exit(0),${lifetimeSeconds * 1000})`;
-    execFileSync("docker", ["run", "--rm", "-d", "--name", name, "--network=host", "--user=0:0", "--read-only",
-      "--cap-drop=ALL", "--cap-add=NET_BIND_SERVICE", "--security-opt=no-new-privileges", "--memory=128m", "--pids-limit=32", "--cpus=.5",
-      "--entrypoint=node", image, "--max-old-space-size=32", "-e", code], { stdio: "ignore" });
-  }
+  const origin = `https://${originHost}${tlsPortProxy || tls.address().port === 443 ? "" : ":" + tls.address().port}`;
+  proxy?.start(tls.address().port);
   const keys = generateKeyPairSync("ed25519"), humanKeys = generateKeyPairSync("ed25519");
   const issuer = "https://synthetic-hub.example.test";
   const config = { host: "127.0.0.1", port: 0, publicOrigin: origin, authMode: "required",
     oidcIssuer: issuer, oidcAudience: "human", oidcClientId: "human-browser", oidcAlgorithms: ["EdDSA"],
     oidcJwksUrl: issuer + "/jwks", machineHubIssuer: issuer,
     machineHubPublicKey: hubPublicKey || keys.publicKey.export({ type: "spki", format: "pem" }),
-    stunUrls: [], turnServers: [], mediaE2eeMode: "required", signalRateLimit: 400 };
+    stunUrls: proxy ? [proxy.stunUrl] : [], turnServers: [], mediaE2eeMode: "required", signalRateLimit: 400 };
   const oidcVerifier = createOidcVerifier(config, { jwks: createLocalJWKSet({ keys: [await exportJWK(humanKeys.publicKey)] }) });
   app = createAppServer({ config, oidcVerifier });
   tls.on("request", (req, res) => app.server.emit("request", req, res));
@@ -86,6 +77,7 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
     const context = await (machine ? browser : humanBrowser).newContext({ permissions: [], ignoreHTTPSErrors: true });
     await context.addInitScript(({ machine }) => {
       window.__captures = 0; window.__pcs = []; window.__transformErrors = [];
+      window.__testIce = { emitted: 0, mdns: 0, received: 0, failed: 0 };
       const NativeWorker = window.Worker;
       window.Worker = class extends NativeWorker { constructor(...args) {
         super(...args); this.addEventListener("error", () => window.__transformErrors.push("worker_load_or_runtime_error"));
@@ -104,7 +96,17 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
         return dest.stream;
       };
       const Native = window.RTCPeerConnection;
-      window.RTCPeerConnection = class extends Native { constructor(...args) { super(...args); window.__pcs.push(this); } };
+      window.RTCPeerConnection = class extends Native {
+        constructor(...args) { super(...args); window.__pcs.push(this);
+          this.addEventListener("icecandidate", e => { if (e.candidate) {
+            window.__testIce.emitted++; if (e.candidate.candidate.includes(".local")) window.__testIce.mdns++;
+          } });
+        }
+        async addIceCandidate(candidate) { window.__testIce.received++;
+          try { return await super.addIceCandidate(candidate); }
+          catch (e) { window.__testIce.failed++; throw e; }
+        }
+      };
     }, { machine });
     if (!machine) {
       const token = await new SignJWT({ preferred_username: "Synthetic Human" }).setIssuer(issuer).setAudience("human")
@@ -130,5 +132,6 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
   }
   const machine = await page(true); await machine.goto(origin + "/machine");
   await machine.waitForFunction(() => Boolean(window.anantaMachine));
-  return { human, machine, roomId, binding, grant, browser, app, origin, certificatePath: path.join(directory, "cert.pem") };
+  return { human, machine, roomId, binding, grant, browser, app, origin, testNetwork: proxy?.network,
+    certificatePath: path.join(directory, "cert.pem") };
 }
