@@ -15,10 +15,12 @@ import { observeBrowserStartup } from "./machine-browser-startup.mjs";
 import { navigateFixture } from "./machine-browser-navigation.mjs";
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
 import { machineFixtureAssets } from "./machine-fixture-assets.mjs";
+import { installReceiverKeyDelay } from "./machine-receiver-key-delay.mjs";
 
 export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", listenPort = 0, hubPublicKey, tlsPortProxy = false,
   lifetimeSeconds = 180, humanEngine = "chromium", observeStage = () => {},
-  publicDir = process.env.MEET_TEST_PUBLIC_DIR } = {}) {
+  publicDir = process.env.MEET_TEST_PUBLIC_DIR, receiverKeyDelay = false } = {}) {
+  if (typeof receiverKeyDelay !== "boolean") throw new Error("test_receiver_key_delay_invalid");
   if (!Number.isInteger(lifetimeSeconds) || lifetimeSeconds < 180 || lifetimeSeconds > 7380) throw new Error("test_lifetime_invalid");
   if (!["chromium", "firefox"].includes(humanEngine)) throw new Error("test_engine_invalid");
   observeStage("test-assets");
@@ -87,6 +89,7 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
   humanBrowser = humanEngine === "chromium" ? browser : await firefox.launch({ headless: true });
   async function page(machine = false) {
     const context = await (machine ? browser : humanBrowser).newContext({ permissions: [], ignoreHTTPSErrors: true });
+    if (!machine && receiverKeyDelay) await context.addInitScript(installReceiverKeyDelay);
     await context.addInitScript(({ machine }) => {
       window.__captures = 0; window.__pcs = []; window.__transformErrors = [];
       window.__testIce = { emitted: 0, mdns: 0, received: 0, failed: 0 };

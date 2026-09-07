@@ -22,3 +22,23 @@ helper deterministically and run the real private composition, then `npm run
 check` in an isolated build worktree. Public trust, serving assets and services
 remain untouched. A failure is diagnostic evidence, not authorization to weaken
 SFrame or add unbounded retries.
+
+Diagnostic refinement: the first receiver key was cancelled by the normal
+consent/rekey sequence before the two-second injection completed (scheduled 1,
+delivered 0, cancelled 1); therefore that attempt is not a delayed-key acceptance.
+Allow at most three incoming current key generations until one delay completes,
+still only one held key/timer and no generated/replayed protocol command. Every
+superseded key is wiped. At most six seconds of injected waiting fits within the
+unchanged twelve-second first-screen observation. Report all scheduled/cancelled
+counts; never call an unexercised injection successful.
+
+Implemented under the default-off `receiverKeyDelay` private fixture option and
+the explicitly opted-in bridge's `MEET_TEST_RECEIVER_KEY_DELAY=1`. Seven Node
+helper tests passed; the root's final serial sender/receiver/helper matrix passed
+three tests in 55.55 seconds with actual decoded moving screen and normal Hub
+stop. Both directions completed a real two-second current-key delay. Initial
+cancelled-injection attempts and one independent pre-admission network-change
+failure remain documented in Ananta's matching contract. The original sporadic
+zero-decoded-frame symptom was not reproduced by either delay, so no production
+keyframe/crypto fix is claimed. The full isolated repository check follows before
+this test-infrastructure slice is finalized.

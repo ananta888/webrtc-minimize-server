@@ -5,10 +5,13 @@ import readline from "node:readline";
 import { machineBrowserFixture } from "./machine-browser-fixture.js";
 import { installDialogObservation } from "./machine-dialog-observer.mjs";
 import { observeAvatarCommand } from "./machine-avatar-observation.mjs";
+import { requireReceiverKeyDelay } from "./machine-receiver-key-delay.mjs";
 async function runBridge() {
 const cleanup = [];
 let stage = "setup";
 try {
+  const receiverKeyDelay = process.env.MEET_TEST_RECEIVER_KEY_DELAY || "0";
+  if (!["0", "1"].includes(receiverKeyDelay)) throw new Error("test_receiver_key_delay_invalid");
   const soakSeconds = Number(process.env.MEET_DIALOG_SOAK_SECONDS || 0);
   if (!Number.isInteger(soakSeconds) || soakSeconds < 0 || soakSeconds > 7200) throw new Error("test_soak_invalid");
   const f = await machineBrowserFixture({ after: fn => cleanup.push(fn) }, {
@@ -16,6 +19,7 @@ try {
     lifetimeSeconds: soakSeconds + 180,
     observeStage: value => { stage = value; },
     hubPublicKey: await fs.readFile(process.env.MEET_TEST_HUB_PUBLIC_KEY, "utf8"),
+    receiverKeyDelay: receiverKeyDelay === "1",
   });
   f.human.setDefaultTimeout(12000);
   if (process.env.MEET_DIALOG_GPU_GATE === "1" || process.env.MEET_DIALOG_OBSERVE === "1") {
@@ -72,6 +76,9 @@ try {
     } else if (line === "answer") {
       await f.human.locator("#chat-log").getByText("Synthetic Hub answer", { exact: false }).nth(answersExpected - 1).waitFor();
       reply({ received: true });
+    } else if (line === "receiver_key_startup") {
+      if (receiverKeyDelay !== "1") throw new Error("test_receiver_key_delay_invalid");
+      reply(requireReceiverKeyDelay(await f.human.evaluate(() => window.__receiverKeyDelay)));
     } else if (line === "screen") {
       await f.human.locator(".nav-item").filter({ hasText: /^Live/ }).click();
       const fingerprints = new Set();
@@ -92,12 +99,15 @@ try {
         // State/counts only: never ICE addresses, SDP, peer IDs, frames or keys.
         error.observation = await f.human.evaluate(async () => ({
           iceCounts: window.__testIce,
+          transformErrors: window.__transformErrors.length,
+          ...(window.__receiverKeyDelay ? { keyStartup: window.__receiverKeyDelay } : {}),
           videos: [...document.querySelectorAll("video")].map(v => ({ width: v.videoWidth, ready: v.readyState })),
           peers: await Promise.all(window.__pcs.map(async pc => ({
             connection: pc.connectionState, ice: pc.iceConnectionState, signaling: pc.signalingState,
             localDescription: Boolean(pc.localDescription), remoteDescription: Boolean(pc.remoteDescription),
             video: [...(await pc.getStats()).values()].filter(s => s.type === "inbound-rtp" && s.kind === "video")
-              .map(s => ({ packets: s.packetsReceived, frames: s.framesDecoded })),
+              .map(s => ({ packets: s.packetsReceived, frames: s.framesDecoded,
+                keyframes: s.keyFramesDecoded || 0, pliCount: s.pliCount || 0, nackCount: s.nackCount || 0 })),
           }))),
         }));
         throw error;
@@ -131,6 +141,7 @@ try {
   }
 } catch (error) {
   const code = ["test_public_dir_invalid", "screen_not_moving", "avatar_not_moving", "test_private_frame_or_stop_failed", "test_tls_proxy_not_ready",
+    "test_receiver_key_delay_invalid", "test_receiver_key_delay_not_observed",
     "test_navigation_network_changed", "test_navigation_deadline",
     "test_stun_start_failed", "test_docker_command_failed", "test_private_proxy_network_invalid"].includes(error.message)
     ? error.message : error.name === "TimeoutError" ? "test_browser_timeout" : "synthetic_meet_bridge_failed";
@@ -139,7 +150,8 @@ try {
     ...(/net::(ERR_[A-Z_]{1,64})/.test(String(error.message)) ? { network_error: String(error.message).match(/net::(ERR_[A-Z_]{1,64})/)[1] } : {}),
     kind: ["Error", "TypeError", "TimeoutError"].includes(error.name) ? error.name : "Error",
     ...(error.startupObservation ? { startup: error.startupObservation } : {}),
-    ...(["screen_not_moving", "avatar_not_moving"].includes(code) && error.observation ? { observation: error.observation } : {}) }) + "\n");
+    ...(["screen_not_moving", "avatar_not_moving", "test_receiver_key_delay_not_observed"].includes(code)
+      && error.observation ? { observation: error.observation } : {}) }) + "\n");
   process.stderr.write("synthetic_meet_bridge_failed\n"); process.exitCode = 1;
 } finally {
   for (const close of cleanup.reverse()) { try { await close(); } catch { process.exitCode = 1; } }
