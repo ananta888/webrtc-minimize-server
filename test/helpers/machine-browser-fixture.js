@@ -11,6 +11,7 @@ import { chromium, firefox } from "playwright";
 import { createAppServer } from "../../src/server.js";
 import { createOidcVerifier } from "../../src/oidc-verifier.js";
 import { privateMachineTlsProxy } from "./machine-tls-proxy.js";
+import { observeBrowserStartup } from "./machine-browser-startup.mjs";
 
 export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", listenPort = 0, hubPublicKey, tlsPortProxy = false,
   lifetimeSeconds = 180, humanEngine = "chromium", observeStage = () => {} } = {}) {
@@ -121,12 +122,16 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
     return context.newPage();
   }
   const human = await page();
-  observeStage("human-navigation"); await human.goto(origin);
-  observeStage("human-room-create"); await human.locator("#create-room").click();
-  await human.waitForFunction(() => document.querySelector("#room-id")?.value.startsWith("room-"));
-  const roomId = await human.locator("#room-id").inputValue();
-  observeStage("human-room-join"); await human.locator("#join-room").click();
-  await human.locator("#connection-status", { hasText: "Signaling verbunden" }).waitFor();
+  const humanStartup = observeBrowserStartup(human);
+  let roomId;
+  try {
+    observeStage("human-navigation"); await human.goto(origin);
+    observeStage("human-room-create"); await human.locator("#create-room").click();
+    await human.waitForFunction(() => document.querySelector("#room-id")?.value.startsWith("room-"));
+    roomId = await human.locator("#room-id").inputValue();
+    observeStage("human-room-join"); await human.locator("#join-room").click();
+    await human.locator("#connection-status", { hasText: "Signaling verbunden" }).waitFor();
+  } catch (error) { error.startupObservation = humanStartup; throw error; }
   const binding = { roomId, taskId: randomUUID(), tenantId: "synthetic", projectId: "synthetic",
     runtimeId: randomUUID(), sessionId: randomUUID() };
   async function grant(capabilities, version = 2) {
@@ -137,8 +142,12 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
       .setProtectedHeader({ alg: "EdDSA", typ: version === 2 ? "ananta-meet-machine-v2+jwt" : "ananta-meet-machine+jwt" }).sign(keys.privateKey);
   }
   observeStage("machine-navigation");
-  const machine = await page(true); await machine.goto(origin + "/machine");
-  await machine.waitForFunction(() => Boolean(window.anantaMachine));
+  const machine = await page(true), startup = observeBrowserStartup(machine);
+  try {
+    await machine.goto(origin + "/machine");
+    observeStage("machine-ready");
+    await machine.waitForFunction(() => Boolean(window.anantaMachine));
+  } catch (error) { error.startupObservation = startup; throw error; }
   return { human, machine, roomId, binding, grant, browser, app, origin, testNetwork: proxy?.network,
     certificatePath: path.join(directory, "cert.pem") };
 }

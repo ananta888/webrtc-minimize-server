@@ -46,9 +46,10 @@ Publikationsreservierung bleiben getrennt (SRP/ISP). Der bestehende große
 Readiness-Projektion seines autoritativen Zustands, keine zweite Key-/Policy-
 Verwaltung. Die Maschinenroute wird bedarfsgeladen, ohne Build-Budgets anzuheben.
 
-Offen in MDS-10/Ananta MAP-22: Hub-eigener, leasegebundener PCM-Ergebnistransfer
-aus echten Piper-Antworten sowie gemeinsame Sprach-/Bildschirm- und weitere
-Abbruch-/Last-Akzeptanz. Der öffentliche Capability-Claim bleibt konservativ.
+Der Hub-eigene, leasegebundene PCM-Ergebnistransfer aus echten Piper-Antworten
+und die kurze kombinierte Sprach-/Bildschirm-Abnahme sind inzwischen integriert
+(siehe unten). Weitere Abbruch-/Last-/Langzeit-Akzeptanz und Voice-Assets bleiben
+in MDS-10/Ananta MAP-22 offen. Der öffentliche Capability-Claim bleibt konservativ.
 
 ## Tatsächlicher Piper-Transport im privaten Test
 
@@ -66,3 +67,34 @@ hierher übertragen. Chromium und Firefox bestanden in zusammen 29.52 s;
 Transformfehler. Das ist mehr als ein synthetischer Oszillatortest, bleibt aber
 eine technische Probe mit Testzulassung: der produktive Hub-Dialogcallback,
 Sprachqualität und exakte entfernte Sample-Zustellung werden nicht behauptet.
+
+## Raumgebundene Wiedergabe und echter Hub-Dialog
+
+Die menschliche Raumseite hält genau einen `#room-audio`-Ausgang außerhalb der
+wechselnden Live-/Chat-/Analyseansichten. Er nutzt die vorhandene
+`MediaStreamDirective` und ausschließlich aktuelle entfernte Publikationen der
+verbundenen Sitzung. Ein Ansichtswechsel ist kein Audio-Stop; Leave und das Ende
+einer Publikation entfernen weiterhin die Wiedergabe. Es entsteht kein Capture,
+neuer Trust oder zweiter Medienbesitzer. Der große bestehende RoomPage-Controller
+bleibt eine SRP-Schuld; die Korrektur ergänzt dort keine Geschäftslogik.
+
+Der tatsächliche Ananta-Hub/GPU/Meet-Test fand diesen Fehler: Opus-Pakete kamen
+an, Frames wurden entschlüsselt, aber die bisher nur unter Live eingebundenen
+Audioelemente fehlten im Chat. Nach der Korrektur bestand derselbe kurze Gate in
+97.88 s: zwei echte Qwen/Piper/NVENC-Antworten, 84/89 nichtstille entfernte
+Messfenster, getrennte Bildschirmsteuerung, erneuerte Freigabe, reine Textantwort
+nach Hub-Sprachpause und Stop. Eine temporäre private Transformdiagnose wurde
+vor diesem erfolgreichen Lauf entfernt; Produktion wurde nicht instrumentiert.
+
+Die private Hub-Bridge bietet dafür ausschließlich feste Beobachtungskommandos:
+neue Antwort unter exakter Input-/Room-/Epoch-Korrelation und gerenderter
+Annahme als SHA-256, sowie begrenzte Audio-/Fehlerzählwerte. Keine Caller-Aufträge,
+URLs, Grants oder JavaScript-Ausdrücke. Modell-Kaltstart wird getrennt gemessen.
+Der Browsertest beginnt Sprache direkt im Chat und wechselt währenddessen durch
+Live/Chat/Analyse, ohne das Audioelement zu ersetzen. Nichtstille Testausgabe ist
+weiterhin kein Sprachqualitäts-, exakter Zustell-, TURN- oder Produktionsnachweis.
+
+Abschlusscheck dieses Slices: `npm run check` grün mit 541 Frontendtests und
+473 Node-Prüfungen (0 Fehler, 2 explizite Skips, Node 66.18 s), einschließlich
+beider wirklicher Browser-Navigationsfälle. Externe Infrastruktur-Gates bleiben
+sichtbar übersprungen; keine öffentliche Instanz wurde neu gestartet/deployt.

@@ -3,6 +3,7 @@
 import fs from "node:fs/promises";
 import readline from "node:readline";
 import { machineBrowserFixture } from "./machine-browser-fixture.js";
+import { installDialogObservation } from "./machine-dialog-observer.mjs";
 async function runBridge() {
 const cleanup = [];
 let stage = "setup";
@@ -16,6 +17,10 @@ try {
     hubPublicKey: await fs.readFile(process.env.MEET_TEST_HUB_PUBLIC_KEY, "utf8"),
   });
   f.human.setDefaultTimeout(12000);
+  if (process.env.MEET_DIALOG_GPU_GATE === "1") {
+    await f.human.evaluate(installDialogObservation);
+    cleanup.push(() => f.human.evaluate(() => window.__dialogObservation.close()));
+  }
   const reply = value => process.stdout.write(JSON.stringify(value) + "\n");
   reply({ origin: f.origin, room_id: f.roomId, certificate: f.certificatePath, test_network: f.testNetwork });
   stage = "dialog";
@@ -37,6 +42,27 @@ try {
       await f.human.locator("#chat-form.large").waitFor();
       await f.human.locator("#chat-message").fill("@ananta synthetic cross-repository question");
       await f.human.locator("#chat-form button").click(); answersExpected++; reply({ sent: true });
+    } else if (line === "answer_correlated") {
+      await f.human.waitForFunction(() => window.__dialogObservation.status().correlated, null, { timeout: 30000 });
+      reply(await f.human.evaluate(() => window.__dialogObservation.answer()));
+    } else if (line === "audio_reset") {
+      await f.human.evaluate(() => window.__dialogObservation.resetAudio()); reply({ reset: true });
+    } else if (line === "audio_probe") {
+      // Return diagnostics after a bounded observation even when audio is absent;
+      // the parent asserts success instead of losing the cause in a timeout.
+      reply(await f.human.evaluate(async () => {
+        const deadline = performance.now() + 2000;
+        while (window.__dialogObservation.status().active_windows <= 10
+          && !window.__dialogObservation.status().failed && performance.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        const stats = (await Promise.all(window.__pcs.map(pc => pc.getStats()))).flatMap(report => [...report.values()])
+          .filter(entry => entry.type === "inbound-rtp" && entry.kind === "audio");
+        return { ...window.__dialogObservation.status(), captures: window.__captures,
+          transform_errors: window.__transformErrors.length,
+          received_packets: stats.reduce((sum, entry) => sum + (entry.packetsReceived || 0), 0),
+          received_samples: stats.reduce((sum, entry) => sum + (entry.totalSamplesReceived || 0), 0) };
+      }));
     } else if (line === "answer") {
       await f.human.locator("#chat-log").getByText("Synthetic Hub answer", { exact: false }).nth(answersExpected - 1).waitFor();
       reply({ received: true });
@@ -105,6 +131,7 @@ try {
     ...(Number.isInteger(error.status) ? { command_status: error.status } : {}),
     ...(/net::(ERR_[A-Z_]{1,64})/.test(String(error.message)) ? { network_error: String(error.message).match(/net::(ERR_[A-Z_]{1,64})/)[1] } : {}),
     kind: ["Error", "TypeError", "TimeoutError"].includes(error.name) ? error.name : "Error",
+    ...(error.startupObservation ? { startup: error.startupObservation } : {}),
     ...(code === "screen_not_moving" && error.observation ? { observation: error.observation } : {}) }) + "\n");
   process.stderr.write("synthetic_meet_bridge_failed\n"); process.exitCode = 1;
 } finally {

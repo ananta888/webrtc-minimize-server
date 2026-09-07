@@ -19,7 +19,11 @@ test(`${humanEngine} decodes independent machine PCM over required SFrame withou
     } };
   });
   await human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
+  // Incoming audio must start in Chat too, not require visiting Live first.
+  await human.getByRole("button", { name: "Chat", exact: true }).click();
   const source = await machine.evaluate(id => window.anantaMachine.speech.open(id, 22050 * 3), "speech:" + f.binding.sessionId);
+  await human.locator("#room-audio audio").waitFor({ state: "attached" });
+  await human.evaluate(() => { window.__roomAudioElement = document.querySelector("#room-audio audio"); });
   // Observe actual decrypted receiver PCM, not just RTP bytes. This graph has no device input.
   await human.waitForFunction(() => window.__pcs.some(pc => pc.getReceivers().some(r => r.track.kind === "audio")));
   await human.evaluate(async () => {
@@ -34,7 +38,7 @@ test(`${humanEngine} decodes independent machine PCM over required SFrame withou
       if (pcm.some(v => Math.abs(v) > .05)) window.__speechProbe.observations++;
     }, 20);
   });
-  const result = await machine.evaluate(async lease => {
+  const playing = machine.evaluate(async lease => {
     const speech = window.anantaMachine.speech; let offset = 0;
     const deadline = Date.now() + 8000;
     while (Date.now() < deadline) {
@@ -50,6 +54,14 @@ test(`${humanEngine} decodes independent machine PCM over required SFrame withou
     }
     throw new Error("test_speech_completion_timeout");
   }, source);
+  // Attach a handler immediately: UI failure must not leak a rejected playback promise.
+  playing.catch(() => undefined);
+  await human.waitForFunction(() => window.__speechProbe.peak > .1);
+  for (const name of ["Live", "Chat", "Analyse"]) {
+    await human.locator(".nav-item").filter({ hasText: new RegExp(`^${name}$`) }).click();
+    assert.equal(await human.evaluate(() => document.querySelector("#room-audio audio") === window.__roomAudioElement), true);
+  }
+  const result = await playing;
   const decoded = await human.evaluate(async () => {
     const p = window.__speechProbe; clearInterval(p.timer); await p.context.close();
     return { peak: p.peak, observations: p.observations, captures: window.__captures, errors: window.__transformErrors };
@@ -73,6 +85,7 @@ test(`${humanEngine} decodes independent machine PCM over required SFrame withou
   }, stale.generation), false);
   assert.equal(await machine.evaluate(() => window.anantaMachine.speech.status().generation), fresh.generation);
   await machine.evaluate(() => window.anantaMachine.leave());
+  await human.waitForFunction(() => !document.querySelector("#room-audio audio"));
   t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, ...decoded, playedSamples: result.playedSamples }));
 });
 }
