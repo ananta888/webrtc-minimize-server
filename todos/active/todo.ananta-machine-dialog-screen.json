@@ -134,15 +134,15 @@
     },
     {
       "id": "MDS-11", "title": "Unabhaengige neutrale KI-Avatarquelle bereitstellen",
-      "status": "in_progress", "progress_percent": 1, "priority": "P1", "risk": "high", "depends_on": ["MDS-02", "MDS-06", "MDS-10"],
+      "status": "in_progress", "progress_percent": 75, "priority": "P1", "risk": "high", "depends_on": ["MDS-02", "MDS-06", "MDS-10"],
       "ananta_task_refs": ["MAP-12", "MAP-20", "MAP-21", "MAP-24"],
       "acceptance_criteria": [
         "Expliziter neutral-ai-v1-Port rendert nur eigenen sichtbar als KI gekennzeichneten 256x256-Canvas mit maximal 5 FPS; keine fremden Texte, URLs, Assets, menschlichen Capture-APIs oder stiller Persona-Fallback.",
-        "Aktuelle avatar.publish-Autoritaet, exakte Session/Lease/Membership, eigene Generation, maximal 30 s inklusive 10 s Setup, 100-ms-Watchdog und konkrete SFrame-Track-Readiness durchsetzen; unbekannte Profile und veraltete Operationen geschlossen ablehnen.",
+        "Aktuelle avatar.publish-Autoritaet, exakte Session/Lease/Membership, eigene Generation, maximal 30 s inklusive 10 s Setup, 100-ms-Watchdog und konkrete SFrame-Track-Readiness durchsetzen; unbekannte Profile und veraltete Operationen geschlossen ablehnen. Fuer die anschliessende Hub-Anbindung zusaetzlich eine generationsgebundene 2.5-s-Controller-Lebenszeichengrenze, ohne Verlaengerung der eigentlichen Lease.",
         "Eigene Camera-Ownership trennt Avatar von PCM/Screen und konkurrierendem MP4. Stop, Leave, Ablauf, Renewal und spaetes Setup bereinigen ausschliesslich eigene Ressourcen, ohne neuere Aktivierung zu entfernen.",
         "Deterministische Source-/Adapter-Tests und echte Chromium-/Firefox-Decodierung unter required-SFrame pruefen unabhaengige Quelle, gleichzeitige Publikationen, Renewal/Stop und null menschlichen Capture. npm run check bleibt Pflicht; keine Hub-Integration oder generative Videoqualitaet aus reinem Porttest ableiten."
       ],
-      "implementation_note": "2026-09-07: Quellstand geprueft: bisheriges MP4 koppelt camera/microphone/chat, PCM und Screen sind separat. Neue abgegrenzte Quelle vor Implementierung geplant; Hub-Steuerung und genehmigte Persona-Bilder bleiben Ananta-Folgearbeit. SRP/DIP durch getrennte Source, Browser-Adapter und Sessionprojektion; vorhandene Ownership wiederverwenden."
+      "implementation_note": "2026-09-07: Separater neutral-ai-v1-Kameraport mit eigener Ownership, 256x256/5 FPS, sichtbarem KI-Label, 30-s-Grenze, konkreter SFrame-Readiness und Lease-/Membership-Fencing implementiert. Quelle, Canvas-Adapter und Sessionprojektion getrennt (SRP/DIP). 15 Source-/Adapterunits bestanden. Echte Chromium/Firefox-Empfaenger decodieren Gesicht, Label und bewegte Anzeige; parallele PCM/Screen-Publikationen bleiben nach Avatarstop aktiv, echte Renewal und altes Close-Token geprueft, Capture/Transformfehler null. Gefundener zu frueher Stop bei Zuschalten weiterer Quellen durch begrenztes zweisekuendiges Aussetzen OHNE Frames waehrend Rekey korrigiert; Lease unveraendert. Firefox-Zone-Wartefehler separat behoben. npm run check gruen: 556 Frontendtests, 497 Nodechecks/495 passed/2 explizite Skips, Node 65122.11 ms; externer Rollout unveraendert. docs/machine-neutral-avatar.md. Vor Hub-Liveintegration jetzt noch expliziten generationsgebundenen 2.5-s-Controller-Puls ergaenzen, damit blockierter Worker nicht 30 s weiterzeichnet; keine selbststaendige Hub-Autorisierung durch diesen Puls. Track bleibt offen, keine Persona-/Produktionsabnahme."
     },
     {
       "id": "MDS-09", "title": "Vorautorisierte Aktivierung, Preflight und Rollback dokumentieren und prüfen",
