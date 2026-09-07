@@ -5,17 +5,20 @@ import readline from "node:readline";
 import { machineBrowserFixture } from "./machine-browser-fixture.js";
 async function runBridge() {
 const cleanup = [];
+let stage = "setup";
 try {
   const soakSeconds = Number(process.env.MEET_DIALOG_SOAK_SECONDS || 0);
   if (!Number.isInteger(soakSeconds) || soakSeconds < 0 || soakSeconds > 7200) throw new Error("test_soak_invalid");
   const f = await machineBrowserFixture({ after: fn => cleanup.push(fn) }, {
     listenHost: "127.0.0.2", tlsPortProxy: true,
     lifetimeSeconds: soakSeconds + 180,
+    observeStage: value => { stage = value; },
     hubPublicKey: await fs.readFile(process.env.MEET_TEST_HUB_PUBLIC_KEY, "utf8"),
   });
   f.human.setDefaultTimeout(12000);
   const reply = value => process.stdout.write(JSON.stringify(value) + "\n");
   reply({ origin: f.origin, room_id: f.roomId, certificate: f.certificatePath, test_network: f.testNetwork });
+  stage = "dialog";
   const panel = f.human.locator("app-machine-permissions-panel");
   let answersExpected = 0;
   for await (const line of readline.createInterface({ input: process.stdin, crlfDelay: Infinity })) {
@@ -98,7 +101,9 @@ try {
   const code = ["screen_not_moving", "test_private_frame_or_stop_failed", "test_tls_proxy_not_ready",
     "test_stun_start_failed", "test_docker_command_failed", "test_private_proxy_network_invalid"].includes(error.message)
     ? error.message : error.name === "TimeoutError" ? "test_browser_timeout" : "synthetic_meet_bridge_failed";
-  process.stdout.write(JSON.stringify({ bridge_error: code,
+  process.stdout.write(JSON.stringify({ bridge_error: code, stage,
+    ...(Number.isInteger(error.status) ? { command_status: error.status } : {}),
+    ...(/net::(ERR_[A-Z_]{1,64})/.test(String(error.message)) ? { network_error: String(error.message).match(/net::(ERR_[A-Z_]{1,64})/)[1] } : {}),
     kind: ["Error", "TypeError", "TimeoutError"].includes(error.name) ? error.name : "Error",
     ...(code === "screen_not_moving" && error.observation ? { observation: error.observation } : {}) }) + "\n");
   process.stderr.write("synthetic_meet_bridge_failed\n"); process.exitCode = 1;

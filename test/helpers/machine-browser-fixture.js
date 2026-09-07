@@ -13,7 +13,7 @@ import { createOidcVerifier } from "../../src/oidc-verifier.js";
 import { privateMachineTlsProxy } from "./machine-tls-proxy.js";
 
 export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", listenPort = 0, hubPublicKey, tlsPortProxy = false,
-  lifetimeSeconds = 180, humanEngine = "chromium" } = {}) {
+  lifetimeSeconds = 180, humanEngine = "chromium", observeStage = () => {} } = {}) {
   if (!Number.isInteger(lifetimeSeconds) || lifetimeSeconds < 180 || lifetimeSeconds > 7380) throw new Error("test_lifetime_invalid");
   if (!["chromium", "firefox"].includes(humanEngine)) throw new Error("test_engine_invalid");
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "meet-machine-tls-"));
@@ -33,18 +33,21 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
     }
   });
   if (tlsPortProxy) {
+    observeStage("private-network");
     proxy = privateMachineTlsProxy(lifetimeSeconds);
     listenHost = proxy.listenHost;
   }
   const originHost = proxy?.originHost || listenHost;
+  observeStage("certificate");
   execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
     "-subj", `/CN=${originHost}`, "-addext", `subjectAltName=IP:${originHost}`,
     "-keyout", path.join(directory, "key.pem"), "-out", path.join(directory, "cert.pem")], { stdio: "ignore" });
   tls = https.createServer({ key: await fs.readFile(path.join(directory, "key.pem")),
     cert: await fs.readFile(path.join(directory, "cert.pem")) });
+  observeStage("tls-listen");
   await new Promise((resolve, reject) => { tls.once("error", reject); tls.listen(listenPort, listenHost, resolve); });
   const origin = `https://${originHost}${tlsPortProxy || tls.address().port === 443 ? "" : ":" + tls.address().port}`;
-  proxy?.start(tls.address().port);
+  observeStage("private-proxy-start"); proxy?.start(tls.address().port);
   const keys = generateKeyPairSync("ed25519"), humanKeys = generateKeyPairSync("ed25519");
   const issuer = "https://synthetic-hub.example.test";
   const config = { host: "127.0.0.1", port: 0, publicOrigin: origin, authMode: "required",
@@ -53,11 +56,12 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
     machineHubPublicKey: hubPublicKey || keys.publicKey.export({ type: "spki", format: "pem" }),
     stunUrls: proxy ? [proxy.stunUrl] : [], turnServers: [], mediaE2eeMode: "required", signalRateLimit: 400 };
   const oidcVerifier = createOidcVerifier(config, { jwks: createLocalJWKSet({ keys: [await exportJWK(humanKeys.publicKey)] }) });
-  app = createAppServer({ config, oidcVerifier });
+  observeStage("signaling-server"); app = createAppServer({ config, oidcVerifier });
   tls.on("request", (req, res) => app.server.emit("request", req, res));
   tls.on("upgrade", (req, socket, head) => app.server.emit("upgrade", req, socket, head));
   await new Promise(resolve => app.server.listen(0, "127.0.0.1", resolve));
   if (tlsPortProxy) {
+    observeStage("private-proxy-health");
     const ca = await fs.readFile(path.join(directory, "cert.pem")), deadline = Date.now() + 5000;
     for (;;) {
       const ready = await new Promise(resolve => {
@@ -71,6 +75,7 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
       await new Promise(resolve => setTimeout(resolve, 50));
     }
   }
+  observeStage("browser-launch");
   browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required"] });
   humanBrowser = humanEngine === "chromium" ? browser : await firefox.launch({ headless: true });
   async function page(machine = false) {
@@ -116,10 +121,11 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
     return context.newPage();
   }
   const human = await page();
-  await human.goto(origin); await human.locator("#create-room").click();
+  observeStage("human-navigation"); await human.goto(origin);
+  observeStage("human-room-create"); await human.locator("#create-room").click();
   await human.waitForFunction(() => document.querySelector("#room-id")?.value.startsWith("room-"));
   const roomId = await human.locator("#room-id").inputValue();
-  await human.locator("#join-room").click();
+  observeStage("human-room-join"); await human.locator("#join-room").click();
   await human.locator("#connection-status", { hasText: "Signaling verbunden" }).waitFor();
   const binding = { roomId, taskId: randomUUID(), tenantId: "synthetic", projectId: "synthetic",
     runtimeId: randomUUID(), sessionId: randomUUID() };
@@ -130,6 +136,7 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
       .setIssuedAt().setExpirationTime("2m").setJti(randomUUID())
       .setProtectedHeader({ alg: "EdDSA", typ: version === 2 ? "ananta-meet-machine-v2+jwt" : "ananta-meet-machine+jwt" }).sign(keys.privateKey);
   }
+  observeStage("machine-navigation");
   const machine = await page(true); await machine.goto(origin + "/machine");
   await machine.waitForFunction(() => Boolean(window.anantaMachine));
   return { human, machine, roomId, binding, grant, browser, app, origin, testNetwork: proxy?.network,
