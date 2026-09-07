@@ -41,6 +41,9 @@ export class MachineScreenSource {
   private scope: MachineScreenAuthority | null = null;
   private generation = 0; private sequence = 0; private lastNow = 0;
   private deadline = 0; private lastFrame = 0; private busy = false;
+  // A native decode outlives its source generation and its observation timeout.
+  private decoding = false;
+  private pendingBytes: Uint8Array<ArrayBuffer> | null = null;
   private error = "";
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly clock: () => number;
@@ -51,6 +54,10 @@ export class MachineScreenSource {
   open(sourceId: string) {
     this.close();
     this.error = "";
+    if (this.decoding) {
+      this.error = "decoder_busy";
+      throw new Error("meet_screen_decoder_busy");
+    }
     const scope = this.ports.authority(), now = this.clock();
     if (sourceId !== scope.sourceId || scope.expiresAt <= now || this.generation >= 1024) throw new Error("meet_screen_source_denied");
     ++this.generation;
@@ -82,10 +89,10 @@ export class MachineScreenSource {
     this.check();
     if (generation !== this.generation || !Number.isSafeInteger(sequence) || sequence !== this.sequence + 1 || this.busy
       || this.sequence > 0 && this.monotonic() < this.lastFrame + 200) throw new Error("meet_screen_frame_order_invalid");
-    const bytes = screenJpeg(encoded); this.busy = true;
+    const bytes = screenJpeg(encoded); this.busy = true; this.pendingBytes = bytes;
     let bitmap: ImageBitmap | undefined, timer: ReturnType<typeof setTimeout> | undefined, timedOut = false;
     try {
-      const decoding = this.ports.decode(bytes).then(image => { if (timedOut) image.close(); return image; });
+      const decoding = this.decodeFrame(bytes, () => timedOut);
       bitmap = await Promise.race([decoding, new Promise<never>((_, reject) => {
         timer = setTimeout(() => { timedOut = true; reject(new Error("meet_screen_decode_timeout")); }, 1000);
       })]);
@@ -100,7 +107,27 @@ export class MachineScreenSource {
       }
       throw error;
     }
-    finally { clearTimeout(timer); bitmap?.close(); bytes.fill(0); if (generation === this.generation) this.busy = false; }
+    finally {
+      clearTimeout(timer); bitmap?.close(); bytes.fill(0);
+      if (this.pendingBytes === bytes) this.pendingBytes = null;
+      if (generation === this.generation) this.busy = false;
+    }
+  }
+  private decodeFrame(bytes: Uint8Array<ArrayBuffer>, timedOut: () => boolean): Promise<ImageBitmap> {
+    this.decoding = true;
+    try {
+      return this.ports.decode(bytes).then(image => {
+        this.decoding = false;
+        if (timedOut()) image.close();
+        return image;
+      }, error => {
+        this.decoding = false;
+        throw error;
+      });
+    } catch (error) {
+      this.decoding = false;
+      throw error;
+    }
   }
   status() { return Object.freeze({ open: Boolean(this.surface), generation: this.generation, sequence: this.sequence }); }
   diagnostics() { return Object.freeze({ schema: "ananta.meet-screen-diagnostics.v1", lastStopReason: this.error }); }
@@ -108,6 +135,7 @@ export class MachineScreenSource {
     if (!this.scope && !this.surface && !this.busy && !this.timer) return;
     this.error ||= "closed";
     ++this.generation; this.busy = false; this.scope = null;
+    const bytes = this.pendingBytes; this.pendingBytes = null; bytes?.fill(0);
     if (this.timer) clearInterval(this.timer); this.timer = null;
     const surface = this.surface; this.surface = null;
     surface?.close();

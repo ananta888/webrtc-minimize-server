@@ -9,7 +9,8 @@ function setup() {
   const authority = { sourceId: "screen:hub", sessionId: "ms_test", leaseGeneration: 1, membershipEpoch: 2, expiresAt: now + 60_000 };
   const surface = { draw: vi.fn(), frame: vi.fn(), close: vi.fn() };
   const bitmap = { width: 640, height: 360, close: vi.fn() } as unknown as ImageBitmap;
-  const ports = { authority: () => authority, create: vi.fn(() => surface), decode: vi.fn(async () => bitmap), monotonic: () => Date.now() };
+  const ports = { authority: () => authority, create: vi.fn(() => surface),
+    decode: vi.fn(async (_bytes: Uint8Array<ArrayBuffer>) => bitmap), monotonic: () => Date.now() };
   return { source: new MachineScreenSource(ports), authority, surface, bitmap, ports };
 }
 describe("isolated machine screen source", () => {
@@ -71,9 +72,10 @@ describe("isolated machine screen source", () => {
     f.ports.decode.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
     const old = f.source.open("screen:hub"), pending = f.source.push(old.generation, 1, encode());
     await expect(f.source.push(old.generation, 1, encode())).rejects.toThrow();
-    f.source.close(); const current = f.source.open("screen:hub");
-    resolve(f.bitmap); await expect(pending).rejects.toThrow("meet_screen_frame_stale");
-    expect(f.source.status().open).toBe(true); expect(f.surface.draw).not.toHaveBeenCalled();
+    f.source.close(); expect(() => f.source.open("screen:hub")).toThrow("meet_screen_decoder_busy");
+    resolve(f.bitmap); await expect(pending).rejects.toThrow("meet_screen_authority_changed");
+    expect(f.source.status().open).toBe(false); expect(f.surface.draw).not.toHaveBeenCalled();
+    const current = f.source.open("screen:hub");
     await f.source.push(current.generation, 1, encode()); expect(f.surface.draw).toHaveBeenCalledOnce(); f.source.close();
   });
   it("bounds decoding and closes late bitmaps without ever drawing them", async () => {
@@ -83,5 +85,52 @@ describe("isolated machine screen source", () => {
     await vi.advanceTimersByTimeAsync(1000); await pending;
     resolve(f.bitmap); await Promise.resolve(); expect(f.bitmap.close).toHaveBeenCalledOnce();
     expect(f.surface.draw).not.toHaveBeenCalled(); expect(f.source.status().open).toBe(false);
+  });
+  it("does not release actual decoder occupancy merely by closing its source", async () => {
+    const f = setup(); let resolve!: (value: ImageBitmap) => void;
+    f.ports.decode.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    const lease = f.source.open("screen:hub"), pending = f.source.push(lease.generation, 1, encode());
+    const bytes = f.ports.decode.mock.calls[0][0];
+    try {
+      f.source.close();
+      expect([...bytes].every(byte => byte === 0)).toBe(true);
+      for (let attempt = 0; attempt < 8; attempt++) {
+        expect(() => f.source.open("screen:hub")).toThrow("meet_screen_decoder_busy");
+      }
+      expect(f.ports.decode).toHaveBeenCalledOnce(); expect(f.ports.create).toHaveBeenCalledOnce();
+      expect(f.surface.close).toHaveBeenCalledOnce(); expect(f.surface.draw).not.toHaveBeenCalled();
+    } finally {
+      resolve(f.bitmap); await pending.catch(() => undefined); f.source.close();
+    }
+    expect(f.bitmap.close).toHaveBeenCalledOnce();
+    const fresh = f.source.open("screen:hub");
+    await f.source.push(fresh.generation, 1, encode());
+    expect(f.surface.draw).toHaveBeenCalledOnce(); f.source.close();
+  });
+  it.each(["resolve", "reject"])("keeps timed-out native work occupied until actual late %s", async settlement => {
+    const f = setup(); let resolve!: (value: ImageBitmap) => void, reject!: (reason: Error) => void;
+    f.ports.decode.mockImplementationOnce(() => new Promise((yes, no) => { resolve = yes; reject = no; }));
+    const lease = f.source.open("screen:hub");
+    const pending = expect(f.source.push(lease.generation, 1, encode())).rejects.toThrow("meet_screen_decode_timeout");
+    const bytes = f.ports.decode.mock.calls[0][0];
+    await vi.advanceTimersByTimeAsync(1000); await pending;
+    expect([...bytes].every(byte => byte === 0)).toBe(true);
+    expect(f.source.status().open).toBe(false);
+    for (let i = 0; i < 8; i++) expect(() => f.source.open("screen:hub")).toThrow("meet_screen_decoder_busy");
+    expect(f.ports.decode).toHaveBeenCalledOnce(); expect(f.ports.create).toHaveBeenCalledOnce();
+    if (settlement === "resolve") resolve(f.bitmap); else reject(new Error("synthetic_native_failure"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(f.bitmap.close).toHaveBeenCalledTimes(settlement === "resolve" ? 1 : 0);
+    expect(f.surface.draw).not.toHaveBeenCalled();
+    const fresh = f.source.open("screen:hub"); await f.source.push(fresh.generation, 1, encode());
+    expect(f.surface.draw).toHaveBeenCalledOnce(); f.source.close();
+  });
+  it("releases occupancy after a synchronous decoder failure without retaining the failed frame", async () => {
+    const f = setup(); f.ports.decode.mockImplementationOnce(() => { throw new Error("synthetic_decode_failure"); });
+    const old = f.source.open("screen:hub");
+    await expect(f.source.push(old.generation, 1, encode())).rejects.toThrow("synthetic_decode_failure");
+    expect(f.source.status().open).toBe(false); expect(f.surface.draw).not.toHaveBeenCalled();
+    const current = f.source.open("screen:hub"); await f.source.push(current.generation, 1, encode());
+    expect(f.surface.draw).toHaveBeenCalledOnce(); f.source.close();
   });
 });
