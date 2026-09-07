@@ -24,6 +24,7 @@ interface SessionResponse {
 @Injectable({ providedIn: "root" })
 export class RoomSessionService {
   readonly joined = signal(false);
+  readonly peerId = signal("");
   readonly roomId = signal("");
   readonly mode = signal<RoomMode>("room");
   readonly displayName = signal("");
@@ -136,9 +137,10 @@ export class RoomSessionService {
           if (generation !== this.sessionGeneration) return;
           this.cancelMachineRenewal();
           this.machineExpiresAt.set(0);
-          this.mesh.close();
           this.joined.set(false);
+          this.peerId.set("");
           this.icePolicy.set(null);
+          this.mesh.close();
         },
       );
     } catch (error) {
@@ -191,6 +193,7 @@ export class RoomSessionService {
     this.cancelMachineRenewal();
     this.machineExpiresAt.set(0);
     this.joined.set(false);
+    this.peerId.set("");
     this.workspaceId.set("");
     this.workspaceRole.set("");
     this.roomCreator.set(false);
@@ -228,6 +231,7 @@ export class RoomSessionService {
       this.mesh.machineReceive.setMachine(String(message["peerId"] || ""), message["machine"] === true, message["machineCapabilities"]);
       for (const peer of peers) this.mesh.addPeer(peer.id, peer.name, peer.machine === true, peer.machineCapabilities);
       this.joined.set(true);
+      this.peerId.set(ownId);
       this.mesh.announcePublications();
       return;
     }

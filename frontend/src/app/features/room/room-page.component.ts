@@ -125,6 +125,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   readonly authRequired = computed(() => this.config.value()?.auth.mode === "required");
   readonly canEnter = computed(() => this.ready() && (!this.authRequired() || this.auth.authenticated()));
   readonly canOwnRooms = computed(() => this.auth.authenticated());
+  readonly sourceRequestPeers = computed(() => this.mesh.peerChoices().filter(peer => !this.mesh.machineReceive.isMachine(peer.id)));
   readonly ownMediaAgentOnline = computed(() => (
     this.mediaAgentOnboarding.agents().some((agent) => agent.online)
     || this.mediaAgentOnboarding.operatorAgents().some((agent) => agent.online)

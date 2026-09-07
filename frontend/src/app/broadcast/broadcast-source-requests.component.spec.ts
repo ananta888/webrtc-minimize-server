@@ -1,0 +1,39 @@
+import "@angular/compiler";
+import { Injector, runInInjectionContext, signal } from "@angular/core";
+import { afterEach, expect, it, vi } from "vitest";
+import { BroadcastSourceRequestsComponent } from "./broadcast-source-requests.component";
+
+function fixture() {
+  const requests = { busy: signal(false), reset: vi.fn(), setScope: vi.fn(), load: vi.fn(), create: vi.fn(), finish: vi.fn() };
+  const component = runInInjectionContext(Injector.create({ providers: [] }), () => new BroadcastSourceRequestsComponent(requests as never));
+  const inputs = { roomId: signal("room-alpha"), peerId: signal("0123456789abcdef"), identityKey: signal("owner"), disabled: signal(false),
+    program: signal({ programId: "prg_aaaaaaaaaaaaaaaa", programEpoch: 2, programRevision: 3 }),
+    candidates: signal([{ id: "fedcba9876543210", name: "Synthetic participant" }]) };
+  Object.assign(component, inputs); component.target.set("fedcba9876543210");
+  return { component, requests, inputs };
+}
+afterEach(() => vi.restoreAllMocks());
+it("never fetches on scope changes and confirms only metadata requests", async () => {
+  const f = fixture(); f.component.ngOnChanges(); expect(f.requests.load).not.toHaveBeenCalled();
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  await f.component.create(); expect(f.requests.create).not.toHaveBeenCalled();
+  confirm.mockReturnValue(true); await f.component.create(); expect(f.requests.create).toHaveBeenCalledOnce();
+  expect(confirm).toHaveBeenCalledWith(expect.stringContaining("keine Quellenfreigabe"));
+  f.component.ngOnDestroy(); expect(f.requests.reset).toHaveBeenCalled();
+});
+for (const change of ["room", "peer", "identity", "program", "target", "kind", "disabled"]) {
+  it(`does not send after ${change} changes during confirmation`, async () => {
+    const f = fixture();
+    vi.spyOn(window, "confirm").mockImplementation(() => {
+      if (change === "room") f.inputs.roomId.set("room-other");
+      if (change === "peer") f.inputs.peerId.set("aaaaaaaaaaaaaaaa");
+      if (change === "identity") f.inputs.identityKey.set("other");
+      if (change === "program") f.inputs.program.set({ ...f.inputs.program(), programEpoch: 3 });
+      if (change === "target") f.component.target.set("");
+      if (change === "kind") f.component.setKind("screen");
+      if (change === "disabled") f.inputs.disabled.set(true);
+      return true;
+    });
+    await f.component.create(); expect(f.requests.create).not.toHaveBeenCalled();
+  });
+}

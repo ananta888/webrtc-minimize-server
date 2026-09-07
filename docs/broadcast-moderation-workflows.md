@@ -61,8 +61,40 @@ Antwort; alle Antworten verwenden `no-store`. Es gibt keine Persistenz.
 Unit-/Contracttests und ein echter lokaler HTTP-Lauf mit kryptografisch
 verifizierten ephemeren OIDC-Tokens prüfen diese Grenzen. Room-Admission und
 Packager-Admission sind in diesem isolierten HTTP-Test explizite Fixtures, keine
-neue Produktionszulassung. Angular-Bedienung, Publisher-Consent und die tatsächliche
+neue Produktionszulassung. Publisher-Consent und die tatsächliche
 Remotequellen-Verarbeitung bleiben als nächste Implementierungsschritte offen.
+
+### Angular-Bedienung der Anfragen
+
+Im Broadcast-Bereich eines angemeldeten Raummitglieds öffnet „Quellenanfragen
+öffnen“ das nachgeladene Panel. Erst „Anfragen vom Server laden“ liest Metadaten;
+Panelöffnung und Scopewechsel lösen keinen Control-Request aus. Eingegangene
+Anfragen lassen sich ablehnen, gesendete zurückziehen. Es gibt noch keinen
+Annehmen-Button. Ablauf wird lokal angezeigt, aber allein der aktuelle Serverstand
+ist maßgeblich. Manuelles Laden ist bewusst getrennt von Hintergrund-Polling.
+
+Nur bei einer laufenden eigenen nativen Sendung erscheinen Teilnehmer- und
+Quellenwahl. Maschinen werden nicht als Human-Ziel angeboten. Eine lokale
+Bestätigung nennt Ziel und Quellenart; danach wird der aktuelle native
+Kontrollstand derselben Programm-Epoche gelesen und die Anfrage gegen dessen
+Revision gesendet. Bei Handoff, Scope-/Konto-/Gerätewechsel oder abweichendem
+Snapshot erfolgt keine nachträgliche Mutation. Eine Mutation wird nie automatisch
+wiederholt. Antworten sind geschlossen, auf 64 KiB und 40 Einträge begrenzt,
+raum-/peergebunden und auf `authority: none` geprüft. Das gemeinsame 15-Sekunden-
+Budget umfasst Kontrollstand und Mutation; Teil-/Fehlerantworten leeren den
+lokalen Stand und fordern zum erneuten Laden auf.
+
+Die Session veröffentlicht ihre eigene Peer-ID ausschließlich aus dem aktuellen
+Welcome und löscht sie vor Disconnect-/Leave-Cleanup. Panelende bricht Requests
+und den rein lokalen Ablauf-Anzeigetimer ab. Das bestehende Standby-Panel wird
+ebenfalls nach Eintritt in die Broadcast-Ansicht nachgeladen, ohne zusätzlichen
+Bedienklick oder automatischen Control-Request; das Initial-Hardlimit bleibt
+unverändert. Ein tatsächlicher Chromium-Tastaturtest am isolierten aktuellen
+Build prüft normalen signierten OIDC-/P-256-Join, Panelöffnung ohne Anfrage,
+Laden und Ablehnen derselben serverseitigen Einladung mit genau zwei Requests,
+serverbestätigtem Endzustand und null Capture-Aufrufen. Der Program-Publisher
+und seine native Admission sind dabei ausdrücklich Test-Fixtures; dies ist
+keine produktive Remotequellen-/Decrypt-Abnahme.
 
 ### Sicherheitsgrenze für wiederholte Quellenfreigaben
 

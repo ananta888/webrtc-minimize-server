@@ -28,6 +28,7 @@ describe("RoomSessionService teardown", () => {
     );
     service = created.service;
     service.joined.set(true);
+    service.peerId.set("0123456789abcdef");
     service.workspaceId.set("workspace");
     service.workspaceRole.set("owner");
     service.roomCreator.set(true);
@@ -36,6 +37,7 @@ describe("RoomSessionService teardown", () => {
 
     expect(observedJoinedStates).toEqual([false, false]);
     expect(service.joined()).toBe(false);
+    expect(service.peerId()).toBe("");
     expect(service.workspaceId()).toBe("");
     expect(service.workspaceRole()).toBe("");
     expect(service.roomCreator()).toBe(false);

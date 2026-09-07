@@ -32,11 +32,20 @@
     <button id="broadcast-handoff" class="button secondary" type="button" [disabled]="!canHandoff()" (click)="handoffPackager()">Übergabe bestätigen…</button>
     <p class="policy-note">Der Zielrechner muss den konfigurierten Broadcast-Origin beliefern können. Automatische Standby-Übernahme und nahtlose Zuschauerumschaltung sind noch nicht verfügbar.</p>
   </section>
-  <app-native-packager-standby
+  @defer (on immediate) {
+    <app-native-packager-standby
     [programId]="activeProgramId()" [programEpoch]="programState().program?.programEpoch || 0"
     [candidates]="handoffCandidates()"
     [disabled]="controlBusy() || !nativePublisherEnabled() || !joined() || !authenticated() || !roomCreator() || !['running', 'degraded'].includes(programState().lifecycle)"
-  />
+    />
+  }
+}
+
+@if (nativePublisherEnabled() && joined() && authenticated()) {
+  @defer (on interaction) {
+    <app-broadcast-source-requests [roomId]="roomId()" [peerId]="peerId()" [identityKey]="identityKey()"
+      [disabled]="!joined() || !authenticated()" [candidates]="sourceRequestPeers()" [program]="sourceRequestProgram()" />
+  } @placeholder { <button id="broadcast-source-requests-open" class="button secondary" type="button">Quellenanfragen öffnen</button> }
 }
 
 <section class="preflight-grid">

@@ -12,6 +12,7 @@ import { BroadcastOwnSourcePreflightService } from "./broadcast-own-source-prefl
 import { BroadcastPublisherWorkflowService } from "./broadcast-publisher-workflow.service";
 import { NativePackagerOnboardingService } from "./native-packager-onboarding.service";
 import { NativePackagerStandbyComponent } from "./native-packager-standby.component";
+import { BroadcastSourceRequestsComponent } from "./broadcast-source-requests.component";
 import {
   TrustedDecryptConsentCandidate,
   TrustedDecryptConsentPanelComponent,
@@ -23,7 +24,7 @@ import { TrustedVideoProgramSettingsService } from "./trusted-video-compositor";
 @Component({
   selector: "app-broadcast-preflight",
   standalone: true,
-  imports: [MediaStreamDirective, TrustedDecryptConsentPanelComponent, BroadcastModerationPanelComponent, BroadcastAudienceComponent, NativePackagerStandbyComponent],
+  imports: [MediaStreamDirective, TrustedDecryptConsentPanelComponent, BroadcastModerationPanelComponent, BroadcastAudienceComponent, NativePackagerStandbyComponent, BroadcastSourceRequestsComponent],
   templateUrl: "./broadcast-preflight.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -34,6 +35,11 @@ export class BroadcastPreflightComponent implements OnInit, OnDestroy {
   readonly joined = input(false);
   readonly authenticated = input(false);
   readonly roomId = input("");
+  readonly peerId = input("");
+  readonly identityKey = input("");
+  readonly sourceRequestPeers = input<readonly { id: string; name: string }[]>([]);
+  readonly sourceRequestProgram = computed(() => this.roomCreator() && !this.controlBusy() && Boolean(this.publisher.activePackagerId())
+    && ["running", "degraded"].includes(this.programState().lifecycle) ? this.programState().program : null);
   readonly roomCreator = input(false);
   readonly captionsActive = input(false);
   readonly trustedConsentCandidates = input<readonly TrustedDecryptConsentCandidate[]>([]);

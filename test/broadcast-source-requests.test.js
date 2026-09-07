@@ -4,6 +4,8 @@ import fs from "node:fs/promises";
 import test from "node:test";
 import Ajv from "ajv/dist/2020.js";
 import { SignJWT, createLocalJWKSet, exportJWK } from "jose";
+import { chromium } from "playwright";
+import { machineFixtureAssets } from "./helpers/machine-fixture-assets.mjs";
 import { BroadcastSourceRequests } from "../src/broadcast-source-requests.js";
 import { BroadcastRuntimeRegistry } from "../src/broadcast-runtime-registry.js";
 import { RoomRegistry } from "../src/room-registry.js";
@@ -191,4 +193,72 @@ test("HTTP invitation route uses actual signed OIDC, Origin/body validation and 
   assert.equal(declined.status, 200); assert.equal((await declined.json()).requests[0].state, "declined");
   f.rooms.leave(f.peers.target);
   assert.equal((await post(f.input("target", "list"), targetHeaders)).status, 403);
+});
+
+test("real Angular keyboard inbox loads and declines an actual scoped invitation without capture", { timeout: 60000 }, async t => {
+  try { await fs.access(chromium.executablePath()); } catch { t.skip("Playwright Chromium required for invitation keyboard gate"); return; }
+  const f = fixture(), keys = generateKeyPairSync("ed25519");
+  const config = { authMode: "required", oidcIssuer: issuer, oidcAudience: "human", oidcAlgorithms: ["EdDSA"],
+    publicOrigin: "", nativePackagerSelfServiceEnabled: true, broadcastNativeOutputEnabled: true,
+    stunUrls: [], turnServers: [] };
+  const oidcVerifier = createOidcVerifier(config, { jwks: createLocalJWKSet({ keys: [await exportJWK(keys.publicKey)] }) });
+  const app = createAppServer({ config, oidcVerifier, registry: f.rooms, broadcastRuntime: f.runtime,
+    publicDir: await machineFixtureAssets(process.env.MEET_TEST_PUBLIC_DIR),
+    nativePackagerEnrollmentStore: { definitions: () => [], list: () => [] }, nativePackagerInstallerService: { availableTargets: () => [] } });
+  let browser;
+  t.after(async () => {
+    await browser?.close();
+    for (const socket of app.webSocketServer.clients) socket.terminate();
+    await new Promise(resolve => app.webSocketServer.close(resolve));
+    app.server.closeAllConnections(); await new Promise(resolve => app.server.close(resolve));
+  });
+  await new Promise(resolve => app.server.listen(0, "127.0.0.1", resolve));
+  const origin = `http://127.0.0.1:${app.server.address().port}`;
+  const token = subject => new SignJWT({}).setIssuer(issuer).setAudience("human").setSubject(subject)
+    .setIssuedAt().setExpirationTime("2m").setProtectedHeader({ alg: "EdDSA" }).sign(keys.privateKey);
+  browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ permissions: [] });
+  await context.addInitScript(token => {
+    sessionStorage.setItem("webrtc.oidc.access-token", token);
+    window.__sourceRequestCaptureCalls = 0;
+    for (const method of ["getUserMedia", "getDisplayMedia"]) navigator.mediaDevices[method] = () => {
+      window.__sourceRequestCaptureCalls++; throw new Error("capture_forbidden");
+    };
+  }, await token("target"));
+  const page = await context.newPage(); let invitationCalls = 0;
+  const admissionResponses = [];
+  page.on("response", response => { if (new URL(response.url()).pathname === "/api/sessions") admissionResponses.push(response.status()); });
+  page.on("request", request => { if (new URL(request.url()).pathname === "/api/broadcast-source-requests") invitationCalls++; });
+  await page.goto(origin + "/?room=room-alpha");
+  await page.locator("#display-name").fill("Synthetic invitation receiver");
+  await page.locator("#join-room:not([disabled])").waitFor(); await page.locator("#join-room").press("Enter");
+  await page.locator("#participant-count", { hasText: "4 / 20" }).waitFor({ timeout: 10000 }).catch(async error => {
+    t.diagnostic(JSON.stringify({ admissionResponses, members: f.rooms.members("room-alpha").length,
+      ui: await page.evaluate(() => ({ connection: document.querySelector("#connection-status")?.textContent,
+        count: document.querySelector("#participant-count")?.textContent,
+        runtime: document.querySelector("#runtime-config-status")?.getAttribute("data-state") })) }));
+    throw error;
+  });
+  const receiver = f.rooms.members("room-alpha").find(peer => peer.principal === `${issuer}|target` && peer.id !== f.peers.target.id);
+  assert.ok(receiver, "a new P-256-bound browser membership was admitted");
+  const created = await fetch(origin + "/api/broadcast-source-requests", { method: "POST", headers: {
+    origin, "content-type": "application/json", authorization: `Bearer ${await token("owner")}`,
+  }, body: JSON.stringify(f.input("owner", "create", { targetPeerId: receiver.id })) });
+  assert.equal(created.status, 201); const requestId = (await created.json()).requests[0].requestId;
+  await page.locator("#broadcast-navigation").press("Enter");
+  await page.locator("#broadcast-source-requests-open").press("Enter");
+  await page.locator("#broadcast-source-requests-load:not([disabled])").waitFor();
+  assert.equal(invitationCalls, 0, "panel opening does not fetch invitation metadata");
+  await page.locator("#broadcast-source-requests-load").press("Enter");
+  const item = page.locator(`[data-source-request-id="${requestId}"]`);
+  await item.getByText("Offen · keine Freigabe", { exact: false }).waitFor();
+  await item.getByRole("button", { name: "Ablehnen", exact: true }).press("Enter");
+  await item.getByText("Abgelehnt", { exact: false }).waitFor();
+  assert.equal(invitationCalls, 2);
+  assert.equal(await page.evaluate(() => window.__sourceRequestCaptureCalls), 0);
+  assert.equal(await page.getByRole("button", { name: /^Annehmen/ }).count(), 0);
+  const state = await fetch(origin + "/api/broadcast-source-requests", { method: "POST", headers: {
+    origin, "content-type": "application/json", authorization: `Bearer ${await token("owner")}`,
+  }, body: JSON.stringify(f.input("owner", "list")) });
+  assert.equal((await state.json()).requests[0].state, "declined");
 });
