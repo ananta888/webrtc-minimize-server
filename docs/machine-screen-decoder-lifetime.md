@@ -37,6 +37,13 @@ avatar/speech/screen matrix also passed three real lease renewals per engine,
 with three stable transceiver slots and zero capture or transform errors.
 
 These are synthetic private transport/resource tests, not production evidence.
-The joint Hub/Worker delayed-decoder gate and isolated full repository check
-remain pending at this implementation checkpoint. MDS-05/08 remain open for
-their broader acceptance criteria.
+The joint Hub/Worker delayed-decoder gate passed in 44.32 s: 47 delayed frames
+(307.69–442.26 ms), one full local 220,500-sample speech output, correlated remote
+audio, and voice revocation in 551.66/565.78 ms locally/remotely while screen
+continued. This used synthetic voice/model/profile inputs, not GPU inference.
+
+The full isolated `npm run check` for `f6d1d90` exited zero: 639 frontend tests,
+560 Node passes, three explicitly skipped Node gates, no failures; Node duration
+140.35 s. Build, Go, TODO, workflow, deployment, licensing and leakage checks
+passed. External infrastructure gates remained explicit skips. No serving assets
+or services were replaced. MDS-05/08 remain open for their broader criteria.
