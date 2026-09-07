@@ -46,7 +46,31 @@ export async function verifyProductionHandoff({ owner, viewer, targetId, program
   }
   const handoff = await handoffResponse.json();
   assert.equal(handoffResponse.status(), 201, `handoff rejected: ${code(handoff)}`);
-  const nextManifest = await manifestPending;
+  report("PASS real native handoff accepted response");
+  let nextManifest;
+  try { nextManifest = await manifestPending; }
+  catch (error) {
+    const inspect = () => {
+      const bounded = selector => [...document.querySelectorAll(selector)].flatMap(element =>
+        element.textContent?.match(/\b(?:broadcast|native|invalid)_[a-z0-9_-]{1,80}\b/g) || []).slice(0, 5);
+      const state = document.querySelector("app-broadcast-player .state")?.getAttribute("data-state") || "absent";
+      const video = document.querySelector("app-broadcast-player video");
+      const publisher = document.querySelector("#broadcast-program-status")?.textContent?.trim();
+      return { errors: bounded("app-broadcast-preflight > .error, #broadcast-open-error, app-broadcast-player [role=alert]"),
+        player: /^[a-z-]{1,30}$/.test(state) ? state : "unknown",
+        reconnecting: Boolean(document.querySelector("#broadcast-viewer-reconnecting")),
+        publisher: ["Live", "Degradiert", "Übergabe läuft", "Gestoppt"].includes(publisher) ? publisher : "other",
+        media: video instanceof HTMLVideoElement ? { readyState: video.readyState, paused: video.paused,
+          frames: video.getVideoPlaybackQuality().totalVideoFrames } : null };
+    };
+    const safeCode = value => typeof value === "string" && /^[A-Z_a-z0-9-]{1,64}$/.test(value) ? value : "unknown";
+    const transitions = statuses.filter(item => item.programId === programId).slice(-16).map(item => ({
+      epoch: Number.isSafeInteger(item.programEpoch) ? item.programEpoch : 0,
+      role: item.packagerId === targetId ? "successor" : "predecessor", state: safeCode(item.state), reason: safeCode(item.reasonCode),
+    }));
+    throw new Error(`native_handoff_manifest_missing:${JSON.stringify({ transitions,
+      owner: await owner.evaluate(inspect), viewer: await viewer.evaluate(inspect) })}`, { cause: error });
+  }
   assert.equal(handoff.program.programId, programId);
   assert.equal(handoff.program.programEpoch, control.programEpoch + 1);
   assert.equal(handoff.assignment.packagerId, targetId);

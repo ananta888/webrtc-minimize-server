@@ -1,6 +1,6 @@
 # Broadcast-Regie, Quellenwiderruf und Packager-Handoff
 
-Stand: 2026-09-06. Dieses Dokument beschreibt den TBP-030-Zwischenstand.
+Stand: 2026-09-07. Dieses Dokument beschreibt den TBP-030-Zwischenstand.
 Die Domainpolicy für serverseitige Moderation ist vorbereitet, aber noch nicht
 an eine öffentliche Moderations-API angeschlossen. Der native Packager besitzt
 inzwischen einen realen Enrollment-/Publish-/Playback-Pfad. Eine laufende
@@ -131,7 +131,9 @@ Wiederholungsbudget. `LIVE_PRODUCTION_VIEWER_RECOVERY=1` ergänzt einen realen
 isolierten Lauf um genau eine im Testbrowser injizierte Autorisierungsablehnung;
 die anschließenden Grants/Cookies müssen vom echten Server stammen und
 dekodierte Frames der identischen Ausgabe müssen wieder fortschreiten. Dieser
-neue Fault-Injection-Gate ist bis zu seinem erfolgreichen Lauf unverifiziert.
+Fault-Injection-Gate bestand am 2026-09-06 auf Revision `16b25af`: Firefox setzte
+mit frischem Servercookie dieselbe Ausgabe fort, behielt den niedrigen
+Qualitätsmodus und dekodierte neue Frames ohne zweiten Play-Klick.
 
 Browser-Gateway-Tests prüfen späte open-/renew-Antworten nach close, getrennte
 alte/neue Handles und begrenztes Cleanup. Der Server prüft nach asynchroner
@@ -149,6 +151,39 @@ Das Gate ist erst nach einem erfolgreichen realen Lauf Produktionsnachweis;
 sein gemeinsamer Mini-PC-Origin beweist keinen beliebigen Cross-Host-Origin.
 
 ### Ausgelieferter Stand und getrennte Produktionsnachweise
+
+Revision `16b25af54933ee6d17cb30fcdde4da4a5c33df0d` ist nach
+[allen sieben erfolgreichen CI-Jobs](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34051512640)
+auf Web-App, Native-Packager und HLS-Origin gemeinsam ausgeliefert. Vor dem
+Deployment waren Räume, Teilnehmer und Ausgaben leer; Geräteidentität,
+verpflichtende Anmeldung und deaktivierte Maschinenzulassung blieben erhalten.
+Alle fünf Binaries stimmen mit attestierter CI überein, ebenso öffentliches
+Manifest und Linux-Download. Manifest-SHA-256:
+`a51921a42c1a688807d17c1ef9552e1e5e3be54486b25396c1fbcab5030bebda`.
+
+Der reale isolierte Lauf bestand die private Packager-Übergabe und die oben
+beschriebene Same-Output-Recovery. Die anschließende öffentliche Rückübergabe
+erhielt HTTP 201, aber binnen 90 Sekunden folgte kein neues Zuschauermanifest.
+Der Gesamtlauf endete deshalb mit Exit 1. Unabhängige Nachprüfungen bestätigten
+null Testcontainer, Test-Identity-Volumes, Ausgaben, temporäre Keycloak-Nutzer,
+Räume und Teilnehmer. Die erweiterte Diagnose erfasst beim Manifesttimeout nur
+begrenzte Assignment-, Publisher- und Viewer-Zustände; kein vollständiger
+öffentlicher Handoff-Nachweis wird aus dem privaten Teilerfolg abgeleitet.
+
+Ein öffentlicher Isolationslauf am 2026-09-07 ohne vorherigen privaten
+Zuschauer-Handoff scheiterte schon beim ersten Packager-Verbindungsaufbau:
+`native-packager-connection-timeout`, null RTP-Bytes, zuletzt ICE `checking`
+und DTLS `new`. Beide Test-Packager waren registriert und online. Dieser
+Exit-1-Lauf erreichte die Übergabe nicht und klärt deren Ursache deshalb nicht.
+Testkonten, Container und Identitätsvolumes wurden unabhängig als entfernt
+bestätigt; Räume und Teilnehmer waren anschließend leer. Die ausschließlich
+im isolierten Testbrowser installierte Diagnose ergänzt nun monotones Alter,
+SDP-Vorhandensein als Boolean sowie aggregierte ICE-Kandidaten-/Pair-Zustände.
+Sie speichert höchstens acht Stichproben für je drei Verbindungen, ohne
+SDP-Inhalte, Kandidatenadressen, Credentials oder Identifikatoren.
+
+Die folgenden Einträge dokumentieren frühere Revisionen und deren jeweilige
+Nachweisgrenzen; sie sind keine Angaben zur aktuell ausgelieferten Version.
 
 Revision `f6be45be8ca4586f378c51ed3caa551fe91f15cb` wurde am 2026-09-06 nach
 [allen sieben erfolgreichen CI-Gates](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34044416649)

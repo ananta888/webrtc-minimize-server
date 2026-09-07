@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { chromium, firefox } from "playwright";
 import { verifyProductionHandoff } from "./live-production-handoff-gate.mjs";
 import { verifyProductionViewerRecovery } from "./live-production-viewer-recovery-gate.mjs";
+import { installBroadcastTransportDiagnostics } from "./broadcast-transport-diagnostics.mjs";
 
 if (process.env.RUN_LIVE_PRODUCTION_BROADCAST !== "1") {
   console.log("SKIP production broadcast gate: provide an isolated test identity and packager");
@@ -228,35 +229,7 @@ try {
     }
   });
   ownerPage = await ownerContext.newPage();
-  await ownerPage.addInitScript(() => {
-    // Synthetic test identity only. No candidate addresses, source IDs, SDP or media contents.
-    window.__broadcastGateTransportStats = [];
-    let sampling = false;
-    setInterval(async () => {
-      if (sampling) return;
-      sampling = true;
-      try {
-        const peers = (window.__broadcastGateConnections || []).filter(pc => pc.connectionState !== "closed");
-        if (!peers.length) return;
-        const sample = [];
-        for (const pc of peers.slice(-3)) {
-          const snapshot = { connection: pc.connectionState, ice: pc.iceConnectionState, rtp: [], transports: [] };
-          const stats = await pc.getStats();
-          for (const item of stats.values()) {
-            if (item.type === "outbound-rtp") snapshot.rtp.push({ kind: item.kind, bytes: item.bytesSent,
-              packets: item.packetsSent, frames: item.framesEncoded, fps: item.framesPerSecond,
-              qualityLimitation: item.qualityLimitationReason });
-            if (item.type === "transport") snapshot.transports.push({ dtls: item.dtlsState,
-              sent: item.bytesSent, received: item.bytesReceived });
-          }
-          sample.push(snapshot);
-        }
-        window.__broadcastGateTransportStats.push(sample);
-        if (window.__broadcastGateTransportStats.length > 8) window.__broadcastGateTransportStats.shift();
-      } catch { /* The explicit fixture may close a peer while sampling. */ }
-      finally { sampling = false; }
-    }, 2_000);
-  });
+  await ownerPage.addInitScript(installBroadcastTransportDiagnostics);
   ownerPage.on("websocket", socket => socket.on("framereceived", ({ payload }) => {
     try {
       const message = JSON.parse(String(payload));
