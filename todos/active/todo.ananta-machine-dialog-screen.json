@@ -28,7 +28,7 @@
   "risk_scale": ["low", "medium", "high", "critical"],
   "milestones": [
     {"id": "MDS-M1", "title": "Verträge und Autorisierung", "status": "in_progress", "task_ids": ["MDS-01", "MDS-02"]},
-    {"id": "MDS-M2", "title": "Empfang, Chat und Medienquellen", "status": "in_progress", "task_ids": ["MDS-03", "MDS-04", "MDS-05", "MDS-10", "MDS-11"]},
+    {"id": "MDS-M2", "title": "Empfang, Chat und Medienquellen", "status": "in_progress", "task_ids": ["MDS-03", "MDS-04", "MDS-05", "MDS-10", "MDS-11", "MDS-12"]},
     {"id": "MDS-M3", "title": "Lebenszyklus und sichtbare Kontrolle", "status": "in_progress", "task_ids": ["MDS-06", "MDS-07"]},
     {"id": "MDS-M4", "title": "Verifikation und kontrollierter Rollout", "status": "in_progress", "task_ids": ["MDS-08", "MDS-09"]}
   ],
@@ -145,6 +145,18 @@
       "implementation_note": "2026-09-07: Separater neutral-ai-v1-Kameraport mit eigener Ownership, 256x256/5 FPS, sichtbarem KI-Label, 30-s-Grenze, konkreter SFrame-Readiness und Lease-/Membership-Fencing implementiert. Quelle, Canvas-Adapter und Sessionprojektion getrennt (SRP/DIP). 15 Source-/Adapterunits bestanden. Echte Chromium/Firefox-Empfaenger decodieren Gesicht, Label und bewegte Anzeige; parallele PCM/Screen-Publikationen bleiben nach Avatarstop aktiv, echte Renewal und altes Close-Token geprueft, Capture/Transformfehler null. Gefundener zu frueher Stop bei Zuschalten weiterer Quellen durch begrenztes zweisekuendiges Aussetzen OHNE Frames waehrend Rekey korrigiert; Lease unveraendert. Firefox-Zone-Wartefehler separat behoben. npm run check gruen: 556 Frontendtests, 497 Nodechecks/495 passed/2 explizite Skips, Node 65122.11 ms; externer Rollout unveraendert. docs/machine-neutral-avatar.md. Vor Hub-Liveintegration jetzt noch expliziten generationsgebundenen 2.5-s-Controller-Puls ergaenzen, damit blockierter Worker nicht 30 s weiterzeichnet; keine selbststaendige Hub-Autorisierung durch diesen Puls. Track bleibt offen, keine Persona-/Produktionsabnahme. Abschlussnachtrag: auch der dort noch ausstehende Controller-Puls ist jetzt implementiert und mit echten Browsern verifiziert; 17 Units und aktualisierter npm run check gruen. Details und gemessene Stopzeiten im aktuellen summary_notes-Eintrag und docs/machine-neutral-avatar.md. Alle vier Quellportkriterien erfuellt, deshalb MDS-11 done/100; kein Abschluss der uebergreifenden Integration."
     },
     {
+      "id": "MDS-12", "title": "Begrenztes freigegebenes Persona-PNG im unabhaengigen Avatarport rendern",
+      "status": "in_progress", "progress_percent": 1, "priority": "P1", "risk": "high", "depends_on": ["MDS-11"],
+      "ananta_task_refs": ["MAP-20", "MAP-21"],
+      "acceptance_criteria": [
+        "Additiver persona-image-v1-Quelltyp akzeptiert nur begrenztes normalisiertes PNG mit passendem SHA256; keine URL, frei waehlbaren Labels, Capture-API oder neutrale Ersatzquelle bei fehlendem Bild. Neutral-ai-v1 bleibt kompatibel.",
+        "Bilddekodierung und Speicher begrenzen, Dimensionen vor Decode pruefen, abgebrochene/spaete Bitmaps freigeben; keine Publikation vor aktueller Quellen-/Lease-/Membership-Autoritaet. Sichtbare unvermeidbare KI-Markierung auch im kleinen Thumbnail.",
+        "Eigene Kameraownership, 2500-ms-Controllergrenze, maximal 30-s-Aktivierung, SFrame-Readiness und generationsgebundene Ablösung unveraendert; alte Decode-/Close-Callbacks duerfen kein neues Bild ersetzen oder stoppen.",
+        "Deterministische Negativ-/Race-Tests und echte Chromium/Firefox-Decodierung mit Bildwechsel neben Screen/PCM, null Capture und Transformfehlern. npm run check gruen; Hub-Bildfreigabe und Profilwechsel-CAS werden separat in Ananta integriert, kein Porttest als Produktionsfreigabe."
+      ],
+      "implementation_note": "Vor Code mit Anantas docs/contracts/meet-live-persona-avatar.md abgestimmt. Meet erhaelt keine Asset-/Profilpolicy oder Inferenz; ein kleiner validierender Bildadapter wird in den vorhandenen Quellenlifecycle komponiert. Keine produktiven Dienste oder Trust-Konfiguration aendern."
+    },
+    {
       "id": "MDS-09", "title": "Vorautorisierte Aktivierung, Preflight und Rollback dokumentieren und prüfen",
       "status": "todo", "progress_percent": 0, "priority": "P1", "risk": "high", "depends_on": ["MDS-08"],
       "ananta_task_refs": ["MAP-05", "MAP-31", "MAP-32"],
@@ -158,11 +170,11 @@
   ],
   "critical_path_tasks": ["MDS-01", "MDS-02", "MDS-03", "MDS-07", "MDS-08", "MDS-09"],
   "tasks_status_summary": {
-    "total": 11,
-    "by_status": {"todo": 1, "in_progress": 8, "partial": 0, "blocked": 0, "done": 2},
-    "progress_percent_done": 18.18,
-    "by_priority": {"P0": 3, "P1": 8, "P2": 0, "P3": 0},
-    "by_risk": {"low": 0, "medium": 0, "high": 7, "critical": 4},
+    "total": 12,
+    "by_status": {"todo": 1, "in_progress": 9, "partial": 0, "blocked": 0, "done": 2},
+    "progress_percent_done": 16.67,
+    "by_priority": {"P0": 3, "P1": 9, "P2": 0, "P3": 0},
+    "by_risk": {"low": 0, "medium": 0, "high": 8, "critical": 4},
     "critical_path": {"total": 6, "done": 0, "remaining": 6},
     "milestones": {"total": 4, "todo": 0, "in_progress": 4, "blocked": 0, "done": 0}
   },
