@@ -30,6 +30,8 @@
     "keycloak:client-config": "node scripts/keycloak-client-config.mjs",
     "test": "node --test",
     "todos:validate": "node scripts/validate-todos.mjs",
+    "machine:preflight": "node scripts/machine-rollout-preflight.mjs",
+    "test:machine:soak": "node --test scripts/live-machine-dialog-soak.mjs",
     "deployment:validate": "node scripts/validate-production-deployment.mjs",
     "broadcast:release:validate": "node scripts/validate-broadcast-release.mjs",
     "licenses:validate": "node scripts/validate-production-licenses.mjs",

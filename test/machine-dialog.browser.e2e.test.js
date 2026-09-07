@@ -80,7 +80,9 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
     await machine.evaluate(([gen, seq, jpeg]) => window.anantaMachine.screen.push(gen, seq, jpeg), [lease.generation, index + 1, frame.toString("base64")]);
     await machine.waitForTimeout(230);
   }
-  const decoded = await human.evaluate(async () => {
+  // Sending the last green frame is not a rendering ACK. Wait for that exact
+  // decoded pixel condition, bounded below the source's two-second stall stop.
+  const readDecoded = () => human.evaluate(async () => {
     let frames = 0; for (const pc of window.__pcs) for (const stat of (await pc.getStats()).values())
       if (stat.type === "inbound-rtp") frames += stat.framesDecoded || 0;
     const pixels = [...document.querySelectorAll("video")].filter(v => v.videoWidth > 0).map(v => {
@@ -88,6 +90,12 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
       const ctx = c.getContext("2d"); ctx.drawImage(v, 0, 0, 1, 1); return [...ctx.getImageData(0, 0, 1, 1).data];
     }); return { frames, pixels };
   });
+  let decoded = await readDecoded();
+  const renderDeadline = performance.now() + 1500;
+  while (!(decoded.frames > 3 && decoded.pixels.some(p => p[1] > 150 && p[0] < 80)) && performance.now() < renderDeadline) {
+    await new Promise(resolve => setTimeout(resolve, 50));
+    decoded = await readDecoded();
+  }
   assert.ok(decoded.frames > 3, "remote frames decoded");
   assert.ok(decoded.pixels.some(p => p[1] > 150 && p[0] < 80), "remote decoded green source pixels");
   await machine.evaluate(() => window.anantaMachine.screen.close());

@@ -1,19 +1,21 @@
 import { importSPKI, jwtVerify } from "jose";
 import { AuthenticationError, bearerToken } from "./oidc-verifier.js";
+import { MACHINE_CAPABILITIES, machineCapabilityCeiling } from "./machine-capabilities.js";
+export { MACHINE_CAPABILITIES } from "./machine-capabilities.js";
 
 const FIELDS = new Set(["iss", "aud", "sub", "iat", "exp", "jti", "roomId", "taskId", "tenantId", "projectId"]);
 const ID = /^[A-Za-z0-9_.:-]{1,160}$/;
-export const MACHINE_CAPABILITIES = Object.freeze(["audio.receive", "chat.read", "chat.send",
-  "screen.publish", "screen-audio.publish", "avatar.publish", "speech.publish"]);
 const V2_FIELDS = new Set([...FIELDS, "runtimeId", "sessionId", "capabilities"]);
 
 /** Dedicated operator-pinned machine issuer; never accepts Human/Hub service JWTs. */
 export class MachineAdmission {
   #key;
   #issuer;
+  #allowedCapabilities;
   #used = new Map();
 
-  constructor({ publicKey = "", issuer = "" } = {}) {
+  constructor({ publicKey = "", issuer = "", allowedCapabilities } = {}) {
+    this.#allowedCapabilities = machineCapabilityCeiling(allowedCapabilities);
     if (Boolean(publicKey) !== Boolean(issuer)) throw new Error("machine_trust_incomplete");
     if (issuer && !/^https:\/\/[^\s|]+$/.test(issuer)) throw new Error("machine_issuer_invalid");
     this.#key = publicKey ? importSPKI(publicKey, "EdDSA") : null;
@@ -48,6 +50,7 @@ export class MachineAdmission {
         || new Set(payload.capabilities).size !== payload.capabilities.length
         || payload.capabilities.some(value => !MACHINE_CAPABILITIES.includes(value)))) throw new Error("invalid");
       const capabilities = v2 ? [...payload.capabilities].sort() : ["avatar.publish", "chat.send", "speech.publish"];
+      if (capabilities.some(value => !this.#allowedCapabilities.includes(value))) throw new Error("capability_disabled");
       for (const [id, expiry] of this.#used) if (expiry <= now) this.#used.delete(id);
       if (this.#used.has(payload.jti) || this.#used.size >= 10_000) throw new Error("replayed_or_full");
       this.#used.set(payload.jti, payload.exp * 1000);

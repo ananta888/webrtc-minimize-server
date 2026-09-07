@@ -1,4 +1,5 @@
 import { Injectable, computed, signal } from "@angular/core";
+import { PublicationSenderPool } from "./publication-sender-pool";
 
 import { AudioActivityService } from "./audio-activity.service";
 import { IcePathClass, IceTierPolicy } from "./ice-policy";
@@ -200,6 +201,7 @@ function agentLayerForTier(tier: VideoTier): "low" | "medium" | "high" {
 
 @Injectable({ providedIn: "root" })
 export class PeerMeshService {
+  private readonly senderPool = new PublicationSenderPool();
   private readonly machineChatIngress = new MachinePeerChatIngress();
   private readonly machineChatSubscribers = new Set<(event: BoundPeerChat) => void>();
   readonly machineReceive = new MachineReceiveGate(() => {
@@ -1003,7 +1005,7 @@ export class PeerMeshService {
   private discardInboundForReplacement(publication: Publication): void {
     for (const peer of this.peers.values()) {
       const sender = peer.senders.get(publication.id);
-      if (sender) peer.pc.removeTrack(sender);
+      if (sender) this.senderPool.release(peer.pc, sender);
       peer.senders.delete(publication.id);
       peer.appliedTiers.delete(publication.id);
     }
@@ -1013,6 +1015,13 @@ export class PeerMeshService {
   }
 
   private acceptRemoteTrack(peer: PeerState, track: MediaStreamTrack, receiver: RTCRtpReceiver): void {
+    // Reused transceivers keep their original native track ID. A repeated
+    // ontrack during renegotiation must not replace the current publication's
+    // decrypt context with that retired ID or create a second camera tile.
+    const bound = [...this.publications.values()].find(publication => !publication.local
+      && publication.inboundPeerId === peer.id && publication.track === track
+      && this.descriptors.get(publication.id)?.rootPeerId === publication.rootPeerId);
+    if (bound) return;
     const directDescriptor = this.descriptors.get(track.id);
     const fallbackDescriptor = directDescriptor ? null : [...this.descriptors.entries()].find(([publicationId, value]) => (
       value.rootPeerId === peer.id && sourceKind(value.source) === track.kind && !this.publications.has(publicationId)
@@ -1091,7 +1100,7 @@ export class PeerMeshService {
     this.clearPublicationMediaKeys(publication);
     for (const peer of this.peers.values()) {
       const sender = peer.senders.get(publicationId);
-      if (sender) peer.pc.removeTrack(sender);
+      if (sender) this.senderPool.release(peer.pc, sender);
       peer.senders.delete(publicationId);
       peer.appliedTiers.delete(publicationId);
     }
@@ -1131,7 +1140,7 @@ export class PeerMeshService {
       const existing = peer.senders.get(publication.id);
       const shouldSend = this.shouldSend(publication, peer.id);
       if (!shouldSend && existing) {
-        peer.pc.removeTrack(existing);
+        this.senderPool.release(peer.pc, existing);
         peer.senders.delete(publication.id);
         peer.appliedTiers.delete(publication.id);
       } else if (shouldSend && !existing && publication.track.readyState === "live") {
@@ -1140,17 +1149,27 @@ export class PeerMeshService {
           continue;
         }
         try {
-          const sender = peer.pc.addTrack(publication.track, publication.stream);
-          if (this.shouldProtectMedia()) {
-            const contextId = this.outboundMediaContext(publication.id, peer.id);
-            if (!this.mediaE2eeController?.attachSender(sender, contextId)) {
-              peer.pc.removeTrack(sender);
-              this.failMediaE2ee();
-              continue;
+          const lease = this.senderPool.acquire(peer.pc, publication.track, publication.stream, sender => {
+            if (this.shouldProtectMedia()) {
+              const contextId = this.outboundMediaContext(publication.id, peer.id);
+              if (!this.mediaE2eeController?.attachSender(sender, contextId)) {
+                this.failMediaE2ee(); throw new Error("sender_transform_unavailable");
+              }
             }
-          }
+          }, () => this.peers.get(peer.id) === peer && this.publications.get(publication.id) === publication
+            && this.shouldSend(publication, peer.id));
+          const sender = lease.sender;
           peer.senders.set(publication.id, sender);
           this.provisionMediaKey(publication, peer);
+          void lease.ready.then(active => {
+            if (peer.senders.get(publication.id) !== sender) return;
+            if (active) void this.applyQualityPolicies();
+            else { peer.senders.delete(publication.id); peer.appliedTiers.delete(publication.id); }
+          }).catch(() => {
+            if (peer.senders.get(publication.id) !== sender) return;
+            peer.senders.delete(publication.id); peer.appliedTiers.delete(publication.id);
+            this.qualityCapability.set("degraded");
+          });
           if (!publication.local) this.relayCapability.set("available");
         } catch {
           if (!publication.local) {

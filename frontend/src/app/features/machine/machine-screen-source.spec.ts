@@ -9,7 +9,7 @@ function setup() {
   const authority = { sourceId: "screen:hub", sessionId: "ms_test", leaseGeneration: 1, membershipEpoch: 2, expiresAt: now + 60_000 };
   const surface = { draw: vi.fn(), frame: vi.fn(), close: vi.fn() };
   const bitmap = { width: 640, height: 360, close: vi.fn() } as unknown as ImageBitmap;
-  const ports = { authority: () => authority, create: vi.fn(() => surface), decode: vi.fn(async () => bitmap) };
+  const ports = { authority: () => authority, create: vi.fn(() => surface), decode: vi.fn(async () => bitmap), monotonic: () => Date.now() };
   return { source: new MachineScreenSource(ports), authority, surface, bitmap, ports };
 }
 describe("isolated machine screen source", () => {
@@ -47,6 +47,24 @@ describe("isolated machine screen source", () => {
       vi.setSystemTime(now); const f = setup(); f.source.open("screen:hub"); revoke(f); vi.advanceTimersByTime(100);
       expect(f.source.status().open).toBe(false); expect(f.surface.close).toHaveBeenCalledOnce();
     }
+  });
+  it("reports a bounded stop category without exposing source identity or key material", () => {
+    const f = setup(); f.source.open("screen:hub"); vi.advanceTimersByTime(2100);
+    expect(f.source.diagnostics().lastStopReason).toBe("frame_stalled");
+    const status = JSON.stringify(f.source.diagnostics()); expect(status).not.toContain("screen:hub");
+    expect(Object.keys(f.source.status()).sort()).toEqual(["generation", "open", "sequence"]);
+    f.source.open("screen:hub"); expect(f.source.diagnostics().lastStopReason).toBe("");
+    f.authority.membershipEpoch++; vi.advanceTimersByTime(100); expect(f.source.diagnostics().lastStopReason).toBe("scope_changed");
+  });
+  it("uses monotonic frame timing across forward wall-clock steps but keeps absolute expiry", async () => {
+    const f = setup(); let elapsed = 0; f.ports.monotonic = () => elapsed;
+    const source = new MachineScreenSource(f.ports), lease = source.open("screen:hub");
+    await source.push(lease.generation, 1, encode());
+    elapsed = 250; vi.setSystemTime(now + 5000);
+    await source.push(lease.generation, 2, encode()); expect(source.status().open).toBe(true);
+    elapsed = 500; vi.setSystemTime(now + 30_000);
+    await expect(source.push(lease.generation, 3, encode())).rejects.toThrow("meet_screen_authority_changed");
+    expect(source.diagnostics().lastStopReason).toBe("activation_expired");
   });
   it("fences pending decodes after close/reopen and enforces one frame in flight", async () => {
     const f = setup(); let resolve!: (value: ImageBitmap) => void;

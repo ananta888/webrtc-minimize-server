@@ -1,5 +1,12 @@
 # Ananta-Anbindung: Implementierungsrunde und Lease-Port
 
+Meet-seitiger [Readiness-/Rollback-Runbook](machine-rollout.md): getrennte
+Operator-Capability-Obergrenze und rein lesender Preflight. Ein lokaler PASS
+erteilt keine produktive Hub-/Raumfreigabe. Der additive `.media`-Port trennt
+synthetische Avatar-/Sprachausgabe vom Chat und der agenteneigenen Bildschirmquelle.
+Die Maschinenroute wird bedarfsgeladen; normale Teilnehmer laden ihre speziellen
+Controller-Ports nicht schon beim Öffnen des Raums.
+
 Fortsetzung: Anantas Hub-/Worker-Adapter ist jetzt in der Implementierung
 verdrahtet (`/home/krusty/ananta/docs/contracts/meet-dialog-runtime.md`).
 `POST /api/machine/sessions/authorization` liefert nach einem frischen v2-Grant

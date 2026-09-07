@@ -1,4 +1,4 @@
-import { Component, inject, signal } from "@angular/core";
+import { Component, effect, inject, signal } from "@angular/core";
 import { DatePipe } from "@angular/common";
 import { MachineReceiveControlsService } from "./machine-receive-controls.service";
 
@@ -9,12 +9,24 @@ import { MachineReceiveControlsService } from "./machine-receive-controls.servic
     <h2 id="machine-receive-heading">Ananta · Freigaben meiner Quellen</h2>
     <p>Ananta verarbeitet freigegebene Inhalte als entschlüsselnder KI-Endpunkt, nicht als blinder Relay.
       Die Freigabe gilt nur für deine eigenen aktuellen Quellen. Aufnahme, Speicherung und externe Modellanbieter sind damit nicht erlaubt.</p>
-    @for (peer of controls.targets(); track peer.id) {
+    @for (peer of controls.activities(); track peer.id) {
       <article><h3>{{ peer.name }}</h3>
-        @if (controls.mesh.ownMachineReceiveGrant(peer.id); as grant) {
+        <p>KI-Endpunkt · technische Peer-ID: <code>{{ peer.id }}</code>. Keine bewiesene menschliche Identität.</p>
+        @if (peer.grant; as grant) {
           <p>Bestätigte Freigabe bis {{ grant.expiresAt | date:'HH:mm:ss' }} · Audioquellen: {{ grant.publicationIds.length }} · Chat: {{ grant.chatRead ? 'ja' : 'nein' }}</p>
-        } @else { <p>Keine Empfangsfreigabe erteilt.</p> }
-        <button type="button" (click)="select(peer.id)">Für diese KI einstellen</button>
+        } @else {
+          <p>Keine Empfangsfreigabe erteilt.</p>
+          @if (peer.grantState === 'expired') { <p>Die letzte Freigabe ist abgelaufen.</p> }
+        }
+        <dl>
+          <dt>Audioempfang</dt><dd>{{ peer.audioSupported ? 'Vom Hub erlaubt; eigene Quellen benötigen zusätzlich deine Freigabe.' : 'Vom Hub nicht freigegeben.' }}</dd>
+          <dt>Chat lesen / antworten</dt><dd>{{ peer.chatReadSupported ? 'Leserecht möglich' : 'Kein Leserecht' }} / {{ peer.chatSendSupported ? 'Senderecht vorhanden' : 'Kein Senderecht' }}</dd>
+          <dt>Agenteneigener Bildschirm</dt><dd>{{ peer.screenAvailable ? 'Remote-Track verfügbar' : peer.screenSupported ? 'Erlaubt, zurzeit kein Remote-Track' : 'Nicht freigegeben' }}</dd>
+          <dt>Agenteneigener Bildschirmton</dt><dd>{{ peer.screenAudioAvailable ? 'Separater Ton-Track verfügbar' : 'Kein Ton-Track' }}</dd>
+          <dt>Avatar / synthetische Sprache</dt><dd>{{ peer.avatarAvailable ? 'Avatar-Track verfügbar' : 'Kein Avatar-Track' }} / {{ peer.speechAvailable ? 'Sprach-Track verfügbar' : 'Kein Sprach-Track' }}</dd>
+          <dt>Tatsächliche KI-Verarbeitung</dt><dd>Nicht durch Meet bestätigt. Ein Recht oder Remote-Track beweist weder ASR-/Dialogaktivität noch flüssige Wiedergabe.</dd>
+        </dl>
+        <button type="button" [attr.aria-pressed]="target() === peer.id" (click)="select(peer.id)">Für diese KI einstellen</button>
         <button type="button" [disabled]="controls.state() === 'pending'" (click)="controls.request(peer.id, false, false, false, 1, 'user-action')">Meine Freigaben widerrufen</button>
       </article>
     } @empty { <p>Zurzeit ist keine KI im Raum verbunden.</p> }
@@ -33,12 +45,18 @@ import { MachineReceiveControlsService } from "./machine-receive-controls.servic
     @if (controls.error()) { <p role="alert">{{ controls.error() }}</p> }
   </section>`,
   styles: [`section { margin-top: 1rem; padding: 1.25rem; border: 1px solid var(--border, #526075); border-radius: 1rem; }
-    fieldset, article { margin-block: 1rem; } label { display: block; margin-block: .75rem; } button { margin: .25rem .5rem .25rem 0; }`],
+    fieldset, article { margin-block: 1rem; } label { display: block; margin-block: .75rem; } button { margin: .25rem .5rem .25rem 0; }
+    dt { font-weight: 600; margin-top: .75rem; } dd { margin-inline-start: 0; } code { overflow-wrap: anywhere; }`],
 })
 export class MachinePermissionsPanelComponent {
   readonly controls = inject(MachineReceiveControlsService);
   readonly target = signal(""); readonly microphone = signal(false); readonly screenAudio = signal(false);
   readonly chat = signal(false); readonly minutes = signal(5);
+  constructor() {
+    effect(() => {
+      if (this.target() && !this.controls.targets().some(peer => peer.id === this.target())) this.select("");
+    });
+  }
   select(id: string): void {
     this.target.set(id); this.microphone.set(false); this.screenAudio.set(false); this.chat.set(false);
   }

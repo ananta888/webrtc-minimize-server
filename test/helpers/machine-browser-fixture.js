@@ -121,11 +121,13 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
   await human.locator("#connection-status", { hasText: "Signaling verbunden" }).waitFor();
   const binding = { roomId, taskId: randomUUID(), tenantId: "synthetic", projectId: "synthetic",
     runtimeId: randomUUID(), sessionId: randomUUID() };
-  async function grant(capabilities, version = 2) {
+  async function grant(capabilities, version = 2, { expiresAt } = {}) {
+    if (expiresAt !== undefined && (!Number.isInteger(expiresAt) || expiresAt <= Date.now() / 1000
+      || expiresAt > Date.now() / 1000 + 120)) throw new Error("test_grant_expiry_invalid");
     const claims = { ...binding, ...(version === 2 ? { capabilities } : {}) };
     if (version === 1) { delete claims.runtimeId; delete claims.sessionId; }
     return new SignJWT(claims).setIssuer(issuer).setAudience(`ananta-meet-machine-v${version}`).setSubject("synthetic-machine")
-      .setIssuedAt().setExpirationTime("2m").setJti(randomUUID())
+      .setIssuedAt().setExpirationTime(expiresAt ?? "2m").setJti(randomUUID())
       .setProtectedHeader({ alg: "EdDSA", typ: version === 2 ? "ananta-meet-machine-v2+jwt" : "ananta-meet-machine+jwt" }).sign(keys.privateKey);
   }
   const machine = await page(true); await machine.goto(origin + "/machine");

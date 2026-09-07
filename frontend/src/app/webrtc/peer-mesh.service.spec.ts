@@ -43,6 +43,20 @@ function createService(initialProfile: ReceiveQualityProfile = "auto") {
 }
 
 describe("PeerMeshService media-agent fallback", () => {
+  it("keeps the current publication and crypto context on repeated ontrack from a reused receiver", () => {
+    const { service } = createService();
+    const internals = service as any;
+    const track = { id: "retired-native-track", kind: "video" };
+    const publication = { id: "current-screen", rootPeerId: "publisher", source: "screen",
+      local: false, inboundPeerId: "publisher", track };
+    internals.publications.set(publication.id, publication);
+    internals.descriptors.set(publication.id, { rootPeerId: "publisher", source: "screen" });
+    internals.mediaE2eeController = { attachReceiver: vi.fn() };
+    internals.acceptRemoteTrack({ id: "publisher" }, track, {});
+    expect(internals.publications.size).toBe(1);
+    expect(internals.publications.get(publication.id)).toBe(publication);
+    expect(internals.mediaE2eeController.attachReceiver).not.toHaveBeenCalled();
+  });
   it("rotates only publisher keys and denied inbound contexts on a receive-policy change", () => {
     const { service } = createService();
     const internals = service as unknown as {

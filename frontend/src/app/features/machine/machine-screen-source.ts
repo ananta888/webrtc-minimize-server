@@ -10,6 +10,7 @@ interface ScreenPorts {
   create(): MachineScreenSurface;
   decode(bytes: Uint8Array<ArrayBuffer>): Promise<ImageBitmap>;
   clock?: () => number;
+  monotonic?: () => number;
 }
 
 /** Check dimensions before a decoder allocation. Only bounded baseline RGB JPEG. */
@@ -40,16 +41,21 @@ export class MachineScreenSource {
   private scope: MachineScreenAuthority | null = null;
   private generation = 0; private sequence = 0; private lastNow = 0;
   private deadline = 0; private lastFrame = 0; private busy = false;
+  private error = "";
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly clock: () => number;
-  constructor(private readonly ports: ScreenPorts) { this.clock = ports.clock || Date.now; }
+  private readonly monotonic: () => number;
+  constructor(private readonly ports: ScreenPorts) {
+    this.clock = ports.clock || Date.now; this.monotonic = ports.monotonic || (() => performance.now());
+  }
   open(sourceId: string) {
     this.close();
+    this.error = "";
     const scope = this.ports.authority(), now = this.clock();
     if (sourceId !== scope.sourceId || scope.expiresAt <= now || this.generation >= 1024) throw new Error("meet_screen_source_denied");
     ++this.generation;
     this.scope = Object.freeze({ ...scope }); this.deadline = Math.min(now + 30_000, scope.expiresAt);
-    this.lastFrame = this.lastNow = now; this.sequence = 0;
+    this.lastFrame = this.monotonic(); this.lastNow = now; this.sequence = 0;
     try {
       this.surface = this.ports.create();
       this.timer = setInterval(() => { try { this.check(); } catch { /* Closed by check. */ } }, 100);
@@ -59,18 +65,23 @@ export class MachineScreenSource {
   }
   private check(): void {
     try {
-      const current = this.ports.authority(), now = this.clock();
-      if (!this.surface || !this.scope || now < this.lastNow || now >= this.deadline || now > this.lastFrame + 2000
-        || Object.keys(this.scope).some(k => current[k as keyof MachineScreenAuthority] !== this.scope![k as keyof MachineScreenAuthority])) {
+      const current = this.ports.authority(), now = this.clock(), elapsed = this.monotonic();
+      const reason = !this.surface || !this.scope ? "inactive" : now < this.lastNow ? "clock_rollback"
+        : now >= this.deadline ? "activation_expired" : elapsed < this.lastFrame ? "clock_rollback"
+        : elapsed > this.lastFrame + 2000 ? "frame_stalled"
+        : Object.keys(this.scope).some(k => current[k as keyof MachineScreenAuthority] !== this.scope![k as keyof MachineScreenAuthority])
+          ? "scope_changed" : "";
+      if (reason) {
+        this.error ||= reason;
         throw new Error("meet_screen_authority_changed");
       }
       this.lastNow = now;
-    } catch { this.close(); throw new Error("meet_screen_authority_changed"); }
+    } catch { this.error ||= "authority_unavailable"; this.close(); throw new Error("meet_screen_authority_changed"); }
   }
   async push(generation: number, sequence: number, encoded: unknown): Promise<void> {
     this.check();
     if (generation !== this.generation || !Number.isSafeInteger(sequence) || sequence !== this.sequence + 1 || this.busy
-      || this.sequence > 0 && this.clock() < this.lastFrame + 200) throw new Error("meet_screen_frame_order_invalid");
+      || this.sequence > 0 && this.monotonic() < this.lastFrame + 200) throw new Error("meet_screen_frame_order_invalid");
     const bytes = screenJpeg(encoded); this.busy = true;
     let bitmap: ImageBitmap | undefined, timer: ReturnType<typeof setTimeout> | undefined, timedOut = false;
     try {
@@ -81,13 +92,21 @@ export class MachineScreenSource {
       this.check();
       if (generation !== this.generation || bitmap.width !== 640 || bitmap.height !== 360) throw new Error("meet_screen_frame_stale");
       this.surface!.draw(bitmap); this.surface!.frame();
-      this.sequence = sequence; this.lastFrame = this.clock();
-    } catch (error) { if (generation === this.generation) this.close(); throw error; }
+      this.sequence = sequence; this.lastFrame = this.monotonic();
+    } catch (error) {
+      if (generation === this.generation) {
+        this.error ||= error instanceof Error && error.message === "meet_screen_decode_timeout" ? "decode_timeout" : "decode_or_frame_failed";
+        this.close();
+      }
+      throw error;
+    }
     finally { clearTimeout(timer); bitmap?.close(); bytes.fill(0); if (generation === this.generation) this.busy = false; }
   }
   status() { return Object.freeze({ open: Boolean(this.surface), generation: this.generation, sequence: this.sequence }); }
+  diagnostics() { return Object.freeze({ schema: "ananta.meet-screen-diagnostics.v1", lastStopReason: this.error }); }
   close(): void {
     if (!this.scope && !this.surface && !this.busy && !this.timer) return;
+    this.error ||= "closed";
     ++this.generation; this.busy = false; this.scope = null;
     if (this.timer) clearInterval(this.timer); this.timer = null;
     const surface = this.surface; this.surface = null;

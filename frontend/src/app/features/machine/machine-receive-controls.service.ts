@@ -8,6 +8,24 @@ export class MachineReceiveControlsService implements OnDestroy {
   readonly targets = computed(() => this.mesh.peerChoices().filter(peer => this.mesh.machineReceive.isMachine(peer.id)));
   readonly state = signal<"idle" | "pending" | "confirmed" | "failed">("idle");
   readonly error = signal("");
+  private readonly now = signal(Date.now());
+  private readonly refresh = setInterval(() => this.now.set(Date.now()), 1000);
+  readonly activities = computed(() => {
+    const now = this.now();
+    return this.targets().map(peer => {
+      const grant = this.mesh.ownMachineReceiveGrant(peer.id);
+      const available = (source: string) => this.mesh.remoteMedia().some(media => media.peerId === peer.id
+        && media.source === source && media.stream.getTracks().some(track => track.readyState === "live" && !track.muted));
+      return Object.freeze({ ...peer, grant: grant && grant.expiresAt > now ? grant : null,
+        grantState: grant ? grant.expiresAt > now ? "granted" : "expired" : "none",
+        audioSupported: this.mesh.machineReceive.supports(peer.id, "audio.receive"),
+        chatReadSupported: this.mesh.machineReceive.supports(peer.id, "chat.read"),
+        chatSendSupported: this.mesh.machineReceive.supports(peer.id, "chat.send"),
+        screenSupported: this.mesh.machineReceive.supports(peer.id, "screen.publish"),
+        screenAvailable: available("screen"), screenAudioAvailable: available("screen-audio"),
+        avatarAvailable: available("camera"), speechAvailable: available("microphone") });
+    });
+  });
   private pending: ReturnType<PeerMeshService["machineReceiveConsent"]> | null = null;
   private timeout: ReturnType<typeof setTimeout> | null = null;
   private unsubscribe: () => void;
@@ -47,6 +65,6 @@ export class MachineReceiveControlsService implements OnDestroy {
     this.state.set(success ? "confirmed" : "failed"); this.error.set(code);
   }
   ngOnDestroy(): void {
-    this.unsubscribe(); if (this.timeout) clearTimeout(this.timeout); this.pending = null;
+    this.unsubscribe(); clearInterval(this.refresh); if (this.timeout) clearTimeout(this.timeout); this.pending = null;
   }
 }

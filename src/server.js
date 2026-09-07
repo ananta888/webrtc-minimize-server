@@ -779,7 +779,7 @@ function createHttpHandler(config, registry, services) {
       if (request.method === "GET" && url.pathname === "/api/machine/capabilities") {
         sendJson(response, 200, {
           schema: "ananta.meet-capabilities.v1",
-          admissionEnabled: Boolean(config.machineHubPublicKey && config.machineHubIssuer),
+          admissionEnabled: Boolean(config.machineHubPublicKey && config.machineHubIssuer) && config.machineAllowedCapabilities?.length !== 0,
           publication: "mp4-v1", sessionLease: "ananta.meet-session-lease.v1",
           chatEvents: false, audioSubscription: false, screenPublication: false,
         }, { ...securityHeaders(config), "cache-control": "no-store" });
@@ -2396,7 +2396,8 @@ export function createAppServer(options = {}) {
     idleTtlMs: config.roomIdleTtlMs,
   });
   const oidcVerifier = options.oidcVerifier || createOidcVerifier(config);
-  const machineAdmission = new MachineAdmission({ publicKey: config.machineHubPublicKey, issuer: config.machineHubIssuer });
+  const machineAdmission = new MachineAdmission({ publicKey: config.machineHubPublicKey, issuer: config.machineHubIssuer,
+    allowedCapabilities: config.machineAllowedCapabilities });
   const machineSessions = new MachineSessionLeases();
   const deviceProofVerifier = options.deviceProofVerifier || new DeviceProofVerifier({
     maxAgeMs: config.deviceProofMaxAgeMs,

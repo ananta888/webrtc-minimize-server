@@ -6,11 +6,13 @@ import { RoomSessionService } from "../../webrtc/room-session.service";
 import { MachineChatSessionService } from "./machine-chat-session.service";
 import { MachineAudioSessionService } from "./machine-audio-session.service";
 import { MachineScreenSessionService } from "./machine-screen-session.service";
+import { MachineMediaSessionService } from "./machine-media-session.service";
+import { MachineScreenAudioSessionService } from "./machine-screen-audio-session.service";
 
 /** Dedicated automation endpoint. No messaging listener, human capture or OIDC shortcut. */
 @Component({
   selector: "app-machine-page", standalone: true,
-  providers: [MachineChatSessionService, MachineAudioSessionService, MachineScreenSessionService],
+  providers: [MachineChatSessionService, MachineAudioSessionService, MachineScreenSessionService, MachineMediaSessionService, MachineScreenAudioSessionService],
   template: `<main><h1>Ananta (KI)</h1><p>Autorisierter Maschinenclient für synthetische Quellen.</p>
     <p>{{ session.joined() ? 'Verbunden' : 'Nicht verbunden' }}</p>
     <button type="button" (click)="leave()">Sofort verlassen</button></main>`,
@@ -22,9 +24,8 @@ export class MachinePageComponent implements OnDestroy {
   private readonly machineChat = inject(MachineChatSessionService);
   private readonly machineAudio = inject(MachineAudioSessionService);
   private readonly machineScreen = inject(MachineScreenSessionService);
-  private video?: HTMLVideoElement;
-  private stream?: MediaStream;
-  private objectUrl = "";
+  private readonly machineMedia = inject(MachineMediaSessionService);
+  private readonly machineScreenAudio = inject(MachineScreenAudioSessionService);
   private readonly expiry = new MachineLeaseExpiry(() => this.session.machineExpiresAt(), () => this.leave());
   private generation = 0;
   private readonly api = {
@@ -33,6 +34,8 @@ export class MachinePageComponent implements OnDestroy {
     capabilities: () => Object.freeze({ schema: "ananta.meet-capabilities.v1", publication: "mp4-v1",
       sessionLease: "ananta.meet-session-lease.v1", chatEvents: false, audioSubscription: false, screenPublication: false }),
     publish: (text: string, videoBase64: string) => this.publish(text, videoBase64),
+    media: Object.freeze({ publish: (input: unknown) => this.machineMedia.publish(input),
+      close: () => this.machineMedia.publication.close(), status: () => this.machineMedia.publication.status() }),
     chat: Object.freeze({ open: () => this.machineChat.endpoint.open(),
       poll: () => this.machineChat.endpoint.poll(), ack: (cursor: number) => this.machineChat.endpoint.ack(cursor),
       reply: (messageId: string, text: string) => this.machineChat.endpoint.reply(messageId, text),
@@ -42,9 +45,13 @@ export class MachinePageComponent implements OnDestroy {
       poll: () => this.machineAudio.poll(), ack: (sequence: number) => this.machineAudio.ack(sequence),
       reply: (subscriptionId: string, text: string) => this.machineAudio.reply(subscriptionId, text),
       close: () => this.machineAudio.close(), status: () => this.machineAudio.status() }),
-    screen: Object.freeze({ open: (sourceId: string) => this.machineScreen.source.open(sourceId),
+    screen: Object.freeze({ open: (sourceId: string) => { this.machineScreenAudio.source.close(); return this.machineScreen.source.open(sourceId); },
       push: (generation: number, sequence: number, jpeg: string) => this.machineScreen.source.push(generation, sequence, jpeg),
-      close: () => this.machineScreen.source.close(), status: () => this.machineScreen.source.status() }),
+      close: () => { this.machineScreenAudio.source.close(); this.machineScreen.source.close(); }, status: () => this.machineScreen.source.status(),
+      diagnostics: () => this.machineScreen.source.diagnostics() }),
+    screenAudio: Object.freeze({ open: (sourceId: string) => this.machineScreenAudio.source.open(sourceId),
+      push: (generation: number, sequence: number, pcm: string) => this.machineScreenAudio.source.push(generation, sequence, pcm),
+      close: () => this.machineScreenAudio.source.close(), status: () => this.machineScreenAudio.source.status() }),
     leave: () => this.leave(),
     status: () => ({ joined: this.session.joined(), peers: this.mesh.participantCount(),
       lease: this.session.machineLease(),
@@ -54,7 +61,7 @@ export class MachinePageComponent implements OnDestroy {
   constructor() {
     // Accessible only to code running in this isolated browser context (e.g. Playwright).
     Object.defineProperty(window, "anantaMachine", { configurable: true, value: this.api });
-    effect(() => { if (!this.session.joined() && this.video) this.stopMedia(); });
+    effect(() => { if (!this.session.joined()) this.machineMedia.publication.close(); });
     effect(() => {
       const expiry = this.session.machineExpiresAt();
       this.expiry.arm(expiry);
@@ -79,33 +86,8 @@ export class MachinePageComponent implements OnDestroy {
     if (!["avatar.publish", "speech.publish", "chat.send"].every(capability => this.mesh.machineReceive.supports(own, capability))) {
       throw new Error("machine_publication_capability_denied");
     }
-    if (!this.session.joined() || this.video || typeof text !== "string" || !text.trim() || text.length > 450
-        || typeof encoded !== "string" || encoded.length > 4_700_000) throw new Error("machine_publication_invalid");
-    const generation = this.generation;
-    const bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));
-    if (String.fromCharCode(...bytes.slice(4, 8)) !== "ftyp") throw new Error("machine_media_invalid");
-    const video = document.createElement("video") as HTMLVideoElement & { captureStream(): MediaStream };
-    this.video = video;
-    this.objectUrl = URL.createObjectURL(new Blob([bytes], { type: "video/mp4" }));
-    video.src = this.objectUrl; video.preload = "auto";
-    try {
-      await this.until(() => video.readyState >= 2, generation);
-      if (!Number.isFinite(video.duration) || video.duration <= 0 || video.duration > 40) {
-        throw new Error("machine_media_duration_invalid");
-      }
-      this.stream = video.captureStream();
-      if (this.stream.getVideoTracks().length !== 1 || this.stream.getAudioTracks().length !== 1) {
-        throw new Error("machine_media_tracks_missing");
-      }
-      this.mesh.attachPublication("camera", new MediaStream(this.stream.getVideoTracks()));
-      this.mesh.attachPublication("microphone", new MediaStream(this.stream.getAudioTracks()));
-      await this.until(() => this.mesh.mediaE2eeState() === "active" && this.mesh.overlayReady(), generation);
-      this.mesh.sendChat(text);
-      await video.play();
-      await this.until(() => video.ended, generation, 45_000);
-    } finally {
-      this.stopMedia();
-    }
+    if (typeof text !== "string" || !text.trim() || text.length > 450) throw new Error("machine_publication_invalid");
+    await this.machineMedia.publication.publish(encoded, ["avatar", "speech"], () => this.mesh.sendChat(text));
   }
 
   private async until(ready: () => boolean, generation: number, budget = 20_000): Promise<void> {
@@ -117,21 +99,13 @@ export class MachinePageComponent implements OnDestroy {
     if (generation !== this.generation) throw new Error("machine_cancelled");
   }
 
-  private stopMedia(): void {
-    this.video?.pause();
-    this.stream?.getTracks().forEach(track => track.stop());
-    this.mesh.detachPublication("camera"); this.mesh.detachPublication("microphone");
-    if (this.video) { this.video.removeAttribute("src"); this.video.load(); }
-    if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
-    this.video = undefined; this.stream = undefined; this.objectUrl = "";
-  }
-
   leave(): void {
+    this.machineScreenAudio.source.close();
     this.machineScreen.source.close();
     this.machineAudio.close();
     this.machineChat.endpoint.close();
     ++this.generation; this.expiry.close();
-    try { this.stopMedia(); } finally { this.session.leave(); this.mesh.clearChatHistory(); }
+    try { this.machineMedia.publication.close(); } finally { this.session.leave(); this.mesh.clearChatHistory(); }
   }
 
   ngOnDestroy(): void {

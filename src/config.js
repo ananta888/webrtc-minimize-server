@@ -5,6 +5,7 @@ import {
 } from "./room-limits.js";
 import net from "node:net";
 import { readFileSync, statSync } from "node:fs";
+import { machineCapabilityEnvironment } from "./machine-capabilities.js";
 
 const DEFAULTS = Object.freeze({
   host: "0.0.0.0",
@@ -510,6 +511,7 @@ export function loadConfig(env = process.env) {
     authMode,
     machineHubPublicKey: environmentOrFile(env, "MACHINE_HUB_PUBLIC_KEY") || "",
     machineHubIssuer: String(env.MACHINE_HUB_ISSUER || ""),
+    machineAllowedCapabilities: machineCapabilityEnvironment(env.MACHINE_ALLOWED_CAPABILITIES),
     oidcIssuer,
     oidcAudience,
     oidcClientId,
