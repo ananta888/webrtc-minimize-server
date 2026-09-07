@@ -15,6 +15,15 @@ function setup() {
 }
 afterEach(() => { vi.restoreAllMocks(); });
 describe("neutral synthetic canvas adapter", () => {
+  it("renders optional bounded artwork before immutable labels and releases its bitmap", () => {
+    const f = setup(), artwork = { draw: vi.fn(), close: vi.fn() }, source = f.factory.create(artwork);
+    expect(artwork.draw).toHaveBeenCalledWith(f.drawing);
+    expect(f.drawing.arc).not.toHaveBeenCalled();
+    expect(artwork.draw.mock.invocationCallOrder[0]).toBeLessThan(f.drawing.fillText.mock.invocationCallOrder[0]);
+    expect(f.drawing.fillText).toHaveBeenCalledWith("KI", 128, 211);
+    source.frame(1); expect(artwork.draw).toHaveBeenCalledTimes(2);
+    source.close(); source.close(); expect(artwork.close).toHaveBeenCalledOnce();
+  });
   it("owns only a labeled 256px canvas camera alongside an independently held microphone", () => {
     const f = setup(), mic = f.ownership.claim(["microphone"]), surface = f.factory.create();
     expect(f.create).toHaveBeenCalledExactlyOnceWith("canvas"); expect(f.canvas.width).toBe(256);

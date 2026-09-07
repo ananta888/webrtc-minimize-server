@@ -9,11 +9,11 @@ export interface MachineAvatarSurface {
 }
 interface AvatarPorts {
   authority(): MachineAvatarAuthority;
-  create(): MachineAvatarSurface;
+  create(profile: "neutral-ai-v1" | "persona-image-v1", image: unknown, check: () => void): MachineAvatarSurface;
   clock?: () => number;
 }
 export interface MachineAvatarReceipt {
-  schema: "ananta.meet-avatar-source.v1"; profile: "neutral-ai-v1";
+  schema: "ananta.meet-avatar-source.v1"; profile: "neutral-ai-v1" | "persona-image-v1";
   generation: number; width: 256; height: 256; fps: 5; heartbeatMs: 2500; expiresAt: number;
 }
 export class MachineAvatarSource {
@@ -30,23 +30,30 @@ export class MachineAvatarSource {
   private frames = 0;
   private protectionLostAt = 0;
   private controllerUntil = 0;
+  private profile: "neutral-ai-v1" | "persona-image-v1" = "neutral-ai-v1";
   private readonly clock: () => number;
 
   constructor(private readonly ports: AvatarPorts) { this.clock = ports.clock ?? Date.now; }
 
-  async open(sourceId: string, profile: string): Promise<MachineAvatarReceipt> {
+  async open(sourceId: string, profile: string, image?: unknown): Promise<MachineAvatarReceipt> {
     if (this.scope) throw new Error("meet_avatar_busy");
     const authority = this.ports.authority(), now = this.clock();
-    if (profile !== "neutral-ai-v1" || typeof sourceId !== "string" || sourceId !== authority.sourceId
+    if ((profile !== "neutral-ai-v1" && profile !== "persona-image-v1")
+      || (profile === "neutral-ai-v1" && image !== undefined) || (profile === "persona-image-v1" && image === undefined)
+      || typeof sourceId !== "string" || sourceId !== authority.sourceId
       || !authority.sessionId || !Number.isSafeInteger(authority.leaseGeneration) || authority.leaseGeneration < 1
       || !Number.isSafeInteger(authority.membershipEpoch) || authority.membershipEpoch < 1
       || !Number.isFinite(now) || !Number.isFinite(authority.expiresAt) || authority.expiresAt <= now
       || this.generation >= 1024) throw new Error("meet_avatar_source_denied");
-    this.scope = { ...authority }; this.generation++; this.state = "opening";
+    this.scope = { ...authority }; this.generation++; this.state = "opening"; this.profile = profile;
     this.started = this.lastClock = now; this.lastFrame = 0; this.frames = 0; this.protectionLostAt = 0;
     this.expiresAt = Math.min(authority.expiresAt, now + 30_000);
     this.controllerUntil = now + 2500;
-    try { this.surface = this.ports.create(); }
+    const generation = this.generation;
+    try { this.surface = this.ports.create(profile, image, () => {
+      if (this.generation !== generation) throw new Error("meet_avatar_generation_changed");
+      this.check();
+    }); }
     catch (error) { this.release("failed"); throw error; }
     return new Promise((resolve, reject) => {
       this.pending = { resolve, reject };
@@ -83,7 +90,7 @@ export class MachineAvatarSource {
       }
       if (this.pending) {
         const pending = this.pending; this.pending = undefined;
-        pending.resolve({ schema: "ananta.meet-avatar-source.v1", profile: "neutral-ai-v1", generation: this.generation,
+        pending.resolve({ schema: "ananta.meet-avatar-source.v1", profile: this.profile, generation: this.generation,
           width: 256, height: 256, fps: 5, heartbeatMs: 2500, expiresAt: this.expiresAt });
       }
     } catch (error) { this.release("failed", error instanceof Error ? error : new Error("meet_avatar_failed")); }

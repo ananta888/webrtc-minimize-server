@@ -146,7 +146,7 @@
     },
     {
       "id": "MDS-12", "title": "Begrenztes freigegebenes Persona-PNG im unabhaengigen Avatarport rendern",
-      "status": "in_progress", "progress_percent": 1, "priority": "P1", "risk": "high", "depends_on": ["MDS-11"],
+      "status": "done", "progress_percent": 100, "priority": "P1", "risk": "high", "depends_on": ["MDS-11"],
       "ananta_task_refs": ["MAP-20", "MAP-21"],
       "acceptance_criteria": [
         "Additiver persona-image-v1-Quelltyp akzeptiert nur begrenztes normalisiertes PNG mit passendem SHA256; keine URL, frei waehlbaren Labels, Capture-API oder neutrale Ersatzquelle bei fehlendem Bild. Neutral-ai-v1 bleibt kompatibel.",
@@ -154,7 +154,7 @@
         "Eigene Kameraownership, 2500-ms-Controllergrenze, maximal 30-s-Aktivierung, SFrame-Readiness und generationsgebundene Ablösung unveraendert; alte Decode-/Close-Callbacks duerfen kein neues Bild ersetzen oder stoppen.",
         "Deterministische Negativ-/Race-Tests und echte Chromium/Firefox-Decodierung mit Bildwechsel neben Screen/PCM, null Capture und Transformfehlern. npm run check gruen; Hub-Bildfreigabe und Profilwechsel-CAS werden separat in Ananta integriert, kein Porttest als Produktionsfreigabe."
       ],
-      "implementation_note": "Vor Code mit Anantas docs/contracts/meet-live-persona-avatar.md abgestimmt. Meet erhaelt keine Asset-/Profilpolicy oder Inferenz; ein kleiner validierender Bildadapter wird in den vorhandenen Quellenlifecycle komponiert. Keine produktiven Dienste oder Trust-Konfiguration aendern."
+      "implementation_note": "Vor Code mit Anantas docs/contracts/meet-live-persona-avatar.md abgestimmt. Anschliessend geschlossenen persona-image-v1-Port implementiert: maximal 5 MiB normalisiertes RGBA-PNG/1024px, echter SHA256 vor Decode, keine URL/Metadaten/Animation/Ersatzquelle. Ein Decoder auch nach Timeout maximal in-flight; verspätete Bitmaps freigegeben, aktuelle Autoritaet/Generation vor Attachment. Bild nur im begrenzten Feld unter fester KI-Kennzeichnung. 28 Source-/Bild-/Surface-Tests und wirkliche Chromium/Firefox-Bildwechsel mit parallelem Screen/PCM, falschem Hash und altem Generationstoken bestanden (6680.82 ms Browsergesamt), null Capture-/Transformfehler. npm run check gruen: 568 Frontendtests, 501 Nodechecks/499 passed/2 Skips/0 Fehler in 66368.84 ms. MDS-12 done/100 gilt fuer diesen Quellport; Hub-Bildfreigabe, Profilwechsel-CAS und Worker/UI bleiben in Ananta zu integrieren. docs/machine-persona-image-avatar.md; keine produktiven Dienste oder Trust-Konfiguration veraendert."
     },
     {
       "id": "MDS-09", "title": "Vorautorisierte Aktivierung, Preflight und Rollback dokumentieren und prüfen",
@@ -171,8 +171,8 @@
   "critical_path_tasks": ["MDS-01", "MDS-02", "MDS-03", "MDS-07", "MDS-08", "MDS-09"],
   "tasks_status_summary": {
     "total": 12,
-    "by_status": {"todo": 1, "in_progress": 9, "partial": 0, "blocked": 0, "done": 2},
-    "progress_percent_done": 16.67,
+    "by_status": {"todo": 1, "in_progress": 8, "partial": 0, "blocked": 0, "done": 3},
+    "progress_percent_done": 25,
     "by_priority": {"P0": 3, "P1": 9, "P2": 0, "P3": 0},
     "by_risk": {"low": 0, "medium": 0, "high": 8, "critical": 4},
     "critical_path": {"total": 6, "done": 0, "remaining": 6},

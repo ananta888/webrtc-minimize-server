@@ -13,6 +13,22 @@ describe("independent bounded avatar lifecycle", () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); });
   afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
+  it("adds explicit image mode without silently accepting image bytes in neutral mode", async () => {
+    const f = setup(), image = { png: "synthetic", sha256: "a".repeat(64) };
+    await expect(f.source.open("avatar:hub", "neutral-ai-v1", image)).rejects.toThrow("source_denied");
+    await expect(f.source.open("avatar:hub", "persona-image-v1")).rejects.toThrow("source_denied");
+    expect(f.ports.create).not.toHaveBeenCalled();
+    const receipt = await f.source.open("avatar:hub", "persona-image-v1", image);
+    expect(receipt.profile).toBe("persona-image-v1");
+    expect(f.ports.create).toHaveBeenCalledWith("persona-image-v1", image, expect.any(Function));
+    f.source.close();
+  });
+  it("late asynchronous artwork check cannot borrow another source generation", async () => {
+    const f = setup(); await f.open();
+    const check = (f.ports.create.mock.calls[0] as unknown as [unknown, unknown, () => void])[2];
+    f.source.close(); await f.open(); expect(() => check()).toThrow("generation_changed"); f.source.close();
+  });
+
   it("requires the explicit closed profile and exact source before allocation", async () => {
     const f = setup();
     for (const [id, profile] of [["avatar:other", "neutral-ai-v1"], ["avatar:hub", ""], ["avatar:hub", "https://image"], ["avatar:hub", "persona"]]) {
