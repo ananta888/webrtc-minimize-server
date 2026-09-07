@@ -13,6 +13,15 @@ const broadcastStyles = readFileSync("frontend/src/app/broadcast/broadcast-prefl
 const angularConfiguration = JSON.parse(readFileSync("angular.json", "utf8"));
 
 describe("Room page information architecture", () => {
+  it("keeps one room-bound audio sink outside every changing navigation section", () => {
+    const start = template.indexOf('<main class="app-main">');
+    const section = template.indexOf("@if (activeSection() === 'rooms')", start);
+    const persistent = template.slice(start, section);
+    expect(persistent).toContain("@if (session.joined())");
+    expect(persistent).toContain('id="room-audio"');
+    expect(persistent).toContain("mesh.remoteAudio()");
+    expect(template.match(/mesh\.remoteAudio\(\)/g)).toHaveLength(1);
+  });
   it("links the top-right GitHub icon to this repository without reusing the app tab", () => {
     expect(template).toContain('id="github-repository"');
     expect(template).toContain('href="https://github.com/ananta888/webrtc-minimize-server"');

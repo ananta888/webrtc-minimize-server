@@ -1,17 +1,8 @@
 import { Injectable } from "@angular/core";
+import { untilAudioAbort as untilAbort } from "./machine-audio-operation";
 
 export interface MachineAudioGraph { close(): Promise<void> }
 export type MachinePcmConsumer = (startSample: number, pcm: ArrayBuffer) => void;
-
-async function untilAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  signal.throwIfAborted();
-  let stop: () => void = () => {};
-  try {
-    return await Promise.race([operation, new Promise<never>((_, reject) => {
-      stop = () => reject(new Error("meet_audio_cancelled")); signal.addEventListener("abort", stop, { once: true });
-    })]);
-  } finally { signal.removeEventListener("abort", stop); }
-}
 
 @Injectable({ providedIn: "root" })
 export class MachineAudioGraphFactory {

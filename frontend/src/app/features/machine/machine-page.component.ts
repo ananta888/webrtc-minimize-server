@@ -5,6 +5,11 @@ import { PeerMeshService } from "../../webrtc/peer-mesh.service";
 import { RoomSessionService } from "../../webrtc/room-session.service";
 import { MachineChatSessionService } from "./machine-chat-session.service";
 import { MachineAudioSessionService } from "./machine-audio-session.service";
+import { MachinePublicationOwnership } from "./machine-publication-ownership";
+import { MachineSpeechGraphFactory } from "./machine-speech-graph";
+import { MachineSpeechSessionService } from "./machine-speech-session.service";
+import { MachineAvatarSurfaceFactory } from "./machine-avatar-surface";
+import { MachineAvatarSessionService } from "./machine-avatar-session.service";
 import { MachineScreenSessionService } from "./machine-screen-session.service";
 import { MachineMediaSessionService } from "./machine-media-session.service";
 import { MachineScreenAudioSessionService } from "./machine-screen-audio-session.service";
@@ -12,7 +17,8 @@ import { MachineScreenAudioSessionService } from "./machine-screen-audio-session
 /** Dedicated automation endpoint. No messaging listener, human capture or OIDC shortcut. */
 @Component({
   selector: "app-machine-page", standalone: true,
-  providers: [MachineChatSessionService, MachineAudioSessionService, MachineScreenSessionService, MachineMediaSessionService, MachineScreenAudioSessionService],
+  providers: [MachineChatSessionService, MachineAudioSessionService, MachineScreenSessionService, MachineMediaSessionService, MachineScreenAudioSessionService,
+    MachinePublicationOwnership, MachineSpeechGraphFactory, MachineSpeechSessionService, MachineAvatarSurfaceFactory, MachineAvatarSessionService],
   template: `<main><h1>Ananta (KI)</h1><p>Autorisierter Maschinenclient für synthetische Quellen.</p>
     <p>{{ session.joined() ? 'Verbunden' : 'Nicht verbunden' }}</p>
     <button type="button" (click)="leave()">Sofort verlassen</button></main>`,
@@ -24,6 +30,8 @@ export class MachinePageComponent implements OnDestroy {
   private readonly machineChat = inject(MachineChatSessionService);
   private readonly machineAudio = inject(MachineAudioSessionService);
   private readonly machineScreen = inject(MachineScreenSessionService);
+  private readonly machineSpeech = inject(MachineSpeechSessionService);
+  private readonly machineAvatar = inject(MachineAvatarSessionService);
   private readonly machineMedia = inject(MachineMediaSessionService);
   private readonly machineScreenAudio = inject(MachineScreenAudioSessionService);
   private readonly expiry = new MachineLeaseExpiry(() => this.session.machineExpiresAt(), () => this.leave());
@@ -52,6 +60,12 @@ export class MachinePageComponent implements OnDestroy {
     screenAudio: Object.freeze({ open: (sourceId: string) => this.machineScreenAudio.source.open(sourceId),
       push: (generation: number, sequence: number, pcm: string) => this.machineScreenAudio.source.push(generation, sequence, pcm),
       close: () => this.machineScreenAudio.source.close(), status: () => this.machineScreenAudio.source.status() }),
+    speech: Object.freeze({ open: (sourceId: string, samples: number) => this.machineSpeech.source.open(sourceId, samples),
+      push: (generation: number, startSample: number, pcm: string) => this.machineSpeech.source.push(generation, startSample, pcm),
+      close: () => this.machineSpeech.source.close(), status: () => this.machineSpeech.source.status() }),
+    avatar: Object.freeze({ open: (sourceId: string, profile: string, image?: unknown) => this.machineAvatar.source.open(sourceId, profile, image),
+      pulse: (generation: number) => this.machineAvatar.source.pulse(generation),
+      close: (generation?: number) => this.machineAvatar.source.close(generation), status: () => this.machineAvatar.source.status() }),
     leave: () => this.leave(),
     status: () => ({ joined: this.session.joined(), peers: this.mesh.participantCount(),
       lease: this.session.machineLease(),
@@ -100,6 +114,8 @@ export class MachinePageComponent implements OnDestroy {
   }
 
   leave(): void {
+    this.machineAvatar.source.close();
+    this.machineSpeech.source.close();
     this.machineScreenAudio.source.close();
     this.machineScreen.source.close();
     this.machineAudio.close();

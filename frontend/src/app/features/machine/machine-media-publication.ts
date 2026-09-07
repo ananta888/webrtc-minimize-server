@@ -14,7 +14,7 @@ export interface MachineMediaHandle {
 }
 interface Ports {
   authority(): MachineMediaAuthority;
-  create(bytes: Uint8Array<ArrayBuffer>): MachineMediaHandle;
+  create(bytes: Uint8Array<ArrayBuffer>, outputs: readonly MachineMediaOutput[]): MachineMediaHandle;
   transportReady(): boolean;
   clock?: () => number;
   monotonic?: () => number;
@@ -48,7 +48,7 @@ export class MachineMediaPublication {
       handle: null, lastNow: now };
     this.operation = operation;
     try {
-      operation.handle = this.ports.create(bytes);
+      operation.handle = this.ports.create(bytes, operation.outputs);
       await this.until(operation, () => operation.handle!.ready(), 20_000);
       const meta = operation.handle.metadata();
       if (!Number.isFinite(meta.duration) || meta.duration <= 0 || meta.duration > 40

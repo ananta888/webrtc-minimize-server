@@ -4,6 +4,7 @@ import test from "node:test";
 import { chromium, firefox } from "playwright";
 
 import { createAppServer } from "../src/server.js";
+import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
 
 test("Chromium and Firefox expose Vosk sources, local sharing and the fixed catalog without implicit capture", { timeout: 45_000 }, async (context) => {
   const engines = [];
@@ -53,10 +54,9 @@ test("Chromium and Firefox expose Vosk sources, local sharing and the fixed cata
         if (!navigator.mediaDevices) return;
         for (const method of ["getUserMedia", "getDisplayMedia"]) {
           if (typeof navigator.mediaDevices[method] !== "function") continue;
-          const original = navigator.mediaDevices[method].bind(navigator.mediaDevices);
-          navigator.mediaDevices[method] = (...args) => {
+          navigator.mediaDevices[method] = () => {
             window.__captionCaptureCalls.push(method);
-            return original(...args);
+            throw new Error("test_human_capture_forbidden");
           };
         }
       });
@@ -76,14 +76,14 @@ test("Chromium and Firefox expose Vosk sources, local sharing and the fixed cata
       assert.equal(await page.locator("#toggle-live-captions").isDisabled(), true, name);
 
       await page.locator('input[name="captionAudioSource"][value="screen-audio"]').check();
-      await page.waitForFunction(() => document.querySelector("#selected-caption-source")?.textContent?.trim() === "Bildschirmton");
+      await waitFixtureValue(page, () => document.querySelector("#selected-caption-source")?.textContent?.trim() === "Bildschirmton");
       assert.equal((await page.locator("#selected-caption-source").textContent()).trim(), "Bildschirmton", name);
       assert.equal(await page.locator("#caption-share-with-room").isChecked(), false, `${name} expanded caption sharing without consent`);
       await page.locator("#caption-share-with-room").check();
-      await page.waitForFunction(() => document.querySelector("#caption-sharing-state")?.textContent?.trim() === "lokal und im Raum");
+      await waitFixtureValue(page, () => document.querySelector("#caption-sharing-state")?.textContent?.trim() === "lokal und im Raum");
       assert.equal((await page.locator("#caption-sharing-state").textContent()).trim(), "lokal und im Raum", name);
       await page.locator("#caption-share-with-room").uncheck();
-      await page.waitForFunction(() => document.querySelector("#caption-sharing-state")?.textContent?.trim() === "nur auf diesem Gerät");
+      await waitFixtureValue(page, () => document.querySelector("#caption-sharing-state")?.textContent?.trim() === "nur auf diesem Gerät");
       assert.equal((await page.locator("#caption-sharing-state").textContent()).trim(), "nur auf diesem Gerät", name);
       assert.equal(modelRequests, 0, `${name} downloaded a model while selecting screen audio`);
       assert.deepEqual(await page.evaluate(() => window.__captionCaptureCalls), [], name);
@@ -92,7 +92,7 @@ test("Chromium and Firefox expose Vosk sources, local sharing and the fixed cata
       assert.equal(await page.locator("#caption-model-list .caption-model-option").count(), 1, name);
       await page.locator("#caption-model-search").fill("");
       await page.locator("#load-vosk-model").click();
-      await page.waitForFunction(() => document.querySelector(".caption-status-badge")?.getAttribute("data-status") === "error");
+      await waitFixtureValue(page, () => document.querySelector(".caption-status-badge")?.getAttribute("data-status") === "error");
       assert.equal(modelRequests, 1, `${name} did not start exactly one explicit model request`);
       assert.deepEqual(await page.evaluate(() => window.__captionCaptureCalls), [], name);
       await browserContext.close();

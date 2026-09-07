@@ -106,6 +106,10 @@ Felder, falsche Quellbindung, fehlende Rechte, Codec-/Decodefehler und ausstehen
 E2EE-Bereitschaft brechen ab. Lease-Generation, Entzug und Uhrenrücksprung werden
 alle 50 ms geprüft; ein alter asynchroner Abschluss kann keinen neuen Writer stoppen.
 Das ist ein begrenzter Clip-Adapter, kein gapless Streaming- oder GPU-Nachweis.
+Der Clip-Adapter reserviert dieselben Kamera-/Mikrofon-Slots wie die separaten
+`.avatar`-/`.speech`-Ports. Überlappende Writer werden vor dem Laden abgewiesen;
+Sprachclips können neben einem unabhängigen Avatar laufen. Cleanup gibt nur
+eigene Slots frei, auch bei Fehlern oder verspäteten Abschlüssen.
 Der Legacy-Aufruf `publish(text, mp4Base64)` verwendet denselben Lifecycle und
 publiziert weiterhin Avatar, Sprache und Text zusammen.
 

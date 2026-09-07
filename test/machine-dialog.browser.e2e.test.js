@@ -14,13 +14,18 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
   assert.deepEqual(await machine.evaluate(() => window.anantaMachine.audio.sources()), []);
   assert.equal(await machine.evaluate(() => { try { window.anantaMachine.chat.open(); return true; } catch { return false; } }), false);
   await human.locator("#toggle-microphone").click();
+  await human.locator('#toggle-microphone[aria-pressed="true"]').waitFor({ timeout: 5000 });
   await human.locator(".nav-item", { hasText: "Analyse" }).click();
   const panel = human.locator("app-machine-permissions-panel");
   await panel.getByRole("button", { name: "Für diese KI einstellen" }).click();
   await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).check();
   await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).check();
   await panel.getByRole("button", { name: "Auswahl ausdrücklich freigeben" }).click();
-  await panel.getByText("Serverbestätigung erhalten.", { exact: true }).waitFor();
+  await panel.getByText("Serverbestätigung erhalten.", { exact: true }).waitFor().catch(async error => {
+    const codes = await panel.getByRole("alert").allTextContents();
+    t.diagnostic(JSON.stringify({ consentFailure: codes.filter(code => /^machine_receive_[a-z_]{1,64}$/.test(code)).slice(0, 3) }));
+    throw error;
+  });
   await machine.waitForFunction(() => window.anantaMachine.audio.sources().length === 1, null, { timeout: 12000 }).catch(async error => {
     t.diagnostic(JSON.stringify(await machine.evaluate(async () => ({ e2ee: window.anantaMachine.status().e2ee,
       errors: window.__transformErrors, capabilities: typeof RTCRtpScriptTransform,

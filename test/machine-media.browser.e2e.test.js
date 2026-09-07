@@ -22,6 +22,15 @@ test("v2 synthetic speech and avatar are independent outputs beside an owned scr
     [f.roomId, await f.grant(["avatar.publish", "speech.publish", "screen.publish", "screen-audio.publish"])]);
   await f.human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
   const sourceId = "media:" + f.binding.sessionId;
+  // Both independently developed API families must share publication ownership.
+  const neutral = await f.machine.evaluate(id => window.anantaMachine.avatar.open(id, "neutral-ai-v1"), "avatar:" + f.binding.sessionId);
+  const busy = await f.machine.evaluate(async input => {
+    try { await window.anantaMachine.media.publish(input); return "unexpected_success"; }
+    catch (error) { return error.message; }
+  }, { schema: "ananta.meet-media-source.v1", sourceId, outputs: ["avatar"], mp4Base64: encoded });
+  assert.equal(busy, "meet_machine_publication_busy_or_invalid");
+  assert.equal(await f.machine.evaluate(() => window.anantaMachine.avatar.status().state), "open");
+  await f.machine.evaluate(generation => window.anantaMachine.avatar.close(generation), neutral.generation);
   assert.equal(await f.machine.evaluate(async id => {
     try { await window.anantaMachine.screenAudio.open(id); return true; } catch { return false; }
   }, "screen-audio:" + f.binding.sessionId), false, "screen audio requires its owned screen activation");

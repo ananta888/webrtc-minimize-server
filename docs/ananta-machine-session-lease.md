@@ -216,3 +216,44 @@ Keine dieser lokalen Prüfungen verändert produktiven Trust oder ersetzt die
 Betreiberfreigabe. Wiederholte SFrame-KIDs dürfen weder Zähler noch Replay-Fenster
 zurücksetzen; acht aktive Empfangsschlüssel und höchstens 512 bekannte KIDs pro
 Kontext begrenzen den Überlappungspfad. Budgetüberschreitung stoppt fail-closed.
+
+### Isolierte lokale TLS-Testanbindung
+
+Der repoübergreifende Test benötigt keinen freien öffentlichen Host-Port 443.
+`test/helpers/machine-tls-proxy.js` erzeugt pro Fixture einen eigenen internen
+Docker-Netzbereich. Ein begrenzter Node-Container leitet darin ausschließlich
+TLS-Bytes von seiner privaten Adresse auf den kurzlebigen Fixture-Server am
+zugehörigen Bridge-Gateway weiter. Es gibt keine veröffentlichten Host-Ports,
+Host-Netzwerkfreigabe oder Host-Dateimounts. Zertifikat und Identitäten bleiben
+ephemere Testdaten; die produktive HTTPS-Origin-Policy wird nicht aufgeweicht.
+
+`MEET_TEST_PROXY_IMAGE` wählt ein bereits lokal vorhandenes Node-fähiges Image
+(Standard: `webrtc-ci-local-webrtc:latest`); vor dem Start wird es auf seine
+lokale SHA-256-Image-ID aufgelöst. Dieses Image führt nur den opaken Proxy aus,
+nicht den Meet-Anwendungsstand. Die tatsächlich getestete Meet-Anwendung kommt
+weiterhin aus dem aktuellen Quellcode und dessen vorher erzeugtem `dist/`.
+Container und Netzwerk werden ausschließlich unter dem eigenen zufälligen
+Fixture-Namen entfernt. Der Proxy besitzt zusätzlich eine begrenzte Laufzeit.
+
+Ein eigener Coturn-Container im selben internen Netz liefert ausschließlich
+STUN-Adressbestimmung (`--stun-only`), keine TURN-Allokation. Ohne diesen lokalen
+Dienst lieferte der interne Chromium-Container keine signalisierbaren ICE-
+Kandidaten; mDNS allein verband Host und Container hier nicht. Der Gate benötigt
+keinen externen STUN-Dienst und ändert weder mDNS-Privacy-Flags noch ICE-Policy in
+Produktion. `MEET_TEST_STUN_IMAGE` ist standardmäßig `coturn/coturn:4.17.0` und wird
+ebenfalls auf die lokale Image-ID aufgelöst. UID 65534, read-only Root, bounded
+tmpfs/RAM/PIDs/CPU und ein harter Prozess-Timeout begrenzen den Dienst. Nur die
+vom Image-Binary benötigte `NET_BIND_SERVICE`-Capability bleibt erhalten;
+Host-Ports werden nicht veröffentlicht. Das beweist ausdrücklich keinen
+öffentlichen TURN-/NAT-Pfad.
+
+Anantas opt-in Test benötigt dessen optionales Python-Extra `meet-tests` und
+ein bereits lokal gebautes Meet-Media-Worker-Image. Der Test startet daraus nur
+einen eigenen sandboxed Chromium-Server im selben privaten Netzbereich, ohne
+GPU oder Host-Mounts. Python-Client und Browser verwenden Playwright 1.58.0.
+Dadurch ist weder ein Browserdownload auf dem Host noch eine Änderung seiner
+AppArmor-/Namespace-Policy erforderlich. Das interne stdio-Ready-Protokoll
+übergibt hierfür zusätzlich `test_network`; es ist keine produktive API.
+Der Ananta-Test muss seinen Browser-Container vor dem Meet-Netzwerk entfernen.
+Ein synthetischer Dialogtest ersetzt weder echte Modell-/GPU-Läufe noch
+öffentliche TURN-Abnahme.

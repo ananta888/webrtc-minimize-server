@@ -91,6 +91,14 @@
     </aside>
 
     <main class="app-main">
+      @if (session.joined()) {
+        <div id="room-audio" class="remote-audio" aria-label="Aktive Remote-Audiospuren">
+          @for (item of mesh.remoteAudio(); track item.key) {
+            <span class="media-label audio-label">{{ item.peerName }} · {{ mediaLabel(item.source) }}</span>
+            <audio autoplay [appMediaStream]="item.stream" [attr.aria-label]="item.peerName + ' · ' + mediaLabel(item.source)"></audio>
+          }
+        </div>
+      }
       @if (combinedError()) {
         <div id="app-error" class="toast error-toast" role="alert">
           <span aria-hidden="true">!</span><span>{{ combinedError() }}</span>
@@ -320,12 +328,6 @@
                   <app-media-mosaic [items]="mesh.mosaicRemoteMedia()" />
                 </article>
               }
-              <div class="remote-audio" aria-label="Aktive Remote-Audiospuren">
-                @for (item of mesh.remoteAudio(); track item.key) {
-                  <span class="media-label audio-label">{{ item.peerName }} · {{ mediaLabel(item.source) }}</span>
-                  <audio autoplay [appMediaStream]="item.stream" [attr.aria-label]="item.peerName + ' · ' + mediaLabel(item.source)"></audio>
-                }
-              </div>
               @if (captions.showOverlay() && captions.overlayEntries().length > 0) {
                 <div id="live-caption-overlay" class="live-caption-overlay" aria-live="polite" aria-label="Live-Untertitel">
                   @for (entry of captions.overlayEntries(); track entry.id) {
