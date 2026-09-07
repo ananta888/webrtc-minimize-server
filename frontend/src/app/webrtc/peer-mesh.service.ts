@@ -408,6 +408,20 @@ export class PeerMeshService {
     await this.connections?.acceptSignal(message);
   }
 
+  /** Read-only readiness for this exact local track, not another active source. */
+  localPublicationProtected(track: MediaStreamTrack): boolean {
+    const publication = this.publications.get(track.id);
+    if (!publication?.local || publication.track !== track || track.readyState !== "live"
+      || !this.membershipStable || this.mediaE2eeState() !== "active" || !this.shouldProtectMedia()) return false;
+    const agent = this.agentMediaKeys.get(publication.id);
+    if (agent?.active && agent.message.membershipEpoch === this.membershipEpoch()
+      && agent.routeEpoch === this.mediaAgents.routeEpoch()
+      && this.activeSenderMediaContexts.has(agent.contextId)) return true;
+    return [...this.peers.values()].some(peer => peer.pc.connectionState === "connected"
+      && peer.senders.has(publication.id)
+      && this.activeSenderMediaContexts.has(this.outboundMediaContext(publication.id, peer.id)));
+  }
+
   attachPublication(source: MediaSource, stream: MediaStream): void {
     this.detachPublication(source);
     this.localStreams.set(source, stream);
