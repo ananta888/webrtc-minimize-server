@@ -75,6 +75,27 @@ Revisionen, unveränderten Writer, fehlendes Standby-Assignment und Handoff-
 Invalidierung. Komponenten-/Service-Tests prüfen Bestätigung und Lifecycle;
 die Produktions- und physische Accessibility-Abnahme steht noch aus.
 
+Der isolierte Zwei-Packager-Produktionsgate ergänzt vor jeder Übergabe einen
+Standby-Schritt mit echten Tastaturaktionen: Laden per Enter, Setzen/Entfernen/
+erneutes Setzen per Space und jeweils bestätigtes Speichern per Enter. Er
+akzeptiert ausschließlich gleich-originige Antworten des geschlossenen
+Control-Vertrags und exakt fortschreitende Standby-Revisionen bei unveränderter
+Programmrevision/-epoche. Capture-Aufrufliste, PeerConnection-Anzahl und
+Programm-Erstellungen müssen unverändert bleiben. Sechs reine Beobachtertests
+prüfen diese Auswertung einschließlich Fehlantwort und unerlaubter Capture-
+Änderung; sie ersetzen keinen erfolgreichen tatsächlichen Produktionslauf.
+
+Der erste Versuch nach dem Rollout scheiterte schon beim temporären Keycloak-
+Provisioning mit 401; eine getrennte Anmeldung und Cleanup-Prüfung danach waren
+erfolgreich. Der nächste Lauf erreichte Standby-Control und Checkboxbedienung,
+beobachtete aber keine Antwort auf Speichern. Der Tastatur-Gate wartet jetzt
+zusätzlich auf den aktivierten Button: Ein echter lokaler Chromium-Test belegt,
+dass `press("Enter")` auf einem deaktivierten Button nicht auf dessen Freigabe
+wartet und keinen Klick erzeugt. Fehlende Commit-Antworten werden anhand von
+Request-/Dialog-Flags, geschlossenen Transportcodes und begrenzten UI-Codes
+unterschieden. Diese Diagnosekorrektur ist noch kein produktiver Erfolgsnachweis;
+ein weiterer isolierter Lauf folgt nach unabhängiger Bereinigung.
+
 ### Native Handoff-Routen
 
 `POST /api/broadcasts/:programId/native-handoff-control` liefert dem aktuellen
@@ -215,13 +236,13 @@ sein gemeinsamer Mini-PC-Origin beweist keinen beliebigen Cross-Host-Origin.
 
 ### Ausgelieferter Stand und getrennte Produktionsnachweise
 
-Aktuell ausgeliefert ist `56cdeb335d015fed2e60b06ce594d72da1a37581`, nach
-[allen sieben erfolgreichen CI-Jobs](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34136555441).
+Aktuell ausgeliefert ist `c20f4533308ee783807af7c9396f5b51fea965a1`, nach
+[allen sieben erfolgreichen CI-Jobs](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34142790479).
 Web-App, Native-Packager und HLS-Origin laufen auf genau dieser Revision;
 externer Smoke, Identitätserhalt und unabhängiger Artefaktvergleich sind bestanden.
 Die fünf Binaries im Image entsprechen dem attestierten CI-Manifest; das
 öffentliche Manifest und der Linux-Download sind bytegleich. Manifest-SHA-256:
-`a52cbff4770e97e47f01bacb463a2f569bd16b594205f42b90de2a0ee1da92e7`.
+`b7cd6c8a94d7ac61a756330d56fbea7b999fd6466e339183ba72652f1870cd2d`.
 Auth und SFrame bleiben `required`, Maschinenaufnahme bleibt deaktiviert.
 Dies ist kein neuer erfolgreicher Handoff-Lauf.
 
