@@ -10,13 +10,14 @@ import { build } from "esbuild";
 import { chromium, firefox } from "playwright";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-let directory, executable, bundle;
+let directory, executable, bundle, dockerRunner;
 before(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), "webrtc-trusted-sframe-"));
   executable = path.join(directory, "decoder.test");
   const args = ["test", "-c", "-o", executable, "./internal/trustedsframe"];
   const local = spawnSync("go", ["version"], { encoding: "utf8", timeout: 10_000 });
-  const result = !local.error && local.status === 0
+  dockerRunner = Boolean(local.error || local.status !== 0);
+  const result = !dockerRunner
     ? spawnSync("go", args, { cwd: path.join(root, "native-broadcast-packager"), encoding: "utf8", timeout: 90_000 })
     : spawnSync("docker", ["run", "--rm", "-v", `${root}:/workspace:ro`, "-v", `${directory}:/out`,
       "-w", "/workspace/native-broadcast-packager", "golang:1.24-alpine", "go", "test", "-c", "-o", "/out/decoder.test",
@@ -61,7 +62,13 @@ for (const [name, engine] of [["Chromium", chromium], ["Firefox", firefox]]) {
     await page.goto(`http://127.0.0.1:${app.address().port}`);
     for (const codec of ["video/vp8", "audio/opus"]) {
       const fixture = await page.evaluate(codec => window.generateSFrameFixture(codec), codec);
-      const result = spawnSync(executable, ["-test.run=^TestBrowserInterop$", "-test.v"], {
+      const runArgs = ["-test.run=^TestBrowserInterop$", "-test.v"];
+      // A Linux binary produced by the fallback is also executed there; never
+      // assume the host is Linux merely because Docker is available.
+      const result = spawnSync(dockerRunner ? "docker" : executable, dockerRunner ? [
+        "run", "-i", "--rm", "--network", "none", "-e", "TRUSTED_SFRAME_BROWSER_INTEROP=1",
+        "-v", `${directory}:/fixture:ro`, "golang:1.24-alpine", "/fixture/decoder.test", ...runArgs,
+      ] : runArgs, {
         input: JSON.stringify(fixture), env: { ...process.env, TRUSTED_SFRAME_BROWSER_INTEROP: "1" },
         encoding: "utf8", timeout: 10_000, maxBuffer: 1024 * 1024,
       });
