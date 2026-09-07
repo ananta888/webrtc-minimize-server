@@ -7,6 +7,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY angular.json tsconfig.json ./
 COPY frontend ./frontend
+COPY src/machine-chat-contract.js src/machine-chat-contract.d.ts src/machine-chat-queue.js src/machine-chat-queue.d.ts ./src/
 COPY scripts/extract-vosk-worker.mjs ./scripts/extract-vosk-worker.mjs
 COPY third_party/vosk-browser ./third_party/vosk-browser
 RUN npm run build
