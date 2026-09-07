@@ -37,3 +37,13 @@ and Firefox cases passed serially. The complete two-process matrix passed
 526 tests with three existing skips in 128.40 seconds. This bounds aggregate
 browser contention without omitting tests or relaxing any media deadline.
 It is a test-runner resource budget, not a production transport correction.
+
+The full isolated check before integration passed 616 frontend and 526 Node
+tests (three Node skips; Node 125.89 seconds). After merging concurrent work
+through `7245aea`, the complete check at `4bf0013` passed 616 frontend and
+546 Node tests (three Node skips; Node 135.18 seconds). Build, Go, contract,
+TODO and leakage stages passed; opt-in external infrastructure gates explicitly
+skipped. Neither full check rebuilt the running instance's `dist` directory.
+Ananta's subsequent browser-local PCM feeder separately passed the actual
+222.66-second three-renewal gate with five complete synthetic spoken replies;
+that later result does not retroactively turn the earlier failed runs green.
