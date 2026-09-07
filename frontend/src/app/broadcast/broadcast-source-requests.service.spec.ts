@@ -80,4 +80,12 @@ describe("source invitation metadata port", () => {
     const pending = f.service.load(); await vi.advanceTimersByTimeAsync(15000); await pending;
     expect(f.service.busy()).toBe(false); expect(f.fetch).toHaveBeenCalledTimes(2);
   });
+  it("cancels unread response data on invalid UTF-8 and aborts failed HTTP operations", async () => {
+    const f = fixture(), cancel = vi.fn();
+    const body = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array([255])); }, cancel });
+    f.fetch.mockResolvedValue(new Response(body, { headers: { "content-type": "application/json" } }));
+    await f.service.load(); expect(cancel).toHaveBeenCalledOnce();
+    const init = (f.fetch.mock.calls as unknown as [string, RequestInit][])[0][1];
+    expect(init.signal?.aborted).toBe(true); expect(f.service.items()).toEqual([]);
+  });
 });

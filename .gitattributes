@@ -1,0 +1,2 @@
+# POSIX scripts must remain executable after Windows/autocrlf checkouts too.
+*.sh text eol=lf

@@ -57,7 +57,8 @@ async function readResponse(response: Response, signal: AbortSignal): Promise<un
       text += decoder.decode(chunk.value, { stream: true });
     }
     signal.throwIfAborted(); return JSON.parse(text + decoder.decode());
-  } finally { signal.removeEventListener("abort", cancel); reader.releaseLock(); }
+  } catch (error) { cancel(); throw error; }
+  finally { signal.removeEventListener("abort", cancel); reader.releaseLock(); }
 }
 
 @Injectable()
@@ -137,6 +138,7 @@ export class BroadcastSourceRequestsService {
       this.items.set(action === "list" ? items : Object.freeze([...this.items().filter(item => item.requestId !== items[0].requestId), ...items].slice(-40)));
       this.loaded.set(true);
     } catch (error) {
+      controller.abort();
       if (this.controller === controller) {
         this.items.set([]); this.loaded.set(false);
         this.error.set(error instanceof Error && error.message === "conflict" ? "Serverstand geändert. Bitte erneut laden."
