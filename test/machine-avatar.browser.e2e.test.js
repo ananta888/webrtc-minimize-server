@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { machineBrowserFixture } from "./helpers/machine-browser-fixture.js";
 import { installDialogObservation } from "./helpers/machine-dialog-observer.mjs";
-import { decodedAvatar, decodedGreenScreen, openTestAvatar, startAvatarCompanions } from "./helpers/machine-avatar-coexistence.mjs";
+import { avatarAbsent, decodedAvatar, decodedGreenScreen, openTestAvatar, startAvatarCompanions } from "./helpers/machine-avatar-coexistence.mjs";
 import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
 
 for (const humanEngine of ["chromium", "firefox"]) {
@@ -42,12 +42,13 @@ test(`${humanEngine} decodes independent neutral avatar alongside speech and scr
   await waitFixtureValue(human, () => window.__dialogObservation.status().active_windows > 10);
   await waitFixtureValue(human, decodedGreenScreen);
   await machine.waitForFunction(() => window.anantaMachine.avatar.status().state === "open", undefined, { timeout: 3000 });
+  const simultaneous = await waitFixtureValue(human, decodedAvatar, null, { accept: v => v?.white > 100 });
   // Avatar-only stop must leave actual speech and screen source progress untouched.
   const before = await machine.evaluate(() => ({ samples: window.anantaMachine.speech.status().playedSamples, screen: window.anantaMachine.screen.status().sequence }));
   assert.equal(await machine.evaluate(gen => window.anantaMachine.avatar.close(gen), first.generation), true);
   await machine.evaluate(() => window.__avatarTestPulse.stop());
   await human.evaluate(() => window.__dialogObservation.resetAudio());
-  await waitFixtureValue(human, () => ![...document.querySelectorAll("video")].some(v => v.videoWidth === 256));
+  await waitFixtureValue(human, avatarAbsent);
   await machine.waitForFunction(prior => window.anantaMachine.speech.status().playedSamples > prior.samples + 2205
     && window.anantaMachine.screen.status().sequence > prior.screen, before);
   assert.equal(await machine.evaluate(() => window.__avatarCompanions.failed), false);
@@ -69,7 +70,7 @@ test(`${humanEngine} decodes independent neutral avatar alongside speech and scr
   const lossAt = performance.now();
   await waitFixtureValue(machine, () => window.anantaMachine.avatar.status().state === "failed", null, { timeout: 3000 });
   const controllerStopMs = performance.now() - lossAt;
-  await waitFixtureValue(human, () => ![...document.querySelectorAll("video")].some(v => v.videoWidth === 256), null, { timeout: 1000 });
+  await waitFixtureValue(human, avatarAbsent, null, { timeout: 1000 });
   await machine.evaluate(openTestAvatar, sourceId);
   await machine.evaluate(() => window.__avatarTestPulse.stop());
   await machine.evaluate(() => window.anantaMachine.leave());
@@ -79,7 +80,7 @@ test(`${humanEngine} decodes independent neutral avatar alongside speech and scr
     assert.equal(observed.captures, 0); assert.deepEqual(observed.errors, []);
   }
   t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, image, audioWindows: audio.active_windows,
-    movingIndicator: changed, controllerStopMs }));
+    movingIndicator: changed, controllerStopMs, simultaneous }));
   } finally { await closeObservers(); }
 });
 }

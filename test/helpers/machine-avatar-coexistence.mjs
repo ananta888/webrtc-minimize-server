@@ -53,17 +53,21 @@ export async function startAvatarCompanions(sessionId) {
 }
 
 export function decodedAvatar() {
-  const video = [...document.querySelectorAll("video")].find(v => v.videoWidth === 256 && v.videoHeight === 256);
-  if (!video) return null;
+  const video = document.querySelector('#media-grid .remote-media[data-source="camera"] video');
+  if (!video || ![64, 128, 256].includes(video.videoWidth) || video.videoHeight !== video.videoWidth) return null;
   const canvas = document.createElement("canvas"); canvas.width = canvas.height = 256;
-  const drawing = canvas.getContext("2d"); drawing.drawImage(video, 0, 0);
+  const drawing = canvas.getContext("2d"); drawing.drawImage(video, 0, 0, 256, 256);
   const center = [...drawing.getImageData(128, 105, 1, 1).data];
   const label = drawing.getImageData(20, 180, 216, 30).data;
   let white = 0; for (let i = 0; i < label.length; i += 4) if (label[i] > 200 && label[i + 1] > 200 && label[i + 2] > 200) white++;
-  const indicator = drawing.getImageData(28, 224, 200, 1).data;
+  const indicator = drawing.getImageData(28, 230, 200, 1).data;
   let bright = 0; for (let i = 0; i < indicator.length; i += 4) if (indicator[i + 1] > 150) bright++;
   canvas.width = canvas.height = 0;
-  return white > 100 ? { center, white, bright } : null;
+  return { center, white, bright, decodedWidth: video.videoWidth };
+}
+
+export function avatarAbsent() {
+  return !document.querySelector('#media-grid .remote-media[data-source="camera"]');
 }
 
 export function decodedGreenScreen() {

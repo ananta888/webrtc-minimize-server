@@ -48,7 +48,10 @@ function drawNeutralAvatar(drawing: CanvasRenderingContext2D, sequence: number):
   drawing.fillRect(99, 94, 12, 12); drawing.fillRect(145, 94, 12, 12);
   drawing.fillRect(108, 125, 40, 5);
   drawing.fillStyle = "#ffffff"; drawing.textAlign = "center";
-  drawing.font = "bold 20px sans-serif"; drawing.fillText("ANANTA / KI", 128, 202);
+  drawing.font = "bold 20px sans-serif"; drawing.fillText("ANANTA", 128, 30);
+  // The normal camera thumbnail may be 64px. A large KI mark stays visible
+  // there; never force a higher transport quality merely to preserve a label.
+  drawing.font = "bold 44px sans-serif"; drawing.fillText("KI", 128, 211);
   // Visible low-rate liveness indicator; never represents real speech/lip sync.
-  drawing.fillStyle = "#72e1ce"; drawing.fillRect(28, 224, 20 + (sequence % 10) * 20, 6);
+  drawing.fillStyle = "#72e1ce"; drawing.fillRect(28, 224, 20 + (sequence % 10) * 20, 12);
 }

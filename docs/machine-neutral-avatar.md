@@ -11,7 +11,7 @@ membership, the exact machine session/lease and `avatar.publish`. It returns
 heartbeatMs 2500 and
 absolute expiry only after its concrete camera track is SFrame-protected and
 the first requested source frame succeeds. No text, URL or image argument is
-accepted. The fixed drawing includes `ANANTA / KI` and a moving liveness bar;
+accepted. The fixed drawing includes `ANANTA`, a large `KI` mark and a moving liveness bar;
 it is not lip sync, a persona asset or a real camera image.
 
 `status()` reports closed/opening/open/waiting/failed, generation, requested
@@ -70,3 +70,20 @@ Chromium/Firefox matrix pass, including controller-loss closure at 2442.96 and
 check passed 558 frontend tests and 497 Node checks (495 passed, two explicit
 skips), with the same controller-loss cases repeated successfully. External
 infrastructure gates remain explicit skips, not production evidence.
+
+The real Ananta Hub integration subsequently exposed the normal 64px camera
+thumbnail when screen is already active: the former small text and thin bar
+lost contrast after downscaling. A large KI mark and thicker indicator now
+remain observable without overriding adaptive transport policy. The private
+observer binds to the remote camera publication and normalizes decoded
+64/128/256px sizes before checking face/label/movement; absence uses publication
+removal, not an assumption of 256px remote output.
+
+The combined Hub/Worker/Meet gate passed (36.95 s), and text plus avatar passed
+together (68.97 s). The final isolated `npm run check` passed 558 frontend tests
+and 498 Node checks (496 passed, two explicit skips; Node 69.92 s). A preceding
+overlapping run timed out in an existing Chromium→Firefox VP8 gate; its isolated
+rerun passed in 36.45 s and the following complete check passed. That failed
+report is retained; interference from concurrent private-network provisioning
+is a plausible cause, not established proof. Run these network-changing gates
+separately from the full browser matrix when possible.

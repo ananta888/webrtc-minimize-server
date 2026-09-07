@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import readline from "node:readline";
 import { machineBrowserFixture } from "./machine-browser-fixture.js";
 import { installDialogObservation } from "./machine-dialog-observer.mjs";
+import { observeAvatarCommand } from "./machine-avatar-observation.mjs";
 async function runBridge() {
 const cleanup = [];
 let stage = "setup";
@@ -28,6 +29,8 @@ try {
   let answersExpected = 0;
   for await (const line of readline.createInterface({ input: process.stdin, crlfDelay: Infinity })) {
     if (line === "stop") break;
+    const avatar = await observeAvatarCommand(line, f.human);
+    if (avatar) { reply(avatar); continue; }
     if (line === "consent") {
       await f.human.locator(".nav-item").filter({ hasText: /^Live/ }).click();
       await f.human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
@@ -127,7 +130,7 @@ try {
     } else throw new Error("unknown_bridge_command");
   }
 } catch (error) {
-  const code = ["screen_not_moving", "test_private_frame_or_stop_failed", "test_tls_proxy_not_ready",
+  const code = ["screen_not_moving", "avatar_not_moving", "test_private_frame_or_stop_failed", "test_tls_proxy_not_ready",
     "test_navigation_network_changed", "test_navigation_deadline",
     "test_stun_start_failed", "test_docker_command_failed", "test_private_proxy_network_invalid"].includes(error.message)
     ? error.message : error.name === "TimeoutError" ? "test_browser_timeout" : "synthetic_meet_bridge_failed";
@@ -136,7 +139,7 @@ try {
     ...(/net::(ERR_[A-Z_]{1,64})/.test(String(error.message)) ? { network_error: String(error.message).match(/net::(ERR_[A-Z_]{1,64})/)[1] } : {}),
     kind: ["Error", "TypeError", "TimeoutError"].includes(error.name) ? error.name : "Error",
     ...(error.startupObservation ? { startup: error.startupObservation } : {}),
-    ...(code === "screen_not_moving" && error.observation ? { observation: error.observation } : {}) }) + "\n");
+    ...(["screen_not_moving", "avatar_not_moving"].includes(code) && error.observation ? { observation: error.observation } : {}) }) + "\n");
   process.stderr.write("synthetic_meet_bridge_failed\n"); process.exitCode = 1;
 } finally {
   for (const close of cleanup.reverse()) { try { await close(); } catch { process.exitCode = 1; } }

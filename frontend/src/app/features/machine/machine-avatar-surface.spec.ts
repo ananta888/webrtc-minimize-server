@@ -19,7 +19,8 @@ describe("neutral synthetic canvas adapter", () => {
     const f = setup(), mic = f.ownership.claim(["microphone"]), surface = f.factory.create();
     expect(f.create).toHaveBeenCalledExactlyOnceWith("canvas"); expect(f.canvas.width).toBe(256);
     expect(f.canvas.captureStream).toHaveBeenCalledExactlyOnceWith(0);
-    expect(f.drawing.fillText).toHaveBeenCalledWith("ANANTA / KI", 128, 202);
+    expect(f.drawing.fillText).toHaveBeenCalledWith("ANANTA", 128, 30);
+    expect(f.drawing.fillText).toHaveBeenCalledWith("KI", 128, 211);
     expect(f.mesh.attachPublication).toHaveBeenCalledWith("camera", expect.anything());
     expect(surface.ready()).toBe(true); expect(f.mesh.localPublicationProtected).toHaveBeenCalledWith(f.track);
     surface.frame(1); expect(f.track.requestFrame).toHaveBeenCalledOnce();
