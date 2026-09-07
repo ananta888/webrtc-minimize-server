@@ -32,6 +32,18 @@ or removed. The temporary build is caller-owned and is not deleted by fixture
 cleanup. A passing current-build short test does not retrospectively pass an
 old-build failure or replace the separate multi-renewal/long-duration matrix.
 
+The short avatar matrix now checks three real lease renewals in the same room
+membership and PeerConnection. After each renewal it reauthorizes all three
+synthetic publications and checks moving remote avatar pixels/label, decoded
+screen pixels alternating red/green/red (a stale green frame cannot pass) and
+new non-silent audio windows, with active SFrame and exactly
+three reusable transceivers. A stale avatar generation cannot close its
+successor. This closes the former test gap where only a local `open` state was
+asserted after renewal. Chromium and Firefox passed the isolated current-build
+matrix in 21.98 seconds on 2026-09-07, with zero capture/transform errors. It is
+not a reproduction or clearance of the separate approximately 202-second
+cross-repository failure and does not substitute for the long-duration gate.
+
 ## Bounded browser observations
 
 The neutral-avatar matrix exposed an interaction between Firefox automation and
