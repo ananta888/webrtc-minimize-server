@@ -98,3 +98,12 @@ Abschlusscheck dieses Slices: `npm run check` grün mit 541 Frontendtests und
 473 Node-Prüfungen (0 Fehler, 2 explizite Skips, Node 66.18 s), einschließlich
 beider wirklicher Browser-Navigationsfälle. Externe Infrastruktur-Gates bleiben
 sichtbar übersprungen; keine öffentliche Instanz wurde neu gestartet/deployt.
+
+Die private Fixture behandelt `ERR_NETWORK_CHANGED` beim Bootstrap mit höchstens
+zwei Navigationen unter einem gemeinsamen 30-s-Limit. Das umfasst fehlgeschlagene
+Modulrequests, aber ausschließlich vor Raumerstellung/Join/Aufträgen. Auth- und
+Policyfehler, andere Netzfehler, Zeitüberschreitungen und Fachaktionen erhalten
+keine Wiederholung. Zehn deterministische Tests prüfen diese Grenze samt
+Listener-Cleanup; die Fehlerbeobachtung enthält weiterhin nur begrenzte Codes.
+Danach `npm run check` erneut grün: 541 Frontendtests, 484 Node-Prüfungen,
+0 Fehler, 2 explizite Skips (Node 67.04 s); externe Live-Gates weiter übersprungen.

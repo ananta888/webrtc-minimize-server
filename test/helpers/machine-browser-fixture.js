@@ -12,6 +12,7 @@ import { createAppServer } from "../../src/server.js";
 import { createOidcVerifier } from "../../src/oidc-verifier.js";
 import { privateMachineTlsProxy } from "./machine-tls-proxy.js";
 import { observeBrowserStartup } from "./machine-browser-startup.mjs";
+import { navigateFixture } from "./machine-browser-navigation.mjs";
 
 export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", listenPort = 0, hubPublicKey, tlsPortProxy = false,
   lifetimeSeconds = 180, humanEngine = "chromium", observeStage = () => {} } = {}) {
@@ -125,7 +126,8 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
   const humanStartup = observeBrowserStartup(human);
   let roomId;
   try {
-    observeStage("human-navigation"); await human.goto(origin);
+    observeStage("human-navigation");
+    await navigateFixture(human, origin, () => document.querySelector("#create-room")?.disabled === false);
     observeStage("human-room-create"); await human.locator("#create-room").click();
     await human.waitForFunction(() => document.querySelector("#room-id")?.value.startsWith("room-"));
     roomId = await human.locator("#room-id").inputValue();
@@ -144,9 +146,8 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
   observeStage("machine-navigation");
   const machine = await page(true), startup = observeBrowserStartup(machine);
   try {
-    await machine.goto(origin + "/machine");
+    await navigateFixture(machine, origin + "/machine", () => Boolean(window.anantaMachine));
     observeStage("machine-ready");
-    await machine.waitForFunction(() => Boolean(window.anantaMachine));
   } catch (error) { error.startupObservation = startup; throw error; }
   return { human, machine, roomId, binding, grant, browser, app, origin, testNetwork: proxy?.network,
     certificatePath: path.join(directory, "cert.pem") };
