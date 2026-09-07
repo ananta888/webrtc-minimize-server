@@ -187,3 +187,19 @@ Testkonto, Packager-Registrierung, Container/Volume und Room-Consent sind
 isolierte Wegwerfressourcen. Der Packager wird vor dem Löschen des Testkontos
 über dessen normale authentisierte API widerrufen; direkte Datenbanklöschung
 ist kein zulässiger Cleanup-Pfad.
+
+Am 7. September 2026 bestand Revision `4d40b45` nach sieben grünen CI-Jobs
+den Drei-Dienste-Deploy mit unveränderter Agent-Identität. Das öffentliche
+Release-Manifest und alle fünf Downloads entsprachen dem unabhängig
+attestierten CI-Artefaktsatz. Der anschließende isolierte
+`public-handoff-only`-Lauf bestand mit Exit 0: zwei regulär enrollte Packager,
+erneuerbare anonyme Wiedergabe, decodierter Slate/Quellenrückweg,
+Standby-Auswahl per Tastatur, bestätigter Vorgänger-Stop und neue decodierte
+Handoff-Ausgabe ohne Recapture oder zweiten Zuschauerklick. Stop und normaler
+Widerruf bestanden; eine getrennte Kontrolle fand keine Testcontainer,
+Identitätsvolumes oder Medienausgaben mehr und bestätigte die leere, gesunde
+Instanz. Die getrennte Keycloak-Admin-API-Abfrage fand ebenfalls keine
+temporären Testnutzer mehr. Private Wiedergabe, Visibility-Wechsel, Rückübergabe, automatische
+Übernahme und Cross-Host-Auslieferung waren nicht Teil dieses Szenarios.
+Der frühere Lauf mit `ERR_NETWORK_CHANGED` bleibt ein fehlgeschlagener Lauf;
+der spätere Erfolg erklärt nicht die Ursache jenes Netzwerkfehlers.
