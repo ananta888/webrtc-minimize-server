@@ -9,7 +9,7 @@ steuern. Für eigenes natives Publishing ist die unten beschriebene serverseitig
 Same-Program-Übergabe einschließlich Angular-Übergabedialog angeschlossen.
 Kontrollierter Player-Generationswechsel ist lokal implementiert und getestet.
 Fremdquellenmoderation und automatische Standby-Übernahme bleiben offen. Eine
-keylose Standby-Vormerkung ist implementiert; ihr Produktionsnachweis folgt.
+keylose Standby-Vormerkung ist implementiert und per Produktionstastaturtest belegt.
 Private Zwei-Packager-
 Übergaben sind inzwischen real nachgewiesen; der vollständige Gate mit
 öffentlicher Rückübergabe ist weiterhin offen.
@@ -73,7 +73,7 @@ erneut geladen werden; die Mutation wird nicht automatisch wiederholt.
 Registry- und echte lokale HTTP-/WebSocket-Tests prüfen Auswahl, Ablehnung,
 Revisionen, unveränderten Writer, fehlendes Standby-Assignment und Handoff-
 Invalidierung. Komponenten-/Service-Tests prüfen Bestätigung und Lifecycle;
-die Produktions- und physische Accessibility-Abnahme steht noch aus.
+die zusätzliche physische Accessibility-Abnahme steht noch aus.
 
 Der isolierte Zwei-Packager-Produktionsgate ergänzt vor jeder Übergabe einen
 Standby-Schritt mit echten Tastaturaktionen: Laden per Enter, Setzen/Entfernen/
@@ -93,8 +93,15 @@ zusätzlich auf den aktivierten Button: Ein echter lokaler Chromium-Test belegt,
 dass `press("Enter")` auf einem deaktivierten Button nicht auf dessen Freigabe
 wartet und keinen Klick erzeugt. Fehlende Commit-Antworten werden anhand von
 Request-/Dialog-Flags, geschlossenen Transportcodes und begrenzten UI-Codes
-unterschieden. Diese Diagnosekorrektur ist noch kein produktiver Erfolgsnachweis;
-ein weiterer isolierter Lauf folgt nach unabhängiger Bereinigung.
+unterschieden. Der anschließende isolierte Lauf auf Produktionsrevision
+`c20f453` bestand die tatsächliche Standby-Auswahl: Setzen, Entfernen und erneutes
+Setzen mit drei bestätigten HTTP-200-Antworten, fortschreitender CAS-Revision und
+unverändertem Programm, Capture und Verbindungen. Zwei echte Enrollment-Vorgänge
+und dekodierte HLS-Wartebild-/Quellenrückkehr bestanden ebenfalls. Erst der
+nachfolgende öffentliche Handoff scheiterte erneut an `net::ERR_NETWORK_CHANGED`;
+der Gesamtlauf bleibt Exit 1, nicht Handoff-PASS. Unabhängige Nachprüfung fand
+keine Testcontainer, Identity-Volumes, Ausgabe-Ressourcen oder Keycloak-Testnutzer;
+der öffentliche Healthcheck meldete null Räume und Teilnehmer.
 
 ### Native Handoff-Routen
 
