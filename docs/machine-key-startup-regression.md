@@ -42,3 +42,8 @@ failure remain documented in Ananta's matching contract. The original sporadic
 zero-decoded-frame symptom was not reproduced by either delay, so no production
 keyframe/crypto fix is claimed. The full isolated repository check follows before
 this test-infrastructure slice is finalized.
+
+The isolated `npm run check` at `1f3cab5` subsequently completed with exit 0:
+616 frontend tests, 558 Node passes and three explicit Node skips (137.70 seconds
+for Node), plus build, Go and configuration/security gates. External runtime
+gates remained explicit skips. No serving files or running services changed.
