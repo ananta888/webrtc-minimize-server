@@ -13,6 +13,7 @@ import { createOidcVerifier } from "../../src/oidc-verifier.js";
 import { privateMachineTlsProxy } from "./machine-tls-proxy.js";
 import { observeBrowserStartup } from "./machine-browser-startup.mjs";
 import { navigateFixture } from "./machine-browser-navigation.mjs";
+import { waitFixtureValue } from "./machine-browser-wait.mjs";
 
 export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", listenPort = 0, hubPublicKey, tlsPortProxy = false,
   lifetimeSeconds = 180, humanEngine = "chromium", observeStage = () => {} } = {}) {
@@ -129,7 +130,7 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
     observeStage("human-navigation");
     await navigateFixture(human, origin, () => document.querySelector("#create-room")?.disabled === false);
     observeStage("human-room-create"); await human.locator("#create-room").click();
-    await human.waitForFunction(() => document.querySelector("#room-id")?.value.startsWith("room-"));
+    await waitFixtureValue(human, () => document.querySelector("#room-id")?.value.startsWith("room-"));
     roomId = await human.locator("#room-id").inputValue();
     observeStage("human-room-join"); await human.locator("#join-room").click();
     await human.locator("#connection-status", { hasText: "Signaling verbunden" }).waitFor();

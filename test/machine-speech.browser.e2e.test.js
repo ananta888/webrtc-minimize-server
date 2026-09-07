@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { machineBrowserFixture } from "./helpers/machine-browser-fixture.js";
+import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
 
 for (const humanEngine of ["chromium", "firefox"]) {
 test(`${humanEngine} decodes independent machine PCM over required SFrame without capture`, { timeout: 90000 }, async t => {
@@ -25,7 +26,7 @@ test(`${humanEngine} decodes independent machine PCM over required SFrame withou
   await human.locator("#room-audio audio").waitFor({ state: "attached" });
   await human.evaluate(() => { window.__roomAudioElement = document.querySelector("#room-audio audio"); });
   // Observe actual decrypted receiver PCM, not just RTP bytes. This graph has no device input.
-  await human.waitForFunction(() => window.__pcs.some(pc => pc.getReceivers().some(r => r.track.kind === "audio")));
+  await waitFixtureValue(human, () => window.__pcs.some(pc => pc.getReceivers().some(r => r.track.kind === "audio")));
   await human.evaluate(async () => {
     const track = window.__pcs.flatMap(pc => pc.getReceivers()).find(r => r.track.kind === "audio").track;
     const context = new AudioContext(), source = context.createMediaStreamSource(new MediaStream([track]));
@@ -56,7 +57,7 @@ test(`${humanEngine} decodes independent machine PCM over required SFrame withou
   }, source);
   // Attach a handler immediately: UI failure must not leak a rejected playback promise.
   playing.catch(() => undefined);
-  await human.waitForFunction(() => window.__speechProbe.peak > .1);
+  await waitFixtureValue(human, () => window.__speechProbe.peak > .1);
   for (const name of ["Live", "Chat", "Analyse"]) {
     await human.locator(".nav-item").filter({ hasText: new RegExp(`^${name}$`) }).click();
     assert.equal(await human.evaluate(() => document.querySelector("#room-audio audio") === window.__roomAudioElement), true);
@@ -85,7 +86,7 @@ test(`${humanEngine} decodes independent machine PCM over required SFrame withou
   }, stale.generation), false);
   assert.equal(await machine.evaluate(() => window.anantaMachine.speech.status().generation), fresh.generation);
   await machine.evaluate(() => window.anantaMachine.leave());
-  await human.waitForFunction(() => !document.querySelector("#room-audio audio"));
+  await waitFixtureValue(human, () => !document.querySelector("#room-audio audio"));
   t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, ...decoded, playedSamples: result.playedSamples }));
 });
 }

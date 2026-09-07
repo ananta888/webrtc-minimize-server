@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { EventEmitter } from "node:events";
-import { navigateFixture } from "./helpers/machine-browser-navigation.mjs";
+import { navigateFixture as navigate } from "./helpers/machine-browser-navigation.mjs";
+
+// Navigation policy tests inject the wait port; its real JSON polling has its own tests.
+const navigateFixture = (page, url, ready, options = {}) => navigate(page, url, ready,
+  { wait: (target, ...args) => target.waitForFunction(...args), ...options });
 
 function fixture() {
   const page = new EventEmitter();
