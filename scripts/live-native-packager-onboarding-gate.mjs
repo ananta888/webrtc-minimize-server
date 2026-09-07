@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { chromium } from "playwright";
+import { observeNativeInstallerDownload } from "./native-installer-download-gate.mjs";
 
 if (process.env.RUN_LIVE_NATIVE_PACKAGER_ONBOARDING !== "1") {
   console.log("SKIP live native-packager onboarding gate: set RUN_LIVE_NATIVE_PACKAGER_ONBOARDING=1 with explicit test credentials");
@@ -101,12 +102,7 @@ async function downloadInstallers(page) {
   for (let index = 0; index < requestedCount; index += 1) {
     await page.locator("#native-packager-target").selectOption(target);
     await page.locator("#native-packager-label").fill(`Live Gate ${target} ${index + 1}`);
-    const responsePromise = page.waitForResponse((response) => (
-      response.url().endsWith("/api/native-packagers/enrollments") && response.request().method() === "POST"
-    ));
-    const downloadPromise = page.waitForEvent("download");
-    await page.locator("#download-native-packager-installer").click();
-    const [response, download] = await Promise.all([responsePromise, downloadPromise]);
+    const { response, download } = await observeNativeInstallerDownload(page, appOrigin);
     const enrollment = await response.json();
     assert.equal(response.status(), 201,
       `live enrollment must be issued, received ${response.status()} ${String(enrollment.error || "unknown").slice(0, 80)}`);

@@ -152,7 +152,19 @@ sein gemeinsamer Mini-PC-Origin beweist keinen beliebigen Cross-Host-Origin.
 
 ### Ausgelieferter Stand und getrennte Produktionsnachweise
 
-Revision `16b25af54933ee6d17cb30fcdde4da4a5c33df0d` ist nach
+Aktuell ausgeliefert ist `56cdeb335d015fed2e60b06ce594d72da1a37581`, nach
+[allen sieben erfolgreichen CI-Jobs](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34136555441).
+Web-App, Native-Packager und HLS-Origin laufen auf genau dieser Revision;
+externer Smoke, Identitätserhalt und unabhängiger Artefaktvergleich sind bestanden.
+Die fünf Binaries im Image entsprechen dem attestierten CI-Manifest; das
+öffentliche Manifest und der Linux-Download sind bytegleich. Manifest-SHA-256:
+`a52cbff4770e97e47f01bacb463a2f569bd16b594205f42b90de2a0ee1da92e7`.
+Auth und SFrame bleiben `required`, Maschinenaufnahme bleibt deaktiviert.
+Dies ist kein neuer erfolgreicher Handoff-Lauf.
+
+### Mediennachweise auf dem vorherigen Stand
+
+Revision `16b25af54933ee6d17cb30fcdde4da4a5c33df0d` wurde nach
 [allen sieben erfolgreichen CI-Jobs](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34051512640)
 auf Web-App, Native-Packager und HLS-Origin gemeinsam ausgeliefert. Vor dem
 Deployment waren Räume, Teilnehmer und Ausgaben leer; Geräteidentität,
