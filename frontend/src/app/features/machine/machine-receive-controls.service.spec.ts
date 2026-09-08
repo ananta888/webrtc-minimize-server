@@ -15,10 +15,69 @@ function setup() {
   const session = { joined: signal(true), machineExpiresAt: signal(0), roomId: signal("room-aaaaaaaaaaaaaaaaaa"), peerId: signal("a".repeat(16)) };
   const service = new MachineReceiveControlsService(mesh as never, session as never, signaling as never);
   return { service, mesh, signaling, session, grant, revision, command, sources,
-    emit: (message: object) => listener(message), request: (trigger = "user-action") => service.request(command.machinePeerId, true, false, false, 1, trigger) };
+    emit: (message: object) => listener(message), request: (trigger = "user-action") => service.request(command.machinePeerId, true, false, false, 1, trigger,
+      service.selectionScope(command.machinePeerId)) };
 }
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 describe("machine receive controls", () => {
+  it("does not silently consent a replacement publication selected under the old source", () => {
+    vi.useFakeTimers(); const f = setup();
+    const selected = { roomId: f.session.roomId(), peerId: f.session.peerId(), machinePeerId: f.command.machinePeerId,
+      sources: [{ publicationId: "mic", source: "microphone" }] };
+    f.sources.set([{ publicationId: "replacement-mic", source: "microphone" }]);
+    f.command.publicationIds = ["replacement-mic"];
+    f.service.request(f.command.machinePeerId, true, false, false, 1, "user-action", selected);
+    expect(f.signaling.send).not.toHaveBeenCalled();
+    expect(f.service.error()).toBe("machine_receive_selection_changed");
+    f.service.ngOnDestroy();
+  });
+  it.each(["room", "peer", "target", "missing"])("rejects a stale %s selection before creating or sending consent", change => {
+    vi.useFakeTimers(); const f = setup();
+    const selected = f.service.selectionScope(f.command.machinePeerId);
+    if (change === "room") f.session.roomId.set("room-bbbbbbbbbbbbbbbbbb");
+    if (change === "peer") f.session.peerId.set("c".repeat(16));
+    const target = change === "target" ? "d".repeat(16) : f.command.machinePeerId;
+    f.service.request(target, true, false, false, 1, "user-action", change === "missing" ? undefined : selected);
+    expect(f.mesh.machineReceiveConsent).not.toHaveBeenCalled();
+    expect(f.signaling.send).not.toHaveBeenCalled();
+    expect(f.service.error()).toBe("machine_receive_selection_changed");
+    f.service.ngOnDestroy();
+  });
+  it("binds chat-only selection to the session but permits a snapshot-free revocation", () => {
+    vi.useFakeTimers(); const f = setup(); f.command.publicationIds = []; f.command.chatRead = true;
+    const selected = f.service.selectionScope(f.command.machinePeerId);
+    f.session.peerId.set("c".repeat(16));
+    f.service.request(f.command.machinePeerId, false, false, true, 1, "user-action", selected);
+    expect(f.signaling.send).not.toHaveBeenCalled();
+    f.command.chatRead = false;
+    f.service.request(f.command.machinePeerId, false, false, false, 1, "user-action");
+    expect(f.signaling.send).toHaveBeenCalledExactlyOnceWith(f.command);
+    f.service.ngOnDestroy();
+  });
+  it("freezes copied selection IDs and requires a fresh selection for replacement screen audio", () => {
+    vi.useFakeTimers(); const f = setup();
+    f.sources.set([{ publicationId: "screen-old", source: "screen-audio" }]);
+    const selected = f.service.selectionScope(f.command.machinePeerId);
+    expect(Object.isFrozen(selected)).toBe(true); expect(Object.isFrozen(selected.sources)).toBe(true);
+    expect(Object.isFrozen(selected.sources[0])).toBe(true);
+    f.sources()[0].publicationId = "screen-new";
+    expect(selected.sources[0].publicationId).toBe("screen-old");
+    f.command.publicationIds = ["screen-new"];
+    f.service.request(f.command.machinePeerId, false, true, false, 1, "user-action", selected);
+    expect(f.signaling.send).not.toHaveBeenCalled();
+    f.service.request(f.command.machinePeerId, false, true, false, 1, "user-action", f.service.selectionScope(f.command.machinePeerId));
+    expect(f.signaling.send).toHaveBeenCalledExactlyOnceWith(f.command);
+    f.service.ngOnDestroy();
+  });
+  it("does not include an unselected source even if it changes", () => {
+    vi.useFakeTimers(); const f = setup();
+    f.sources.set([...f.sources(), { publicationId: "screen-old", source: "screen-audio" }]);
+    const selected = f.service.selectionScope(f.command.machinePeerId);
+    f.sources.set([{ publicationId: "mic", source: "microphone" }, { publicationId: "screen-new", source: "screen-audio" }]);
+    f.service.request(f.command.machinePeerId, true, false, false, 1, "user-action", selected);
+    expect(f.signaling.send).toHaveBeenCalledExactlyOnceWith(f.command);
+    f.service.ngOnDestroy();
+  });
   it("separates granted capabilities, current consent and observable tracks, without claiming processing", () => {
     vi.useFakeTimers(); const f = setup(); f.mesh.peerChoices.set([{ id: f.command.machinePeerId, name: "Ananta (KI)" }]);
     f.grant.set({ ...f.command, expiresAt: Date.now() + 2000 });

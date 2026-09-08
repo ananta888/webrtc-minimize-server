@@ -26,6 +26,32 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
   await panel.getByRole("button", { name: "Für diese KI einstellen" }).click();
   await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).check();
   await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).check();
+  // Replace the synthetic microphone through the persistent, user-clicked dock
+  // while the editor stays mounted. A checked source kind is not consent for
+  // the replacement publication, even if its label is identical.
+  await human.locator("#toggle-microphone").click();
+  await human.locator('#toggle-microphone[aria-pressed="false"]').waitFor();
+  await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).waitFor();
+  await human.waitForFunction(() => {
+    const input = document.querySelector('app-machine-permissions-panel input[type="checkbox"]');
+    return input?.disabled && !input.checked;
+  });
+  await human.locator("#toggle-microphone").click();
+  await human.locator('#toggle-microphone[aria-pressed="true"]').waitFor();
+  await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).check();
+  await panel.getByRole("button", { name: "Auswahl ausdrücklich freigeben" }).click();
+  await panel.getByRole("alert").filter({ hasText: "Quelle oder Sitzung seit der Auswahl geändert" }).waitFor();
+  assert.deepEqual(await machine.evaluate(() => window.anantaMachine.audio.sources()), []);
+  assert.equal(await machine.evaluate(() => window.anantaMachine.chat.status().open), false);
+  await panel.getByRole("button", { name: "Für diese KI einstellen" }).click();
+  // No grant exists: opening the editor resets all checks. Wait for that reset
+  // before check(), which otherwise may skip the click on the OLD checked DOM.
+  await human.waitForFunction(() => {
+    const inputs = [...document.querySelectorAll('app-machine-permissions-panel input[type="checkbox"]')];
+    return inputs.length === 3 && inputs.every(input => !input.checked);
+  }, null, { timeout: 1500 });
+  await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).check();
+  await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).check();
   await panel.getByRole("button", { name: "Auswahl ausdrücklich freigeben" }).click();
   await panel.getByText("Serverbestätigung erhalten.", { exact: true }).waitFor().catch(async error => {
     const codes = await panel.getByRole("alert").allTextContents();
@@ -33,6 +59,19 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
     throw error;
   });
   await panel.getByRole("button", { name: "Für diese KI einstellen" }).click();
+  // The click handler updates Angular signals; a returned click is not a DOM
+  // rendering ACK. Observe the exact selection, without another action/retry.
+  await human.waitForFunction(() => {
+    const inputs = document.querySelectorAll('app-machine-permissions-panel input[type="checkbox"]');
+    return inputs.length === 3 && inputs[0].checked && !inputs[1].checked && inputs[2].checked;
+  }, null, { timeout: 1500 }).catch(async error => {
+    t.diagnostic(JSON.stringify({ selection: await panel.evaluate(element => ({
+      inputs: [...element.querySelectorAll('input[type="checkbox"]')].map(input => ({ checked: input.checked, disabled: input.disabled })),
+      grantedAudioSources: Number(element.textContent.match(/Audioquellen: (\d+)/)?.[1] ?? -1),
+      chatGranted: /Chat: ja/.test(element.textContent),
+    })) }));
+    throw error;
+  });
   assert.equal(await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).isChecked(), true);
   assert.equal(await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).isChecked(), true);
   assert.equal(await panel.getByLabel("Mein laufender Bildschirmton", { exact: true }).isChecked(), false);

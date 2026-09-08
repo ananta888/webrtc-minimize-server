@@ -34,11 +34,12 @@ Capability-Probes bleiben bis zur tatsächlichen Abnahme konservativ.
 ### Aktueller Integrationsstand (8. September 2026)
 
 Die grundlegenden Meet-Ports und die Freigabe-/Betreiberstatus-UI sind in der
-[ausgelieferten Revision `8b72a46`](machine-admission-status.md#deployment)
+[zuletzt dokumentierten ausgelieferten Revision `76e8866`](machine-admission-status.md#deployment)
 enthalten. Die produktive Maschinenaufnahme bleibt ausgeschaltet; ein erneuter
 öffentlicher GET bestätigte `admissionEnabled: false`. Ausgelieferter Code ist
-keine freigegebene Hub-Verbindung. Die anschließende Nur-Lese-Chatkorrektur wird
-separat verifiziert und ist dadurch noch nicht deployed.
+keine freigegebene Hub-Verbindung. Die Nur-Lese-Chatkorrektur ist in dieser
+Revision enthalten. Die nachfolgende Bindung der Editor-Auswahl an konkrete
+Quell-IDs wird separat verifiziert und ist noch nicht deployed.
 
 | Bereich | Meet-seitig vorhanden | Verbleibende gemeinsame Abnahme |
 |---|---|---|

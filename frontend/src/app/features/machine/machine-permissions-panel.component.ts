@@ -1,6 +1,6 @@
 import { Component, effect, inject, signal } from "@angular/core";
 import { DatePipe } from "@angular/common";
-import { MachineReceiveControlsService } from "./machine-receive-controls.service";
+import { MachineReceiveControlsService, MachineReceiveSelection } from "./machine-receive-controls.service";
 import { MachineAdmissionStatusComponent } from "./machine-admission-status.component";
 
 @Component({
@@ -43,7 +43,7 @@ import { MachineAdmissionStatusComponent } from "./machine-admission-status.comp
         <p>Nur bereits laufende Audioquellen sind auswählbar. Diese Ansicht startet keine Aufnahme.
           Die Auswahl ersetzt die bisherigen Freigaben für diese KI erst nach deinem Klick und der Serverbestätigung.
           Ein bestätigtes Recht bedeutet noch nicht, dass Audioerkennung oder Dialog bereits aktiv sind.</p>
-        <button type="button" [disabled]="controls.state() === 'pending'" (click)="controls.request(target(), microphone(), screenAudio(), chat(), minutes(), 'user-action')">Auswahl ausdrücklich freigeben</button>
+        <button type="button" [disabled]="controls.state() === 'pending'" (click)="controls.request(target(), microphone(), screenAudio(), chat(), minutes(), 'user-action', selected)">Auswahl ausdrücklich freigeben</button>
       </fieldset>
     }
     <p role="status" aria-live="polite">{{ controls.state() === 'pending' ? 'Warte auf Serverbestätigung…' : controls.state() === 'confirmed' ? 'Serverbestätigung erhalten.' : '' }}</p>
@@ -51,7 +51,10 @@ import { MachineAdmissionStatusComponent } from "./machine-admission-status.comp
     @if (controls.requestPeerId() && controls.state() !== 'idle') {
       <p>Rückmeldung für KI-Peer <code>{{ controls.requestPeerId() }}</code>.</p>
     }
-    @if (controls.error()) { <p role="alert">{{ controls.error() }}</p> }
+    @if (controls.error() === 'machine_receive_selection_changed') {
+      <p role="alert">Quelle oder Sitzung seit der Auswahl geändert. Es wurde keine neue Freigabe gesendet.
+        Bitte „Für diese KI einstellen“ erneut wählen und die gewünschten Quellen prüfen.</p>
+    } @else if (controls.error()) { <p role="alert">{{ controls.error() }}</p> }
   </section>`,
   styles: [`section { margin-top: 1rem; padding: 1.25rem; border: 1px solid var(--border, #526075); border-radius: 1rem; }
     fieldset, article { margin-block: 1rem; } label { display: block; margin-block: .75rem; } button { margin: .25rem .5rem .25rem 0; }
@@ -61,6 +64,7 @@ export class MachinePermissionsPanelComponent {
   readonly controls = inject(MachineReceiveControlsService);
   readonly target = signal(""); readonly microphone = signal(false); readonly screenAudio = signal(false);
   readonly chat = signal(false); readonly minutes = signal(5);
+  selected?: MachineReceiveSelection;
   constructor() {
     effect(() => {
       if (this.target() && !this.controls.targets().some(peer => peer.id === this.target())) this.select("");
@@ -71,6 +75,7 @@ export class MachinePermissionsPanelComponent {
   }
   select(id: string): void {
     const selection = this.controls.selection(id);
+    this.selected = id ? this.controls.selectionScope(id) : undefined;
     this.target.set(id); this.microphone.set(selection.microphone); this.screenAudio.set(selection.screenAudio); this.chat.set(selection.chat);
   }
   targetName(): string { return this.controls.targets().find(peer => peer.id === this.target())?.name || "Nicht verbunden"; }
