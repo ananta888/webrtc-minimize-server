@@ -172,7 +172,9 @@ func TestTrustedSourceRealKeyChannelAndRTP(t *testing.T) {
 			}
 			c.api = api
 			sink := &sourceTestSink{frames: make(chan []byte, 8)}
-			c.trustedSourceSinkFactory = func(trustedsframe.SourceLease) (trustedSourceSink, error) { return sink, nil }
+			c.trustedSourceSinkFactory = func(trustedsframe.SourceLease, *trustedsframe.SourceReceiver) (trustedSourceSink, error) {
+				return sink, nil
+			}
 			receiver, err := c.prepareTrustedSource(sourceBytes(t, lease), now)
 			if err != nil {
 				t.Fatal(err)

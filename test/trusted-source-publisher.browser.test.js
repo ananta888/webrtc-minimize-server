@@ -11,7 +11,7 @@ import { build } from "esbuild";
 import { chromium, firefox } from "playwright";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-let directory, executable, dockerRunner, bundle, worker;
+let directory, executable, dockerRunner, bundle, worker, avBundle;
 before(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), "webrtc-source-publisher-"));
   executable = path.join(directory,"source.test");
@@ -84,6 +84,8 @@ before(async () => {
   bundle = built.outputFiles[0].contents;
   const workerBuild = await build({entryPoints:[path.join(root,"frontend/src/app/webrtc/sframe.worker.ts")],bundle:true,format:"esm",platform:"browser",write:false,logLevel:"silent"});
   worker = workerBuild.outputFiles[0].contents;
+  const avBuild = await build({entryPoints:[path.join(root,"test/fixtures/trusted-source-av-clock.ts")],bundle:true,format:"esm",platform:"browser",write:false,logLevel:"silent"});
+  avBundle = avBuild.outputFiles[0].contents;
 });
 after(async () => { if(directory) await fs.rm(directory,{recursive:true,force:true}); });
 
@@ -197,4 +199,80 @@ for(const [name,engine] of [["Chromium",chromium],["Firefox",firefox]]) {
       finally {await page.close();}
     }
   });
+  test(`${name} aligns decoded paired SFrame audio/video using actual sender reports`,{timeout:45000},async t=>{
+    if(dockerRunner && process.platform!=="linux") {t.skip("compiler fallback requires Linux; local Go also supported");return;}
+    const available=spawnSync("ffmpeg",["-version"],{encoding:"utf8",timeout:3000,maxBuffer:32768});
+    if(available.error || available.status!==0) {t.skip("A/V source clock gate needs actual FFmpeg decoding");return;}
+    const app=http.createServer((request,response)=>{
+      response.setHeader("content-type",request.url==="/fixture.js" || request.url==="/sframe.worker" ? "text/javascript" : "text/html");
+      response.end(request.url==="/fixture.js" ? avBundle : request.url==="/sframe.worker" ? worker
+        : '<!doctype html><canvas width="320" height="180"></canvas><script type="module" src="/fixture.js"></script>');
+    });
+    t.after(()=>new Promise(resolve=>app.close(resolve)));
+    await new Promise(resolve=>app.listen(0,"127.0.0.1",resolve));
+    const browser=await engine.launch({headless:true,...(name==="Chromium" ? {args:["--autoplay-policy=no-user-gesture-required"]}
+      : {firefoxUserPrefs:{"media.autoplay.default":0,"media.autoplay.block-webaudio":false}})});
+    t.after(()=>browser.close());
+    const page=await browser.newPage();
+    await page.goto(`http://127.0.0.1:${app.address().port}`);
+    const result=await nativeSourceAV(page);
+    t.diagnostic(`paired decoded onsets=${result.matched}, max A/V delta=${(result.maxDeltaSamples/48).toFixed(1)} ms; synthetic sender/consent policy, no production ingress claim`);
+  });
+}
+
+async function nativeSourceAV(page) {
+  const source=await page.evaluate(()=>window.createSyntheticAV());
+  const child=spawn(executable,["-test.run=^TestSourcePublisherAVClockInterop$","-test.timeout=30s"],
+    {env:{...process.env,TRUSTED_SOURCE_AV_CLOCK_INTEROP:"1"},stdio:["pipe","pipe","pipe"]});
+  let buffered="", outputBytes=0, errorBytes=0, failed=false, resolveLeases, resolveResult, diagnostic=null;
+  const ready=new Promise(resolve=>{resolveLeases=resolve;}), result=new Promise(resolve=>{resolveResult=resolve;});
+  let forwarding=Promise.resolve();
+  child.stdout.on("data",data=>{
+    outputBytes+=data.length;
+    if(outputBytes>512*1024) {failed=true;child.kill();return;}
+    buffered+=data.toString();
+    while(buffered.includes("\n")) {
+      const index=buffered.indexOf("\n"), line=buffered.slice(0,index); buffered=buffered.slice(index+1);
+      if(!line.startsWith("{")) continue;
+      let value; try {value=JSON.parse(line);} catch {failed=true;child.kill();return;}
+      if(value.fixture==="leases") resolveLeases(value.leases);
+      else if(value.fixture==="result") resolveResult(value);
+      else if(value.fixture==="diagnostic") diagnostic=value;
+      else if(value.fixture==="lease" || value.type==="trusted-source-packager-signal") {
+        forwarding=forwarding.then(()=>page.evaluate(value=>window.acceptSourceNativeAV(value),value)).catch(()=>{failed=true;child.kill();});
+      } else {failed=true;child.kill();}
+    }
+  });
+  child.stderr.on("data",data=>{errorBytes+=data.length;if(errorBytes>16384){failed=true;child.kill();}});
+  child.on("error",()=>{failed=true;}); child.stdin.on("error",()=>{});
+  const exited=new Promise(resolve=>child.once("close",code=>resolve(code)));
+  const timeout=setTimeout(()=>child.kill("SIGKILL"),35000);
+  await page.exposeFunction("sendSourceNativeAV",value=>{
+    const raw=JSON.stringify(value);
+    if(Buffer.byteLength(raw)>31*1024 || child.stdin.writableLength>64*1024 || child.exitCode!==null) {failed=true;child.kill();return;}
+    child.stdin.write(raw+"\n");
+  });
+  child.stdin.write(JSON.stringify(source)+"\n");
+  try {
+    const leases=await Promise.race([ready,exited.then(()=>{throw new Error("AV fixture ended before leases");})]);
+    await page.evaluate(leases=>window.startSourceAV(leases),leases);
+    const observed=await Promise.race([result,exited.then(()=>{throw new Error("AV fixture ended before clock result");})]);
+    assert.ok(observed.matched>=6 && observed.maxDeltaSamples<=7200);
+    assert.equal(observed.closed,true);
+    assert.equal(await exited,0);
+    await forwarding;
+    assert.equal(failed,false);
+    const local=await page.evaluate(()=>window.sourceAVObservation());
+    assert.deepEqual(local.tracks,["live","live"]);
+    assert.ok(local.states.length===2 && local.states.every(states=>states.includes("sending")));
+    return observed;
+  } catch {
+    const local=await page.evaluate(()=>window.sourceAVObservation()).catch(()=>({observationFailed:true}));
+    throw new Error("paired_source_clock_failed "+JSON.stringify({local,native:diagnostic}));
+  } finally {
+    clearTimeout(timeout);
+    await page.evaluate(()=>window.cleanupSourceAV()).catch(()=>{});
+    if(child.exitCode===null && child.signalCode===null) child.kill("SIGKILL");
+    await exited;
+  }
 }

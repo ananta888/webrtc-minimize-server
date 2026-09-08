@@ -41,7 +41,7 @@ func (c *client) handleTrustedSourceSignal(input *trustedsframe.SourcePeerSignal
 	lease := source.lease
 	valid := source.receiver.AliveNow()
 	if valid && source.transport == nil && message.Description != nil && message.NegotiationRevision == 1 && message.Sequence == 1 && c.trustedSourceSinkFactory != nil {
-		sink, sinkErr := c.trustedSourceSinkFactory(lease)
+		sink, sinkErr := c.trustedSourceSinkFactory(lease, source.receiver)
 		if sinkErr == nil && sink != nil {
 			source.transport, err = newTrustedSourceTransport(c, lease, source.receiver, sink, c.sourceConfiguration())
 			if err != nil {

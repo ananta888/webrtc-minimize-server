@@ -512,7 +512,7 @@ type client struct {
 	sourcesMu                sync.Mutex
 	trustedSources           map[string]*nativeTrustedSource
 	trustedSourceHistory     map[string]int64
-	trustedSourceSinkFactory func(trustedsframe.SourceLease) (trustedSourceSink, error)
+	trustedSourceSinkFactory func(trustedsframe.SourceLease, *trustedsframe.SourceReceiver) (trustedSourceSink, error)
 	assignment               *packagerAssignment
 	api                      *webrtc.API
 	sendOverride             func(any) error

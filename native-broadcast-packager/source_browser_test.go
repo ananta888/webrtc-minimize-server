@@ -137,11 +137,10 @@ func TestSourcePublisherBrowserInterop(t *testing.T) {
 		t.Fatal(err)
 	}
 	sink := &sourceBrowserSink{observed: make(chan struct{}, 1)}
-	var receiver *trustedsframe.SourceReceiver
 	if os.Getenv("TRUSTED_SOURCE_BROWSER_DECODE") == "1" {
 		sink.media = &sourceBrowserDecoded{owner: sink}
 	}
-	c.trustedSourceSinkFactory = func(trustedsframe.SourceLease) (trustedSourceSink, error) {
+	c.trustedSourceSinkFactory = func(_ trustedsframe.SourceLease, receiver *trustedsframe.SourceReceiver) (trustedSourceSink, error) {
 		if sink.media != nil {
 			ffmpeg, lookupErr := exec.LookPath("ffmpeg")
 			if lookupErr != nil {
@@ -192,7 +191,7 @@ func TestSourcePublisherBrowserInterop(t *testing.T) {
 		}
 	}()
 	c.sendOverride = emit
-	if receiver, err = c.prepareTrustedSource(sourceBytes(t, lease), now); err != nil {
+	if _, err = c.prepareTrustedSource(sourceBytes(t, lease), now); err != nil {
 		t.Fatal(err)
 	}
 	if emit(map[string]any{"fixture": "lease", "lease": lease}) != nil {

@@ -683,7 +683,7 @@ des Gesamtchecks sauber, ausgeliefertes lokales Frontend unverändert und keine
 Testcontainer übrig. Die vorherige Audiomixer-CI `34219665007` für `76ab051`
 ist separat terminal erfolgreich; sie ist kein CI-Nachweis für `0407259`.
 
-### Nächster Anschluss: reale Quellclocks
+### Reale Quellclocks: RTCP-Adapter und begrenzte Zuordnung
 
 Quellprüfung auf `0407259`: `source_transport.go` verwirft den `RTPReceiver`
 im OnTrack-Callback und liest bisher ausschließlich RTP. Der fehlende RTCP-Port
@@ -698,17 +698,59 @@ diese Referenz kann auch relativ oder unbekannt sein. Eine gemeinsame
 synchronisierte Uhr über verschiedene Rechner darf nicht vorausgesetzt werden.
 [RFC 3550, 5.1 und 6.4.1](https://datatracker.ietf.org/doc/html/rfc3550#section-6.4.1)
 
-Daraus folgt für den **noch nicht implementierten** Anschluss: Report-Annahme
-an genau die bereits authentisierte PeerConnection, deren Track-SSRC und
-Quellengeneration binden; keine Publisher-Identität aus RTCP ableiten.
-Referenzzeit je tatsächlich zugeordnetem Publisher zusammenführen und ihre
-Verwendbarkeit über dessen getrennte Kamera-/Audio-PeerConnections real prüfen.
-Nullzeit, Replay, Sprünge, Drift, fehlende/alte Reports und Stop benötigen
-begrenzte Zustände und Negativtests. Vor Clock-Bereitschaft darf ein späterer
-Lazy-Sink nur begrenzt warten beziehungsweise Frames verwerfen, nicht schon
-den Mixer mit erfundener Zeit starten. Benötigte Keyframes müssen kontrolliert
-angefordert werden. Clock-Abgleich und Audio-Resampling bleiben getrennte
-Bausteine; das Mapping darf Samples nicht überlappend in den PCM-Mixer schreiben.
+Der anschließende Baustein `source_rtcp.go` liest jetzt vom tatsächlichen
+RTPReceiver derselben Source-PeerConnection: 4096 Byte fester Puffer,
+250-ms-Lesedeadline, höchstens 64 Datagramme/64 KiB je Sekunde und 16 RTCP-Pakete
+je Compound-Paket. Sender Reports werden ausschließlich für die gebundene
+Track-SSRC an den Clock-Port weitergegeben. Ein passendes BYE, ungültige Reports,
+Lesefehler oder Budgetverletzung schließen diese Quelle, nicht das Parent-Programm.
+Standard-RTCP ohne Clock-/BYE-Bedeutung wird begrenzt gelesen und nicht zu
+Membership, Identität oder Policy aufgewertet. Der Transport wartet beim
+Abschluss auf beide RTP-/RTCP-Leser. Die Sink-Factory erhält den tatsächlichen
+SourceReceiver direkt; sie darf nicht unter `sourcesMu` erneut danach suchen.
+
+`source_clock.go` trennt einen vom Programm-Besitzer explizit zugeordneten
+Publisher-Referenzhandle von höchstens vier individuellen Source-Clocks. Die
+Handles sind keine Wire-Identitäten oder Autorisierung. Unterschiedliche
+Publisher werden niemals anhand ähnlicher NTP-Werte zusammengefasst. Der erste
+Sender Report platziert die Referenz auf der lokalen 48-kHz-Programmzeit mit
+explizitem Puffer von 0–48000 Samples. Diese Ankunftszeit setzt nur die
+Programmplatzierung; relative A/V-Zeiten stammen aus den Sender Reports.
+
+Einzelne Quellen benötigen zwei fortschreitende Reports. Unterstützt sind
+48-kHz-Opus- und 90-kHz-VP8-Uhren; unbekannte/Null-NTP-Zeit bleibt unavailable.
+Replay/alte Reports verlängern keine Frische. Fehlender Erstreport oder zwölf
+Sekunden ohne frischen Report, SSRC-/Ratenwechsel, widersprüchliche Zeitwerte,
+Clock-Rollback und Referenzdomain-Sprünge schließen terminal. Reportintervalle
+haben eine Toleranz von 2 ms plus 0,5 %; gegenüber dem festen ersten Mapping
+werden maximal 100 ms kumulierte Drift zugelassen. Größere Drift ist ausdrücklich
+ein fehlender Resampling-Pfad, kein Anlass für erfundene Zeit oder Klartextfallback.
+Paketzeit wird nur innerhalb von zwölf Sekunden zur letzten Reportzeit gemappt.
+Validierte kurze RTP-Intervalle werden auf 64 Bit erweitert, damit auch mehrere
+32-Bit-Umläufe nicht nach Stunden einen falschen Zeitsprung verursachen. Close
+löscht Report-/Mappingzustand und gibt den Source-Platz frei.
+
+Der reale Browsergate verwendet zwei getrennte PeerConnections desselben
+synthetischen Publishers, den echten SFrame-Sender/Key-ACK und native VP8-/Opus-
+Decodierung. Unregelmäßige Licht-/Tonimpulse werden erst aus RGBA/PCM erkannt;
+Sender Reports ordnen ihre Zeit zu. Mindestens sechs eindeutige Impulspaare,
+höchstens 150 ms maximale Abweichung, mehr als 400 authentisierte Frames je
+Quelle, mindestens 100 gemappte Decoder-Ausgaben und vollständiger Stop sind
+Pflicht. Wiederverwendung eines Audioimpulses oder schlechte Zeitdifferenzen
+werden nicht aus dem Ergebnis herausgefiltert. Die lokalen Originaltracks
+bleiben beim Stop der geborgten Quellen live. Das ist ein kurzzeitiger
+Chromium-/Firefox-Interopnachweis, keine globale Uhr-, Hardware-Latenz- oder
+Produktionsdauerlaufgarantie. Drei simulierte Tage mit mehreren RTP-/NTP-Wraps
+sind ein separater deterministischer Arithmetiktest, kein realer Dreitagelauf.
+
+**Weiter offen:** produktive Zuordnung der Publisher-Clocks, Lazy-Decoder und
+Gesamtprozesszulassung, begrenztes Warten/Verwerfen vor Clock-Bereitschaft mit
+kontrollierter Keyframe-Anfrage, Audioresampling, gemeinsamer Programmtakt und
+gefenceter Encoder-/Writer-Anschluss. Die bisherigen Mixer-Ports brauchen
+weiterhin einen expliziten Clock-Besitzer; die Browserfixture verbindet Decoder
+mit einer Messprobe, nicht mit dem produktiven Programmausgang. Die Factory
+bleibt im Produktionsclient aus, ebenso die öffentliche Quellenannahme. Kein
+Node-Protokoll erhält Medien, Frame-Schlüssel oder Referenzzeit-Autorität.
 
 ### Prepare, Renewal und Stop
 

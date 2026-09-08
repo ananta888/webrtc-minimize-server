@@ -31,7 +31,7 @@ type trustedSourceTransport struct {
 	sink     trustedSourceSink
 	closed   atomic.Bool
 	// Closed diagnostic enum: 1 track count, 2 track binding, 3 codec,
-	// 4 RTP read, 5 source policy, 6 input budget, 7 sink. Never content/IDs.
+	// 4 RTP read, 5 source policy, 6 input budget, 7 sink, 8 clock/RTCP. Never content/IDs.
 	failure                              atomic.Int32
 	done                                 chan struct{}
 	signalMu                             sync.Mutex
@@ -48,6 +48,7 @@ type trustedSourceTransport struct {
 	keyMu                                sync.Mutex
 	keyWindow                            time.Time
 	keyCount                             int
+	readers                              sync.WaitGroup
 }
 
 func newTrustedSourceTransport(c *client, lease trustedsframe.SourceLease, receiver *trustedsframe.SourceReceiver, sink trustedSourceSink, configuration webrtc.Configuration) (*trustedSourceTransport, error) {
@@ -61,7 +62,7 @@ func newTrustedSourceTransport(c *client, lease trustedsframe.SourceLease, recei
 	t := &trustedSourceTransport{c: c, lease: lease, receiver: receiver, pc: pc, sink: sink, done: make(chan struct{})}
 	pc.OnICECandidate(t.localCandidate)
 	pc.OnDataChannel(t.attachKeys)
-	pc.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+	pc.OnTrack(func(track *webrtc.TrackRemote, rtpReceiver *webrtc.RTPReceiver) {
 		if t.trackSet.Swap(true) {
 			t.closeWithFailure(1)
 			return
@@ -75,7 +76,21 @@ func newTrustedSourceTransport(c *client, lease trustedsframe.SourceLease, recei
 			t.closeWithFailure(3)
 			return
 		}
-		go t.readTrack(track)
+		if clock, ok := t.sink.(trustedSourceClockSink); ok {
+			if clock.BindSourceClock(uint32(track.SSRC()), track.Codec().ClockRate) != nil {
+				t.closeWithFailure(8)
+				return
+			}
+		}
+		t.frameMu.Lock()
+		if t.closed.Load() {
+			t.frameMu.Unlock()
+			return
+		}
+		t.readers.Add(2)
+		t.frameMu.Unlock()
+		go func() { defer t.readers.Done(); t.readSourceRTCP(rtpReceiver, uint32(track.SSRC())) }()
+		go func() { defer t.readers.Done(); t.readTrack(track) }()
 	})
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
@@ -99,9 +114,12 @@ func (t *trustedSourceTransport) closeWithFailure(reason int32) {
 	t.frameMu.Lock()
 	t.assembly.clear()
 	t.sink.Close()
+	if clock, ok := t.sink.(trustedSourceClockSink); ok {
+		clock.CloseSourceClock()
+	}
 	t.frameMu.Unlock()
 	// Pion callbacks may initiate shutdown; never wait for their own completion.
-	go func() { _ = t.pc.Close(); close(t.done) }()
+	go func() { _ = t.pc.Close(); t.readers.Wait(); close(t.done) }()
 }
 
 func (t *trustedSourceTransport) sendSignal(kind string, payload any) error {

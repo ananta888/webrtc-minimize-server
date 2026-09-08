@@ -16,7 +16,9 @@ func sourceKeyPair(t *testing.T, init *webrtc.DataChannelInit) (*client, *truste
 	c, lease, now := trustedSourceFixture(t)
 	c.api, _ = createWebRTCAPI()
 	sink := &sourceTestSink{frames: make(chan []byte, 8)}
-	c.trustedSourceSinkFactory = func(trustedsframe.SourceLease) (trustedSourceSink, error) { return sink, nil }
+	c.trustedSourceSinkFactory = func(trustedsframe.SourceLease, *trustedsframe.SourceReceiver) (trustedSourceSink, error) {
+		return sink, nil
+	}
 	if _, err := c.prepareTrustedSource(sourceBytes(t, lease), now); err != nil {
 		t.Fatal(err)
 	}
