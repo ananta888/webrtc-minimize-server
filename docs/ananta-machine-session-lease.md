@@ -31,9 +31,25 @@ Hub-ASR-Tasklease, Hub-Dialoglease und Meet-Sitzungslease werden im Workeradapte
 explizit unterschieden. Die gemeinsame Browser-/ASR-/TURN-Abnahme steht aus;
 Capability-Probes bleiben bis zur tatsächlichen Abnahme konservativ.
 
-Diese Erweiterung wird zusammen mit den folgenden MDS-Bausteinen implementiert.
-Sie ist noch **nicht deployed**. Kurze Task-Tests laufen unmittelbar; die große
-Browser-/Netzwerk-/Langzeitmatrix folgt gebündelt nach der Implementierungsrunde.
+### Aktueller Integrationsstand (8. September 2026)
+
+Die grundlegenden Meet-Ports und die Freigabe-/Betreiberstatus-UI sind in der
+[ausgelieferten Revision `8b72a46`](machine-admission-status.md#deployment)
+enthalten. Die produktive Maschinenaufnahme bleibt ausgeschaltet; ein erneuter
+öffentlicher GET bestätigte `admissionEnabled: false`. Ausgelieferter Code ist
+keine freigegebene Hub-Verbindung. Die anschließende Nur-Lese-Chatkorrektur wird
+separat verifiziert und ist dadurch noch nicht deployed.
+
+| Bereich | Meet-seitig vorhanden | Verbleibende gemeinsame Abnahme |
+|---|---|---|
+| Audioempfang | Quellfreigabe, SFrame, begrenztes PCM16 mit ACK und Stop | Reale Hub-/ASR-Aufgabe sowie Agent-/TURN-Pfad |
+| Chat | Neue Ereignisse, Cursor/ACK, korrelierte Antworten, getrennte Rechte | Produktiv autorisierter Hub-/Dialogworkflow |
+| Eigener Bildschirm | Gebundene synthetische Quelle mit separatem Lifecycle | Allgemeine Browser-Worker-Quelle statt nur Offline-Taskansicht |
+| Sitzungen | Frisch signierte Renewals, Fencing und hartes Gesamtlaufzeitlimit | Hub-Ausfall- und vollständiger Dialog-Langzeitnachweis |
+| Berechtigungen/UI | Eigene Freigaben, Widerruf, Ablauf, separater Betreiberstatus | Explizit freigegebenes Public-Hub-Profil und Projektauftrag |
+
+Kurze Taskprüfungen laufen unmittelbar; die umfassende Netzwerk-/Langzeitmatrix
+bleibt gebündelt. Das Ananta-Repository wird von dieser Meet-Arbeit nicht verändert.
 
 ## Kompatibilität und Zuständigkeiten
 
@@ -44,10 +60,12 @@ Grant oder Worker-Callback ersetzt diese Autorisierung nicht. Der Hub muss
 seine aktuelle Task-/Projektpolicy **vor jeder neuen Signatur** prüfen.
 Meets Server kontaktiert keinen frei vom Worker angegebenen Callback.
 
-`GET /api/machine/capabilities` meldet unterstützte Versionen und getrennt
-`admissionEnabled`. Keine Capability erteilt Raumrechte. Chat-Ereignisempfang,
-Audio-Subscription und Bildschirm-Publikation werden bis zu ihrer tatsächlichen
-Anbindung ausdrücklich als nicht verfügbar gemeldet.
+`GET /api/machine/capabilities` behält die geschlossene Antwort des ursprünglichen
+MP4-Vertrags einschließlich seiner alten Medienbooleans unverändert und meldet
+getrennt `admissionEnabled`. Die neueren installierten Ports werden über den
+additiven lokalen [`probe()`-Vertrag](machine-client-probe.md) geprüft. Weder die
+Existenz eines Ports noch ein positives Probe-Ergebnis erteilt Raumrechte oder
+beweist tatsächliche Hub-/Worker-Verarbeitung.
 
 ## Sitzungsverlängerung ohne erneuten Raumbeitritt
 
@@ -145,6 +163,11 @@ entschlüsselte Inhalte lassen sich nicht rückwirkend zurückrufen. Kein
 Signaling-/Blind-Agent erhält Inhalte oder neue Decrypt-Rechte.
 
 ### Chat
+
+Lesen und Antworten sind [getrennt autorisiert](ananta-read-only-chat.md).
+`chat.read` plus Publisherfreigabe genügt für den Empfang; erst `chat.reply`
+benötigt zusätzlich das aktuelle `chat.send`. Ein Nur-Lese-Agent darf keine
+Antwort senden. Die alte Kopplung beider Rechte im Empfangsport ist korrigiert.
 
 `chat.open()` nimmt keine vom Controller behauptete Scope entgegen. Die
 Projektion stammt aus aktuellem verifiziertem HTTP-Kontext, Membership, Lease

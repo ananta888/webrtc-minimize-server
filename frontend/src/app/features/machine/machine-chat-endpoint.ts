@@ -60,7 +60,12 @@ export class MachineChatEndpoint {
   }
   ack(cursor: number): void { this.check().ack(cursor); }
   reply(messageId: string, text: string) {
-    this.check();
+    const queue = this.check();
+    try { queue.checkReply(); }
+    catch (error) {
+      if (error instanceof Error && error.message === "meet_chat_reply_denied") throw error;
+      this.fail(error);
+    }
     const input = this.delivered.get(messageId);
     if (!input || this.replied.has(messageId) || !this.ports.sourceAllowed(input.sender)
       || typeof text !== "string" || !text.trim() || [...text].length > 450) throw new Error("meet_chat_reply_denied");

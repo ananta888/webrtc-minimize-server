@@ -10,5 +10,6 @@ export class MachineChatQueue {
   poll(): MachineChatBatch;
   ack(cursor: number): void;
   check(): void;
+  checkReply(): void;
   close(): void;
 }

@@ -19,6 +19,7 @@ function fixture() {
     roomId: authority.scope.room_id, membershipEpoch: 3, messageId: "a".repeat(32), replyTo: "",
     sentAt: Date.now(), text: "Frage", senderPeerId: human, senderKind: "human", ...extra });
   return { endpoint, emit, sendReply, unsubscribe, deny: () => { allowed = false; },
+    sending: (value: boolean) => { authority = { ...authority, chatSend: value }; },
     change: (scope: object) => { authority = { ...authority, scope: { ...authority.scope, ...scope } }; },
     revoke: () => { authority = { ...authority, chatRead: false }; } };
 }
@@ -45,6 +46,25 @@ describe("isolated machine chat endpoint", () => {
     f.emit({ senderKind: "machine" }); f.emit({ replyTo: "b".repeat(32) });
     f.deny(); f.emit(); expect(f.endpoint.poll().events).toEqual([]);
     f.endpoint.close(); f.endpoint.open(); expect(f.endpoint.poll().events).toEqual([]); f.endpoint.close();
+  });
+  it("opens read-only, denies replies without consuming delivery and keeps receiving", () => {
+    const f = fixture(); f.sending(false); f.endpoint.open(); f.emit();
+    expect(f.endpoint.poll().events).toHaveLength(1);
+    expect(() => f.endpoint.reply("a".repeat(32), "Antwort")).toThrow("meet_chat_reply_denied");
+    expect(f.sendReply).not.toHaveBeenCalled(); expect(f.endpoint.status().open).toBe(true);
+    f.endpoint.ack(1); expect(f.endpoint.poll().events).toHaveLength(0);
+    f.sending(true); f.endpoint.reply("a".repeat(32), "Antwort");
+    expect(f.sendReply).toHaveBeenCalledOnce(); f.endpoint.close();
+  });
+  it("checks current send authority after delivery without ending permitted reading", () => {
+    const f = fixture(); f.endpoint.open(); f.emit(); f.endpoint.poll(); f.sending(false);
+    expect(() => f.endpoint.reply("a".repeat(32), "Antwort")).toThrow("meet_chat_reply_denied");
+    expect(f.sendReply).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(250); expect(f.endpoint.status().open).toBe(true);
+    f.emit({ messageId: "b".repeat(32) }); expect(f.endpoint.poll().events).toHaveLength(2);
+    f.change({ generation: 2 });
+    expect(() => f.endpoint.reply("a".repeat(32), "Antwort")).toThrow("meet_chat_authority_changed");
+    expect(f.endpoint.status().open).toBe(false);
   });
   it.each(["generation", "membership_epoch", "policy_revision"])("fences %s changes and clears pending replies", field => {
     const f = fixture(); f.endpoint.open(); f.emit(); f.endpoint.poll(); f.change({ [field]: 9 });

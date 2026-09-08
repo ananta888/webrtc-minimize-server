@@ -13,11 +13,11 @@ export class MachineChatQueue {
     this.#authority = authority; this.#clock = clock;
     this.#scope = this.#current();
   }
-  #current() {
+  #current(requireSend = false) {
     if (this.#closed) fail("meet_chat_closed");
     let current;
     try { current = this.#authority(); } catch { this.close(); fail("meet_chat_authority_unavailable"); }
-    if (!current || current.chatRead !== true || current.chatSend !== true) {
+    if (!current || current.chatRead !== true || typeof current.chatSend !== "boolean") {
       this.close(); fail("meet_chat_receive_denied");
     }
     let scope;
@@ -28,6 +28,9 @@ export class MachineChatQueue {
       this.close(); fail("meet_chat_authority_changed");
     }
     this.#lastNow = now;
+    // A read-only subscription stays open. Sending is a separate, current right,
+    // checked with the same scope snapshot before any reply is reserved or sent.
+    if (requireSend && current.chatSend !== true) fail("meet_chat_reply_denied");
     return scope;
   }
   #prune() {
@@ -64,6 +67,7 @@ export class MachineChatQueue {
       events: Object.freeze(batch.map(({ cursor, event }) => Object.freeze({ cursor, event }))) });
   }
   check() { this.#current(); this.#prune(); }
+  checkReply() { this.#current(true); this.#prune(); }
   ack(cursor) {
     this.#current();
     if (!Number.isSafeInteger(cursor) || cursor < this.#ack || cursor > this.#delivered) fail("meet_chat_ack_invalid");
