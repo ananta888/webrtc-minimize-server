@@ -89,26 +89,31 @@ after(async () => { if(directory) await fs.rm(directory,{recursive:true,force:tr
 
 // The first test also owns the bounded 90-second native compilation hook.
 test("native trusted VP8 source decodes changing pixels and invalidates on revoke", {timeout:120000}, t => {
+  nativeCodecFixture(t, "TestLiveTrustedSourceVideoDecoder");
+});
+test("native trusted Opus source decodes timed PCM and invalidates on revoke", {timeout:25000}, t => {
+  nativeCodecFixture(t, "TestLiveTrustedSourceAudioDecoder");
+});
+
+function nativeCodecFixture(t, testName) {
   if(dockerRunner && process.platform!=="linux") {t.skip("native decoder fixture needs local Go or Linux compiler fallback");return;}
   const available = spawnSync("ffmpeg",["-version"],{encoding:"utf8",timeout:3000,maxBuffer:32768});
   if(available.error || available.status!==0) {t.skip("real source decoding requires local FFmpeg; no decode claim from RTP alone");return;}
   // The Linux Docker compiler creates a static host binary; plaintext remains in
   // this test's local FFmpeg pipes, never the Node control-plane implementation.
-  const result = spawnSync(executable,["-test.run=^TestLiveTrustedSourceVideoDecoder$","-test.timeout=20s","-test.v"],
+  const result = spawnSync(executable,[`-test.run=^${testName}$`,"-test.timeout=20s","-test.v"],
     {env:{...process.env,RUN_LIVE_TRUSTED_SOURCE_DECODE:"1"},encoding:"utf8",timeout:22000,maxBuffer:32768});
   assert.equal(result.error,undefined,"bounded native decode fixture failed to run");
   assert.equal(result.status,0,"native decode/revocation fixture failed");
-  assert.ok(result.stdout.includes("--- PASS: TestLiveTrustedSourceVideoDecoder"),"native decode fixture did not actually execute");
+  assert.ok(result.stdout.includes(`--- PASS: ${testName}`),"native decode fixture did not actually execute");
   assert.equal(result.stdout.includes("SKIP"),false,"opted-in native decode fixture skipped");
-});
+}
 
-async function nativeSource(page, codec) {
+async function nativeSource(page, codec, decode) {
   const source = await page.evaluate(codec => window.createSyntheticSource(codec),codec);
-  const container = `webrtc-source-rtp-${randomUUID()}`;
   const flags = ["-test.run=^TestSourcePublisherBrowserInterop$","-test.timeout=30s"];
-  const child = spawn(dockerRunner ? "docker" : executable,dockerRunner ? ["run","--rm","-i","--network","host","--name",container,
-    "-e","TRUSTED_SOURCE_BROWSER_INTEROP=1","-v",`${directory}:/fixture:ro`,"golang:1.24-alpine","/fixture/source.test",...flags] : flags,
-    {env:{...process.env,TRUSTED_SOURCE_BROWSER_INTEROP:"1"},stdio:["pipe","pipe","pipe"]});
+  const child = spawn(executable,flags,
+    {env:{...process.env,TRUSTED_SOURCE_BROWSER_INTEROP:"1",TRUSTED_SOURCE_BROWSER_DECODE:decode ? "1" : "0"},stdio:["pipe","pipe","pipe"]});
   let buffered="", outputBytes=0, errorBytes=0, firstLease=false, protocolFailed=false, resolveLease, resolveResult, nativeDiagnostic=null;
   const ready = new Promise(resolve => {resolveLease=resolve;}), result = new Promise(resolve => {resolveResult=resolve;});
   let forwarding=Promise.resolve();
@@ -123,7 +128,7 @@ async function nativeSource(page, codec) {
       try {value=JSON.parse(line);} catch {protocolFailed=true; child.kill();return;}
       if(value.fixture==="lease" && !firstLease) {firstLease=true;resolveLease(value.lease);}
       else if(value.fixture==="result") resolveResult(value);
-      else if(value.fixture==="diagnostic") nativeDiagnostic={frames:Number(value.frames||0),keyframes:Number(value.keyframes||0),closed:value.closed===true,failure:Number(value.failure||0)};
+      else if(value.fixture==="diagnostic") nativeDiagnostic={frames:Number(value.frames||0),keyframes:Number(value.keyframes||0),decoded:Number(value.decoded||0),closed:value.closed===true,failure:Number(value.failure||0)};
       else if(value.fixture==="lease" || value.type==="trusted-source-packager-signal") {
         forwarding=forwarding.then(()=>page.evaluate(value=>window.acceptSourceNative(value),value)).catch(()=>{protocolFailed=true;child.kill();});
       } else {protocolFailed=true; child.kill();}
@@ -144,6 +149,7 @@ async function nativeSource(page, codec) {
     await page.evaluate(lease=>window.startSourcePublisher(lease),lease);
     const observed=await Promise.race([result,exited.then(()=>{throw new Error("native source ended before authenticated media");})]);
     assert.ok(observed.frames>=401,"expected at least 401 authenticated browser frames");
+    if(decode) assert.ok(observed.decoded>=350,"expected actual decoded browser pixels/PCM after counter 350");
     if(codec==="video/vp8") assert.ok(observed.keyframes>=1,"expected an authenticated VP8 keyframe");
     assert.equal(observed.closed,true);
     assert.equal(await exited,0,"native source fixture failed");
@@ -160,16 +166,15 @@ async function nativeSource(page, codec) {
     await page.evaluate(()=>window.cleanupSource()).catch(()=>{});
     if(child.exitCode===null && child.signalCode===null) child.kill("SIGKILL");
     await exited;
-    if(dockerRunner) {
-      const cleanup=spawnSync("docker",["rm","--force",container],{encoding:"utf8",timeout:5000});
-      assert.ok(cleanup.status===0 || /No such container/.test(cleanup.stderr||""),"native source fixture cleanup failed");
-    }
   }
 }
 
 for(const [name,engine] of [["Chromium",chromium],["Firefox",firefox]]) {
   test(`${name} actual source publisher sends 401 SFrame VP8/Opus frames to native WebRTC receiver`,{timeout:80000},async t=>{
-    if(dockerRunner && process.platform!=="linux") {t.skip("Docker host-network fixture requires Linux; native Go runner also supported");return;}
+    if(dockerRunner && process.platform!=="linux") {t.skip("compiler fallback requires Linux; native Go runner also supported");return;}
+    const available=spawnSync("ffmpeg",["-version"],{encoding:"utf8",timeout:3000,maxBuffer:32768});
+    const decode=!available.error && available.status===0;
+    if(!decode) t.diagnostic("SKIP native codec output: FFmpeg unavailable; only authenticated RTP is checked");
     const app=http.createServer((request,response)=>{
       response.setHeader("content-type",request.url==="/fixture.js" || request.url==="/sframe.worker" ? "text/javascript" : "text/html");
       response.end(request.url==="/fixture.js" ? bundle : request.url==="/sframe.worker" ? worker
@@ -182,7 +187,7 @@ for(const [name,engine] of [["Chromium",chromium],["Firefox",firefox]]) {
     t.after(()=>browser.close());
     for(const codec of ["video/vp8","audio/opus"]) {
       const page=await browser.newPage();
-      try {await page.goto(`http://127.0.0.1:${app.address().port}`);await nativeSource(page,codec);}
+      try {await page.goto(`http://127.0.0.1:${app.address().port}`);await nativeSource(page,codec,decode);}
       finally {await page.close();}
     }
   });

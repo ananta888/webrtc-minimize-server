@@ -99,7 +99,7 @@ oder ein vom Aufrufer geliefertes `grantorSubjectRef` genügt ausdrücklich nich
 - Sichtbarer Publisher-Consent und sofortiger unabhängiger Widerruf.
 - Den implementierten nativen Signal-/Key-/RTP-Pfad an den Audio-/Video-Compositor
   anschließen; Transport und begrenztes Depacketizing sind separat geprüft.
-- Audio-Decodierung, Zuordnung zum Audio-/Video-Compositor und Entfernen
+- Die implementierten Audio-/Video-Decoder an den Compositor anbinden und Entfernen
   aller zuletzt decodierten Frames bei Widerruf, Source-Ende oder Handoff.
 
 Die vorhandenen Zustandsbesitzer bleiben dabei erhalten: `RoomRegistry.publication`
@@ -383,8 +383,10 @@ danach werden nativer Cleanup und die noch lebende geliehene Browser-Spur geprü
 Die Kontrollbrücke ist ein begrenztes Testfixture, kein Produktions-Approve-API;
 der authentisierte Serverbroker wird separat durch WebSocket-Tests geprüft.
 Fehlerberichte enthalten nur feste Zustände, Transformcodes und numerische Zähler.
-Damit sind echte Browser-Paketierung, Schlüssel-ACK und nativer RTP-Empfang belegt,
-weiterhin nicht native Decodierung, Programmmischung, Slate, NAT oder Produktion.
+Damit waren zunächst echte Browser-Paketierung, Schlüssel-ACK und nativer
+RTP-Empfang belegt. Der unten ergänzte kombinierte Decoder-Test erweitert diesen
+Nachweis auf Pixel und PCM, weiterhin nicht auf Programmmischung, Slate, NAT
+oder Produktion.
 
 ### Separater nativer VP8-Bilddecoder
 
@@ -428,7 +430,7 @@ und erneut gewartet, erreichbare Queues/Puffer gewischt. `finished` bestätigt
 auch das Ende der Worker und Prozess-Reaping. Das überschreibt keine garantierten
 Kopien in FFmpeg, Kernel oder Go-GC. `-max_alloc` begrenzt eine FFmpeg-Allokation,
 **nicht** den gesamten Prozessspeicher. Ein globales Decoder-/CPU-/RAM-Budget,
-Opus/PCM, A/V-Clock-Abgleich, Mixer/Slate und der atomar gefencete Programmanschluss
+die produktive Anbindung beider Decoder, A/V-Clock-Abgleich, Mixer/Slate und der atomar gefencete Programmanschluss
 bleiben vor Produktionsaktivierung erforderlich.
 
 `TestLiveTrustedSourceVideoDecoder` erzeugt synthetisches VP8 über FFmpeg und
@@ -449,6 +451,68 @@ SFrame-RTP-Tests. Externe Infrastruktur war in diesem lokalen Lauf weiter
 ausgewiesen übersprungen. Das ausgelieferte lokale Frontend blieb unverändert.
 Die vorherige GitHub-CI für `83ad520` ist separat mit allen sieben Jobs grün,
 einschließlich Live-Keycloak/TURN; sie ist kein CI-Nachweis für den Decodercommit.
+
+### Nativer Opus-/PCM-Decoder und kombinierter Browserpfad
+
+`source_audio_decode.go` ist der getrennte 48-kHz-Stereo-PCM16LE-Adapter für
+Opus. Er erhält ausschließlich bereits authentisierte Encoded-Pakete vom
+Quelltransport. `source_opus_packet.go` prüft TOC, CBR/VBR-Paketaufteilung,
+Padding, Framegrößen und die 120-ms-Grenze gemäß
+[RFC 6716, Abschnitt 3](https://datatracker.ietf.org/doc/html/rfc6716#section-3).
+Das ist Strukturprüfung, kein Ersatz für SFrame oder die eigentliche Decodierung.
+
+Der vorhandene Pion-Ogg-Writer erstellt nur flüchtige Pipe-Daten. Sein tatsächlich
+erzeugter Header wird eingelesen; der Adapter nimmt keinen konstanten Pre-Skip
+an. Vollständig übersprungene Pakete erzeugen keine PCM-Zuordnung, bei einem
+teilweise übersprungenen Paket beginnt die Ausgabe beim entsprechenden
+RTP-Sampleoffset. Siehe
+[RFC 7845, Abschnitt 4.2](https://datatracker.ietf.org/doc/html/rfc7845#section-4.2).
+Originale RTP-Zeit bleibt getrennt von den fortlaufenden Container-Granules.
+DTX-/Netzlücken werden weder entfernt noch durch heimlich erzeugte PCM-Samples
+gefüllt; der spätere Mixer entscheidet über Stille anhand der Quellzeit.
+Überlappung, Replay, Rückwärtsfolge und Sprünge über die zehnminütige
+Consent-Maximaldauer werden abgewiesen, uint32-Wrap wird unterstützt.
+
+Grenzen: 65.535 Bytes/Paket, maximal 1.275 Bytes je Opus-Frame und 5.760 Samples
+je Paket, acht wartende Encoded-Pakete, höchstens 64 ausstehende Zeitspannen
+beziehungsweise 48.000 Samples und ein wiederverwendeter 23.040-Byte-PCM-Puffer.
+Gelesene PCM-Bytes ohne passende Eingabezeitspanne schließen den Decoder.
+Klartext bleibt ausschließlich im lokalen Codec-/Pipe-/Mixerpfad; es gibt
+keinen neuen Node-Endpunkt, Medienlog oder generischen Datei-/URL-Eingang.
+
+Der gemeinsame `source_decode_process.go` besitzt nur Prozess und Pipes; die
+separaten Audio-/Video-Adapter behalten ihren jeweils passenden Medienlifecycle.
+Kindprozesse erben keine Anwendungs-/Control-Secrets, sondern nur eine feste
+Liste notwendiger OS-/Loaderpfade. Lokale Autorisierung und Widerruf sind
+verpflichtend. Vor jeder Übergabe und alle 50 ms wird erneut geprüft. Fehlender
+Start innerhalb fünf Sekunden, ausstehende Ausgabe über zwei Sekunden,
+Überlast oder Prozessverlust beendet die Quelle ohne Klartext-Fallback.
+Stop invalidiert den Mixer-Sink synchron, wischt erreichbare Queues/Puffer,
+schließt Pipes und beendet/reapt ausschließlich den eigenen Codecprozess.
+Die bereits genannten Grenzen hinsichtlich GC-/Kernel-/FFmpeg-Kopien und
+Gesamtprozessressourcen gelten unverändert.
+
+`TestLiveTrustedSourceAudioDecoder` prüft tatsächlichen 700-Hz-Ton mit 2,5-,
+20- und 60-ms-Paketen, exakte Samplezahlen und Zeitspannen einschließlich
+Pre-Skip/Wrap/Pause, Wipe der geliehenen PCM-Ausgabe, untätigen Widerruf,
+Paket-/Sequenz-/Budgetfehler und Prozessabbruch. Reine Parser-/Timeline-Tests
+ergänzen Padding-/Längen-/Dauergrenzen und einen begrenzten Fuzzlauf.
+
+Die bestehende Browserfixture verbindet jetzt bei vorhandenem FFmpeg den
+tatsächlichen SourceReceiver mit beiden Decodern, dessen `AliveNow`-Policy
+und `Done`-Widerruf. Chromium und Firefox müssen jeweils mindestens 401
+authentisierte VP8-/Opus-Frames sowie mindestens 350 decodierte Bild-/PCM-Blöcke
+liefern. Wechselnde Pixel bis zum Ende beziehungsweise ein weiterhin vorhandener
+Ton und vollständiger Codec-/Source-Cleanup werden zusätzlich geprüft; Medien
+verlassen die native Testfixture nicht. Der erste gemeinsame Lauf bestand alle
+vier Tests ohne Skip in 74,463 s. Danach wurden End-of-run-Freeze-Assertions und
+weitere Audio-Negativfälle ergänzt; finale gemeinsame Verifikation folgt.
+
+**Weiter offen:** produktive Sink-Zulassung mit Gesamtbudgets, vollständige
+native Mixer-/Slate-/Writer-Anbindung, RTCP-/A/V-Clock-Abgleich und explizite
+Publisher-Annahme/Renewal-UI. Die Test-Control-Brücke bleibt eine ausdrücklich
+synthetische Policy-Fixture, keine öffentliche Approve-/Keycloak-Abnahme.
+Die Decoder-Factory bleibt in Produktion aus und die Agent-Version unverändert.
 
 ### Prepare, Renewal und Stop
 

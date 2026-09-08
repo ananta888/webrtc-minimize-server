@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
 	"sync"
 	"time"
 )
@@ -33,12 +32,10 @@ type sourceVideoInput struct {
 }
 
 type sourceVideoDecoder struct {
+	*sourceDecodeProcess
 	mu         sync.Mutex
 	cfg        sourceVideoDecodeConfig
 	sink       sourceVideoOutput
-	cmd        *exec.Cmd
-	input      io.WriteCloser
-	output     io.ReadCloser
 	queue      chan sourceVideoInput
 	timestamps chan uint32
 	closed     bool
@@ -73,24 +70,11 @@ func newSourceVideoDecoder(cfg sourceVideoDecodeConfig, sink sourceVideoOutput) 
 	if !cfg.authorized() {
 		return nil, errors.New("source video decoder denied")
 	}
-	cmd := exec.Command(cfg.ffmpegPath, sourceVideoDecodeArguments(cfg.width, cfg.height)...)
-	input, err := cmd.StdinPipe()
+	process, err := startSourceDecodeProcess(cfg.ffmpegPath, sourceVideoDecodeArguments(cfg.width, cfg.height))
 	if err != nil {
-		return nil, errors.New("source video input unavailable")
+		return nil, err
 	}
-	output, err := cmd.StdoutPipe()
-	if err != nil {
-		_ = input.Close()
-		return nil, errors.New("source video output unavailable")
-	}
-	// Never retain codec diagnostics, pixels, metadata or source names in logs.
-	cmd.Stderr = io.Discard
-	if err = cmd.Start(); err != nil {
-		_ = input.Close()
-		_ = output.Close()
-		return nil, errors.New("source video decoder unavailable")
-	}
-	d := &sourceVideoDecoder{cfg: cfg, sink: sink, cmd: cmd, input: input, output: output,
+	d := &sourceVideoDecoder{sourceDecodeProcess: process, cfg: cfg, sink: sink,
 		queue: make(chan sourceVideoInput, 2), timestamps: make(chan uint32, 8), done: make(chan struct{}), finished: make(chan struct{})}
 	d.workers.Add(3)
 	go func() { defer d.workers.Done(); d.writeFrames() }()
@@ -99,7 +83,7 @@ func newSourceVideoDecoder(cfg sourceVideoDecodeConfig, sink sourceVideoOutput) 
 	go func() {
 		// Wait must not close StdoutPipe before the output reader finishes.
 		d.workers.Wait()
-		_ = cmd.Wait()
+		_ = d.cmd.Wait()
 		close(d.finished)
 	}()
 	return d, nil
@@ -178,9 +162,7 @@ drain:
 	// Serialized against WriteRGBA: no late output after source invalidation.
 	d.sink.Close()
 	d.mu.Unlock()
-	_ = d.input.Close()
-	_ = d.output.Close()
-	_ = d.cmd.Process.Kill()
+	d.sourceDecodeProcess.stop()
 }
 
 func (d *sourceVideoDecoder) watch() {
