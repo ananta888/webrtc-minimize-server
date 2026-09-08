@@ -84,7 +84,7 @@ before(async () => {
   bundle = built.outputFiles[0].contents;
   const workerBuild = await build({entryPoints:[path.join(root,"frontend/src/app/webrtc/sframe.worker.ts")],bundle:true,format:"esm",platform:"browser",write:false,logLevel:"silent"});
   worker = workerBuild.outputFiles[0].contents;
-  const avBuild = await build({entryPoints:[path.join(root,"test/fixtures/trusted-source-av-clock.ts")],bundle:true,format:"esm",platform:"browser",write:false,logLevel:"silent"});
+  const avBuild = await build({entryPoints:[path.join(root,"scripts/fixtures/trusted-source-av-clock.ts")],bundle:true,format:"esm",platform:"browser",write:false,logLevel:"silent"});
   avBundle = avBuild.outputFiles[0].contents;
 });
 after(async () => { if(directory) await fs.rm(directory,{recursive:true,force:true}); });

@@ -2,6 +2,7 @@ import { TrustedSourcePublisher } from "../../frontend/src/app/broadcast/trusted
 import { sameTrustedSource } from "../../frontend/src/app/broadcast/trusted-source-contract";
 import { MediaE2eeController } from "../../frontend/src/app/webrtc/media-e2ee-controller";
 
+// Browser-only esbuild entry, outside Node's test discovery tree.
 // Explicit headless synthetic policy; no getUserMedia/getDisplayMedia or
 // application source-approval shortcut. No frame keys cross the fixture bridge.
 const fixture = window as any;
