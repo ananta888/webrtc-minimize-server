@@ -12,7 +12,8 @@
   "milestones": [{"id": "AVS-M1", "title": "Bounded video artwork and actual receiver verification", "task_ids": ["AVS-01"], "status": "in_progress"}],
   "tasks": [{
     "id": "AVS-01", "title": "Implement explicit persona-video-v1 artwork without changing legacy image authority",
-    "status": "in_progress", "progress_percent": 1, "priority": "P1", "risk": "high", "depends_on": [],
+    "status": "in_progress", "progress_percent": 40, "priority": "P1", "risk": "high", "depends_on": [],
+    "component_verification": "2026-09-08: separate video parser/probe, owned muted blob decoder and single-lifetime artwork loader implemented; avatar lifecycle/watchdog/key protection unchanged. 749 complete frontend unit tests passed9.95s, ngc passed. Actual Chromium/Firefox receiver cases and complete isolated check still pending; no serving/trust activation or task closure.",
     "acceptance_criteria": [
       "Expose a separate read-only versioned video feasibility probe; existing client-probe.v1 remains identical. Missing codec support fails without fallback or capture.",
       "Accept only a closed hash-bound normalized silent 256x256 MP4 up to 1.5 MB, 2..120 frames at 12 Hz, explicit loop/hold_last and provenance classification; never load an external media URL.",
