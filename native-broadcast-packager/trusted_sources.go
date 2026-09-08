@@ -15,6 +15,14 @@ type nativeTrustedSource struct {
 	receiver  *trustedsframe.SourceReceiver
 	consentID string
 	lease     trustedsframe.SourceLease
+	transport *trustedSourceTransport
+}
+
+func (s *nativeTrustedSource) destroy() {
+	s.receiver.Destroy()
+	if s.transport != nil {
+		s.transport.close()
+	}
 }
 
 func (c *client) trustedSourceDeviceRef() string {
@@ -58,7 +66,12 @@ func (c *client) prepareTrustedSource(raw []byte, now time.Time) (*trustedsframe
 	defer c.sourcesMu.Unlock()
 	c.pruneTrustedSourcesLocked(now.UnixMilli())
 	if current := c.trustedSources[lease.SourceLeaseID]; current != nil {
-		if err = current.receiver.Renew(raw, now.UnixMilli()); err != nil {
+		if current.transport != nil {
+			err = current.receiver.RenewNow(raw)
+		} else {
+			err = current.receiver.Renew(raw, now.UnixMilli())
+		}
+		if err != nil {
 			return nil, err
 		}
 		current.lease = lease
@@ -113,8 +126,17 @@ func (c *client) handleTrustedSourceControl(command *trustedsframe.SourceCommand
 		}
 		command.SourceLeaseID, command.LeaseRevision, command.ConsentID = lease.SourceLeaseID, lease.Revision, lease.Consent.ConsentID
 		command.AssignmentID, command.FencingRevision, command.ExpiresAt = lease.AssignmentID, lease.FencingRevision, lease.ExpiresAt
-		if receiver, prepareErr := c.prepareTrustedSource(command.Lease, now); prepareErr == nil && receiver.Alive(now.UnixMilli()) {
-			state = "receiver-prepared"
+		if receiver, prepareErr := c.prepareTrustedSource(command.Lease, now); prepareErr == nil {
+			c.sourcesMu.Lock()
+			source := c.trustedSources[lease.SourceLeaseID]
+			if source != nil && source.receiver == receiver {
+				// The transport can advance the receiver clock while a control
+				// message waits. Sample under its mutex, not at dispatch time.
+				if source.transport != nil && receiver.AliveNow() || source.transport == nil && receiver.Alive(now.UnixMilli()) {
+					state = "receiver-prepared"
+				}
+			}
+			c.sourcesMu.Unlock()
 		}
 	} else {
 		c.sourcesMu.Lock()
@@ -123,7 +145,7 @@ func (c *client) handleTrustedSourceControl(command *trustedsframe.SourceCommand
 			state = "stopped"
 		} else if source.lease.Consent.ConsentID == command.ConsentID && source.lease.AssignmentID == command.AssignmentID &&
 			source.lease.FencingRevision == command.FencingRevision && command.LeaseRevision >= source.lease.Revision && command.LeaseRevision <= source.lease.Revision+1 {
-			source.receiver.Destroy()
+			source.destroy()
 			delete(c.trustedSources, command.SourceLeaseID)
 			state = "stopped"
 		}
@@ -136,8 +158,14 @@ func (c *client) handleTrustedSourceControl(command *trustedsframe.SourceCommand
 
 func (c *client) pruneTrustedSourcesLocked(now int64) {
 	for id, source := range c.trustedSources {
-		if !source.receiver.Alive(now) {
-			source.receiver.Destroy()
+		var alive bool
+		if source.transport != nil {
+			alive = source.receiver.AliveNow()
+		} else {
+			alive = source.receiver.Alive(now)
+		}
+		if !alive {
+			source.destroy()
 			delete(c.trustedSources, id)
 		}
 	}
@@ -158,7 +186,7 @@ func (c *client) closeTrustedSources() {
 	c.trustedSources = nil
 	c.sourcesMu.Unlock()
 	for _, source := range sources {
-		source.receiver.Destroy()
+		source.destroy()
 	}
 	// Retain bounded consent tombstones through their original expiration.
 }
