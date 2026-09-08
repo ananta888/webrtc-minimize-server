@@ -84,3 +84,12 @@ zero failures and two explicit Node skips, 241.028 s for the Node stage.
 Fourteen opt-in external infrastructure gates remain skipped, not verified.
 The check used the separate local Go 1.24.13 / FFmpeg 8.0.1 tooling profile;
 no serving build or service was replaced.
+
+Next, extend the observation-only two-Worker bridge with separate media commands
+for exact per-principal persona pixels and simultaneous decoded audio, automatic
+receiver-owned chat consent/input, and independent avatar revocation. Reuse the
+existing per-connection multi-publisher observer; media/Hub policy remains in
+Ananta. Root's separate scenario supplies explicitly synthetic PCM through real
+Hub child tasks and respects the existing chat cooldown. No device capture,
+synthetic model-success claim, policy override, raw media/identity export or
+new Worker scheduler. The default screen-only gate remains supported.
