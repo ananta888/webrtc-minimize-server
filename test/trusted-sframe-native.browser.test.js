@@ -12,14 +12,16 @@ import { chromium, firefox } from "playwright";
 import Ajv from "ajv/dist/2020.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const validateWire = new Ajv({ strict: true }).compile(JSON.parse(await fs.readFile(
-  new URL("../contracts/trusted-decrypt/wire.v1.schema.json", import.meta.url), "utf8")));
-function assertClosedWire(value) {
-  assert.equal(validateWire(value), true, JSON.stringify(validateWire.errors));
-  assert.equal(validateWire({ ...value, unexpected: true }), false);
+const ajv = new Ajv({ strict: true });
+const validateWire = ajv.compile(JSON.parse(await fs.readFile(new URL("../contracts/trusted-decrypt/wire.v1.schema.json", import.meta.url), "utf8")));
+const validateLease = ajv.compile(JSON.parse(await fs.readFile(new URL("../contracts/trusted-decrypt/source-lease.v1.schema.json", import.meta.url), "utf8")));
+const validateAck = ajv.compile(JSON.parse(await fs.readFile(new URL("../contracts/trusted-decrypt/source-key-ack.v1.schema.json", import.meta.url), "utf8")));
+function assertClosedWire(value, validate = validateWire) {
+  assert.equal(validate(value), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...value, unexpected: true }), false);
   for (const field of Object.keys(value)) {
     const missing = { ...value }; delete missing[field];
-    assert.equal(validateWire(missing), false, `wire accepted missing ${field}`);
+    assert.equal(validate(missing), false, `wire accepted missing ${field}`);
   }
 }
 let directory, executable, bundle, dockerRunner;
@@ -69,8 +71,8 @@ before(async () => {
 });
 after(async () => { if (directory) await fs.rm(directory, { recursive: true, force: true }); });
 
-async function verifyReceiver(page, codec) {
-  const flags = ["-test.run=^TestReceiverBrowserInterop$", "-test.timeout=12s"];
+async function verifyReceiver(page, codec, withLease = false) {
+  const flags = [`-test.run=^Test${withLease ? "Source" : ""}ReceiverBrowserInterop$`, "-test.timeout=12s"];
   const container = `webrtc-trusted-key-test-${randomUUID()}`;
   const child = spawn(dockerRunner ? "docker" : executable, dockerRunner ? [
     "run", "-i", "--rm", "--name", container, "--network", "none", "-e", "TRUSTED_SFRAME_RECEIVER_INTEROP=1",
@@ -95,11 +97,23 @@ async function verifyReceiver(page, codec) {
     assert.equal(handshake.codec, codec);
     assertClosedWire(handshake.consent);
     assertClosedWire(handshake.announcement);
+    if (withLease) assertClosedWire(handshake.sourceLease, validateLease);
     const fixture = await page.evaluate(handshake => window.generateTrustedSFrameFixture(handshake), handshake);
     assertClosedWire(fixture.Envelope);
     child.stdin.end(JSON.stringify(fixture));
     assert.equal(await exited, 0, `native key-envelope interop failed: ${error || output.slice(output.indexOf("\n") + 1)}`);
     assert.match(output, /PASS/);
+    if (withLease) {
+      const ack = JSON.parse(output.split("\n").find(line => line.startsWith('{"ack":'))).ack;
+      assertClosedWire(ack, validateAck);
+      assert.equal(ack.envelopeId, fixture.Envelope.envelopeId);
+      assert.equal(ack.agreementKeyId, handshake.announcement.agreementKeyId);
+      assert.equal(ack.consentId, handshake.consent.consentId);
+      assert.equal(ack.keyId, fixture.Envelope.keyId);
+      assert.equal(ack.sourceLeaseId, handshake.sourceLease.sourceLeaseId);
+      assert.equal(ack.leaseRevision, handshake.sourceLease.revision);
+      assert.equal(ack.expiresAt, handshake.sourceLease.expiresAt);
+    }
   } finally {
     clearTimeout(timer);
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
@@ -138,7 +152,8 @@ for (const [name, engine] of [["Chromium", chromium], ["Firefox", firefox]]) {
       assert.equal(result.status, 0, `${name} ${codec}: ${result.error?.message || result.stdout || result.stderr}`);
       assert.match(result.stdout, /--- PASS: TestBrowserInterop/);
       await verifyReceiver(page, codec);
+      await verifyReceiver(page, codec, true);
     }
-    t.diagnostic(`${name} ${browser.version()}: 802 browser-encrypted frames through direct decoder and native-announced P-256 key receiver, exact plaintext, replay rejection and revoke; synthetic policy only, no RTP/media/live-ingress claim`);
+    t.diagnostic(`${name} ${browser.version()}: 802 browser-encrypted frames through direct decoder, native P-256 receiver and short source lease/key-ACK path, exact plaintext, replay rejection and revoke; synthetic policy only, no DataChannel/RTP/media/live-ingress claim`);
   });
 }

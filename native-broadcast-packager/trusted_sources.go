@@ -1,0 +1,118 @@
+package main
+
+import (
+	"crypto/sha256"
+	"encoding/base64"
+	"errors"
+	"slices"
+	"time"
+
+	"github.com/ananta/webrtc-minimize-server/native-broadcast-packager/internal/trustedsframe"
+)
+
+type nativeTrustedSource struct {
+	receiver  *trustedsframe.SourceReceiver
+	consentID string
+}
+
+func (c *client) trustedSourceDeviceRef() string {
+	if c.identity == nil || c.identity.privateKey == nil {
+		return ""
+	}
+	key := c.identity.publicKey
+	digest := sha256.Sum256([]byte("P-256\x00" + key.X + "\x00" + key.Y))
+	return "dev_" + base64.RawURLEncoding.EncodeToString(digest[:])
+}
+
+// Parent policy is derived from local state, not from claimed lease fields.
+// Assignment locks are always released before closing source receivers.
+func (c *client) trustedSourceAllowed(lease trustedsframe.SourceLease, expected *packagerAssignment, now int64) bool {
+	if !c.sessionAuthenticated.Load() || c.trustedSourceDeviceRef() == "" || lease.Consent.GranteePackagerRef != c.cfg.packagerID || lease.Consent.GranteeDeviceRef != c.trustedSourceDeviceRef() {
+		return false
+	}
+	c.roomsMu.RLock()
+	roomAllowed := slices.Contains(c.rooms, lease.Consent.RoomID)
+	c.roomsMu.RUnlock()
+	if !roomAllowed {
+		return false
+	}
+	c.assignmentMu.Lock()
+	defer c.assignmentMu.Unlock()
+	a := c.assignment
+	return a != nil && a == expected && oneOf(a.State, "running", "degraded") && a.expiresAt.Load() > now && a.expiresAt.Load() >= lease.ExpiresAt &&
+		a.AssignmentID == lease.AssignmentID && a.RoomID == lease.Consent.RoomID && a.ProgramID == lease.Consent.ProgramID && int64(a.ProgramEpoch) == lease.Consent.ProgramEpoch &&
+		a.LeaseID == lease.WriterLeaseID && int64(a.FencingRevision) == lease.FencingRevision
+}
+
+// Internal control adapter entry point. No HTTP or key-bearing control message
+// is introduced. The source transport must bind its publisher channel before
+// exposing Announcement/AcceptKey; a prepared receiver is not media readiness.
+func (c *client) prepareTrustedSource(raw []byte, now time.Time) (*trustedsframe.SourceReceiver, error) {
+	lease, err := trustedsframe.ParseSourceLease(raw, now.UnixMilli())
+	if err != nil {
+		return nil, err
+	}
+	c.sourcesMu.Lock()
+	defer c.sourcesMu.Unlock()
+	c.pruneTrustedSourcesLocked(now.UnixMilli())
+	if current := c.trustedSources[lease.SourceLeaseID]; current != nil {
+		if err = current.receiver.Renew(raw, now.UnixMilli()); err != nil {
+			return nil, err
+		}
+		return current.receiver, nil
+	}
+	if len(c.trustedSources) >= 80 || len(c.trustedSourceHistory) >= 512 {
+		return nil, errors.New("trusted source capacity exceeded")
+	}
+	if _, used := c.trustedSourceHistory[lease.Consent.ConsentID]; used {
+		return nil, errors.New("trusted source consent already used")
+	}
+	c.assignmentMu.Lock()
+	expected := c.assignment
+	c.assignmentMu.Unlock()
+	receiver, err := trustedsframe.NewSourceReceiver(raw, c.cfg.packagerID, c.trustedSourceDeviceRef(),
+		func(scope trustedsframe.SourceLease, at int64) bool {
+			return c.trustedSourceAllowed(scope, expected, at)
+		}, now.UnixMilli())
+	if err != nil {
+		return nil, err
+	}
+	if c.trustedSources == nil {
+		c.trustedSources = make(map[string]*nativeTrustedSource)
+	}
+	if c.trustedSourceHistory == nil {
+		c.trustedSourceHistory = make(map[string]int64)
+	}
+	c.trustedSources[lease.SourceLeaseID] = &nativeTrustedSource{receiver: receiver, consentID: lease.Consent.ConsentID}
+	c.trustedSourceHistory[lease.Consent.ConsentID] = lease.Consent.ExpiresAt
+	return receiver, nil
+}
+
+func (c *client) pruneTrustedSourcesLocked(now int64) {
+	for id, source := range c.trustedSources {
+		if !source.receiver.Alive(now) {
+			source.receiver.Destroy()
+			delete(c.trustedSources, id)
+		}
+	}
+	for id, expires := range c.trustedSourceHistory {
+		if expires <= now {
+			delete(c.trustedSourceHistory, id)
+		}
+	}
+}
+func (c *client) pruneTrustedSources(now time.Time) {
+	c.sourcesMu.Lock()
+	defer c.sourcesMu.Unlock()
+	c.pruneTrustedSourcesLocked(now.UnixMilli())
+}
+func (c *client) closeTrustedSources() {
+	c.sourcesMu.Lock()
+	sources := c.trustedSources
+	c.trustedSources = nil
+	c.sourcesMu.Unlock()
+	for _, source := range sources {
+		source.receiver.Destroy()
+	}
+	// Retain bounded consent tombstones through their original expiration.
+}

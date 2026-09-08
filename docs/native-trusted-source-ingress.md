@@ -7,6 +7,10 @@ Entschlüsselungsbaustein für eine später ausdrücklich consentierte einzelne
 Quelle. Der ergänzte `Receiver` verbindet einen zielgebundenen ephemeren
 P-256-Key-Envelope bereits mit genau einem Decoder, ist aber **noch nicht an
 den nativen Netzwerk-Ingress angeschlossen**.
+Der neue `SourceReceiver` ergänzt einen kurzlebigen Source-Lease und Key-ACK;
+der native Daemon besitzt dafür bereits den lokalen Assignment-/Geräte-/Room-
+Policy-Adapter und Cleanup-Hooks, jedoch noch keinen Source-Control-/Publisher-
+DataChannel-/RTP-Transport.
 Eine Quellenanfrage in der Angular-App erteilt weiterhin keine Medienfreigabe.
 Der bestehende `clear-program-v1`-Ingress bleibt unverändert; der
 Blind-Media-Agent und die Node-Control-Plane erhalten keinen Decrypt-Port.
@@ -83,7 +87,8 @@ oder ein vom Aufrufer geliefertes `grantorSubjectRef` genügt ausdrücklich nich
 ## Noch anzuschließen
 
 - Übergabe der unten implementierten servergeprüften Source-Bindung an den
-  nativen Receiver als begrenzter, widerrufbarer Source-Lease.
+  nativen Receiver über das noch fehlende Source-Control-Protokoll; der
+  begrenzte Source-Lease und lokale native Empfänger dafür sind implementiert.
 - Sichtbarer Publisher-Consent und sofortiger unabhängiger Widerruf.
 - Transport des implementierten zielgebundenen Key-Envelopes, quittierte
   Schlüsselaktivierung und getrennte Signaling-/RTP-Receiver für autorisierte Quellen.
@@ -151,7 +156,53 @@ Source-Prepare-/Key-/ACK-Nachrichten, native Lease-/Receiver-Anbindung sowie
 aktives Löschen der Compositor-Frames fehlen noch. Ein interner Consent mit
 `status: active` bedeutet ausdrücklich kein aktives Medien- oder E2EE-Playback.
 
+## Nativer Source-Lease und Receiver
+
+Der getrennte [Source-Lease-Vertrag](../contracts/trusted-decrypt/source-lease.v1.schema.json)
+bindet genau einen Consent an Publisher-Peer/Gerät, Track-/Publication-Epoch,
+Assignment-ID, Writer-Lease-ID/Fence und VP8 beziehungsweise Opus. Ein Lease
+gilt höchstens fünf Sekunden und nie länger als Consent oder lokales Assignment.
+Er ist Metadatum vom authentisierten Control-Pfad, kein selbstauthentisierender
+Bearer-Token. Der native Adapter `prepareTrustedSource` prüft zusätzlich seine
+tatsächliche aus P-256 abgeleitete Gerätekennung, Control-Authentisierung,
+lokalen Room-Consent und das konkrete laufende/degradierte Assignment-Objekt.
+
+`SourceReceiver` besitzt den vorhandenen Key-Receiver. Gleiche Lease-Replays sind
+idempotent; Renewal erlaubt ausschließlich die nächste Revision sowie verlängerte
+Zeitgrenzen innerhalb desselben unveränderten Scopes. Agreement-Key, installierte
+SFrame-Keys und Replay-Fenster werden dabei nicht ersetzt. Abgelaufene Leases
+können nicht erneuert werden. Ein Consent darf beim nativen Adapter auch nach
+Close nicht einfach unter einer anderen Lease-ID neu aufgebaut werden: maximal
+512 Consent-Tombstones bleiben bis zum ursprünglichen Consent-Ablauf erhalten.
+Maximal 80 Quellenreceiver können gleichzeitig existieren; das begrenzt diese
+optionale Native-Ressource, nicht die Anzahl normaler Räume.
+
+Synchrone Epochzeit-Prüfungen und ein eigener monotonic-clock Timer begrenzen
+den Lease auch ohne Frames und trotz verzögerter Timer-Ausführung. Ein bereits
+laufender alter Timer-Callback darf einen rechtzeitig erneuerten Lease nicht
+schließen. Source-/Assignment-Stop, Parent-Failure, Thermal-Drain, Control-
+Disconnect und Room-Consentverlust räumen die Receiver auf. Jede Verwendung
+prüft die Parent-Policy neu; nach Decrypt erfolgt nochmals eine Prüfung, bevor
+Bytes ausgegeben werden. Das ersetzt nicht das weiterhin fehlende atomare
+Compositor-/Queue-Cleanup und ist keine Garantie über Go-GC-/Kernel-Kopien.
+
+`AcceptKey` gibt erst nach erfolgreicher, erneut autorisierter Installation den
+geschlossenen [Key-ACK](../contracts/trusted-decrypt/source-key-ack.v1.schema.json)
+aus. Er bindet Source-Lease/Revision, Consent, Agreement, Envelope, KID und Ablauf.
+`key-installed` behauptet keine dekodierbare Programmausgabe. Der spätere Adapter
+muss diese Methode ausschließlich dem genau zugeordneten authentisierten
+Publisher-DataChannel zugänglich machen; Frame-Keys bekommen keinen Node-Control-
+Endpunkt. Das aktuelle Agent-Capability-Protokoll und die Annahme-UI werden durch
+diesen internen Adapter noch nicht für Source-Ingress freigeschaltet.
+
 ## Verifikation
+
+Der Lease-/Key-ACK-Zweig wird zusätzlich mit denselben beiden Browsern geprüft:
+ein nativ ausgegebener Lease/Agreement-Key, der vorhandene Browser-Key-Envelope,
+exakt gebundener ACK und je 401 entschlüsselte VP8-/Opus-Frames. Alle drei
+nativen Receiver-Zweige sind getrennte synthetische Krypto-/Lifecycle-Nachweise,
+noch keine Übertragung über DataChannel oder RTP. Go-Unit/Race/Vet und ein
+begrenzter Source-Lease-Parser-Fuzzlauf ergänzen diese Prüfung.
 
 Go-Tests prüfen den vorhandenen Suite-4-Vektor, kanonische uint64-Header,
 Counter-Grenzen einschließlich 400, Manipulation, Umordnung, konkurrierende

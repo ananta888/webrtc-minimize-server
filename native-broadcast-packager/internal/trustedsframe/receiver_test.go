@@ -354,7 +354,9 @@ func FuzzConsentAndPublicKey(f *testing.F) {
 
 // Interactive test-only bridge: native public announcement first, browser
 // envelope and synthetic frames through stdin next. Never installed in main.
-func TestReceiverBrowserInterop(t *testing.T) {
+func TestReceiverBrowserInterop(t *testing.T)       { receiverBrowserInterop(t, false) }
+func TestSourceReceiverBrowserInterop(t *testing.T) { receiverBrowserInterop(t, true) }
+func receiverBrowserInterop(t *testing.T, withLease bool) {
 	if os.Getenv("TRUSTED_SFRAME_RECEIVER_INTEROP") != "1" {
 		t.Skip("requires browser response to native ephemeral announcement")
 	}
@@ -365,12 +367,43 @@ func TestReceiverBrowserInterop(t *testing.T) {
 	} else if codec != "video/vp8" {
 		t.Fatal("invalid fixture codec")
 	}
-	r := receiverFixture(t, c, func(got Consent, _ int64) bool { return got == c })
-	announcement, err := r.Announcement(now)
+	var r *Receiver
+	var source *SourceReceiver
+	var lease SourceLease
+	if withLease {
+		lease = sourceLeaseFixture()
+		lease.Consent = c
+		lease.Codec = codec
+		source = sourceFixture(t, lease, func(scope SourceLease, _ int64) bool { return scope == lease })
+		r = source.receiver
+	} else {
+		r = receiverFixture(t, c, func(got Consent, _ int64) bool { return got == c })
+	}
+	announcement := r.Announcement
+	decrypt := r.Decrypt
+	destroy := r.Destroy
+	install := r.Install
+	if source != nil {
+		announcement = source.Announcement
+		decrypt = source.Decrypt
+		destroy = source.Destroy
+		install = func(raw []byte, at int64) (string, error) {
+			ack, err := source.AcceptKey(raw, at)
+			if err == nil {
+				fmt.Println(string(jsonBytes(t, map[string]any{"ack": json.RawMessage(ack)})))
+			}
+			return "", err
+		}
+	}
+	public, err := announcement(now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println(string(jsonBytes(t, map[string]any{"announcement": json.RawMessage(announcement), "consent": c, "now": now, "codec": codec})))
+	handshake := map[string]any{"announcement": json.RawMessage(public), "consent": c, "now": now, "codec": codec}
+	if source != nil {
+		handshake["sourceLease"] = lease
+	}
+	fmt.Println(string(jsonBytes(t, handshake)))
 	var input struct {
 		Envelope json.RawMessage
 		Frames   []struct {
@@ -383,20 +416,20 @@ func TestReceiverBrowserInterop(t *testing.T) {
 	if d.Decode(&input) != nil || len(input.Frames) != 401 {
 		t.Fatal("invalid browser fixture")
 	}
-	if _, err = r.Install(input.Envelope, now); err != nil {
+	if _, err = install(input.Envelope, now); err != nil {
 		t.Fatal("browser key envelope", err)
 	}
 	for i, f := range input.Frames {
-		out, err := r.Decrypt(fromHex(t, f.Wire), now+int64(i))
+		out, err := decrypt(fromHex(t, f.Wire), now+int64(i))
 		if err != nil || !bytes.Equal(out, fromHex(t, f.Plain)) {
 			t.Fatalf("browser frame %d: %v", i, err)
 		}
 	}
-	if _, err = r.Install(input.Envelope, now+400); err != ErrReplay {
+	if _, err = install(input.Envelope, now+400); err != ErrReplay {
 		t.Fatal("browser key replay", err)
 	}
-	r.Destroy()
-	if _, err = r.Decrypt(fromHex(t, input.Frames[400].Wire), now+400); err != ErrClosed {
+	destroy()
+	if _, err = decrypt(fromHex(t, input.Frames[400].Wire), now+400); err != ErrClosed {
 		t.Fatal("browser revoke", err)
 	}
 }

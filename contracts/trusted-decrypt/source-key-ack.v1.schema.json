@@ -1,0 +1,18 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://webrtc.ananta.de/contracts/trusted-decrypt/source-key-ack.v1.schema.json",
+  "title":"Authenticated publisher-channel key installation acknowledgement",
+  "$comment":"Key installation is not media readiness. Browser additionally verifies current channel, exact pending envelope/agreement/lease/consent/KID and unexpired deadline before sender activation.",
+  "type":"object","additionalProperties":false,
+  "required":["version","type","sourceLeaseId","leaseRevision","consentId","agreementKeyId","envelopeId","keyId","state","expiresAt"],
+  "properties":{
+    "version":{"const":1},"type":{"const":"trusted-source-key-ack"},
+    "sourceLeaseId":{"type":"string","pattern":"^sls_[A-Za-z0-9_-]{16,64}$"},
+    "leaseRevision":{"type":"integer","minimum":1,"maximum":1024},
+    "consentId":{"type":"string","pattern":"^cns_[A-Za-z0-9_-]{16,64}$"},
+    "agreementKeyId":{"type":"string","pattern":"^[A-Za-z0-9_-]{16,64}$"},
+    "envelopeId":{"type":"string","pattern":"^[A-Za-z0-9_-]{16,64}$"},
+    "keyId":{"type":"string","pattern":"^[a-f0-9]{16}$"},
+    "state":{"const":"key-installed"},"expiresAt":{"type":"integer","minimum":1,"maximum":9007199254740991}
+  }
+}

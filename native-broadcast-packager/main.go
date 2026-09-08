@@ -505,6 +505,9 @@ type client struct {
 	connection           *websocket.Conn
 	rooms                []string
 	assignmentMu         sync.Mutex
+	sourcesMu            sync.Mutex
+	trustedSources       map[string]*nativeTrustedSource
+	trustedSourceHistory map[string]int64
 	assignment           *packagerAssignment
 	api                  *webrtc.API
 	sendOverride         func(any) error
@@ -622,6 +625,7 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 				return
 			case <-ticker.C:
 				_ = c.expireAssignment(time.Now())
+				c.pruneTrustedSources(time.Now())
 				_ = c.reconcileLocalHealth(c.currentHealth())
 				_ = c.send(c.capabilityMessage())
 				_ = c.send(c.heartbeatMessage())
@@ -650,6 +654,7 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 			c.roomsMu.Lock()
 			c.rooms = append([]string(nil), message.RoomIDs...)
 			c.roomsMu.Unlock()
+			c.pruneTrustedSources(time.Now())
 			if err = c.send(c.capabilityMessage()); err != nil {
 				return err
 			}
