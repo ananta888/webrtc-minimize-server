@@ -10,6 +10,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import { loadConfig } from "./config.js";
 import { MachineAdmission, machineMessageAllowed } from "./machine-admission.js";
 import { MachineLeaseError, MachineSessionLeases } from "./machine-session-leases.js";
+import { machineSessionObservation } from "./machine-session-observation.js";
 import { MachineReceivePolicy, MachineReceivePolicyError } from "./machine-receive-policy.js";
 import { DeviceProofError, DeviceProofVerifier } from "./device-proof.js";
 import { MediaAgentEnrollmentError, MediaAgentEnrollmentStore } from "./media-agent-enrollment-store.js";
@@ -1313,7 +1314,7 @@ function createHttpHandler(config, registry, services) {
         sendJson(response, 200, { room }, securityHeaders(config));
         return;
       }
-      if (request.method === "POST" && url.pathname === "/api/machine/sessions/authorization") {
+      if (request.method === "POST" && ["/api/machine/sessions/authorization", "/api/machine/sessions/observation"].includes(url.pathname)) {
         if (!requestOriginAllowed(request, config) || url.search) throw new ProtocolError("origin_denied");
         const input = await readJsonBody(request);
         assertAllowedKeys(input, new Set(["roomId", "sessionId", "nonce"]));
@@ -1321,7 +1322,9 @@ function createHttpHandler(config, registry, services) {
           || typeof input.nonce !== "string" || !/^[a-f0-9]{32}$/.test(input.nonce)) throw new ProtocolError("machine_authorization_request_invalid");
         const roomId = normalizeRoomId(input.roomId);
         const identity = await machineAdmission.verify(request.headers.authorization, { roomId, mode: "room", displayName: "Ananta (KI)" });
-        const state = machineSessions.authorization(input.sessionId, identity, input.nonce);
+        const state = url.pathname.endsWith("/observation")
+          ? machineSessions.observation(input.sessionId, identity, input.nonce)
+          : machineSessions.authorization(input.sessionId, identity, input.nonce);
         sendJson(response, 200, state, { ...securityHeaders(config), "cache-control": "no-store" });
         return;
       }
@@ -1747,7 +1750,7 @@ function configureSignaling(
                 const publication = registry.publication(grant.publisherPeerId, id, peer.roomId);
                 return publication ? [Object.freeze({ peerId: grant.publisherPeerId, ...publication })] : [];
               }))) });
-          });
+          }, () => machineSessionObservation(peer, roomEpochs.get(peer.roomId)?.membership || 1));
       } catch {
         registry.leave(peer); socket.close(1008, "machine_session_unavailable"); return;
       }

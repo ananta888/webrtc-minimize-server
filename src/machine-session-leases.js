@@ -45,21 +45,30 @@ export class MachineSessionLeases {
     this.#records.set(id, record); this.#arm(record);
     return this.#view(record);
   }
-  attach(id, member, stop, authorization = null) {
+  attach(id, member, stop, authorization = null, observation = null) {
     const record = this.#records.get(id);
     if (!record || record.member || typeof member !== "function" || typeof stop !== "function"
       || !this.live(id) || this.#clock() >= record.createdAt + 30_000) fail("machine_session_unavailable", 401);
-    if (authorization !== null && typeof authorization !== "function") fail("machine_session_unavailable", 401);
-    record.member = member; record.stop = stop; record.authorization = authorization; this.#arm(record);
+    if ([authorization, observation].some(port => port !== null && typeof port !== "function")) {
+      fail("machine_session_unavailable", 401);
+    }
+    record.member = member; record.stop = stop; record.authorization = authorization;
+    record.observation = observation; this.#arm(record);
   }
   authorization(id, identity, nonce) {
+    return this.#inspect(id, identity, nonce, "authorization", "ananta.meet-authorization.v1");
+  }
+  observation(id, identity, nonce) {
+    return this.#inspect(id, identity, nonce, "observation", "ananta.meet-session-observation.v1");
+  }
+  #inspect(id, identity, nonce, port, schema) {
     if (!this.live(id)) fail("machine_session_unavailable", 401);
     const record = this.#records.get(id);
     if (!sameBinding(record.binding, identity.machineBinding) || record.binding.protocolVersion !== "v2"
-      || !record.authorization || !/^[a-f0-9]{32}$/.test(nonce || "")) fail("machine_lease_scope_invalid", 401);
-    const state = record.authorization();
+      || !record[port] || typeof nonce !== "string" || !/^[a-f0-9]{32}$/.test(nonce)) fail("machine_lease_scope_invalid", 401);
+    const state = record[port]();
     if (!this.live(id)) fail("machine_session_unavailable", 401);
-    return Object.freeze({ schema: "ananta.meet-authorization.v1", nonce,
+    return Object.freeze({ schema, nonce,
       lease: this.#view(record), binding: Object.freeze({ ...record.binding }), ...state });
   }
   live(id) {

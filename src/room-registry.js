@@ -88,6 +88,7 @@ export class RoomRegistry {
       creator: (admission.principal || "anonymous") === room.creatorPrincipal,
       publications: new Map(),
       publicationEpoch: 0,
+      publicationRevision: 0,
       relayConsent: false,
       relayCapability: {
         visible: true,
@@ -150,6 +151,17 @@ export class RoomRegistry {
   setMediaState(peer, media, now = Date.now()) {
     const room = this.#rooms.get(peer.roomId);
     if (!room || room.peers.get(peer.id) !== peer) throw new RoomAdmissionError("peer_not_joined");
+    const removed = [...peer.publications].some(([id, publication]) =>
+      publication.source === media.source && (!media.active || id !== media.trackId));
+    const added = media.active && peer.publications.get(media.trackId)?.source !== media.source;
+    const changed = removed || added;
+    // Check both counters before deleting an existing source on replacement.
+    if (changed && peer.publicationRevision >= Number.MAX_SAFE_INTEGER) {
+      throw new RoomAdmissionError("publication_revision_exhausted");
+    }
+    if (added && peer.publicationEpoch >= Number.MAX_SAFE_INTEGER) {
+      throw new RoomAdmissionError("publication_epoch_exhausted");
+    }
     for (const [publicationId, publication] of peer.publications) {
       if (publication.source === media.source && (!media.active || publicationId !== media.trackId)) {
         peer.publications.delete(publicationId);
@@ -158,11 +170,11 @@ export class RoomRegistry {
     if (media.active) {
       const current = peer.publications.get(media.trackId);
       if (!current || current.source !== media.source) {
-        if (peer.publicationEpoch >= Number.MAX_SAFE_INTEGER) throw new RoomAdmissionError("publication_epoch_exhausted");
         peer.publications.set(media.trackId, Object.freeze({ publicationId: media.trackId,
           source: media.source, publicationEpoch: ++peer.publicationEpoch }));
       }
     }
+    if (changed) ++peer.publicationRevision;
     room.updatedAt = now;
   }
 
