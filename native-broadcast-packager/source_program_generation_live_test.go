@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -93,6 +94,17 @@ func runLiveTrustedSourceProgram(t *testing.T, owned bool) {
 			a := p.cfg.scope
 			if err = c.renewAssignment(serverMessage{AssignmentID: a.assignmentID, ProgramEpoch: int(a.programEpoch), FencingRevision: int(a.fencingRevision), ExpiresAt: time.Now().Add(time.Minute).UnixMilli()}, time.Now()); err != nil {
 				t.Fatal("writer renewal", err)
+			}
+			owner := c.assignment.sourceProgram
+			deadline := owner.deadline.Load()
+			retry := owner.request
+			if frame%200 == 0 {
+				retry.ExpiresAt = c.assignment.expiresAt.Load()
+			}
+			if err = c.prepareSourceProgramAssignment(sourceAssignmentBytes(t, retry), time.Now(), cfg, func(sourceProgramGenerationConfig) (*sourceProgramGeneration, error) {
+				return nil, errors.New("retry allocated another encoder")
+			}); err != nil || owner.generation.Load() != p || owner.deadline.Load() != deadline {
+				t.Fatal("live prepare retry changed encoder or deadline", err)
 			}
 		}
 		if frame > 0 && frame%50 == 0 {

@@ -61,7 +61,25 @@ unverändert. Commit-/Remote-CI-/Deployment-Evidence ist davon getrennt.
 
 ## Deployment
 
-Aktuell läuft `b72c779` nach vollständig erfolgreicher CI 34269707991
+Aktuell läuft `219e4ef` nach vollständig erfolgreicher CI 34272874017
+(alle sieben Jobs einschließlich Keycloak/TURN). Der saubere Mini-PC wurde
+am 8. September 2026 exakt von `b72c779` vorgezogen, bei null Räumen/Teilnehmern.
+Drei-Dienste-Runner, Native-Preflight und unabhängiger externer Smoke bestanden
+mit Exit 0. Alle drei Container tragen exakt `219e4ef`, RestartCount null;
+Geräteidentität unverändert, Deploy-Sperre entfernt. Der Satz `b72c779` bleibt
+unter `image-set-v1` / `rollback.sm0zV7` erhalten.
+
+Öffentliches Release-Manifest und alle fünf Downloads stimmen byte-/SHA256-genau
+mit den für Repository, Workflow, exakten Main-Commit und nicht selbst gehostete
+Runner verifizierten CI-Artefakten überein. Dieser Software-Rollout enthält den
+internen v4-Auftragsowner, aber keine aktive v4-Control-/Quellenfreigabe und
+nicht die nachfolgende lokale Retry-Erweiterung. Maschinenaufnahme bleibt
+`admissionEnabled: false`; Hub-/Projektpolicy, Schlüssel und Ananta-Repository
+wurden nicht geändert. Dies ist weiterhin keine produktive Hub-/Workerabnahme.
+
+### Rollout b72c779
+
+`b72c779` bestand die vollständig erfolgreiche CI 34269707991
 (alle sieben Jobs, einschließlich Keycloak/TURN). Am 8. September 2026 wurde
 der saubere Mini-PC-Checkout exakt auf diese Revision vorgezogen. Der normale
 Drei-Dienste-Runner endete mit Exit 0; Native-Preflight, Runner-Smoke und ein
@@ -80,7 +98,7 @@ Auftragsowner. Maschinenaufnahme bleibt `admissionEnabled: false`; Trust,
 Projektfreigaben, Schlüssel und Ananta-Repository wurden nicht geändert.
 Das ist Software-Deployment-Evidence, keine produktive Hub-/Worker-Abnahme.
 
-### Vorheriger Rollout
+### Rollout 8b72a46
 
 Commit `8b72a46` bestand CI 34258722094 mit allen sieben Jobs einschließlich
 echtem Keycloak/TURN und wurde am 8. September 2026 auf dem Mini-PC deployed.

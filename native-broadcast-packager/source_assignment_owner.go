@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"reflect"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -14,9 +15,13 @@ type sourceProgramGenerationFactory func(sourceProgramGenerationConfig) (*source
 // a codec constructor without waiting for it under any client registry lock.
 type sourceAssignmentOwner struct {
 	request        sourceProgramAssignment
+	localConfig    sourceProgramGenerationConfig
 	client         *client
 	assignment     *packagerAssignment
 	done, finished chan struct{}
+	prepared       chan struct{}
+	waiters        atomic.Int32
+	reasonCode     string // assignmentMu; current state reason, not a synthetic retry reason.
 	once           sync.Once
 	statusMu       sync.Mutex // Wire ordering only; never a registry lock.
 	attached       atomic.Bool
@@ -78,7 +83,7 @@ func (c *client) prepareSourceProgramAssignment(raw []byte, now time.Time, local
 	a := &packagerAssignment{AssignmentID: r.AssignmentID, RoomID: r.RoomID, ProgramID: r.ProgramID, ProgramEpoch: int(r.ProgramEpoch), LeaseID: r.LeaseID,
 		FencingRevision: int(r.FencingRevision), ResourceRef: r.ResourceRef, Profile: r.Profile, ICEServers: r.ICEServers, State: "ready"}
 	a.expiresAt.Store(r.ExpiresAt)
-	o := &sourceAssignmentOwner{request: r, client: c, assignment: a, done: make(chan struct{}), finished: make(chan struct{})}
+	o := &sourceAssignmentOwner{request: r, client: c, assignment: a, done: make(chan struct{}), finished: make(chan struct{}), prepared: make(chan struct{}), reasonCode: "CAPABILITY_READY"}
 	started := time.Now()
 	deadline := started.Add(time.Duration(r.ExpiresAt-started.UnixMilli()) * time.Millisecond)
 	o.deadline.Store(&deadline)
@@ -87,11 +92,18 @@ func (c *client) prepareSourceProgramAssignment(raw []byte, now time.Time, local
 	local.encoder.ffmpegPath, local.encoder.outputRoot = c.cfg.ffmpegPath, c.cfg.outputRoot
 	local.encoder.packagerID, local.encoder.resourceRef, local.encoder.profile = c.cfg.packagerID, r.ResourceRef, r.Profile
 	local.encoder.authorized, local.encoder.revoked = o.permitted, o.done
+	o.localConfig = local
 	if !validSourceProgramGeneration(local) {
 		return errors.New("source assignment local budget denied")
 	}
 	c.roomsMu.RLock()
 	c.assignmentMu.Lock()
+	if current := c.assignment; current != nil && current.sourceProgram != nil && current.sourceProgram.matchesPrepare(r, local) {
+		existing := current.sourceProgram
+		c.assignmentMu.Unlock()
+		c.roomsMu.RUnlock()
+		return existing.retryPrepare()
+	}
 	at := time.Now().UnixMilli()
 	for id, until := range c.sourceAssignmentHistory {
 		if until <= at {
@@ -113,6 +125,7 @@ func (c *client) prepareSourceProgramAssignment(raw []byte, now time.Time, local
 	if !allowed {
 		return errors.New("source assignment reservation denied")
 	}
+	defer close(o.prepared)
 	go o.watchAuthority()
 	if create == nil {
 		create = newSourceProgramGeneration
@@ -146,7 +159,7 @@ func (c *client) prepareSourceProgramAssignment(raw []byte, now time.Time, local
 	}
 	// Ready means the bounded local generation exists, not that an approved
 	// source has arrived, decoded, or appeared in its output (which may be slate).
-	if err = o.sendReady(); err != nil {
+	if err = o.sendCurrentStatus(); err != nil {
 		o.cancel()
 		<-o.finished
 		return err
@@ -154,13 +167,20 @@ func (c *client) prepareSourceProgramAssignment(raw []byte, now time.Time, local
 	return nil
 }
 
-func (o *sourceAssignmentOwner) sendReady() error {
-	o.statusMu.Lock()
-	defer o.statusMu.Unlock()
-	if !o.permitted() {
-		return errors.New("source assignment status revoked")
+// assignmentMu is held. An already authorized renewal may appear in a server
+// retransmission; prepare itself must never move either lease deadline.
+func (o *sourceAssignmentOwner) matchesPrepare(r sourceProgramAssignment, local sourceProgramGenerationConfig) bool {
+	if r.ExpiresAt != o.request.ExpiresAt && r.ExpiresAt != o.assignment.expiresAt.Load() {
+		return false
 	}
-	return o.client.send(o.client.assignmentStatus(o.assignment, "ready", "CAPABILITY_READY"))
+	r.ExpiresAt = o.request.ExpiresAt
+	expected := o.localConfig
+	// Derived lifecycle callbacks/channels are different for the temporary
+	// candidate; every actual local resource/configuration value must match.
+	expected.now, local.now = nil, nil
+	expected.encoder.authorized, local.encoder.authorized = nil, nil
+	expected.encoder.revoked, local.encoder.revoked = nil, nil
+	return reflect.DeepEqual(o.request, r) && reflect.DeepEqual(expected, local)
 }
 
 func (o *sourceAssignmentOwner) watch(p *sourceProgramGeneration) {

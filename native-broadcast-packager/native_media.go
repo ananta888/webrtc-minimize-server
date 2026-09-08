@@ -306,6 +306,9 @@ func (c *client) handleAssignmentSignal(message serverMessage) error {
 }
 
 func (c *client) transitionAssignment(assignment *packagerAssignment, state, reasonCode string) error {
+	if assignment != nil && assignment.sourceProgram != nil {
+		return assignment.sourceProgram.transition(state, reasonCode)
+	}
 	c.assignmentMu.Lock()
 	if c.assignment != assignment || assignment == nil {
 		c.assignmentMu.Unlock()
@@ -324,13 +327,7 @@ func (c *client) transitionAssignment(assignment *packagerAssignment, state, rea
 		}
 		return c.transitionAssignment(assignment, state, reasonCode)
 	}
-	allowed := map[string]map[string]bool{
-		"ready":    {"starting": true, "failed": true},
-		"starting": {"running": true, "degraded": true, "failed": true},
-		"running":  {"degraded": true, "failed": true},
-		"degraded": {"running": true, "failed": true},
-	}
-	if !allowed[current][state] {
+	if !allowedAssignmentTransition(current, state) {
 		c.assignmentMu.Unlock()
 		return nil
 	}
@@ -340,6 +337,16 @@ func (c *client) transitionAssignment(assignment *packagerAssignment, state, rea
 		c.closeAssignmentTrustedResources(assignment)
 	}
 	return c.send(c.assignmentStatus(assignment, state, reasonCode))
+}
+
+func allowedAssignmentTransition(current, next string) bool {
+	allowed := map[string]map[string]bool{
+		"ready":    {"starting": true, "failed": true},
+		"starting": {"running": true, "degraded": true, "failed": true},
+		"running":  {"degraded": true, "failed": true},
+		"degraded": {"running": true, "failed": true},
+	}
+	return allowed[current][next]
 }
 
 func (c *client) closeAssignmentMedia() {
