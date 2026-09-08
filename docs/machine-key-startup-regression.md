@@ -67,3 +67,11 @@ only into the private bridge's failure report. Existing SFrame, source, grant,
 timeouts, retries and moving-frame acceptance remain unchanged. Verify a bounded
 real root gate and the isolated repository check; a green repeat is still not a
 startup fix. Keep MDS-05/08 open.
+
+The helper and failure-report composition are implemented without frontend or
+production changes. Five deterministic redaction/budget tests plus the exact
+serialized callback in real Chromium and Firefox passed: **7 tests, 1693.93
+ms**. Unknown objects are never stringified; prototype names do not become keys;
+an accessor beyond the 128-entry bound is never read; report input is not
+mutated. The real root lifecycle repeat and isolated full repository check
+follow. SRP keeps diagnostic classification out of the existing large bridge.

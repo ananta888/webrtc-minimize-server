@@ -6,6 +6,7 @@ import { machineBrowserFixture } from "./machine-browser-fixture.js";
 import { installDialogObservation } from "./machine-dialog-observer.mjs";
 import { observeAvatarCommand } from "./machine-avatar-observation.mjs";
 import { requireReceiverKeyDelay } from "./machine-receiver-key-delay.mjs";
+import { transformFailureCounts } from "./machine-transform-observation.mjs";
 async function runBridge() {
 const cleanup = [];
 let stage = "setup";
@@ -110,6 +111,7 @@ try {
                 keyframes: s.keyFramesDecoded || 0, pliCount: s.pliCount || 0, nackCount: s.nackCount || 0 })),
           }))),
         }));
+        error.observation.transformFailureCodes = await f.human.evaluate(transformFailureCounts);
         throw error;
       }
       reply({ moving_screen: true });
