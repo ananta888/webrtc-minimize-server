@@ -574,8 +574,8 @@ Audioanteile durch Decoder-Widerruf; das andere Signal bleibt erhalten, nach
 dem letzten Widerruf folgt Stille. Das ist ein realer Decode-/Mix-Nachweis,
 noch kein Netzwerk-Clock-, SFrame-zu-HLS- oder Produktionsnachweis.
 
-Offen bleiben Videocompositor/Slate, RTCP-Clock-Zuordnung, Zulassung aller
-Decoderressourcen, gefenceter Writer-/Encoderanschluss sowie öffentliche
+Offen bleiben die gemeinsame Anbindung des unten beschriebenen Videocompositors,
+RTCP-Clock-Zuordnung, Zulassung aller Decoderressourcen, gefenceter Writer-/Encoderanschluss sowie öffentliche
 Publisher-Annahme und Renewal. Die produktive Source-Factory bleibt aus.
 
 Verifikation auf `11af735`: der isolierte `npm run check` endete mit Exit 0,
@@ -589,6 +589,82 @@ nicht gestartete Browserfixture war dort ausdrücklich übersprungen.
 Die externen Infrastruktur-Gates im Gesamtcheck blieben sichtbar SKIP.
 Die isolierte Arbeitskopie blieb sauber, die ausgelieferte lokale Anwendung
 unverändert. Keine neue Produktionsfreischaltung oder Deploymentbehauptung.
+
+### Nativer Videocompositor und sichere Ersatzbilder
+
+`source_video_mix.go` besitzt vorab zugelassene RGBA-Quellengenerationen;
+`source_video_scene.go` trennt davon Layoutgeometrie und bilineare Skalierung.
+Der Eingangsport passt zum vorhandenen VP8-Decoder. Breite/Höhe einer Quelle
+sind während dieser Generation unveränderlich. Der Pflicht-Clock-Port ordnet
+ihre 90-kHz-RTP-Zeit der gemeinsamen 48-kHz-Programmzeit zu; der Compositor
+behauptet weiterhin keine eigene RTCP-/A/V-Synchronisierung.
+
+Ein lokaler Konfigurationssatz begrenzt vor Allokation die Quellenzahl
+(höchstens 80 als Ressourcenlimit), zwei bis acht RGBA-Puffer je Quelle,
+Ausgabemaße bis 1920×1080 und sämtliche gehaltenen RGBA-Bytes einschließlich
+des Ausgabebilds auf ein explizites Budget von höchstens 256 MiB. Metadaten,
+Go-Stack/Runtime und Codecprozesse zählen nicht zu diesem Pixelbudget.
+Eine Szene darf höchstens 20 bereits zugelassene Quellen auswählen; dies ist
+kein zusätzliches Room-Membership-Limit. Zeitlich vorgezogene Bilder dürfen
+höchstens das konfigurierte Fenster von 20–1.000 ms vor der Programmclock liegen.
+Bei vollem Pool wird das älteste noch wartende Bild überschrieben, nicht das
+aktuell dargestellte Bild und nicht mit einer weiteren Pixelallokation.
+
+`SetScene` verwendet eine eigene monotone CAS-Revision. Unterstützt sind die
+sieben bestehenden Layoutarten: `single`, `screen-presenter`, `side-by-side`,
+`active-speaker`, `grid`, `waiting-slate` und `end-slate`. Die beiden Slates sind
+derzeit absichtlich textfreie, deckende Ersatzbilder. `contain` erhält das
+gesamte Bild mit Rand; `cover` beschneidet mittig. VP8-Ausgabe bleibt deckend;
+Quellalpha erzeugt keinen zusätzlichen transparenten Medienpfad. Eine aktive
+Quelle wird explizit ausgewählt, nicht vom Compositor durch Sprecheranalyse
+oder Signaling-Membership abgeleitet. Eine fehlerhafte/alte Revision, fremde
+Compositor-Handles, doppelte oder widerrufene Quellen ändern die Szene nicht.
+Die lokale Szenenrevision ändert insbesondere keine Program-Revision, Lease,
+Consent- oder SFrame-Epoche. Ein zukünftiger Control-Adapter muss den Regieakteur
+authentisieren und auf den richtigen Writer-/Compositor-Besitzer begrenzen.
+
+Render übernimmt nur Bilder, deren Programmzeit bereits erreicht ist.
+Ausbleibende Frames wechseln nach der pro Quelle ausdrücklich konfigurierten
+Altersgrenze von 100 ms bis 30 s auf ein Ersatzbild; danach darf dieselbe noch
+autorisierte Quelle frische Frames liefern. Eine höhere Grenze kann für
+ereignisarme Bildschirmquellen nützlich sein, verlängert aber niemals Consent
+oder Source-Lease. Alte verspätete Bilder werden nicht in die Gegenwart datiert.
+Replay, falsche Formate und ungültige Clock schließen nur die Quelle.
+
+Widerruf durch den Decoder-Sink-Close wischt synchron alle aktuellen und
+wartenden Quellbilder, entfernt Szenenreferenzen und gibt die Reservierung
+frei. Der alte Handle bleibt terminal. Ein widerrufener Bild-in-Bild-Slot wird
+mit Ersatzbild abgedeckt und zeigt nicht versehentlich eine andere Quelle
+darunter. Policy wird vor Quellannahme, beim Rendern und nochmals vor Ausgabe
+geprüft. Läuft sie während der Bildberechnung ab, wird das zusammengesetzte
+Bild verworfen und ein Ersatzbild übergeben. Verlorene Writer-Policy, eine
+rückwärts/gleichlaufende Ausgabezeit oder ein Output-Fehler schließen den
+gesamten Compositor.
+
+Ausgabe und Close sind serialisiert. Der geliehene Bildpuffer darf nur in
+einen begrenzten, nichtblockierenden lokalen Handoff gelangen, niemals direkt
+in Encoder-/Pipe-I/O. Nach dem Callback wird er gewischt. Downstream-Queues,
+Encoder und Writer benötigen weiterhin ihre eigenen Generation-/Fencing- und
+Widerrufsgrenzen; bereits ausgelieferte Bilder sind nicht rückrufbar.
+Weder Quellenlabels, Schriftarten, Dateien/URLs noch Transkripte gelangen über
+diesen Port in Node oder allgemeine Logs. Recording/Caption-Consent bleibt
+ein getrennter Pfad.
+
+Tests prüfen alle Layoutarten und Geometriegrenzen bis 20 ausgewählten Quellen,
+exakte Farben, bilineare Zwischenwerte, Letterbox/Beschnitt, Auswahl/CAS,
+fremde Generationen, Queue-Drops, Freshness, Wipe, Ausgabeausfall und
+konkurrierenden Stop. Der Full-HD-Fall rendert 20 tatsächliche Bildkacheln und
+prüft zusätzliche Heap-Allokationen je Render-Aufruf. Dies ersetzt kein
+Hardware-/FPS-/CPU-Zulassungsgate. `TestLiveTrustedSourceVideoMixer` verbindet
+zwei echte VP8-Decoder mit bekannten synthetischen Senderclocks, prüft
+Bildbewegung in beiden Slots, Szenenwechsel, Wipe aktueller und zukünftiger
+Bilder nach Decoder-Widerruf, weiterlaufende zweite Quelle und abschließende
+Slate. Der normale Node-Browsertrack führt diesen Codec-/Compositor-Test mit
+aus; fehlendes FFmpeg bleibt sichtbar SKIP.
+
+Die Produktionsfactory bleibt aus: gemeinsamer A/V-Clock-/RTCP-Abgleich,
+Gesamtdecoderzulassung, Programmtaktung, Encoder-/Writer-Anschluss und die
+öffentliche Quellenannahme/Renewal sind noch nicht vollständig verbunden.
 
 ### Prepare, Renewal und Stop
 

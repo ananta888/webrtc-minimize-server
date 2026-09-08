@@ -97,6 +97,9 @@ test("native trusted Opus source decodes timed PCM and invalidates on revoke", {
 test("native trusted audio mixer combines two decoded sources and removes revoked queued audio", {timeout:25000}, t => {
   nativeCodecFixture(t, "TestLiveTrustedSourceAudioMixer");
 });
+test("native trusted video compositor switches layouts and wipes revoked decoded frames", {timeout:25000}, t => {
+  nativeCodecFixture(t, "TestLiveTrustedSourceVideoMixer");
+});
 
 function nativeCodecFixture(t, testName) {
   if(dockerRunner && process.platform!=="linux") {t.skip("native decoder fixture needs local Go or Linux compiler fallback");return;}
