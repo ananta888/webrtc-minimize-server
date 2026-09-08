@@ -52,3 +52,35 @@ browser/Docker-fallback failures are not claimed causally fixed by this pass.
 Ananta's two-Worker-container gate remains pending. Its source audit also found
 the missing Hub selection of independently assigned Worker destinations; that
 implementation is tracked in Ananta's MAP-28 contract.
+
+## Real Hub / two packaged Worker bridge
+
+The dedicated private `machine-multi-hub-bridge.mjs` observes two real Ananta
+Worker containers rather than joining synthetic in-process Worker doubles.
+It matches the actual admitted members to two Hub role-derived principals,
+requires distinct device identities, attributes moving screens individually,
+and verifies independent task cancellation and survivor recovery. It accepts
+expected subjects and a small closed command set, never grants or policy
+overrides. Root-side containers use an immutable installed Worker image with
+no Worker source or Hub package mounts. This remains a single-host synthetic
+policy screen/lifecycle gate, not two-container audio/persona evidence.
+
+A real failure exposed the old private forwarder's 16-connection ceiling:
+one recorded connection-drop event corresponded to a reset Hub TLS backchannel
+and a correctly terminated Worker. The first isolated green repeat did not
+explain the failure. The two-Worker fixture now explicitly chooses a bounded
+32-connection profile; all existing callers retain 16. CPU/RAM/network/TLS,
+admission, SFrame and stop deadlines are unchanged. A saturated diagnostic
+counter retains at most eight fixed capacity events, no traffic contents.
+The gate requires zero drops. Six deterministic proxy checks passed; the first
+corrected real gates passed in 41.83 s and 41.27 s, both with zero connection
+drops; the second no longer installs the temporary global HTTP diagnostic
+wrapper. Full isolated regression follows before
+push. No unrelated intermittent single-Worker failure is claimed fixed.
+
+The isolated complete check at `e7c2344` (including upstream `5e002cf`) has
+now passed: 665 frontend tests, build/security/Go unit+vet, 752 Node tests,
+zero failures and two explicit Node skips, 241.028 s for the Node stage.
+Fourteen opt-in external infrastructure gates remain skipped, not verified.
+The check used the separate local Go 1.24.13 / FFmpeg 8.0.1 tooling profile;
+no serving build or service was replaced.

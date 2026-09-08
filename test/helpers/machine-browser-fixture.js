@@ -18,9 +18,10 @@ import { machineFixtureAssets } from "./machine-fixture-assets.mjs";
 import { installReceiverKeyDelay } from "./machine-receiver-key-delay.mjs";
 
 export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", listenPort = 0, hubPublicKey, tlsPortProxy = false,
-  lifetimeSeconds = 180, humanEngine = "chromium", observeStage = () => {},
+  lifetimeSeconds = 180, humanEngine = "chromium", observeStage = () => {}, tlsConnectionLimit = 16,
   publicDir = process.env.MEET_TEST_PUBLIC_DIR, receiverKeyDelay = false } = {}) {
   if (typeof receiverKeyDelay !== "boolean") throw new Error("test_receiver_key_delay_invalid");
+  if (![16, 32].includes(tlsConnectionLimit)) throw new Error("test_proxy_connection_limit_invalid");
   if (!Number.isInteger(lifetimeSeconds) || lifetimeSeconds < 180 || lifetimeSeconds > 7380) throw new Error("test_lifetime_invalid");
   if (!["chromium", "firefox"].includes(humanEngine)) throw new Error("test_engine_invalid");
   observeStage("test-assets");
@@ -43,7 +44,7 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
   });
   if (tlsPortProxy) {
     observeStage("private-network");
-    proxy = privateMachineTlsProxy(lifetimeSeconds);
+    proxy = privateMachineTlsProxy(lifetimeSeconds, undefined, tlsConnectionLimit);
     listenHost = proxy.listenHost;
   }
   const originHost = proxy?.originHost || listenHost;
@@ -172,5 +173,6 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
     return { machine: second, ...identity("synthetic-machine-secondary") };
   }
   return { human, machine, roomId, binding, grant, additionalMachine, browser, app, origin, testNetwork: proxy?.network,
+    proxyObservation: () => proxy?.observation() || { connectionDrops: 0 },
     certificatePath: path.join(directory, "cert.pem") };
 }

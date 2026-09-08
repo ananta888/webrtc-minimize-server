@@ -13,8 +13,9 @@ function docker(args) {
   }
 }
 
-export function privateMachineTlsProxy(lifetimeSeconds, run = docker) {
+export function privateMachineTlsProxy(lifetimeSeconds, run = docker, connectionLimit = 16) {
   if (!Number.isInteger(lifetimeSeconds) || lifetimeSeconds < 180 || lifetimeSeconds > 7380) throw new Error("test_lifetime_invalid");
+  if (![16, 32].includes(connectionLimit)) throw new Error("test_proxy_connection_limit_invalid");
   const image = run(["image", "inspect", process.env.MEET_TEST_PROXY_IMAGE || "webrtc-ci-local-webrtc:latest", "--format", "{{.Id}}"]);
   if (!/^sha256:[a-f0-9]{64}$/.test(image)) throw new Error("test_proxy_image_missing");
   const name = "meet-test-tls-" + randomUUID();
@@ -42,11 +43,16 @@ export function privateMachineTlsProxy(lifetimeSeconds, run = docker) {
     stun = privateMachineStun({ network, address: gateway.slice(0, -1) + "4", lifetimeSeconds }, run);
     return {
       listenHost: gateway, originHost, network, stunUrl: stun.url, close,
+      observation() {
+        if (closed || !containerAttempted) return { connectionDrops: 0 };
+        return { connectionDrops: run(["logs", name]).split("\n").filter(line => line === "test_tls_connection_capacity").slice(0, 8).length };
+      },
       start(port) {
         if (closed || containerAttempted || !Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("test_proxy_start_invalid");
         const code = `const net=require('node:net');const server=net.createServer(s=>{const o=net.connect(${port},${JSON.stringify(gateway)});
           s.setTimeout(120000,()=>s.destroy());s.on('error',()=>o.destroy());o.on('error',()=>s.destroy());s.on('close',()=>o.destroy());o.on('close',()=>s.destroy());s.pipe(o);o.pipe(s)});
-          server.maxConnections=16;server.listen(443,'0.0.0.0');setTimeout(()=>process.exit(0),${lifetimeSeconds * 1000})`;
+          let drops=0;server.on('drop',()=>{if(drops<8){drops++;console.log('test_tls_connection_capacity')}});
+          server.maxConnections=${connectionLimit};server.listen(443,'0.0.0.0');setTimeout(()=>process.exit(0),${lifetimeSeconds * 1000})`;
         containerAttempted = true;
         run(["create", "--name", name, "--network", network, "--ip", originHost,
           "--user=0:0", "--read-only", "--cap-drop=ALL", "--cap-add=NET_BIND_SERVICE", "--security-opt=no-new-privileges",
