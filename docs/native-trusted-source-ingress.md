@@ -578,6 +578,18 @@ Offen bleiben Videocompositor/Slate, RTCP-Clock-Zuordnung, Zulassung aller
 Decoderressourcen, gefenceter Writer-/Encoderanschluss sowie öffentliche
 Publisher-Annahme und Renewal. Die produktive Source-Factory bleibt aus.
 
+Verifikation auf `11af735`: der isolierte `npm run check` endete mit Exit 0,
+665 Frontendtests, 724 Node-PASS, zwei ausdrücklich ausgewiesenen Node-Skips
+und null Fehlern (262,964 s Node). Build, Go-unit/vet und statische Gates sind
+grün; beide tatsächlichen Chromium-/Firefox-SFrame-zu-Decoder-Pfade liefen
+erneut erfolgreich. Der neue Zwei-Decoder-Mix bestand im Gesamtcheck in
+1,273 s. Ein separater Race-Lauf bestand die Source-Regressionen einschließlich
+realer Audio-/Video-Decodierung und des Mixers; nur die ohne Browser-Steuerprozess
+nicht gestartete Browserfixture war dort ausdrücklich übersprungen.
+Die externen Infrastruktur-Gates im Gesamtcheck blieben sichtbar SKIP.
+Die isolierte Arbeitskopie blieb sauber, die ausgelieferte lokale Anwendung
+unverändert. Keine neue Produktionsfreischaltung oder Deploymentbehauptung.
+
 ### Prepare, Renewal und Stop
 
 Der additive [Control-Vertrag](../contracts/trusted-decrypt/source-control.v1.schema.json)
