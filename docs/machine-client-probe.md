@@ -34,3 +34,19 @@ there. Verify deterministic negative/mutation/no-side-effect cases, actual
 Chromium/Firefox probes without capture, Ananta's strict consumer and bounded
 session cleanup, then an isolated `npm run check` and private Hub dialog.
 Public TURN, native interoperability and production release remain separate.
+
+## Implementation under verification
+
+`machine-client-probe.ts` projects the fixed browser/schema/envelope, strict
+secure-context and existing transform-support predicates, independent VP8/Opus
+send/receive availability and eight installed port booleans. The schema fixes
+their API generation: session, initial MP4, chat, audio, screen, screen-audio,
+speech and avatar. It checks every required method's presence without calling
+one. Runtime exceptions and missing methods yield only `false`; local codec
+lists are capped at 128 entries. Every returned level is independently frozen.
+
+The component adds only `probe()` and keeps the exact legacy `capabilities()`
+projection. Eleven focused frontend checks passed (1.23 s invocation): closed
+output, immutable copies, missing/broken ports, strict predicates, directional
+codecs, errors and no effects. The real no-join Chromium/Firefox gate, strict
+Ananta consumer integration and isolated full check remain pending.

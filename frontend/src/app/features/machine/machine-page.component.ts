@@ -1,5 +1,6 @@
 import { Component, OnDestroy, effect, inject } from "@angular/core";
 import { MachineLeaseExpiry } from "./machine-lease-expiry";
+import { MachineClientProbe, probeMachineClient } from "./machine-client-probe";
 import { RuntimeConfigService } from "../../core/runtime-config.service";
 import { PeerMeshService } from "../../webrtc/peer-mesh.service";
 import { RoomSessionService } from "../../webrtc/room-session.service";
@@ -41,6 +42,7 @@ export class MachinePageComponent implements OnDestroy {
     renew: (grant: string) => this.session.renewMachine(grant),
     capabilities: () => Object.freeze({ schema: "ananta.meet-capabilities.v1", publication: "mp4-v1",
       sessionLease: "ananta.meet-session-lease.v1", chatEvents: false, audioSubscription: false, screenPublication: false }),
+    probe: (): MachineClientProbe => probeMachineClient(this.api),
     publish: (text: string, videoBase64: string) => this.publish(text, videoBase64),
     media: Object.freeze({ publish: (input: unknown) => this.machineMedia.publish(input),
       close: () => this.machineMedia.publication.close(), status: () => this.machineMedia.publication.status() }),
