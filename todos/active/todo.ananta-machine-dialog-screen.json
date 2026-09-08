@@ -48,6 +48,7 @@
     },
     {
       "id": "MDS-02", "title": "Hub-Trust und raumseitige Empfangs-/Quellrechte durchsetzen",
+      "versioned_trust_result": "2026-09-08 getrennte immutable Profil-/JSON-/Datei-/JWT-Adapter und additive Config/Admission implementiert.111 gezielte Nodechecks3.023s gruen: exakte Scopes, echte Keyrotation/P256/HTTP/WS,3 Renewals einer Membership, Crosskeyreplay, Keyfenster und alte Human-/Legacypfade.102Rootchecks43.54s inklusive realer Ananta-v1/v2-Signaturen im Meetvalidator. Isolierter Vollcheck folgt vor Push; v1-Preflight bleibt fuer reinen Profiltrust sichtbar blocked bis naechster additiver Version. Keine Runtime-/Produktivfreigabe, Org-/Agenten-/Provisionierungsarbeit offen; docs/machine-trust-profile.md.",
       "versioned_trust_plan": "2026-09-08 Quellabgleich478856c/Ananta740dfb7e5: optionales versioniertes Public-Trustprofil mit Keyfenstern/kid, exakten Subject/Tenant/Projekt/Capability-Tupeln und globalem Ceiling geplant; docs/machine-trust-profile.md. Einzelkeypfad kompatibel, neuer Trust niemals Downgrade; keine Runtime-Aktivierung. Echte Signatur-/Rotation-/Replay-/HTTP-/WS-/Hubgrant-Matrix und isolierter npm-run-check. Org-/Agentenidentitaet und Operatorprovisionierung separat offen.",
       "status": "in_progress", "progress_percent": 55, "priority": "P0", "risk": "critical", "depends_on": ["MDS-01"],
       "ananta_task_refs": ["MAP-05", "MAP-06", "MAP-12", "MAP-25"],

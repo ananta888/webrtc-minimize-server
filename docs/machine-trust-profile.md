@@ -33,3 +33,23 @@ cross-key replay, scopes, actual P-256 HTTP/WS renewal and Ananta grants.
 Legacy/human regressions and isolated `npm run check` are required; serving
 dist and operator configuration remain untouched. Org-/Agent principals,
 automated operator provisioning and production gates remain subsequent work.
+
+## Implementation checkpoint
+
+Implemented separate bounded JSON/file readers, immutable profile validator,
+fixed local JWT-key adapter, admission scope check and server configuration.
+Profile files are regular, up to 64 KiB, same FD/metadata snapshot with one
+bounded read; FIFO fails without blocking. Public files need not be private
+secrets. Symlink mounts remain valid for an identical opened target.
+
+111 focused Node checks pass in 3.023 s, including actual P-256 HTTP/WS,
+three cross-key renewals of one membership, duplicate/cross-key replay,
+strict project/subject/capability checks and old human/legacy behavior.
+Ananta's 102 focused checks pass in 43.54 s, including its actual keyed v1/v2
+signatures in this validator. These are synthetic technical observations,
+not production approval. The isolated full check follows before push.
+
+The existing v1 rollout preflight knows only the legacy single-key plan.
+It deliberately remains blocked under profile-only trust until the next
+versioned preflight implementation; do not configure a second legacy key to
+make that check green. No production configuration has been changed.

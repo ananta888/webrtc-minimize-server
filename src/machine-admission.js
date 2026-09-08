@@ -1,4 +1,4 @@
-import { importSPKI, jwtVerify } from "jose";
+import { MachineGrantTrust } from "./machine-grant-trust.js";
 import { AuthenticationError, bearerToken } from "./oidc-verifier.js";
 import { MACHINE_CAPABILITIES, machineCapabilityCeiling } from "./machine-capabilities.js";
 export { MACHINE_CAPABILITIES } from "./machine-capabilities.js";
@@ -9,29 +9,25 @@ const V2_FIELDS = new Set([...FIELDS, "runtimeId", "sessionId", "capabilities"])
 
 /** Dedicated operator-pinned machine issuer; never accepts Human/Hub service JWTs. */
 export class MachineAdmission {
-  #key;
+  #trust;
   #issuer;
   #allowedCapabilities;
   #used = new Map();
 
-  constructor({ publicKey = "", issuer = "", allowedCapabilities } = {}) {
+  constructor({ publicKey = "", issuer = "", allowedCapabilities, trustProfile = null } = {}) {
     this.#allowedCapabilities = machineCapabilityCeiling(allowedCapabilities);
-    if (Boolean(publicKey) !== Boolean(issuer)) throw new Error("machine_trust_incomplete");
-    if (issuer && !/^https:\/\/[^\s|]+$/.test(issuer)) throw new Error("machine_issuer_invalid");
-    this.#key = publicKey ? importSPKI(publicKey, "EdDSA") : null;
-    this.#issuer = issuer;
+    this.#trust = new MachineGrantTrust({ publicKey, issuer, trustProfile });
+    this.#issuer = this.#trust.issuer;
   }
 
+  get enabled() { return this.#trust.enabled && this.#allowedCapabilities.length > 0; }
+
   async verify(header, { roomId, mode, displayName }, now = Date.now()) {
-    if (!this.#key) throw new AuthenticationError("machine_admission_disabled");
+    if (!this.#trust.enabled) throw new AuthenticationError("machine_admission_disabled");
     const token = bearerToken(header);
     if (!token || token.length > 4096) throw new AuthenticationError("machine_grant_invalid");
     try {
-      const { payload, protectedHeader } = await jwtVerify(token, await this.#key, {
-        algorithms: ["EdDSA"], issuer: this.#issuer, audience: ["ananta-meet-machine-v1", "ananta-meet-machine-v2"],
-        currentDate: new Date(now), maxTokenAge: 60,
-        requiredClaims: [...FIELDS],
-      });
+      const { payload, protectedHeader } = await this.#trust.verify(token, now, [...FIELDS]);
       const v2 = payload.aud === "ananta-meet-machine-v2";
       const allowedFields = v2 ? V2_FIELDS : FIELDS;
       if (protectedHeader.typ !== (v2 ? "ananta-meet-machine-v2+jwt" : "ananta-meet-machine+jwt")
@@ -51,6 +47,7 @@ export class MachineAdmission {
         || payload.capabilities.some(value => !MACHINE_CAPABILITIES.includes(value)))) throw new Error("invalid");
       const capabilities = v2 ? [...payload.capabilities].sort() : ["avatar.publish", "chat.send", "speech.publish"];
       if (capabilities.some(value => !this.#allowedCapabilities.includes(value))) throw new Error("capability_disabled");
+      if (!this.#trust.allows(payload, capabilities)) throw new Error("scope_disabled");
       for (const [id, expiry] of this.#used) if (expiry <= now) this.#used.delete(id);
       if (this.#used.has(payload.jti) || this.#used.size >= 10_000) throw new Error("replayed_or_full");
       this.#used.set(payload.jti, payload.exp * 1000);

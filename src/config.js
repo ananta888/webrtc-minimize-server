@@ -6,6 +6,8 @@ import {
 import net from "node:net";
 import { readFileSync, statSync } from "node:fs";
 import { machineCapabilityEnvironment } from "./machine-capabilities.js";
+import { parseMachineTrustProfile } from "./machine-trust-profile.js";
+import { readMachineTrustFile } from "./machine-trust-file.js";
 
 const DEFAULTS = Object.freeze({
   host: "0.0.0.0",
@@ -115,6 +117,17 @@ function environmentOrFile(env, name) {
   }
   if (!value || value.includes("\0")) throw new Error(`${name}_FILE contains invalid data`);
   return value;
+}
+
+function machineTrustProfileEnvironment(env) {
+  const direct = env.MACHINE_HUB_TRUST_PROFILE_JSON, file = env.MACHINE_HUB_TRUST_PROFILE_JSON_FILE;
+  if (direct && file) throw new Error("machine_trust_configuration_ambiguous");
+  const raw = file ? readMachineTrustFile(file) : direct;
+  if (raw === undefined || raw === "") return null;
+  if (env.MACHINE_HUB_PUBLIC_KEY || env.MACHINE_HUB_PUBLIC_KEY_FILE || env.MACHINE_HUB_ISSUER) {
+    throw new Error("machine_trust_configuration_ambiguous");
+  }
+  return parseMachineTrustProfile(raw);
 }
 
 function boundedInteger(value, fallback, { minimum, maximum, name }) {
@@ -511,6 +524,7 @@ export function loadConfig(env = process.env) {
     authMode,
     machineHubPublicKey: environmentOrFile(env, "MACHINE_HUB_PUBLIC_KEY") || "",
     machineHubIssuer: String(env.MACHINE_HUB_ISSUER || ""),
+    machineHubTrustProfile: machineTrustProfileEnvironment(env),
     machineAllowedCapabilities: machineCapabilityEnvironment(env.MACHINE_ALLOWED_CAPABILITIES),
     oidcIssuer,
     oidcAudience,
