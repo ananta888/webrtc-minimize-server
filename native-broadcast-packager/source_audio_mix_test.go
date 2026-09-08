@@ -344,3 +344,30 @@ func TestSourceAudioMixerRechecksWriterBeforeHandoff(t *testing.T) {
 		t.Fatal("lost writer policy survived mix computation")
 	}
 }
+
+func TestSourceAudioMixerRechecksSourceBeforeHandoff(t *testing.T) {
+	m := audioMixFixture(t, 1920, 2)
+	revoked, other := audioMixInputFixture(t, m), audioMixInputFixture(t, m)
+	if err := revoked.WritePCM(48000, 2, 0, audioMixPCM(1920, 1234, 2345)); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.WritePCM(48000, 2, 0, audioMixPCM(1920, 11, 22)); err != nil {
+		t.Fatal(err)
+	}
+	retained := revoked.pcm
+	checks := 0
+	revoked.cfg.authorized = func() bool { checks++; return checks == 1 }
+	assertAudioMixBlock(t, m, 0, audioMixPCM(960, 0, 0))
+	if !revoked.closed || other.closed || m.closed || m.pcmBytes != 1920*4 {
+		t.Fatal("mid-render revoke did not isolate source or release its budget")
+	}
+	for _, sample := range retained {
+		if sample != 0 {
+			t.Fatal("mid-render revoke retained future samples")
+		}
+	}
+	assertAudioMixBlock(t, m, 960, audioMixPCM(960, 11, 22))
+	if err := revoked.WritePCM(48000, 2, 1920, audioMixPCM(960, 1234, 2345)); err == nil {
+		t.Fatal("revoked input revived after safe silence")
+	}
+}

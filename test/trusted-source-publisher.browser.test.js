@@ -11,6 +11,8 @@ import { build } from "esbuild";
 import { chromium, firefox } from "playwright";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+const avClockRuns = process.env.TRUSTED_SOURCE_AV_CLOCK_RUNS ?? "1";
+assert.match(avClockRuns, /^(?:[1-9]|10)$/, "paired clock repetition count must be 1..10");
 let directory, executable, dockerRunner, bundle, worker, avBundle;
 before(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), "webrtc-source-publisher-"));
@@ -199,7 +201,7 @@ for(const [name,engine] of [["Chromium",chromium],["Firefox",firefox]]) {
       finally {await page.close();}
     }
   });
-  test(`${name} aligns decoded paired SFrame audio/video using actual sender reports`,{timeout:45000},async t=>{
+  test(`${name} aligns decoded paired SFrame audio/video using actual sender reports`,{timeout:45000*Number(avClockRuns)},async t=>{
     if(dockerRunner && process.platform!=="linux") {t.skip("compiler fallback requires Linux; local Go also supported");return;}
     const available=spawnSync("ffmpeg",["-version"],{encoding:"utf8",timeout:3000,maxBuffer:32768});
     if(available.error || available.status!==0) {t.skip("A/V source clock gate needs actual FFmpeg decoding");return;}
@@ -213,10 +215,14 @@ for(const [name,engine] of [["Chromium",chromium],["Firefox",firefox]]) {
     const browser=await engine.launch({headless:true,...(name==="Chromium" ? {args:["--autoplay-policy=no-user-gesture-required"]}
       : {firefoxUserPrefs:{"media.autoplay.default":0,"media.autoplay.block-webaudio":false}})});
     t.after(()=>browser.close());
-    const page=await browser.newPage();
-    await page.goto(`http://127.0.0.1:${app.address().port}`);
-    const result=await nativeSourceAV(page);
-    t.diagnostic(`paired decoded onsets=${result.matched}, max A/V delta=${(result.maxDeltaSamples/48).toFixed(1)} ms; synthetic sender/consent policy, no production ingress claim`);
+    for(let run=0;run<Number(avClockRuns);run++) {
+      const page=await browser.newPage();
+      try {
+        await page.goto(`http://127.0.0.1:${app.address().port}`);
+        const result=await nativeSourceAV(page);
+        t.diagnostic(`paired run=${run+1}, decoded onsets=${result.matched}, max A/V delta=${(result.maxDeltaSamples/48).toFixed(1)} ms; synthetic sender/consent policy, no production ingress claim`);
+      } finally { await page.close(); }
+    }
   });
 }
 

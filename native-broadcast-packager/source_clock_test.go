@@ -102,7 +102,7 @@ func TestSourceClockInvalidReportsAndLifecycle(t *testing.T) {
 			case "conflict":
 				second.ntp = first.ntp
 			case "rate":
-				second.rtp += 1000
+				second.rtp += 10000
 			case "domain":
 				second.ntp += 100 << 32
 			case "rollback":
@@ -117,11 +117,13 @@ func TestSourceClockInvalidReportsAndLifecycle(t *testing.T) {
 			if err := c.SourceSenderReport(second); err == nil || !c.closed {
 				t.Fatal("invalid clock survived")
 			}
+			expected := map[string]uint8{"unbound": 4, "scope": 4, "zero": 4, "conflict": 5, "rate": 5,
+				"domain": 5, "rollback": 2, "timeout": 3, "publisher-close": 2, "rebind": 1}[mode]
 			if _, ok := c.Map(98000); ok {
 				t.Fatal("closed clock mapped media")
 			}
 			c.Close()
-			if g.sources != 0 || c.first.ntp != 0 || c.last.ntp != 0 {
+			if g.sources != 0 || c.first.ntp != 0 || c.last.ntp != 0 || c.failure != expected {
 				t.Fatal("clock references not released")
 			}
 		})
@@ -322,12 +324,12 @@ func TestSourceClockCumulativeDriftAndReferenceDomain(t *testing.T) {
 		if second <= 100 && err != nil {
 			t.Fatal("valid interval denied before drift limit", err)
 		}
-		if second == 101 && (err == nil || !c.closed) {
+		if second == 101 && (err == nil || !c.closed || c.failure != 7) {
 			t.Fatal("unresampled drift silently accepted")
 		}
 	}
 	other := mediaClockFixture(t, g, 8, 90000)
-	if err := other.SourceSenderReport(sourceSenderReport{8, 1200 << 32, 90000}); err == nil || !other.closed {
+	if err := other.SourceSenderReport(sourceSenderReport{8, 1200 << 32, 90000}); err == nil || !other.closed || other.failure != 6 {
 		t.Fatal("incompatible reference domain admitted")
 	}
 	if g.closed {
@@ -358,6 +360,102 @@ func TestSourceRTCPByteBudgetAndInWindowRollback(t *testing.T) {
 	for _, size := range []int{0, -1, sourceRTCPBytes + 1} {
 		if budget.accept(now.Add(2*time.Second), size) {
 			t.Fatal("invalid RTCP read size admitted")
+		}
+	}
+}
+
+func TestSourceClockQuarantinesRateOutlierWithoutUsingIt(t *testing.T) {
+	for _, mode := range []string{"recover", "negative", "repeated", "timeout", "replay", "alternating"} {
+		t.Run(mode, func(t *testing.T) {
+			g, now := clockFixture(t)
+			c := mediaClockFixture(t, g, 7, 48000)
+			start := *now
+			report := func(second int, skew int32) error {
+				*now = start.Add(time.Duration(second) * time.Second)
+				return c.SourceSenderReport(sourceSenderReport{7, uint64(1000+second) << 32, uint32(50000+second*48000) + uint32(skew)})
+			}
+			if report(0, 0) != nil || report(1, 0) != nil {
+				t.Fatal("initial clock failed")
+			}
+			first, last, anchor, fresh, elapsed := c.first, c.last, c.anchor, c.lastReportAt, c.elapsedRTP
+			skew := int32(2000)
+			if mode == "negative" {
+				skew = -2000
+			}
+			if err := report(2, skew); err != nil || !c.uncertain || c.closed {
+				t.Fatal("moderate outlier did not suspend", err)
+			}
+			if c.first != first || c.last != last || c.anchor != anchor || c.lastReportAt != fresh || c.elapsedRTP != elapsed || c.reports != 2 {
+				t.Fatal("rejected report changed mapping or freshness")
+			}
+			if _, ok := c.Map(146000); ok {
+				t.Fatal("uncertain clock emitted program time")
+			}
+			switch mode {
+			case "recover", "negative":
+				if report(3, 0) != nil {
+					t.Fatal("first recovery report failed")
+				}
+				if _, ok := c.Map(194000); ok {
+					t.Fatal("one report restored uncertain clock")
+				}
+				if report(4, 0) != nil {
+					t.Fatal("second recovery report failed")
+				}
+				if at, ok := c.Map(242000); !ok || at != 14400+4*48000 || c.uncertain || !c.uncertainAt.IsZero() {
+					t.Fatal("recovery moved the fixed map or did not restore readiness")
+				}
+			case "repeated":
+				if report(3, 2000) != nil || report(4, 2000) == nil || c.failure != 5 {
+					t.Fatal("unbounded consecutive outliers")
+				}
+			case "timeout", "replay":
+				*now = start.Add(12 * time.Second)
+				if mode == "replay" {
+					if c.SourceSenderReport(last) != nil || c.SourceSenderReport(first) != nil || c.recovery != 0 {
+						t.Fatal("replay changed recovery")
+					}
+				}
+				*now = start.Add(13 * time.Second)
+				if c.SourceClockTick() == nil || c.failure != 3 {
+					t.Fatal("outlier or replay extended clock freshness")
+				}
+			case "alternating":
+				for second := 3; second < 14; second++ {
+					skew := int32(0)
+					if second%2 == 0 {
+						skew = 2000
+					}
+					if report(second, skew) != nil {
+						t.Fatal("early recovery deadline")
+					}
+					if _, ok := c.Map(uint32(50000 + second*48000)); ok {
+						t.Fatal("alternating reports restored output")
+					}
+				}
+				if report(14, 2000) == nil || c.failure != 3 {
+					t.Fatal("alternating outliers kept undecided clock forever")
+				}
+			}
+		})
+	}
+}
+
+func TestSourceClockMeasuredAudioResidualsWithinExplicitProfile(t *testing.T) {
+	for _, sample := range []struct{ interval, skew int64 }{{161914, -1210}, {232654, -1534}, {153321, 1047}} {
+		g, now := clockFixture(t)
+		c := mediaClockFixture(t, g, 7, 48000)
+		if err := c.SourceSenderReport(sourceSenderReport{7, 1000 << 32, 50000}); err != nil {
+			t.Fatal(err)
+		}
+		*now = now.Add(time.Duration(sample.interval) * time.Second / 48000)
+		ntpDelta := (uint64(sample.interval)*(1<<32) + 47999) / 48000
+		rtp := uint32(50000 + sample.interval + sample.skew)
+		if err := c.SourceSenderReport(sourceSenderReport{7, (1000 << 32) + ntpDelta, rtp}); err != nil || c.uncertain || c.reports != 2 {
+			t.Fatal("measured bounded audio residual prevented readiness", err)
+		}
+		if at, ok := c.Map(rtp); !ok || at != 14400+sample.interval+sample.skew {
+			t.Fatal("measurement allowance changed the fixed RTP map")
 		}
 	}
 }

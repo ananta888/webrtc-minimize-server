@@ -554,7 +554,13 @@ weder Loudness-Normalisierung noch Echo-Cancellation. `Close` entfernt auch
 zukünftige, bereits decodierte Samples sofort und gibt den reservierten Platz
 frei; der alte Handle bleibt terminal. Die Decoder rufen diesen Sink-Close
 auch bei untätigem Widerruf auf. Zusätzliche Policyprüfungen erfolgen vor
-Annahme, Quellenbeitrag und Programmausgabe.
+Annahme, Quellenbeitrag und Programmausgabe. Auch die Source-Policy wird nach
+der Summierung erneut geprüft, unabhängig von der Writer-Policy. Ein inzwischen
+widerrufener Anteil wird nicht als bereits gemischter Ton weitergereicht:
+Die Quelle wird mitsamt zukünftigen Samples gelöscht und dieser eine Block
+stummgeschaltet. Andere Quellen behalten ihre zukünftigen Samples und laufen
+im nächsten Block weiter. Ein deterministischer Mid-render-Revoke-Test prüft
+diese Grenze einschließlich Wipe, Ressourcenfreigabe und terminalem Handle.
 
 Ausgabe und Close sind serialisiert. Der Output-Port darf nur einen begrenzten,
 nichtblockierenden lokalen Übergabevorgang ausführen, **keine FFmpeg-/Pipe-I/O**.
@@ -722,8 +728,27 @@ Einzelne Quellen benötigen zwei fortschreitende Reports. Unterstützt sind
 Replay/alte Reports verlängern keine Frische. Fehlender Erstreport oder zwölf
 Sekunden ohne frischen Report, SSRC-/Ratenwechsel, widersprüchliche Zeitwerte,
 Clock-Rollback und Referenzdomain-Sprünge schließen terminal. Reportintervalle
-haben eine Toleranz von 2 ms plus 0,5 %; gegenüber dem festen ersten Mapping
-werden maximal 100 ms kumulierte Drift zugelassen. Größere Drift ist ausdrücklich
+haben ein explizites Toleranzprofil: 20 ms für 48-kHz-Audio beziehungsweise
+2 ms für 90-kHz-Video, jeweils plus 0,5 % des Intervalls. Der Audio-Spielraum
+entspricht einem Programmblock; er ist eine technische Zulassungsentscheidung,
+keine Behauptung über die Präzision von Sender Reports. Tatsächlich beobachtete
+Audio-Residualwerte von 25,2–32,0 ms über 3,37–4,85 Sekunden verhinderten beim
+ursprünglichen 2-ms-Profil teilweise schon die Clock-Bereitschaft. Diese Werte
+werden separat deterministisch geprüft; das feste RTP-Mapping wird dabei nicht
+an den Messfehler angepasst. Ein isolierter Raten-Ausreißer innerhalb
+der bestehenden 100-ms-Grenze wird **nicht** als neue Messung übernommen:
+Anchor, letzte gültige Reportzeit und RTP-Fortschreibung bleiben unverändert,
+und `Map` liefert zunächst keine Programmzeit. Erst zwei wieder konsistente
+Reports stellen das Mapping her. Der dritte aufeinanderfolgende Ausreißer
+schließt terminal; auch wechselnde gute/schlechte Reports dürfen die Erholung
+nicht länger als zwölf Sekunden offen halten. Replays verlängern weder
+Frische noch Erholung. Die Trennung von Messungsablehnung und kompletter
+Clock-Neuinitialisierung ist auch im
+[libwebrtc-Estimator](https://raw.githubusercontent.com/mozilla/gecko-dev/master/third_party/libwebrtc/system_wrappers/source/rtp_to_ntp_estimator.cc)
+zu sehen; das hier implementierte feste Mapping und die konservative
+Ausgabesperre sind ein eigenes, begrenztes Profil, kein übernommener
+Regressionsschätzer. Gegenüber dem festen ersten Mapping werden maximal
+100 ms kumulierte Drift zugelassen. Größere Drift ist ausdrücklich
 ein fehlender Resampling-Pfad, kein Anlass für erfundene Zeit oder Klartextfallback.
 Paketzeit wird nur innerhalb von zwölf Sekunden zur letzten Reportzeit gemappt.
 Validierte kurze RTP-Intervalle werden auf 64 Bit erweitert, damit auch mehrere
@@ -742,6 +767,39 @@ bleiben beim Stop der geborgten Quellen live. Das ist ein kurzzeitiger
 Chromium-/Firefox-Interopnachweis, keine globale Uhr-, Hardware-Latenz- oder
 Produktionsdauerlaufgarantie. Drei simulierte Tage mit mehreren RTP-/NTP-Wraps
 sind ein separater deterministischer Arithmetiktest, kein realer Dreitagelauf.
+
+Bei einer absichtlich gesperrten Clock existiert keine vergleichbare Zeit:
+Die Messprobe trennt deshalb gemeinsam verfügbare Zeitfenster und paart keine
+Impulse über eine solche Lücke hinweg. Frühere, tatsächlich vergleichbare
+schlechte Paare bleiben im maximalen Fehler erhalten. Ein Negativtest schützt
+gegen das Verbergen eines Fehlers durch eine spätere Verfügbarkeitslücke.
+Die Mindestpaarzahl und 150-ms-Grenze gelten unverändert; lückenlose Ausgabe
+wird mit dieser Probe ausdrücklich nicht nachgewiesen.
+
+Die Wiederholungsdiagnose kann mit `TRUSTED_SOURCE_AV_CLOCK_RUNS=1..10` pro
+Browser begrenzt vertieft werden; Standard bleibt ein Durchlauf. Jeder Versuch
+besitzt eine frische Browserseite, native Quelle und explizite synthetische
+Consent-Fixture. Die native Compilation erfolgt nur einmal pro Testdatei.
+Die Browser-Fixture liegt unter `scripts/fixtures/`, damit Node sie nicht ohne
+esbuild direkt als Test startet. Geschlossene Clock-/Transportfehlercodes und
+begrenzte relative Intervallfehler unterscheiden Abbruchursachen; rohe
+Zeitstempel, SSRC, Identitäten, Frames und Schlüssel werden nicht ausgegeben.
+
+**Offene Abnahme vom 2026-09-08:** Der Gesamtcheck von `6e922b4` endete mit
+Exit 1: 665 Frontendtests bestanden, Node meldete 726 PASS, zwei Fehler und
+zwei Skips (306,422 s). Die Fehler waren die inzwischen verschobene
+Browser-Fixture in Node-Discovery und ein tatsächlicher Firefox-Audioabbruch.
+Die spätere Unit-/Negativmatrix einschließlich Recovery, Mid-render-Widerruf
+und Messfenstern bestand dreimal unter Race sowie Vet. Sechs aufeinanderfolgende
+Firefox-Verbindungen bestanden auch mit dem finalen Toleranzprofil (maximal
+53,4 ms gemessene A/V-Abweichung). Dennoch ist dieser Abschnitt **nicht grün**:
+Im gleichen Stresslauf brach Chromium wegen eines Audio-Reportresiduums von
+112,2 ms über 5,15 s ab; die Probe maß zudem 164,2 ms A/V-Abweichung, oberhalb
+der unveränderten 150-ms-Grenze. Erfolgreiche Einzelwiederholungen beseitigen
+diesen Befund nicht. Weiteres Anheben der Grenzwerte wäre kein Nachweis einer
+korrekten Zuordnung. Der adaptive Drift-/Resampling-Anschluss und seine
+durchgängige Abnahme bleiben erforderlich. Keine produktive Freischaltung
+oder Deployment wird durch den internen Zwischenstand gerechtfertigt.
 
 **Weiter offen:** produktive Zuordnung der Publisher-Clocks, Lazy-Decoder und
 Gesamtprozesszulassung, begrenztes Warten/Verwerfen vor Clock-Bereitschaft mit

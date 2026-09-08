@@ -18,18 +18,36 @@ import (
 type sourceAVClockProbe struct {
 	mu                sync.Mutex
 	onsets            [2][64]int64
+	segments          [2][64]uint32
+	segment           uint32
 	counts            [2]int
 	high, initialized [2]bool
+	available         [2]bool
 }
 
 func (p *sourceAVClockProbe) observe(kind int, at int64, high bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.available[kind] = true
+	if !p.available[0] || !p.available[1] {
+		return
+	}
 	if p.initialized[kind] && high && !p.high[kind] && p.counts[kind] < 64 {
 		p.onsets[kind][p.counts[kind]] = at
+		p.segments[kind][p.counts[kind]] = p.segment
 		p.counts[kind]++
 	}
 	p.initialized[kind], p.high[kind] = true, high
+}
+
+func (p *sourceAVClockProbe) unavailable(kind int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.available[kind] {
+		p.available[kind] = false
+		p.segment++
+		p.initialized = [2]bool{}
+	}
 }
 
 func (p *sourceAVClockProbe) matched() (int, int64) {
@@ -40,11 +58,22 @@ func (p *sourceAVClockProbe) matched() (int, int64) {
 		return 0, 0
 	}
 	for i := 0; i < p.counts[0]; i++ {
-		if p.onsets[0][i] < p.onsets[1][0] || p.onsets[0][i] > p.onsets[1][p.counts[1]-1] {
+		first, last := -1, -1
+		for j := 0; j < p.counts[1]; j++ {
+			if p.segments[0][i] == p.segments[1][j] {
+				if first < 0 {
+					first = j
+				}
+				last = j
+			}
+		}
+		// Unavailable time has no audio timestamp to compare against. Keep
+		// separate overlapping windows; never bridge an intentional clock gap.
+		if first < 0 || first == last || p.onsets[0][i] < p.onsets[1][first] || p.onsets[0][i] > p.onsets[1][last] {
 			continue
 		}
 		best, bestIndex := int64(1<<60), -1
-		for j := 0; j < p.counts[1]; j++ {
+		for j := first; j <= last; j++ {
 			delta := p.onsets[0][i] - p.onsets[1][j]
 			if delta < 0 {
 				delta = -delta
@@ -91,6 +120,37 @@ func TestSourceClockDecodedProbeRejectsMismatches(t *testing.T) {
 	}
 }
 
+func TestSourceClockDecodedProbeSeparatesUnavailableWindows(t *testing.T) {
+	for _, badBeforeGap := range []bool{false, true} {
+		p := &sourceAVClockProbe{}
+		for window := 0; window < 2; window++ {
+			base := int64(window) * 1000000
+			p.observe(0, base-2, false)
+			p.observe(1, base-2, false)
+			for i := 0; i < 5; i++ {
+				at := base + int64(i)*30000
+				p.observe(1, at-1, false)
+				p.observe(1, at, true)
+				if badBeforeGap && window == 0 {
+					at += 10000
+				}
+				p.observe(0, at-1, false)
+				p.observe(0, at, true)
+			}
+			p.unavailable(1)
+			for i := 0; i < 10; i++ {
+				at := base + 200000 + int64(i)*30000
+				p.observe(0, at-1, false)
+				p.observe(0, at, true)
+			}
+		}
+		count, delta := p.matched()
+		if count < 6 || (delta <= 7200) == badBeforeGap {
+			t.Fatal("availability gap hid a real mismatch or invented cross-gap pairs")
+		}
+	}
+}
+
 type sourceAVClockSink struct {
 	*sourceMediaClock
 	probe                    *sourceAVClockProbe
@@ -120,6 +180,8 @@ func (s *sourceAVClockSink) WriteRGBA(width, height int, timestamp uint32, pixel
 	if at, ok := s.Map(timestamp); ok {
 		s.mapped.Add(1)
 		s.probe.observe(0, at, pixels[0] > 160 && pixels[2] < 50)
+	} else {
+		s.probe.unavailable(0)
 	}
 	return nil
 }
@@ -137,6 +199,8 @@ func (s *sourceAVClockSink) WritePCM(rate, channels int, timestamp uint32, pcm [
 		}
 		s.mapped.Add(1)
 		s.probe.observe(1, at, energy/float64(len(pcm)/4) > 0.0004)
+	} else {
+		s.probe.unavailable(1)
 	}
 	return nil
 }
@@ -145,7 +209,7 @@ func (s *sourceAVClockSink) WritePCM(rate, channels int, timestamp uint32, pcm [
 // terminal output facade; the transport remains owner of decoder shutdown.
 type sourceAVDecodedOutput struct{ *sourceAVClockSink }
 
-func (s sourceAVDecodedOutput) Close() { s.closed.Store(true) }
+func (s sourceAVDecodedOutput) Close() { s.closed.Store(true); s.probe.unavailable(s.kind) }
 
 func (s *sourceAVClockSink) Close() {
 	s.closed.Store(true)
@@ -255,9 +319,18 @@ func TestSourcePublisherAVClockInterop(t *testing.T) {
 			states := make([]map[string]any, 2)
 			for i, s := range sinks {
 				s.mu.Lock()
-				reports, closed := s.reports, s.sourceMediaClock.closed
+				reports, closed, failure := s.reports, s.sourceMediaClock.closed, s.failure
+				interval, skew := s.failureInterval, s.failureSkew
 				s.mu.Unlock()
-				states[i] = map[string]any{"reports": reports, "clockClosed": closed, "encoded": s.encoded.Load(), "decoded": s.decoded.Load(), "mapped": s.mapped.Load(), "closed": s.closed.Load()}
+				var transportFailure int32
+				c.sourcesMu.Lock()
+				if source := c.trustedSources[leases[i].SourceLeaseID]; source != nil && source.transport != nil {
+					transportFailure = source.transport.failure.Load()
+				}
+				c.sourcesMu.Unlock()
+				states[i] = map[string]any{"reports": reports, "clockClosed": closed, "clockFailure": failure, "transportFailure": transportFailure,
+					"intervalSamples": interval, "skewSamples": skew,
+					"encoded": s.encoded.Load(), "decoded": s.decoded.Load(), "mapped": s.mapped.Load(), "closed": s.closed.Load()}
 			}
 			matched, delta := probe.matched()
 			_ = emit(map[string]any{"fixture": "diagnostic", "states": states, "matched": matched, "maxDeltaSamples": delta})

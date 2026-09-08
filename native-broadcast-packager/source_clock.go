@@ -46,6 +46,15 @@ type sourceMediaClock struct {
 	elapsedRTP            int64
 	reports               uint32
 	bound, closed         bool
+	// Closed local enum, never timestamps, SSRCs, content or identifiers:
+	// 1 binding, 2 owner/closed, 3 expiry, 4 report scope, 5 discontinuity,
+	// 6 reference domain, 7 unsupported cumulative drift.
+	failure uint8
+	// Bounded relative error only, for content-free fixture diagnostics.
+	failureInterval, failureSkew int32
+	uncertain                    bool
+	outliers, recovery           uint8
+	uncertainAt                  time.Time
 }
 
 func sourceDurationSamples(d time.Duration) int64 {
@@ -135,7 +144,7 @@ func (c *sourceMediaClock) BindSourceClock(ssrc, rate uint32) error {
 	defer c.mu.Unlock()
 	now, err := c.publisher.timeNow()
 	if c.closed || err != nil || (rate != 48000 && rate != 90000) || (c.bound && (c.ssrc != ssrc || c.rate != rate)) {
-		c.closeLocked()
+		c.failLocked(1)
 		return errors.New("source clock binding denied")
 	}
 	if !c.bound {
@@ -147,15 +156,15 @@ func (c *sourceMediaClock) BindSourceClock(ssrc, rate uint32) error {
 func (c *sourceMediaClock) currentLocked() (time.Time, error) {
 	now, err := c.publisher.timeNow()
 	if c.closed || err != nil {
-		c.closeLocked()
+		c.failLocked(2)
 		return now, errors.New("source clock closed")
 	}
 	deadline := c.boundAt
 	if c.reports > 0 {
 		deadline = c.lastReportAt
 	}
-	if c.bound && now.Sub(deadline) >= sourceClockTimeout {
-		c.closeLocked()
+	if (c.bound && now.Sub(deadline) >= sourceClockTimeout) || (c.uncertain && now.Sub(c.uncertainAt) >= sourceClockTimeout) {
+		c.failLocked(3)
 		return now, errors.New("source clock expired")
 	}
 	return now, nil
@@ -171,9 +180,9 @@ func (c *sourceMediaClock) SourceClockTick() error {
 func (c *sourceMediaClock) SourceSenderReport(report sourceSenderReport) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	_, err := c.currentLocked()
+	observedAt, err := c.currentLocked()
 	if err != nil || !c.bound || report.ssrc != c.ssrc || report.ntp == 0 {
-		c.closeLocked()
+		c.failLocked(4)
 		return errors.New("source sender report denied")
 	}
 	elapsedRTP := c.elapsedRTP
@@ -185,10 +194,32 @@ func (c *sourceMediaClock) SourceSenderReport(report sourceSenderReport) error {
 		ntpSamples := sourceNTPSamples(report.ntp, c.last.ntp)
 		rtpDelta := int64(int32(report.rtp - c.last.rtp))
 		rtpSamples := rtpDelta * 48000 / int64(c.rate)
-		tolerance := int64(96) + ntpSamples/200 // 2 ms quantization plus 0.5% rate deviation.
-		if delta == 0 || rtpDelta <= 0 || ntpSamples <= 0 || ntpSamples > 12*48000 ||
-			rtpSamples-ntpSamples > tolerance || ntpSamples-rtpSamples > tolerance {
-			c.closeLocked()
+		// Explicit measurement allowance, not a claim about clock precision:
+		// one 20-ms program block for audio, 2 ms for video, plus 0.5% slope.
+		// Browser audio reports showed 25-32 ms residuals across 3-5 seconds;
+		// a fixed 2-ms allowance rejected otherwise usable paired timing.
+		jitter := int64(96)
+		if c.rate == 48000 {
+			jitter = sourceAudioMixSamples
+		}
+		tolerance := jitter + ntpSamples/200
+		skew := rtpSamples - ntpSamples
+		invalidShape := delta == 0 || rtpDelta <= 0 || ntpSamples <= 0 || ntpSamples > 12*48000
+		if invalidShape || skew > tolerance || skew < -tolerance {
+			c.failureInterval = int32(max(-576000, min(576000, ntpSamples)))
+			c.failureSkew = int32(max(-48000, min(48000, skew)))
+			// A moderate rate outlier is not a new clock anchor. Suspend output
+			// and require two consistent reports before restoring the fixed map.
+			// Rejected measurements never extend freshness or advance RTP state.
+			if !invalidShape && skew >= -4800 && skew <= 4800 && c.outliers < 2 {
+				if !c.uncertain {
+					c.uncertainAt = observedAt
+				}
+				c.uncertain, c.recovery = true, 0
+				c.outliers++
+				return nil
+			}
+			c.failLocked(5)
 			return errors.New("source sender clock discontinuity")
 		}
 		// Extend only validated, short report intervals, never the difference
@@ -197,7 +228,7 @@ func (c *sourceMediaClock) SourceSenderReport(report sourceSenderReport) error {
 	}
 	programSample, now, err := c.publisher.reference(report.ntp)
 	if err != nil {
-		c.closeLocked()
+		c.failLocked(6)
 		return err
 	}
 	if c.reports == 0 {
@@ -205,11 +236,19 @@ func (c *sourceMediaClock) SourceSenderReport(report sourceSenderReport) error {
 	} else {
 		predicted := c.anchor + elapsedRTP*48000/int64(c.rate)
 		if predicted-programSample > 4800 || programSample-predicted > 4800 {
-			c.closeLocked()
+			c.failLocked(7)
 			return errors.New("source clock requires resampling")
 		}
 	}
 	c.last, c.lastReportAt, c.elapsedRTP = report, now, elapsedRTP
+	c.outliers = 0
+	if c.uncertain {
+		c.recovery++
+		if c.recovery == 2 {
+			c.uncertain, c.recovery = false, 0
+			c.uncertainAt = time.Time{}
+		}
+	}
 	if c.reports < 65535 {
 		c.reports++
 	}
@@ -222,7 +261,7 @@ func (c *sourceMediaClock) SourceSenderReport(report sourceSenderReport) error {
 func (c *sourceMediaClock) Map(timestamp uint32) (int64, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if _, err := c.currentLocked(); err != nil || c.reports < 2 {
+	if _, err := c.currentLocked(); err != nil || c.reports < 2 || c.uncertain {
 		return 0, false
 	}
 	distance := int64(int32(timestamp - c.last.rtp))
@@ -240,9 +279,18 @@ func (c *sourceMediaClock) closeLocked() {
 	c.closed = true
 	c.first, c.last, c.anchor, c.reports = sourceSenderReport{}, sourceSenderReport{}, 0, 0
 	c.elapsedRTP = 0
+	c.uncertain, c.outliers, c.recovery = false, 0, 0
+	c.uncertainAt = time.Time{}
 	c.publisher.mu.Lock()
 	c.publisher.sources--
 	c.publisher.mu.Unlock()
+}
+
+func (c *sourceMediaClock) failLocked(reason uint8) {
+	if !c.closed {
+		c.failure = reason
+	}
+	c.closeLocked()
 }
 
 func (c *sourceMediaClock) Close() {

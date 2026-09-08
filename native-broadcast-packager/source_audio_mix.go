@@ -162,6 +162,16 @@ func (m *sourceAudioMixer) Render(consume func(int64, []byte) error) error {
 		value = max(-32768, min(32767, value/32768))
 		binary.LittleEndian.PutUint16(m.output[i*2:], uint16(int16(value)))
 	}
+	// Source consent may disappear during summation, independently of writer
+	// ownership. Do not hand off a block containing its already-mixed samples.
+	// One silence block is preferable to retaining revoked PCM; unaffected
+	// sources keep their future samples and continue on the next program tick.
+	for s := range m.sources {
+		if !s.cfg.authorized() {
+			s.closeLocked()
+			clear(m.output[:])
+		}
+	}
 	if !m.cfg.authorized() {
 		m.closeLocked()
 		return errors.New("source audio mixer output denied")
