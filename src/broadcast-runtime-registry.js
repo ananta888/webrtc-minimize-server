@@ -819,6 +819,17 @@ export class BroadcastRuntimeRegistry {
       packagerRef: writer.holderRef, fencingRevision: writer.fencingRevision });
   }
 
+  // Server-only scope. A valid invitation is not a writer lease or source consent.
+  nativeSourceWriterContext(identity, member, programId, now = this.#clock()) {
+    const context = this.nativeSourceRequestContext(identity, member, programId, now);
+    const { record } = this.#nativeOwned(identity, member, programId);
+    const machine = record.snapshot.machine;
+    const writer = machine.writerLeases.find(lease => lease.role === "packager-writer");
+    return Object.freeze({ ...context, tenantId: machine.scope.tenantId,
+      ownerSubjectRef: machine.scope.ownerSubjectRef, state: machine.program.state,
+      leaseId: writer.leaseId, expiresAt: writer.expiresAt });
+  }
+
   selectNativeStandbys(identity, member, programId, value, admit, now = this.#clock()) {
     const { key, record } = this.#nativeOwned(identity, member, programId);
     const input = normalizeNativeStandbySelection(value);

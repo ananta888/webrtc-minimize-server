@@ -82,8 +82,8 @@ oder ein vom Aufrufer geliefertes `grantorSubjectRef` genügt ausdrücklich nich
 
 ## Noch anzuschließen
 
-- Servergeprüfte Quelle mit Peer-/Gerätebindung und Publication-Epoch sowie
-  exaktem Room-/Program-/Writer-Lease-Scope.
+- Übergabe der unten implementierten servergeprüften Source-Bindung an den
+  nativen Receiver als begrenzter, widerrufbarer Source-Lease.
 - Sichtbarer Publisher-Consent und sofortiger unabhängiger Widerruf.
 - Transport des implementierten zielgebundenen Key-Envelopes, quittierte
   Schlüsselaktivierung und getrennte Signaling-/RTP-Receiver für autorisierte Quellen.
@@ -99,6 +99,49 @@ oder einem Browser-JSON rekonstruieren. Ein Source-Handle muss die konkrete
 Publikationsgeneration binden; Stop und Neustart derselben Kamera dürfen alten
 Consent nicht reaktivieren. Die Quellenanfrage selbst bleibt Metadatum ohne
 Medienautorität.
+
+## Serverseitige Source-Authority
+
+`TrustedBroadcastSourceGrants` verbindet die interne Resolution einer noch
+gültigen Owner-Einladung mit einem separaten expliziten Publisher-Approve.
+Der geschlossene [Approve-Vertrag](../contracts/trusted-decrypt/source-approval.v1.schema.json)
+enthält nur Einladung, Raum, eigenes Gerät, konkrete Track-ID mit erwarteter
+Publication-Epoch und begrenzte Wunschlaufzeit. Tenant, Source-ID, Zielgerät,
+Programm-/Membership-Epochen und Writer-Fence stammen aus aktuellen servereigenen
+Registries. Die einmalige Source-ID wird serverseitig erzeugt. Das bestehende
+Consent-Domainmodell akzeptiert dazu nun auch den tatsächlichen Programmzustand
+`live`; ein fremder Programmstatus wird nicht auf einen erlaubten Wert umgedeutet.
+
+Die Authority wird im Signaling-Server aufgebaut und verwendet dessen echte
+Membership-Epoch—bei fehlendem Topologiezustand gibt es keinen Ersatzwert 1.
+Media-State- und Membership-Wechsel prüfen betroffene Berechtigungen sofort;
+ein 500-ms-Maintenance-Lauf ergänzt den Ablaufcheck. Jede interne Packager-Abfrage
+prüft erneut aktuelle Publikation, beide Teilnehmer-/Gerätebindungen, Writer und
+bestätigten Packager-Room-Consent. Stop/Neustart derselben Track-ID, Leave/Rejoin,
+Epochwechsel, Handoff und Rechteverlust widerrufen terminal. Programmänderungen
+werden konservativ auch über die gebundene Program-Revision erkannt.
+
+Ein ausschließlich interner, nicht serialisierbarer Generation-Handle des
+Packager-Control-Registrys erkennt auch Rechteverlust mit anschließender
+Wiederfreigabe zwischen zwei Prüfungen. Normale Capability-Erneuerung erhält ihn;
+Reconnect, abgelaufene Capability und Wegfall des jeweiligen Room-Consents nicht.
+Dieser Handle ist keine ausstellbare Netzwerkberechtigung.
+
+Consent-Replays verlängern keine Laufzeit; Widerruf ist publisher- und
+gerätegebunden und benötigt den Moderator nicht. Harte Metadatenbudgets sind
+1024 Records, 80 Quellen pro Programm und vier pro Publisher/Programm; terminale
+Records behalten bis zum Ende ihrer Aufbewahrungsfrist ihren Quotenplatz.
+60 Approve-Aufrufe pro Principal/Minute und höchstens 2048 Rate-Buckets begrenzen
+auch idempotente Wiederholungen. Diese Ressourcenbudgets begrenzen nicht die
+Anzahl normaler Räume. Audit-Events sind weiterhin auf 512 begrenzt und enthalten
+weder Medien, Track-IDs, Klartextidentität noch Schlüssel.
+
+**Noch kein Endnutzer-Approve:** Die Authority ist bislang nur intern aufrufbar.
+Die HTTP-/Angular-Quellenanfrage bleibt ohne Medienautorität und besitzt weiterhin
+keinen Annahmeknopf. Ihre Zustandsüberführung bei Annahme, transportauthentisierte
+Source-Prepare-/Key-/ACK-Nachrichten, native Lease-/Receiver-Anbindung sowie
+aktives Löschen der Compositor-Frames fehlen noch. Ein interner Consent mit
+`status: active` bedeutet ausdrücklich kein aktives Medien- oder E2EE-Playback.
 
 ## Verifikation
 
@@ -117,3 +160,11 @@ Annahme müssen wiederum alle 401 VP8-/Opus-Frames exakt decodiert werden.
 Key-Replay und terminaler Widerruf werden anschließend ebenfalls verlangt.
 Dieser Ablauf verwendet eine explizite synthetische lokale Policy, keine
 produktive oder durch JSON selbst erteilte Quellenberechtigung.
+
+`test/trusted-broadcast-source-grants.test.js` verbindet echte Room-/Broadcast-
+Registries mit signierter Packager-Geräteanmeldung und bestätigt zusätzlich
+alle vier Quellenarten, Revocation, Handoff und transiente Rechteverluste.
+Ein eigener laufender HTTP-/WebSocket-Server bezieht die Einladung über echtes
+signiertes Test-OIDC und die Publication/Membership-Epochen über Signaling.
+Sein WebSocket-Ticket verwendet eine explizite ephemere Session-Policy-Fixture;
+dies ist kein zusätzlicher PKCE-/Geräteproof- oder produktiver Mediennachweis.

@@ -72,6 +72,7 @@ import {
 import { handoffNativePackager } from "./native-packager-handoff.js";
 import { NativePackagerStandbyError } from "./native-packager-standby.js";
 import { BroadcastSourceRequests, BroadcastSourceRequestError } from "./broadcast-source-requests.js";
+import { TrustedBroadcastSourceGrants } from "./trusted-broadcast-source-grants.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
@@ -1526,11 +1527,23 @@ function configureSignaling(
   nativePackagers,
   nativePackagerAssignments,
   machineSessions,
+  broadcastSourceRequests,
 ) {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
   const mediaAgentWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
   const nativePackagerWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   const roomEpochs = new Map();
+  const trustedBroadcastSources = broadcastSourceRequests && broadcastRuntime ? new TrustedBroadcastSourceGrants({
+    members: roomId => registry.members(roomId), publication: (...args) => registry.publication(...args),
+    membershipEpoch: roomId => roomEpochs.get(roomId)?.membership || 0,
+    invitation: (...args) => broadcastSourceRequests.resolveForPublisher(...args),
+    writer: (...args) => broadcastRuntime.nativeSourceWriterContext(...args),
+    packager: (...args) => nativePackagers.sourceContext(...args),
+  }) : null;
+  const pruneTrustedSources = () => {
+    try { trustedBroadcastSources?.prune(); }
+    catch { trustedBroadcastSources?.destroy(); } // Authority loss never blocks membership teardown.
+  };
   const machineReceivePolicy = new MachineReceivePolicy({ members: roomId => registry.members(roomId),
     changed: (roomId, state) => {
       const members = registry.members(roomId);
@@ -1630,6 +1643,7 @@ function configureSignaling(
     const members = registry.members(roomId);
     if (members.length === 0) {
       roomEpochs.delete(roomId);
+      pruneTrustedSources();
       relayHealth.removeRoom(roomId);
       broadcastMediaAgentState(roomId);
       return;
@@ -1639,6 +1653,7 @@ function configureSignaling(
     epochs.route += 1;
     epochs.topology += 1;
     roomEpochs.set(roomId, epochs);
+    if (membershipChanged) pruneTrustedSources();
     const topology = buildRoomTopology(members, epochs, {
       enabled: config.peerMediaRelayEnabled && config.mediaE2eeMode === "disabled",
       minimumParticipants: config.peerMediaRelayMinParticipants,
@@ -1848,6 +1863,7 @@ function configureSignaling(
         }
         if (message.type === "media-state") {
           registry.setMediaState(peer, message);
+          pruneTrustedSources();
           machineReceivePolicy.prune(peer.roomId);
           if (!message.active && mediaAgents.removePublisherSource(peer.roomId, peer.id, message.source)) {
             syncAgents();
@@ -2426,7 +2442,11 @@ function configureSignaling(
     for (const roomId of roomEpochs.keys()) broadcastMediaAgentState(roomId);
   }, config.mediaAgentRenewMs);
   mediaAgentRenewal.unref();
+  const sourceGrantExpiry = setInterval(pruneTrustedSources, 500);
+  sourceGrantExpiry.unref();
   server.on("close", () => {
+    clearInterval(sourceGrantExpiry);
+    trustedBroadcastSources?.destroy();
     machineReceivePolicy.destroy();
     clearInterval(heartbeat);
     clearInterval(leaseRenewal);
@@ -2434,7 +2454,7 @@ function configureSignaling(
     for (const socket of mediaAgentWebSocketServer.clients) socket.terminate();
     for (const socket of nativePackagerWebSocketServer.clients) socket.terminate();
   });
-  return { webSocketServer, mediaAgentWebSocketServer, nativePackagerWebSocketServer };
+  return { webSocketServer, mediaAgentWebSocketServer, nativePackagerWebSocketServer, trustedBroadcastSources };
 }
 
 export function createAppServer(options = {}) {
@@ -2610,7 +2630,7 @@ export function createAppServer(options = {}) {
   if (ownsBroadcastAbuseGuard) server.on("close", () => broadcastAbuseGuard.destroy());
   const signaling = configureSignaling(
     server, config, registry, ticketStore, directory, mediaAgents, mediaAgentEvents, broadcastRuntime,
-    nativePackagers, nativePackagerAssignments, machineSessions,
+    nativePackagers, nativePackagerAssignments, machineSessions, broadcastSourceRequests,
   );
   return {
     server,

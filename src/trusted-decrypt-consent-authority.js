@@ -95,7 +95,7 @@ function authorize(request, rawContext, now) {
     "invalid_trusted_decrypt_program");
   if (program.tenantId !== request.tenantId || program.roomId !== request.roomId
     || program.programId !== request.programId || program.programEpoch !== request.programEpoch
-    || !new Set(["preparing", "awaiting_consent", "publishing", "degraded"]).has(program.state)
+    || !new Set(["preparing", "awaiting_consent", "publishing", "live", "degraded"]).has(program.state)
     || !Array.isArray(program.sourceIds) || !program.sourceIds.includes(request.sourceId)) {
     fail("invalid_trusted_decrypt_program");
   }

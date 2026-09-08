@@ -105,6 +105,21 @@ export class BroadcastSourceRequests {
     return this.#response([record]);
   }
 
+  // Internal metadata resolution for a separate explicit-consent authority.
+  // Never serialize this result to a client: it contains verified owner identity.
+  resolveForPublisher(identity, roomId, deviceFingerprint, requestId) {
+    const visible = this.execute(identity, { requestVersion: 1, action: "list", roomId, deviceFingerprint });
+    const view = visible.requests.find(value => value.requestId === requestId && value.state === "pending");
+    const record = view && this.#records.get(requestId);
+    if (!record || record.target.principal !== oidcPrincipal(identity)
+      || record.target.fingerprint !== deviceFingerprint) fail("broadcast_source_request_unavailable", 404);
+    return Object.freeze({ requestId, roomId, programId: record.programId,
+      programRevision: record.programRevision, programEpoch: record.programEpoch,
+      packagerRef: record.packagerRef, fencingRevision: record.fencingRevision,
+      sourceKind: record.sourceKind, expiresAt: record.expiresAt,
+      owner: record.owner, publisher: record.target, ownerIdentity: record.identity });
+  }
+
   #refresh(now) {
     for (const [id, record] of this.#records) {
       if (record.expiresAt <= now) { this.#records.delete(id); continue; }
