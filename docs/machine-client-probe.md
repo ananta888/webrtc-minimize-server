@@ -50,3 +50,21 @@ projection. Eleven focused frontend checks passed (1.23 s invocation): closed
 output, immutable copies, missing/broken ports, strict predicates, directional
 codecs, errors and no effects. The real no-join Chromium/Firefox gate, strict
 Ananta consumer integration and isolated full check remain pending.
+
+## Complete isolated regression
+
+The isolated `025d9ae` full check passed: **676 frontend tests, 762 Node tests,
+zero failures, two explicit Node skips**, plus production build, static/security
+checks and complete Go unit/vet gates. The Node stage took **241.610 s**; external
+live infrastructure gates remain explicitly skipped, not verified.
+
+The new real Chromium and Firefox cases load the actual built machine page,
+confirm all fixed ports and directional codec predicates, and check frozen
+copies plus exact unchanged legacy output. Neither probe joins a room, creates
+a PeerConnection/WebSocket, captures media, enumerates devices, generates keys
+or invokes HTTP. Synchronous effect sentinels are scoped to the actual probe
+calls so unrelated bootstrap requests cannot falsify the result. Removing
+encoded-transform support yields false without changing rights or selecting a
+native/plaintext fallback. This is actual local browser feasibility, not media
+delivery or production identity evidence. Ananta's packaged Worker integration
+is the next gate.
