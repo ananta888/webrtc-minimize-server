@@ -514,6 +514,7 @@ type client struct {
 	trustedSourceHistory     map[string]int64
 	trustedSourceSinkFactory func(trustedsframe.SourceLease, *trustedsframe.SourceReceiver) (trustedSourceSink, error)
 	assignment               *packagerAssignment
+	sourceAssignmentHistory  map[string]int64 // assignmentMu; bounded v4 replay tombstones.
 	api                      *webrtc.API
 	sendOverride             func(any) error
 	healthProbe              func() string
@@ -664,9 +665,7 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 			if len(message.RoomIDs) > 20 {
 				return errors.New("too many room consents")
 			}
-			c.roomsMu.Lock()
-			c.rooms = append([]string(nil), message.RoomIDs...)
-			c.roomsMu.Unlock()
+			c.setConsentedRooms(message.RoomIDs)
 			c.pruneTrustedSources(time.Now())
 			if err = c.send(c.capabilityMessage()); err != nil {
 				return err

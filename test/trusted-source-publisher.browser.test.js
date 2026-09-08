@@ -116,6 +116,9 @@ test("native raw program encoder publishes actual H264 AAC renditions and revoke
 test("native program generation composes VP8 Opus through renewals into decodable HLS and reaps on revoke", {timeout:25000}, t => {
   nativeCodecFixture(t, "TestLiveTrustedSourceProgramGeneration");
 });
+test("native v4 assignment owns VP8 Opus source bootstrap, renewed HLS output and terminal cleanup", {timeout:25000}, t => {
+  nativeCodecFixture(t, "TestLiveTrustedSourceAssignmentProgram");
+});
 test("native raw program encoder bounds rolling HLS windows and reaps a revoked writer", {timeout:45000}, t => {
   nativeCodecFixture(t, "TestLiveTrustedSourceProgramEncoderRollingWindow", 40);
 });

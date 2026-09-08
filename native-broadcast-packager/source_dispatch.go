@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"time"
 
 	"github.com/ananta/webrtc-minimize-server/native-broadcast-packager/internal/trustedsframe"
@@ -17,7 +18,7 @@ func (c *client) sourceConfiguration() webrtc.Configuration {
 				Credential: entry.Credential, CredentialType: webrtc.ICECredentialTypePassword})
 		}
 	}
-	if len(configuration.ICEServers) == 0 && len(c.cfg.stunURLs) > 0 {
+	if len(configuration.ICEServers) == 0 && len(c.cfg.stunURLs) > 0 && (c.assignment == nil || c.assignment.sourceProgram == nil) {
 		configuration.ICEServers = []webrtc.ICEServer{{URLs: append([]string(nil), c.cfg.stunURLs...)}}
 	}
 	return configuration
@@ -40,8 +41,8 @@ func (c *client) handleTrustedSourceSignal(input *trustedsframe.SourcePeerSignal
 	}
 	lease := source.lease
 	valid := source.receiver.AliveNow()
-	if valid && source.transport == nil && message.Description != nil && message.NegotiationRevision == 1 && message.Sequence == 1 && c.trustedSourceSinkFactory != nil {
-		sink, sinkErr := c.trustedSourceSinkFactory(lease, source.receiver)
+	if valid && source.transport == nil && message.Description != nil && message.NegotiationRevision == 1 && message.Sequence == 1 {
+		sink, sinkErr := c.sourceSinkFor(source)
 		if sinkErr == nil && sink != nil {
 			source.transport, err = newTrustedSourceTransport(c, lease, source.receiver, sink, c.sourceConfiguration())
 			if err != nil {
@@ -63,4 +64,26 @@ func (c *client) handleTrustedSourceSignal(input *trustedsframe.SourcePeerSignal
 	return c.send(map[string]any{"version": 1, "type": "trusted-source-status", "sourceLeaseId": lease.SourceLeaseID,
 		"leaseRevision": lease.Revision, "consentId": lease.Consent.ConsentID, "assignmentId": lease.AssignmentID, "fencingRevision": lease.FencingRevision,
 		"state": "failed", "expiresAt": lease.ExpiresAt, "observedAt": time.Now().UnixMilli()})
+}
+
+func (c *client) sourceSinkFor(source *nativeTrustedSource) (trustedSourceSink, error) {
+	if source.owner != nil && source.owner.sourceProgram != nil {
+		o := source.owner.sourceProgram
+		if !o.attached.Load() || !o.permitted() {
+			return nil, errors.New("source program sink unavailable")
+		}
+		p := o.generation.Load()
+		if p == nil {
+			return nil, errors.New("source program generation unavailable")
+		}
+		sink, err := p.AddSource(source.lease, source.receiver)
+		if err != nil {
+			return nil, err
+		}
+		return sink, nil
+	}
+	if c.trustedSourceSinkFactory != nil {
+		return c.trustedSourceSinkFactory(source.lease, source.receiver)
+	}
+	return nil, errors.New("source sink unavailable")
 }

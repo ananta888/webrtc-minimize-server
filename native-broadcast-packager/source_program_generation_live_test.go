@@ -13,6 +13,14 @@ import (
 // Real codecs and wall-clock scheduling, synthetic already-decrypted inputs and
 // sender reports. This does not claim RTP/SFrame or production assignment wiring.
 func TestLiveTrustedSourceProgramGeneration(t *testing.T) {
+	runLiveTrustedSourceProgram(t, false)
+}
+
+func TestLiveTrustedSourceAssignmentProgram(t *testing.T) {
+	runLiveTrustedSourceProgram(t, true)
+}
+
+func runLiveTrustedSourceProgram(t *testing.T, owned bool) {
 	if os.Getenv("RUN_LIVE_TRUSTED_SOURCE_DECODE") != "1" {
 		t.Skip("set RUN_LIVE_TRUSTED_SOURCE_DECODE=1 with local FFmpeg")
 	}
@@ -24,6 +32,26 @@ func TestLiveTrustedSourceProgramGeneration(t *testing.T) {
 	blue := sourceVideoMixFixtureFrames(t, ffmpeg, "blue", "blue")[0]
 	audio := sourceOpusToneFixture(t, ffmpeg, "20", 350, 700)
 	c, lease, now := trustedSourceFixture(t)
+	cfg := generationTestConfig(t, lease)
+	var p *sourceProgramGeneration
+	if owned {
+		var request sourceProgramAssignment
+		c, request, cfg, lease = sourceOwnerFixture(t)
+		c.cfg.ffmpegPath = ffmpeg
+		if err = c.prepareSourceProgramAssignment(sourceAssignmentBytes(t, request), time.Now(), cfg, nil); err != nil {
+			t.Fatal(err)
+		}
+		p = c.assignment.sourceProgram.generation.Load()
+		cfg = p.cfg
+		now = time.Now()
+	} else {
+		cfg.encoder.ffmpegPath = ffmpeg
+		p, err = newSourceProgramGeneration(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { p.Close(); awaitSource(t, p.finished) })
 	leases := []trustedsframe.SourceLease{lease, lease}
 	leases[1].SourceLeaseID, leases[1].Consent.ConsentID, leases[1].Consent.SourceID = "sls_bbbbbbbbbbbbbbbb", "cns_bbbbbbbbbbbbbbbb", "src_bbbbbbbbbbbbbbbb"
 	leases[1].PublicationID, leases[1].Codec, leases[1].Consent.SourceKind = "audio-source", "audio/opus", "microphone"
@@ -34,16 +62,17 @@ func TestLiveTrustedSourceProgramGeneration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cfg := generationTestConfig(t, lease)
-	cfg.encoder.ffmpegPath = ffmpeg
-	p, err := newSourceProgramGeneration(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { p.Close(); awaitSource(t, p.finished) })
 	var sources [2]*sourceGenerationSource
 	for i := range sources {
-		sources[i], err = p.AddSource(leases[i], receivers[i])
+		if owned {
+			var sink trustedSourceSink
+			sink, err = c.sourceSinkFor(c.trustedSources[leases[i].SourceLeaseID])
+			if err == nil {
+				sources[i] = sink.(*sourceGenerationSource)
+			}
+		} else {
+			sources[i], err = p.AddSource(leases[i], receivers[i])
+		}
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,6 +89,12 @@ func TestLiveTrustedSourceProgramGeneration(t *testing.T) {
 	}
 	start := time.Now()
 	for frame := 0; frame < 350; frame++ {
+		if owned && frame > 0 && frame%100 == 0 {
+			a := p.cfg.scope
+			if err = c.renewAssignment(serverMessage{AssignmentID: a.assignmentID, ProgramEpoch: int(a.programEpoch), FencingRevision: int(a.fencingRevision), ExpiresAt: time.Now().Add(time.Minute).UnixMilli()}, time.Now()); err != nil {
+				t.Fatal("writer renewal", err)
+			}
+		}
 		if frame > 0 && frame%50 == 0 {
 			for i := range leases {
 				leases[i].Revision++

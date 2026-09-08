@@ -2,7 +2,7 @@
 
 `assignment-prepare.v4.schema.json` ist ein neuer geschlossener Vertrag für die
 vorbereitete Mehrquellen-Pipeline. Er ist **noch nicht im produktiven Dispatcher
-aktiviert**. Ein eigener nativer Parser und eine Scope-Projektion existieren;
+aktiviert**. Nativer Parser, Scope-Projektion und interner Auftragsowner existieren;
 der Server emittiert weiterhin v1/v2/v3 und Agent-Version 0.8.0 bleibt unverändert.
 Das Schema oder sein erfolgreiches Parsen erlaubt weder Teilnahme noch Decrypt.
 
@@ -84,12 +84,57 @@ Tests/Planung; der neue Same-Persona-Isolationstest bestand separat in Chromium
 und Firefox gegen denselben isolierten Build. Der lokale Serving-Build blieb
 unverändert. Das ist weder eine v4-Runtimefreischaltung noch Produktionsabnahme.
 
-Der nächste Runtimeadapter muss die Programm-Generation außerhalb der Registry-
-Locks erstellen, sie exklusiv an das aktuelle Assignment hängen und Stop,
-Renewal, lokale Room-Freigabe, Disconnect und spätes Konstruktorende fencen.
-Insbesondere darf Quellenzulassung im ausdrücklich zugewiesenen v4-Startpfad
-nicht schon eine laufende Medienausgabe verlangen: Quellen sind erst nötig,
-um diese Ausgabe überhaupt zu erzeugen. Diese Ausnahme darf den Legacy-Pfad
-nicht erweitern. Ein HLS-Slate allein darf nicht als Empfang einer freigegebenen
-Quelle gemeldet werden. Generationswechsel/Discontinuity, öffentlicher
-Approve-/Renew-Pfad und gemeinsame SFrame-/Mehrpublisherabnahme bleiben notwendig.
+## Interner Auftragsowner
+
+`prepareSourceProgramAssignment` reserviert eine konkrete lokale Assignment-
+Instanz und baut ihre echte Programm-Generation außerhalb der Registry-Locks.
+Ausführbare Datei, Ausgabepfad und Allokationsbudgets stammen ausschließlich
+aus lokaler Konfiguration, nicht aus dem Auftrag. Encoder, Renditionzahl und
+Ausgabepixelrate werden zusätzlich gegen die lokale Capability geprüft.
+Ein 20-ms-Policy-Watchdog gilt bereits während der Konstruktion. Stop, Ablauf,
+Disconnect, fehlender Raumconsent und verspätete Konstruktor-Ergebnisse können
+die Generation nicht wiederbeleben. Kurzzeitiger Raumconsentverlust setzt beim
+Sync sofort eine terminale Fence, auch wenn derselbe Raum danach wiederkommt.
+
+Quellen werden dem **Auftragsobjekt**, nicht allein seiner Wire-ID zugeordnet.
+Der Regressionstest hat zunächst nachgewiesen, dass die alte globale Bereinigung
+eine schon vorbereitete Nachfolgerquelle beendet. Auftragsbezogenes Cleanup
+entfernt jetzt nur eigene Quellen; deren Consent-Tombstones bleiben erhalten.
+Stop quittiert erst nach Konstruktor-/Decoder-/Encoder-Reaping und nach einer
+eventuell bereits laufenden Ready-Antwort. Keine Registry-Sperre wird dabei
+über Codec-Warten oder Status-I/O gehalten. Höchstens 512 v4-Assignment-
+Tombstones verhindern erneuten Aufbau gestoppter IDs bis zum letzten erneuerten
+Lease-Ablauf. Dieser instanzlokale Schutz überlebt keinen Prozessneustart.
+
+Nur ein tatsächlich gebauter v4-Owner erlaubt Quellenbootstrap in `ready` oder
+`starting`, mit exakt passendem Tenant und Membership-Epoch. Legacy bleibt auf
+`running`/`degraded` beschränkt. Quellen-Sinks gehen direkt an die zugeordnete
+Generation; eine explizit leere v4-ICE-Liste erbt keine lokalen STUN-Defaults.
+Writer-Renewal hält dieselbe Generation, verkürzt keinen Lease und hebt keinen
+Widerruf auf. Zusätzlich zur absoluten Ablaufzeit gilt eine monotone lokale
+Deadline; identische Renewals setzen sie nicht zurück, ein abgelaufener Owner
+kann auch bei noch zukünftiger Wanduhr-Ablaufzeit nicht verlängert werden.
+`ready` meldet nur die lokale Generation: Slate ist kein Beweis
+für zugestimmte, empfangene oder decodierte Quellen.
+
+Die gezielte Race-/Lifecycle-Matrix bestand dreimal plus Go-Vet. Der neue echte
+Assignment-zu-HLS-Test bestand auf FFmpeg 6.1.1 in 7,63 s: getrennte VP8-/Opus-
+Receiver im vorbereiteten Auftrag, beide bewegten Renditions, decodiertes
+700-Hz-Audio, sechs Quellen- und drei Writer-Renewals sowie terminaler
+Widerruf mit vollständigem Reaping. Eingaben und Senderreports sind synthetisch
+und bereits entschlüsselt; dies behauptet keine RTP-/SFrame-Gesamtabnahme.
+
+Der abschließende isolierte `npm run check` einschließlich monotoner Frist und
+Renewal-Replaytest bestand mit Exit 0: 757 Frontendtests, 794 Node-Erfolge,
+null Fehler, zwei explizite Node-Skips (353,280 s). Build, Go-Unit/Vet und
+statische Gates bestanden; 14 externe Infrastruktur-Gates und der optionale
+Image-Scan blieben sichtbar übersprungen. Die Runtime-/Testdateien wurden
+bytegenau mit dem geprüften Snapshot verglichen. Der lokale Serving-Build
+blieb unverändert. Das separate Deployment `b72c779` enthält den Parser,
+aber noch nicht diesen Owner.
+
+Noch erforderlich: produktiver Budget-/Capability-Adapter und v4-Control-
+Dispatcher/Emitter, idempotente Prepare-Wiederholungen, Generationswechsel mit
+Discontinuity, öffentlicher Approve-/Renew-Pfad sowie gemeinsame SFrame-/
+Mehrpublisherabnahme. Der interne Owner allein schaltet keine Nutzerfreigabe,
+Maschinenaufnahme oder neue Agent-Version frei.

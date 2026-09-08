@@ -12,6 +12,7 @@ import (
 )
 
 type nativeTrustedSource struct {
+	owner     *packagerAssignment
 	receiver  *trustedsframe.SourceReceiver
 	consentID string
 	lease     trustedsframe.SourceLease
@@ -49,7 +50,24 @@ func (c *client) trustedSourceAllowed(lease trustedsframe.SourceLease, expected 
 	c.assignmentMu.Lock()
 	defer c.assignmentMu.Unlock()
 	a := c.assignment
-	return a != nil && a == expected && oneOf(a.State, "running", "degraded") && a.expiresAt.Load() > now && a.expiresAt.Load() >= lease.ExpiresAt &&
+	if a == nil || a != expected {
+		return false
+	}
+	stateAllowed := oneOf(a.State, "running", "degraded")
+	if o := a.sourceProgram; o != nil {
+		select {
+		case <-o.done:
+			return false
+		default:
+		}
+		context := o.request.SourceContext
+		deadline := o.deadline.Load()
+		if !o.attached.Load() || deadline == nil || !time.Now().Before(*deadline) || context.TenantID != lease.Consent.TenantID || context.RoomEpoch != lease.Consent.RoomEpoch {
+			return false
+		}
+		stateAllowed = oneOf(a.State, "ready", "starting", "running", "degraded")
+	}
+	return stateAllowed && a.expiresAt.Load() > now && a.expiresAt.Load() >= lease.ExpiresAt &&
 		a.AssignmentID == lease.AssignmentID && a.RoomID == lease.Consent.RoomID && a.ProgramID == lease.Consent.ProgramID && int64(a.ProgramEpoch) == lease.Consent.ProgramEpoch &&
 		a.LeaseID == lease.WriterLeaseID && int64(a.FencingRevision) == lease.FencingRevision
 }
@@ -99,7 +117,7 @@ func (c *client) prepareTrustedSource(raw []byte, now time.Time) (*trustedsframe
 	if c.trustedSourceHistory == nil {
 		c.trustedSourceHistory = make(map[string]int64)
 	}
-	c.trustedSources[lease.SourceLeaseID] = &nativeTrustedSource{receiver: receiver, consentID: lease.Consent.ConsentID, lease: lease}
+	c.trustedSources[lease.SourceLeaseID] = &nativeTrustedSource{owner: expected, receiver: receiver, consentID: lease.Consent.ConsentID, lease: lease}
 	c.trustedSourceHistory[lease.Consent.ConsentID] = lease.Consent.ExpiresAt
 	return receiver, nil
 }
@@ -189,4 +207,25 @@ func (c *client) closeTrustedSources() {
 		source.destroy()
 	}
 	// Retain bounded consent tombstones through their original expiration.
+}
+
+func (c *client) closeAssignmentTrustedSources(assignment *packagerAssignment) {
+	if assignment == nil {
+		return
+	}
+	// A successor can be admitted between detaching the old assignment and
+	// acquiring sourcesMu. Wire IDs are not an ownership fence for that race.
+	c.sourcesMu.Lock()
+	var owned []*nativeTrustedSource
+	for id, source := range c.trustedSources {
+		if source.owner == assignment {
+			owned = append(owned, source)
+			delete(c.trustedSources, id)
+		}
+	}
+	c.sourcesMu.Unlock()
+	for _, source := range owned {
+		source.destroy()
+	}
+	// Consent tombstones remain until their original expiry, just as on shutdown.
 }

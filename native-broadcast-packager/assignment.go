@@ -59,6 +59,7 @@ type packagerAssignment struct {
 	expiresAt       atomic.Int64
 	State           string
 	Media           *nativeMediaSession
+	sourceProgram   *sourceAssignmentOwner // Immutable once the assignment is reserved.
 }
 
 func validAssignmentPrepare(message serverMessage, now time.Time) bool {
@@ -278,6 +279,26 @@ func (c *client) renewAssignment(message serverMessage, now time.Time) error {
 		assignment.expiresAt.Load() <= now.UnixMilli() {
 		return errors.New("stale assignment renewal")
 	}
+	if o := assignment.sourceProgram; o != nil {
+		select {
+		case <-o.done:
+			return errors.New("revoked source assignment renewal")
+		default:
+		}
+		if !c.sessionAuthenticated.Load() || !oneOf(assignment.State, "ready", "starting", "running", "degraded") || message.ExpiresAt < assignment.expiresAt.Load() {
+			return errors.New("invalid source assignment renewal")
+		}
+		at, previousDeadline := time.Now(), o.deadline.Load()
+		if previousDeadline == nil || !at.Before(*previousDeadline) || message.ExpiresAt <= at.UnixMilli() || message.ExpiresAt > at.Add(2*time.Minute).UnixMilli() {
+			return errors.New("expired source assignment renewal")
+		}
+		if message.ExpiresAt == assignment.expiresAt.Load() {
+			return nil
+		} // Replay cannot reset the monotonic deadline.
+		deadline := at.Add(time.Duration(message.ExpiresAt-at.UnixMilli()) * time.Millisecond)
+		o.deadline.Store(&deadline)
+		c.sourceAssignmentHistory[assignment.AssignmentID] = message.ExpiresAt
+	}
 	assignment.expiresAt.Store(message.ExpiresAt)
 	return nil
 }
@@ -325,10 +346,7 @@ func (c *client) stopAssignment(message serverMessage) error {
 	c.assignment = nil
 	c.thermalState = false
 	c.assignmentMu.Unlock()
-	c.closeTrustedSources()
-	if assignment.Media != nil {
-		assignment.Media.close()
-	}
+	c.closeAssignmentResources(assignment)
 	return c.send(c.assignmentStatus(assignment, "stopped", "STOP_COMPLETE"))
 }
 
@@ -343,10 +361,7 @@ func (c *client) expireAssignment(now time.Time) error {
 	c.thermalState = false
 	assignment.State = "failed"
 	c.assignmentMu.Unlock()
-	c.closeTrustedSources()
-	if assignment.Media != nil {
-		assignment.Media.close()
-	}
+	c.closeAssignmentResources(assignment)
 	return c.send(c.assignmentStatus(assignment, "failed", "LEASE_EXPIRED"))
 }
 
@@ -377,10 +392,7 @@ func (c *client) reconcileLocalHealth(health string) error {
 		c.thermalState = false
 		assignment.State = "failed"
 		c.assignmentMu.Unlock()
-		c.closeTrustedSources()
-		if assignment.Media != nil {
-			assignment.Media.close()
-		}
+		c.closeAssignmentResources(assignment)
 		return c.send(c.assignmentStatus(assignment, "failed", "THERMAL_LIMIT"))
 	}
 	if health == "degraded" && assignment.State == "running" && !c.thermalState {
