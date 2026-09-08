@@ -666,6 +666,50 @@ Die Produktionsfactory bleibt aus: gemeinsamer A/V-Clock-/RTCP-Abgleich,
 Gesamtdecoderzulassung, Programmtaktung, Encoder-/Writer-Anschluss und die
 öffentliche Quellenannahme/Renewal sind noch nicht vollständig verbunden.
 
+Verifiziert auf `0407259`: isolierter `npm run check` terminal Exit 0,
+665 Frontendtests, 725 Node-PASS, zwei ausdrücklich ausgewiesene Node-Skips
+und null Fehler (230,215 s Node). Build, Go-unit/vet und statische Gates sind
+grün. Beide tatsächlichen Chromium-/Firefox-SFrame-zu-Decoder-Pfade bestanden
+erneut; der zusätzliche Zwei-Decoder-Compositor-Gate bestand in 0,487 s.
+Die Source-Regressionen einschließlich Audio-/Video-Decodern und beiden
+Mischstufen bestanden separat unter dem Race-Detector; die dabei nicht vom
+Browser-Steuerprozess gestartete Browserfixture blieb ausdrücklich SKIP.
+Die abschließend ergänzte konkurrierende Szenen-CAS-Prüfung bestand zehn
+Wiederholungen unter Race sowie Go-vet. Im ersten Unit-Lauf hatte die
+Freshness-Fixture ein noch nicht abgelaufenes Bild fälschlich als stale
+erwartet; nur ihre Testzeit wurde vor den erfolgreichen Läufen korrigiert.
+Die externen Infrastruktur-Gates blieben lokal sichtbare Skips. Arbeitskopie
+des Gesamtchecks sauber, ausgeliefertes lokales Frontend unverändert und keine
+Testcontainer übrig. Die vorherige Audiomixer-CI `34219665007` für `76ab051`
+ist separat terminal erfolgreich; sie ist kein CI-Nachweis für `0407259`.
+
+### Nächster Anschluss: reale Quellclocks
+
+Quellprüfung auf `0407259`: `source_transport.go` verwirft den `RTPReceiver`
+im OnTrack-Callback und liest bisher ausschließlich RTP. Der fehlende RTCP-Port
+ist daher kein bloßer Konfigurationsschalter. Pion 4.2.18 bietet hierfür
+`RTPReceiver.Read`, `ReadRTCP` und `SetReadDeadline`; ein Adapter kann den
+Lesepuffer und die Wartezeit explizit begrenzen.
+[Pion-Quellcode](https://raw.githubusercontent.com/pion/webrtc/v4.2.18/rtpreceiver.go)
+
+RTP-Zeitwerte verschiedener Quellen haben unabhängige Offsets und gegebenenfalls
+unterschiedliche Raten. Sender Reports ordnen sie einer Referenzzeit zu;
+diese Referenz kann auch relativ oder unbekannt sein. Eine gemeinsame
+synchronisierte Uhr über verschiedene Rechner darf nicht vorausgesetzt werden.
+[RFC 3550, 5.1 und 6.4.1](https://datatracker.ietf.org/doc/html/rfc3550#section-6.4.1)
+
+Daraus folgt für den **noch nicht implementierten** Anschluss: Report-Annahme
+an genau die bereits authentisierte PeerConnection, deren Track-SSRC und
+Quellengeneration binden; keine Publisher-Identität aus RTCP ableiten.
+Referenzzeit je tatsächlich zugeordnetem Publisher zusammenführen und ihre
+Verwendbarkeit über dessen getrennte Kamera-/Audio-PeerConnections real prüfen.
+Nullzeit, Replay, Sprünge, Drift, fehlende/alte Reports und Stop benötigen
+begrenzte Zustände und Negativtests. Vor Clock-Bereitschaft darf ein späterer
+Lazy-Sink nur begrenzt warten beziehungsweise Frames verwerfen, nicht schon
+den Mixer mit erfundener Zeit starten. Benötigte Keyframes müssen kontrolliert
+angefordert werden. Clock-Abgleich und Audio-Resampling bleiben getrennte
+Bausteine; das Mapping darf Samples nicht überlappend in den PCM-Mixer schreiben.
+
 ### Prepare, Renewal und Stop
 
 Der additive [Control-Vertrag](../contracts/trusted-decrypt/source-control.v1.schema.json)
