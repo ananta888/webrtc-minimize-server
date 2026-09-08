@@ -16,9 +16,16 @@ type sourceDecodeBudget struct {
 }
 
 type sourceDecodeReservation struct {
-	owner *sourceDecodeBudget
-	bytes int64
-	once  sync.Once
+	owner    *sourceDecodeBudget
+	bytes    int64
+	mu       sync.Mutex
+	released bool
+	charge   *sourceDecodeCharge
+}
+
+type sourceDecodeCharge struct {
+	mu   sync.Mutex
+	refs int
 }
 
 func newSourceDecodeBudget(processes int, bytes int64) (*sourceDecodeBudget, error) {
@@ -39,7 +46,7 @@ func (b *sourceDecodeBudget) reserve(bytes int64) (*sourceDecodeReservation, err
 	}
 	b.processes++
 	b.bytes += bytes
-	return &sourceDecodeReservation{owner: b, bytes: bytes}, nil
+	return &sourceDecodeReservation{owner: b, bytes: bytes, charge: &sourceDecodeCharge{refs: 1}}, nil
 }
 
 func (b *sourceDecodeBudget) allowed() bool {
@@ -65,13 +72,39 @@ func (r *sourceDecodeReservation) release() {
 	if r == nil {
 		return
 	}
-	r.once.Do(func() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.released {
+		return
+	}
+	r.released = true
+	r.charge.mu.Lock()
+	defer r.charge.mu.Unlock()
+	r.charge.refs--
+	if r.charge.refs == 0 {
 		b := r.owner
 		b.mu.Lock()
 		defer b.mu.Unlock()
 		b.processes--
 		b.bytes -= r.bytes
-	})
+	}
+}
+
+// Startup and its codec share one fixed charge until BOTH warmup erasure and
+// process reaping. No second process or additional media quota is authorized.
+func (r *sourceDecodeReservation) retain() *sourceDecodeReservation {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.released {
+		return nil
+	}
+	r.charge.mu.Lock()
+	defer r.charge.mu.Unlock()
+	if r.charge.refs >= 2 {
+		return nil
+	}
+	r.charge.refs++
+	return &sourceDecodeReservation{owner: r.owner, bytes: r.bytes, charge: r.charge}
 }
 
 // Video: two queued and one writing encoded frame plus the borrowed RGBA

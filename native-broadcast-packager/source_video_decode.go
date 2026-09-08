@@ -59,8 +59,25 @@ func sourceVideoDecodeArguments(width, height int) []string {
 }
 
 func newSourceVideoDecoder(cfg sourceVideoDecodeConfig, sink sourceVideoOutput) (*sourceVideoDecoder, error) {
-	if cfg.ffmpegPath == "" || cfg.width < 2 || cfg.width > 1920 || cfg.height < 2 || cfg.height > 1080 ||
-		cfg.width%2 != 0 || cfg.height%2 != 0 || cfg.authorized == nil || cfg.revoked == nil || cfg.budget == nil || sink == nil {
+	p, err := prepareSourceVideoDecoder(cfg, sink)
+	if err != nil {
+		return nil, err
+	}
+	defer p.Close()
+	d, err := p.Run()
+	if err != nil {
+		return nil, err
+	}
+	return d.sink.(*sourceVideoDecoder), nil
+}
+
+func validSourceVideoDecodeConfig(cfg sourceVideoDecodeConfig, sink sourceVideoOutput) bool {
+	return cfg.ffmpegPath != "" && cfg.width >= 2 && cfg.width <= 1920 && cfg.height >= 2 && cfg.height <= 1080 &&
+		cfg.width%2 == 0 && cfg.height%2 == 0 && cfg.authorized != nil && cfg.revoked != nil && cfg.budget != nil && sink != nil
+}
+
+func prepareSourceVideoDecoder(cfg sourceVideoDecodeConfig, sink sourceVideoOutput) (*sourcePendingDecoder, error) {
+	if !validSourceVideoDecodeConfig(cfg, sink) {
 		return nil, errors.New("source video decoder config")
 	}
 	select {
@@ -71,13 +88,25 @@ func newSourceVideoDecoder(cfg sourceVideoDecodeConfig, sink sourceVideoOutput) 
 	if !cfg.authorized() {
 		return nil, errors.New("source video decoder denied")
 	}
-	reservation, err := cfg.budget.reserve(sourceVideoDecodeBytes(cfg.width, cfg.height))
-	if err != nil {
-		return nil, err
-	}
+	return newSourcePendingDecoder(cfg.budget, sourceVideoDecodeBytes(cfg.width, cfg.height), func() bool {
+		select {
+		case <-cfg.revoked:
+			return false
+		default:
+			return cfg.authorized()
+		}
+	}, func(r *sourceDecodeReservation) (sourceDecoderHandle, error) {
+		d, err := startSourceVideoDecoder(cfg, sink, r)
+		if err != nil {
+			return sourceDecoderHandle{}, err
+		}
+		return sourceDecoderHandle{sink: d, finished: d.finished}, nil
+	})
+}
+
+func startSourceVideoDecoder(cfg sourceVideoDecodeConfig, sink sourceVideoOutput, reservation *sourceDecodeReservation) (*sourceVideoDecoder, error) {
 	process, err := startSourceDecodeProcess(cfg.ffmpegPath, sourceVideoDecodeArguments(cfg.width, cfg.height))
 	if err != nil {
-		reservation.release()
 		return nil, err
 	}
 	d := &sourceVideoDecoder{sourceDecodeProcess: process, cfg: cfg, sink: sink,

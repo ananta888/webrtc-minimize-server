@@ -56,6 +56,13 @@ noch verbunden. Die neue Pflicht im Konstruktor verhindert einen vergessenen
 Budget-Handle; sie beweist noch keinen vollständig implementierten
 Produktions-Owner oder durchgehenden Broadcast-Lifecycle.
 
+Der anschließende interne
+[Lazy-/Feedback-Anschluss](native-source-lazy-decoder.md) verbindet nun den
+Clock-gesteuerten Start mit den echten Browserfixtures. Sein Pending-Start und
+der Prozess teilen denselben Budgetposten bis zum Ende beider Lebensdauern;
+auch ein früh gestorbener Decoder gibt noch gehaltenen Warmup nicht frei.
+Der produktive Client-/Programm-Owner bleibt weiterhin zu verbinden.
+
 ## Verifikation
 
 Deterministische Tests prüfen Konfiguration, beide unabhängigen Quoten,

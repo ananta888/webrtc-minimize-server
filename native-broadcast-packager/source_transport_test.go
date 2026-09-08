@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ananta/webrtc-minimize-server/native-broadcast-packager/internal/trustedsframe"
+	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 )
@@ -171,7 +172,7 @@ func TestTrustedSourceRealKeyChannelAndRTP(t *testing.T) {
 				t.Fatal(err)
 			}
 			c.api = api
-			sink := &sourceTestSink{frames: make(chan []byte, 8)}
+			sink := &sourceFeedbackFixture{sourceTestSink: &sourceTestSink{frames: make(chan []byte, 8)}, bound: make(chan func() bool, 1)}
 			c.trustedSourceSinkFactory = func(trustedsframe.SourceLease, *trustedsframe.SourceReceiver) (trustedSourceSink, error) {
 				return sink, nil
 			}
@@ -204,10 +205,20 @@ func TestTrustedSourceRealKeyChannelAndRTP(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			feedback := make(chan uint32, 8)
 			go func() {
 				for {
-					if _, _, err := sender.ReadRTCP(); err != nil {
+					packets, _, err := sender.ReadRTCP()
+					if err != nil {
 						return
+					}
+					for _, packet := range packets {
+						if pli, ok := packet.(*rtcp.PictureLossIndication); ok {
+							select {
+							case feedback <- pli.MediaSSRC:
+							default:
+							}
+						}
 					}
 				}
 			}()
@@ -319,6 +330,27 @@ func TestTrustedSourceRealKeyChannelAndRTP(t *testing.T) {
 					t.Fatal("authenticated RTP frame mismatch")
 				}
 			}
+			var request func() bool
+			if codec == "video/vp8" {
+				request = awaitSource(t, sink.bound)
+				if !request() {
+					t.Fatal("bound feedback request rejected")
+				}
+				for i := 0; i < 100; i++ {
+					if request() {
+						t.Fatal("feedback flood accepted")
+					}
+				}
+				if awaitSource(t, feedback) != uint32(sender.GetParameters().Encodings[0].SSRC) {
+					t.Fatal("feedback targeted foreign SSRC")
+				}
+			} else {
+				select {
+				case <-sink.bound:
+					t.Fatal("audio exposed video feedback")
+				default:
+				}
+			}
 			select {
 			case err := <-controlErrors:
 				t.Fatal(err)
@@ -329,6 +361,9 @@ func TestTrustedSourceRealKeyChannelAndRTP(t *testing.T) {
 			c.sourcesMu.Unlock()
 			c.closeTrustedSources()
 			awaitSource(t, transport.done)
+			if request != nil && request() {
+				t.Fatal("stale source feedback capability survived")
+			}
 			if sink.closed.Load() != 1 || receiver.AliveNow() || c.assignment.State != "running" {
 				t.Fatal("source cleanup disturbed parent or retained media")
 			}

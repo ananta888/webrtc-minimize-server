@@ -125,6 +125,30 @@ func TestSourceDecodeBudgetConcurrentReservations(t *testing.T) {
 	}
 }
 
+func TestSourceDecodeBudgetStartupAndReaperHolds(t *testing.T) {
+	b := sourceDecodeTestBudget(t)
+	r, err := b.reserve(1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := r.retain()
+	if child == nil || r.retain() != nil || child.retain() != nil {
+		t.Fatal("unbounded charge sharing")
+	}
+	child.release()
+	child.release()
+	if b.processes != 1 || b.bytes != 1024 {
+		t.Fatal("early process exit dropped warmup charge")
+	}
+	if child.retain() != nil {
+		t.Fatal("released handle revived")
+	}
+	r.release()
+	if b.processes != 0 || b.bytes != 0 {
+		t.Fatal("shared charge leak")
+	}
+}
+
 func TestSourceDecodeBudgetConstructorFailuresRelease(t *testing.T) {
 	b := sourceDecodeTestBudget(t)
 	for i := 0; i < 5; i++ {

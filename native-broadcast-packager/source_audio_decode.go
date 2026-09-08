@@ -74,7 +74,24 @@ func sourceAudioDecodeArguments() []string {
 }
 
 func newSourceAudioDecoder(cfg sourceAudioDecodeConfig, sink sourceAudioOutput) (*sourceAudioDecoder, error) {
-	if cfg.ffmpegPath == "" || cfg.authorized == nil || cfg.revoked == nil || cfg.budget == nil || sink == nil {
+	p, err := prepareSourceAudioDecoder(cfg, sink)
+	if err != nil {
+		return nil, err
+	}
+	defer p.Close()
+	d, err := p.Run()
+	if err != nil {
+		return nil, err
+	}
+	return d.sink.(*sourceAudioDecoder), nil
+}
+
+func validSourceAudioDecodeConfig(cfg sourceAudioDecodeConfig, sink sourceAudioOutput) bool {
+	return cfg.ffmpegPath != "" && cfg.authorized != nil && cfg.revoked != nil && cfg.budget != nil && sink != nil
+}
+
+func prepareSourceAudioDecoder(cfg sourceAudioDecodeConfig, sink sourceAudioOutput) (*sourcePendingDecoder, error) {
+	if !validSourceAudioDecodeConfig(cfg, sink) {
 		return nil, errors.New("source audio decoder config")
 	}
 	select {
@@ -85,16 +102,23 @@ func newSourceAudioDecoder(cfg sourceAudioDecodeConfig, sink sourceAudioOutput) 
 	if !cfg.authorized() {
 		return nil, errors.New("source audio decoder denied")
 	}
-	reservation, err := cfg.budget.reserve(sourceAudioDecodeBytes)
-	if err != nil {
-		return nil, err
-	}
-	started := false
-	defer func() {
-		if !started {
-			reservation.release()
+	return newSourcePendingDecoder(cfg.budget, sourceAudioDecodeBytes, func() bool {
+		select {
+		case <-cfg.revoked:
+			return false
+		default:
+			return cfg.authorized()
 		}
-	}()
+	}, func(r *sourceDecodeReservation) (sourceDecoderHandle, error) {
+		d, err := startSourceAudioDecoder(cfg, sink, r)
+		if err != nil {
+			return sourceDecoderHandle{}, err
+		}
+		return sourceDecoderHandle{sink: d, finished: d.finished}, nil
+	})
+}
+
+func startSourceAudioDecoder(cfg sourceAudioDecodeConfig, sink sourceAudioOutput, reservation *sourceDecodeReservation) (*sourceAudioDecoder, error) {
 	pipe := &sourceOggPipe{}
 	mux, err := oggwriter.NewWith(pipe, 48000, 2)
 	if err != nil {
@@ -124,7 +148,6 @@ func newSourceAudioDecoder(cfg sourceAudioDecodeConfig, sink sourceAudioOutput) 
 		reservation.release()
 		close(d.finished)
 	}()
-	started = true
 	return d, nil
 }
 

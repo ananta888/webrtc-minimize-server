@@ -162,6 +162,14 @@ type sourceAVClockSink struct {
 	closed                   atomic.Bool
 }
 
+func (s *sourceAVClockSink) BindSourceKeyframeRequester(request func() bool) error {
+	l, ok := s.decoder.(*sourceLazyDecoder)
+	if !ok {
+		return errors.New("AV fixture missing lazy feedback")
+	}
+	return l.BindSourceKeyframeRequester(request)
+}
+
 func (s *sourceAVClockSink) WriteEncoded(codec string, timestamp uint32, frame []byte) error {
 	if s.closed.Load() {
 		return errors.New("AV fixture closed")
@@ -314,7 +322,7 @@ func TestSourcePublisherAVClockInterop(t *testing.T) {
 		}
 		output := sourceAVDecodedOutput{s}
 		if index == 0 {
-			d, err := newSourceVideoDecoder(sourceVideoDecodeConfig{budget: budget, ffmpegPath: ffmpeg, width: 320, height: 180, authorized: receiver.AliveNow, revoked: receiver.Done()}, output)
+			d, err := newSourceLazyVideoDecoder(sourceVideoDecodeConfig{budget: budget, ffmpegPath: ffmpeg, width: 320, height: 180, authorized: receiver.AliveNow, revoked: receiver.Done()}, s.sourceMediaClock, output)
 			if err != nil {
 				return nil, err
 			}
@@ -325,7 +333,7 @@ func TestSourcePublisherAVClockInterop(t *testing.T) {
 				return nil, err
 			}
 			s.resampler = processor
-			d, err := newSourceAudioDecoder(sourceAudioDecodeConfig{budget: budget, ffmpegPath: ffmpeg, authorized: receiver.AliveNow, revoked: receiver.Done()}, output)
+			d, err := newSourceLazyAudioDecoder(sourceAudioDecodeConfig{budget: budget, ffmpegPath: ffmpeg, authorized: receiver.AliveNow, revoked: receiver.Done()}, s.sourceMediaClock, output)
 			if err != nil {
 				return nil, err
 			}

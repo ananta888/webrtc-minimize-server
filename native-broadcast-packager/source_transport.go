@@ -82,6 +82,10 @@ func newTrustedSourceTransport(c *client, lease trustedsframe.SourceLease, recei
 				return
 			}
 		}
+		if t.startSourceFeedback(uint32(track.SSRC())) != nil {
+			t.closeWithFailure(8)
+			return
+		}
 		t.frameMu.Lock()
 		if t.closed.Load() {
 			t.frameMu.Unlock()
