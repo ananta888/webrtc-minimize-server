@@ -68,3 +68,12 @@ encoded-transform support yields false without changing rights or selecting a
 native/plaintext fallback. This is actual local browser feasibility, not media
 delivery or production identity evidence. Ananta's packaged Worker integration
 is the next gate.
+
+Ananta's fresh complete image `01db5060da48dd832588c84e00e2454b6792020a8236657ed1936f7df33de984`
+then passed both actual Hub/two-packaged-Worker cases against this build in
+105.70 s: independent screens, persona images, overlapping speech and scoped
+revocation/stop, with no application source mounts. The probe slice is integrated.
+A separate selected-voice GPU dialog generated both answers but later stopped
+on stale Hub control state; Ananta tracks correlated latency diagnosis under
+MAP-11/24. This does not invalidate the probe result, nor does the successful
+probe close that runtime problem or any public/native/production gate.
