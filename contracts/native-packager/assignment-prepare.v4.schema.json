@@ -1,0 +1,278 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/assignment-prepare.v4.schema.json",
+  "title": "Trusted source program assignment prepare v4 (not runtime admission)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "type",
+    "assignmentId",
+    "roomId",
+    "programId",
+    "programEpoch",
+    "leaseId",
+    "fencingRevision",
+    "resourceRef",
+    "profile",
+    "iceServers",
+    "expiresAt",
+    "inputMode",
+    "sourceContext"
+  ],
+  "properties": {
+    "version": {
+      "const": 4
+    },
+    "type": {
+      "const": "assignment-prepare"
+    },
+    "assignmentId": {
+      "type": "string",
+      "pattern": "^asn_[A-Za-z0-9_-]{16,64}$"
+    },
+    "roomId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{4,64}$"
+    },
+    "programId": {
+      "type": "string",
+      "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+    },
+    "programEpoch": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "leaseId": {
+      "type": "string",
+      "pattern": "^lea_[A-Za-z0-9_-]{16,64}$"
+    },
+    "fencingRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "resourceRef": {
+      "type": "string",
+      "pattern": "^res_[A-Za-z0-9_-]{16,64}$"
+    },
+    "profile": {
+      "$ref": "#/$defs/profile"
+    },
+    "iceServers": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 24,
+      "items": {
+        "$ref": "#/$defs/iceServer"
+      }
+    },
+    "expiresAt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "inputMode": {
+      "const": "trusted-sframe-v1"
+    },
+    "sourceContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "tenantId",
+        "roomEpoch",
+        "granteeDeviceRef",
+        "frameEnvelope"
+      ],
+      "properties": {
+        "schema": {
+          "const": "ananta.trusted-source-program-context.v1"
+        },
+        "tenantId": {
+          "type": "string",
+          "pattern": "^tn_[A-Za-z0-9_-]{16,64}$"
+        },
+        "roomEpoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "granteeDeviceRef": {
+          "type": "string",
+          "pattern": "^dev_[A-Za-z0-9_-]{16,64}$"
+        },
+        "frameEnvelope": {
+          "const": "codec-prefix-v1"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profileId",
+        "videoEncoder",
+        "softwareFallback",
+        "maximumQueueFrames",
+        "keyframeIntervalSeconds",
+        "renditions"
+      ],
+      "properties": {
+        "profileId": {
+          "const": "h264-aac-720p-v1"
+        },
+        "videoEncoder": {
+          "enum": [
+            "libx264",
+            "h264_nvenc",
+            "h264_videotoolbox"
+          ]
+        },
+        "softwareFallback": {
+          "const": "libx264"
+        },
+        "maximumQueueFrames": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120
+        },
+        "keyframeIntervalSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "renditions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "allOf": [
+            { "contains": { "type": "object", "required": ["id"], "properties": { "id": { "const": "low" } } }, "minContains": 0, "maxContains": 1 },
+            { "contains": { "type": "object", "required": ["id"], "properties": { "id": { "const": "medium" } } }, "minContains": 0, "maxContains": 1 },
+            { "contains": { "type": "object", "required": ["id"], "properties": { "id": { "const": "high" } } }, "minContains": 0, "maxContains": 1 }
+          ],
+          "items": {
+            "$ref": "#/$defs/rendition"
+          }
+        }
+      }
+    },
+    "iceServer": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "urls"
+          ],
+          "properties": {
+            "urls": {
+              "$ref": "#/$defs/urls"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "urls",
+            "username",
+            "credential",
+            "credentialType"
+          ],
+          "properties": {
+            "urls": {
+              "$ref": "#/$defs/turnUrls"
+            },
+            "username": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "credential": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "credentialType": {
+              "const": "password"
+            }
+          }
+        }
+      ]
+    },
+    "urls": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "string",
+        "minLength": 6,
+        "maxLength": 2048,
+        "pattern": "^stuns?:[!-~]+$"
+      }
+    },
+    "turnUrls": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "string",
+        "minLength": 6,
+        "maxLength": 2048,
+        "pattern": "^turns?:[!-~]+$"
+      }
+    },
+    "rendition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "width",
+        "height",
+        "framesPerSecond",
+        "videoBitsPerSecond",
+        "audioBitsPerSecond"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 160,
+          "maximum": 1920,
+          "multipleOf": 2
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 90,
+          "maximum": 1080,
+          "multipleOf": 2
+        },
+        "framesPerSecond": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        },
+        "videoBitsPerSecond": {
+          "type": "integer",
+          "minimum": 100000,
+          "maximum": 10000000
+        },
+        "audioBitsPerSecond": {
+          "type": "integer",
+          "minimum": 16000,
+          "maximum": 320000
+        }
+      }
+    }
+  }
+}

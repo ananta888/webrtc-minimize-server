@@ -1,5 +1,17 @@
 # Native-Packager-Control
 
+`assignment-prepare.v4.schema.json` beschreibt separat den noch nicht aktivierten
+Trusted-Source-Programmauftrag: expliziter Modus, Tenant-/Membership-/Gerätebindung,
+kein Legacy-Einzelpublisher. Native Parser-/Scope-Prüfung und gemeinsame Fixture
+sind vorhanden; bestehender Dispatcher und Versionsauswahl bleiben bis zur
+Runtimeintegration geschlossen. [Vertrag und Anschluss](../../docs/native-source-program-assignment.md)
+benennen die noch fehlenden Autorisierungs- und Lifecycle-Schritte.
+
+`assignment-prepare.v3` transportiert zusätzlich ausdrücklich zugewiesene
+ICE-Server einschließlich kurzlebiger TURN-Credentials. Diese sind Infrastruktur-
+Zugänge, keine OIDC-Tokens oder Decrypt-Schlüssel. Ältere Vertragsbeschreibungen
+ohne ICE beziehen sich auf v1/v2.
+
 `release.v1.schema.json` ist ein davon getrennter, öffentlicher Release-Contract:
 fünf feste Artefakte, Hash/Größe, Revision und technische Buildversionen. Er
 enthält keine Geräte-, Konto-, Raum- oder Updateautorität. Seine unveränderten
