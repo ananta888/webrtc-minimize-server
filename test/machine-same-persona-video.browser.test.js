@@ -52,6 +52,10 @@ for (const humanEngine of ["chromium", "firefox"]) {
       }
       const both = await observe(f.human, peers, "video");
       const before = await second.machine.evaluate(() => window.anantaMachine.avatar.status());
+      await f.machine.evaluate(() => {
+        window.__avatarTestPulse.stop();
+        window.anantaMachine.avatar.close(window.anantaMachine.avatar.status().generation);
+      });
       await f.machine.evaluate(openTestImageAvatar,
         { sourceId: "avatar:" + f.binding.sessionId, image: syntheticAvatarImage([20, 220, 20]) });
       const replacement = await observe(f.human, peers, "image");
