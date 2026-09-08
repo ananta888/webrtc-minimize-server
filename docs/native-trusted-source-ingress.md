@@ -112,6 +112,14 @@ Registries. Die einmalige Source-ID wird serverseitig erzeugt. Das bestehende
 Consent-Domainmodell akzeptiert dazu nun auch den tatsächlichen Programmzustand
 `live`; ein fremder Programmstatus wird nicht auf einen erlaubten Wert umgedeutet.
 
+`approve(identity, input, actor)` verlangt zusätzlich das echte aktuelle
+Publisher-Peer-Objekt aus dem authentisierten Signaling-Callback. Eine aus JSON
+rekonstruierte Kopie, ein zweiter Peer desselben Kontos/Geräteprofils oder nur
+OIDC plus öffentlicher Fingerprint genügt nicht, auch nicht beim Replay.
+Ein späterer Adapter darf diesen Actor niemals durch Nachschlagen der vom
+Aufrufer behaupteten IDs ersetzen; entweder stammt er direkt aus dem verbundenen
+Socket oder es braucht einen separat geprüften frischen Gerätenachweis.
+
 Die Authority wird im Signaling-Server aufgebaut und verwendet dessen echte
 Membership-Epoch—bei fehlendem Topologiezustand gibt es keinen Ersatzwert 1.
 Media-State- und Membership-Wechsel prüfen betroffene Berechtigungen sofort;
@@ -121,7 +129,7 @@ bestätigten Packager-Room-Consent. Stop/Neustart derselben Track-ID, Leave/Rej
 Epochwechsel, Handoff und Rechteverlust widerrufen terminal. Programmänderungen
 werden konservativ auch über die gebundene Program-Revision erkannt.
 
-Ein ausschließlich interner, nicht serialisierbarer Generation-Handle des
+Ein ausschließlich interner, nicht als Wire-Token verwendbarer Generation-Handle des
 Packager-Control-Registrys erkennt auch Rechteverlust mit anschließender
 Wiederfreigabe zwischen zwei Prüfungen. Normale Capability-Erneuerung erhält ihn;
 Reconnect, abgelaufene Capability und Wegfall des jeweiligen Room-Consents nicht.

@@ -71,7 +71,7 @@ function fixture(start = 1800000000000) {
   const grants = new TrustedBroadcastSourceGrants(ports);
   const input = { requestVersion: 1, trigger: "user-action", requestId: request.requestId, roomId: owner.roomId,
     deviceFingerprint: publisher.deviceFingerprint, publicationId: "track-camera", expectedPublicationEpoch: 1, ttlMs: 60000 };
-  const approve = () => { assert.equal(validateApproval(input), true); return grants.approve(identity, input); };
+  const approve = () => { assert.equal(validateApproval(input), true); return grants.approve(identity, input, publisher); };
   const lookup = consent => grants.forPackager(consent.consentId, packagerId, consent.granteeDeviceRef);
   return { now: () => now, advance: ms => { now += ms; }, epoch: () => { epoch++; }, identity, ownerIdentity, rooms, owner,
     publisher, packagers, packagerId, socket, refreshCapability, runtime, programId, requests, invite, ports, grants, input, approve, lookup,
@@ -120,9 +120,9 @@ test("approval input cannot inject authority, omit fields or change its bound pu
     assert.equal(validateApproval(input), false);
   }
   f.approve();
-  assert.throws(() => f.grants.approve(f.identity, { ...f.input, ttlMs: 30000 }), /stale/);
-  assert.throws(() => f.grants.approve(f.identity, { ...f.input, expectedPublicationEpoch: 2 }), /stale/);
-  assert.throws(() => f.grants.approve(f.ownerIdentity, f.input), /unavailable/);
+  assert.throws(() => f.grants.approve(f.identity, { ...f.input, ttlMs: 30000 }, f.publisher), /stale/);
+  assert.throws(() => f.grants.approve(f.identity, { ...f.input, expectedPublicationEpoch: 2 }, f.publisher), /stale/);
+  assert.throws(() => f.grants.approve(f.ownerIdentity, f.input, f.publisher), /connection_required/);
 });
 
 test("uninvited identities, devices, kinds, generations and inactive sources cannot approve", () => {
@@ -144,6 +144,18 @@ test("uninvited identities, devices, kinds, generations and inactive sources can
   }
 });
 
+test("an account and public fingerprint cannot replace the actual bound signaling peer, including on replay", () => {
+  const f = fixture();
+  for (const actor of [undefined, { ...f.publisher }, f.owner, {}]) {
+    assert.throws(() => f.grants.approve(f.identity, f.input, actor), /connection_required/);
+  }
+  f.approve();
+  assert.throws(() => f.grants.approve(f.identity, f.input), /connection_required/);
+  const second = f.rooms.join(f.input.roomId, {}, "Synthetic duplicate", f.now(), { authenticated: true,
+    principal: f.publisher.principal, deviceFingerprint: f.publisher.deviceFingerprint }).peer;
+  assert.throws(() => f.grants.approve(f.identity, f.input, second), /connection_required/);
+});
+
 test("source stop/restart, same-device rejoin, epoch/lease/room consent loss revoke terminally", () => {
   for (const mutate of [
     f => { f.rooms.setMediaState(f.publisher, { source: "camera", active: false }, f.now());
@@ -160,7 +172,7 @@ test("source stop/restart, same-device rejoin, epoch/lease/room consent loss rev
     assert.deepEqual(f.grants.prune(), [c.consentId]); assert.equal(f.lookup(c), null);
     assert.deepEqual(f.grants.prune(), []);
     assert.equal(f.grants.auditEvents().at(-1).eventType, "consent-revoked");
-    assert.throws(() => f.approve(), /stale/);
+    assert.throws(() => f.approve(), /stale|connection_required/);
   }
 });
 
@@ -227,23 +239,23 @@ test("all four distinct publication kinds have separate consent and revocation c
     f.rooms.setMediaState(f.publisher, { source: kind, active: true, trackId: track }, f.now());
     const request = f.invite(kind), publication = f.rooms.publication(f.publisher.id, track, f.input.roomId);
     const consent = f.grants.approve(f.identity, { ...f.input, requestId: request.requestId,
-      publicationId: track, expectedPublicationEpoch: publication.publicationEpoch });
+      publicationId: track, expectedPublicationEpoch: publication.publicationEpoch }, f.publisher);
     assert.equal(validate(consent), true); assert.equal(consent.sourceKind, kind);
   }
   f.grants.revoke(f.identity, f.input.deviceFingerprint, camera.consentId);
   f.requests.execute(f.ownerIdentity, { requestVersion: 1, action: "cancel", trigger: "user-action", roomId: f.input.roomId,
     deviceFingerprint: f.owner.deviceFingerprint, requestId: f.input.requestId });
   const next = f.invite("camera");
-  assert.throws(() => f.grants.approve(f.identity, { ...f.input, requestId: next.requestId }), /quota/);
+  assert.throws(() => f.grants.approve(f.identity, { ...f.input, requestId: next.requestId }, f.publisher), /quota/);
 });
 
 test("publication references and source IDs are server owned; invalid IDs cannot commit a consent", () => {
   const f = fixture();
   const wrongTarget = new TrustedBroadcastSourceGrants({ ...f.ports, packager: (...args) => ({ ...f.ports.packager(...args),
     capability: { ...f.ports.packager(...args).capability, tenantId: "tn_bbbbbbbbbbbbbbbb" } }) });
-  assert.throws(() => wrongTarget.approve(f.identity, f.input), /packager/);
+  assert.throws(() => wrongTarget.approve(f.identity, f.input, f.publisher), /packager/);
   const invalid = new TrustedBroadcastSourceGrants({ ...f.ports, sourceId: () => "not-a-source" });
-  assert.throws(() => invalid.approve(f.identity, f.input), /identifier/);
+  assert.throws(() => invalid.approve(f.identity, f.input, f.publisher), /identifier/);
   assert.equal(invalid.auditEvents().length, 0);
   assert.throws(() => new TrustedBroadcastSourceGrants({ ...f.ports, publication: null }), /ports/);
 });
@@ -288,7 +300,8 @@ test("live signaling lifecycle owns source generations and tears down internal c
     expectedProgramEpoch: control.programEpoch, targetPeerId: joined.peerId, sourceKind: "camera" }) });
   assert.equal(response.status, 201);
   const requestId = (await response.json()).requests[0].requestId;
-  const c = app.trustedBroadcastSources.approve(f.identity, { ...f.input, requestId });
+  const actor = f.rooms.members(f.input.roomId).find(peer => peer.id === joined.peerId);
+  const c = app.trustedBroadcastSources.approve(f.identity, { ...f.input, requestId }, actor);
   assert.equal(c.roomEpoch, 1, "epoch must come from actual signaling topology");
   assert.ok(app.trustedBroadcastSources.forPackager(c.consentId, f.packagerId, c.granteeDeviceRef));
   socket.send(JSON.stringify({ type: "media-state", source: "camera", active: false }));

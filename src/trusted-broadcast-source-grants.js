@@ -47,18 +47,26 @@ export class TrustedBroadcastSourceGrants {
     this.#ports = Object.freeze(ports);
   }
 
-  approve(identity, raw) {
+  approve(identity, raw, actor) {
     const input = normalize(raw), now = this.#now(), principal = oidcPrincipal(identity);
+    // The caller supplies the actual authenticated signaling peer, never a JSON
+    // reconstruction. A public fingerprint plus an account token is not proof
+    // that this request originated at that device's current room connection.
+    if (!actor || !this.#ports.members(input.roomId).includes(actor) || actor.authenticated !== true
+      || actor.machine === true || actor.principal !== principal || actor.deviceFingerprint !== input.deviceFingerprint) {
+      fail("trusted_source_connection_required", 403);
+    }
     this.#prune(now); this.#rate(principal, now);
     const old = this.#byRequest.get(input.requestId);
     if (old) {
       if (old.publisher.principal !== principal) fail("trusted_source_unavailable", 404);
+      if (old.publisher.id !== actor.id) fail("trusted_source_connection_required", 403);
       if (old.input !== JSON.stringify(input)
         || !this.#current(old, now)) fail("stale_trusted_source_approval", 409);
       return old.consent; // Never refresh key, consent or writer lifetime on replay.
     }
     const invite = this.#ports.invitation(identity, input.roomId, input.deviceFingerprint, input.requestId);
-    if (invite.publisher.principal !== principal || invite.publisher.fingerprint !== input.deviceFingerprint
+    if (invite.publisher.id !== actor.id || invite.publisher.principal !== principal || invite.publisher.fingerprint !== input.deviceFingerprint
       || invite.roomId !== input.roomId || invite.expiresAt <= now) fail("trusted_source_invitation_unavailable", 404);
     const record = { ...invite, publisherIdentity: Object.freeze({ issuer: identity.issuer, subject: identity.subject }),
       publicationId: input.publicationId, publicationEpoch: input.expectedPublicationEpoch,
