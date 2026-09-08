@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -39,6 +40,7 @@ func sourceKeyPair(t *testing.T, init *webrtc.DataChannelInit) (*client, *truste
 		}
 	})
 	messages := make(chan map[string]any, 256)
+	var descriptionErrors, candidateErrors atomic.Int32
 	stop := make(chan struct{})
 	t.Cleanup(func() { close(stop) })
 	c.sendOverride = func(value any) error {
@@ -58,13 +60,17 @@ func sourceKeyPair(t *testing.T, init *webrtc.DataChannelInit) (*client, *truste
 					raw, _ := json.Marshal(value)
 					var description webrtc.SessionDescription
 					if json.Unmarshal(raw, &description) == nil {
-						_ = peer.SetRemoteDescription(description)
+						if peer.SetRemoteDescription(description) != nil {
+							descriptionErrors.Add(1)
+						}
 					}
 				}
 				if value, ok := message["candidate"]; ok {
 					raw, _ := json.Marshal(value)
 					if candidate, err := decodeNativeCandidate(raw); err == nil {
-						_ = peer.AddICECandidate(candidate)
+						if peer.AddICECandidate(candidate) != nil {
+							candidateErrors.Add(1)
+						}
 					}
 				}
 			}
@@ -88,6 +94,13 @@ func sourceKeyPair(t *testing.T, init *webrtc.DataChannelInit) (*client, *truste
 	if transport == nil {
 		t.Fatal("source connection was not created")
 	}
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("key-only fixture: channel=%s peer=%s ice=%s remote=%s remoteIce=%s attached=%t closed=%t alive=%t failure=%d descriptionErrors=%d candidateErrors=%d",
+				channel.ReadyState(), peer.ConnectionState(), peer.ICEConnectionState(), transport.pc.ConnectionState(), transport.pc.ICEConnectionState(),
+				transport.channelSet.Load(), transport.closed.Load(), transport.receiver.AliveNow(), transport.failure.Load(), descriptionErrors.Load(), candidateErrors.Load())
+		}
+	})
 	return c, transport, channel, keys, sink
 }
 

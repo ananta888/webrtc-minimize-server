@@ -132,3 +132,16 @@ receiver states and signaling error counters only on fixture failure, then
 isolate and correct the cause without widening the timeout or replaying keys.
 No SDP, candidate addresses, source IDs, keys or error strings may enter the
 diagnostic. This is test observation, not a production transport change.
+
+Failure-only diagnostics reproduced another startup failure in ten runs
+(33.664 s): local ICE remained `checking`, remote ICE was `connected`, both
+connections were still `connecting`, no data channel was attached, receiver
+authority remained alive and no SDP/candidate operation failed. Thus the test
+had not reached key admission; teardown and decoder changes are not its cause.
+The key-only fixture currently discovers every host/Docker interface. Restrict
+only this same-process fixture to real IPv4 loopback UDP candidates, preserving
+the production API's codecs/interceptors, SCTP memory cap and three-second
+deadline. Assert its gathered candidates are loopback; do not change production
+ICE, TURN, browser or media fixtures. Verify repeated actual handshakes and all
+negative channel/sequence cases before another isolated full check. This does
+not claim to repair arbitrary host-network ICE establishment.
