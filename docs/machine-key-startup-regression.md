@@ -85,3 +85,11 @@ then failed during the actual role revocation's shared-cache SQLite write
 crypto-start symptom and did not reach a transform failure report. Root tracks
 that separate fixture issue. No startup fix or complete green cross-repository
 matrix is inferred from this check. Serving assets/trust remain untouched.
+
+Root follow-up `a4b5dde1e` corrected only the test-owned SQLite revocation
+stimulus, with 66 focused regressions including actual held-lock contention.
+The final private real Hub/Worker/Meet matrix passed all four parent,
+organization, role and assignment revocation cases together in 107.41 seconds,
+retaining moving video and two correlated replies. This successful run did not
+trigger the startup diagnostic; the original intermittent screen symptom is
+still open. No additional frontend or production behavior changed.
