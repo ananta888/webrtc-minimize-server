@@ -108,6 +108,7 @@ services:
       NATIVE_PACKAGER_UPLOAD_CLASS: ${NATIVE_PACKAGER_UPLOAD_CLASS:-5-15mbit}
       NATIVE_PACKAGER_MAX_RENDITIONS: ${NATIVE_PACKAGER_MAX_RENDITIONS:-2}
       NATIVE_PACKAGER_MAX_PIXELS_PER_SECOND: ${NATIVE_PACKAGER_MAX_PIXELS_PER_SECOND:-27648000}
+      NATIVE_PACKAGER_SOURCE_BUDGET: ${NATIVE_PACKAGER_SOURCE_BUDGET:-compact-v1}
     volumes:
       - native-packager-state:/var/lib/ananta-native-packager
       - native-broadcast-output:/var/lib/ananta-broadcast-output

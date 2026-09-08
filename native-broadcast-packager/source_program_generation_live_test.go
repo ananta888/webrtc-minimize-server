@@ -39,7 +39,8 @@ func runLiveTrustedSourceProgram(t *testing.T, owned bool) {
 		var request sourceProgramAssignment
 		c, request, cfg, lease = sourceOwnerFixture(t)
 		c.cfg.ffmpegPath = ffmpeg
-		if err = c.prepareSourceProgramAssignment(sourceAssignmentBytes(t, request), time.Now(), cfg, nil); err != nil {
+		c.cfg.sourceBudget = "compact-v1"
+		if err = c.prepareLocalSourceProgramAssignment(sourceAssignmentBytes(t, request), time.Now(), nil); err != nil {
 			t.Fatal(err)
 		}
 		p = c.assignment.sourceProgram.generation.Load()
@@ -101,7 +102,7 @@ func runLiveTrustedSourceProgram(t *testing.T, owned bool) {
 			if frame%200 == 0 {
 				retry.ExpiresAt = c.assignment.expiresAt.Load()
 			}
-			if err = c.prepareSourceProgramAssignment(sourceAssignmentBytes(t, retry), time.Now(), cfg, func(sourceProgramGenerationConfig) (*sourceProgramGeneration, error) {
+			if err = c.prepareLocalSourceProgramAssignment(sourceAssignmentBytes(t, retry), time.Now(), func(sourceProgramGenerationConfig) (*sourceProgramGeneration, error) {
 				return nil, errors.New("retry allocated another encoder")
 			}); err != nil || owner.generation.Load() != p || owner.deadline.Load() != deadline {
 				t.Fatal("live prepare retry changed encoder or deadline", err)

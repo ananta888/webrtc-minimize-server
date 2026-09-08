@@ -176,8 +176,11 @@ geprüften Snapshot; der lokale Serving-Build blieb unverändert. Das separate
 Software-Deployment `219e4ef` enthält den vorherigen Owner, noch nicht diese
 Retry-Erweiterung, und aktiviert weiterhin keine öffentliche v4-Freigabe.
 
-Noch erforderlich: produktiver Budget-/Capability-Adapter und v4-Control-
-Dispatcher/Emitter, Generationswechsel mit
+Der [lokale Budgetadapter](native-source-local-budget.md) leitet nun feste
+Ressourcenprofile aus Prozesskonfiguration ab und verbindet sie mit diesem
+Owner. Er verändert weder Renditions noch Rechte; die öffentliche Capability-
+Ankündigung und der v4-Control-Dispatcher/Emitter bleiben noch erforderlich,
+ebenso Generationswechsel mit
 Discontinuity, öffentlicher Approve-/Renew-Pfad sowie gemeinsame SFrame-/
 Mehrpublisherabnahme. Der interne Owner allein schaltet keine Nutzerfreigabe,
 Maschinenaufnahme oder neue Agent-Version frei.

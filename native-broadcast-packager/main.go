@@ -50,6 +50,7 @@ var ffmpegVersionPattern = regexp.MustCompile(`(?m)^ffmpeg version\s+(?:n)?([0-9
 type config struct {
 	controlURL, packagerID, identityFile, enrollmentToken, ffmpegPath, outputRoot string
 	energyClass, uploadClass                                                      string
+	sourceBudget                                                                  string
 	maximumRenditions, maximumPixelsPerSecond                                     int
 	stunURLs                                                                      []string
 	iceTransportPolicy                                                            webrtc.ICETransportPolicy
@@ -102,11 +103,16 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if err != nil {
 		return config{}, err
 	}
+	sourceBudget := defaultValue(getenv("NATIVE_PACKAGER_SOURCE_BUDGET"), "compact-v1")
+	if _, err := sourceProgramLocalBudget(sourceBudget); err != nil {
+		return config{}, err
+	}
 	return config{
 		controlURL: rawURL, packagerID: id, identityFile: identityFile, enrollmentToken: token,
 		ffmpegPath: defaultValue(getenv("NATIVE_PACKAGER_FFMPEG"), "ffmpeg"), outputRoot: filepath.Clean(outputRoot), energyClass: energy,
 		uploadClass: upload, maximumRenditions: renditions, maximumPixelsPerSecond: pixels, stunURLs: stunURLs,
 		iceTransportPolicy: iceTransportPolicy,
+		sourceBudget:       sourceBudget,
 	}, nil
 }
 

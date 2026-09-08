@@ -61,7 +61,25 @@ unverändert. Commit-/Remote-CI-/Deployment-Evidence ist davon getrennt.
 
 ## Deployment
 
-Aktuell läuft `219e4ef` nach vollständig erfolgreicher CI 34272874017
+Aktuell läuft `76e8866` nach vollständig erfolgreicher CI 34275497102
+(alle sieben Jobs einschließlich Keycloak/TURN). Am 8. September 2026 wurde
+der saubere Mini-PC bei null Räumen/Teilnehmern exakt von `219e4ef` vorgezogen.
+Der Drei-Dienste-Runner samt Native-Preflight und ein unabhängiger externer
+Smoke bestanden mit Exit 0. Alle drei Container tragen exakt `76e8866`,
+RestartCount null; Geräteidentität unverändert und Deploy-Sperre entfernt.
+Der Rücksprungsatz `image-set-v1` / `rollback.VAm8DR` bewahrt `219e4ef`.
+
+Öffentliches Manifest und alle fünf Downloads entsprechen byte-/SHA256-genau
+dem unabhängig attestierten CI-Satz für Repository, Workflow, Main-Commit und
+nicht selbst gehostete Runner. Ausgeliefert ist damit auch der interne
+idempotente Prepare-Retry, noch nicht der nachfolgende lokale Budgetadapter.
+Maschinenaufnahme bleibt `admissionEnabled: false`. Weder Hub-/Projekttrust
+noch öffentliche v4-Quellenannahme wurden aktiviert; keine Änderungen im
+Ananta-Repository. Das ist weiterhin keine produktive Hub-/Workerabnahme.
+
+### Rollout 219e4ef
+
+`219e4ef` lief nach vollständig erfolgreicher CI 34272874017
 (alle sieben Jobs einschließlich Keycloak/TURN). Der saubere Mini-PC wurde
 am 8. September 2026 exakt von `b72c779` vorgezogen, bei null Räumen/Teilnehmern.
 Drei-Dienste-Runner, Native-Preflight und unabhängiger externer Smoke bestanden
