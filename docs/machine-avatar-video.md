@@ -125,3 +125,29 @@ encoder (4.24 s), rolling HLS window (26.03 s) and composed generation (7.72 s),
 including decoded colors/audio, writer stop and resource reaping. These are
 targeted post-merge checks, not a relabeling of either earlier full check.
 The final merged CI and software deployment remain separate gates.
+
+## Same-persona session isolation, 2026-09-08
+
+`machine-same-persona-video.browser.test.js` now publishes the identical
+normalized synthetic MP4 in two independent machine browser contexts, with
+distinct task/runtime/session identities and source handles. Chromium and
+Firefox receivers decode both red/blue phases from both publishers, plus
+independent screens and fresh simultaneous speech. Replacing the first avatar
+with a green image and stopping that source leaves the second generation
+unchanged and advancing; speech/screens remain active. Human capture and
+transform errors remain zero. The standalone pair passed in 9.33 s.
+
+The first test attempt correctly hit `meet_avatar_busy`: the fixture tried to
+open replacement artwork without closing its own active generation. The test
+now follows the production close/open sequence; the source fence is unchanged.
+This is synthetic policy/media with actual private browser transport, not a
+claim that credentials, consent or production evidence were obtained externally.
+
+The complete isolated check at merged source `68db657` passed: **757 frontend
+tests, 788 Node passes, zero failures, two explicit Node skips**, Node phase
+301.35 s. Go, build and static gates passed. Fourteen external infrastructure
+gates and the optional image canary remained explicit skips, not successes.
+This check includes the concurrent read-only chat fix, hold-last browser test
+and native encoder correction. The private build did not replace the serving
+dist or change public trust, keys or source-factory policy. MDS-08 remains open
+for its broader matrix; this closes only its same-clip isolation check.
