@@ -83,3 +83,18 @@ deadline. No IDs, keys, payloads, arbitrary errors or codecs are serialized.
 Three helper tests and actual serialized Chromium/Firefox probes pass
 (two browser tests in 1.763 s). The original active-SFrame and frame-counter
 assertions and their deadlines are unchanged. No cryptographic fix claimed.
+
+Final isolated check at `3441454` passes: 639 frontend tests, 718 Node
+passes/three explicit skips/zero failures (Node 151.736 s), build, Go and
+security gates. External infrastructure gates remain explicit skips.
+The private Ananta/Worker/Meet phase browser passes in 32.99 s with moving
+screen, correlated chats, source pause/resume and terminal Task persistence.
+This green repetition does not fix or erase the earlier sporadic startup
+failure. No deployment or production evidence is claimed.
+
+Next Ananta-side identity integration uses v2's already supported opaque
+subject for an opt-in, Hub-persisted Organization role-assignment principal.
+Meet retains exact subject/tenant/project scope checks and unchanged human
+display naming; it does not independently read Hub Organization rows. Verify
+actual Hub-generated distinct subjects and reject cross-subject renewal or
+observation. This does not complete the multi-agent media/fairness Tasks.

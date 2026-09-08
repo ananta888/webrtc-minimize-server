@@ -50,3 +50,14 @@ byte-bound revision passes 79 file/profile/preflight checks in 0.512 s;
 the stricter actual-cleanliness CLI assertion is also green. Full isolated
 verification follows with the separately tracked startup diagnostic change.
 No production config, private key or trust registry was written.
+
+The isolated `3441454` full check is now green: 639 frontend tests, 718 Node
+passes, three skips, zero failures, build/Go/security gates; Node 151.736 s.
+External infrastructure is still explicitly skipped. The private shared
+Ananta/Worker/Meet phase browser also passes (32.99 s). Earlier sporadic
+SFrame startup failure remains tracked; no cryptographic fix is inferred.
+
+Concurrent upstream native Packager changes were merged at `c987613` after
+that check. Its complete Go unit/vet gate passed separately (Packager
+11.387 s). No Node/frontend files changed in that merge; do not relabel the
+earlier full check as a check of a different revision.
