@@ -122,3 +122,35 @@ func TestHealthDoesNotExposeMedia(t *testing.T) {
 		t.Fatalf("health failed: %d", response.Code)
 	}
 }
+
+func TestOriginRequiresWholeFilenameMatchEvenForExistingFiles(t *testing.T) {
+	value, resource := testOrigin(t)
+	for _, name := range []string{"index.m3u8.pending.m3u8", "low_init.mp4.backup.mp4", "index.mp4.pending.vtt", "prefixcaptions_live.vtt", ".pendingcaptions_live.vtt"} {
+		if err := os.WriteFile(filepath.Join(value.root, resource, name), []byte("synthetic uncommitted artifact"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			response := request(value, method, "/"+resource+"/"+name, "Bearer synthetic-test-token")
+			if response.Code != http.StatusNotFound {
+				t.Errorf("noncanonical existing file accepted: %s %s (%d)", method, name, response.Code)
+			}
+		}
+	}
+	for _, name := range []string{"index.m3u8", "low.m3u8", "medium_init.mp4", "high_segment_123456789012.m4s", "captions_live.vtt"} {
+		if err := os.WriteFile(filepath.Join(value.root, resource, name), []byte("synthetic published artifact"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if response := request(value, http.MethodGet, "/"+resource+"/"+name, "Bearer synthetic-test-token"); response.Code != http.StatusOK {
+			t.Errorf("canonical file rejected: %s (%d)", name, response.Code)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(value.root, resource, ".pending", "low"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(value.root, resource, ".pending", "low", "index.m3u8"), []byte("synthetic pending playlist"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if response := request(value, http.MethodGet, "/"+resource+"/.pending/low/index.m3u8", "Bearer synthetic-test-token"); response.Code != http.StatusNotFound {
+		t.Fatal("private staging path was exposed")
+	}
+}

@@ -607,6 +607,8 @@
     },
     {
       "id": "TBP-022",
+      "origin_filename_anchor_verification": "2026-09-08: Reale lokale HTTP-Reproduktion mit vorhandenen synthetischen Dateien bestaetigte10unerwuenschte200Antworten fuerGET/HEAD auf fuenf nichtkanonische Dateinamen, darunter index.m3u8.pending.m3u8 und prefixcaptions_live.vtt. GanzeRegexalternation verankert; alle legitimenAltpfade bleiben. GesamteOrigin-Go-Suite dreimalunterRace1.079s/Vet bestanden, einschliesslich exakterNamen, GET/HEAD, vorhandenerprivater .pending-Ablage, Symlinks/Ranges/Captions. KeinAuthBypass- oderrealerMedienabflussclaim. Read-onlyDockerpruefung zeigt produktivenOrigin aufMiniPC weiterhin4d40b45; Fix nochzudeployen nachgemeinsamerCI/Releasegate. TBP-022 bleibt94/in_progress.",
+      "origin_filename_anchor_plan": "2026-09-08: Beim Anschluss der privaten Encoder-Staginggrenze zeigt Quellreview unvollstaendige Ankerung der rootMediaFilePattern-Alternativen im internen Go-HLS-Origin. Erlaubte Dateiendung bleibt geprueft, aber z.B. index.m3u8.pending.m3u8 oder prefixcaptions_live.vtt koennen den vorgesehenen exakten Dateinamenvertrag umgehen, sofern vorhanden. Zuerst echter HTTP-Negativtest mit vorhandenen synthetischen Dateien, dann ganze Alternation verankern ohne legitime Altpfade zu entfernen; GET/HEAD, verschachtelte Renditions und private .pending-Pfade pruefen. Kein Nachweis eines Auth-Bypasses oder realen Datenabflusses; vorgelagerte Auth bleibt unveraendert. Risiko critical, TBP-022 weiter94/in_progress; gezieltes Go/Race/Vet und kombinierte Verifikation vorRelease.",
       "title": "Private Manifest-, Segment- und Part-Auslieferung durchgängig autorisieren",
       "status": "in_progress",
       "priority": "P0",

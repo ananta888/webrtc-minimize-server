@@ -19,7 +19,7 @@ import (
 const maximumMediaFileBytes = 24 * 1024 * 1024
 
 var resourcePattern = regexp.MustCompile(`^res_[A-Za-z0-9_-]{16,64}$`)
-var rootMediaFilePattern = regexp.MustCompile(`^(?:index|(?:low|medium|high)(?:_init|_segment_[0-9]{1,12})?)\.(?:m3u8|mp4|m4s)|(?:captions_[A-Za-z0-9_-]{1,48})\.vtt$`)
+var rootMediaFilePattern = regexp.MustCompile(`^(?:(?:index|(?:low|medium|high)(?:_init|_segment_[0-9]{1,12})?)\.(?:m3u8|mp4|m4s)|captions_[A-Za-z0-9_-]{1,48}\.vtt)$`)
 var renditionMediaFilePattern = regexp.MustCompile(`^(?:low|medium|high)/(?:index\.m3u8|init(?:_[0-2])?\.mp4|segment_[0-9]{1,12}\.m4s)$`)
 
 type origin struct {

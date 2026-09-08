@@ -73,3 +73,22 @@ Ersatzbild nach einem notwendigen In-flight-Abbruch. Ein leerer Guard ist keine
 Writer-Berechtigung; ein Dummy-Abort ist ausschließlich eine Testfixture und
 kein produktiver Sicherheitsmechanismus. Fremdquellenannahme und öffentliche
 Approve-/Renew-Workflows bleiben bis zu diesem durchgängigen Anschluss aus.
+
+## Zusätzliche Prüfung der späteren Origin-Grenze
+
+Beim Review der Encoder-Ablage fiel eine unvollständige Verankerung der
+Dateinamen-Alternativen im internen Go-HLS-Origin auf. Zehn echte lokale
+GET-/HEAD-Anfragen auf fünf vorhandene synthetische Dateien wie
+`index.m3u8.pending.m3u8` und `prefixcaptions_live.vtt` lieferten vor der
+Korrektur unerwünschte 200-Antworten. Beide Alternativen werden jetzt gemeinsam
+vollständig verankert. Die komplette Origin-Suite bestand anschließend dreimal
+unter Race-Erkennung (1,079 Sekunden) und Go vet, einschließlich legitimer
+Altpfade, Untertitel, Symlinks/Ranges und einer nicht erreichbaren vorhandenen
+`.pending/low/index.m3u8`-Datei.
+
+Dies ist kein Nachweis eines Auth-Bypasses oder tatsächlichen Medienabflusses;
+der Test benutzt einen synthetischen Bearer am internen Origin. Die bestehende
+vorgelagerte Auth wurde nicht geändert. Der zusätzliche Fix liegt nach dem
+Raw-Ausgangscommit `0ecdbaf` und wird separat sowie durch die anschließende
+gemeinsame CI geprüft. Der auf dem Mini-PC laufende Origin war bei der
+Read-only-Prüfung noch auf `4d40b45`; dessen Update bleibt erforderlich.
