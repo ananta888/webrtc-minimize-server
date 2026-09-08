@@ -56,7 +56,7 @@ export class TrustedBroadcastSourceGrants {
       || actor.machine === true || actor.principal !== principal || actor.deviceFingerprint !== input.deviceFingerprint) {
       fail("trusted_source_connection_required", 403);
     }
-    this.#prune(now); this.#rate(principal, now);
+    this.#rate(principal, now); this.#prune(now);
     const old = this.#byRequest.get(input.requestId);
     if (old) {
       if (old.publisher.principal !== principal) fail("trusted_source_unavailable", 404);
@@ -198,7 +198,11 @@ export class TrustedBroadcastSourceGrants {
   }
   #rate(principal, now) {
     let rate = this.#rates.get(principal);
+    if (rate?.expiresAt <= now) { this.#rates.delete(principal); rate = null; }
     if (!rate) {
+      if (this.#rates.size >= 2048) for (const [id, candidate] of this.#rates) {
+        if (candidate.expiresAt <= now) this.#rates.delete(id);
+      }
       if (this.#rates.size >= 2048) fail("trusted_source_rate", 429);
       rate = { count: 0, expiresAt: now + 60000 }; this.#rates.set(principal, rate);
     }

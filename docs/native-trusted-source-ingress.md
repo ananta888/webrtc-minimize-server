@@ -9,8 +9,8 @@ P-256-Key-Envelope bereits mit genau einem Decoder, ist aber **noch nicht an
 den nativen Netzwerk-Ingress angeschlossen**.
 Der neue `SourceReceiver` ergänzt einen kurzlebigen Source-Lease und Key-ACK;
 der native Daemon besitzt dafür bereits den lokalen Assignment-/Geräte-/Room-
-Policy-Adapter und Cleanup-Hooks, jedoch noch keinen Source-Control-/Publisher-
-DataChannel-/RTP-Transport.
+Policy-Adapter, Cleanup-Hooks und den unten beschriebenen authentisierten
+Source-Control-Pfad. Publisher-DataChannel und RTP-Transport fehlen noch.
 Eine Quellenanfrage in der Angular-App erteilt weiterhin keine Medienfreigabe.
 Der bestehende `clear-program-v1`-Ingress bleibt unverändert; der
 Blind-Media-Agent und die Node-Control-Plane erhalten keinen Decrypt-Port.
@@ -55,7 +55,9 @@ und aktuellen Writer-Lease gegen serverautorisierte lokale Zustände prüfen.
 Ein JSON-Consent allein ist kein Autoritätsnachweis. Der Port wird vor jeder
 Announcement-/Install-/Decrypt-Operation und erneut vor der Key-Installation
 aufgerufen; Verlust schließt den Receiver terminal. Er darf den Receiver nicht
-rekursiv aufrufen. Die produktive Implementierung dieses Ports steht noch aus.
+rekursiv aufrufen. Der `SourceReceiver` und lokale Daemon-Adapter implementieren
+diesen Port mit kurzlebigem Source-Lease und laufendem Parent-Assignment; der
+Publisher-Medientransport ist noch nicht angeschlossen.
 
 Der Receiver erzeugt einen eigenen ephemeren P-256-Schlüssel pro Consent und
 gibt nur das öffentliche `trusted-packager-key`-Announcement aus. Der vorhandene
@@ -86,9 +88,8 @@ oder ein vom Aufrufer geliefertes `grantorSubjectRef` genügt ausdrücklich nich
 
 ## Noch anzuschließen
 
-- Übergabe der unten implementierten servergeprüften Source-Bindung an den
-  nativen Receiver über das noch fehlende Source-Control-Protokoll; der
-  begrenzte Source-Lease und lokale native Empfänger dafür sind implementiert.
+- Explizite Quellenannahme an den implementierten Source-Control-Broker
+  anschließen; bisher gibt es nur dessen internen, erneut autorisierten Prepare.
 - Sichtbarer Publisher-Consent und sofortiger unabhängiger Widerruf.
 - Transport des implementierten zielgebundenen Key-Envelopes, quittierte
   Schlüsselaktivierung und getrennte Signaling-/RTP-Receiver für autorisierte Quellen.
@@ -152,8 +153,9 @@ weder Medien, Track-IDs, Klartextidentität noch Schlüssel.
 **Noch kein Endnutzer-Approve:** Die Authority ist bislang nur intern aufrufbar.
 Die HTTP-/Angular-Quellenanfrage bleibt ohne Medienautorität und besitzt weiterhin
 keinen Annahmeknopf. Ihre Zustandsüberführung bei Annahme, transportauthentisierte
-Source-Prepare-/Key-/ACK-Nachrichten, native Lease-/Receiver-Anbindung sowie
-aktives Löschen der Compositor-Frames fehlen noch. Ein interner Consent mit
+Key-/ACK-Nachrichten über den Publisher-DataChannel sowie
+aktives Löschen der Compositor-Frames fehlen noch. Source-Control-Prepare und
+nativer Lease-Receiver sind inzwischen verbunden. Ein interner Consent mit
 `status: active` bedeutet ausdrücklich kein aktives Medien- oder E2EE-Playback.
 
 ## Nativer Source-Lease und Receiver
@@ -197,6 +199,17 @@ diesen internen Adapter noch nicht für Source-Ingress freigeschaltet.
 
 ## Verifikation
 
+`TrustedBroadcastSourceControl` verbindet die echte Source-Authority mit der
+aktuellen nativen Assignment-Registry und dem tatsächlich authentisierten
+Packager-Socket. Der laufende WebSocket-Test weist signierte Geräteanmeldung,
+Prepare, passenden Status, nachfolgenden Renewal und Stop beim Publisher-
+Media-State-Widerruf nach. Die native Seite wird zusätzlich durch den echten
+Control-Decoder und lokalen Dispatch getestet: gleicher Receiver/Agreement-Key
+bei Renewal, terminaler Stop, unverändertes Parent-Programm bei verspätetem
+Lease sowie Ablehnung von Zusatzfeldern, Duplikaten und falschen Scope-Daten.
+Der WebSocket-Test simuliert den Status-Absender; er behauptet noch keinen
+gemeinsamen Go-/Browser-Netzwerk- oder Compositor-Nachweis.
+
 Der Lease-/Key-ACK-Zweig wird zusätzlich mit denselben beiden Browsern geprüft:
 ein nativ ausgegebener Lease/Agreement-Key, der vorhandene Browser-Key-Envelope,
 exakt gebundener ACK und je 401 entschlüsselte VP8-/Opus-Frames. Alle drei
@@ -219,6 +232,52 @@ Annahme müssen wiederum alle 401 VP8-/Opus-Frames exakt decodiert werden.
 Key-Replay und terminaler Widerruf werden anschließend ebenfalls verlangt.
 Dieser Ablauf verwendet eine explizite synthetische lokale Policy, keine
 produktive oder durch JSON selbst erteilte Quellenberechtigung.
+
+## Authentisierter Source-Control-Pfad
+
+Der additive [Control-Vertrag](../contracts/trusted-decrypt/source-control.v1.schema.json)
+trennt `trusted-source-prepare`, `trusted-source-stop` und
+`trusted-source-status`. Keines dieser Nachrichtenformate enthält Frame-
+Schlüssel, Key-Envelopes, Agreement-Keys, Medien oder Transkripte.
+
+`TrustedBroadcastSourceControl.prepare(consentId, socket)` ist weiterhin eine
+interne Operation ohne öffentliches Approve-API. Sie löst den Consent gegen
+die echte Control-Geräteidentität auf, verlangt einen aktuellen laufenden oder
+degradierten gefenceten Writer und erzeugt eine serverseitige Source-Lease-ID.
+Ein JSON-Consent oder behaupteter Packagername kann diese Auflösung nicht ersetzen.
+Native Versionen vor **0.8.0** erhalten keine neuen Source-Nachrichten; 0.8.0
+bezeichnet hier nur Control-Unterstützung, ausdrücklich keine vollständige
+Trusted-RTP-/DataChannel-/Compositor-Capability. Bestehende Assignment-Versionen
+und die öffentliche Quellenanfrage bleiben kompatibel.
+
+Die ausgestellten Leases gelten maximal vier Sekunden. Der native Empfänger
+akzeptiert höchstens fünf Sekunden und bis eine Sekunde Clock-Skew; diese
+Reserve ist keine zusätzliche serverseitige Lease-Laufzeit. Der vorhandene
+500-ms-Maintenance-Lauf überprüft den Scope; frühestens eine Sekunde nach der
+Ausstellung und ausschließlich nach genau passendem `receiver-prepared`-ACK
+wird die nächste Revision gesendet. Jede Erneuerung prüft erneut Consent,
+Publisher-/Publikationsgeneration, Assignment, Fence und ursprünglichen Socket.
+Ein alter ACK bestätigt keine neuere Revision. Wiederholter Prepare verlängert
+nichts und sendet auch nicht automatisch erneut. Ablauf, Delivery-Verlust,
+Reconnect, Widerruf und Parent-Verlust schließen terminal.
+
+`receiver-prepared` bestätigt ausschließlich einen lokal autorisierten Receiver.
+Es ist weder `key-installed` noch erfolgreiche Decryption, Decode oder Ausgabe.
+Verspätete, wohlgeformte Quellen-Leases liefern nativ einen Quellenstatus `failed`,
+ohne das laufende Parent-Programm abzubrechen. Falsche oder verspätete
+Quellenstatusmeldungen werden nicht als Assignment-Fehler behandelt. Stop
+berücksichtigt höchstens eine noch unbestätigte nächste Revision; falsche
+Consent-/Assignment-/Fence-Bindungen schließen keinen anderen Receiver.
+
+Harte Brokerbudgets: 1024 Records insgesamt, 80 je Packager; terminale Records
+behalten bis Consent-Ablauf ihren Platz. Das sind optionale Ressourcenbudgets,
+keine globale Room-Grenze. ACKs besitzen separat maximal 1024 Operationen je
+Socket in zehn Sekunden, damit bis 80 Erneuerungen pro Sekunde nicht das
+Heartbeat-/Assignment-Budget verbrauchen. Ausgehende Control-Pakete sind auf
+8 KiB begrenzt, über 64 KiB Socket-Backlog wird die Quelle geschlossen; aktive
+native Ablauf-Timer bleiben der Schutz bei nicht zustellbarem Stop. Vor einem
+öffentlichen Annahmepfad müssen weiterhin Publisher-DataChannel, RTP und
+Compositor samt atomarem Queue-/Frame-Cleanup integriert und real geprüft werden.
 
 `test/trusted-broadcast-source-grants.test.js` verbindet echte Room-/Broadcast-
 Registries mit signierter Packager-Geräteanmeldung und bestätigt zusätzlich

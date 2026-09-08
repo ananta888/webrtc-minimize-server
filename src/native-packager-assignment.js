@@ -331,6 +331,13 @@ export class NativePackagerAssignmentRegistry {
     return record && ACTIVE_STATES.has(record.state) ? snapshot(record) : null;
   }
 
+  // Internal source receiver parent, not an additional assignment or authority.
+  sourceContext(packagerId, now = Date.now()) {
+    const record = this.#byPackager.get(packagerId);
+    if (!record || !["running", "degraded"].includes(record.state) || record.expiresAt <= now) return null;
+    return Object.freeze({ ...snapshot(record), leaseId: record.leaseId });
+  }
+
   authorizeBrowserSignal(peer, message, now = Date.now()) {
     const record = this.#signalRecord(message, now);
     if (!peer || record.ownerPrincipal !== peer.principal || record.roomId !== peer.roomId

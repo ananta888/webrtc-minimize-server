@@ -31,12 +31,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ananta/webrtc-minimize-server/native-broadcast-packager/internal/trustedsframe"
+
 	"github.com/gorilla/websocket"
 	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v4"
 )
 
-const agentVersion = "0.7.0"
+const agentVersion = "0.8.0"
 
 var buildRevision = "unknown"
 var buildTimestamp = "unknown"
@@ -472,28 +474,29 @@ func createWebRTCAPI() (*webrtc.API, error) {
 }
 
 type serverMessage struct {
-	Version         int                        `json:"version"`
-	Type            string                     `json:"type"`
-	Nonce           string                     `json:"nonce,omitempty"`
-	PackagerID      string                     `json:"packagerId,omitempty"`
-	KeyFingerprint  string                     `json:"keyFingerprint,omitempty"`
-	Code            string                     `json:"code,omitempty"`
-	ExpiresAt       int64                      `json:"expiresAt,omitempty"`
-	ObservedAt      int64                      `json:"observedAt,omitempty"`
-	RoomIDs         []string                   `json:"roomIds,omitempty"`
-	AssignmentID    string                     `json:"assignmentId,omitempty"`
-	RoomID          string                     `json:"roomId,omitempty"`
-	ProgramID       string                     `json:"programId,omitempty"`
-	ProgramEpoch    int                        `json:"programEpoch,omitempty"`
-	LeaseID         string                     `json:"leaseId,omitempty"`
-	FencingRevision int                        `json:"fencingRevision,omitempty"`
-	ResourceRef     string                     `json:"resourceRef,omitempty"`
-	ReasonCode      string                     `json:"reasonCode,omitempty"`
-	Profile         assignmentProfile          `json:"profile,omitempty"`
-	ICEServers      []assignmentICEServer      `json:"iceServers,omitempty"`
-	PublisherPeerID string                     `json:"publisherPeerId,omitempty"`
-	Description     *webrtc.SessionDescription `json:"description,omitempty"`
-	Candidate       json.RawMessage            `json:"candidate,omitempty"`
+	SourceControl   *trustedsframe.SourceCommand `json:"-"`
+	Version         int                          `json:"version"`
+	Type            string                       `json:"type"`
+	Nonce           string                       `json:"nonce,omitempty"`
+	PackagerID      string                       `json:"packagerId,omitempty"`
+	KeyFingerprint  string                       `json:"keyFingerprint,omitempty"`
+	Code            string                       `json:"code,omitempty"`
+	ExpiresAt       int64                        `json:"expiresAt,omitempty"`
+	ObservedAt      int64                        `json:"observedAt,omitempty"`
+	RoomIDs         []string                     `json:"roomIds,omitempty"`
+	AssignmentID    string                       `json:"assignmentId,omitempty"`
+	RoomID          string                       `json:"roomId,omitempty"`
+	ProgramID       string                       `json:"programId,omitempty"`
+	ProgramEpoch    int                          `json:"programEpoch,omitempty"`
+	LeaseID         string                       `json:"leaseId,omitempty"`
+	FencingRevision int                          `json:"fencingRevision,omitempty"`
+	ResourceRef     string                       `json:"resourceRef,omitempty"`
+	ReasonCode      string                       `json:"reasonCode,omitempty"`
+	Profile         assignmentProfile            `json:"profile,omitempty"`
+	ICEServers      []assignmentICEServer        `json:"iceServers,omitempty"`
+	PublisherPeerID string                       `json:"publisherPeerId,omitempty"`
+	Description     *webrtc.SessionDescription   `json:"description,omitempty"`
+	Candidate       json.RawMessage              `json:"candidate,omitempty"`
 }
 
 type client struct {
@@ -642,6 +645,10 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 			return decodeErr
 		}
 		switch message.Type {
+		case "trusted-source-prepare", "trusted-source-stop":
+			if err = c.handleTrustedSourceControl(message.SourceControl, time.Now()); err != nil {
+				return err
+			}
 		case "packager-authenticated":
 			if message.PackagerID != c.cfg.packagerID {
 				return errors.New("invalid authentication response")

@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"slices"
 	"time"
@@ -13,6 +14,7 @@ import (
 type nativeTrustedSource struct {
 	receiver  *trustedsframe.SourceReceiver
 	consentID string
+	lease     trustedsframe.SourceLease
 }
 
 func (c *client) trustedSourceDeviceRef() string {
@@ -59,6 +61,7 @@ func (c *client) prepareTrustedSource(raw []byte, now time.Time) (*trustedsframe
 		if err = current.receiver.Renew(raw, now.UnixMilli()); err != nil {
 			return nil, err
 		}
+		current.lease = lease
 		return current.receiver, nil
 	}
 	if len(c.trustedSources) >= 80 || len(c.trustedSourceHistory) >= 512 {
@@ -83,9 +86,52 @@ func (c *client) prepareTrustedSource(raw []byte, now time.Time) (*trustedsframe
 	if c.trustedSourceHistory == nil {
 		c.trustedSourceHistory = make(map[string]int64)
 	}
-	c.trustedSources[lease.SourceLeaseID] = &nativeTrustedSource{receiver: receiver, consentID: lease.Consent.ConsentID}
+	c.trustedSources[lease.SourceLeaseID] = &nativeTrustedSource{receiver: receiver, consentID: lease.Consent.ConsentID, lease: lease}
 	c.trustedSourceHistory[lease.Consent.ConsentID] = lease.Consent.ExpiresAt
 	return receiver, nil
+}
+
+func (c *client) handleTrustedSourceControl(command *trustedsframe.SourceCommand, now time.Time) error {
+	if !c.sessionAuthenticated.Load() || command == nil {
+		return errors.New("source control authentication required")
+	}
+	// Revalidate even for internal callers; this method never accepts key data.
+	raw, err := json.Marshal(command)
+	if err != nil {
+		return err
+	}
+	validated, err := trustedsframe.DecodeSourceCommand(raw)
+	if err != nil {
+		return err
+	}
+	command = &validated
+	state := "failed"
+	if command.Type == "trusted-source-prepare" {
+		var lease trustedsframe.SourceLease
+		if json.Unmarshal(command.Lease, &lease) != nil {
+			return errors.New("invalid source lease")
+		}
+		command.SourceLeaseID, command.LeaseRevision, command.ConsentID = lease.SourceLeaseID, lease.Revision, lease.Consent.ConsentID
+		command.AssignmentID, command.FencingRevision, command.ExpiresAt = lease.AssignmentID, lease.FencingRevision, lease.ExpiresAt
+		if receiver, prepareErr := c.prepareTrustedSource(command.Lease, now); prepareErr == nil && receiver.Alive(now.UnixMilli()) {
+			state = "receiver-prepared"
+		}
+	} else {
+		c.sourcesMu.Lock()
+		source := c.trustedSources[command.SourceLeaseID]
+		if source == nil {
+			state = "stopped"
+		} else if source.lease.Consent.ConsentID == command.ConsentID && source.lease.AssignmentID == command.AssignmentID &&
+			source.lease.FencingRevision == command.FencingRevision && command.LeaseRevision >= source.lease.Revision && command.LeaseRevision <= source.lease.Revision+1 {
+			source.receiver.Destroy()
+			delete(c.trustedSources, command.SourceLeaseID)
+			state = "stopped"
+		}
+		c.sourcesMu.Unlock()
+	}
+	return c.send(map[string]any{"version": 1, "type": "trusted-source-status", "sourceLeaseId": command.SourceLeaseID,
+		"leaseRevision": command.LeaseRevision, "consentId": command.ConsentID, "assignmentId": command.AssignmentID,
+		"fencingRevision": command.FencingRevision, "state": state, "expiresAt": command.ExpiresAt, "observedAt": now.UnixMilli()})
 }
 
 func (c *client) pruneTrustedSourcesLocked(now int64) {

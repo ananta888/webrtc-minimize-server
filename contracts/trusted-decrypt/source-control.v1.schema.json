@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/trusted-decrypt/source-control.v1.schema.json",
+  "title": "Native trusted source control metadata, never keys or media",
+  "$comment": "Requires the actual authenticated control socket, current source consent and current fenced assignment. Receiver-prepared only confirms a locally authorized receiver, not a key ACK or media output. The runtime bounds renewal and all scope fields.",
+  "oneOf": [{"$ref":"#/$defs/prepare"},{"$ref":"#/$defs/stop"},{"$ref":"#/$defs/status"}],
+  "$defs": {
+    "sourceLeaseId":{"type":"string","pattern":"^sls_[A-Za-z0-9_-]{16,64}$"},
+    "consentId":{"type":"string","pattern":"^cns_[A-Za-z0-9_-]{16,64}$"},
+    "assignmentId":{"type":"string","pattern":"^asn_[A-Za-z0-9_-]{16,64}$"},
+    "revision":{"type":"integer","minimum":1,"maximum":1024},
+    "positive":{"type":"integer","minimum":1,"maximum":9007199254740991},
+    "prepare":{
+      "type":"object","additionalProperties":false,"required":["version","type","lease"],
+      "properties":{"version":{"const":1},"type":{"const":"trusted-source-prepare"},
+        "lease":{"$ref":"https://webrtc.ananta.de/contracts/trusted-decrypt/source-lease.v1.schema.json"}}
+    },
+    "stop":{
+      "type":"object","additionalProperties":false,
+      "required":["version","type","sourceLeaseId","leaseRevision","consentId","assignmentId","fencingRevision","expiresAt","reasonCode"],
+      "properties":{
+        "version":{"const":1},"type":{"const":"trusted-source-stop"},
+        "sourceLeaseId":{"$ref":"#/$defs/sourceLeaseId"},"leaseRevision":{"$ref":"#/$defs/revision"},
+        "consentId":{"$ref":"#/$defs/consentId"},"assignmentId":{"$ref":"#/$defs/assignmentId"},
+        "fencingRevision":{"$ref":"#/$defs/positive"},"expiresAt":{"$ref":"#/$defs/positive"},
+        "reasonCode":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{1,63}$"}
+      }
+    },
+    "status":{
+      "type":"object","additionalProperties":false,
+      "required":["version","type","sourceLeaseId","leaseRevision","consentId","assignmentId","fencingRevision","state","expiresAt","observedAt"],
+      "properties":{
+        "version":{"const":1},"type":{"const":"trusted-source-status"},
+        "sourceLeaseId":{"$ref":"#/$defs/sourceLeaseId"},"leaseRevision":{"$ref":"#/$defs/revision"},
+        "consentId":{"$ref":"#/$defs/consentId"},"assignmentId":{"$ref":"#/$defs/assignmentId"},
+        "fencingRevision":{"$ref":"#/$defs/positive"},"expiresAt":{"$ref":"#/$defs/positive"},"observedAt":{"$ref":"#/$defs/positive"},
+        "state":{"enum":["receiver-prepared","failed","stopped"]}
+      }
+    }
+  }
+}

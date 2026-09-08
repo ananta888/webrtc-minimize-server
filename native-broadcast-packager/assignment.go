@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/ananta/webrtc-minimize-server/native-broadcast-packager/internal/trustedsframe"
 )
 
 var assignmentIDPattern = regexp.MustCompile(`^asn_[A-Za-z0-9_-]{16,64}$`)
@@ -206,6 +208,13 @@ func decodeServerMessage(raw []byte) (serverMessage, error) {
 	var messageType string
 	if json.Unmarshal(fields["type"], &messageType) != nil {
 		return serverMessage{}, errors.New("invalid control message")
+	}
+	if messageType == "trusted-source-prepare" || messageType == "trusted-source-stop" {
+		command, err := trustedsframe.DecodeSourceCommand(raw)
+		if err != nil {
+			return serverMessage{}, err
+		}
+		return serverMessage{Version: 1, Type: messageType, SourceControl: &command}, nil
 	}
 	var version int
 	if json.Unmarshal(fields["version"], &version) != nil {

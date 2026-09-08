@@ -1,15 +1,153 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/ananta/webrtc-minimize-server/native-broadcast-packager/internal/trustedsframe"
 )
+
+func sourceControlBytes(t *testing.T, lease trustedsframe.SourceLease) []byte {
+	t.Helper()
+	raw, err := json.Marshal(map[string]any{"version": 1, "type": "trusted-source-prepare", "lease": lease})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func TestTrustedSourceControlDispatchAndRenewWithoutCapture(t *testing.T) {
+	c, lease, now := trustedSourceFixture(t)
+	var statuses []map[string]any
+	c.sendOverride = func(value any) error { statuses = append(statuses, value.(map[string]any)); return nil }
+	dispatch := func(raw []byte, at time.Time) {
+		t.Helper()
+		message, err := decodeServerMessage(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = c.handleTrustedSourceControl(message.SourceControl, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dispatch(sourceControlBytes(t, lease), now)
+	receiver := c.trustedSources[lease.SourceLeaseID].receiver
+	announcement, err := receiver.Announcement(now.UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if statuses[0]["state"] != "receiver-prepared" || len(statuses[0]) != 10 || c.assignment.Media != nil || c.api != nil {
+		t.Fatal("incorrect readiness or premature network/capture")
+	}
+	dispatch(sourceControlBytes(t, lease), now)
+	lease.Revision++
+	lease.IssuedAt += 1000
+	lease.ExpiresAt += 1000
+	dispatch(sourceControlBytes(t, lease), now.Add(time.Second))
+	if c.trustedSources[lease.SourceLeaseID].receiver != receiver || statuses[2]["leaseRevision"] != int64(2) {
+		t.Fatal("receiver replaced or wrong ACK")
+	}
+	unchanged, err := receiver.Announcement(now.Add(time.Second).UnixMilli())
+	if err != nil || !bytes.Equal(announcement, unchanged) {
+		t.Fatal("renew replaced agreement key", err)
+	}
+	stop := trustedsframe.SourceCommand{Version: 1, Type: "trusted-source-stop", SourceLeaseID: lease.SourceLeaseID, LeaseRevision: 2,
+		ConsentID: lease.Consent.ConsentID, AssignmentID: lease.AssignmentID, FencingRevision: lease.FencingRevision, ExpiresAt: lease.ExpiresAt, ReasonCode: "SOURCE_REVOKED"}
+	stopRaw, _ := json.Marshal(stop)
+	dispatch(stopRaw, now.Add(time.Second))
+	if statuses[3]["state"] != "stopped" || receiver.Alive(now.Add(time.Second).UnixMilli()) || len(c.trustedSources) != 0 {
+		t.Fatal("stop retained receiver")
+	}
+	dispatch(stopRaw, now.Add(time.Second))
+	if statuses[4]["state"] != "stopped" {
+		t.Fatal("stop not idempotent")
+	}
+	lease.Revision = 1
+	dispatch(sourceControlBytes(t, lease), now.Add(time.Second))
+	if statuses[5]["state"] != "failed" || len(c.trustedSources) != 0 || c.assignment.State != "running" {
+		t.Fatal("revoked consent revived or parent changed")
+	}
+}
+
+func TestTrustedSourceControlExpiredAndDeniedAreSourceOnlyFailures(t *testing.T) {
+	for _, revoke := range []func(*client){func(c *client) { c.rooms = nil }, func(c *client) { c.assignment.State = "draining" }, func(c *client) { c.assignment = nil }} {
+		c, lease, now := trustedSourceFixture(t)
+		revoke(c)
+		var status map[string]any
+		c.sendOverride = func(value any) error { status = value.(map[string]any); return nil }
+		message, err := decodeServerMessage(sourceControlBytes(t, lease))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = c.handleTrustedSourceControl(message.SourceControl, now); err != nil || status["state"] != "failed" {
+			t.Fatal("source rejection disconnects control", err)
+		}
+	}
+	c, lease, now := trustedSourceFixture(t)
+	var status map[string]any
+	c.sendOverride = func(value any) error { status = value.(map[string]any); return nil }
+	message, err := decodeServerMessage(sourceControlBytes(t, lease))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = c.handleTrustedSourceControl(message.SourceControl, now.Add(6*time.Second)); err != nil || status["state"] != "failed" {
+		t.Fatal("expired source disconnects control", err)
+	}
+	if c.assignment.State != "running" || len(c.trustedSources) != 0 {
+		t.Fatal("expiry disturbed parent or admitted source")
+	}
+	c.sessionAuthenticated.Store(false)
+	if err = c.handleTrustedSourceControl(message.SourceControl, now); err == nil {
+		t.Fatal("unauthenticated control admitted")
+	}
+}
+
+func TestTrustedSourceControlRejectsMalformedClosedFields(t *testing.T) {
+	_, lease, _ := trustedSourceFixture(t)
+	raw := string(sourceControlBytes(t, lease))
+	for _, invalid := range []string{
+		strings.Replace(raw, `"version":1`, `"version":1,"version":1`, 1),
+		strings.Replace(raw, `"consentId":`, `"ConsentId":`, 1),
+		strings.Replace(raw, `"publicationId":`, `"privateKey":"forbidden","publicationId":`, 1),
+		strings.Replace(raw, `"revision":1`, `"revision":null`, 1),
+		raw + `{}`, raw[:len(raw)-1] + `,"key":"forbidden"}`,
+		strings.Replace(raw, `"frameEnvelope":"codec-prefix-v1"`, `"frameEnvelope":"unknown"`, 1),
+	} {
+		if _, err := decodeServerMessage([]byte(invalid)); err == nil {
+			t.Fatal("malformed source control accepted")
+		}
+	}
+}
+
+func TestTrustedSourceControlWrongStopScopeCannotCloseReceiver(t *testing.T) {
+	c, lease, now := trustedSourceFixture(t)
+	receiver, err := c.prepareTrustedSource(sourceBytes(t, lease), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range []func(*trustedsframe.SourceCommand){
+		func(s *trustedsframe.SourceCommand) { s.ConsentID = "cns_bbbbbbbbbbbbbbbb" },
+		func(s *trustedsframe.SourceCommand) { s.AssignmentID = "asn_bbbbbbbbbbbbbbbb" },
+		func(s *trustedsframe.SourceCommand) { s.FencingRevision++ },
+		func(s *trustedsframe.SourceCommand) { s.LeaseRevision += 2 },
+	} {
+		stop := &trustedsframe.SourceCommand{Version: 1, Type: "trusted-source-stop", SourceLeaseID: lease.SourceLeaseID, LeaseRevision: 1,
+			ConsentID: lease.Consent.ConsentID, AssignmentID: lease.AssignmentID, FencingRevision: lease.FencingRevision, ExpiresAt: lease.ExpiresAt, ReasonCode: "SOURCE_REVOKED"}
+		change(stop)
+		if err = c.handleTrustedSourceControl(stop, now); err != nil {
+			t.Fatal(err)
+		}
+		if !receiver.Alive(now.UnixMilli()) {
+			t.Fatal("wrong stop closed receiver")
+		}
+	}
+}
 
 func trustedSourceFixture(t *testing.T) (*client, trustedsframe.SourceLease, time.Time) {
 	t.Helper()

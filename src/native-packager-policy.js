@@ -66,6 +66,13 @@ export function supportsNativeAssignmentV3(agentVersion) {
   return major > 0 || minor >= 7;
 }
 
+// Control metadata support only, deliberately not a claim of trusted RTP,
+// key-channel or compositor capability. Older agents reject unknown messages.
+export function supportsNativeSourceControlV1(agentVersion) {
+  const match = typeof agentVersion === "string" && agentVersion.match(/^(\d+)\.(\d+)\.(\d+)$/);
+  return Boolean(match && (Number(match[1]) > 0 || Number(match[2]) >= 8));
+}
+
 export function normalizeNativePackagerCapability(value, now = Date.now()) {
   const fields = new Set([
     "capabilityVersion", "agentId", "tenantId", "ownerSubjectRef", "deviceRef", "agentVersion",

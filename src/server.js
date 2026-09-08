@@ -73,6 +73,7 @@ import { handoffNativePackager } from "./native-packager-handoff.js";
 import { NativePackagerStandbyError } from "./native-packager-standby.js";
 import { BroadcastSourceRequests, BroadcastSourceRequestError } from "./broadcast-source-requests.js";
 import { TrustedBroadcastSourceGrants } from "./trusted-broadcast-source-grants.js";
+import { TrustedBroadcastSourceControl } from "./trusted-broadcast-source-control.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
@@ -1540,9 +1541,13 @@ function configureSignaling(
     writer: (...args) => broadcastRuntime.nativeSourceWriterContext(...args),
     packager: (...args) => nativePackagers.sourceContext(...args),
   }) : null;
+  const trustedBroadcastSourceControl = trustedBroadcastSources ? new TrustedBroadcastSourceControl({
+    grants: trustedBroadcastSources, assignments: nativePackagerAssignments, control: nativePackagers,
+    send: (socket, message) => socket?.bufferedAmount <= 64 * 1024 && safeSend(socket, message, 8192),
+  }) : null;
   const pruneTrustedSources = () => {
-    try { trustedBroadcastSources?.prune(); }
-    catch { trustedBroadcastSources?.destroy(); } // Authority loss never blocks membership teardown.
+    try { trustedBroadcastSources?.prune(); trustedBroadcastSourceControl?.tick(); }
+    catch { trustedBroadcastSources?.destroy(); trustedBroadcastSourceControl?.destroy(); } // Authority loss never blocks membership teardown.
   };
   const machineReceivePolicy = new MachineReceivePolicy({ members: roomId => registry.members(roomId),
     changed: (roomId, state) => {
@@ -2313,6 +2318,12 @@ function configureSignaling(
         if (!connection || message.type === "authenticate" || message.type === "enroll") {
           throw new NativePackagerControlError("native_packager_already_authenticated", 403);
         }
+        if (message.type === "trusted-source-status") {
+          // Separately bounded: up to 80 source ACKs/second must not consume the
+          // existing assignment/heartbeat budget or kill a running program.
+          trustedBroadcastSourceControl?.acknowledge(socket, message);
+          return;
+        }
         if (!nativePackagers.allowMessage(socket)) {
           throw new NativePackagerControlError("native_packager_rate_limited", 429);
         }
@@ -2402,6 +2413,7 @@ function configureSignaling(
       clearTimeout(timeout);
       const connection = nativePackagers.connection(socket);
       nativePackagers.disconnect(socket);
+      pruneTrustedSources();
       if (connection) {
         const failedAssignment = nativePackagerAssignments.failPackager(connection.id);
         if (failedAssignment) stopProgramForPrincipal(
@@ -2447,6 +2459,7 @@ function configureSignaling(
   server.on("close", () => {
     clearInterval(sourceGrantExpiry);
     trustedBroadcastSources?.destroy();
+    trustedBroadcastSourceControl?.destroy();
     machineReceivePolicy.destroy();
     clearInterval(heartbeat);
     clearInterval(leaseRenewal);
@@ -2454,7 +2467,7 @@ function configureSignaling(
     for (const socket of mediaAgentWebSocketServer.clients) socket.terminate();
     for (const socket of nativePackagerWebSocketServer.clients) socket.terminate();
   });
-  return { webSocketServer, mediaAgentWebSocketServer, nativePackagerWebSocketServer, trustedBroadcastSources };
+  return { webSocketServer, mediaAgentWebSocketServer, nativePackagerWebSocketServer, trustedBroadcastSources, trustedBroadcastSourceControl };
 }
 
 export function createAppServer(options = {}) {
