@@ -31,7 +31,8 @@ node scripts/machine-deployment-config.mjs
 
 Ein fester Compose-Selektor lässt `.env`, Interpolation und Prozessumgebungs-
 Vorrangregeln von Docker Compose selbst auswerten. Der CLI-Prozess hält die
-Ausgabe nur im Speicher, ist auf fünf Sekunden und 512 KiB begrenzt und gibt
+Ausgabe nur im Speicher; der Compose-Unterprozess ist auf fünf Sekunden und
+512 KiB Ausgabe begrenzt. Die CLI gibt
 bei Erfolg ausschließlich ein geschlossenes Tokenpaar aus, etwa `profile enabled`.
 Ein explizit leeres Capability-Ceiling ergibt `profile disabled`; es wird nicht
 durch einen Standard ersetzt. Ungültige Auswahl, gemischter Trust, fehlende/
@@ -69,5 +70,16 @@ deshalb bestehende Wartungs-/Rollbackregeln beachten.
 Datei-/FIFO-/Privatschlüsselablehnung und den bestehenden Drei-Image-Runner
 bestanden. Smoke-Fixtures prüfen Admission unabhängig von Health; fehlender
 Override und ungültige Auswahl brechen vor Deployment-State oder Docker-Schreibzugriffen ab.
-Der gemeinsame Gesamtcheck und ein tatsächlicher produktiver Maschinenrollout
-stehen noch aus. Lokale Fixture-Erfolge aktivieren keinen produktiven Hub-Trust.
+Der isolierte Gesamtcheck von `63b1db1` bestand mit Exit 0: 698 Frontendtests,
+774 erfolgreiche Nodeprüfungen, null Fehler und zwei explizite Node-Skips;
+Node-Laufzeit 332,840 Sekunden. Build, Go-Unit/Vet und statische Sicherheits-/
+Konfigurationsgates bestanden; 14 externe Infrastruktur-Gates und der optionale
+Image-Scan blieben ausdrücklich übersprungen. Der Serving-Build blieb unverändert.
+
+Ein produktiver Maschinenrollout ist noch nicht erfolgt. Zusätzlich scheiterte
+die CI des vorherigen `bc1fce8` im Native-Packager-Racetest: ungeschützter
+Diagnoselesezugriff auf `assignment.State` und ein noch nicht genauer
+klassifizierter Signalisierungsfehler trotz empfangenem RTP. Der lokale Erfolg
+erklärt oder behebt diesen CI-Befund nicht. Neue Race-/Release-Evidence sowie
+das freigegebene Operatorprofil bleiben nötig; Fixture-Erfolge aktivieren
+keinen produktiven Hub-Trust.
