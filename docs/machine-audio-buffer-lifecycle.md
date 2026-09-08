@@ -30,9 +30,20 @@ nicht; es gibt keinen Klartext-Fallback und keine neue Aufnahmeberechtigung.
 ## Verifikation
 
 150 gezielte Maschinen-Frontendprüfungen sowie Angular-Typ-/Template- und
-Todo-Checks bestanden. Die reale Zweibrowser-Dialogprüfung wird zusätzlich eine
+Todo-Checks bestanden. Die reale Zweibrowser-Dialogprüfung hat zusätzlich eine
 noch aktiv abholende Subscription widerrufen: fortlaufendes Poll/ACK verhindert,
 dass ein Queueüberlauf als erfolgreicher Rechteentzug missverstanden wird.
-Vor dem Klick muss der Empfänger noch offen sein, danach muss die Bindung
-geschlossen sein und Poll/ACK müssen abgewiesen werden. Chromium/Firefox und
-der isolierte Gesamtcheck stehen für diesen Änderungsstand noch aus.
+Vor dem Klick war der Empfänger noch offen, danach war die Bindung geschlossen
+und Poll/ACK wurden abgewiesen. Chromium/Firefox bestanden am isolierten Stand
+`41b2b38` in 12,874 / 14,745 Sekunden einschließlich echtem Sampleempfang,
+Chatantwort, bewegtem Bildschirm und drei Renewals. Required-SFrame war aktiv,
+keine Transformfehler wurden beobachtet. Das Drei-Sekunden-End-to-End-Wartebudget
+enthält Signalisierung und UI; die unveränderte lokale 100-ms-Prüfung wird
+separat deterministisch getestet.
+
+Der isolierte `npm run check` von `41b2b38` ist mit Exit 0 abgeschlossen:
+698 Frontendtests und 763 Nodeprüfungen bestanden, null Fehler, zwei ausdrücklich
+übersprungene Nodefälle; Node-Laufzeit 298,869 Sekunden. Build, Go-Unit/Vet und
+statische Sicherheits-/Konfigurationsgates bestanden. 14 externe Infrastruktur-
+Gates sowie der optionale Image-Scan bleiben sichtbar übersprungen. Der lokal
+ausgelieferte Build wurde nicht ersetzt; das ist keine Produktionsabnahme.
