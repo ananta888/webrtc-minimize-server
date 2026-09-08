@@ -98,6 +98,8 @@ func testNativeMediaReceivesBrowserRTP(t *testing.T, earlyICE bool) {
 	signalingDone := make(chan struct{})
 	go func() {
 		defer close(signalingDone)
+		receiver := nativeBrowserSignalFixture{pc: browser}
+		defer receiver.close()
 		for {
 			var message map[string]any
 			select {
@@ -109,17 +111,16 @@ func testNativeMediaReceivesBrowserRTP(t *testing.T, earlyICE bool) {
 				continue
 			}
 			if description, ok := message["description"].(*webrtc.SessionDescription); ok && description != nil {
-				if applyErr := browser.SetRemoteDescription(*description); applyErr != nil {
-					signalingFailure.CompareAndSwap(0, 1)
+				if stage := receiver.description(*description); stage != 0 {
+					signalingFailure.CompareAndSwap(0, stage)
 				}
 			}
 			if candidate, ok := message["candidate"].(webrtc.ICECandidateInit); ok && candidate.Candidate != "" {
-				var stage uint32 = 3
-				if browser.RemoteDescription() == nil {
+				early, stage := receiver.candidate(candidate)
+				if early {
 					earlyCandidates.Add(1)
-					stage = 2
 				}
-				if applyErr := browser.AddICECandidate(candidate); applyErr != nil {
+				if stage != 0 {
 					signalingFailure.CompareAndSwap(0, stage)
 				}
 			}
@@ -143,7 +144,8 @@ func testNativeMediaReceivesBrowserRTP(t *testing.T, earlyICE bool) {
 	select {
 	case <-connected:
 	case <-time.After(10 * time.Second):
-		t.Fatal("browser-to-packager WebRTC connection did not become connected")
+		t.Fatalf("browser-to-packager WebRTC connection did not become connected: signalStage=%d earlyCandidates=%d",
+			signalingFailure.Load(), earlyCandidates.Load())
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for media.packets.Load() == 0 && time.Now().Before(deadline) {
