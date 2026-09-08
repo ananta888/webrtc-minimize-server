@@ -66,6 +66,7 @@ export class MachinePageComponent implements OnDestroy {
       push: (generation: number, startSample: number, pcm: string) => this.machineSpeech.source.push(generation, startSample, pcm),
       close: () => this.machineSpeech.source.close(), status: () => this.machineSpeech.source.status() }),
     avatar: Object.freeze({ open: (sourceId: string, profile: string, image?: unknown) => this.machineAvatar.source.open(sourceId, profile, image),
+      videoProbe: () => this.machineAvatar.videoProbe(),
       pulse: (generation: number) => this.machineAvatar.source.pulse(generation),
       close: (generation?: number) => this.machineAvatar.source.close(generation), status: () => this.machineAvatar.source.status() }),
     leave: () => this.leave(),

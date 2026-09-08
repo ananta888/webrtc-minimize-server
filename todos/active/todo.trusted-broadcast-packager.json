@@ -510,6 +510,7 @@
     },
     {
       "id": "TBP-016",
+      "raw_input_startup_followup": "2026-09-08 Ananta avatar-video full-check on f6b9255: both real raw encoder gates fail reproducibly at audio frame41 (~0.83s), source raw output queue budget, including an isolated rerun. Audit sourceProgramEncoderArguments: raw-video input retains default startup probing while audio probe is bounded. Investigate/bound explicitly known raw input probing without enlarging queues, dropping samples or weakening revocation. Keep argument/legacy regression and both real rendition/rolling-window gates; full isolated check required. Existing task stays in_progress; not a production or task-completion claim.",
       "title": "Installierbaren Native-Packager mit Transcoding, ABR und Geräte-Capabilities ergänzen",
       "status": "in_progress",
       "priority": "P1",

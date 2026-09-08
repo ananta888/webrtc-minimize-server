@@ -4,7 +4,7 @@ import { waitFixtureValue } from "./machine-browser-wait.mjs";
 // Fixed read-only remote observations. No source/Hub control operations, grants,
 // image bytes, URLs, scripts or arbitrary arguments pass through the stdio port.
 export async function observeAvatarCommand(command, page) {
-  if (!["avatar", "avatar_absent", "avatar_image_red", "avatar_image_blue"].includes(command)) return null;
+  if (!["avatar", "avatar_absent", "avatar_image_red", "avatar_image_blue", "avatar_video"].includes(command)) return null;
   await page.locator(".nav-item").filter({ hasText: /^Live/ }).click();
   if (command === "avatar_absent") {
     await waitFixtureValue(page, avatarAbsent, null, { timeout: 4000 });
@@ -14,6 +14,11 @@ export async function observeAvatarCommand(command, page) {
   try { await waitFixtureValue(page, decodedAvatar, null, { timeout: 6000, accept: value => {
     if (!Array.isArray(value?.center) || value.white <= 100) return false;
     const [red, green, blue] = value.center;
+    if (command === "avatar_video") {
+      if (red > 170 && green < 70 && blue < 70) indicators.add("red");
+      if (blue > 170 && red < 70 && green < 70) indicators.add("blue");
+      return indicators.size === 2; // Actual clip pixels, not only the KI liveness strip.
+    }
     const color = command === "avatar_image_red" ? red > 170 && green < 70 && blue < 70
       : command === "avatar_image_blue" ? blue > 170 && red < 70 && green < 70
       : green > 170 && red > 60 && red < 160;
@@ -30,6 +35,6 @@ export async function observeAvatarCommand(command, page) {
     error.observation.sample = await page.evaluate(decodedAvatar);
     throw error;
   }
-  return command === "avatar" ? { moving_avatar: true }
+  return command === "avatar_video" ? { moving_avatar_video: true } : command === "avatar" ? { moving_avatar: true }
     : { moving_avatar_image: command === "avatar_image_red" ? "red" : "blue" };
 }
