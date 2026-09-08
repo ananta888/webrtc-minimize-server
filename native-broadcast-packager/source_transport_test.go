@@ -299,6 +299,11 @@ func TestTrustedSourceRealKeyChannelAndRTP(t *testing.T) {
 				}
 			}
 			for counter := uint64(0); counter <= 400; counter++ {
+				if counter == 200 {
+					// Low-FPS screens and Opus DTX may legitimately pause longer
+					// than the assembly read deadline without losing source consent.
+					time.Sleep(350 * time.Millisecond)
+				}
 				wire, plain := sourceTestFrame(t, codec, counter)
 				if counter == 350 {
 					replay, _ := sourceTestFrame(t, codec, counter-1)
