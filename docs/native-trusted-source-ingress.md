@@ -439,6 +439,17 @@ das ein ausdrücklicher Skip statt eines Decode-PASS. CI installiert FFmpeg.
 Das ist ein echter Codec-/Lifecycle-Test, noch kein durchgängiger
 Browser-SFrame-zu-Compositor-/HLS-Nachweis.
 
+Verifiziert auf `86f0629`: der lokale Codec-Gate bestand mit FFmpeg 6.1.1
+(3,47 s) und im netzlosen FFmpeg-8.0-Container (3,64 s). Der vorausgehende
+Race-Lauf bestand ohne Befund. Anschließend beendete der isolierte
+`npm run check` desselben Snapshots alle Gates erfolgreich: 665 Frontendtests,
+722 Node-PASS, zwei ausdrückliche Node-Skips, null Fehler (246,421 s Node).
+Darunter liefen der echte Decoder-Test sowie beide Chromium-/Firefox-
+SFrame-RTP-Tests. Externe Infrastruktur war in diesem lokalen Lauf weiter
+ausgewiesen übersprungen. Das ausgelieferte lokale Frontend blieb unverändert.
+Die vorherige GitHub-CI für `83ad520` ist separat mit allen sieben Jobs grün,
+einschließlich Live-Keycloak/TURN; sie ist kein CI-Nachweis für den Decodercommit.
+
 ### Prepare, Renewal und Stop
 
 Der additive [Control-Vertrag](../contracts/trusted-decrypt/source-control.v1.schema.json)
