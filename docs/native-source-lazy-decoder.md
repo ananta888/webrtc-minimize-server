@@ -88,3 +88,19 @@ PCM-Resampling und A/V-Impulsprüfung. Die vorhandene 150-ms-Grenze und die
 Prüfung von mindestens sechs eindeutigen Impulspaaren bleiben unverändert.
 Konkrete Stand-/Testnachweise stehen im Todo; externe Skips sind keine
 Produktionsabnahme. Der Gesamtumfang des Broadcast-Packagers bleibt offen.
+
+Der erste gepaarte Browserlauf bestand in beiden Engines. Die anschließende
+gesamte Quellenmatrix bestand mit neun Tests ohne Skip in 179,908 Sekunden,
+einschließlich drei Verbindungen je Browser (maximal 49,8/50,6 ms). Nach der
+finalen gemeinsamen Warmup-/Reaperhaltung bestanden die Unit-/Race-Tests
+dreimal in 5,375 Sekunden sowie Vet.
+
+Der isolierte `npm run check` von `4ffafec`, einschließlich des konfliktfrei
+integrierten Nutzer-Pushs bis `dacc96a`, bestand anschließend vollständig:
+665 Frontendtests, Build, statische/Security-Gates, Go Unit/Vet, 752 bestandene
+Node-Tests, null Fehler und zwei explizite Node-Skips in 325,958 Sekunden für
+die Node-Stufe. Die finalen Browserquellen ergaben sechs beziehungsweise
+14 Impulspaare mit höchstens 33,1 ms in Chromium und 38,3 ms in Firefox.
+Vierzehn externe Infrastruktur-Gates und opt-in Langzeitläufe wurden
+ausdrücklich übersprungen. Der ausgelieferte Frontend-Build blieb unverändert;
+es gab keine Produktionsfreischaltung oder Deployment dieses internen Pfads.
