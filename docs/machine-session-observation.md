@@ -42,3 +42,22 @@ actual device-bound machine admissions and signed one-use grants, proves own
 source isolation and rejects cross-task/tenant/project/runtime, replay,
 unknown fields, expired grants and revoked membership. Full isolated regression
 and cross-repository browser verification are still pending at this checkpoint.
+# Verification (2026-09-08)
+
+Implementation `777f7ce` passed the full `npm run check` in a detached private
+worktree: 639 frontend tests, 573 Node passes with three explicit skips, plus
+build, Go, security and configuration checks. External infrastructure remained
+explicitly skipped. Serving dist and operator trust were not modified.
+
+The old publication replacement overflow defect was reproduced against the
+verified baseline RoomRegistry blob: an invalid replacement removed the old
+source. Counter checks now precede mutation; regression tests cover both limits.
+
+Ananta's final focused regression passed 170 tests (66.79 s). Its actual private
+Hub/Worker/browser passed (33.26 s), observing own source counts `[1, 0, 1]` and
+revisions `[3, 4, 5]` under one membership, with cancellation denying subsequent
+observations. Moving screen and two chat answers preceded the source pause/resume;
+resumed decoded delivery is not claimed. The test's original sub-second wait was
+shorter than Worker control cadence; a separately tested bounded state wait fixes
+the fixture, not a production timer. These are synthetic technical results, not
+production release evidence or a fix for the separate decoder-startup intermittency.
