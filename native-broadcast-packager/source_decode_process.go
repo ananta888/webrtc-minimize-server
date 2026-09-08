@@ -17,16 +17,7 @@ type sourceDecodeProcess struct {
 
 func startSourceDecodeProcess(path string, args []string) (*sourceDecodeProcess, error) {
 	cmd := exec.Command(path, args...)
-	// A codec subprocess does not need control-plane credentials or operator
-	// application secrets. Keep only OS/loader paths required by local FFmpeg.
-	for _, name := range []string{"PATH", "SystemRoot", "WINDIR", "TEMP", "TMP", "TMPDIR", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"} {
-		if value, ok := os.LookupEnv(name); ok {
-			cmd.Env = append(cmd.Env, name+"="+value)
-		}
-	}
-	if cmd.Env == nil {
-		cmd.Env = []string{} // nil would inherit the complete environment.
-	}
+	setSourceCodecEnvironment(cmd)
 	input, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, errors.New("source decoder input unavailable")
@@ -43,6 +34,17 @@ func startSourceDecodeProcess(path string, args []string) (*sourceDecodeProcess,
 		return nil, errors.New("source decoder unavailable")
 	}
 	return &sourceDecodeProcess{cmd: cmd, input: input, output: output}, nil
+}
+
+func setSourceCodecEnvironment(cmd *exec.Cmd) {
+	cmd.Env = []string{}
+	// A codec subprocess does not need control-plane credentials or operator
+	// application secrets. Keep only OS/loader paths required by local FFmpeg.
+	for _, name := range []string{"PATH", "SystemRoot", "WINDIR", "TEMP", "TMP", "TMPDIR", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"} {
+		if value, ok := os.LookupEnv(name); ok {
+			cmd.Env = append(cmd.Env, name+"="+value)
+		}
+	}
 }
 
 func (p *sourceDecodeProcess) stop() {

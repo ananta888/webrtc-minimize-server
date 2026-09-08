@@ -110,15 +110,21 @@ test("native trusted video compositor switches layouts and wipes revoked decoded
 test("native program clock combines four real decoders and propagates individual revoke", {timeout:25000}, t => {
   nativeCodecFixture(t, "TestLiveTrustedSourceProgramClock");
 });
+test("native raw program encoder publishes actual H264 AAC renditions and revokes its generation", {timeout:25000}, t => {
+  nativeCodecFixture(t, "TestLiveTrustedSourceProgramEncoder");
+});
+test("native raw program encoder bounds rolling HLS windows and reaps a revoked writer", {timeout:45000}, t => {
+  nativeCodecFixture(t, "TestLiveTrustedSourceProgramEncoderRollingWindow", 40);
+});
 
-function nativeCodecFixture(t, testName) {
+function nativeCodecFixture(t, testName, timeoutSeconds = 20) {
   if(dockerRunner && process.platform!=="linux") {t.skip("native decoder fixture needs local Go or Linux compiler fallback");return;}
   const available = spawnSync("ffmpeg",["-version"],{encoding:"utf8",timeout:3000,maxBuffer:32768});
   if(available.error || available.status!==0) {t.skip("real source decoding requires local FFmpeg; no decode claim from RTP alone");return;}
   // The Linux Docker compiler creates a static host binary; plaintext remains in
   // this test's local FFmpeg pipes, never the Node control-plane implementation.
-  const result = spawnSync(executable,[`-test.run=^${testName}$`,"-test.timeout=20s","-test.v"],
-    {env:{...process.env,RUN_LIVE_TRUSTED_SOURCE_DECODE:"1"},encoding:"utf8",timeout:22000,maxBuffer:32768});
+  const result = spawnSync(executable,[`-test.run=^${testName}$`,`-test.timeout=${timeoutSeconds}s`,"-test.v"],
+    {env:{...process.env,RUN_LIVE_TRUSTED_SOURCE_DECODE:"1"},encoding:"utf8",timeout:(timeoutSeconds+2)*1000,maxBuffer:32768});
   assert.equal(result.error,undefined,"bounded native decode fixture failed to run");
   assert.equal(result.status,0,"native decode/revocation fixture failed");
   assert.ok(result.stdout.includes(`--- PASS: ${testName}`),"native decode fixture did not actually execute");

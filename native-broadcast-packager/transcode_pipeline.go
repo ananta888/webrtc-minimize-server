@@ -129,6 +129,11 @@ func ffmpegTranscodeArgumentsForInputs(assignment *packagerAssignment, output st
 	} else {
 		args = append(args, "-re", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo")
 	}
+	return append(args, ffmpegTranscodeOutputArguments(assignment, output, encoder)...)
+}
+
+// Shared fixed output profile only. Input container contracts stay separate.
+func ffmpegTranscodeOutputArguments(assignment *packagerAssignment, output, encoder string) []string {
 	splits := make([]string, len(assignment.Profile.Renditions))
 	filters := make([]string, 0, len(assignment.Profile.Renditions)+1)
 	for index := range assignment.Profile.Renditions {
@@ -141,7 +146,11 @@ func ffmpegTranscodeArgumentsForInputs(assignment *packagerAssignment, output st
 			index, rendition.Width, rendition.Height, rendition.Width, rendition.Height, index,
 		))
 	}
-	args = append(args, "-filter_complex", strings.Join(filters, ";"))
+	return ffmpegTranscodeOutputForFilterGraph(assignment, output, encoder, filters)
+}
+
+func ffmpegTranscodeOutputForFilterGraph(assignment *packagerAssignment, output, encoder string, filters []string) []string {
+	args := []string{"-filter_complex", strings.Join(filters, ";")}
 	variants := make([]string, 0, len(assignment.Profile.Renditions))
 	for index, rendition := range assignment.Profile.Renditions {
 		args = append(args,
