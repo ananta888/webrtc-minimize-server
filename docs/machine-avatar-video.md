@@ -47,7 +47,51 @@ SRP/DIP: pure content/probe validation, native decoder lifecycle and asynchronou
 artwork composition are separate modules. The existing source remains the
 authority/lifetime controller, and the surface remains publication ownership.
 
-Component verification: all 749 frontend tests passed in 9.95s; Angular template
+Initial component checkpoint: all 749 frontend tests passed in 9.95s; Angular template
 type checking passed. Actual private Chromium/Firefox media tests and isolated
 `npm run check` are pending. No serving build, public trust or operator policy
 was activated by this implementation.
+
+## Independent receiver verification
+
+On 8 September 2026 the merged `011a20b` implementation passed the real
+Chromium/Firefox receiver cases (5.804 / 8.755 s). Tests were then strengthened
+to assert that the feasibility probe leaves capture, PeerConnections, avatar
+state and membership unchanged, and to exercise `hold_last` as well as looping.
+The final frame is observed repeatedly for 1.25 seconds, longer than the whole
+one-second synthetic clip; an accidental return to red cannot pass as holding
+the blue final frame. The independent KI liveness strip continues moving.
+
+The strengthened cases passed (6.899 / 9.618 s) with 24 / 23 held-frame
+observations and actual pulse-loss stops in 1.256 / 2.479 s. Video-to-image-to-
+video switches used three source generations; a stale close did not remove the
+new source. Separate speech and screen remained active after avatar stop.
+Both participant contexts observed zero capture calls and no transform errors.
+All 49 focused artwork/decoder/source tests passed. This is a synthetic,
+explicitly authorized local transport test, not Hub/model or production evidence.
+The combined isolated check subsequently passed with Exit 0: 757 frontend
+tests, 790 Node passes, zero failures and two explicit Node skips (346.019 s).
+Build, Go unit/vet and static gates passed; 14 external infrastructure gates
+and the optional image scan were explicitly skipped. The existing uncommitted
+Packager-v4 contract candidate was also present in this private checkout; it is
+not part of the avatar verification commit. The serving build stayed unchanged.
+
+### Upstream normalization boundary
+
+A separate read-only invocation of Ananta's unchanged `9039b55d9` source used
+the real `PersonaVideoInspector` and FFmpeg with a synthetic 320x180, 24-FPS
+H.264 clip containing AAC. The resulting asset had exactly one H.264 video
+stream, 256x256, 12 FPS, 12 decoded frames, no audio and the expected SHA-256;
+the current-authority callback was checked 17 times. This bounded invocation
+completed in 0.531 s without writing Ananta files or using a production identity.
+The source audit also confirms strict post-normalization probing and current
+profile/asset revalidation around signed hydration. This is not a new live Hub,
+packaged-Worker or public authorization test.
+
+Meet's browser validates its content hash and decoded dimensions/duration,
+not the complete encoded frame table or every MP4 stream. Only the admitted
+upstream normalizer establishes that stronger input profile. Browser/container
+limits remain necessary; the decoder is not a bitstream security sandbox.
+The local [AVS-01 component track](../todos/archive/todo.ananta-persona-video-source.json)
+is complete. Overall Ananta dialogue admission,
+the packaged Worker rollout, GPU/TURN/soak and Ananta MAP-20 remain separate.

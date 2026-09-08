@@ -1,0 +1,38 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": "1.0",
+  "owner": "Ananta Meet maintainers",
+  "track": "ananta-persona-video-source",
+  "archived_at": "2026-09-08",
+  "status": "done",
+  "purpose": "Add bounded silent video artwork to the existing independently stopped machine avatar source, under Ananta MAP-12/MAP-20.",
+  "related_tracks": ["todos/active/todo.ananta-machine-dialog-screen.json", "ananta/todos/todo.meet-autonomous-agent-persona-media.json"],
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [{"id": "AVS-M1", "title": "Bounded video artwork and actual receiver verification", "task_ids": ["AVS-01"], "status": "done"}],
+  "tasks": [{
+    "id": "AVS-01", "title": "Implement explicit persona-video-v1 artwork without changing legacy image authority",
+    "completion_verification": "2026-09-08 at011a20b plus strengthened avatar receiver test: isolated npm run check terminal Exit0,757 frontend and790 Node passes,0 failures,2 explicit Node skips; Node346.019s. Build,GoUnit/Vet,static gates pass;14 external infrastructure gates and optional image scan remain explicit SKIP. Avatar loop/image/hold_last, source generation fencing, pulse-loss stop, independent screen/speech and no-capture observations pass again inside full check. Separate real read-only Ananta9039b55d9 normalization invocation converts synthetic320x180/24fps H264+Aac input into exactly one256x256/12fps H264 stream with12 frames and verified SHA256,17 current-authority callbacks;0.531s, no repository writes or productive identity. Source audit confirms bounded pipe-only normalization, strict post-probe and current signed hydration/profile binding. Meet decoder metadata is not a full bitstream sandbox; normalization remains owned by that admitted upstream source. Root serving hash unchanged; pre-existing TBP030-v4 contract work included in local candidate but excluded from this AVS commit. AVS01 component acceptance complete; Ananta MAP20, packaged Worker/project rollout, GPU/TURN/soak and overall MDS remain separate/open.",
+    "direct_receiver_verification": "2026-09-08 merged011a20b: actual Chromium/Firefox receiver cases passed5.804/8.755s, video/image replacement and independent speech/screen preserved. Extended tests additionally verify no probe side effects and hold_last pixels across1250ms (24/23 observations), not just two snapshots; final pass6.899/9.618s, pulse-loss stop1.256/2.479s, three distinct generations, zero capture and transform errors.49 targeted decoder/artwork/source checks passed. Full combined isolated check is running; no production/Hub/model inference from synthetic clip and policy.",
+    "integration_plan": "2026-09-08 continuation at011a20b: independently verify merged silent avatar-video path against actual Chromium/Firefox receivers, including moving pixels, video/image replacement, independent speech/screen continuity and controller-loss stop. Keep capture, scopes and production trust unchanged; inspect any failure before changing runtime or evidence. Run focused lifecycle regressions immediately and one combined isolated check after integration; existing raw-encoder startup report remains distinct. No Ananta repository writes. Task remains in_progress40/high until all acceptance evidence is present.",
+    "status": "done", "progress_percent": 100, "priority": "P1", "risk": "high", "depends_on": [],
+    "component_verification": "2026-09-08: separate video parser/probe, owned muted blob decoder and single-lifetime artwork loader implemented; avatar lifecycle/watchdog/key protection unchanged. 749 complete frontend unit tests passed9.95s, ngc passed. Actual Chromium/Firefox receiver cases and complete isolated check still pending; no serving/trust activation or task closure.",
+    "acceptance_criteria": [
+      "Expose a separate read-only versioned video feasibility probe; existing client-probe.v1 remains identical. Missing codec support fails without fallback or capture.",
+      "Accept only a closed hash-bound normalized silent 256x256 MP4 up to 1.5 MB, 2..120 frames at 12 Hz, explicit loop/hold_last and provenance classification; never load an external media URL.",
+      "Separate bounded single-loader/decoder ownership from existing 5 FPS avatar surface and immutable KI labels; session/generation/epoch/key checks, 2.5s controller watchdog and 30s lease stay unchanged.",
+      "Close/pause/revoke releases own video, URL, canvas and camera publication without affecting speech/screen, and late asynchronous completion never attaches a stale source.",
+      "Deterministic invalid-input, concurrent decoder, lifecycle, clock, cleanup and unsupported tests plus actual private receiver video/image switch and revocation; full npm run check in an isolated build, no serving/trust deployment."
+    ],
+    "implementation_note": "Source8b72a46: existing avatar surface supports neutral/image only; normalized clips exist in Ananta. New artwork loader composes with existing source/surface/ownership ports (SRP/DIP), no inference on the Meet server. Browser metadata checks are not a decoder memory sandbox; Hub admission and isolated Worker/container limits remain necessary. Root plan docs/contracts/meet-dialog-avatar-video.md."
+  }],
+  "critical_path_tasks": ["AVS-01"],
+  "tasks_status_summary": {
+    "total": 1, "by_status": {"todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 1},
+    "progress_percent_done": 100, "by_priority": {"P0": 0, "P1": 1, "P2": 0, "P3": 0},
+    "by_risk": {"low": 0, "medium": 0, "high": 1, "critical": 0},
+    "critical_path": {"total": 1, "done": 1, "remaining": 0},
+    "milestones": {"total": 1, "todo": 0, "in_progress": 0, "blocked": 0, "done": 1}
+  }
+}
