@@ -97,10 +97,9 @@ oder ein vom Aufrufer geliefertes `grantorSubjectRef` genügt ausdrücklich nich
 - Explizite Quellenannahme an den implementierten Source-Control-Broker
   anschließen; bisher gibt es nur dessen internen, erneut autorisierten Prepare.
 - Sichtbarer Publisher-Consent und sofortiger unabhängiger Widerruf.
-- Den nativen Signalparser an den separaten PeerConnection-Adapter anschließen,
-  dann den implementierten zielgebundenen Key-Envelope transportieren und die
-  quittierte Schlüsselaktivierung mit dem RTP-Receiver verbinden.
-- Begrenztes Depacketizing, Zuordnung zum Audio-/Video-Compositor und Entfernen
+- Den implementierten nativen Signal-/Key-/RTP-Pfad an den Audio-/Video-Compositor
+  anschließen; Transport und begrenztes Depacketizing sind separat geprüft.
+- Audio-Decodierung, Zuordnung zum Audio-/Video-Compositor und Entfernen
   aller zuletzt decodierten Frames bei Widerruf, Source-Ende oder Handoff.
 
 Die vorhandenen Zustandsbesitzer bleiben dabei erhalten: `RoomRegistry.publication`
@@ -386,6 +385,59 @@ der authentisierte Serverbroker wird separat durch WebSocket-Tests geprüft.
 Fehlerberichte enthalten nur feste Zustände, Transformcodes und numerische Zähler.
 Damit sind echte Browser-Paketierung, Schlüssel-ACK und nativer RTP-Empfang belegt,
 weiterhin nicht native Decodierung, Programmmischung, Slate, NAT oder Produktion.
+
+### Separater nativer VP8-Bilddecoder
+
+`source_video_decode.go` ergänzt jetzt einen tatsächlichen Codec-Decoder hinter
+dem Encoded-Klartext-Sink. Er ist noch **nicht** die produktive Sink-Factory und
+ersetzt weder den bestehenden Clear-Program-Writer noch den blinden SFU-Agenten.
+Ein verpflichtender lokaler Policy-Port und ein separates Widerrufssignal
+begrenzen die Lebensdauer; der spätere Source-Adapter muss beide mit seiner
+echten aktuellen Berechtigung verbinden. Ein Codec-/Frame-JSON reicht nicht.
+
+Jede Instanz besitzt genau einen FFmpeg-Prozess mit festem VP8/IVF-Eingang über
+stdin und RGBA-Rawvideo-Ausgang über stdout. Keine Quelle liefert Argumente,
+Filter, Pfade oder URLs; das Protokollprofil erlaubt nur Pipes. Metadaten und
+Decoderdiagnosen werden nicht geloggt oder gespeichert. Die verwendeten
+[FFmpeg-Optionen](https://ffmpeg.org/ffmpeg.html) und
+[Rohvideoformate](https://ffmpeg.org/ffmpeg-formats.html) sind lokale
+Codec-/Pipe-Mechanik, keine Erweiterung der Source-Autorität.
+
+Zulässig: VP8 mit sichtbarem Frame, maximal 1920×1080 Eingangsgröße, 4 MiB
+Encoded-Frame und eine vom lokalen Compositor festgelegte gerade RGBA-Zielgröße
+bis 1920×1080. Vor einem ersten Keyframe werden Deltas nicht decodiert.
+Verdeckte Frames werden abgewiesen, damit eine nicht ausgegebene Grafik nicht
+den Zeitstempel der nächsten sichtbaren Grafik erhält. RTP-Zeitstempel bleiben
+über einen uint32-Überlauf erhalten; Duplikate, Rückwärtsfolgen und Sprünge über
+die maximale zehnminütige Consent-Dauer schließen den Decoder.
+
+Es gibt zwei wartende Encoded-Frames, einen vom Pipe-Writer gehaltenen Frame,
+acht ausstehende Zeitstempel und genau einen wiederverwendeten RGBA-Lesepuffer.
+Die Ausgabe leiht Pixel nur für einen begrenzten synchronen Callback und wischt
+sie anschließend. Überlast schließt die Quelle, statt beliebig zu puffern oder
+Deltaframes still einer falschen Zeit zuzuordnen. Die Ausgangsoption deaktiviert
+Frame-Duplikation. Fünf Sekunden ohne Start, zwei Sekunden ausstehende Ausgabe,
+Codecfehler, verlorene Policy und Widerruf schließen den Prozess. Policy wird
+vor Eingabe/Ausgabe sowie alle 50 ms geprüft; das separate Signal benötigt
+keinen weiteren Medienframe.
+
+Close und Ausgabe sind serialisiert. Der Compositor-Sink muss bei Close seine
+gespeicherte Quellgrafik **sofort** ungültig machen; danach können keine neuen
+Pixelcallbacks folgen. Pipes werden geschlossen, der eigene Prozess beendet
+und erneut gewartet, erreichbare Queues/Puffer gewischt. `finished` bestätigt
+auch das Ende der Worker und Prozess-Reaping. Das überschreibt keine garantierten
+Kopien in FFmpeg, Kernel oder Go-GC. `-max_alloc` begrenzt eine FFmpeg-Allokation,
+**nicht** den gesamten Prozessspeicher. Ein globales Decoder-/CPU-/RAM-Budget,
+Opus/PCM, A/V-Clock-Abgleich, Mixer/Slate und der atomar gefencete Programmanschluss
+bleiben vor Produktionsaktivierung erforderlich.
+
+`TestLiveTrustedSourceVideoDecoder` erzeugt synthetisches VP8 über FFmpeg und
+prüft wechselnde Pixel, Zeitstempel samt Überlauf, untätigen Widerruf sowie
+Format-, Dimensions-, Sequenz-, Korruptions- und Überlastfälle. Der reguläre
+Node-Browsertrack führt diesen lokalen Codec-Test mit aus; fehlt FFmpeg, ist
+das ein ausdrücklicher Skip statt eines Decode-PASS. CI installiert FFmpeg.
+Das ist ein echter Codec-/Lifecycle-Test, noch kein durchgängiger
+Browser-SFrame-zu-Compositor-/HLS-Nachweis.
 
 ### Prepare, Renewal und Stop
 

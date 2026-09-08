@@ -36,7 +36,7 @@ jobs:
       - name: Provide a synthetic audio clock for real Firefox AudioContext tests
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y pulseaudio pulseaudio-utils
+          sudo apt-get install --no-install-recommends -y pulseaudio pulseaudio-utils ffmpeg
           pulseaudio -n --daemonize=yes --exit-idle-time=-1 \
             --load="module-native-protocol-unix" \
             --load="module-null-sink sink_name=webrtc_ci_audio rate=48000 channels=2"

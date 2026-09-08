@@ -18,9 +18,18 @@ before(async () => {
   const local = spawnSync("go",["version"],{encoding:"utf8",timeout:10000});
   dockerRunner = Boolean(local.error || local.status !== 0);
   if (dockerRunner && process.platform !== "linux") return;
-  const compiled = spawnSync(dockerRunner ? "docker" : "go", dockerRunner ? ["run","--rm","-v",`${root}:/workspace:ro`,"-v",`${directory}:/out`,
-    "-w","/workspace/native-broadcast-packager","golang:1.24-alpine","go","test","-c","-o","/out/source.test","."]
-    : ["test","-c","-o",executable,"."], {cwd:path.join(root,"native-broadcast-packager"),encoding:"utf8",timeout:90000});
+  const compilerContainer = `webrtc-source-compile-${randomUUID()}`;
+  let compiled;
+  try {
+    compiled = spawnSync(dockerRunner ? "docker" : "go", dockerRunner ? ["run","--rm","--name",compilerContainer,"-e","CGO_ENABLED=0","-v",`${root}:/workspace:ro`,"-v",`${directory}:/out`,
+      "-w","/workspace/native-broadcast-packager","golang:1.24-alpine","go","test","-c","-o","/out/source.test","."]
+      : ["test","-c","-o",executable,"."], {cwd:path.join(root,"native-broadcast-packager"),encoding:"utf8",timeout:90000});
+  } finally {
+    if(dockerRunner) {
+      const cleanup = spawnSync("docker",["rm","--force",compilerContainer],{encoding:"utf8",timeout:5000});
+      assert.ok(cleanup.status===0 || /No such container/.test(cleanup.stderr||""),"native source compiler cleanup failed");
+    }
+  }
   assert.equal(compiled.status,0,"native source fixture compilation failed");
   const built = await build({stdin:{resolveDir:root,contents:`
     import { TrustedSourcePublisher } from "./frontend/src/app/broadcast/trusted-source-publisher";
@@ -77,6 +86,21 @@ before(async () => {
   worker = workerBuild.outputFiles[0].contents;
 });
 after(async () => { if(directory) await fs.rm(directory,{recursive:true,force:true}); });
+
+// The first test also owns the bounded 90-second native compilation hook.
+test("native trusted VP8 source decodes changing pixels and invalidates on revoke", {timeout:120000}, t => {
+  if(dockerRunner && process.platform!=="linux") {t.skip("native decoder fixture needs local Go or Linux compiler fallback");return;}
+  const available = spawnSync("ffmpeg",["-version"],{encoding:"utf8",timeout:3000,maxBuffer:32768});
+  if(available.error || available.status!==0) {t.skip("real source decoding requires local FFmpeg; no decode claim from RTP alone");return;}
+  // The Linux Docker compiler creates a static host binary; plaintext remains in
+  // this test's local FFmpeg pipes, never the Node control-plane implementation.
+  const result = spawnSync(executable,["-test.run=^TestLiveTrustedSourceVideoDecoder$","-test.timeout=20s","-test.v"],
+    {env:{...process.env,RUN_LIVE_TRUSTED_SOURCE_DECODE:"1"},encoding:"utf8",timeout:22000,maxBuffer:32768});
+  assert.equal(result.error,undefined,"bounded native decode fixture failed to run");
+  assert.equal(result.status,0,"native decode/revocation fixture failed");
+  assert.ok(result.stdout.includes("--- PASS: TestLiveTrustedSourceVideoDecoder"),"native decode fixture did not actually execute");
+  assert.equal(result.stdout.includes("SKIP"),false,"opted-in native decode fixture skipped");
+});
 
 async function nativeSource(page, codec) {
   const source = await page.evaluate(codec => window.createSyntheticSource(codec),codec);

@@ -80,3 +80,10 @@ the **only** failed check must be `meet_worktree_clean`; failure diagnostics
 contain fixed check codes, not plan scope. Duplicate-JSON, FIFO, exit-code,
 key/scope and redaction assertions remain. Production code is unchanged.
 The focused preflight/profile regression passes; the combined check follows.
+
+The isolated full check at `83ad520` subsequently completed with exit 0:
+665 frontend tests, 721 Node passes, two Node skips, no failures; Node
+234.022 s. Build, Go unit/vet and static gates passed, unavailable external
+infrastructure remained explicitly skipped. This verifies the isolated
+clean/dirty CLI cases together with the source publisher browser matrix;
+it does not retroactively identify the missing diagnostic from `c264888`.
