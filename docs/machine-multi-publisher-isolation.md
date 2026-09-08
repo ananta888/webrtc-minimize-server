@@ -24,3 +24,20 @@ separate Hub/two-Worker-container/role-assignment gate is still required; no
 production release, GPU concurrency, public TURN or completed MAP-28 claim
 follows from the browser gate alone. Run targeted Chromium/Firefox checks and
 the isolated complete check, preserving and fixing any reproducible failures.
+
+## First implementation check
+
+The new Chromium/Firefox three-context matrix passed both cases in 7.568 s.
+The receiver decoded red and blue persona images with separately attributed
+red/green screens and one active speech track per publisher. Server-assigned
+peer IDs, authenticated principals and device fingerprints were distinct;
+foreign screen source IDs were rejected. After one machine left, its media
+disappeared and the survivor published blue/green media with active audio
+under freshly opened source generations. Zero capture calls and transform
+errors were observed. This tests recovery after the membership fence, not
+uninterrupted playback across a room epoch change. The first test attempt
+incorrectly read a nonexistent `status().peerId`; the fixture now resolves
+the actual newly admitted member from its own server registry without adding
+an application API. No production code or test deadline was changed.
+
+The full isolated check and Ananta multi-container gate remain pending.
