@@ -54,6 +54,48 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  machine-turn-dialog:
+    name: Ananta dialog over authenticated TURN
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MEET_TEST_PROXY_IMAGE: node:22-alpine
+      MEET_TEST_STUN_IMAGE: coturn/coturn:4.17.0
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies and browsers
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium firefox
+      - name: Provide a synthetic Firefox audio clock
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y pulseaudio pulseaudio-utils
+          pulseaudio -n --daemonize=yes --exit-idle-time=-1 \
+            --load="module-native-protocol-unix" \
+            --load="module-null-sink sink_name=webrtc_ci_audio rate=48000 channels=2"
+          pactl set-default-sink webrtc_ci_audio
+          pactl info > /dev/null
+      - name: Build the tested application and pull isolated fixture images
+        run: |
+          npm run build
+          docker pull node:22-alpine
+          docker pull coturn/coturn:4.17.0
+      - name: Real Chromium and Firefox dialog over TURN UDP
+        env:
+          MACHINE_DIALOG_ICE_PATH: turn-udp
+        run: node --test test/machine-dialog.browser.e2e.test.js
+      - name: Real Chromium and Firefox dialog over TURN TCP
+        env:
+          MACHINE_DIALOG_ICE_PATH: turn-tcp
+        run: node --test test/machine-dialog.browser.e2e.test.js
+
   macos-packager-lifecycle:
     name: macOS packager lifecycle (${{ matrix.arch }})
     strategy:

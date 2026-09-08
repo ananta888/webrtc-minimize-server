@@ -1,15 +1,28 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { machineBrowserFixture } from "./helpers/machine-browser-fixture.js";
+import { machineRelayObservation, assertMachineRelayObservation, waitMachineRelaySetup, machineRelayDiagnostics } from "./helpers/machine-relay-observation.js";
+
+const icePath = process.env.MACHINE_DIALOG_ICE_PATH ?? "direct";
+assert.ok(["direct", "turn-udp", "turn-tcp"].includes(icePath), "closed test ICE path");
 
 for (const humanEngine of ["chromium", "firefox"]) {
 test(`${humanEngine} human consent gates real machine chat, decrypted PCM and own screen through three renewals`, { timeout: 100_000 }, async t => {
-  const f = await machineBrowserFixture(t, { humanEngine }), { human, machine } = f;
+  const f = await machineBrowserFixture(t, { humanEngine, icePath }), { human, machine } = f;
   t.after(async () => { if (!machine.isClosed()) t.diagnostic(JSON.stringify(await machine.evaluate(() => ({
     e2ee: window.anantaMachine.status().e2ee, errors: window.__transformErrors, audio: window.anantaMachine.audio.status() })))); });
   const caps = ["audio.receive", "chat.read", "chat.send", "screen.publish"];
   await machine.evaluate(([room, grant]) => window.anantaMachine.join(room, grant), [f.roomId, await f.grant(caps)]);
   await human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
+  if (icePath !== "direct") {
+    // This case forces the actual session-issued relay from construction. It
+    // tests TURN media delivery, not the default delayed tier fallback. Establish
+    // ICE/DTLS/SCTP before the unchanged, separate 12 s media budget.
+    await waitMachineRelaySetup([human, machine]).catch(async error => {
+      t.diagnostic(JSON.stringify({ path: icePath, human: await machineRelayDiagnostics(human), machine: await machineRelayDiagnostics(machine) }));
+      throw error;
+    });
+  }
   assert.equal(await human.evaluate(() => window.__captures), 0);
   assert.deepEqual(await machine.evaluate(() => window.anantaMachine.audio.sources()), []);
   assert.equal(await machine.evaluate(() => { try { window.anantaMachine.chat.open(); return true; } catch { return false; } }), false);
@@ -76,6 +89,28 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
   assert.equal(await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).isChecked(), true);
   assert.equal(await panel.getByLabel("Mein laufender Bildschirmton", { exact: true }).isChecked(), false);
   await machine.waitForFunction(() => window.anantaMachine.audio.sources().length === 1, null, { timeout: 12000 }).catch(async error => {
+    if (icePath !== "direct") {
+      t.diagnostic(JSON.stringify({ path: icePath, humanRelay: await machineRelayObservation(human),
+        machineRelay: await machineRelayObservation(machine), sender: await human.evaluate(async () => ({
+          errors: window.__transformErrors, iceEvents: window.__testIce,
+          connections: await Promise.all(window.__pcs.map(async pc => ({
+            state: pc.connectionState, ice: pc.iceConnectionState, gathering: pc.iceGatheringState,
+            signaling: pc.signalingState, sctp: pc.sctp?.state,
+            localType: pc.localDescription?.type, remoteType: pc.remoteDescription?.type,
+            localMedia: (pc.localDescription?.sdp.match(/^m=(audio|video|application)/gm) || []).slice(0, 8),
+            remoteMedia: (pc.remoteDescription?.sdp.match(/^m=(audio|video|application)/gm) || []).slice(0, 8),
+            transports: [...(await pc.getStats()).values()].filter(s => s.type === "transport")
+              .map(s => ({ dtls: s.dtlsState, ice: s.iceState })),
+            candidates: [...(await pc.getStats()).values()].filter(s => s.type === "local-candidate" || s.type === "remote-candidate")
+              .map(s => ({ side: s.type, kind: s.candidateType, protocol: s.protocol, relayProtocol: s.relayProtocol })),
+            pairs: [...(await pc.getStats()).values()].filter(s => s.type === "candidate-pair")
+              .map(s => ({ state: s.state, nominated: s.nominated, sent: s.bytesSent, received: s.bytesReceived })),
+            senders: pc.getSenders().map(s => s.track ? { kind: s.track.kind, state: s.track.readyState, enabled: s.track.enabled } : null),
+            outbound: [...(await pc.getStats()).values()].filter(s => s.type === "outbound-rtp")
+              .map(s => ({ kind: s.kind, bytes: s.bytesSent, packets: s.packetsSent })),
+          }))),
+        })) }));
+    }
     t.diagnostic(JSON.stringify(await machine.evaluate(async () => ({ e2ee: window.anantaMachine.status().e2ee,
       errors: window.__transformErrors, capabilities: typeof RTCRtpScriptTransform,
       peers: window.anantaMachine.status().peers, connections: await Promise.all(window.__pcs.map(async pc => ({
@@ -92,6 +127,8 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
   assert.equal(event.event.sender_kind, "human");
   await machine.evaluate(item => { window.anantaMachine.chat.ack(item.cursor); window.anantaMachine.chat.reply(item.event.message_id, "Bound synthetic answer"); }, event);
   await human.locator("#chat-log").getByText("Bound synthetic answer", { exact: false }).waitFor();
+  const relayBefore = icePath === "direct" ? [] : await waitMachineRelaySetup([human, machine], 1500);
+  for (const observed of relayBefore) assertMachineRelayObservation(observed, icePath.slice(5));
   const pcm = await machine.evaluate(async () => {
     const source = window.anantaMachine.audio.sources()[0];
     await window.anantaMachine.audio.open(source.publicationId, 1);
@@ -152,6 +189,12 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
   }
   assert.ok(decoded.frames > 3, "remote frames decoded");
   assert.ok(decoded.pixels.some(p => p[1] > 150 && p[0] < 80), "remote decoded green source pixels");
+  const relayAfter = icePath === "direct" ? [] : await waitMachineRelaySetup([human, machine], 1500);
+  for (const [index, observed] of relayAfter.entries()) {
+    assertMachineRelayObservation(observed, icePath.slice(5), relayBefore[index]);
+    t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, path: icePath,
+      endpoint: index === 0 ? "human" : "machine", relay: observed }));
+  }
   await machine.evaluate(() => window.anantaMachine.screen.close());
   for (let i = 0; i < 3; i++) {
     const before = await machine.evaluate(() => window.anantaMachine.status().lease);

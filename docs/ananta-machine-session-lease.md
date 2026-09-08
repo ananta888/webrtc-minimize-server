@@ -31,19 +31,19 @@ Hub-ASR-Tasklease, Hub-Dialoglease und Meet-Sitzungslease werden im Workeradapte
 explizit unterschieden. Die gemeinsame Browser-/ASR-/TURN-Abnahme steht aus;
 Capability-Probes bleiben bis zur tatsächlichen Abnahme konservativ.
 
-### Aktueller Integrationsstand (8. September 2026)
+### Aktueller Integrationsstand (9. September 2026)
 
 Die grundlegenden Meet-Ports und die Freigabe-/Betreiberstatus-UI sind in der
-[zuletzt dokumentierten ausgelieferten Revision `76e8866`](machine-admission-status.md#deployment)
+[zuletzt dokumentierten ausgelieferten Revision `92f583f`](machine-admission-status.md#deployment)
 enthalten. Die produktive Maschinenaufnahme bleibt ausgeschaltet; ein erneuter
 öffentlicher GET bestätigte `admissionEnabled: false`. Ausgelieferter Code ist
 keine freigegebene Hub-Verbindung. Die Nur-Lese-Chatkorrektur ist in dieser
-Revision enthalten. Die nachfolgende Bindung der Editor-Auswahl an konkrete
-Quell-IDs wird separat verifiziert und ist noch nicht deployed.
+Revision enthalten, ebenso die geprüfte Bindung der Editor-Auswahl an konkrete
+Quell-IDs. Die nachfolgende isolierte TURN-Dialogabnahme ist davon getrennt.
 
 | Bereich | Meet-seitig vorhanden | Verbleibende gemeinsame Abnahme |
 |---|---|---|
-| Audioempfang | Quellfreigabe, SFrame, begrenztes PCM16 mit ACK und Stop | Reale Hub-/ASR-Aufgabe sowie Agent-/TURN-Pfad |
+| Audioempfang | Quellfreigabe, SFrame, begrenztes PCM16 mit ACK und Stop; isolierter TURN-UDP/TCP-Dialog | Reale Hub-/ASR-Aufgabe, Agent-Pfad und öffentliche NAT-/TURN-TLS-Abnahme |
 | Chat | Neue Ereignisse, Cursor/ACK, korrelierte Antworten, getrennte Rechte | Produktiv autorisierter Hub-/Dialogworkflow |
 | Eigener Bildschirm | Gebundene synthetische Quelle mit separatem Lifecycle | Allgemeine Browser-Worker-Quelle statt nur Offline-Taskansicht |
 | Sitzungen | Frisch signierte Renewals, Fencing und hartes Gesamtlaufzeitlimit | Hub-Ausfall- und vollständiger Dialog-Langzeitnachweis |
@@ -51,6 +51,8 @@ Quell-IDs wird separat verifiziert und ist noch nicht deployed.
 
 Kurze Taskprüfungen laufen unmittelbar; die umfassende Netzwerk-/Langzeitmatrix
 bleibt gebündelt. Das Ananta-Repository wird von dieser Meet-Arbeit nicht verändert.
+Die [erzwungene TURN-Dialogmatrix](machine-forced-turn.md) trennt ihren echten
+Medientransport ausdrücklich vom weiterhin offenen verzögerten Stufen-Fallback.
 
 ## Kompatibilität und Zuständigkeiten
 

@@ -1,9 +1,9 @@
 # Runbook: Produktionsdeployment und Rollback
 
-Aktueller dokumentierter Software-Rollout: `76e8866` am 8. September 2026 nach
-CI 34275497102 (alle sieben Jobs grün). Alle drei Dienste, Native-Preflight,
+Aktueller dokumentierter Software-Rollout: `92f583f` am 9. September 2026 nach
+CI 34283961744 (alle sieben Jobs grün). Alle drei Dienste, Native-Preflight,
 externer Smoke und Identitätserhalt sind geprüft; Snapshot
-`image-set-v1` / `rollback.VAm8DR` bewahrt den vorherigen Satz (`219e4ef`).
+`image-set-v1` / `rollback.IxptJI` bewahrt den vorherigen Satz (`76e8866`).
 Maschinenaufnahme bleibt ausgeschaltet. Die unabhängige öffentliche Release-
 und UI-Prüfung ist unter [Ananta-Betreiberstatus](../machine-admission-status.md)
 dokumentiert. Dies ist kein neuer Rollback-/Medien- oder Hub-Trust-Drill.

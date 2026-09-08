@@ -61,7 +61,31 @@ unverändert. Commit-/Remote-CI-/Deployment-Evidence ist davon getrennt.
 
 ## Deployment
 
-Aktuell läuft `76e8866` nach vollständig erfolgreicher CI 34275497102
+Aktuell läuft `92f583f` nach vollständig erfolgreicher CI 34283961744
+(alle sieben Jobs einschließlich Keycloak/TURN). Der saubere Mini-PC wurde am
+9. September 2026 bei null Räumen/Teilnehmern per normalem Drei-Dienste-Runner
+aktualisiert. Native-Preflight, Runner-Smoke und unabhängiger externer Smoke
+bestanden; alle drei Dienste tragen exakt diese Revision, RestartCount null.
+Die Agent-Identität ist unverändert, die Deploy-Sperre entfernt. Der Satz
+`image-set-v1` / `rollback.IxptJI` bewahrt `76e8866`.
+
+Öffentliches Manifest und alle fünf Binaries sind byte-/SHA256-identisch mit dem
+gegen Repository, Workflow, exakten Main-Commit und nicht selbst gehostete Runner
+geprüften CI-Artefaktsatz. Öffentliches HTML und acht Einstieg-/Preload-Skripte
+entsprechen exakt dem laufenden Container; die neue Quellenauswahl-Prüfung ist
+darin vorhanden. Ein zusätzlicher Vergleich mit dem lokalen isolierten Build
+war wegen anderer Bundle-Hashes **nicht** bytegleich; hierfür wird keine
+Reproduzierbarkeitsbehauptung gemacht.
+
+Der Freigabefix ist damit ausgeliefert. Maschinenaufnahme bleibt
+`admissionEnabled: false`; kein Hub-Trust oder Projektauftrag wurde aktiviert.
+Die nachfolgende lokale TURN-Dialogfixture und uncommittete native
+v4-Control-Erweiterung sind nicht Teil dieses Deployments. Das ist weiterhin
+keine produktive Hub-/Worker-/NAT-/Langzeitabnahme.
+
+### Rollout 76e8866
+
+`76e8866` lief nach vollständig erfolgreicher CI 34275497102
 (alle sieben Jobs einschließlich Keycloak/TURN). Am 8. September 2026 wurde
 der saubere Mini-PC bei null Räumen/Teilnehmern exakt von `219e4ef` vorgezogen.
 Der Drei-Dienste-Runner samt Native-Preflight und ein unabhängiger externer

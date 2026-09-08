@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import { privateMachineStun } from "./machine-stun-fixture.js";
+import { privateMachineTurn } from "./machine-turn-fixture.js";
 
 function docker(args) {
   try {
@@ -13,7 +14,8 @@ function docker(args) {
   }
 }
 
-export function privateMachineTlsProxy(lifetimeSeconds, run = docker, connectionLimit = 16) {
+export function privateMachineTlsProxy(lifetimeSeconds, run = docker, connectionLimit = 16, icePath = "direct") {
+  if (!["direct", "turn-udp", "turn-tcp"].includes(icePath)) throw new Error("test_ice_path_invalid");
   if (!Number.isInteger(lifetimeSeconds) || lifetimeSeconds < 180 || lifetimeSeconds > 7380) throw new Error("test_lifetime_invalid");
   if (![16, 32].includes(connectionLimit)) throw new Error("test_proxy_connection_limit_invalid");
   const image = run(["image", "inspect", process.env.MEET_TEST_PROXY_IMAGE || "webrtc-ci-local-webrtc:latest", "--format", "{{.Id}}"]);
@@ -40,9 +42,11 @@ export function privateMachineTlsProxy(lifetimeSeconds, run = docker, connection
     if (!info?.Internal || isIP(gateway) !== 4 || !/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(gateway)
       || !gateway.endsWith(".1") || !/\/(1[6-9]|2[0-9])$/.test(info.IPAM.Config[0].Subnet)) throw new Error("test_private_proxy_network_invalid");
     const originHost = gateway.slice(0, -1) + "2";
-    stun = privateMachineStun({ network, address: gateway.slice(0, -1) + "4", lifetimeSeconds }, run);
+    const iceScope = { network, address: gateway.slice(0, -1) + "4", lifetimeSeconds };
+    stun = icePath === "direct" ? privateMachineStun(iceScope, run)
+      : privateMachineTurn({ ...iceScope, transport: icePath.slice(5) }, run);
     return {
-      listenHost: gateway, originHost, network, stunUrl: stun.url, close,
+      listenHost: gateway, originHost, network, stunUrl: stun.url, turnConfig: stun.config, close,
       observation() {
         if (closed || !containerAttempted) return { connectionDrops: 0 };
         return { connectionDrops: run(["logs", name]).split("\n").filter(line => line === "test_tls_connection_capacity").slice(0, 8).length };

@@ -77,3 +77,20 @@ test("proxy lifetime and target port are bounded", () => {
   try { for (const port of [0, 443, 65536, "32123"]) assert.throws(() => proxy.start(port), /start_invalid/); }
   finally { proxy.close(); }
 });
+
+test("explicit TURN proxy composes only its own bounded relay and rejects unknown ICE paths", () => {
+  const f = fixture();
+  assert.throws(() => privateMachineTlsProxy(180, f.run, 16, "auto"), /ice_path_invalid/);
+  assert.equal(f.calls.length, 0);
+  const proxy = privateMachineTlsProxy(180, f.run, 16, "turn-tcp");
+  try {
+    assert.equal(proxy.stunUrl, undefined);
+    assert.deepEqual(proxy.turnConfig.turnUrls, ["turn:172.30.0.4:3478?transport=tcp"]);
+    proxy.start(32123);
+    assert.equal(f.calls.filter(args => args[0] === "create").length, 2);
+    assert.ok(f.calls.some(args => args.includes("--use-auth-secret")));
+    assert.ok(!f.calls.some(args => args.includes("--stun-only")));
+  } finally { proxy.close(); }
+  assert.equal(f.calls.filter(args => args[0] === "rm").length, 2);
+  assert.equal(f.calls.filter(args => args[0] === "network" && args[1] === "rm").length, 1);
+});

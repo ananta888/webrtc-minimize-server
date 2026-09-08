@@ -16,10 +16,13 @@ import { navigateFixture } from "./machine-browser-navigation.mjs";
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
 import { machineFixtureAssets } from "./machine-fixture-assets.mjs";
 import { installReceiverKeyDelay } from "./machine-receiver-key-delay.mjs";
+import { installMachineForcedRelay } from "./machine-forced-relay.js";
 
 export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", listenPort = 0, hubPublicKey, tlsPortProxy = false,
   lifetimeSeconds = 180, humanEngine = "chromium", observeStage = () => {}, tlsConnectionLimit = 16,
-  publicDir = process.env.MEET_TEST_PUBLIC_DIR, receiverKeyDelay = false } = {}) {
+  publicDir = process.env.MEET_TEST_PUBLIC_DIR, receiverKeyDelay = false, icePath = "direct" } = {}) {
+  if (!["direct", "turn-udp", "turn-tcp"].includes(icePath)) throw new Error("test_ice_path_invalid");
+  if (icePath !== "direct") tlsPortProxy = true;
   if (typeof receiverKeyDelay !== "boolean") throw new Error("test_receiver_key_delay_invalid");
   if (![16, 32].includes(tlsConnectionLimit)) throw new Error("test_proxy_connection_limit_invalid");
   if (!Number.isInteger(lifetimeSeconds) || lifetimeSeconds < 180 || lifetimeSeconds > 7380) throw new Error("test_lifetime_invalid");
@@ -44,7 +47,7 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
   });
   if (tlsPortProxy) {
     observeStage("private-network");
-    proxy = privateMachineTlsProxy(lifetimeSeconds, undefined, tlsConnectionLimit);
+    proxy = privateMachineTlsProxy(lifetimeSeconds, undefined, tlsConnectionLimit, icePath);
     listenHost = proxy.listenHost;
   }
   const originHost = proxy?.originHost || listenHost;
@@ -64,7 +67,8 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
     oidcIssuer: issuer, oidcAudience: "human", oidcClientId: "human-browser", oidcAlgorithms: ["EdDSA"],
     oidcJwksUrl: issuer + "/jwks", machineHubIssuer: issuer,
     machineHubPublicKey: hubPublicKey || keys.publicKey.export({ type: "spki", format: "pem" }),
-    stunUrls: proxy ? [proxy.stunUrl] : [], turnServers: [], mediaE2eeMode: "required", signalRateLimit: 400 };
+    stunUrls: proxy?.stunUrl ? [proxy.stunUrl] : [], turnServers: [], ...proxy?.turnConfig,
+    mediaE2eeMode: "required", signalRateLimit: 400 };
   const oidcVerifier = createOidcVerifier(config, { jwks: createLocalJWKSet({ keys: [await exportJWK(humanKeys.publicKey)] }) });
   observeStage("signaling-server"); app = createAppServer({ config, oidcVerifier, publicDir: fixturePublicDir });
   tls.on("request", (req, res) => app.server.emit("request", req, res));
@@ -90,6 +94,7 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
   humanBrowser = humanEngine === "chromium" ? browser : await firefox.launch({ headless: true });
   async function page(machine = false) {
     const context = await (machine ? browser : humanBrowser).newContext({ permissions: [], ignoreHTTPSErrors: true });
+    if (icePath !== "direct") await context.addInitScript(installMachineForcedRelay, proxy.turnConfig.turnUrls[0]);
     if (!machine && receiverKeyDelay) await context.addInitScript(installReceiverKeyDelay);
     await context.addInitScript(({ machine }) => {
       window.__captures = 0; window.__pcs = []; window.__transformErrors = [];
