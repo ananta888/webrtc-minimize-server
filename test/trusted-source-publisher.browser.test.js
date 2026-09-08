@@ -107,6 +107,9 @@ test("native trusted audio mixer combines two decoded sources and removes revoke
 test("native trusted video compositor switches layouts and wipes revoked decoded frames", {timeout:25000}, t => {
   nativeCodecFixture(t, "TestLiveTrustedSourceVideoMixer");
 });
+test("native program clock combines four real decoders and propagates individual revoke", {timeout:25000}, t => {
+  nativeCodecFixture(t, "TestLiveTrustedSourceProgramClock");
+});
 
 function nativeCodecFixture(t, testName) {
   if(dockerRunner && process.platform!=="linux") {t.skip("native decoder fixture needs local Go or Linux compiler fallback");return;}

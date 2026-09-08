@@ -33,21 +33,23 @@ type sourceVideoMixFrame struct {
 // thread-safe and non-reentrant. The program clock schedules Render; the
 // decoder must Close its exact input generation on revoke, even while idle.
 type sourceVideoMixer struct {
-	mu        sync.Mutex
-	cfg       sourceVideoMixConfig
-	sources   map[*sourceVideoMixInput]struct{}
-	usedBytes int
-	output    []byte
-	cursor    int64
-	rendered  bool
-	closed    bool
-	revision  uint64
-	layout    string
-	scene     []*sourceVideoMixInput
-	rects     []sourceVideoRect
+	mu           sync.Mutex
+	cfg          sourceVideoMixConfig
+	sources      map[*sourceVideoMixInput]struct{}
+	usedBytes    int
+	output       []byte
+	cursor       int64
+	rendered     bool
+	closed       bool
+	programOwned bool
+	revision     uint64
+	layout       string
+	scene        []*sourceVideoMixInput
+	rects        []sourceVideoRect
 }
 
 type sourceVideoMixInput struct {
+	fence   *sourceRenderFence
 	mixer   *sourceVideoMixer
 	cfg     sourceVideoMixInputConfig
 	frames  []sourceVideoMixFrame
@@ -86,7 +88,7 @@ func (m *sourceVideoMixer) Add(cfg sourceVideoMixInputConfig) (*sourceVideoMixIn
 		len(m.sources) >= m.cfg.maxSources || cfg.width*cfg.height*4*m.cfg.queueFrames > m.cfg.maxRGBABytes-m.usedBytes {
 		return nil, errors.New("source video mixer admission denied")
 	}
-	s := &sourceVideoMixInput{mixer: m, cfg: cfg, current: -1,
+	s := &sourceVideoMixInput{mixer: m, cfg: cfg, fence: &sourceRenderFence{allowed: cfg.authorized}, current: -1,
 		frames: make([]sourceVideoMixFrame, m.cfg.queueFrames), pending: make([]int, 0, m.cfg.queueFrames)}
 	for i := range s.frames {
 		s.frames[i].pixels = make([]byte, cfg.width*cfg.height*4)
@@ -185,6 +187,13 @@ func (m *sourceVideoMixer) SetScene(expected uint64, layout string, inputs []*so
 // write an encoder pipe here. Close is serialized with this handoff and the
 // output is wiped before return. Downstream queues need their own revocation.
 func (m *sourceVideoMixer) Render(at int64, consume func(int64, uint64, []byte) error) error {
+	if consume == nil {
+		return m.RenderGuarded(at, nil)
+	}
+	return m.RenderGuarded(at, func(ts int64, rev uint64, pixels []byte, _ sourceRenderGuard) error { return consume(ts, rev, pixels) })
+}
+
+func (m *sourceVideoMixer) RenderGuarded(at int64, consume func(int64, uint64, []byte, sourceRenderGuard) error) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed || !m.cfg.authorized() || consume == nil || at < m.cursor || at > sourceVideoMixMaxTime || (m.rendered && at == m.cursor) {
@@ -193,6 +202,7 @@ func (m *sourceVideoMixer) Render(at int64, consume func(int64, uint64, []byte) 
 	}
 	m.cursor, m.rendered = at, true
 	defer clear(m.output)
+	var guard sourceRenderGuard
 	for s := range m.sources {
 		if !s.cfg.authorized() {
 			s.closeLocked()
@@ -207,6 +217,7 @@ func (m *sourceVideoMixer) Render(at int64, consume func(int64, uint64, []byte) 
 		// reveal a formerly selected frame or another source beneath the tile.
 		fillSourceVideoSlate(m.output, m.cfg.width, rect.x, rect.y, rect.width, rect.height)
 		if s != nil && !s.closed && s.current >= 0 {
+			guard.add(s.fence)
 			blitSourceVideo(m.output, m.cfg.width, rect, s.cfg.width, s.cfg.height, s.cfg.fit, s.frames[s.current].pixels)
 		}
 	}
@@ -222,7 +233,7 @@ func (m *sourceVideoMixer) Render(at int64, consume func(int64, uint64, []byte) 
 		m.closeLocked()
 		return errors.New("source video mixer output denied")
 	}
-	if err := consume(at, m.revision, m.output); err != nil {
+	if err := consume(at, m.revision, m.output, guard); err != nil {
 		m.closeLocked()
 		return errors.New("source video mixer output failed")
 	}
@@ -260,6 +271,7 @@ func (s *sourceVideoMixInput) closeLocked() {
 		return
 	}
 	s.closed = true
+	s.fence.closed.Store(true)
 	for i := range s.frames {
 		s.clearFrame(i)
 		s.mixer.usedBytes -= len(s.frames[i].pixels)

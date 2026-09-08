@@ -28,19 +28,21 @@ type sourceAudioMixInputConfig struct {
 // authority, codecs, encoder processes or writer ownership. Policy and clock
 // callbacks must be bounded, thread-safe and may not reenter this stage.
 type sourceAudioMixer struct {
-	mu       sync.Mutex
-	cfg      sourceAudioMixConfig
-	sources  map[*sourceAudioMixInput]struct{}
-	pcmBytes int
-	cursor   int64
-	closed   bool
-	sum      [sourceAudioMixSamples * 2]int64
-	output   [sourceAudioMixSamples * 4]byte
+	mu           sync.Mutex
+	cfg          sourceAudioMixConfig
+	sources      map[*sourceAudioMixInput]struct{}
+	pcmBytes     int
+	cursor       int64
+	closed       bool
+	programOwned bool
+	sum          [sourceAudioMixSamples * 2]int64
+	output       [sourceAudioMixSamples * 4]byte
 }
 
 // Implements sourceAudioOutput; the decoder must Close this exact generation
 // on revocation, including when idle. A new generation requires a new handle.
 type sourceAudioMixInput struct {
+	fence   *sourceRenderFence
 	mixer   *sourceAudioMixer
 	cfg     sourceAudioMixInputConfig
 	pcm     []int16
@@ -78,7 +80,7 @@ func (m *sourceAudioMixer) add(cfg sourceAudioMixInputConfig, programTime bool) 
 		len(m.sources) >= m.cfg.maxSources || m.pcmBytes+m.cfg.queueSamples*4 > m.cfg.maxPCMBytes {
 		return nil, errors.New("source audio mixer admission denied")
 	}
-	s := &sourceAudioMixInput{mixer: m, cfg: cfg, pcm: make([]int16, m.cfg.queueSamples*2)}
+	s := &sourceAudioMixInput{mixer: m, cfg: cfg, fence: &sourceRenderFence{allowed: cfg.authorized}, pcm: make([]int16, m.cfg.queueSamples*2)}
 	m.sources[s] = struct{}{}
 	m.pcmBytes += m.cfg.queueSamples * 4
 	return s, nil
@@ -153,6 +155,13 @@ func (s *sourceAudioMixInput) SetGain(left, right int) error {
 // Close is serialized with that handoff. A later writer queue needs its own
 // generation/fence revocation; bytes already handed off cannot be recalled.
 func (m *sourceAudioMixer) Render(consume func(int64, []byte) error) error {
+	if consume == nil {
+		return m.RenderGuarded(nil)
+	}
+	return m.RenderGuarded(func(at int64, pcm []byte, _ sourceRenderGuard) error { return consume(at, pcm) })
+}
+
+func (m *sourceAudioMixer) RenderGuarded(consume func(int64, []byte, sourceRenderGuard) error) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed || !m.cfg.authorized() || consume == nil || m.cursor > sourceAudioMixMaxTime-sourceAudioMixSamples {
@@ -161,11 +170,13 @@ func (m *sourceAudioMixer) Render(consume func(int64, []byte) error) error {
 	}
 	defer clear(m.sum[:])
 	defer clear(m.output[:])
+	var guard sourceRenderGuard
 	for s := range m.sources {
 		if !s.cfg.authorized() {
 			s.closeLocked()
 			continue
 		}
+		guard.add(s.fence)
 		for i := 0; i < sourceAudioMixSamples; i++ {
 			index := int((m.cursor+int64(i))%int64(m.cfg.queueSamples)) * 2
 			m.sum[i*2] += int64(s.pcm[index]) * int64(s.cfg.left)
@@ -193,7 +204,7 @@ func (m *sourceAudioMixer) Render(consume func(int64, []byte) error) error {
 		m.closeLocked()
 		return errors.New("source audio mixer output denied")
 	}
-	if err := consume(m.cursor, m.output[:]); err != nil {
+	if err := consume(m.cursor, m.output[:], guard); err != nil {
 		m.closeLocked()
 		return errors.New("source audio mixer output failed")
 	}
@@ -206,6 +217,7 @@ func (s *sourceAudioMixInput) closeLocked() {
 		return
 	}
 	s.closed = true
+	s.fence.closed.Store(true)
 	clear(s.pcm)
 	s.pcm = nil
 	s.cfg.mapTimestamp, s.cfg.authorized = nil, nil
