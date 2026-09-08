@@ -80,6 +80,10 @@ test("profile file reads regular snapshots only and rejects FIFO without waiting
   const file = pathJoin(directory, "public.json"), link = pathJoin(directory, "mount.json");
   const { profile } = trustFixture(); writeFileSync(file, JSON.stringify(profile)); symlinkSync(file, link);
   assert.equal(readMachineTrustFile(link), JSON.stringify(profile));
+  assert.throws(() => readMachineTrustFile(link, 8), /machine_trust_file_invalid/);
+  for (const limit of [true, 0, -1, 65537, Infinity, NaN, "8192"]) {
+    assert.throws(() => readMachineTrustFile(link, limit), /machine_trust_file_invalid/);
+  }
   assert.deepEqual(loadConfig({ MACHINE_HUB_TRUST_PROFILE_JSON_FILE: link }).machineHubTrustProfile, parseMachineTrustProfile(profile));
   const fifo = pathJoin(directory, "fifo"); execFileSync("mkfifo", [fifo], { timeout: 1000 });
   const folder = pathJoin(directory, "folder"); mkdirSync(folder);

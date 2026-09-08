@@ -164,6 +164,7 @@
     },
     {
       "id": "MDS-09", "title": "Vorautorisierte Aktivierung, Preflight und Rollback dokumentieren und prüfen",
+      "versioned_preflight_result": "2026-09-08 Plan-v2/Trustchecks/Report getrennt implementiert, v1-Fassade bleibt kompatibel. Exakte Revision/kid/Publicpin/Subject/Tenant/Projekt/Audience/TTL/Ceilings, feste redigierte Checks ohne Produktionsclaim. Alter CLI-FIFO-Hang im privaten6aad282-Worktree mit2s-Parentlimit Exit124 reproduziert; bounded8KiB-Regular-FD/JSON/Duplicatepruefung behebt ihn mit fixed blocked/Exit2.160gezielte Regressionen2.871s, finale79Datei-/Profil-/Preflightchecks0.512s und strikter echter CLI-Cleanlinesscheck gruen. Isolierter Vollcheck folgt mit separater Startupdiagnose. Keine Runtime-/Trustwrites; docs/machine-trust-preflight.md.",
       "versioned_preflight_plan": "2026-09-08 Quellabgleich6aad282: v1-Preflight kennt nur Legacykey, Profiltrust bleibt korrekt blocked; CLI kann FIFO vor Stat blockierend oeffnen. docs/machine-trust-preflight.md plant additive closed Plan-v2 mit Revision/kid/Subject/Audience/GrantTTL, exakten Publicpin-/Zeit-/Scopechecks und bounded regular-file JSON. Reine schmale Plan-/Trustports, v1-Fassade kompatibel, feste redigierte Reports, keine Runtimewrites oder Produktivfreigabe. Headless CLI/FIFO-/Negativmatrix vor Abnahme.",
       "status": "in_progress", "progress_percent": 40, "priority": "P1", "risk": "high", "depends_on": ["MDS-08"],
       "ananta_task_refs": ["MAP-05", "MAP-31", "MAP-32"],

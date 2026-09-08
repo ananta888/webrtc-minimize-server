@@ -70,3 +70,7 @@ numeric RTP counters, no media, IDs, keys, SDP or exception contents. Keep
 assertions/timeouts and cryptography intact. Carry the intermittent failure
 into the next full check while implementing the independently scoped local
 trust preflight. No serving changes or production claim.
+
+The subsequent v2 local preflight is now implemented; see
+`machine-trust-preflight.md`. It no longer needs legacy trust beside the
+profile. Operator provisioning and Organization/Agent claims remain open.

@@ -29,3 +29,24 @@ fingerprints, unknown fields, mismatched modes and no private data in reports.
 Exercise real headless CLI fixtures, including a parent-bounded FIFO process.
 No local-ready report may set productionReady true. Finish the accumulated
 Meet changes with the required isolated full check.
+
+## Implemented verification checkpoint
+
+Plan parsing, public-key/profile comparisons and report composition are now
+separate modules; the old facade/export and v1 plan remain compatible. V2
+checks the requested complete key window and rejects a v1-audience plan
+whose capabilities differ from that audience's fixed publication set.
+Reports contain only fixed check codes/status, never raw scope or key data.
+
+The old CLI in the private `6aad282` worktree reproduced the FIFO hang and
+was terminated by its 2 s parent limit (exit 124). The new CLI uses the
+regular-file snapshot reader with an 8192-byte ceiling, rejects FIFO and
+duplicate fields, returns fixed blocked JSON/exit 2 and never waits for
+interactive input. Real CLI tests use a clean synthetic environment and
+compare local readiness to actual git cleanliness; they do not bypass it.
+
+Combined targeted regression: 160 checks pass in 2.871 s. The final narrower
+byte-bound revision passes 79 file/profile/preflight checks in 0.512 s;
+the stricter actual-cleanliness CLI assertion is also green. Full isolated
+verification follows with the separately tracked startup diagnostic change.
+No production config, private key or trust registry was written.
