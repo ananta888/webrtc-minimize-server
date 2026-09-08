@@ -1,0 +1,99 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": "1.0",
+  "owner": "Ananta Meet maintainers",
+  "track": "ananta-persona-video-source",
+  "status": "done",
+  "purpose": "Add bounded silent video artwork to the existing independently stopped machine avatar source, under Ananta MAP-12/MAP-20.",
+  "related_tracks": [
+    "todos/active/todo.ananta-machine-dialog-screen.json",
+    "ananta/todos/todo.meet-autonomous-agent-persona-media.json"
+  ],
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "milestones": [
+    {
+      "id": "AVS-M1",
+      "title": "Bounded video artwork and actual receiver verification",
+      "task_ids": [
+        "AVS-01"
+      ],
+      "status": "done"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "AVS-01",
+      "title": "Implement explicit persona-video-v1 artwork without changing legacy image authority",
+      "status": "done",
+      "progress_percent": 100,
+      "priority": "P1",
+      "risk": "high",
+      "depends_on": [],
+      "component_verification": "2026-09-08: all749 frontend tests and template checks passed; actual private Chromium/Firefox silent clip/image switches and independent speech/screen passed with controller-loss stop1826.62/1716.84ms. Actual current-source Ananta Hub/Worker gate63.57s: four source generations, remote pause773.91ms, remote asset revoke314.08ms, independent screen and two remotely correlated220500-sample speech outputs, zero human capture/transform errors. Full isolated merged d8a67b9 check exit0:749frontend,782NodePASS,0FAIL,2explicit NodeSKIP,289.43s Node phase; Go/static/build passed,14external infrastructure gates and optional image canary skipped. Full check found two unrelated native raw encoder regressions, fixed under TBP016 and rerun successfully. Synthetic policy/media, no production evidence, serving/trust/source-factory activation. All five AVS criteria verified; parent Ananta MAP20 remains open for initial persona and multi-session criteria.",
+      "acceptance_criteria": [
+        "Expose a separate read-only versioned video feasibility probe; existing client-probe.v1 remains identical. Missing codec support fails without fallback or capture.",
+        "Accept only a closed hash-bound normalized silent 256x256 MP4 up to 1.5 MB, 2..120 frames at 12 Hz, explicit loop/hold_last and provenance classification; never load an external media URL.",
+        "Separate bounded single-loader/decoder ownership from existing 5 FPS avatar surface and immutable KI labels; session/generation/epoch/key checks, 2.5s controller watchdog and 30s lease stay unchanged.",
+        "Close/pause/revoke releases own video, URL, canvas and camera publication without affecting speech/screen, and late asynchronous completion never attaches a stale source.",
+        "Deterministic invalid-input, concurrent decoder, lifecycle, clock, cleanup and unsupported tests plus actual private receiver video/image switch and revocation; full npm run check in an isolated build, no serving/trust deployment."
+      ],
+      "implementation_note": "Source8b72a46: existing avatar surface supports neutral/image only; normalized clips exist in Ananta. New artwork loader composes with existing source/surface/ownership ports (SRP/DIP), no inference on the Meet server. Browser metadata checks are not a decoder memory sandbox; Hub admission and isolated Worker/container limits remain necessary. Root plan docs/contracts/meet-dialog-avatar-video.md."
+    }
+  ],
+  "critical_path_tasks": [
+    "AVS-01"
+  ],
+  "tasks_status_summary": {
+    "total": 1,
+    "by_status": {
+      "todo": 0,
+      "in_progress": 0,
+      "partial": 0,
+      "blocked": 0,
+      "done": 1
+    },
+    "progress_percent_done": 100,
+    "by_priority": {
+      "P0": 0,
+      "P1": 1,
+      "P2": 0,
+      "P3": 0
+    },
+    "by_risk": {
+      "low": 0,
+      "medium": 0,
+      "high": 1,
+      "critical": 0
+    },
+    "critical_path": {
+      "total": 1,
+      "done": 1,
+      "remaining": 0
+    },
+    "milestones": {
+      "total": 1,
+      "todo": 0,
+      "in_progress": 0,
+      "blocked": 0,
+      "done": 1
+    }
+  }
+}

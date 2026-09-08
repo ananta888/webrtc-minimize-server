@@ -128,5 +128,8 @@ Die echte Race-Matrix bestand in 38,74 s: zwei decodierte H.264/AAC-Renditions
 mit ursprünglicher Rot/Blau-Reihenfolge und 700-Hz-Ton (4,24 s), 26-s-Rolling-
 Window mit 23 Zyklen/21 Dateien und Writerwiderruf, sowie die parallel
 entwickelte vollständige Programm-Generation (7,42 s). Argumenttests schützen
-die unveränderte Legacy-Ausgabe. Erneuter isolierter Gesamtcheck ist noch offen;
-kein Serving-Build, SourceFactory-Schalter oder öffentliches Trust wurde geändert.
+die unveränderte Legacy-Ausgabe. Der erneute isolierte Gesamtcheck von `d8a67b9`
+bestand:749 Frontendtests,782 Node-PASS,0FAIL,2 explizite Node-Skips;
+Node-Laufzeit289,43s. Go-, Build- und statische Gates bestanden;14 externe
+Infrastrukturgates und optionaler Image-Scan wurden sichtbar übersprungen.
+Kein Serving-Build, SourceFactory-Schalter oder öffentliches Trust wurde geändert.

@@ -47,7 +47,18 @@ SRP/DIP: pure content/probe validation, native decoder lifecycle and asynchronou
 artwork composition are separate modules. The existing source remains the
 authority/lifetime controller, and the surface remains publication ownership.
 
-Component verification: all 749 frontend tests passed in 9.95s; Angular template
-type checking passed. Actual private Chromium/Firefox media tests and isolated
-`npm run check` are pending. No serving build, public trust or operator policy
-was activated by this implementation.
+Verification: all 749 frontend tests and Angular template checks passed.
+Actual private Chromium/Firefox receivers decoded clip motion and image/video
+replacement, preserving speech/screen; controller loss stopped the avatar in
+1826.62/1716.84ms. The Ananta Hub/Worker gate passed in 63.57s, with four source
+generations, remote asset revocation in 314.08ms, two independent spoken replies
+and zero human capture/transform errors.
+
+The complete isolated merged-source `npm run check` at `d8a67b9` passed: 749
+frontend tests, 782 Node passes, zero failures and two explicit Node skips;
+Node phase 289.43s. Go, build and static gates passed. Fourteen external
+infrastructure gates and optional container-image canary were visibly skipped,
+not passed. The initial check's two native raw encoder failures were fixed
+under TBP-016 and passed the repeat. No serving build, public trust, source
+factory or operator policy was activated. AVS-01 is complete and archived;
+broader Ananta MAP-20 pre-dispatch/multi-session criteria remain separate.
