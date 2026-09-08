@@ -75,3 +75,13 @@ ms**. Unknown objects are never stringified; prototype names do not become keys;
 an accessor beyond the 128-entry bound is never read; report input is not
 mutated. The real root lifecycle repeat and isolated full repository check
 follow. SRP keeps diagnostic classification out of the existing large bridge.
+
+The isolated `npm run check` at `818a7d8` completed with exit 0: **639 frontend
+tests, 568 Node passes / 3 explicit skips / 0 failures** (Node 144.06 seconds),
+plus build, Go, configuration, workflow and security checks. External runtime
+gates remained explicit skips. The root lifecycle repeat passed two cases and
+then failed during the actual role revocation's shared-cache SQLite write
+(`SQLITE_LOCKED`), after moving video had passed; it did not reproduce the
+crypto-start symptom and did not reach a transform failure report. Root tracks
+that separate fixture issue. No startup fix or complete green cross-repository
+matrix is inferred from this check. Serving assets/trust remain untouched.
