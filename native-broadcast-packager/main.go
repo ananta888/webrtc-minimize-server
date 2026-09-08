@@ -474,49 +474,51 @@ func createWebRTCAPI() (*webrtc.API, error) {
 }
 
 type serverMessage struct {
-	SourceControl   *trustedsframe.SourceCommand `json:"-"`
-	Version         int                          `json:"version"`
-	Type            string                       `json:"type"`
-	Nonce           string                       `json:"nonce,omitempty"`
-	PackagerID      string                       `json:"packagerId,omitempty"`
-	KeyFingerprint  string                       `json:"keyFingerprint,omitempty"`
-	Code            string                       `json:"code,omitempty"`
-	ExpiresAt       int64                        `json:"expiresAt,omitempty"`
-	ObservedAt      int64                        `json:"observedAt,omitempty"`
-	RoomIDs         []string                     `json:"roomIds,omitempty"`
-	AssignmentID    string                       `json:"assignmentId,omitempty"`
-	RoomID          string                       `json:"roomId,omitempty"`
-	ProgramID       string                       `json:"programId,omitempty"`
-	ProgramEpoch    int                          `json:"programEpoch,omitempty"`
-	LeaseID         string                       `json:"leaseId,omitempty"`
-	FencingRevision int                          `json:"fencingRevision,omitempty"`
-	ResourceRef     string                       `json:"resourceRef,omitempty"`
-	ReasonCode      string                       `json:"reasonCode,omitempty"`
-	Profile         assignmentProfile            `json:"profile,omitempty"`
-	ICEServers      []assignmentICEServer        `json:"iceServers,omitempty"`
-	PublisherPeerID string                       `json:"publisherPeerId,omitempty"`
-	Description     *webrtc.SessionDescription   `json:"description,omitempty"`
-	Candidate       json.RawMessage              `json:"candidate,omitempty"`
+	SourceSignal    *trustedsframe.SourcePeerSignal `json:"-"`
+	SourceControl   *trustedsframe.SourceCommand    `json:"-"`
+	Version         int                             `json:"version"`
+	Type            string                          `json:"type"`
+	Nonce           string                          `json:"nonce,omitempty"`
+	PackagerID      string                          `json:"packagerId,omitempty"`
+	KeyFingerprint  string                          `json:"keyFingerprint,omitempty"`
+	Code            string                          `json:"code,omitempty"`
+	ExpiresAt       int64                           `json:"expiresAt,omitempty"`
+	ObservedAt      int64                           `json:"observedAt,omitempty"`
+	RoomIDs         []string                        `json:"roomIds,omitempty"`
+	AssignmentID    string                          `json:"assignmentId,omitempty"`
+	RoomID          string                          `json:"roomId,omitempty"`
+	ProgramID       string                          `json:"programId,omitempty"`
+	ProgramEpoch    int                             `json:"programEpoch,omitempty"`
+	LeaseID         string                          `json:"leaseId,omitempty"`
+	FencingRevision int                             `json:"fencingRevision,omitempty"`
+	ResourceRef     string                          `json:"resourceRef,omitempty"`
+	ReasonCode      string                          `json:"reasonCode,omitempty"`
+	Profile         assignmentProfile               `json:"profile,omitempty"`
+	ICEServers      []assignmentICEServer           `json:"iceServers,omitempty"`
+	PublisherPeerID string                          `json:"publisherPeerId,omitempty"`
+	Description     *webrtc.SessionDescription      `json:"description,omitempty"`
+	Candidate       json.RawMessage                 `json:"candidate,omitempty"`
 }
 
 type client struct {
-	cfg                  config
-	identity             *identity
-	capability           ffmpegCapability
-	mu                   sync.Mutex
-	roomsMu              sync.RWMutex
-	connection           *websocket.Conn
-	rooms                []string
-	assignmentMu         sync.Mutex
-	sourcesMu            sync.Mutex
-	trustedSources       map[string]*nativeTrustedSource
-	trustedSourceHistory map[string]int64
-	assignment           *packagerAssignment
-	api                  *webrtc.API
-	sendOverride         func(any) error
-	healthProbe          func() string
-	thermalState         bool
-	sessionAuthenticated atomic.Bool
+	cfg                      config
+	identity                 *identity
+	capability               ffmpegCapability
+	mu                       sync.Mutex
+	roomsMu                  sync.RWMutex
+	connection               *websocket.Conn
+	rooms                    []string
+	assignmentMu             sync.Mutex
+	sourcesMu                sync.Mutex
+	trustedSources           map[string]*nativeTrustedSource
+	trustedSourceHistory     map[string]int64
+	trustedSourceSinkFactory func(trustedsframe.SourceLease) (trustedSourceSink, error)
+	assignment               *packagerAssignment
+	api                      *webrtc.API
+	sendOverride             func(any) error
+	healthProbe              func() string
+	thermalState             bool
+	sessionAuthenticated     atomic.Bool
 }
 
 func (c *client) send(value any) error {
@@ -645,6 +647,10 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 			return decodeErr
 		}
 		switch message.Type {
+		case "trusted-source-peer-signal":
+			if err = c.handleTrustedSourceSignal(message.SourceSignal); err != nil {
+				return err
+			}
 		case "trusted-source-prepare", "trusted-source-stop":
 			if err = c.handleTrustedSourceControl(message.SourceControl, time.Now()); err != nil {
 				return err

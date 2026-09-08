@@ -209,6 +209,13 @@ func decodeServerMessage(raw []byte) (serverMessage, error) {
 	if json.Unmarshal(fields["type"], &messageType) != nil {
 		return serverMessage{}, errors.New("invalid control message")
 	}
+	if messageType == "trusted-source-peer-signal" {
+		message, err := trustedsframe.ParseSourcePeerSignal(raw)
+		if err != nil {
+			return serverMessage{}, err
+		}
+		return serverMessage{Version: 1, Type: messageType, SourceSignal: &message}, nil
+	}
 	if messageType == "trusted-source-prepare" || messageType == "trusted-source-stop" {
 		command, err := trustedsframe.DecodeSourceCommand(raw)
 		if err != nil {

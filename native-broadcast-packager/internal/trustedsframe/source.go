@@ -72,6 +72,7 @@ type SourceReceiver struct {
 	lastNow  int64
 	invalid  bool
 	closed   bool
+	done     chan struct{}
 }
 
 func NewSourceReceiver(raw []byte, packagerRef, deviceRef string, policy SourcePolicy, now int64) (*SourceReceiver, error) {
@@ -79,7 +80,7 @@ func NewSourceReceiver(raw []byte, packagerRef, deviceRef string, policy SourceP
 	if err != nil || lease.Revision != 1 || policy == nil {
 		return nil, ErrKey
 	}
-	s := &SourceReceiver{lease: lease, policy: policy, lastNow: now}
+	s := &SourceReceiver{lease: lease, policy: policy, lastNow: now, done: make(chan struct{})}
 	consent, err := json.Marshal(lease.Consent)
 	if err != nil {
 		return nil, ErrKey
@@ -116,6 +117,14 @@ func (s *SourceReceiver) current(now int64) error {
 func (s *SourceReceiver) Announcement(now int64) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.announcement(now)
+}
+func (s *SourceReceiver) AnnouncementNow() ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.announcement(time.Now().UnixMilli())
+}
+func (s *SourceReceiver) announcement(now int64) ([]byte, error) {
 	if err := s.current(now); err != nil {
 		return nil, err
 	}
@@ -132,6 +141,14 @@ func (s *SourceReceiver) Announcement(now int64) ([]byte, error) {
 func (s *SourceReceiver) AcceptKey(raw []byte, now int64) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.acceptKey(raw, now)
+}
+func (s *SourceReceiver) AcceptKeyNow(raw []byte) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.acceptKey(raw, time.Now().UnixMilli())
+}
+func (s *SourceReceiver) acceptKey(raw []byte, now int64) ([]byte, error) {
 	if err := s.current(now); err != nil {
 		return nil, err
 	}
@@ -159,6 +176,14 @@ func (s *SourceReceiver) AcceptKey(raw []byte, now int64) ([]byte, error) {
 func (s *SourceReceiver) Decrypt(frame []byte, now int64) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.decrypt(frame, now)
+}
+func (s *SourceReceiver) DecryptNow(frame []byte) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.decrypt(frame, time.Now().UnixMilli())
+}
+func (s *SourceReceiver) decrypt(frame []byte, now int64) ([]byte, error) {
 	if err := s.current(now); err != nil {
 		return nil, err
 	}
@@ -180,10 +205,35 @@ func (s *SourceReceiver) Alive(now int64) bool {
 	defer s.mu.Unlock()
 	return s.current(now) == nil
 }
+func (s *SourceReceiver) AliveNow() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.current(time.Now().UnixMilli()) == nil
+}
+
+// Done signals terminal permission loss to transport owners without invoking
+// callbacks under the crypto mutex. A zero receiver is already closed.
+func (s *SourceReceiver) Done() <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done == nil {
+		s.done = make(chan struct{})
+		close(s.done)
+	}
+	return s.done
+}
 
 func (s *SourceReceiver) Renew(raw []byte, now int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.renew(raw, now)
+}
+func (s *SourceReceiver) RenewNow(raw []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.renew(raw, time.Now().UnixMilli())
+}
+func (s *SourceReceiver) renew(raw []byte, now int64) error {
 	if err := s.current(now); err != nil {
 		return err
 	}
@@ -227,6 +277,13 @@ func (s *SourceReceiver) destroy() {
 		return
 	}
 	s.closed = true
+	if s.done != nil {
+		select {
+		case <-s.done:
+		default:
+			close(s.done)
+		}
+	}
 	if s.timer != nil {
 		s.timer.Stop()
 		s.timer = nil

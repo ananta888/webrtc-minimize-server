@@ -5,14 +5,16 @@
 `native-broadcast-packager/internal/trustedsframe` ist der getrennte
 Entschlüsselungsbaustein für eine später ausdrücklich consentierte einzelne
 Quelle. Der ergänzte `Receiver` verbindet einen zielgebundenen ephemeren
-P-256-Key-Envelope bereits mit genau einem Decoder, ist aber **noch nicht an
-den nativen Netzwerk-Ingress angeschlossen**.
+P-256-Key-Envelope mit genau einem Decoder. Ein separater nativer
+PeerConnection-/Key-DataChannel-/RTP-Adapter ist jetzt implementiert und lokal
+mit zwei echten Pion-Verbindungen getestet; **der Produktions-Compositor ist
+noch nicht angeschlossen**.
 Der neue `SourceReceiver` ergänzt einen kurzlebigen Source-Lease und Key-ACK;
 der native Daemon besitzt dafür bereits den lokalen Assignment-/Geräte-/Room-
 Policy-Adapter, Cleanup-Hooks und den unten beschriebenen authentisierten
 Source-Control-Pfad. Die zusätzliche serverseitige Quellen-Signalisierung und
-der geschlossene native Signalparser sind implementiert; nativer
-PeerConnection-Adapter, Publisher-DataChannel und RTP-Transport fehlen noch.
+der geschlossene native Signalparser sind mit diesem Adapter verbunden.
+Der produktive Browser-Publisher und die Compositor-Integration fehlen noch.
 Eine Quellenanfrage in der Angular-App erteilt weiterhin keine Medienfreigabe.
 Der bestehende `clear-program-v1`-Ingress bleibt unverändert; der
 Blind-Media-Agent und die Node-Control-Plane erhalten keinen Decrypt-Port.
@@ -58,8 +60,9 @@ Ein JSON-Consent allein ist kein Autoritätsnachweis. Der Port wird vor jeder
 Announcement-/Install-/Decrypt-Operation und erneut vor der Key-Installation
 aufgerufen; Verlust schließt den Receiver terminal. Er darf den Receiver nicht
 rekursiv aufrufen. Der `SourceReceiver` und lokale Daemon-Adapter implementieren
-diesen Port mit kurzlebigem Source-Lease und laufendem Parent-Assignment; der
-Publisher-Medientransport ist noch nicht angeschlossen.
+diesen Port mit kurzlebigem Source-Lease und laufendem Parent-Assignment.
+Der unten beschriebene native Medientransport nutzt ihn vor Key- und
+Frame-Annahme sowie erneut vor jeder Ausgabe.
 
 Der Receiver erzeugt einen eigenen ephemeren P-256-Schlüssel pro Consent und
 gibt nur das öffentliche `trusted-packager-key`-Announcement aus. Der vorhandene
@@ -194,9 +197,9 @@ Compositor-/Queue-Cleanup und ist keine Garantie über Go-GC-/Kernel-Kopien.
 `AcceptKey` gibt erst nach erfolgreicher, erneut autorisierter Installation den
 geschlossenen [Key-ACK](../contracts/trusted-decrypt/source-key-ack.v1.schema.json)
 aus. Er bindet Source-Lease/Revision, Consent, Agreement, Envelope, KID und Ablauf.
-`key-installed` behauptet keine dekodierbare Programmausgabe. Der spätere Adapter
-muss diese Methode ausschließlich dem genau zugeordneten authentisierten
-Publisher-DataChannel zugänglich machen; Frame-Keys bekommen keinen Node-Control-
+`key-installed` behauptet keine dekodierbare Programmausgabe. Der native Adapter
+macht diese Methode ausschließlich dem genau zugeordneten authentisierten
+Publisher-DataChannel zugänglich; Frame-Keys bekommen keinen Node-Control-
 Endpunkt. Das aktuelle Agent-Capability-Protokoll und die Annahme-UI werden durch
 diesen internen Adapter noch nicht für Source-Ingress freigeschaltet.
 
@@ -209,8 +212,8 @@ Ein stark escaptes, zu großes SDP wird vor der Weiterleitung abgewiesen, ohne
 den Ziel-Packager zu trennen. Die SDP-Inhalte dieses Routingtests sind synthetisch;
 er beweist keine erfolgreiche ICE-/DTLS-/RTP-Verbindung. Der separate native
 Parser besitzt geschlossene Feld-, Duplikat-, Rollen- und Größenprüfungen samt
-Fuzztest, wird aber noch nicht vom Daemon an einen Source-PeerConnection-Adapter
-weitergereicht.
+Fuzztest und wird vom Daemon an den getrennten Source-PeerConnection-Adapter
+weitergereicht, der ohne eingerichteten Sink jede Medienannahme verweigert.
 
 `TrustedBroadcastSourceControl` verbindet die echte Source-Authority mit der
 aktuellen nativen Assignment-Registry und dem tatsächlich authentisierten
@@ -279,11 +282,56 @@ sind in diesem Protokoll nicht zulässig.
 
 **Kompatibilitätsgrenze, noch keine Medienfähigkeit:** Der Server reserviert für
 diesen Signalpfad Stable-Agent-Version 0.9.0 oder neuer. Das derzeitige native
-Binary bleibt bei 0.8.0 und erhält diese Nachrichten nicht. Sein neuer Parser
-liegt für den folgenden Adapter bereit, aber PeerConnection-, Key-DataChannel-,
-RTP- und Compositor-Anschluss sind noch nicht aktiv. Die Version wird erst nach
-dem tatsächlichen nativen Anschluss erhöht; weder Annahme-UI noch eine fertige
+Binary bleibt bei 0.8.0 und erhält diese Nachrichten nicht. Sein Parser und
+PeerConnection-/Key-DataChannel-/RTP-Adapter sind implementiert, jedoch ohne
+produktiven Compositor-Sink nicht aktivierbar. Die Version wird erst nach
+dem tatsächlichen vollständigen Anschluss erhöht; weder Annahme-UI noch eine fertige
 Source-Medien-Capability wird aus einem erfolgreichen Metadaten-Routing abgeleitet.
+
+### Separater nativer Quelltransport
+
+`source_dispatch.go` prüft vor Erzeugung einer PeerConnection die aktuelle lokale
+Source-/Consent-/Assignment-/Fence-/Publisher-Bindung erneut. Jede Quelle bekommt
+eine eigene Verbindung, genau einen passenden Track mit der geleasten Publication-ID
+und genau einen zuverlässigen, geordneten DataChannel mit Label und Protokoll
+`trusted-source-keys-v1`. Falsche Medienarten, mehrere Tracks, ungeordnete oder
+teilzuverlässige Kanäle schließen die Quelle. SDP- und ICE-Sequenzen bleiben an die
+serverautorisierten Negotiation-Generationen gebunden. Die ICE-Konfiguration stammt
+aus dem aktuellen Assignment beziehungsweise dem bestehenden Operator-Fallback.
+
+Nur dieser DTLS/SCTP-Kanal trägt das ephemere öffentliche Key-Announcement und
+die verschlüsselten Key-Envelopes. Der Server erhält weder Envelope noch Frame-Key.
+Annahme liefert einen gebundenen `key-installed`-ACK, keinen Decode-/Output-Nachweis.
+Key-Nachrichten sind auf 8 KiB, 120 Versuche pro Minute und 16 KiB Sendebacklog
+begrenzt. Binärnachrichten, Key-Replay oder ungültige Bindung schließen die Quelle.
+
+VP8 wird über RTP-Timestamp, Marker, Partitionsstart und umlaufende Sequenznummern
+zusammengesetzt. Pro Quelle gibt es nur eine Ciphertext-Assembly: maximal 4 MiB,
+4096 Fragmente, 64 Fragmente vor dem Start und 250 ms Wartezeit. Lücken,
+widersprüchliche Fragmente und Übergröße ergeben keinen Teilframe. Opus wird als
+ein vollständiger RTP-Payload verarbeitet; es wird nicht wie VP8 fragmentiert.
+Zusätzlich begrenzt der Empfänger den Eingang auf 8 MiB Payload und 8192 Pakete
+pro Ein-Sekunden-Fenster. Erst nach erfolgreicher SFrame-Prüfung und erneuter
+Lease-Prüfung erhält der verpflichtende `trustedSourceSink` den Encoded-Klartext.
+Unbekannte KIDs, Replay und Authentisierungsfehler haben keinen Klartext-Fallback.
+
+Der Sink muss nichtblockierend und begrenzt arbeiten, geliehene Frames bei Bedarf
+kopieren und beim Schließen seine Queues/Frames entfernen. Der Adapter überschreibt
+seinen Klartext unmittelbar nach dem Aufruf. Der SourceReceiver meldet terminalen
+Ablauf/Widerruf über `Done`; auch ohne neue Pakete schließen Verbindung, Kanal und
+Sink. Die `*Now`-Operationen lesen die aktuelle Zeit innerhalb des Crypto-Mutex,
+damit gleichzeitig ankommende RTP-, Key- und Renewal-Aufrufe keinen falschen
+Clock-Rollback erzeugen. Echte Rücksprünge bleiben terminal.
+
+Lokale Evidence: synthetische VP8-/Opus-SFrame-Payloads durch zwei echte Pion-PCs,
+ECDH-Envelope über den tatsächlichen DataChannel, gebundener ACK und exakter
+Klartextvergleich für Counter 0 bis 400. Bei Counter 350 werden zusätzlich Replay
+und manipulierte Frames eingeschleust. Diese Payloads sind **keine decodierbaren
+Testfilme**; damit sind weder Bild-/Tonwiedergabe noch Browser-Packetizer-Interop,
+Compositor-Ausgabe, NAT oder Produktion nachgewiesen. Separate Tests prüfen
+Kanal-/Scope-/Sequenzfehler, Lease-Erneuerung, untätigen Ablauf und Quell-Cleanup
+ohne Abbruch des Parent-Programms. Browser-Sender, echter Decoder/Compositor,
+Slate-Wechsel und die explizite Publisher-Annahme bleiben nächste Integrationsarbeit.
 
 ### Prepare, Renewal und Stop
 

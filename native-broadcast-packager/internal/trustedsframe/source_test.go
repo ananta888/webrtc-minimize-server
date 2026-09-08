@@ -3,8 +3,10 @@ package trustedsframe
 import (
 	"bytes"
 	"encoding/json"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func sourceLeaseFixture() SourceLease {
@@ -172,6 +174,11 @@ func TestSourceActiveTimerAndObsoleteCallback(t *testing.T) {
 	if s.Alive(now) {
 		t.Fatal("timer-expired source revived")
 	}
+	select {
+	case <-s.Done():
+	default:
+		t.Fatal("timer expiry did not notify transport")
+	}
 	other := sourceFixture(t, sourceLeaseFixture(), func(SourceLease, int64) bool { return true })
 	other.expire() // Simulates an old callback already runnable when a lease was renewed.
 	if !other.Alive(now) {
@@ -182,6 +189,69 @@ func TestSourceActiveTimerAndObsoleteCallback(t *testing.T) {
 		t.Fatal("zero source accepted")
 	}
 	zero.Destroy()
+	select {
+	case <-zero.Done():
+	default:
+		t.Fatal("zero receiver done channel is open")
+	}
+}
+
+func TestSourceRealClockOperationsLinearizeAndNotify(t *testing.T) {
+	at := time.Now().UnixMilli()
+	lease := sourceLeaseFixture()
+	lease.IssuedAt, lease.ExpiresAt = at, at+5000
+	lease.Consent.GrantedAt, lease.Consent.ExpiresAt = at, at+60000
+	raw := jsonBytes(t, lease)
+	s, err := NewSourceReceiver(raw, lease.Consent.GranteePackagerRef, lease.Consent.GranteeDeviceRef, func(SourceLease, int64) bool { return true }, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Destroy()
+	done := s.Done()
+	var workers sync.WaitGroup
+	var failures atomic.Int32
+	for worker := 0; worker < 16; worker++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for n := 0; n < 100; n++ {
+				if _, err := s.AnnouncementNow(); err != nil {
+					failures.Add(1)
+				}
+				if err := s.RenewNow(raw); err != nil {
+					failures.Add(1)
+				}
+				if !s.AliveNow() {
+					failures.Add(1)
+				}
+				if _, err := s.DecryptNow([]byte{0}); err == nil {
+					failures.Add(1)
+				}
+				if _, err := s.AcceptKeyNow([]byte(`{}`)); err == nil {
+					failures.Add(1)
+				}
+			}
+		}()
+	}
+	workers.Wait()
+	if failures.Load() != 0 || !s.AliveNow() {
+		t.Fatal("concurrent current-time operations falsely revoked receiver")
+	}
+	select {
+	case <-done:
+		t.Fatal("live receiver signalled done")
+	default:
+	}
+	s.Destroy()
+	s.Destroy()
+	select {
+	case <-done:
+	default:
+		t.Fatal("destroy did not notify transport")
+	}
+	if done != s.Done() || s.AliveNow() {
+		t.Fatal("destroy replaced done channel or revived receiver")
+	}
 }
 
 func TestSourceDropsPlaintextWhenParentRevokesDuringDecrypt(t *testing.T) {
