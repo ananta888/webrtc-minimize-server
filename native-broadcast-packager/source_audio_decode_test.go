@@ -81,11 +81,15 @@ func TestSourceAudioDecoderConfiguration(t *testing.T) {
 }
 
 func sourceOpusFixture(t *testing.T, ffmpeg, duration string, packets int) [][]byte {
+	return sourceOpusToneFixture(t, ffmpeg, duration, packets, 700)
+}
+
+func sourceOpusToneFixture(t *testing.T, ffmpeg, duration string, packets, frequency int) [][]byte {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	encoded, err := exec.CommandContext(ctx, ffmpeg, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
-		"sine=frequency=700:sample_rate=48000", "-frames:a", strconv.Itoa(packets+2), "-ac", "2", "-c:a", "libopus",
+		"sine=frequency="+strconv.Itoa(frequency)+":sample_rate=48000", "-frames:a", strconv.Itoa(packets+2), "-ac", "2", "-c:a", "libopus",
 		"-frame_duration", duration, "-page_duration", "2500", "-f", "ogg", "pipe:1").Output()
 	if err != nil {
 		t.Fatal("synthetic Opus generation failed")

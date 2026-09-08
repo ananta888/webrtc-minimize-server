@@ -735,6 +735,7 @@
     },
     {
       "id": "TBP-030",
+      "native_audio_mixer_plan": "2026-09-08: Naechster Anschlussbaustein nach verifizierten VP8-/Opus-Decodern ist ein nativer, quellengenerationgebundener PCM-Programmmixer. Risiko high: Klartext-Retention, falsche Zeitzuordnung oder Ausgabe nach Widerruf; Abhaengigkeiten sind die vorhandenen Decoder-/SourceReceiver-Ports. Akzeptanz: verpflichtende externe Abbildung von RTP auf gemeinsame 48-kHz-Programmzeit, kein impliziter Arrival-/A/V-Sync-Claim; konfigurierbare harte Quellen-/Samplebudgets vor Kopie; getrennte Stereopegel, saturierte Summierung, Stille bei Luecken und genau einmaliger Konsum; Policy vor Annahme und Ausgabe, terminaler Widerruf mit Wipe auch gespeicherter Samples, keine Blockade an externem Encoder-I/O; deterministische Negativ-/Concurrencytests und echter Zwei-Opus-Decoder-zu-Mix-Nachweis. Gesamtwriter, RTCP-Abgleich, Videocompositor und Endnutzer-Approve bleiben anschliessend erforderlich; keine Produktionsfreischaltung und TBP-030 bleibt in_progress/82.",
       "title": "Moderator-, Quellen-, Packager- und Handoff-Workflows umsetzen",
       "status": "in_progress",
       "priority": "P1",

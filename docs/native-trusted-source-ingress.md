@@ -525,6 +525,59 @@ Der vorausgehende Race-Lauf einschließlich Audio-Negativmatrix war grün;
 der zehnsekündige Paketparser-Fuzzlauf verarbeitete 82.316 Eingaben ohne Fehler.
 Die ausgelieferte lokale Anwendung wurde dabei nicht neu gebaut oder verändert.
 
+### Begrenzter nativer PCM-Programmmixer
+
+`source_audio_mix.go` verbindet den PCM-Decoder-Port mit einer nativen
+Mehrquellen-Mischstufe. Jede Zulassung reserviert vor der Allokation einen
+eigenen Stereo-Ringpuffer; Quellenzahl (höchstens 80 als Ressourcenlimit),
+Pufferfenster (20–1.000 ms) und Gesamt-PCM-Bytes sind explizit zu konfigurieren.
+Ein voller Quellpuffer wird nicht durch zusätzliche Warteschlangen erweitert.
+Zusätzlich existieren feste 19.200 Bytes für Summen- und Ausgabepuffer;
+`maxPCMBytes` zählt nur die reservierten Quellpuffer, nicht Go-/Codec-Overhead.
+Format-, Zeit- oder Budgetfehler schließen nur diese Quellengeneration;
+verlorene Writer-Policy oder fehlgeschlagene Ausgabe schließen den Mixer.
+Diese Limits ersetzen noch keine Gesamtzulassung für Codecprozesse, CPU und RAM.
+
+Der verpflichtende Zeitadapter ordnet RTP-Timestamps einer gemeinsamen
+48-kHz-Programmzeit zu. Fehlende Abbildung, Überlappung und zu weit vorgezogene
+Pakete werden abgewiesen. Bereits abgespielte Teile verspäteter Pakete werden
+verworfen, nicht in die Gegenwart verschoben. Die Stufe erfindet keinen
+Arrival-Time-Abgleich und implementiert selbst noch keinen RTCP-/A/V-Sync.
+Der spätere Programmclock-Besitzer taktet die Ausgabe von genau 960
+Stereo-Samples je Aufruf. Lücken erzeugen Stille; jedes gespeicherte Sample
+wird höchstens einmal konsumiert und dabei gelöscht.
+
+Linker und rechter Pegel sind unabhängig als Q15-Abschwächung einstellbar.
+Summiert wird vor einer einzigen abschließenden Sättigung; Reihenfolge und
+Teilnehmerabgang verändern nicht den Pegel der verbleibenden Quelle. Dies ist
+weder Loudness-Normalisierung noch Echo-Cancellation. `Close` entfernt auch
+zukünftige, bereits decodierte Samples sofort und gibt den reservierten Platz
+frei; der alte Handle bleibt terminal. Die Decoder rufen diesen Sink-Close
+auch bei untätigem Widerruf auf. Zusätzliche Policyprüfungen erfolgen vor
+Annahme, Quellenbeitrag und Programmausgabe.
+
+Ausgabe und Close sind serialisiert. Der Output-Port darf nur einen begrenzten,
+nichtblockierenden lokalen Übergabevorgang ausführen, **keine FFmpeg-/Pipe-I/O**.
+Die ausgegebenen PCM-Bytes sind nur während des Callbacks geliehen und werden
+danach gewischt. Eine spätere Encoderqueue benötigt weiterhin eigene
+Generations-/Writer-Fences und Widerrufsbehandlung; bereits übergebene oder
+beim Zuschauer angekommene Medien können nicht rückwirkend gelöscht werden.
+Die Stufe besitzt keine Capture-API, keine HTTP-API und keine Medienlogs.
+
+Unit-Tests prüfen Quoten, Kopie/Wipe, Stereo-Pegel, Mute, saturierte
+80-Quellen-Summierung, Pausen, Teilverspätung, Ring-/RTP-Wrap, unbekannte
+Zeitabbildung, fremde Formate, Widerruf, Ausgabeausfall und konkurrierenden Stop.
+`TestLiveTrustedSourceAudioMixer` speist zwei echte Opus-Decoder mit getrennten
+700-/1.100-Hz-Signalen und bekannten synthetischen Senderclocks. Der Test prüft
+beide Frequenzanteile im Mix und entfernt danach gezielt schon gepufferte
+Audioanteile durch Decoder-Widerruf; das andere Signal bleibt erhalten, nach
+dem letzten Widerruf folgt Stille. Das ist ein realer Decode-/Mix-Nachweis,
+noch kein Netzwerk-Clock-, SFrame-zu-HLS- oder Produktionsnachweis.
+
+Offen bleiben Videocompositor/Slate, RTCP-Clock-Zuordnung, Zulassung aller
+Decoderressourcen, gefenceter Writer-/Encoderanschluss sowie öffentliche
+Publisher-Annahme und Renewal. Die produktive Source-Factory bleibt aus.
+
 ### Prepare, Renewal und Stop
 
 Der additive [Control-Vertrag](../contracts/trusted-decrypt/source-control.v1.schema.json)
