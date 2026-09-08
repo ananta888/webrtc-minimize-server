@@ -40,4 +40,15 @@ incorrectly read a nonexistent `status().peerId`; the fixture now resolves
 the actual newly admitted member from its own server registry without adding
 an application API. No production code or test deadline was changed.
 
-The full isolated check and Ananta multi-container gate remain pending.
+The subsequent six-case Chromium/Firefox regression (multi-publisher, persona
+image replacement and stale screen decoder) passed in 18.649 s. The isolated
+complete `npm run check` at `af582c0` then passed: 665 frontend tests, build,
+security, Go unit/vet and 745 Node tests; zero Node failures and two explicit
+Node skips, 204.507 s for the Node stage. Fourteen opt-in external-infrastructure
+gates were explicitly skipped, not verified. The run used the separately
+extracted local Go 1.24.13 / FFmpeg 8.0.1 tooling profile. Previous intermittent
+browser/Docker-fallback failures are not claimed causally fixed by this pass.
+
+Ananta's two-Worker-container gate remains pending. Its source audit also found
+the missing Hub selection of independently assigned Worker destinations; that
+implementation is tracked in Ananta's MAP-28 contract.
