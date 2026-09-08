@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import readline from "node:readline";
 import { machineBrowserFixture } from "./machine-browser-fixture.js";
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
+import { multiHubMedia } from "./machine-multi-hub-media.mjs";
 
 function screenSignatures(peers) {
   return peers.map(peer => {
@@ -44,7 +45,7 @@ async function moving(page, peers, survivor) {
 }
 
 async function run() {
-  const cleanup = []; let stage = "setup", timer, fixture;
+  const cleanup = []; let stage = "setup", timer, fixture, media;
   const reply = value => process.stdout.write(JSON.stringify(value) + "\n");
   try {
     const f = await machineBrowserFixture({ after: fn => cleanup.push(fn) }, {
@@ -53,6 +54,8 @@ async function run() {
     });
     fixture = f;
     f.human.setDefaultTimeout(12000);
+    media = process.env.MEET_MULTI_WORKER_MEDIA_GATE === "1" ? await multiHubMedia(f) : null;
+    if (media) cleanup.push(() => media.close());
     reply({ origin: f.origin, room_id: f.roomId, certificate: f.certificatePath, test_network: f.testNetwork });
     let peers = null, commands = 0;
     timer = setTimeout(() => process.stdin.destroy(), 240000);
@@ -60,6 +63,11 @@ async function run() {
       if (++commands > 24 || line.length > 1024) throw new Error("test_multi_bridge_budget");
       if (line === "stop") break;
       const input = JSON.parse(line);
+      if (media && peers && ["consent", "ask", "answers", "media"].includes(input.command)) {
+        stage = input.command === "media" && ["avatars", "first-speech", "both-speech", "first-revoked", "survivor"].includes(input.phase)
+          ? "media-" + input.phase : input.command;
+        reply(await media.command(input, peers)); continue;
+      }
       if (input.command === "bind") {
         stage = "bind";
         if (peers || Object.keys(input).length !== 2 || !Array.isArray(input.subjects) || input.subjects.length !== 2
@@ -92,6 +100,7 @@ async function run() {
   } catch (error) {
     reply({ bridge_error: "test_multi_bridge_failed", stage,
       proxy: fixture?.proxyObservation(),
+      ...(media ? { media: media.diagnostic(), timeout: error.name === "TimeoutError" } : {}),
       ...(error.message === "test_multi_screen_deadline" ? { observation: error.observation } : {}) }); process.exitCode = 1;
   } finally {
     clearTimeout(timer);
