@@ -69,7 +69,16 @@ func sourceProgramEncoderArguments(c sourceProgramEncoderConfig, output, videoUR
 	for i, r := range c.profile.Renditions {
 		filters = append(filters, fmt.Sprintf("[v%d]fps=fps=%d:round=near,scale=w=%d:h=%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2[v%dout]", i, r.FramesPerSecond, r.Width, r.Height, r.Width, r.Height, i))
 	}
-	return append(args, ffmpegTranscodeOutputForFilterGraph(&packagerAssignment{Profile: c.profile}, output, selectedVideoEncoder(c.profile), filters)...)
+	// Keep both raw lanes in one graph. Separately auto-created audio graphs
+	// can starve the second PCM packet with multiple renditions on FFmpeg 8,
+	// exhausting the unchanged bounded upstream queue while video still advances.
+	audioOutputs := make([]string, len(splits))
+	for i := range audioOutputs {
+		audioOutputs[i] = fmt.Sprintf("[a%dout]", i)
+	}
+	filters = append(filters, fmt.Sprintf("[1:a]asplit=%d%s", len(audioOutputs), strings.Join(audioOutputs, "")))
+	return append(args, ffmpegTranscodeOutputForMappedFilterGraph(&packagerAssignment{Profile: c.profile}, output, selectedVideoEncoder(c.profile), filters,
+		func(index int) string { return audioOutputs[index] })...)
 }
 
 func newSourceProgramEncoder(c sourceProgramEncoderConfig) (*sourceProgramEncoder, error) {

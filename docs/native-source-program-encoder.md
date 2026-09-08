@@ -103,3 +103,33 @@ Software-Rollout vom 8. September 2026: Der geprüfte Stand `8b72a46` enthält
 nun auch diesen Raw-Encoder auf dem Mini-PC. Die Produktions-SourceFactory
 bleibt dennoch deaktiviert. Die anschließend implementierte Programm-Generation
 und ihr Queue-Fix (`45b8b9d`) gehören noch nicht zu diesem Deployment.
+
+## FFmpeg-8-Raw-Audio-Regression (8. September 2026)
+
+Der isolierte Ananta-Videocheck fand mit FFmpeg 8.0.1 zwei reproduzierbare
+Encoderfehler: Audioqueue voll bei Frame 41 (etwa 0,83 s), auch im Einzeltest.
+Die private Diagnose mit synthetischen Daten zeigte: Das zweite PCM-Paket
+erreichte den Demuxer, aber nicht mehr den Decoder; der Videopfad lief weiter.
+Begrenzung der Video-Probe und direktes Audio-I/O beseitigten den Fehler nicht
+und wurden nicht als vermeintliche Korrekturen übernommen.
+
+Der Raw-Builder verteilt Audio jetzt ausdrücklich mit `asplit` innerhalb
+desselben komplexen Filtergraphen auf genau eine Ausgabe pro Rendition.
+Es entstehen keine unabhängigen automatischen Audiofiltergraphen mehr.
+Der bestehende Ausgabeprofil-Builder erhält nur eine kleine injizierte
+Audio-Mapping-Funktion (DIP); komprimierter Legacy-Ingress erzeugt weiterhin
+dieselben Argumente. Queuegrößen, Fristen, Renditions und Widerruf bleiben gleich.
+Die Funktion des Filters ist in der offiziellen
+[FFmpeg-Filterdokumentation](https://ffmpeg.org/ffmpeg-filters.html#split_002c-asplit)
+beschrieben; die konkrete Fehlerbehebung ist lokal gemessen, keine Behauptung
+über alle FFmpeg-Versionen oder deren interne Fehlerursache.
+
+Die echte Race-Matrix bestand in 38,74 s: zwei decodierte H.264/AAC-Renditions
+mit ursprünglicher Rot/Blau-Reihenfolge und 700-Hz-Ton (4,24 s), 26-s-Rolling-
+Window mit 23 Zyklen/21 Dateien und Writerwiderruf, sowie die parallel
+entwickelte vollständige Programm-Generation (7,42 s). Argumenttests schützen
+die unveränderte Legacy-Ausgabe. Der erneute isolierte Gesamtcheck von `d8a67b9`
+bestand:749 Frontendtests,782 Node-PASS,0FAIL,2 explizite Node-Skips;
+Node-Laufzeit289,43s. Go-, Build- und statische Gates bestanden;14 externe
+Infrastrukturgates und optionaler Image-Scan wurden sichtbar übersprungen.
+Kein Serving-Build, SourceFactory-Schalter oder öffentliches Trust wurde geändert.

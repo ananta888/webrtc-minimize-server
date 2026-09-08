@@ -95,3 +95,33 @@ limits remain necessary; the decoder is not a bitstream security sandbox.
 The local [AVS-01 component track](../todos/archive/todo.ananta-persona-video-source.json)
 is complete. Overall Ananta dialogue admission,
 the packaged Worker rollout, GPU/TURN/soak and Ananta MAP-20 remain separate.
+
+## Independent Mini-PC verification
+
+The separately authored report in `3f67510` records the following evidence
+against the merged native fix `d8a67b9`. It is retained alongside the laptop
+observations above; the two full-check revisions and test counts are distinct.
+
+Verification: all 749 frontend tests and Angular template checks passed.
+Actual private Chromium/Firefox receivers decoded clip motion and image/video
+replacement, preserving speech/screen; controller loss stopped the avatar in
+1826.62/1716.84ms. The Ananta Hub/Worker gate passed in 63.57s, with four source
+generations, remote asset revocation in 314.08ms, two independent spoken replies
+and zero human capture/transform errors.
+
+The complete isolated merged-source `npm run check` at `d8a67b9` passed: 749
+frontend tests, 782 Node passes, zero failures and two explicit Node skips;
+Node phase 289.43s. Go, build and static gates passed. Fourteen external
+infrastructure gates and optional container-image canary were visibly skipped,
+not passed. The initial check's two native raw encoder failures were fixed
+under TBP-016 and passed the repeat. No serving build, public trust, source
+factory or operator policy was activated. AVS-01 is complete and archived;
+broader Ananta MAP-20 pre-dispatch/multi-session criteria remain separate.
+
+After combining both reports and the published native filter-graph fix, the
+complete Go unit/vet gate passed again. Focused race checks passed, and the
+rebuilt native test binary on FFmpeg 6.1.1 passed the actual two-rendition
+encoder (4.24 s), rolling HLS window (26.03 s) and composed generation (7.72 s),
+including decoded colors/audio, writer stop and resource reaping. These are
+targeted post-merge checks, not a relabeling of either earlier full check.
+The final merged CI and software deployment remain separate gates.
