@@ -87,8 +87,19 @@ Build blieb unverändert. Der Raw-Encoder ist noch nicht deployed oder als
 Produktionsfactory aktiviert; der getrennte Software-Rollout von `ba67caa`
 enthält ihn nicht.
 
-Danach bleiben der produktive Publisher-Clock-/Decoder-/Mixer-Owner,
+Die interne [Programm-Generation](native-source-program-generation.md)
+komponiert inzwischen Publisher-Uhren, Decoderbudget, Mixer, Takt und Encoder
+mit exakter Quellenbindung. Der gemeinsame Echtcodec-Gate deckte außerdem eine
+Starvation der zukünftigen Videobilder auf; die begrenzte Queue bewahrt nun das
+nächste fällige Bild. Der neue Baustein ersetzt noch keinen Produktionsadapter.
+
+Danach bleiben der produktive Anschluss des Publisher-Clock-/Decoder-/Mixer-Owners,
 Generationswechsel mit definierter Discontinuity, Gesamtprozesszulassung und
 der öffentliche Approve-/Renew-Pfad samt durchgängiger Mehrpublisherabnahme
 verbindlich. Die Produktionsfactory bleibt aus; diese Dateien aktivieren
 weder neue Capabilities noch Hub-Trust oder eine Broadcast-Publikation.
+
+Software-Rollout vom 8. September 2026: Der geprüfte Stand `8b72a46` enthält
+nun auch diesen Raw-Encoder auf dem Mini-PC. Die Produktions-SourceFactory
+bleibt dennoch deaktiviert. Die anschließend implementierte Programm-Generation
+und ihr Queue-Fix (`45b8b9d`) gehören noch nicht zu diesem Deployment.

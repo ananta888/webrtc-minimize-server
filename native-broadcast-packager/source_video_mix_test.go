@@ -203,12 +203,13 @@ func TestSourceVideoMixerFutureDropsFreshnessAndRevoke(t *testing.T) {
 		}
 	}
 	renderVideoMix(t, m, 0, assertColor(100))
-	// Fixed pool is full. The presented image stays; oldest pending is dropped.
+	// Fixed pool is full. Keep the presented image and earliest deadline;
+	// replace the furthest pending frame with the freshest arrival.
 	if err := s.WriteRGBA(64, 36, 4800, solidVideoMix(64, 36, 160, 0, 0)); err != nil {
 		t.Fatal(err)
 	}
-	renderVideoMix(t, m, 1600, assertColor(100))
-	renderVideoMix(t, m, 3200, assertColor(140))
+	renderVideoMix(t, m, 1600, assertColor(120))
+	renderVideoMix(t, m, 3200, assertColor(120))
 	renderVideoMix(t, m, 4800, assertColor(160))
 	renderVideoMix(t, m, 28801, func(pixels []byte) {
 		if !bytes.Equal(pixels, solidVideoMix(64, 36, 9, 19, 31)) || s.current != -1 || s.closed {

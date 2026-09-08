@@ -58,3 +58,22 @@ Die 14 externen Infrastruktur-Gates und der optionale Container-Image-Scan
 blieben ausdrücklich übersprungen. Unveröffentlichte Packager-Änderungen
 gehörten nicht zu diesem isolierten Kandidaten. Der lokale Serving-Build blieb
 unverändert. Commit-/Remote-CI-/Deployment-Evidence ist davon getrennt.
+
+## Deployment
+
+Commit `8b72a46` bestand CI 34258722094 mit allen sieben Jobs einschließlich
+echtem Keycloak/TURN und wurde am 8. September 2026 auf dem Mini-PC deployed.
+Web-App, Native-Packager und Origin laufen mit exakt dieser Revision. Preflight,
+Runner-Smoke und ein unabhängiger externer Smoke bestanden; die native
+Geräteidentität blieb im internen Vorher-/Nachher-Vergleich unverändert.
+Die Maschinenaufnahme blieb `disabled disabled` / `admissionEnabled: false`.
+Keine Hub-/Projektpolicy wurde geändert.
+
+Das öffentliche Release-Manifest und alle fünf heruntergeladenen Binaries
+entsprachen byte-/SHA256-genau den unabhängig geprüften CI-Artefakten.
+Die Attestation wurde gegen Repository, Workflow, exakte Revision, Main-Ref
+und das Verbot selbst gehosteter Runner geprüft. Die öffentliche Status-JS-
+Datei entspricht bytegenau dem getesteten Build. Beim HTML-Vergleich war die
+erste Byteprüfung wegen lokaler CRLF statt produktiver LF rot; nach ausschließlich
+dieser Normalisierung stimmen HTML und referenzierte Assetnamen exakt überein.
+Das ist Deployment-Evidence, keine produktive Hub-/Worker-/Medienabnahme.

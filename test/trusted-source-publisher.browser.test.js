@@ -113,6 +113,9 @@ test("native program clock combines four real decoders and propagates individual
 test("native raw program encoder publishes actual H264 AAC renditions and revokes its generation", {timeout:25000}, t => {
   nativeCodecFixture(t, "TestLiveTrustedSourceProgramEncoder");
 });
+test("native program generation composes VP8 Opus through renewals into decodable HLS and reaps on revoke", {timeout:25000}, t => {
+  nativeCodecFixture(t, "TestLiveTrustedSourceProgramGeneration");
+});
 test("native raw program encoder bounds rolling HLS windows and reaps a revoked writer", {timeout:45000}, t => {
   nativeCodecFixture(t, "TestLiveTrustedSourceProgramEncoderRollingWindow", 40);
 });

@@ -211,6 +211,20 @@ func (s *SourceReceiver) AliveNow() bool {
 	return s.current(time.Now().UnixMilli()) == nil
 }
 
+// AliveFor binds a local consumer to this receiver's complete immutable scope.
+// A retained binding survives authorized renewal, not source/owner replacement.
+// This neither creates a grant nor exposes keys or mutable receiver state.
+func (s *SourceReceiver) AliveFor(lease SourceLease) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.current(time.Now().UnixMilli()) == nil && sourceLeaseBinding(s.lease) == sourceLeaseBinding(lease)
+}
+
+func sourceLeaseBinding(lease SourceLease) SourceLease {
+	lease.Revision, lease.IssuedAt, lease.ExpiresAt = 0, 0, 0
+	return lease
+}
+
 // Done signals terminal permission loss to transport owners without invoking
 // callbacks under the crypto mutex. A zero receiver is already closed.
 func (s *SourceReceiver) Done() <-chan struct{} {
@@ -244,11 +258,7 @@ func (s *SourceReceiver) renew(raw []byte, now int64) error {
 	if next == s.lease {
 		return nil
 	}
-	oldScope, nextScope := s.lease, next
-	oldScope.Revision, nextScope.Revision = 0, 0
-	oldScope.IssuedAt, nextScope.IssuedAt = 0, 0
-	oldScope.ExpiresAt, nextScope.ExpiresAt = 0, 0
-	if oldScope != nextScope || next.Revision != s.lease.Revision+1 || next.IssuedAt < s.lease.IssuedAt || next.ExpiresAt <= s.lease.ExpiresAt || !s.policy(next, now) {
+	if sourceLeaseBinding(s.lease) != sourceLeaseBinding(next) || next.Revision != s.lease.Revision+1 || next.IssuedAt < s.lease.IssuedAt || next.ExpiresAt <= s.lease.ExpiresAt || !s.policy(next, now) {
 		return ErrKey
 	}
 	s.lease = next

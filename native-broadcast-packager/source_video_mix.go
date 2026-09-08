@@ -127,9 +127,18 @@ func (s *sourceVideoMixInput) WriteRGBA(width, height int, timestamp uint32, pix
 		}
 	}
 	if slot < 0 {
-		// Retain the currently presented image, drop the oldest pending frame.
-		// Only this fixed pool is used, even if the producer outruns the clock.
-		slot = s.popPending()
+		// Preserve both the presented image and the next pending deadline.
+		// Dropping the earliest future frame lets a continuous ahead-of-clock
+		// producer evict every image before it is due: permanent slate/freeze.
+		// Replace only the furthest pending image, or drop the new arrival if
+		// the next deadline is our sole pending slot. The pool never grows.
+		last := len(s.pending) - 1
+		if last < 1 {
+			return nil
+		}
+		slot = s.pending[last]
+		s.pending[last] = 0
+		s.pending = s.pending[:last]
 		s.clearFrame(slot)
 	}
 	copy(s.frames[slot].pixels, pixels)
