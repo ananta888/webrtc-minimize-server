@@ -6,10 +6,15 @@ import { SignalingService } from "../../webrtc/signaling.service";
 @Injectable()
 export class MachineReceiveControlsService implements OnDestroy {
   readonly targets = computed(() => this.mesh.peerChoices().filter(peer => this.mesh.machineReceive.isMachine(peer.id)));
-  readonly state = signal<"idle" | "pending" | "confirmed" | "failed">("idle");
+  readonly state = signal<"idle" | "pending" | "confirmed" | "expired" | "failed">("idle");
   readonly error = signal("");
+  readonly requestPeerId = signal("");
   private readonly now = signal(Date.now());
-  private readonly refresh = setInterval(() => this.now.set(Date.now()), 1000);
+  private readonly refresh = setInterval(() => { this.now.set(Date.now()); this.reconcile(); }, 250);
+  readonly sources = computed(() => {
+    this.now();
+    return this.session.joined() && !this.session.machineExpiresAt() ? this.mesh.ownMachineReceiveSources() : [];
+  });
   readonly activities = computed(() => {
     const now = this.now();
     return this.targets().map(peer => {
@@ -27,10 +32,14 @@ export class MachineReceiveControlsService implements OnDestroy {
     });
   });
   private pending: ReturnType<PeerMeshService["machineReceiveConsent"]> | null = null;
+  private receipt: ReturnType<PeerMeshService["machineReceiveConsent"]> | null = null;
+  private scope: Readonly<{ roomId: string; peerId: string }> | null = null;
+  private destroyed = false;
   private timeout: ReturnType<typeof setTimeout> | null = null;
   private unsubscribe: () => void;
   constructor(readonly mesh: PeerMeshService, private readonly session: RoomSessionService, private readonly signaling: SignalingService) {
     this.unsubscribe = signaling.subscribe(message => {
+      this.reconcile();
       const pending = this.pending;
       if (!pending) return;
       if (message.type === "error" && typeof message["code"] === "string" && /^machine_receive_[a-z_]{1,64}$/.test(message["code"])) {
@@ -38,17 +47,44 @@ export class MachineReceiveControlsService implements OnDestroy {
       }
       if (message.type !== "machine-receive-state" || message["roomId"] !== this.session.roomId()
         || this.mesh.machineReceive.revision() <= pending.expectedRevision) return;
-      const current = mesh.ownMachineReceiveGrant(pending.machinePeerId);
-      const matched = pending.publicationIds.length || pending.chatRead
-        ? current?.expiresAt === pending.expiresAt && current.chatRead === pending.chatRead
-          && JSON.stringify([...current.publicationIds].sort()) === JSON.stringify([...pending.publicationIds].sort())
-        : current === null;
-      if (matched) this.finish(true);
+      if (this.matches(pending)) this.finish(true);
     });
   }
+  selection(peerId: string) {
+    const grant = this.mesh.ownMachineReceiveGrant(peerId);
+    const valid = grant && grant.expiresAt > Date.now();
+    const allows = (source: string) => Boolean(valid && this.sources().some(value => value.source === source
+      && grant.publicationIds.includes(value.publicationId)));
+    return { microphone: allows("microphone"), screenAudio: allows("screen-audio"), chat: Boolean(valid && grant.chatRead) };
+  }
+  sourceAvailable(source: string): boolean { return this.sources().some(value => value.source === source); }
+  private matches(command: NonNullable<typeof this.pending>): boolean {
+    const current = this.mesh.ownMachineReceiveGrant(command.machinePeerId);
+    return command.publicationIds.length || command.chatRead
+      ? current?.expiresAt === command.expiresAt && current.chatRead === command.chatRead
+        && JSON.stringify([...current.publicationIds].sort()) === JSON.stringify([...command.publicationIds].sort())
+      : current === null;
+  }
+  private reconcile(): void {
+    if (this.destroyed || !this.scope) return;
+    if (!this.session.joined() || this.session.machineExpiresAt() || this.scope.roomId !== this.session.roomId()
+      || this.scope.peerId !== this.session.peerId() || !this.targets().some(peer => peer.id === this.requestPeerId())) {
+      this.finish(false, "machine_receive_session_changed"); this.receipt = null; this.scope = null; return;
+    }
+    if (this.receipt) {
+      if ((this.receipt.chatRead || this.receipt.publicationIds.length) && this.receipt.expiresAt <= Date.now()) {
+        this.receipt = null; this.state.set("expired");
+      } else if (!this.matches(this.receipt)) {
+        this.receipt = null; this.state.set("idle");
+      }
+    }
+  }
   request(peerId: string, microphone: boolean, screenAudio: boolean, chatRead: boolean, minutes: number, trigger: unknown): void {
-    if (trigger !== "user-action" || !this.session.joined() || this.session.machineExpiresAt() || this.pending) return;
+    this.reconcile();
+    if (this.destroyed || trigger !== "user-action" || !this.session.joined() || this.session.machineExpiresAt() || this.pending) return;
     this.error.set("");
+    this.receipt = null; this.requestPeerId.set(peerId);
+    this.scope = Object.freeze({ roomId: this.session.roomId(), peerId: this.session.peerId() });
     try {
       const command = this.mesh.machineReceiveConsent(peerId, microphone, screenAudio, chatRead, minutes);
       this.pending = command; this.state.set("pending");
@@ -61,10 +97,12 @@ export class MachineReceiveControlsService implements OnDestroy {
     }
   }
   private finish(success: boolean, code = ""): void {
+    this.receipt = success ? this.pending : null;
     if (this.timeout) clearTimeout(this.timeout); this.timeout = null; this.pending = null;
     this.state.set(success ? "confirmed" : "failed"); this.error.set(code);
   }
   ngOnDestroy(): void {
+    this.destroyed = true; this.receipt = null; this.scope = null;
     this.unsubscribe(); clearInterval(this.refresh); if (this.timeout) clearTimeout(this.timeout); this.pending = null;
   }
 }

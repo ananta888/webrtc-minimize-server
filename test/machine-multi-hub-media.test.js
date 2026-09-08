@@ -58,11 +58,12 @@ test("revoked first image must actually disappear while the other identity retai
   assert.equal(f.observed.length, 2); await f.media.close();
 });
 
-test("target switch cannot submit the reset model behind a stale checked DOM field", async () => {
+for (const existingGrant of [false, true]) {
+test(`target switch renders existing consent=${existingGrant} before explicit replacement`, async () => {
   let checked = true, model = true, submitted = null;
   const actions = [];
   const article = {
-    getByRole() { return { async click() { actions.push("select"); model = false; } }; },
+    getByRole() { return { async click() { actions.push("select"); model = existingGrant; } }; },
     getByText() { return { async waitFor() { actions.push("target-proof"); assert.equal(submitted, true); } }; },
   };
   const panel = {
@@ -77,7 +78,7 @@ test("target switch cannot submit the reset model behind a stale checked DOM fie
   const human = {
     async evaluate(_fn, peer) {
       if (peer === undefined) return;
-      assert.equal(peer, peers[1]); actions.push("render"); checked = false; return true;
+      assert.equal(peer, peers[1]); actions.push("render"); checked = model; return true;
     },
     locator(selector) {
       if (selector === "app-machine-permissions-panel") return panel;
@@ -91,6 +92,7 @@ test("target switch cannot submit the reset model behind a stale checked DOM fie
   assert.deepEqual(media.diagnostic(), { step: "idle", publisher: null });
   await media.close();
 });
+}
 
 test("failed consent diagnostic contains only a closed step and publisher index", async () => {
   const failure = new Error("private operator message must not enter the diagnostic");

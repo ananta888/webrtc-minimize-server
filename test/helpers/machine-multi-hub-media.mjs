@@ -22,15 +22,14 @@ export async function multiHubMedia(f) {
         step = "consent-target";
         await article.getByRole("button", { name: "Für diese KI einstellen" }).click();
         // A click is not a render barrier: the old target's checked DOM can
-        // coexist briefly with the new target's reset model. Observe both
+        // coexist briefly with the new target's editor model. Observe both
         // bindings before another input event, without changing application state.
         step = "consent-render";
         await waitFixtureValue(page, peer => {
           const panel = document.querySelector("app-machine-permissions-panel");
           const target = [...panel.querySelectorAll("article")].find(el => el.querySelector("code")?.textContent === peer);
-          const label = [...panel.querySelectorAll("fieldset label")].find(el => el.textContent.trim() === "Meine neuen Chatbeiträge");
           return Boolean(target?.querySelector('button[aria-pressed="true"]'))
-            && label?.querySelector("input")?.checked === false;
+            && panel.querySelector("fieldset")?.dataset.machinePeer === peer;
         }, peers[input.publisher], { timeout: 5000 });
         step = "consent-checkbox";
         await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).uncheck();

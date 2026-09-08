@@ -828,6 +828,13 @@ export class PeerMeshService {
     return this.machineReceive.grants().find(g => g.publisherPeerId === this.ownId && g.machinePeerId === machinePeerId) || null;
   }
 
+  /** Read-only editor choices, not consent and never a request to start capture. */
+  ownMachineReceiveSources() {
+    return Object.freeze([...this.publications.values()].filter(p => p.local && p.track.readyState === "live"
+      && (p.source === "microphone" || p.source === "screen-audio"))
+      .map(p => Object.freeze({ publicationId: p.id, source: p.source })));
+  }
+
   machineReceiveConsent(machinePeerId: string, microphone: boolean, screenAudio: boolean, chatRead: boolean, minutes: number) {
     if (!this.peers.has(machinePeerId) || !this.machineReceive.isMachine(machinePeerId)
       || ![1, 5, 10].includes(minutes)) throw new Error("machine_receive_target_unavailable");

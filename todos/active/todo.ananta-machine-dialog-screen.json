@@ -110,6 +110,7 @@
     },
     {
       "id": "MDS-07", "title": "KI-Aktivitäten und berechtigte Steuerung in Angular sichtbar machen",
+      "consent_editor_plan": "2026-09-08 Nutzerprioritaet Hub-/Worker-Integration: aktuelle eigene Quellen als rein lesende Projektion; bestehende Freigaben gezielt bearbeiten, inaktive Quellen nicht auswaehlbar. Pending/Receipt an Raum und lokalen Membership-Peer binden; Raumwechsel, Ablauf, geaenderte Freigabe und Destroy entwerten alte UI-Bestaetigungen ohne automatische neue Freigabe. Kurze Service-/UI-Tests und echter Chromium-/Firefox-Dialog mit Audio/Chat/Screen/drei Renewals, anschliessend isolierter Vollcheck. MDS-07 bleibt in_progress/55 bis alle Kriterien einschliesslich gemeinsamer Abnahme erfuellt sind; Ananta-Repository und produktiver Trust bleiben unveraendert.",
       "status": "in_progress", "progress_percent": 55, "priority": "P1", "risk": "high", "depends_on": ["MDS-03", "MDS-04", "MDS-05", "MDS-06"],
       "ananta_task_refs": ["MAP-12", "MAP-25", "MAP-32"],
       "acceptance_criteria": [
