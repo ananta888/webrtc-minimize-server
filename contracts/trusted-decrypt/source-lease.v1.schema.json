@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/trusted-decrypt/source-lease.v1.schema.json",
+  "title": "Short-lived server-authorized native trusted source lease",
+  "$comment": "Metadata only, not a signed bearer capability. Authenticated control transport and current local assignment/room/device policy are mandatory. Runtime checks <=5s lifetime and immutable renewal scope; keys travel on a separate authenticated publisher DataChannel, not control signaling.",
+  "type": "object", "additionalProperties": false,
+  "required": ["version", "type", "sourceLeaseId", "revision", "consent", "assignmentId", "writerLeaseId", "fencingRevision", "publisherPeerId", "publisherDeviceRef", "publicationId", "publicationEpoch", "codec", "frameEnvelope", "issuedAt", "expiresAt"],
+  "properties": {
+    "version": {"const":1}, "type":{"const":"trusted-source-lease"},
+    "sourceLeaseId":{"type":"string","pattern":"^sls_[A-Za-z0-9_-]{16,64}$"},
+    "revision":{"type":"integer","minimum":1,"maximum":1024},
+    "consent":{"$ref":"https://webrtc.ananta.de/contracts/trusted-decrypt/wire.v1.schema.json#/$defs/consent"},
+    "assignmentId":{"type":"string","pattern":"^asn_[A-Za-z0-9_-]{16,64}$"},
+    "writerLeaseId":{"type":"string","pattern":"^lea_[A-Za-z0-9_-]{16,64}$"},
+    "fencingRevision":{"$ref":"#/$defs/positive"},
+    "publisherPeerId":{"type":"string","pattern":"^[a-f0-9]{16}$"},
+    "publisherDeviceRef":{"type":"string","pattern":"^dev_[A-Za-z0-9_-]{16,64}$"},
+    "publicationId":{"type":"string","pattern":"^[A-Za-z0-9_={}:-]{1,128}$"},
+    "publicationEpoch":{"$ref":"#/$defs/positive"},
+    "codec":{"enum":["video/vp8","audio/opus"]},"frameEnvelope":{"const":"codec-prefix-v1"},
+    "issuedAt":{"$ref":"#/$defs/positive"},"expiresAt":{"$ref":"#/$defs/positive"}
+  },
+  "$defs":{"positive":{"type":"integer","minimum":1,"maximum":9007199254740991}}
+}

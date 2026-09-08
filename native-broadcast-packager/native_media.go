@@ -336,6 +336,9 @@ func (c *client) transitionAssignment(assignment *packagerAssignment, state, rea
 	}
 	assignment.State = state
 	c.assignmentMu.Unlock()
+	if state == "failed" {
+		c.closeTrustedSources()
+	}
 	return c.send(c.assignmentStatus(assignment, state, reasonCode))
 }
 
@@ -345,6 +348,7 @@ func (c *client) closeAssignmentMedia() {
 	c.assignment = nil
 	c.thermalState = false
 	c.assignmentMu.Unlock()
+	c.closeTrustedSources()
 	if assignment != nil && assignment.Media != nil {
 		assignment.Media.close()
 	}

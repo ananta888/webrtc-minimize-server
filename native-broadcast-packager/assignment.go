@@ -309,6 +309,7 @@ func (c *client) stopAssignment(message serverMessage) error {
 	c.assignment = nil
 	c.thermalState = false
 	c.assignmentMu.Unlock()
+	c.closeTrustedSources()
 	if assignment.Media != nil {
 		assignment.Media.close()
 	}
@@ -326,6 +327,7 @@ func (c *client) expireAssignment(now time.Time) error {
 	c.thermalState = false
 	assignment.State = "failed"
 	c.assignmentMu.Unlock()
+	c.closeTrustedSources()
 	if assignment.Media != nil {
 		assignment.Media.close()
 	}
@@ -359,6 +361,7 @@ func (c *client) reconcileLocalHealth(health string) error {
 		c.thermalState = false
 		assignment.State = "failed"
 		c.assignmentMu.Unlock()
+		c.closeTrustedSources()
 		if assignment.Media != nil {
 			assignment.Media.close()
 		}
