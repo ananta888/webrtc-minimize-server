@@ -30,11 +30,15 @@ for (const humanEngine of ["chromium", "firefox"]) {
       assert.notEqual(members[0].principal, members[1].principal);
       assert.notEqual(members[0].deviceFingerprint, members[1].deviceFingerprint);
       for (const [index, item] of machines.entries()) {
-        const denied = await item.machine.evaluate(foreign => {
-          try { window.anantaMachine.screen.open("screen:" + foreign); return "accepted"; }
-          catch (error) { return error.message; }
+        const denied = await item.machine.evaluate(async foreign => {
+          const outcomes = [];
+          for (const [kind, args] of [["screen", []], ["speech", [22050]], ["avatar", ["neutral-ai-v1"]]]) {
+            try { await window.anantaMachine[kind].open(kind + ":" + foreign, ...args); outcomes.push("accepted"); }
+            catch (error) { outcomes.push(error.message); }
+          }
+          return outcomes;
         }, machines[1 - index].binding.sessionId);
-        assert.equal(denied, "meet_screen_source_denied");
+        assert.deepEqual(denied, ["meet_screen_source_denied", "meet_speech_source_denied", "meet_avatar_source_denied"]);
         await item.machine.evaluate(openTestImageAvatar, { sourceId: "avatar:" + item.binding.sessionId,
           image: syntheticAvatarImage(index === 0 ? [220, 20, 20] : [20, 20, 220]) });
         await item.machine.evaluate(startAvatarCompanions, { sessionId: item.binding.sessionId,
@@ -43,6 +47,8 @@ for (const humanEngine of ["chromium", "firefox"]) {
       const both = await waitFixtureValue(human, ids => window.__multiPublisher.snapshot(ids), peers,
         { timeout: 10000, accept: v => !v.failed && v.publishers.every((p, i) =>
           isColor(p.camera, i === 0 ? 0 : 2) && isColor(p.screen, i) && p.audioTracks === 1 && p.active > 10 && p.peak > .1) });
+      await waitFixtureValue(human, ids => window.__multiPublisher.active(ids), peers,
+        { timeout: 5000, accept: active => active.every(Boolean) });
       for (const item of machines) assert.equal(await item.machine.evaluate(() => window.__avatarCompanions.failed), false);
       await f.machine.evaluate(async () => {
         window.__avatarTestPulse.stop(); await window.__avatarCompanions.close(); window.anantaMachine.leave();
@@ -58,6 +64,7 @@ for (const humanEngine of ["chromium", "firefox"]) {
       const survivor = await waitFixtureValue(human, ids => window.__multiPublisher.snapshot(ids), peers,
         { timeout: 8000, accept: v => !v.failed && v.publishers[0].camera === null && v.publishers[0].screen === null
           && isColor(v.publishers[1].camera, 2) && isColor(v.publishers[1].screen, 1) && v.publishers[1].active > 10 });
+      assert.equal((await human.evaluate(ids => window.__multiPublisher.active(ids), peers))[0], false);
       for (const page of [human, f.machine, second.machine]) {
         assert.deepEqual(await page.evaluate(() => ({ captures: window.__captures, errors: window.__transformErrors })),
           { captures: 0, errors: [] });

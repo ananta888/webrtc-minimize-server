@@ -93,3 +93,55 @@ Ananta. Root's separate scenario supplies explicitly synthetic PCM through real
 Hub child tasks and respects the existing chat cooldown. No device capture,
 synthetic model-success claim, policy override, raw media/identity export or
 new Worker scheduler. The default screen-only gate remains supported.
+
+The separate media command helper now implements those observations. Fresh PCM
+is sampled from both associated peer connections in the same callback and must
+be active for three consecutive observations; historical peak counters cannot
+prove simultaneous speech. The existing Chromium/Firefox matrix also checks
+fresh audio and denies foreign screen, speech and avatar source identities.
+The receiver uses its ordinary consent UI and verifies the selected peer's
+grant, with no policy overrides or human intervention. A private closed command
+step/publisher-index diagnostic contains no UI text, grants, keys or media.
+
+Ananta's first packaged media pass took 69.90 s; 49 root fixture tests and five
+bridge unit checks passed. A subsequent combined root run passed screen-only
+but failed during consent, so acceptance is still in progress. Its passive
+Worker chat-ready marker observes unchanged native behavior, not an admission
+bypass. Independent image withdrawal and source ownership remain separate
+from model inference, public TURN, production evidence and speaker fairness.
+
+The remaining consent failure reproduced at the second checkbox before either
+Worker failed. The fixture now observes Angular's completed target/reset render
+before emitting another input event; no policy, grant or input is replayed.
+The membership-loss observation after the earlier bridge failure was cleanup,
+not a demonstrated production session fault.
+
+After that correction Ananta's combined packaged matrix passed both cases in
+103.64 s (screen-only 42.234 s, persona/speech 61.045 s including fixture
+lifecycle), with two independent child replies, three fresh simultaneous audio
+observations, independent avatar revocation and zero remaining Worker containers.
+The isolated full companion check remains required before pushing this slice.
+
+The first isolated full check at `b0d6c10` passed 665 frontend tests, build and
+static/security gates, then failed the native packager's pre-existing key-only
+fixture at `source_transport_boundary_test.go:193`: no initial key announcement
+within three seconds, before its media-shape stimulus. Ten isolated repetitions
+reproduced two failures (41.671 s total). No source-media success or complete
+regression result follows from that run. Next preserve fixed connection/channel/
+receiver states and signaling error counters only on fixture failure, then
+isolate and correct the cause without widening the timeout or replaying keys.
+No SDP, candidate addresses, source IDs, keys or error strings may enter the
+diagnostic. This is test observation, not a production transport change.
+
+Failure-only diagnostics reproduced another startup failure in ten runs
+(33.664 s): local ICE remained `checking`, remote ICE was `connected`, both
+connections were still `connecting`, no data channel was attached, receiver
+authority remained alive and no SDP/candidate operation failed. Thus the test
+had not reached key admission; teardown and decoder changes are not its cause.
+The key-only fixture currently discovers every host/Docker interface. Restrict
+only this same-process fixture to real IPv4 loopback UDP candidates, preserving
+the production API's codecs/interceptors, SCTP memory cap and three-second
+deadline. Assert its gathered candidates are loopback; do not change production
+ICE, TURN, browser or media fixtures. Verify repeated actual handshakes and all
+negative channel/sequence cases before another isolated full check. This does
+not claim to repair arbitrary host-network ICE establishment.

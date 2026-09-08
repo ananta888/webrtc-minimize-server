@@ -10,10 +10,11 @@ export function installMultiPublisherObservation() {
     let context;
     try {
       context = new AudioContext();
-      const entry = { pc, context, timer: null, active: 0, peak: 0 };
+      const entry = { pc, track, context, analyser: null, timer: null, active: 0, peak: 0 };
       tracks.set(track, entry);
       const source = context.createMediaStreamSource(new MediaStream([track]));
       const analyser = context.createAnalyser(), quiet = context.createGain(); quiet.gain.value = 0;
+      entry.analyser = analyser;
       source.connect(analyser); analyser.connect(quiet); quiet.connect(context.destination);
       await context.resume();
       if (closed) { await context.close(); return; }
@@ -37,15 +38,32 @@ export function installMultiPublisherObservation() {
     const pixel = [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3); canvas.width = canvas.height = 0;
     return pixel;
   }
-  window.__multiPublisher = {
-    snapshot(peers) {
+  function requirePeers(peers) {
       if (!Array.isArray(peers) || peers.length !== 2 || !peers.every(p => typeof p === "string" && /^[a-f0-9]{16}$/.test(p))) {
         throw new Error("test_multi_peer_projection");
       }
+  }
+  function associated(peer) {
+    const elements = [...document.querySelectorAll(".remote-media[data-peer-id]")].filter(el => el.dataset.peerId === peer);
+    const videoTracks = elements.flatMap(el => el.querySelector("video")?.srcObject?.getVideoTracks() || []);
+    const audio = [...tracks.values()].filter(entry => entry.pc.getReceivers().some(r => videoTracks.includes(r.track)));
+    return { elements, audio };
+  }
+  window.__multiPublisher = {
+    active(peers) {
+      requirePeers(peers);
+      // Fresh samples in the same browser callback, not accumulated historical
+      // peaks from two non-overlapping speech turns.
+      return peers.map(peer => associated(peer).audio.some(entry => {
+        if (closed || failed || entry.track.readyState !== "live" || entry.context.state !== "running" || !entry.analyser) return false;
+        const pcm = new Float32Array(entry.analyser.fftSize); entry.analyser.getFloatTimeDomainData(pcm);
+        return pcm.some(sample => Math.abs(sample) > .01);
+      }));
+    },
+    snapshot(peers) {
+      requirePeers(peers);
       return { failed, publishers: peers.map(peer => {
-        const elements = [...document.querySelectorAll(".remote-media[data-peer-id]")].filter(el => el.dataset.peerId === peer);
-        const videoTracks = elements.flatMap(el => el.querySelector("video")?.srcObject?.getVideoTracks() || []);
-        const audio = [...tracks.values()].filter(entry => entry.pc.getReceivers().some(r => videoTracks.includes(r.track)));
+        const { elements, audio } = associated(peer);
         return { camera: frame(elements.find(el => el.dataset.source === "camera")),
           screen: frame(elements.find(el => el.dataset.source === "screen")),
           audioTracks: audio.length, active: audio.reduce((sum, item) => sum + item.active, 0),
