@@ -69,3 +69,18 @@ offen: Der Prozessplatz muss trotz Stop belegt bleiben. Erst nach Freigabe,
 Owner; ein untätiger Videodecoder muss samt Prozess enden und seine Zähler
 freigeben. Reale Testergebnisse und der gemeinsame Gesamtcheck werden im Todo
 festgehalten; opt-in Skips gelten nicht als Nachweis.
+
+Der komplette Source-Browsertrack bestand mit neun Tests ohne Skips in
+119,746 Sekunden. Die abschließende Quoten-/Parallel-/Startfehler-/FFmpeg-
+Matrix bestand anschließend dreimal unter Race, ebenso Vet. Darin enthalten
+sind die zusätzlichen echten Nil-/Minimal-/Terminalbudget-Startverweigerungen
+und die gleichzeitige Rückgabe desselben Handles.
+
+Der isolierte Gesamtcheck `npm run check` von `7584104` bestand: 665
+Frontendtests, Build, statische/Security-Gates, Go Unit/Vet und 748 bestandene
+Node-Tests, null Fehler, zwei explizite Node-Skips in 304,429 Sekunden für die
+Node-Stufe. Der neue reale Zulassungstest lief dabei ebenfalls. Die gepaarten
+SFrame-Quellen erreichten in Chromium/Firefox jeweils höchstens 30,8 ms
+A/V-Abweichung. Vierzehn externe Infrastruktur-Gates und opt-in Langzeitläufe
+wurden ausdrücklich übersprungen, nicht als produktiv verifiziert gewertet.
+Der Serving-Build blieb unverändert; keine Source-Freischaltung oder Deployment.
