@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -80,29 +80,57 @@ for (const changes of [{ trustRevision: true }, { trustRevision: 0 }, { keyId: "
   });
 }
 
-test("real CLI checks v2 against actual source cleanliness and never echoes its scope", { timeout: 12000 }, t => {
+test("real CLI checks clean, modified and untracked source snapshots without disclosing scope", { timeout: 12000 }, t => {
   const directory = mkdtempSync(join(tmpdir(), "synthetic-trust-preflight-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const f = fixture(), path = join(directory, "plan.json"), profilePath = join(directory, "public-trust.json");
-  f.plan.meetRevision = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8", timeout: 2000 }).trim();
-  writeFileSync(path, JSON.stringify(f.plan)); writeFileSync(profilePath, JSON.stringify(f.config.machineHubTrustProfile));
+  const cwd = join(directory, "checkout"), emptyConfig = join(directory, "empty-git-config");
+  mkdirSync(join(cwd, "scripts"), { recursive: true });
+  writeFileSync(emptyConfig, "");
+  // Exact current source, not HEAD: exercise uncommitted implementation too.
+  // No shared index, inherited hooks/config or moving developer checkout state.
+  cpSync(new URL("../src", import.meta.url), join(cwd, "src"), { recursive: true });
+  copyFileSync(new URL("../package.json", import.meta.url), join(cwd, "package.json"));
+  copyFileSync(new URL("../scripts/machine-rollout-preflight.mjs", import.meta.url),
+    join(cwd, "scripts/machine-rollout-preflight.mjs"));
   // Deliberately clean environment: no operator secrets or inherited trust.
   const env = { PATH: process.env.PATH, AUTH_MODE: "required", OIDC_ISSUER: "https://synthetic-human.test",
     OIDC_AUDIENCE: "human", PUBLIC_ORIGIN: f.plan.publicOrigin, STUN_URLS: "",
+    GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: emptyConfig,
     MACHINE_HUB_TRUST_PROFILE_JSON_FILE: profilePath, MACHINE_ALLOWED_CAPABILITIES: "chat.read,chat.send" };
+  const git = args => execFileSync("git", args, { cwd, env, encoding: "utf8", timeout: 2000 }).trim();
+  git(["init", "--quiet", "--template="]);
+  git(["config", "core.autocrlf", "false"]);
+  git(["add", "--", "src", "scripts/machine-rollout-preflight.mjs", "package.json"]);
+  git(["-c", "user.name=Synthetic Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "fixture"]);
+  f.plan.meetRevision = git(["rev-parse", "HEAD"]);
+  writeFileSync(path, JSON.stringify(f.plan)); writeFileSync(profilePath, JSON.stringify(f.config.machineHubTrustProfile));
   const run = file => spawnSync(process.execPath, ["scripts/machine-rollout-preflight.mjs", file],
-    { env, encoding: "utf8", timeout: 5000, maxBuffer: 32768 });
-  const response = run(path);
-  assert.equal(response.error, undefined); assert.equal(response.stderr, "");
-  const result = JSON.parse(response.stdout); assert.equal(result.productionReady, false);
-  assert.equal(result.checks.find(check => check.code === "machine_trust_scope_allowed").status, "pass");
-  assert.equal(result.checks.find(check => check.code === "machine_trust_key_selected").status, "pass");
-  const clean = execFileSync("git", ["status", "--porcelain", "--untracked-files=normal"],
-    { encoding: "utf8", timeout: 2000 }).trim() === "";
-  assert.equal(result.localReady, clean); assert.equal(response.status, clean ? 0 : 2);
-  for (const value of [directory, f.plan.roomId, f.plan.keyId, f.config.machineHubTrustProfile.keys[0].x]) {
-    assert.equal(response.stdout.includes(value), false);
-  }
+    { cwd, env, encoding: "utf8", timeout: 5000, maxBuffer: 32768 });
+  const verify = clean => {
+    assert.equal(git(["status", "--porcelain", "--untracked-files=normal"]) === "", clean);
+    const response = run(path);
+    assert.equal(response.error, undefined); assert.equal(response.stderr, "");
+    const result = JSON.parse(response.stdout); assert.equal(result.productionReady, false);
+    const failed = result.checks.filter(check => check.status === "fail").map(check => check.code);
+    assert.deepEqual(failed, clean ? [] : ["meet_worktree_clean"]);
+    assert.equal(result.checks.find(check => check.code === "machine_trust_scope_allowed").status, "pass");
+    assert.equal(result.checks.find(check => check.code === "machine_trust_key_selected").status, "pass");
+    assert.equal(result.localReady, clean); assert.equal(response.status, clean ? 0 : 2);
+    for (const value of [directory, f.plan.roomId, f.plan.keyId, f.config.machineHubTrustProfile.keys[0].x]) {
+      assert.equal(response.stdout.includes(value), false);
+    }
+  };
+  verify(true);
+  writeFileSync(join(cwd, "package.json"), '{"type":"module"}\n');
+  verify(false);
+  copyFileSync(new URL("../package.json", import.meta.url), join(cwd, "package.json"));
+  verify(true);
+  const untracked = join(cwd, "untracked-fixture");
+  writeFileSync(untracked, "synthetic\n");
+  verify(false);
+  rmSync(untracked);
+  verify(true);
   writeFileSync(path, JSON.stringify(f.plan).replace('"subject":', '"subject":"foreign","subject":'));
   const duplicate = run(path); assert.equal(duplicate.status, 2); assert.equal(duplicate.stderr, "");
   assert.equal(JSON.parse(duplicate.stdout).code, "machine_preflight_input_or_config_invalid");

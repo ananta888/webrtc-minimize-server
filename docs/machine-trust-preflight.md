@@ -61,3 +61,22 @@ Concurrent upstream native Packager changes were merged at `c987613` after
 that check. Its complete Go unit/vet gate passed separately (Packager
 11.387 s). No Node/frontend files changed in that merge; do not relabel the
 earlier full check as a check of a different revision.
+
+## Isolated CLI source-state regression
+
+The combined `c264888` check completed with 720 Node passes, two skips and
+one failure: the CLI's `localReady` was false while the later parent Git
+status was clean. The failing check code was not captured, so a successful
+37-test focused rerun does **not** prove the original cause fixed. That
+test sampled a shared checkout twice using different environments: the CLI
+omitted the parent's global Git configuration (including `core.autocrlf`).
+
+The CLI test now copies the actual current CLI and source into its own
+ephemeral Git repository, with no inherited hooks or global/system config.
+Both Git inspection and the real CLI use the same environment. It requires
+clean readiness, denial of a real tracked modification, restored readiness,
+denial of an untracked file, and restored readiness again. In dirty cases
+the **only** failed check must be `meet_worktree_clean`; failure diagnostics
+contain fixed check codes, not plan scope. Duplicate-JSON, FIFO, exit-code,
+key/scope and redaction assertions remain. Production code is unchanged.
+The focused preflight/profile regression passes; the combined check follows.
