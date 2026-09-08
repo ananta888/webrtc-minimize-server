@@ -116,6 +116,7 @@
     },
     {
       "id": "MDS-08", "title": "Headless-Sicherheits- und Ende-zu-Ende-Matrix verifizieren",
+      "trust_regression_startup_followup": "2026-09-08 isolierter6aad282-Vollcheck:639Frontend/Build/Go/Security pass, Node674pass/1fail/3skips149.98s. Alter Chromium->Firefox-Counter350-Test30s-Timeout auf active-SFrame, keine Frontendaenderung im Trustslice.2 Einzelrepeats35.800/35.777s und ganze7er-Browserdatei62.512s gruen;427decodierte Frames/5Keyframes/null Transformfehler. Kein Fix-/Gesamtgruenclaim. Geplanter Testnachtrag: begrenzte feste Status-/Transform-/RTP-Diagnose vor Cleanup am Startupwait, keine Rohinhalte/IDs/Keys/SDP und keine Assertion-/Timeout-/Kryptoaenderung. Intermittenz bleibt offen waehrend separater Preflightfortsetzung; docs/machine-trust-profile.md.",
       "status": "in_progress", "progress_percent": 25, "priority": "P1", "risk": "high", "depends_on": ["MDS-07", "MDS-10"],
       "ananta_task_refs": ["MAP-29", "MAP-30", "MAP-31"],
       "acceptance_criteria": [
@@ -163,6 +164,7 @@
     },
     {
       "id": "MDS-09", "title": "Vorautorisierte Aktivierung, Preflight und Rollback dokumentieren und prüfen",
+      "versioned_preflight_plan": "2026-09-08 Quellabgleich6aad282: v1-Preflight kennt nur Legacykey, Profiltrust bleibt korrekt blocked; CLI kann FIFO vor Stat blockierend oeffnen. docs/machine-trust-preflight.md plant additive closed Plan-v2 mit Revision/kid/Subject/Audience/GrantTTL, exakten Publicpin-/Zeit-/Scopechecks und bounded regular-file JSON. Reine schmale Plan-/Trustports, v1-Fassade kompatibel, feste redigierte Reports, keine Runtimewrites oder Produktivfreigabe. Headless CLI/FIFO-/Negativmatrix vor Abnahme.",
       "status": "in_progress", "progress_percent": 40, "priority": "P1", "risk": "high", "depends_on": ["MDS-08"],
       "ananta_task_refs": ["MAP-05", "MAP-31", "MAP-32"],
       "acceptance_criteria": [

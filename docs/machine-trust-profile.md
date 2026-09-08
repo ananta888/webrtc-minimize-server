@@ -53,3 +53,20 @@ The existing v1 rollout preflight knows only the legacy single-key plan.
 It deliberately remains blocked under profile-only trust until the next
 versioned preflight implementation; do not configure a second legacy key to
 make that check green. No production configuration has been changed.
+
+## Full-check failure retained
+
+Actual isolated check of `6aad282`: 639 frontend tests, build/Go/security
+passed; Node 674 pass, one failure, three skips, 149.98 s. The existing
+Chromium-to-Firefox counter-350 case timed out on active SFrame before its
+counter assertion. Trust changes did not touch frontend or human admission.
+Two isolated repeats passed (35.800/35.777 s), followed by all seven cases
+of browser.e2e.test.js (62.512 s; interop 427 decoded frames/five keyframes,
+zero reported transform failures). This is not a fix or a green full check.
+
+MDS-08 next adds only bounded, closed failure diagnostics at that existing
+startup assertion before cleanup: fixed SFrame states/transform codes and
+numeric RTP counters, no media, IDs, keys, SDP or exception contents. Keep
+assertions/timeouts and cryptography intact. Carry the intermittent failure
+into the next full check while implementing the independently scoped local
+trust preflight. No serving changes or production claim.
