@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -21,6 +22,14 @@ func TestSourceEncoderArgumentsKeepRawAndLegacyInputsSeparate(t *testing.T) {
 	c := sourceEncoderTestConfig(t.TempDir())
 	args := sourceProgramEncoderArguments(c, "/owned/.pending", "pipe:3", "pipe:4")
 	joined := strings.Join(args, " ")
+	for _, required := range []string{"[1:a]asplit=2[a0out][a1out]", "-map [v0out] -map [a0out]", "-map [v1out] -map [a1out]"} {
+		if !strings.Contains(joined, required) {
+			t.Fatal("raw audio does not share the bounded program graph", required)
+		}
+	}
+	if strings.Contains(joined, "-map 1:a:0") {
+		t.Fatal("raw audio would create independent auto filter graphs")
+	}
 	for _, fps := range []string{"fps=fps=5:round=near", "fps=fps=10:round=near"} {
 		if !strings.Contains(joined, fps) {
 			t.Fatal("raw rendition has no explicit frame selection")
@@ -63,6 +72,29 @@ func TestSourceEncoderRejectsConfigBeforeOwningOutput(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(base.outputRoot, base.resourceRef)); !os.IsNotExist(err) {
 		t.Fatal("denied encoder touched output")
+	}
+}
+
+func TestSourceEncoderMapsEachRenditionToItsOwnRawAudioBranch(t *testing.T) {
+	for count := 1; count <= 3; count++ {
+		c := sourceEncoderTestConfig(t.TempDir())
+		third := c.profile.Renditions[1]
+		third.ID = "high"
+		c.profile.Renditions = append(c.profile.Renditions, third)[:count]
+		args := sourceProgramEncoderArguments(c, "/owned/.pending", "pipe:3", "pipe:4")
+		joined := strings.Join(args, " ")
+		if !strings.Contains(joined, fmt.Sprintf("[1:a]asplit=%d", count)) {
+			t.Fatal("raw audio split count", count)
+		}
+		for index := 0; index < count; index++ {
+			branch := fmt.Sprintf("[a%dout]", index)
+			if strings.Count(joined, branch) != 2 || !strings.Contains(joined, "-map "+branch) {
+				t.Fatal("raw audio branch lacks exactly one producer and consumer", count, index)
+			}
+		}
+		if strings.Contains(joined, fmt.Sprintf("[a%dout]", count)) || strings.Contains(joined, "-map 1:a:0") {
+			t.Fatal("unexpected raw audio branch")
+		}
 	}
 }
 

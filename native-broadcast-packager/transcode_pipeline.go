@@ -150,11 +150,17 @@ func ffmpegTranscodeOutputArguments(assignment *packagerAssignment, output, enco
 }
 
 func ffmpegTranscodeOutputForFilterGraph(assignment *packagerAssignment, output, encoder string, filters []string) []string {
+	return ffmpegTranscodeOutputForMappedFilterGraph(assignment, output, encoder, filters, func(int) string { return "1:a:0" })
+}
+
+// Input mapping is selected by the format-specific builder; legacy compressed
+// ingress keeps its original direct audio map byte-for-byte.
+func ffmpegTranscodeOutputForMappedFilterGraph(assignment *packagerAssignment, output, encoder string, filters []string, audioMap func(int) string) []string {
 	args := []string{"-filter_complex", strings.Join(filters, ";")}
 	variants := make([]string, 0, len(assignment.Profile.Renditions))
 	for index, rendition := range assignment.Profile.Renditions {
 		args = append(args,
-			"-map", fmt.Sprintf("[v%dout]", index), "-map", "1:a:0",
+			"-map", fmt.Sprintf("[v%dout]", index), "-map", audioMap(index),
 			fmt.Sprintf("-c:v:%d", index), encoder,
 		)
 		args = append(args, ffmpegVideoEncoderArguments(encoder, index)...)
