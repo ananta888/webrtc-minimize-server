@@ -72,6 +72,14 @@ oben gilt auch für ECDH- und AES-Zwischenzustände. Ein neu aufgebauter Receive
 darf später nicht unbemerkt alte Source-KIDs wiederverwenden: der Lifecycle-Adapter
 muss neue Receiver-/Connection-Generationen mit frischen Quellenschlüsseln binden.
 
+ECDH und authentisierte Metadaten beweisen für sich genommen nicht die Identität
+des Absenders: jeder Besitzer des öffentlichen Announcements könnte einen neuen
+Envelope für eigene Schlüssel erzeugen. Der Transportadapter muss deshalb vor
+`Install` den tatsächlichen Absender an den aktuellen, serverautorisierten
+Publisher-Peer und dessen Gerät binden. Ebenso muss der Browser das Announcement
+dem autorisierten Packagergerät zuordnen. Ein frei erreichbarer Key-POST-Endpunkt
+oder ein vom Aufrufer geliefertes `grantorSubjectRef` genügt ausdrücklich nicht.
+
 ## Noch anzuschließen
 
 - Servergeprüfte Quelle mit Peer-/Gerätebindung und Publication-Epoch sowie
@@ -81,6 +89,16 @@ muss neue Receiver-/Connection-Generationen mit frischen Quellenschlüsseln bind
   Schlüsselaktivierung und getrennte Signaling-/RTP-Receiver für autorisierte Quellen.
 - Begrenztes Depacketizing, Zuordnung zum Audio-/Video-Compositor und Entfernen
   aller zuletzt decodierten Frames bei Widerruf, Source-Ende oder Handoff.
+
+Die vorhandenen Zustandsbesitzer bleiben dabei erhalten: `RoomRegistry.publication`
+liefert die aktuelle Track-/Quellenart-/Publication-Epoch-Zuordnung; die
+Membership-Epoch gehört zum Signaling-Topologiezustand. Der Broadcast-Runtime
+gehören Program-Epoch und Writer-Lease. Die spätere Consent-Anbindung muss diese
+aktuellen Werte über kleine Ports zusammensetzen, nicht aus einer Quellenanfrage
+oder einem Browser-JSON rekonstruieren. Ein Source-Handle muss die konkrete
+Publikationsgeneration binden; Stop und Neustart derselben Kamera dürfen alten
+Consent nicht reaktivieren. Die Quellenanfrage selbst bleibt Metadatum ohne
+Medienautorität.
 
 ## Verifikation
 
