@@ -64,8 +64,15 @@ Die Matrix bestand dreimal unter Race-Erkennung (3,644 Sekunden) plus Go vet.
 Danach wurde nur der Testleser auf begrenzten, durch Reader-Close abbrechbaren
 Read umgestellt, um keine plattformübergreifende Unterstützung von
 `SetReadDeadline` für anonyme Pipes vorauszusetzen. Auch dieser finale Stand
-bestand die dreifache Race-Matrix (3,735 Sekunden) und Go vet. Der gemeinsame
-Gesamtcheck folgt; physische Windows-/macOS-Läufe sind hierdurch nicht bewiesen.
+bestand die dreifache Race-Matrix (3,735 Sekunden) und Go vet. Der isolierte
+Gesamtcheck von `0ecdbaf`, einschließlich Nutzer-Push bis `1a62de0`, bestand
+mit Exit 0: 665 Frontendtests, 760 Node-/Browser-/Integrationstests, null Fehler,
+zwei Node-Skips; Node-Dauer 287,736 Sekunden. Build, statische/Security-Gates
+und Go-Unit/Vet bestanden. Die echten gepaarten SFrame-Quellen erreichten
+maximal 47,8 ms A/V-Abweichung in Chromium (11 Paare) und 66,8 ms in Firefox
+(12 Paare). Vierzehn externe Infrastruktur-Gates blieben explizite Skips.
+Physische Windows-/macOS-Läufe sind hierdurch nicht bewiesen. Der lokale
+Serving-Build blieb unverändert.
 
 Noch zu verbinden sind der feste Raw-FFmpeg-Encoder mit Ausgabe-/Prozessfence,
 der gemeinsame produktive Programm-Owner und dessen Wiederanlauf mit Stille/
@@ -73,6 +80,13 @@ Ersatzbild nach einem notwendigen In-flight-Abbruch. Ein leerer Guard ist keine
 Writer-Berechtigung; ein Dummy-Abort ist ausschließlich eine Testfixture und
 kein produktiver Sicherheitsmechanismus. Fremdquellenannahme und öffentliche
 Approve-/Renew-Workflows bleiben bis zu diesem durchgängigen Anschluss aus.
+
+Insbesondere muss der Encoder-Owner die Quellengültigkeit auch für bereits
+eingelesene, noch nicht veröffentlichte Frames/Segmente erhalten. Der Rawport
+behält Guards nur bis zum Pipe-Handoff. Private Encoder-Stagingdateien,
+ein begrenzter PTS-/Guard-Nachweis oder eine gleichwertige Generationsfence
+und autorisierte atomare Segment-/Manifestfreigabe sind deshalb Teil des
+weiteren Anschlusses, nicht durch den Pipe-Watchdog bereits erledigt.
 
 ## Zusätzliche Prüfung der späteren Origin-Grenze
 
