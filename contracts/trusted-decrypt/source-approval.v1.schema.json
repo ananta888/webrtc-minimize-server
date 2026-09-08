@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/trusted-decrypt/source-approval.v1.schema.json",
+  "title": "Explicit approval of one current invited publication",
+  "$comment": "No HTTP endpoint is activated by this contract. Verified caller, invitation, publication generation, membership, writer and packager room consent are checked by the server; source/tenant/target references are never accepted from this input.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["requestVersion", "trigger", "requestId", "roomId", "deviceFingerprint", "publicationId", "expectedPublicationEpoch", "ttlMs"],
+  "properties": {
+    "requestVersion": {"const": 1},
+    "trigger": {"const": "user-action"},
+    "requestId": {"type": "string", "pattern": "^bsr_[A-Za-z0-9_-]{24}$"},
+    "roomId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{5,47}$"},
+    "deviceFingerprint": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"},
+    "publicationId": {"type": "string", "pattern": "^[A-Za-z0-9_={}:-]{1,128}$"},
+    "expectedPublicationEpoch": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "ttlMs": {"type": "integer", "minimum": 5000, "maximum": 600000}
+  }
+}

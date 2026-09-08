@@ -118,6 +118,7 @@ export class NativePackagerControlRegistry {
   #bySocket = new Map();
   #challenges = new Map();
   #roomConsents = new Map();
+  #sourceGenerations = new WeakMap();
 
   constructor({ enrollmentStore, definitions = [] } = {}) {
     this.#store = enrollmentStore || null;
@@ -186,6 +187,7 @@ export class NativePackagerControlRegistry {
     const replacedSocket = packager.socket && packager.socket !== socket ? packager.socket : null;
     if (replacedSocket) this.#bySocket.delete(replacedSocket);
     packager.socket = socket;
+    this.#sourceGenerations.delete(packager);
     packager.lastSeen = now;
     packager.capability = null;
     packager.heartbeat = null;
@@ -208,6 +210,12 @@ export class NativePackagerControlRegistry {
       deviceRef: `dev_${packager.definition.keyFingerprint}`,
       consentedRoomIds,
     }, now);
+    const scopes = this.#sourceGenerations.get(packager);
+    if (!packager.capability || packager.capability.expiresAt <= now
+      || !["healthy", "degraded"].includes(capability.health)) this.#sourceGenerations.delete(packager);
+    else if (scopes) for (const roomId of scopes.keys()) {
+      if (!capability.consentedRoomIds.includes(roomId)) scopes.delete(roomId);
+    }
     packager.capability = capability;
     packager.lastSeen = now;
     return capability;
@@ -238,6 +246,7 @@ export class NativePackagerControlRegistry {
     if (enabled) rooms.add(roomId); else rooms.delete(roomId);
     if (rooms.size > 20) fail("native_packager_room_consent_limit", 409);
     if (rooms.size) this.#roomConsents.set(packagerId, rooms); else this.#roomConsents.delete(packagerId);
+    if (!enabled) this.#sourceGenerations.get(packager)?.delete(roomId);
     if (packager.capability) packager.capability = Object.freeze({
       ...packager.capability,
       consentedRoomIds: Object.freeze(packager.capability.consentedRoomIds.filter((id) => rooms.has(id))),
@@ -269,6 +278,19 @@ export class NativePackagerControlRegistry {
     });
   }
 
+  // Internal opaque lifecycle handle. Never send `generation` over a wire.
+  // Capability refresh preserves it; reconnect or room-consent loss does not.
+  sourceContext(ownerPrincipal, packagerId, roomId, now = Date.now()) {
+    const candidate = this.candidate(ownerPrincipal, packagerId, now);
+    const packager = this.#packagers.get(packagerId);
+    if (!candidate.online || !this.#roomConsents.get(packagerId)?.has(roomId)
+      || !candidate.capability?.consentedRoomIds.includes(roomId)) fail("native_packager_source_unavailable", 409);
+    let scopes = this.#sourceGenerations.get(packager);
+    if (!scopes) { scopes = new Map(); this.#sourceGenerations.set(packager, scopes); }
+    if (!scopes.has(roomId)) scopes.set(roomId, Object.freeze({}));
+    return Object.freeze({ ...candidate, generation: scopes.get(roomId) });
+  }
+
   list(ownerPrincipal, now = Date.now()) {
     return [...this.#packagers.values()].filter(({ definition }) => definition.ownerPrincipal === ownerPrincipal)
       .map((packager) => Object.freeze({
@@ -294,6 +316,7 @@ export class NativePackagerControlRegistry {
     const packager = this.#bySocket.get(socket);
     if (!packager) return;
     this.#bySocket.delete(socket);
+    this.#sourceGenerations.delete(packager);
     if (packager.socket === socket) packager.socket = null;
   }
 

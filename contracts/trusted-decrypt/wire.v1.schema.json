@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/trusted-decrypt/wire.v1.schema.json",
+  "title": "Explicit per-source Trusted-Packager consent and key exchange v1",
+  "$comment": "Metadata is not authority. Runtime additionally checks current policy, exact bindings, timestamps, curve membership, canonical JSON fields without duplicates, 8 KiB envelopes, authenticated wrapping and replay.",
+  "oneOf": [{"$ref":"#/$defs/consent"},{"$ref":"#/$defs/announcement"},{"$ref":"#/$defs/keyEnvelope"}],
+  "$defs": {
+    "positive": {"type":"integer","minimum":1,"maximum":9007199254740991},
+    "token": {"type":"string","pattern":"^[A-Za-z0-9_-]{16,64}$"},
+    "coordinate": {"type":"string","pattern":"^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"},
+    "publicKey": {
+      "type":"object","additionalProperties":false,
+      "required":["kty","crv","x","y","ext","key_ops"],
+      "properties": {
+        "kty":{"const":"EC"},"crv":{"const":"P-256"},"x":{"$ref":"#/$defs/coordinate"},"y":{"$ref":"#/$defs/coordinate"},
+        "ext":{"const":true},"key_ops":{"type":"array","maxItems":0}
+      }
+    },
+    "scope": {
+      "type":"object",
+      "required":["consentId","roomId","roomEpoch","programId","programEpoch","granteePackagerRef","granteeDeviceRef"],
+      "properties": {
+        "consentId":{"type":"string","pattern":"^cns_[A-Za-z0-9_-]{16,64}$"},
+        "roomId":{"type":"string","pattern":"^[a-z0-9][a-z0-9-]{5,47}$"},
+        "roomEpoch":{"$ref":"#/$defs/positive"},
+        "programId":{"type":"string","pattern":"^prg_[A-Za-z0-9_-]{16,64}$"},
+        "programEpoch":{"$ref":"#/$defs/positive"},
+        "granteePackagerRef":{"type":"string","pattern":"^pkr_[A-Za-z0-9_-]{16,64}$"},
+        "granteeDeviceRef":{"type":"string","pattern":"^dev_[A-Za-z0-9_-]{16,64}$"}
+      }
+    },
+    "sourceScope": {
+      "type":"object","allOf":[{"$ref":"#/$defs/scope"}],
+      "required":["tenantId","grantorSubjectRef","sourceId","sourceKind","purpose"],
+      "properties": {
+        "tenantId":{"type":"string","pattern":"^tn_[A-Za-z0-9_-]{16,64}$"},
+        "grantorSubjectRef":{"type":"string","pattern":"^sub_[A-Za-z0-9_-]{16,64}$"},
+        "sourceId":{"type":"string","pattern":"^src_[A-Za-z0-9_-]{16,64}$"},
+        "sourceKind":{"enum":["microphone","camera","screen","screen-audio"]},"purpose":{"const":"broadcast-program"}
+      }
+    },
+    "consent": {
+      "type":"object","allOf":[{"$ref":"#/$defs/sourceScope"}],"unevaluatedProperties":false,
+      "required":["version","type","trigger","status","grantedAt","expiresAt"],
+      "properties": {
+        "version":{"const":1},"type":{"const":"trusted-decrypt-consent"},"trigger":{"const":"user-action"},"status":{"const":"active"},
+        "grantedAt":{"$ref":"#/$defs/positive"},"expiresAt":{"$ref":"#/$defs/positive"}
+      }
+    },
+    "announcement": {
+      "type":"object","allOf":[{"$ref":"#/$defs/scope"}],"unevaluatedProperties":false,
+      "required":["version","type","agreementKeyId","publicKey","issuedAt","expiresAt"],
+      "properties": {
+        "version":{"const":1},"type":{"const":"trusted-packager-key"},"agreementKeyId":{"$ref":"#/$defs/token"},
+        "publicKey":{"$ref":"#/$defs/publicKey"},"issuedAt":{"$ref":"#/$defs/positive"},"expiresAt":{"$ref":"#/$defs/positive"}
+      }
+    },
+    "keyEnvelope": {
+      "type":"object","allOf":[{"$ref":"#/$defs/sourceScope"}],"unevaluatedProperties":false,
+      "required":["version","type","envelopeId","keyId","frameEnvelope","agreementKeyId","senderPublicKey","createdAt","expiresAt","nonce","ciphertext"],
+      "properties": {
+        "version":{"const":1},"type":{"const":"trusted-decrypt-key"},"envelopeId":{"$ref":"#/$defs/token"},
+        "keyId":{"type":"string","pattern":"^[a-f0-9]{16}$"},"frameEnvelope":{"const":"codec-prefix-v1"},
+        "agreementKeyId":{"$ref":"#/$defs/token"},"senderPublicKey":{"$ref":"#/$defs/publicKey"},
+        "createdAt":{"$ref":"#/$defs/positive"},"expiresAt":{"$ref":"#/$defs/positive"},
+        "nonce":{"type":"string","pattern":"^[A-Za-z0-9_-]{16}$"},"ciphertext":{"$ref":"#/$defs/coordinate"}
+      }
+    }
+  }
+}
