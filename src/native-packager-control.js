@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
 import { validTrustedSourceStatus } from "./trusted-broadcast-source-control.js";
+import { parseTrustedSourceSignal } from "./trusted-broadcast-source-signal.js";
 
-import { normalizeNativePackagerCapability, supportsNativeSourceControlV1 } from "./native-packager-policy.js";
+import { normalizeNativePackagerCapability, supportsNativeSourceControlV1, supportsNativeSourceSignalV1 } from "./native-packager-policy.js";
 import { validateCandidate, validateDescription } from "./protocol.js";
 
 const PACKAGER_ID = /^pkr_[A-Za-z0-9_-]{16,64}$/;
@@ -45,6 +46,10 @@ function verify(publicKey, message, proof) {
 export function parseNativePackagerMessage(raw) {
   let value;
   try { value = JSON.parse(String(raw)); } catch { fail("invalid_native_packager_message"); }
+  if (value?.type === "trusted-source-packager-signal") {
+    try { return parseTrustedSourceSignal(value, value.type); }
+    catch { fail("invalid_trusted_source_signal"); }
+  }
   if (value?.type === "trusted-source-status") {
     if (!validTrustedSourceStatus(value)) fail("invalid_trusted_source_status");
     return Object.freeze(value);
@@ -319,7 +324,8 @@ export class NativePackagerControlRegistry {
   sourceConnection(socket) {
     const packager = this.#bySocket.get(socket);
     return packager ? Object.freeze({ id: packager.definition.id, deviceRef: `dev_${packager.definition.keyFingerprint}`,
-      sourceControlV1: supportsNativeSourceControlV1(packager.capability?.agentVersion) }) : null;
+      sourceControlV1: supportsNativeSourceControlV1(packager.capability?.agentVersion),
+      sourceSignalV1: supportsNativeSourceSignalV1(packager.capability?.agentVersion) }) : null;
   }
 
   disconnect(socket) {

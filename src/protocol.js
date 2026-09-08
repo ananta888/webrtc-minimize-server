@@ -1,4 +1,5 @@
 import { parseMachineReceiveConsent } from "./machine-receive-policy.js";
+import { parseTrustedSourceSignal } from "./trusted-broadcast-source-signal.js";
 
 export const MAX_SIGNAL_BYTES = 96 * 1024;
 export const ROOM_ID_PATTERN = /^[a-z0-9][a-z0-9-]{5,47}$/;
@@ -114,6 +115,10 @@ export function validateCandidate(candidate) {
 
 export function parseClientMessage(raw) {
   const value = parseJson(raw);
+  if (value.type === "trusted-source-publisher-signal") {
+    try { return parseTrustedSourceSignal(value, value.type); }
+    catch { throw new ProtocolError("invalid_trusted_source_signal"); }
+  }
   if (value.type === "machine-receive-consent") {
     try { return parseMachineReceiveConsent(value); }
     catch (error) { throw new ProtocolError(error.code || "machine_receive_consent_invalid"); }

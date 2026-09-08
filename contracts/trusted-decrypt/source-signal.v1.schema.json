@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/trusted-decrypt/source-signal.v1.schema.json",
+  "title": "Bounded source-authorized SDP/ICE, not media or key transport",
+  "$comment": "Runtime additionally checks current sockets/consent/lease, UTF-8 SDP bytes <=16384, candidate bytes <=4096, closed message <=32KiB, monotone negotiation/sequence and rate/lifetime budgets. Forwarded endpoint IDs are supplied only by the server.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "type",
+    "sourceLeaseId",
+    "consentId",
+    "assignmentId",
+    "fencingRevision",
+    "negotiationRevision",
+    "sequence"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "type": {
+      "enum": [
+        "trusted-source-publisher-signal",
+        "trusted-source-packager-signal",
+        "trusted-source-peer-signal",
+        "trusted-source-agent-signal"
+      ]
+    },
+    "sourceLeaseId": {
+      "type": "string",
+      "pattern": "^sls_[A-Za-z0-9_-]{16,64}$"
+    },
+    "consentId": {
+      "type": "string",
+      "pattern": "^cns_[A-Za-z0-9_-]{16,64}$"
+    },
+    "assignmentId": {
+      "type": "string",
+      "pattern": "^asn_[A-Za-z0-9_-]{16,64}$"
+    },
+    "fencingRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "negotiationRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 129
+    },
+    "publisherPeerId": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{16}$"
+    },
+    "packagerId": {
+      "type": "string",
+      "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$"
+    },
+    "packagerDeviceRef": {
+      "type": "string",
+      "pattern": "^dev_[A-Za-z0-9_-]{16,64}$"
+    },
+    "description": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "sdp"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "offer",
+            "answer"
+          ]
+        },
+        "sdp": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16384
+        }
+      }
+    },
+    "candidate": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "candidate"
+          ],
+          "properties": {
+            "candidate": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "sdpMid": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 64
+            },
+            "sdpMLineIndex": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 15
+            },
+            "usernameFragment": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 64
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "oneOf": [
+        {
+          "required": [
+            "description"
+          ],
+          "properties": { "description": {}, "candidate": false }
+        },
+        {
+          "required": [
+            "candidate"
+          ],
+          "properties": { "candidate": {}, "description": false }
+        }
+      ]
+    },
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "type": {
+              "const": "trusted-source-publisher-signal"
+            },
+            "publisherPeerId": false,
+            "packagerId": false,
+            "packagerDeviceRef": false,
+            "description": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "offer"
+                }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "trusted-source-packager-signal"
+            },
+            "publisherPeerId": false,
+            "packagerId": false,
+            "packagerDeviceRef": false,
+            "description": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "answer"
+                }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "trusted-source-peer-signal"
+            },
+            "publisherPeerId": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{16}$"
+            },
+            "packagerId": false,
+            "packagerDeviceRef": false,
+            "description": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "offer"
+                }
+              }
+            }
+          },
+          "required": [
+            "publisherPeerId"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "trusted-source-agent-signal"
+            },
+            "publisherPeerId": false,
+            "packagerId": {
+              "type": "string",
+              "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$"
+            },
+            "packagerDeviceRef": {
+              "type": "string",
+              "pattern": "^dev_[A-Za-z0-9_-]{16,64}$"
+            },
+            "description": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "answer"
+                }
+              }
+            }
+          },
+          "required": [
+            "packagerId",
+            "packagerDeviceRef"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -73,6 +73,11 @@ export function supportsNativeSourceControlV1(agentVersion) {
   return Boolean(match && (Number(match[1]) > 0 || Number(match[2]) >= 8));
 }
 
+export function supportsNativeSourceSignalV1(agentVersion) {
+  const match = typeof agentVersion === "string" && agentVersion.match(/^(\d+)\.(\d+)\.(\d+)$/);
+  return Boolean(match && (Number(match[1]) > 0 || Number(match[2]) >= 9));
+}
+
 export function normalizeNativePackagerCapability(value, now = Date.now()) {
   const fields = new Set([
     "capabilityVersion", "agentId", "tenantId", "ownerSubjectRef", "deviceRef", "agentVersion",

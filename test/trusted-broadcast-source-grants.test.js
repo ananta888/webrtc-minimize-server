@@ -283,6 +283,7 @@ function sourceControlFixture() {
   const f = fixture(), messages = [], consent = f.approve();
   let deliver = true;
   const broker = new TrustedBroadcastSourceControl({ grants: f.grants, assignments: f.assignments, control: f.packagers,
+    members: roomId => f.rooms.members(roomId), sendSignal: (socket, message) => { messages.push({ socket, message }); return deliver; },
     clock: f.now, send: (socket, message) => {
       assert.equal(socket, f.socket); assert.equal(validateControl(message), true, JSON.stringify(validateControl.errors));
       messages.push(message); return deliver;
@@ -293,6 +294,61 @@ function sourceControlFixture() {
     fencingRevision: lease.fencingRevision, state: "receiver-prepared", expiresAt: lease.expiresAt, observedAt: f.now() });
   return { ...f, broker, messages, consent, prepare, ack, failDelivery: () => { deliver = false; } };
 }
+
+function sourceSignal(lease, publisher = true, sequence = 1) {
+  return { version: 1, type: publisher ? "trusted-source-publisher-signal" : "trusted-source-packager-signal",
+    sourceLeaseId: lease.sourceLeaseId, consentId: lease.consent.consentId, assignmentId: lease.assignmentId,
+    fencingRevision: lease.fencingRevision, negotiationRevision: 1, sequence,
+    description: { type: publisher ? "offer" : "answer", sdp: "v=0\r\n" } };
+}
+
+test("source signaling resolves actual publisher/agent sockets and rejects forged, expired or replayed routes", () => {
+  const f = sourceControlFixture(), lease = f.prepare(), offer = sourceSignal(lease);
+  assert.equal(f.broker.publisherSignal(f.publisher, offer), false, "receiver must acknowledge preparation first");
+  assert.equal(f.broker.acknowledge(f.socket, f.ack(lease)), true);
+  assert.equal(f.broker.publisherSignal({ ...f.publisher }, offer), false, "a copied peer is not a connected actor");
+  assert.equal(f.broker.publisherSignal(f.owner, offer), false);
+  for (const patch of [{ consentId: "cns_bbbbbbbbbbbbbbbb" }, { assignmentId: "asn_bbbbbbbbbbbbbbbb" }, { fencingRevision: lease.fencingRevision + 1 }]) {
+    assert.equal(f.broker.publisherSignal(f.publisher, { ...offer, ...patch }), false);
+  }
+  assert.equal(f.broker.publisherSignal(f.publisher, offer), true);
+  assert.equal(f.messages.at(-1).socket, f.socket);
+  assert.deepEqual(f.messages.at(-1).message, { ...offer, type: "trusted-source-peer-signal", publisherPeerId: f.publisher.id });
+  const before = f.messages.length;
+  assert.equal(f.broker.publisherSignal(f.publisher, offer), false); assert.equal(f.messages.length, before);
+  const answer = sourceSignal(lease, false);
+  assert.equal(f.broker.packagerSignal({}, answer), false);
+  assert.equal(f.broker.packagerSignal(f.socket, answer), true);
+  assert.equal(f.messages.at(-1).socket, f.publisher.socket);
+  assert.deepEqual(f.messages.at(-1).message, { ...answer, type: "trusted-source-agent-signal",
+    packagerId: f.packagerId, packagerDeviceRef: lease.consent.granteeDeviceRef });
+  f.advance(1000); f.broker.tick();
+  const candidate = { ...offer, sequence: 2, candidate: null }; delete candidate.description;
+  assert.equal(f.broker.publisherSignal(f.publisher, candidate), true, "unconfirmed next lease revision does not lose previous receiver ACK");
+  f.grants.revoke(f.identity, f.input.deviceFingerprint, f.consent.consentId);
+  assert.equal(f.broker.publisherSignal(f.publisher, { ...candidate, sequence: 3 }), false);
+  assert.equal(f.messages.at(-1).type, "trusted-source-stop");
+});
+
+test("source signaling never reaches a control-only agent and delivery failure terminates only the source", () => {
+  const f = sourceControlFixture(), lease = f.prepare(); f.broker.acknowledge(f.socket, f.ack(lease));
+  f.packagers.setCapability(f.socket, { ...f.capability, agentVersion: "0.8.0" }, {
+    tenantId: f.capability.tenantId, ownerSubjectRef: f.capability.ownerSubjectRef,
+  }, f.now());
+  assert.equal(f.broker.publisherSignal(f.publisher, sourceSignal(lease)), false);
+  assert.equal(f.messages.length, 1);
+  const g = sourceControlFixture(), l = g.prepare(); g.broker.acknowledge(g.socket, g.ack(l)); g.failDelivery();
+  assert.equal(g.broker.publisherSignal(g.publisher, sourceSignal(l)), false);
+  assert.equal(g.messages.at(-1).type, "trusted-source-stop");
+  assert.equal(g.assignments.activeForPackager(g.packagerId).state, "running");
+  assert.throws(() => g.prepare(), /terminal/);
+  const h = sourceControlFixture(), last = h.prepare(); h.broker.acknowledge(h.socket, h.ack(last));
+  assert.equal(h.broker.publisherSignal(h.publisher, sourceSignal(last)), true);
+  h.packagers.setCapability(h.socket, { ...h.capability, agentVersion: "0.8.0" }, {
+    tenantId: h.capability.tenantId, ownerSubjectRef: h.capability.ownerSubjectRef,
+  }, h.now());
+  h.broker.tick(); assert.equal(h.messages.at(-1).type, "trusted-source-stop");
+});
 
 test("source broker uses real authenticated control, authority and running fenced assignment; ACK gates renewal", () => {
   const f = sourceControlFixture();
@@ -462,6 +518,8 @@ test("live signaling and authenticated source-control sockets renew only after A
   const issued = app.ticketStore.issue({ origin: config.publicOrigin, roomId: f.input.roomId, mode: "room",
     name: "Synthetic source", authenticated: true, principal: oidcPrincipal(f.identity), deviceFingerprint: f.input.deviceFingerprint });
   socket = new WebSocket(`${base.replace("http:", "ws:")}/signal?ticket=${issued.ticket}`, { origin: config.publicOrigin });
+  const browserMessages = [];
+  socket.on("message", raw => browserMessages.push(JSON.parse(raw)));
   const welcome = new Promise(resolve => socket.on("message", raw => { const value = JSON.parse(raw); if (value.type === "welcome") resolve(value); }));
   await once(socket, "open"); const joined = await welcome;
   socket.send(JSON.stringify({ type: "media-state", source: "camera", active: true, trackId: f.input.publicationId }));
@@ -489,6 +547,24 @@ test("live signaling and authenticated source-control sockets renew only after A
     state: "receiver-prepared", expiresAt: lease.expiresAt, observedAt: Date.now() }));
   await until(() => nativeMessages.some(message => message.type === "trusted-source-prepare" && message.lease.revision === 2));
   for (const message of nativeMessages.filter(message => message.type.startsWith("trusted-source-"))) assert.equal(validateControl(message), true);
+  const offer = sourceSignal(lease);
+  socket.send(JSON.stringify({ ...offer, description: { type: "offer", sdp: "\n".repeat(16384) } }));
+  await until(() => browserMessages.some(message => message.type === "error"));
+  assert.equal(nativeSocket.readyState, WebSocket.OPEN, "oversized escaped SDP must not close the target packager");
+  assert.equal(nativeMessages.some(message => message.type === "trusted-source-peer-signal"), false);
+  socket.send(JSON.stringify(offer));
+  await until(() => nativeMessages.some(message => message.type === "trusted-source-peer-signal"));
+  assert.deepEqual(nativeMessages.find(message => message.type === "trusted-source-peer-signal"), {
+    ...offer, type: "trusted-source-peer-signal", publisherPeerId: actor.id,
+  });
+  const answer = sourceSignal(lease, false);
+  nativeSocket.send(JSON.stringify(answer));
+  await until(() => browserMessages.some(message => message.type === "trusted-source-agent-signal"));
+  assert.deepEqual(browserMessages.find(message => message.type === "trusted-source-agent-signal"), {
+    ...answer, type: "trusted-source-agent-signal", packagerId: f.packagerId, packagerDeviceRef: c.granteeDeviceRef,
+  });
+  socket.send(JSON.stringify(offer)); // Replay is an ordinary bounded source error.
+  await until(() => browserMessages.some(message => message.type === "error" && message.code === "trusted_source_signal_unavailable"));
   // Stop/ACK here exercise real control WebSockets; the native receiver and
   // ciphertext path have separate Go/browser tests, not a media claim here.
   socket.send(JSON.stringify({ type: "media-state", source: "camera", active: false }));

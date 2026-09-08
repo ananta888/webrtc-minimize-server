@@ -1546,6 +1546,9 @@ function configureSignaling(
   }) : null;
   const trustedBroadcastSourceControl = trustedBroadcastSources ? new TrustedBroadcastSourceControl({
     grants: trustedBroadcastSources, assignments: nativePackagerAssignments, control: nativePackagers,
+    members: roomId => registry.members(roomId),
+    sendSignal: (socket, message) => socket?.bufferedAmount <= 64 * 1024
+      && Buffer.byteLength(JSON.stringify(message)) <= 32 * 1024 && safeSend(socket, message, 32 * 1024),
     send: (socket, message) => socket?.bufferedAmount <= 64 * 1024 && safeSend(socket, message, 8192),
   }) : null;
   const pruneTrustedSources = () => {
@@ -1852,6 +1855,10 @@ function configureSignaling(
             fromName: peer.name,
             to: undefined,
           });
+          return;
+        }
+        if (message.type === "trusted-source-publisher-signal") {
+          if (!trustedBroadcastSourceControl?.publisherSignal(peer, message)) throw new ProtocolError("trusted_source_signal_unavailable");
           return;
         }
         if (message.type === "native-packager-signal") {
@@ -2320,6 +2327,10 @@ function configureSignaling(
         const connection = nativePackagers.connection(socket);
         if (!connection || message.type === "authenticate" || message.type === "enroll") {
           throw new NativePackagerControlError("native_packager_already_authenticated", 403);
+        }
+        if (message.type === "trusted-source-packager-signal") {
+          trustedBroadcastSourceControl?.packagerSignal(socket, message);
+          return;
         }
         if (message.type === "trusted-source-status") {
           // Separately bounded: up to 80 source ACKs/second must not consume the

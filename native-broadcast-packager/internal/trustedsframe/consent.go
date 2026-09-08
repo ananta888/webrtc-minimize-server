@@ -55,7 +55,11 @@ func ref(value, prefix string) bool {
 // Unlike encoding/json's struct decoder, this rejects duplicate and
 // case-insensitive aliases as well as unknown/missing fields and trailing JSON.
 func exactObject(raw []byte, fields []string, out any) error {
-	if len(raw) == 0 || len(raw) > 8192 {
+	return exactObjectLimit(raw, fields, out, 8192)
+}
+
+func exactObjectLimit(raw []byte, fields []string, out any, limit int) error {
+	if len(raw) == 0 || len(raw) > limit {
 		return ErrKey
 	}
 	r := json.NewDecoder(bytes.NewReader(raw))

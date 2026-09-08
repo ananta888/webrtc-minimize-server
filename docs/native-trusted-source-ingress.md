@@ -10,7 +10,9 @@ den nativen Netzwerk-Ingress angeschlossen**.
 Der neue `SourceReceiver` ergänzt einen kurzlebigen Source-Lease und Key-ACK;
 der native Daemon besitzt dafür bereits den lokalen Assignment-/Geräte-/Room-
 Policy-Adapter, Cleanup-Hooks und den unten beschriebenen authentisierten
-Source-Control-Pfad. Publisher-DataChannel und RTP-Transport fehlen noch.
+Source-Control-Pfad. Die zusätzliche serverseitige Quellen-Signalisierung und
+der geschlossene native Signalparser sind implementiert; nativer
+PeerConnection-Adapter, Publisher-DataChannel und RTP-Transport fehlen noch.
 Eine Quellenanfrage in der Angular-App erteilt weiterhin keine Medienfreigabe.
 Der bestehende `clear-program-v1`-Ingress bleibt unverändert; der
 Blind-Media-Agent und die Node-Control-Plane erhalten keinen Decrypt-Port.
@@ -91,8 +93,9 @@ oder ein vom Aufrufer geliefertes `grantorSubjectRef` genügt ausdrücklich nich
 - Explizite Quellenannahme an den implementierten Source-Control-Broker
   anschließen; bisher gibt es nur dessen internen, erneut autorisierten Prepare.
 - Sichtbarer Publisher-Consent und sofortiger unabhängiger Widerruf.
-- Transport des implementierten zielgebundenen Key-Envelopes, quittierte
-  Schlüsselaktivierung und getrennte Signaling-/RTP-Receiver für autorisierte Quellen.
+- Den nativen Signalparser an den separaten PeerConnection-Adapter anschließen,
+  dann den implementierten zielgebundenen Key-Envelope transportieren und die
+  quittierte Schlüsselaktivierung mit dem RTP-Receiver verbinden.
 - Begrenztes Depacketizing, Zuordnung zum Audio-/Video-Compositor und Entfernen
   aller zuletzt decodierten Frames bei Widerruf, Source-Ende oder Handoff.
 
@@ -199,6 +202,16 @@ diesen internen Adapter noch nicht für Source-Ingress freigeschaltet.
 
 ## Verifikation
 
+Die zusätzliche Source-Signal-Prüfung verbindet tatsächliche Publisher- und
+signierte Packager-Control-WebSockets mit dem Broker: Offer und Answer werden
+an genau die gebundenen Verbindungen weitergereicht, Replay und Widerruf nicht.
+Ein stark escaptes, zu großes SDP wird vor der Weiterleitung abgewiesen, ohne
+den Ziel-Packager zu trennen. Die SDP-Inhalte dieses Routingtests sind synthetisch;
+er beweist keine erfolgreiche ICE-/DTLS-/RTP-Verbindung. Der separate native
+Parser besitzt geschlossene Feld-, Duplikat-, Rollen- und Größenprüfungen samt
+Fuzztest, wird aber noch nicht vom Daemon an einen Source-PeerConnection-Adapter
+weitergereicht.
+
 `TrustedBroadcastSourceControl` verbindet die echte Source-Authority mit der
 aktuellen nativen Assignment-Registry und dem tatsächlich authentisierten
 Packager-Socket. Der laufende WebSocket-Test weist signierte Geräteanmeldung,
@@ -234,6 +247,45 @@ Dieser Ablauf verwendet eine explizite synthetische lokale Policy, keine
 produktive oder durch JSON selbst erteilte Quellenberechtigung.
 
 ## Authentisierter Source-Control-Pfad
+
+### Quellengebundene SDP/ICE-Weiterleitung
+
+Der additive [Source-Signal-Vertrag](../contracts/trusted-decrypt/source-signal.v1.schema.json)
+hat getrennte Senderrollen: `trusted-source-publisher-signal` für Offers/ICE und
+`trusted-source-packager-signal` für Answers/ICE. Beide nennen ausschließlich
+Source-Lease, Consent, Assignment/Fence und begrenzte Negotiation-/Signalfolgen;
+der Aufrufer kann keinen Zielpeer hinzufügen. Der Broker prüft die konkrete
+aktuelle Publisher-Peer-Objektidentität aus der RoomRegistry beziehungsweise den
+wirklichen Packager-Socket, Gerätebindung, weiter bestehenden Consent und Writer.
+Erst nach dem ersten `receiver-prepared`-ACK werden Signale zugelassen.
+
+Der Server ergänzt das tatsächliche Gegenüber beim Weiterleiten als
+`trusted-source-peer-signal` beziehungsweise `trusted-source-agent-signal`.
+Pro Quellenverbindung sind höchstens 16 aufeinanderfolgende Negotiations erlaubt;
+ein neues Offer folgt erst nach der vorherigen Antwort. Pro Seite beginnt jede
+Generation mit SDP/Sequenz 1, danach folgen höchstens 128 geordnete ICE-Nachrichten.
+Alte Epochen, doppelte oder übersprungene Folgenummern und ein zweites paralleles
+Offer werden nicht weitergereicht. Leases werden weiterhin unabhängig erneuert;
+ein ausstehender Renewal-ACK widerruft nicht den bereits bestätigten Receiver,
+solange seine aktuelle Autorität und Laufzeit bestehen.
+
+Grenzen: 16 KiB UTF-8-SDP, 4096 Candidate-Bytes, 31 KiB normalisierte
+Sendernachricht inklusive JSON-Escaping, 32 KiB mit serverergänzten Referenzen,
+64 Nachrichten pro Source in zehn Sekunden, 512 KiB über die Source-Laufzeit
+und separat 512 Signale pro tatsächlichem Sender-Socket in zehn Sekunden.
+Diese Budgets setzen weder ACK- noch Room-Limits außer Kraft. Ziel-Backpressure
+oder Delivery-Verlust beendet nur die Quelle; Frame-Schlüssel und Key-Envelopes
+sind in diesem Protokoll nicht zulässig.
+
+**Kompatibilitätsgrenze, noch keine Medienfähigkeit:** Der Server reserviert für
+diesen Signalpfad Stable-Agent-Version 0.9.0 oder neuer. Das derzeitige native
+Binary bleibt bei 0.8.0 und erhält diese Nachrichten nicht. Sein neuer Parser
+liegt für den folgenden Adapter bereit, aber PeerConnection-, Key-DataChannel-,
+RTP- und Compositor-Anschluss sind noch nicht aktiv. Die Version wird erst nach
+dem tatsächlichen nativen Anschluss erhöht; weder Annahme-UI noch eine fertige
+Source-Medien-Capability wird aus einem erfolgreichen Metadaten-Routing abgeleitet.
+
+### Prepare, Renewal und Stop
 
 Der additive [Control-Vertrag](../contracts/trusted-decrypt/source-control.v1.schema.json)
 trennt `trusted-source-prepare`, `trusted-source-stop` und

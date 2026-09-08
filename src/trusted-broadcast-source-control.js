@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import { broadcastDeviceRef } from "./broadcast-identifiers.js";
+import { parseTrustedSourceSignal, TrustedSourceNegotiation } from "./trusted-broadcast-source-signal.js";
 
 const REF = prefix => new RegExp(`^${prefix}_[A-Za-z0-9_-]{16,64}$`);
 const positive = value => Number.isSafeInteger(value) && value > 0;
@@ -21,16 +23,18 @@ const fail = code => { throw new TrustedSourceControlError(code); };
 // Owns metadata leases, never media or keys. prepare is an internal operation:
 // its consent ID must resolve through the existing current source authority.
 export class TrustedBroadcastSourceControl {
-  #grants; #assignments; #control; #send; #clock; #id;
+  #grants; #assignments; #control; #send; #clock; #id; #members; #sendSignal;
   #records = new Map(); #byConsent = new Map(); #lastNow = 0; #closed = false;
   #ackRates = new WeakMap();
-  constructor({ grants, assignments, control, send, clock = Date.now,
+  #signalRates = new WeakMap();
+  constructor({ grants, assignments, control, send, members, sendSignal, clock = Date.now,
     sourceLeaseId = () => `sls_${crypto.randomBytes(18).toString("base64url")}` }) {
     if (typeof grants?.forPackager !== "function" || typeof assignments?.sourceContext !== "function"
       || typeof control?.sourceConnection !== "function" || typeof control?.socketFor !== "function"
-      || [send, clock, sourceLeaseId].some(port => typeof port !== "function")) fail("invalid_source_control_ports");
+      || [send, clock, sourceLeaseId, members, sendSignal].some(port => typeof port !== "function")) fail("invalid_source_control_ports");
     this.#grants = grants; this.#assignments = assignments; this.#control = control;
     this.#send = send; this.#clock = clock; this.#id = sourceLeaseId;
+    this.#members = members; this.#sendSignal = sendSignal;
   }
 
   prepare(consentId, socket) {
@@ -58,7 +62,8 @@ export class TrustedBroadcastSourceControl {
       codec: ["microphone", "screen-audio"].includes(scope.consent.sourceKind) ? "audio/opus" : "video/vp8",
       frameEnvelope: "codec-prefix-v1", issuedAt: now, expiresAt: Math.min(now + 4000, scope.consent.expiresAt, parent.expiresAt) });
     if (lease.expiresAt <= now + 1000) fail("source_control_parent_expiring");
-    const record = { lease, socket, packagerId: connection.id, active: true, acknowledged: false };
+    const record = { lease, socket, packagerId: connection.id, active: true, acknowledged: false,
+      prepared: false, negotiation: new TrustedSourceNegotiation() };
     this.#records.set(sourceLeaseId, record); this.#byConsent.set(consentId, record);
     if (!this.#deliver(record, { version: 1, type: "trusted-source-prepare", lease })) {
       this.#stop(record, "CONTROL_DELIVERY_FAILED"); fail("source_control_delivery_failed");
@@ -88,7 +93,42 @@ export class TrustedBroadcastSourceControl {
       || message.observedAt < lease.issuedAt - 1000 || message.observedAt > now + 1000
       || message.state !== "receiver-prepared") { this.#stop(record, "SOURCE_RECEIVER_FAILED"); return false; }
     record.acknowledged = true;
+    record.prepared = true;
     return true;
+  }
+
+  publisherSignal(peer, value) { return this.#signal(peer, value, true); }
+  packagerSignal(socket, value) { return this.#signal(socket, value, false); }
+
+  #signal(actor, value, publisher) {
+    const message = parseTrustedSourceSignal(value, publisher ? "trusted-source-publisher-signal" : "trusted-source-packager-signal");
+    const now = this.#now(), record = this.#records.get(message.sourceLeaseId);
+    if (!record || !record.active || !record.prepared) return false;
+    if (!this.#control.sourceConnection(record.socket)?.sourceSignalV1) {
+      if (record.signalingStarted) this.#stop(record, "SOURCE_SIGNAL_CAPABILITY_LOST");
+      return false;
+    }
+    const lease = record.lease;
+    if (message.consentId !== lease.consent.consentId || message.assignmentId !== lease.assignmentId
+      || message.fencingRevision !== lease.fencingRevision) return false;
+    const peers = this.#members(lease.consent.roomId);
+    const peer = peers.find(member => member.id === lease.publisherPeerId);
+    if (!peer || peer.authenticated !== true || peer.machine === true
+      || broadcastDeviceRef(peer.deviceFingerprint) !== lease.publisherDeviceRef) return false;
+    const socket = publisher ? actor?.socket : actor;
+    if (publisher ? peer !== actor : record.socket !== socket || this.#control.socketFor(record.packagerId) !== socket) return false;
+    let rate = this.#signalRates.get(socket);
+    if (!rate || rate.expiresAt <= now) { rate = { count: 0, expiresAt: now + 10000 }; this.#signalRates.set(socket, rate); }
+    if (++rate.count > 512 || !this.#current(record, now) || !record.negotiation.accept(message, now)) return false;
+    record.signalingStarted = true;
+    const target = publisher ? record.socket : peer.socket;
+    const forwarded = Object.freeze({ ...message,
+      type: publisher ? "trusted-source-peer-signal" : "trusted-source-agent-signal",
+      ...(publisher ? { publisherPeerId: peer.id } : { packagerId: record.packagerId, packagerDeviceRef: lease.consent.granteeDeviceRef }),
+    });
+    try { if (this.#sendSignal(target, forwarded) === true) return true; } catch { /* bounded terminal source failure */ }
+    this.#stop(record, "SOURCE_SIGNAL_DELIVERY_FAILED");
+    return false;
   }
 
   tick() {
@@ -127,7 +167,8 @@ export class TrustedBroadcastSourceControl {
     const lease = record.lease;
     try {
       if (lease.expiresAt <= now || this.#control.socketFor(record.packagerId) !== record.socket
-        || !this.#control.sourceConnection(record.socket)?.sourceControlV1) throw new Error();
+        || !this.#control.sourceConnection(record.socket)?.sourceControlV1
+        || record.signalingStarted && !this.#control.sourceConnection(record.socket)?.sourceSignalV1) throw new Error();
       const scope = this.#grants.forPackager(lease.consent.consentId, record.packagerId, lease.consent.granteeDeviceRef);
       if (!scope || scope.consent !== lease.consent || scope.publisherPeerId !== lease.publisherPeerId
         || scope.publisherDeviceRef !== lease.publisherDeviceRef || scope.publicationId !== lease.publicationId
