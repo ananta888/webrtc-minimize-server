@@ -22,6 +22,7 @@ test("private proxy preserves canonical TLS without host networking or ports", (
   proxy.start(32123);
   const create = f.calls.find(args => args[0] === "create");
   assert.ok(create.includes("--read-only") && create.includes("--cap-drop=ALL"));
+  assert.match(create.at(-1), /server\.maxConnections=16;/);
   assert.ok(!create.some(arg => arg.includes("network=host") || arg === "-p" || arg.startsWith("--publish") || arg.startsWith("--mount")));
   assert.match(create[create.indexOf("--network") + 1], /^meet-test-tls-[a-f0-9-]+-network$/);
   assert.ok(f.calls.some(args => args[0] === "network" && args[1] === "create" && args.includes("--internal")));
@@ -29,6 +30,37 @@ test("private proxy preserves canonical TLS without host networking or ports", (
   proxy.close(); proxy.close();
   assert.equal(f.calls.filter(args => args[0] === "rm").length, 2);
   assert.equal(f.calls.filter(args => args[0] === "network" && args[1] === "rm").length, 1);
+});
+
+test("two packaged Workers use an explicit bounded proxy profile without changing the default", () => {
+  const f = fixture(); const proxy = privateMachineTlsProxy(180, f.run, 32);
+  try {
+    proxy.start(32123);
+    const create = f.calls.find(args => args[0] === "create");
+    assert.match(create.at(-1), /server\.maxConnections=32;/);
+    assert.ok(create.includes("--memory=128m") && create.includes("--cpus=.5"));
+    assert.deepEqual(proxy.observation(), { connectionDrops: 0 });
+  } finally { proxy.close(); }
+});
+
+test("unknown proxy connection profiles fail before Docker side effects", () => {
+  const f = fixture();
+  for (const limit of [0, 15, 17, 33, 1000, "32", true, null]) {
+    assert.throws(() => privateMachineTlsProxy(180, f.run, limit), /connection_limit_invalid/);
+  }
+  assert.deepEqual(f.calls, []);
+});
+
+test("proxy diagnostics retain only eight fixed capacity events", () => {
+  const f = fixture();
+  const run = args => args[0] === "logs"
+    ? "secret-canary\n" + "test_tls_connection_capacity\n".repeat(12) : f.run(args);
+  const proxy = privateMachineTlsProxy(180, run);
+  assert.deepEqual(proxy.observation(), { connectionDrops: 0 });
+  proxy.start(32123);
+  assert.deepEqual(proxy.observation(), { connectionDrops: 8 });
+  proxy.close();
+  assert.deepEqual(proxy.observation(), { connectionDrops: 0 });
 });
 
 test("unfamiliar network is rejected and exact owned network is removed", () => {
