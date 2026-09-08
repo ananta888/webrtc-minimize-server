@@ -74,3 +74,12 @@ trust preflight. No serving changes or production claim.
 The subsequent v2 local preflight is now implemented; see
 `machine-trust-preflight.md`. It no longer needs legacy trust beside the
 profile. Operator provisioning and Organization/Agent claims remain open.
+
+The startup-wait diagnostic is implemented only in the existing test: native
+Worker events remain delivered, a 129-entry closed-code buffer yields at
+most 128 inspected errors plus truncation, two connections/eight RTP rows
+per connection are sampled, and a stuck page is bounded by a 1 s diagnostic
+deadline. No IDs, keys, payloads, arbitrary errors or codecs are serialized.
+Three helper tests and actual serialized Chromium/Firefox probes pass
+(two browser tests in 1.763 s). The original active-SFrame and frame-counter
+assertions and their deadlines are unchanged. No cryptographic fix claimed.

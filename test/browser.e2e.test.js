@@ -6,6 +6,7 @@ import test from "node:test";
 import { chromium, firefox } from "playwright";
 
 import { createAppServer } from "../src/server.js";
+import { collectSFrameStartup, installSFrameStartupObservation } from "./helpers/sframe-startup-observation.mjs";
 
 const cameraContinuityWindowMs = Math.max(4_000, Math.min(
   180_000,
@@ -1132,6 +1133,8 @@ test("Chromium VP8 remains decodable in Firefox beyond SFrame counter 350", { ti
   };
   await chromiumContext.addInitScript(observePeerConnections);
   await firefoxContext.addInitScript(observePeerConnections);
+  await chromiumContext.addInitScript(installSFrameStartupObservation);
+  await firefoxContext.addInitScript(installSFrameStartupObservation);
   context.after(async () => {
     await Promise.allSettled([
       chromiumContext.close(),
@@ -1200,9 +1203,15 @@ test("Chromium VP8 remains decodable in Firefox beyond SFrame counter 350", { ti
   )));
   await sender.locator("#toggle-camera").click();
   await receiver.locator(".media-label").getByText("Chromium sender · Kamera").waitFor();
-  await Promise.all([sender, receiver].map((page) => (
-    page.locator("#sframe-status", { hasText: "active" }).waitFor()
-  )));
+  try {
+    await Promise.all([sender, receiver].map((page) => (
+      page.locator("#sframe-status", { hasText: "active" }).waitFor()
+    )));
+  } catch (error) {
+    context.diagnostic(JSON.stringify({ syntheticSFrameStartup: await Promise.all(
+      [sender, receiver].map(page => collectSFrameStartup(page))) }));
+    throw error;
+  }
   await receiver.waitForFunction(() => [...document.querySelectorAll("video:not([muted])")]
     .some((video) => video.readyState >= 2 && video.videoWidth > 0));
   const beyondCounterBoundary = await waitForInboundVideoStats((stats) => stats.framesDecoded > 400, 48_000);
