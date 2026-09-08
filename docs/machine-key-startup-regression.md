@@ -47,3 +47,23 @@ The isolated `npm run check` at `1f3cab5` subsequently completed with exit 0:
 635 frontend tests, 558 Node passes and three explicit Node skips (137.70 seconds
 for Node), plus build, Go and configuration/security gates. External runtime
 gates remained explicit skips. No serving files or running services changed.
+
+## Recurrence and next bounded diagnostic (2026-09-08)
+
+The root role-lifecycle matrix again failed before its revocation stimulus:
+348 inbound RTP packets, zero decoded/key frames, 33 PLIs, connected ICE/DTLS,
+32 healthy source pushes, live Worker and **one transform failure**. The current
+fixture records closed transform error codes internally but the bridge exposes
+only their count, so this observation cannot distinguish envelope/codec/key
+budget failures from a Worker load/runtime error. Do not infer a crypto cause.
+
+Before code: add a small read-only test observation helper reporting counts for
+the five existing public transform codes and the fixed Worker-runtime category.
+Unknown values become an aggregate count, never caller-selected report keys or
+strings. Inspect at most 128 recorded values and expose truncation explicitly.
+No context IDs, keys, frame bytes, paths, exceptions or arbitrary text. Add
+deterministic malformed/unknown/oversize redaction tests and compose the helper
+only into the private bridge's failure report. Existing SFrame, source, grant,
+timeouts, retries and moving-frame acceptance remain unchanged. Verify a bounded
+real root gate and the isolated repository check; a green repeat is still not a
+startup fix. Keep MDS-05/08 open.
