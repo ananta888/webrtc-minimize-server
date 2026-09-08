@@ -44,8 +44,10 @@ export class MediaE2eeController {
   readonly supported = supportsMediaE2ee();
   private readonly attached = new WeakMap<object, string>();
   private worker: Worker | null = null;
+  private workerFailed = false;
 
-  constructor(private readonly onTransformFailure: (contextId: string, code: string) => void = () => undefined) {}
+  constructor(private readonly onTransformFailure: (contextId: string, code: string) => void = () => undefined,
+    private readonly onWorkerFailure: () => void = () => onTransformFailure("", "media_worker_failed")) {}
 
   attachSender(sender: RTCRtpSender, contextId: string): boolean {
     return this.attach(sender as unknown as ScriptTransformTarget, contextId, "encrypt");
@@ -73,10 +75,11 @@ export class MediaE2eeController {
   }
 
   destroy(): void {
-    if (!this.worker) return;
-    this.post({ version: 1, type: "clear-all" });
-    this.worker.terminate();
+    const worker = this.worker;
     this.worker = null;
+    if (!worker) return;
+    try { worker.postMessage({ version: 1, type: "clear-all" }); } catch { /* Failed workers must still terminate. */ }
+    worker.terminate();
   }
 
   private attach(target: ScriptTransformTarget, contextId: string, direction: "encrypt" | "decrypt"): boolean {
@@ -119,9 +122,17 @@ export class MediaE2eeController {
   }
 
   private ensureWorker(): Worker | null {
-    if (!this.supported) return null;
+    if (!this.supported || this.workerFailed) return null;
     if (!this.worker) {
       this.worker = new Worker(new URL("./sframe.worker", import.meta.url), { type: "module", name: "sframe-media" });
+      const worker = this.worker;
+      const failed = () => {
+        if (this.worker !== worker) return;
+        this.workerFailed = true;
+        this.destroy(); this.onWorkerFailure();
+      };
+      worker.addEventListener("error", failed);
+      worker.addEventListener("messageerror", failed);
       this.worker.addEventListener("message", ({ data }: MessageEvent<unknown>) => {
         if (!data || typeof data !== "object" || Array.isArray(data)) return;
         const value = data as Record<string, unknown>;

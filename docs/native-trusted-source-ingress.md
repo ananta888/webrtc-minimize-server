@@ -7,14 +7,15 @@ Entschlüsselungsbaustein für eine später ausdrücklich consentierte einzelne
 Quelle. Der ergänzte `Receiver` verbindet einen zielgebundenen ephemeren
 P-256-Key-Envelope mit genau einem Decoder. Ein separater nativer
 PeerConnection-/Key-DataChannel-/RTP-Adapter ist jetzt implementiert und lokal
-mit zwei echten Pion-Verbindungen getestet; **der Produktions-Compositor ist
+mit Pion sowie tatsächlichen Chromium-/Firefox-Sendern getestet; **der Produktions-Compositor ist
 noch nicht angeschlossen**.
 Der neue `SourceReceiver` ergänzt einen kurzlebigen Source-Lease und Key-ACK;
 der native Daemon besitzt dafür bereits den lokalen Assignment-/Geräte-/Room-
 Policy-Adapter, Cleanup-Hooks und den unten beschriebenen authentisierten
 Source-Control-Pfad. Die zusätzliche serverseitige Quellen-Signalisierung und
 der geschlossene native Signalparser sind mit diesem Adapter verbunden.
-Der produktive Browser-Publisher und die Compositor-Integration fehlen noch.
+Der UI-unabhängige Browser-Publisher ist implementiert. Seine Anbindung an die
+explizite Annahme-/Renewal-UI und die native Compositor-Integration fehlen noch.
 Eine Quellenanfrage in der Angular-App erteilt weiterhin keine Medienfreigabe.
 Der bestehende `clear-program-v1`-Ingress bleibt unverändert; der
 Blind-Media-Agent und die Node-Control-Plane erhalten keinen Decrypt-Port.
@@ -292,12 +293,21 @@ Source-Medien-Capability wird aus einem erfolgreichen Metadaten-Routing abgeleit
 
 `source_dispatch.go` prüft vor Erzeugung einer PeerConnection die aktuelle lokale
 Source-/Consent-/Assignment-/Fence-/Publisher-Bindung erneut. Jede Quelle bekommt
-eine eigene Verbindung, genau einen passenden Track mit der geleasten Publication-ID
+eine eigene Verbindung und genau einen passenden Track für die geleaste Publikation
 und genau einen zuverlässigen, geordneten DataChannel mit Label und Protokoll
 `trusted-source-keys-v1`. Falsche Medienarten, mehrere Tracks, ungeordnete oder
 teilzuverlässige Kanäle schließen die Quelle. SDP- und ICE-Sequenzen bleiben an die
 serverautorisierten Negotiation-Generationen gebunden. Die ICE-Konfiguration stammt
 aus dem aktuellen Assignment beziehungsweise dem bestehenden Operator-Fallback.
+
+Raum-Publikations-ID und SDP-Track-ID werden getrennt behandelt: Der reale
+Firefox-Test zeigte verschiedene Kennungen. Das authentisierte, bereits an die
+einzelne Source-Lease gebundene Offer muss deshalb genau eine konsistente
+MSID-Trackkennung besitzen; widersprüchliche Media-/SSRC-MSID-Werte, fehlende oder
+überlange IDs werden abgewiesen. Diese Transportkennung bleibt über Negotiations
+unverändert und muss exakt dem nativen `OnTrack` entsprechen. Daraus entstehen
+weder neue Quellenrechte noch Membership; die ursprüngliche Publikations-ID,
+Publisher-/Gerätebindung, Epoch und Consent bleiben im Source-Lease maßgeblich.
 
 Nur dieser DTLS/SCTP-Kanal trägt das ephemere öffentliche Key-Announcement und
 die verschlüsselten Key-Envelopes. Der Server erhält weder Envelope noch Frame-Key.
@@ -332,6 +342,50 @@ Compositor-Ausgabe, NAT oder Produktion nachgewiesen. Separate Tests prüfen
 Kanal-/Scope-/Sequenzfehler, Lease-Erneuerung, untätigen Ablauf und Quell-Cleanup
 ohne Abbruch des Parent-Programms. Browser-Sender, echter Decoder/Compositor,
 Slate-Wechsel und die explizite Publisher-Annahme bleiben nächste Integrationsarbeit.
+
+### Browser-Publisher und gemeinsamer RTP-Nachweis
+
+`TrustedSourcePublisher` ist ein UI-unabhängiger Adapter mit verpflichtendem lokalen
+Autorisierungsport. Dieser muss tatsächlichen lokalen Annahmeconsent, aktuelle
+authentisierte Membership und bestätigte Source-Leases lesen; JSON allein genügt
+nicht. Ein verpflichtendes Owner-Abbruchsignal stoppt bei lokalem Widerruf oder
+Leave sofort, ohne auf weitere Pakete oder den nächsten Lease-Tick zu warten.
+`start` prüft die exakte lokale Publication-ID, Medienart, Laufzeit und
+SFrame-Capability, leiht die bereits vom Nutzer gestartete Raumspur nur aus und
+öffnet **keine Capture-API**. Ein eigener Sender/Worker verarbeitet diese Quelle;
+das Beenden des Adapters stoppt nicht die weiterhin separat geteilte Raumspur.
+
+Die Kamera-/Audiospur besitzt zunächst `active: false`. Das echte Key-Announcement
+wird ausschließlich über den dedizierten DataChannel angenommen. Ein frischer,
+vom Raum unabhängiger SFrame-Schlüssel wird per vorhandenem ECDH/AES-GCM-Helper
+verpackt. Erst ein frischer ACK mit exakter Lease-/Consent-/Agreement-/Envelope-/KID-
+Bindung erlaubt die Worker-Key-Installation und Senderaktivierung. Der Zustand
+`sending` bedeutet konfigurierten Sender, ausdrücklich keine Decode-/Output-Abnahme.
+
+Bestätigte Lease-Erneuerungen verlängern nur die Quellberechtigung, nicht die
+Schlüssellaufzeit. Ein neuer Key wird vor Ablauf mit begrenztem Overlap ausgehandelt
+und erst nach seinem eigenen ACK aktiv; die alten ACK-Ablaufwerte werden beim
+Empfang geprüft, während neue bestätigte Leases die weitere Transportberechtigung
+tragen. Separate Lease-/Key-/ACK-/Startup-Fristen, Clock-Rollback-Prüfung und lokale
+Policy verhindern Wiederbelebung. Workerfehler sind terminal, ohne automatischen
+Neustart oder Klartext-Fallback. Auch während asynchroner Key-Verpackung oder
+Senderaktivierung löscht Stop erreichbare Basiskeys und schließt die eigene PC.
+Kanalnachrichten sind vor dem Einreihen auf 8 KiB und duplikatfreie JSON-Felder
+begrenzt; höchstens 32 Steueroperationen warten. SDP/ICE übernimmt die geschlossenen
+serverseitigen Größen-/Sequenzgrenzen. Dieser Adapter startet eine Negotiation;
+ein Verbindungsverlust beendet ihn statt eine Quelle unbemerkt neu zu genehmigen.
+
+`test/trusted-source-publisher.browser.test.js` betreibt den tatsächlichen Adapter
+und den tatsächlichen SFrame-Worker in Chromium und Firefox gegen den Go-Daemon-
+Adapter. Ausschließlich synthetischer Canvas beziehungsweise Oszillator werden
+mit einer expliziten Testpolicy verwendet. Pro Browser/Codec müssen mindestens
+401 authentisierte VP8-/Opus-Frames ankommen, bei VP8 einschließlich Keyframe;
+danach werden nativer Cleanup und die noch lebende geliehene Browser-Spur geprüft.
+Die Kontrollbrücke ist ein begrenztes Testfixture, kein Produktions-Approve-API;
+der authentisierte Serverbroker wird separat durch WebSocket-Tests geprüft.
+Fehlerberichte enthalten nur feste Zustände, Transformcodes und numerische Zähler.
+Damit sind echte Browser-Paketierung, Schlüssel-ACK und nativer RTP-Empfang belegt,
+weiterhin nicht native Decodierung, Programmmischung, Slate, NAT oder Produktion.
 
 ### Prepare, Renewal und Stop
 
