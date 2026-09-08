@@ -88,5 +88,16 @@ Produktionsgates.
 
 Die korrigierte Vier-Decoder-Fixture bestand auch unter Race-Erkennung
 (1,38 Sekunden), gemeinsam mit Timing-, Guard-, Mixer- und Kompositortests.
-Der Gesamtcheck des mit dem Nutzer-Push zusammengeführten Stands steht noch
-aus. Der Programm-Owner und der raw-Encoder-/Writer bleiben weitere Arbeit.
+Der isolierte Gesamtcheck von `80f6047` (mit Nutzer-Push bis `d4dba90`)
+bestand mit Exit 0: 665 Frontendtests und 760 Node-/Browser-/Integrationstests,
+keine Fehler, zwei explizite Node-Skips; Node-Dauer 283,762 Sekunden. Build,
+Go-Unit/Vet und statische Gates bestanden. Die gepaarten echten SFrame-Quellen
+erreichten 24,3 ms maximale A/V-Abweichung in Chromium (12 Paare) und 47,3 ms
+in Firefox (13 Paare). Vierzehn externe Infrastruktur-Gates blieben sichtbare
+Skips. Der ausgelieferte lokale Browserbuild blieb unverändert.
+
+Der danach ergänzte Nutzer-Push bis `1a62de0` begrenzt ausschließlich die
+native Key-only-Testfixture auf Loopback; seine separate Verifikation steht in
+`machine-multi-publisher-isolation.md`. Der neue Raw-Pipeausgang gehört noch
+nicht zum obigen Gesamtcheck. Programm-Owner und Encoder-/Writer-Anschluss
+bleiben weitere Arbeit; eine Produktionsaktivierung fand nicht statt.
