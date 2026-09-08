@@ -122,10 +122,42 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
     const after = await machine.evaluate(() => window.anantaMachine.status().lease);
     assert.equal(after.sessionId, before.sessionId); assert.equal(after.generation, before.generation + 1);
   }
+  // Revoke an actively collecting subscription, not only a completed graph.
+  t.after(async () => { if (!machine.isClosed()) await machine.evaluate(() => clearInterval(window.__audioRevokeTimer)); });
+  await machine.evaluate(async () => {
+    const source = window.anantaMachine.audio.sources()[0];
+    if (!source) throw new Error("test_active_audio_source_missing");
+    await window.anantaMachine.audio.open(source.publicationId, 10);
+    window.__audioRevokeObservation = { chunks: 0, closed: false, error: "" };
+    // Drain throughout UI navigation so overflow cannot impersonate revocation.
+    window.__audioRevokeTimer = setInterval(() => {
+      try {
+        const batch = window.anantaMachine.audio.poll();
+        for (const chunk of batch.chunks) {
+          window.__audioRevokeObservation.chunks++;
+          window.anantaMachine.audio.ack(chunk.sequence);
+        }
+      } catch {
+        window.__audioRevokeObservation.closed = true;
+        window.__audioRevokeObservation.error = window.anantaMachine.audio.status().error;
+        clearInterval(window.__audioRevokeTimer);
+      }
+    }, 50);
+  });
+  await machine.waitForFunction(() => window.__audioRevokeObservation.chunks > 0, null, { timeout: 3000 });
   await human.locator(".nav-item", { hasText: "Analyse" }).click();
+  assert.equal(await machine.evaluate(() => window.anantaMachine.audio.status().open), true);
   await panel.getByRole("button", { name: "Meine Freigaben widerrufen" }).click();
   await panel.getByText("Keine Empfangsfreigabe erteilt.", { exact: true }).waitFor();
-  await machine.waitForFunction(() => !window.anantaMachine.chat.status().open && window.anantaMachine.audio.sources().length === 0);
+  await machine.waitForFunction(() => !window.anantaMachine.chat.status().open && !window.anantaMachine.audio.status().open
+    && window.anantaMachine.audio.sources().length === 0 && window.__audioRevokeObservation.closed, null, { timeout: 3000 });
+  assert.equal(await machine.evaluate(() => window.__audioRevokeObservation.error), "meet_audio_binding_changed");
+  assert.deepEqual(await machine.evaluate(() => {
+    let pollDenied = false, ackDenied = false;
+    try { window.anantaMachine.audio.poll(); } catch { pollDenied = true; }
+    try { window.anantaMachine.audio.ack(1); } catch { ackDenied = true; }
+    return { pollDenied, ackDenied };
+  }), { pollDenied: true, ackDenied: true });
   assert.equal(await machine.evaluate(() => window.__captures), 0);
   await machine.evaluate(() => window.anantaMachine.leave());
   assert.equal(await machine.evaluate(() => window.anantaMachine.status().joined), false);

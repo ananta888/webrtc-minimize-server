@@ -2,6 +2,7 @@ import { Injectable, OnDestroy } from "@angular/core";
 import { PeerMeshService } from "../../webrtc/peer-mesh.service";
 import { RoomSessionService } from "../../webrtc/room-session.service";
 import { MachineAudioGraph, MachineAudioGraphFactory } from "./machine-audio-graph";
+import { wipeMachinePcm } from "./machine-pcm-buffer";
 
 interface AudioChunk { readonly sequence: number; readonly startSample: number; readonly pcm: ArrayBuffer }
 
@@ -46,7 +47,7 @@ export class MachineAudioSessionService implements OnDestroy {
       const setup = setTimeout(() => { if (this.controller === controller && !this.graph) this.stop("meet_audio_setup_timeout"); }, 5000);
       try {
         const graph = await this.graphs.connect(this.source.track, (start, pcm) => {
-          if (this.controller !== controller) { new Uint8Array(pcm).fill(0); return; }
+          if (this.controller !== controller) { wipeMachinePcm(pcm); return; }
           this.accept(start, pcm);
         },
           () => { if (this.controller === controller) this.stop("meet_audio_decoder_failed"); }, controller.signal);
@@ -85,13 +86,18 @@ export class MachineAudioSessionService implements OnDestroy {
     } catch { this.stop("meet_audio_binding_changed"); throw new Error("meet_audio_binding_changed"); }
   }
   private accept(startSample: number, pcm: ArrayBuffer): void {
-    this.check();
-    if (this.completed) { new Uint8Array(pcm).fill(0); return; }
-    if (!(pcm instanceof ArrayBuffer) || pcm.byteLength !== 3200 || startSample !== this.serial * 1600 || this.queue.length >= 10) {
-      this.stop("meet_audio_queue_or_timeline_invalid"); throw new Error("meet_audio_queue_or_timeline_invalid");
+    let retained = false;
+    try {
+      this.check();
+      if (this.completed) return;
+      if (!(pcm instanceof ArrayBuffer) || pcm.byteLength !== 3200 || startSample !== this.serial * 1600 || this.queue.length >= 10) {
+        this.stop("meet_audio_queue_or_timeline_invalid"); throw new Error("meet_audio_queue_or_timeline_invalid");
+      }
+      this.queue.push({ sequence: ++this.serial, startSample, pcm }); retained = true;
+      if (this.serial >= this.maxChunks) { this.completed = true; void this.graph?.close(); this.graph = null; }
+    } finally {
+      if (!retained) wipeMachinePcm(pcm);
     }
-    this.queue.push({ sequence: ++this.serial, startSample, pcm });
-    if (this.serial >= this.maxChunks) { this.completed = true; void this.graph?.close(); this.graph = null; }
   }
   poll() {
     this.check();
@@ -105,7 +111,7 @@ export class MachineAudioSessionService implements OnDestroy {
     this.check();
     if (!Number.isSafeInteger(sequence) || sequence < this.acknowledged || sequence > this.delivered) throw new Error("meet_audio_ack_invalid");
     this.acknowledged = sequence;
-    while (this.queue.length && this.queue[0].sequence <= sequence) new Uint8Array(this.queue.shift()!.pcm).fill(0);
+    while (this.queue.length && this.queue[0].sequence <= sequence) wipeMachinePcm(this.queue.shift()!.pcm);
   }
   status() { return Object.freeze({ open: Boolean(this.controller), completed: this.completed, error: this.error }); }
   reply(subscriptionId: string, text: string) {
@@ -121,7 +127,7 @@ export class MachineAudioSessionService implements OnDestroy {
     this.controller?.abort(); this.controller = null;
     if (this.timer) clearInterval(this.timer); this.timer = null;
     void this.graph?.close(); this.graph = null;
-    for (const chunk of this.queue) new Uint8Array(chunk.pcm).fill(0); this.queue = [];
+    for (const chunk of this.queue) wipeMachinePcm(chunk.pcm); this.queue = [];
     this.source = null; this.binding = ""; this.publicationId = "";
     this.subscriptionId = ""; this.replied = false;
     this.serial = this.delivered = this.acknowledged = 0; this.completed = false;

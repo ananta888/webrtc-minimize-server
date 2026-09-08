@@ -1,5 +1,8 @@
 import { Injectable } from "@angular/core";
 import { untilAudioAbort as untilAbort } from "./machine-audio-operation";
+import { wipeMachinePcm } from "./machine-pcm-buffer";
+
+const release = (operation: () => void) => { try { operation(); } catch { /* Continue releasing other owned resources. */ } };
 
 export interface MachineAudioGraph { close(): Promise<void> }
 export type MachinePcmConsumer = (startSample: number, pcm: ArrayBuffer) => void;
@@ -16,20 +19,28 @@ export class MachineAudioGraphFactory {
     // Chromium's remote-audio decoder needs a playout consumer before a cloned
     // WebAudio source yields samples. This private, silent sink is not capture
     // and never feeds the outgoing microphone or the room mix.
-    const sink = document.createElement("audio");
-    sink.volume = 0; sink.srcObject = new MediaStream([clone]);
+    let sink: HTMLAudioElement | null = null;
     let context: AudioContext | null = null, collector: AudioWorkletNode | null = null;
     let source: MediaStreamAudioSourceNode | null = null, output: GainNode | null = null, closed = false;
     const close = async () => {
       if (closed) return; closed = true; signal.removeEventListener("abort", aborted);
-      if (collector) { collector.port.onmessage = null; collector.port.postMessage({ type: "stop" }); collector.port.close(); }
-      sink.pause(); sink.srcObject = null; sink.removeAttribute("src"); sink.load();
-      try { source?.disconnect(); collector?.disconnect(); output?.disconnect(); } catch { /* Closing is idempotent. */ }
-      clone.stop(); await context?.close().catch(() => undefined);
+      if (collector) {
+        release(() => { collector!.port.onmessage = null; });
+        release(() => collector!.port.postMessage({ type: "stop" }));
+        release(() => collector!.port.close());
+      }
+      release(() => sink?.pause()); release(() => { if (sink) sink.srcObject = null; });
+      release(() => sink?.removeAttribute("src")); release(() => sink?.load());
+      release(() => source?.disconnect()); release(() => collector?.disconnect()); release(() => output?.disconnect());
+      release(() => clone.stop());
+      try { await context?.close(); } catch { /* No retry can reauthorize the closed graph. */ }
     };
     const aborted = () => { void close(); };
     signal.addEventListener("abort", aborted, { once: true });
+    const fail = () => { void close(); release(failed); };
     try {
+      sink = document.createElement("audio");
+      sink.volume = 0; sink.srcObject = new MediaStream([clone]);
       // The browser resamples the decrypted MediaStream into this real context rate.
       context = new AudioContext({ sampleRate: 16000, latencyHint: "interactive" });
       if (context.sampleRate !== 16000) throw new Error("meet_audio_rate_unsupported");
@@ -40,15 +51,15 @@ export class MachineAudioGraphFactory {
         numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1], channelCount: 1, channelCountMode: "explicit" });
       output = context.createGain(); output.gain.value = 0;
       collector.port.onmessage = ({ data }) => {
-        if (closed || signal.aborted) return;
+        if (closed || signal.aborted) { wipeMachinePcm(data?.pcm); return; }
         if (data?.type !== "pcm" || Object.keys(data).length !== 3 || !Number.isSafeInteger(data.startSample)
           || data.startSample < 0 || !(data.pcm instanceof ArrayBuffer) || data.pcm.byteLength !== 3200) {
-          failed(); void close(); return;
+          wipeMachinePcm(data?.pcm); fail(); return;
         }
         try {
           consume(data.startSample, data.pcm);
           if (!closed && !signal.aborted) collector!.port.postMessage({ type: "ack", startSample: data.startSample });
-        } catch { failed(); void close(); }
+        } catch { wipeMachinePcm(data.pcm); fail(); }
       };
       source.connect(collector); collector.connect(output); output.connect(context.destination);
       await untilAbort(context.resume(), signal); signal.throwIfAborted();

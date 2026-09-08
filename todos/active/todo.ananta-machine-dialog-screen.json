@@ -67,6 +67,7 @@
     },
     {
       "id": "MDS-03", "title": "Begrenzten Audioempfang für den autorisierten KI-Client bereitstellen",
+      "pcm_cleanup_plan": "2026-09-08 Quellpruefungff2676c: accept prueft Authority vor Uebernahme eines neuen PCM-Puffers; Ablehnung leert bisher Queue, aber nicht den gerade eingetroffenen Puffer. Graph verwirft spaete/ungueltige Callbacks ebenfalls ohne explizites Leeren; einzelne Cleanup-Ausnahmen koennen weitere Freigaben verhindern. Vor Code: Regression mit markierten eigenen ArrayBuffers fuer Widerruf vor Callback, Timeline/Overflow/Leasewechsel, spaete Graphnachricht und Cleanup-Fehler; kleine Wipe-/Cleanup-Ports, keine neuen Autoritaeten oder Captures. Positivpfad muss bis ACK echte Samples behalten. Lokale Zweibrowser-Dialogabnahme und isolierter Vollcheck am Ende dieses Slices, MDS-03 bleibt in_progress/35 bis gesamte Abnahme erfuellt.",
       "status": "in_progress", "progress_percent": 35, "priority": "P1", "risk": "critical", "depends_on": ["MDS-02"],
       "ananta_task_refs": ["MAP-25", "MAP-27"],
       "acceptance_criteria": [

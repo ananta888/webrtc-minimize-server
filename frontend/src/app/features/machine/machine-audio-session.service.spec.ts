@@ -72,4 +72,14 @@ describe("machine audio subscription", () => {
     expect(f.service.poll().chunks).toEqual([]); expect(new Uint8Array(bytes).every(byte => byte === 0)).toBe(true);
     f.service.close();
   });
+  it.each(["revoked", "generation", "gap", "overflow"])("wipes the incoming unqueued PCM buffer on %s rejection", async reason => {
+    const f = setup(); await f.service.open("audio");
+    if (reason === "revoked") f.deny();
+    if (reason === "generation") f.session.machineLease.update(v => ({ ...v, generation: 2 }));
+    if (reason === "overflow") for (let i = 0; i < 10; i++) f.consume(i * 1600);
+    const bytes = new Uint8Array(3200).fill(123);
+    expect(() => f.consume(reason === "gap" ? 1600 : reason === "overflow" ? 16000 : 0, bytes.buffer)).toThrow();
+    expect(bytes.every(byte => byte === 0)).toBe(true);
+    expect(f.service.status().open).toBe(false);
+  });
 });
