@@ -29,3 +29,12 @@ and unchanged success/non-timeout behavior. Then use a fresh private frontend
 build for the actual Hub/Worker/Meet gate and run the isolated complete check.
 The old serving `dist`, live services, public trust and operator keys stay
 untouched. A passing repetition without a causal fix does not close MDS-08.
+
+The instrumentation is implemented. All 20 deterministic observer/timeout
+tests passed in 142.07 ms, including exact native forwarding, exceptions,
+redaction, unavailable and late snapshots. The serialized observer also ran in
+real Chromium and Firefox: both preserved the native unconnected DataChannel
+`InvalidStateError` and reported one attempt/one failure/zero queued messages,
+without reporting the synthetic question (two passes in 5.140 seconds).
+The full private build/check and current-source Hub/GPU dialog still follow;
+no production chat behavior or cause of the older failure is claimed fixed.

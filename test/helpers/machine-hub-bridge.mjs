@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import readline from "node:readline";
 import { machineBrowserFixture } from "./machine-browser-fixture.js";
 import { installDialogObservation } from "./machine-dialog-observer.mjs";
+import { observeDialogAnswer } from "./machine-chat-observation.mjs";
 import { observeAvatarCommand } from "./machine-avatar-observation.mjs";
 import { requireReceiverKeyDelay } from "./machine-receiver-key-delay.mjs";
 import { transformFailureCounts } from "./machine-transform-observation.mjs";
@@ -51,8 +52,7 @@ try {
       await f.human.locator("#chat-message").fill("@ananta synthetic cross-repository question");
       await f.human.locator("#chat-form button").click(); answersExpected++; reply({ sent: true });
     } else if (line === "answer_correlated") {
-      await f.human.waitForFunction(() => window.__dialogObservation.status().correlated, null, { timeout: 30000 });
-      reply(await f.human.evaluate(() => window.__dialogObservation.answer()));
+      reply(await observeDialogAnswer(f.human));
     } else if (line === "audio_reset") {
       await f.human.evaluate(() => window.__dialogObservation.resetAudio()); reply({ reset: true });
     } else if (line === "audio_absent") {

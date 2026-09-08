@@ -6,11 +6,11 @@ import { installDialogObservation } from "./helpers/machine-dialog-observer.mjs"
 
 const message = extra => ({ version: 2, type: "chat", roomId: "room-" + "a".repeat(18), membershipEpoch: 1,
   messageId: "b".repeat(32), replyTo: "", sentAt: 100, text: "Synthetic question", ...extra });
-function setup({ delay = false, unsupported = false } = {}) {
+function setup({ delay = false, unsupported = false, sendError = null, sendResult } = {}) {
   const contexts = [], timers = new Map(), rendered = [], pending = [];
   class Channel extends EventTarget {
     label = "chat"; sent = [];
-    send(raw) { this.sent.push(raw); }
+    send(raw) { this.sent.push(raw); if (sendError) throw sendError; return sendResult; }
     receive(value) { this.dispatchEvent(Object.assign(new Event("message"), { data: JSON.stringify(value) })); }
   }
   class Peer extends EventTarget {
@@ -61,8 +61,25 @@ test("probe has an eight-request bound and never alters forwarded valid bytes", 
   for (let n = 0; n < 8; n++) f.channel.send(raw);
   assert.equal(f.channel.sent.length, 8); assert.equal(f.channel.sent[0], raw);
   assert.throws(() => f.channel.send(raw), /probe_budget/);
+  assert.equal(f.probe.chatStatus().attempted, 8);
+  assert.equal(f.probe.chatStatus().queued, 8);
   await f.probe.close(); f.channel.send(raw); assert.equal(f.channel.sent.length, 9);
   assert.equal(f.probe.status().correlated, false);
+});
+
+test("dispatch observation preserves native return/throw and emits only bounded counts", async () => {
+  const returned = {}, error = new Error("private native detail"), raw = JSON.stringify(message());
+  for (const failed of [false, true]) {
+    const f = setup({ sendError: failed ? error : null, sendResult: returned });
+    if (failed) assert.throws(() => f.channel.send(raw), caught => caught === error);
+    else assert.equal(f.channel.send(raw), returned);
+    const report = f.probe.chatStatus();
+    assert.equal(f.channel.sent.length, 1); assert.equal(f.channel.sent[0], raw);
+    assert.deepEqual(JSON.parse(JSON.stringify(report)), { attempted: 1, queued: failed ? 0 : 1,
+      send_failures: failed ? 1 : 0, answer_seen: false, rendered: false });
+    assert.equal(JSON.stringify(report).includes("private"), false);
+    await f.probe.close(); assert.equal(f.probe.chatStatus().attempted, 0);
+  }
 });
 
 test("audio observation is bounded, non-capturing, resettable and closed", async () => {

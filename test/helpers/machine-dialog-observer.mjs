@@ -1,7 +1,8 @@
 // Private fixture instrumentation only. Never installs in an application build.
 export function installDialogObservation() {
   if (window.__dialogObservation) throw new Error("test_dialog_probe_already_installed");
-  const state = { sent: null, answer: null, requests: 0, peak: 0, activeWindows: 0, windows: 0, failed: false, closed: false };
+  const state = { sent: null, answer: null, requests: 0, queued: 0, sendFailures: 0,
+    peak: 0, activeWindows: 0, windows: 0, failed: false, closed: false };
   const channels = new WeakSet(), tracks = new Map();
   // Retain only opaque context names in the private page, never key bytes.
   // Matching is diagnostic, not proof that a key was installed or a frame decrypted.
@@ -39,13 +40,22 @@ export function installDialogObservation() {
     const send = channel.send;
     channel.send = function (raw) {
       const value = chat(raw);
-      if (!state.closed && value && value.replyTo === "") {
-        if (++state.requests > 8) throw new Error("test_dialog_probe_budget");
+      const observed = !state.closed && value && value.replyTo === "";
+      if (observed) {
+        if (state.requests >= 8) throw new Error("test_dialog_probe_budget");
+        state.requests++;
         state.sent = { id: value.messageId, room: value.roomId, epoch: value.membershipEpoch,
           before: document.querySelectorAll("#chat-log .chat-entry:not(.system) span").length };
         state.answer = null;
       }
-      return send.call(this, raw);
+      try {
+        const result = send.call(this, raw);
+        if (observed && !state.closed) state.queued++;
+        return result;
+      } catch (error) {
+        if (observed && !state.closed) state.sendFailures++;
+        throw error;
+      }
     };
     channel.addEventListener("message", ({ data }) => {
       const value = chat(data), sent = state.sent;
@@ -88,6 +98,8 @@ export function installDialogObservation() {
       && nodes.at(-1)?.textContent === state.answer);
   }
   window.__dialogObservation = {
+    chatStatus() { return { attempted: state.requests, queued: state.queued, send_failures: state.sendFailures,
+      answer_seen: Boolean(state.answer), rendered: renderedAnswer() }; },
     resetAudio() { state.peak = state.activeWindows = state.windows = 0; },
     status() { return { correlated: renderedAnswer(), failed: state.failed,
       peak: state.peak, active_windows: state.activeWindows, windows: state.windows,
@@ -112,6 +124,7 @@ export function installDialogObservation() {
       if (window.RTCRtpScriptTransform === ObservedTransform) window.RTCRtpScriptTransform = NativeTransform;
       keyed.clear(); attached.clear();
       state.answer = state.sent = null;
+      state.requests = state.queued = state.sendFailures = 0;
       for (const { context, timer } of tracks.values()) { clearInterval(timer); await context.close().catch(() => undefined); }
       tracks.clear();
     },
