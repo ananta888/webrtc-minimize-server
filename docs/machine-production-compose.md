@@ -80,6 +80,10 @@ Ein produktiver Maschinenrollout ist noch nicht erfolgt. Zusätzlich scheiterte
 die CI des vorherigen `bc1fce8` im Native-Packager-Racetest: ungeschützter
 Diagnoselesezugriff auf `assignment.State` und ein noch nicht genauer
 klassifizierter Signalisierungsfehler trotz empfangenem RTP. Der lokale Erfolg
-erklärt oder behebt diesen CI-Befund nicht. Neue Race-/Release-Evidence sowie
-das freigegebene Operatorprofil bleiben nötig; Fixture-Erfolge aktivieren
-keinen produktiven Hub-Trust.
+erklärt oder behebt diesen CI-Befund nicht. Die anschließende
+[ICE-Fixture-Reproduktion und Korrektur](native-packager-ice-test-ordering.md)
+weist den frühen Kandidatenfehler separat nach; wiederholte Container-Racetests
+und ein neuer isolierter Gesamtcheck sind bestanden. Neue CI-/Release-Evidence
+sowie das freigegebene Operatorprofil bleiben nötig; Fixture-Erfolge aktivieren
+keinen produktiven Hub-Trust. Unabhängige Laptop-Host-Verbindungsdeadlines bleiben
+offen und werden nicht als durch diese Teständerung behoben ausgegeben.
