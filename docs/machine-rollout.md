@@ -82,6 +82,9 @@ Sofortiger lokaler Stop erfolgt über `.chat.close()`, `.audio.close()`,
 Publisher können ihre eigenen Empfangsfreigaben in Analyse sofort widerrufen;
 künftige Schlüssel und SFU-Subscriptions werden entsprechend entzogen.
 Bereits beim berechtigten KI-Endpunkt entschlüsselte Inhalte sind nicht rückrufbar.
+Die [Freigabe-Bearbeitung](machine-consent-editor.md) übernimmt gültige aktuelle
+Quellen, zeigt Ablauf und bindet Rückmeldungen an die jeweilige Membership.
+Ein Wechsel der Ansicht oder Auswahl einer KI startet weder Capture noch Empfang.
 
 Der Operator kann beim nächsten kontrollierten Prozessstart einzelne Rechte
 aus der Obergrenze entfernen oder einen leeren Wert setzen. Das ist **kein
@@ -113,9 +116,14 @@ eigene Slots frei, auch bei Fehlern oder verspäteten Abschlüssen.
 Der Legacy-Aufruf `publish(text, mp4Base64)` verwendet denselben Lifecycle und
 publiziert weiterhin Avatar, Sprache und Text zusammen.
 
-Die Browser-Capability-Probe bleibt bis zur vollständigen Integrationsabnahme
-konservativ. Implementierte Draft-Ports dürfen nicht allein aufgrund ihrer Existenz
-als freigegebene Produktionsfähigkeiten beworben werden.
+Die alte Browserantwort `capabilities()` beschreibt weiterhin unverändert den
+initialen MP4-Vertrag. Die additive, rein lesende
+[`probe()`-Schnittstelle](machine-client-probe.md) prüft dagegen die installierten
+Ports und lokale Browser-/Codec-Eignung. Sie ist weder eine Freigabe noch ein
+Nachweis für empfangene Medien. Der öffentliche Serverwert `admissionEnabled`
+benennt davon getrennt die Betreiberaktivierung der Maschinenaufnahme.
+Implementierte Draft-Ports dürfen nicht allein aufgrund ihrer Existenz als
+freigegebene Produktionsfähigkeiten beworben werden.
 
 ### Agenteneigener Bildschirmton
 

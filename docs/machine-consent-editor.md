@@ -27,10 +27,19 @@ maßgebliche Empfangsgrenze, nicht diese Anzeige.
 Zehn gezielte Serviceprüfungen und der Angular-Template-/Typcheck sind bestanden:
 Quell-ID-Wechsel, Ablauf, lokaler Klick, exakter Receipt, Raum-/Peerwechsel,
 Disconnect, Zielverlust, ACK-Timeout und Destroy ohne automatische Verlängerung.
-Die reale Chromium-/Firefox-Dialogprüfung wurde um deaktivierte Quellen vor
-Capture und Bearbeitung vorhandener Freigaben ergänzt. Der gemeinsame Lauf mit
-PCM-Empfang, Chatantwort, bewegtem Bildschirm und drei Renewals sowie der
-isolierte Gesamtcheck stehen für diese Änderung noch aus.
+Die reale Chromium-/Firefox-Dialogprüfung am isolierten Stand `9f72368` ist
+bestanden (12,41 / 15,21 Sekunden). Sie prüft deaktivierte Quellen vor Capture,
+Bearbeitung vorhandener Freigaben, jeweils 16.000 entschlüsselte PCM-Samples
+mit Nutzsignal, eine korrelierte Chatantwort, tatsächlich dekodierte bewegte
+Bildschirmpixel, drei Renewals derselben Sitzung und anschließenden Rechteentzug.
+Required-SFrame war aktiv; keine Transformfehler wurden beobachtet. Die
+synthetisch vorautorisierte Fixture öffnet keine menschlichen Capture-Geräte.
+Der isolierte Gesamtcheck von `9f72368` ist ebenfalls mit Exit 0 abgeschlossen:
+683 Frontendtests, 763 erfolgreiche Nodeprüfungen, null Fehler und zwei explizite
+Node-Skips; Node-Laufzeit 276,229 Sekunden. Build, Go-Unit/Vet und statische
+Sicherheits-/Konfigurationsgates bestanden. Die 14 externen Infrastruktur-Gates
+und der optionale Container-Image-Scan bleiben ausdrücklich übersprungen.
+Der laufend ausgelieferte lokale Build blieb SHA-256-identisch.
 
 Dies ist eine Meet-seitige UI-Ergänzung. Sie aktiviert keinen produktiven
 Hub-Trust und ersetzt nicht die separate Hub-/Worker-/TURN-/Langzeitabnahme.
