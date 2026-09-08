@@ -514,6 +514,17 @@ Publisher-Annahme/Renewal-UI. Die Test-Control-Brücke bleibt eine ausdrücklich
 synthetische Policy-Fixture, keine öffentliche Approve-/Keycloak-Abnahme.
 Die Decoder-Factory bleibt in Produktion aus und die Agent-Version unverändert.
 
+Finale Verifikation auf `1f498fe`: isolierter `npm run check` terminal Exit 0,
+665 Frontendtests, 723 Node-PASS, zwei ausdrückliche Node-Skips, null Fehler
+(229,679 s Node). Beide echten Browser-zu-Decoder-Pfade bestanden einschließlich
+der verschärften End-of-run-Prüfung; Build, Go-unit/vet und statische Gates sind
+grün. Externe Infrastruktur bleibt im lokalen Lauf ausdrücklich übersprungen.
+Derselbe Binary-Snapshot bestand Audio/Video zusätzlich mit FFmpeg 6.1.1
+(1,92/3,46 s) und im netzlosen FFmpeg-8.0-Container (1,77/3,42 s).
+Der vorausgehende Race-Lauf einschließlich Audio-Negativmatrix war grün;
+der zehnsekündige Paketparser-Fuzzlauf verarbeitete 82.316 Eingaben ohne Fehler.
+Die ausgelieferte lokale Anwendung wurde dabei nicht neu gebaut oder verändert.
+
 ### Prepare, Renewal und Stop
 
 Der additive [Control-Vertrag](../contracts/trusted-decrypt/source-control.v1.schema.json)
