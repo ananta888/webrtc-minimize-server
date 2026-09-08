@@ -38,13 +38,22 @@ for (const [name, engine] of Object.entries({ chromium, firefox })) {
     const page = await context.newPage();
     await navigateFixture(page, `http://127.0.0.1:${app.server.address().port}/machine`,
       () => typeof window.anantaMachine?.probe === "function");
-    let requests = 0;
-    page.on("request", () => requests++);
     const result = await page.evaluate(() => {
-      const first = window.anantaMachine.probe(), second = window.anantaMachine.probe();
+      let forbidden = 0;
+      const restore = [];
+      // Scope effects to these two synchronous calls, not unrelated bootstrap
+      // requests already in flight when Angular exposes the machine endpoint.
+      for (const [owner, key] of [[window, "fetch"], [XMLHttpRequest.prototype, "open"],
+        [navigator.mediaDevices, "enumerateDevices"], [crypto.subtle, "generateKey"]]) {
+        const original = owner[key]; restore.push(() => { owner[key] = original; });
+        owner[key] = () => { forbidden++; throw Error("test_probe_effect_denied"); };
+      }
+      let first, second;
+      try { first = window.anantaMachine.probe(); second = window.anantaMachine.probe(); }
+      finally { for (const reset of restore.reverse()) reset(); }
       return { first, stable: JSON.stringify(first) === JSON.stringify(second),
         frozen: [first, first.ports, first.codecs].every(Object.isFrozen),
-        effects: window.__probeEffects, joined: window.anantaMachine.status().joined,
+        effects: window.__probeEffects, forbidden, joined: window.anantaMachine.status().joined,
         legacy: window.anantaMachine.capabilities() };
     });
     assert.deepEqual(result.first, { schema: "ananta.meet-client-probe.v1", client: "isolated-browser-v1",
@@ -53,7 +62,7 @@ for (const [name, engine] of Object.entries({ chromium, firefox })) {
       ports: { session: true, mp4: true, chat: true, audio: true, screen: true, screenAudio: true, speech: true, avatar: true } });
     assert.equal(result.stable, true); assert.equal(result.frozen, true); assert.equal(result.joined, false);
     assert.deepEqual(result.effects, { capture: 0, connection: 0, socket: 0 });
-    assert.equal(requests, 0);
+    assert.equal(result.forbidden, 0);
     assert.deepEqual(result.legacy, { schema: "ananta.meet-capabilities.v1", publication: "mp4-v1",
       sessionLease: "ananta.meet-session-lease.v1", chatEvents: false, audioSubscription: false, screenPublication: false });
     const denied = await page.evaluate(() => {
