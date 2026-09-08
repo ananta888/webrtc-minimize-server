@@ -121,3 +121,14 @@ After that correction Ananta's combined packaged matrix passed both cases in
 lifecycle), with two independent child replies, three fresh simultaneous audio
 observations, independent avatar revocation and zero remaining Worker containers.
 The isolated full companion check remains required before pushing this slice.
+
+The first isolated full check at `b0d6c10` passed 665 frontend tests, build and
+static/security gates, then failed the native packager's pre-existing key-only
+fixture at `source_transport_boundary_test.go:193`: no initial key announcement
+within three seconds, before its media-shape stimulus. Ten isolated repetitions
+reproduced two failures (41.671 s total). No source-media success or complete
+regression result follows from that run. Next preserve fixed connection/channel/
+receiver states and signaling error counters only on fixture failure, then
+isolate and correct the cause without widening the timeout or replaying keys.
+No SDP, candidate addresses, source IDs, keys or error strings may enter the
+diagnostic. This is test observation, not a production transport change.
