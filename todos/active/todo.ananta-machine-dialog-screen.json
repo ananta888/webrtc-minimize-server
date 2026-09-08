@@ -35,6 +35,7 @@
   "tasks": [
     {
       "id": "MDS-01", "title": "Versionierten Maschinen-Contract mit Ananta abstimmen",
+      "session_observation_plan": "2026-09-08 Quellabgleiche0e4bfa/Ananta3bca53be3: getrennter closed Observationbackchannel fuer Hub-Lifecycle, bisherige Authorizationwire unveraendert. docs/machine-session-observation.md: frischer Grant/exakte Membership/Nonce, nur eigene Publikationen und monotone Stop-/Replace-/Nooprevision; keine Medienzustellbehauptung oder Human-/Trust-/Policyerweiterung. Pure Projektion/Registryrevision getrennt von HTTP/Lease; Negativmatrix, isolierter Vollcheck und privater Hubbrowser, MDS-01 bleibt in_progress.",
       "status": "in_progress", "progress_percent": 55, "priority": "P0", "risk": "critical", "depends_on": [],
       "ananta_task_refs": ["MAP-02", "MAP-03", "MAP-06", "MAP-08"],
       "acceptance_criteria": [
