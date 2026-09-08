@@ -114,6 +114,18 @@ Pflicht. Gesperrte Clocks bilden getrennte Messfenster; lückenlose Ausgabe wird
 damit nicht behauptet. Race-/Vet und der gemeinsame Gesamtcheck werden im Todo
 mit ihrem jeweiligen konkreten Stand geführt, nicht aus Einzeltests abgeleitet.
 
+Der isolierte Gesamtcheck `npm run check` von `4b80eb1` bestand anschließend
+einschließlich des Nutzer-Pushs bis `e214973`: 665 Frontendtests, Build,
+statische/Security-Gates, Go Unit/Vet und 747 bestandene Node-Tests bei null
+Fehlern und zwei expliziten Node-Skips (Node-Stufe 320,716 Sekunden). Die
+gepaarten Chromium-/Firefox-Quellen erreichten dabei jeweils höchstens
+52,9 ms A/V-Abweichung; auch die neuen Zwei-Publisher-Browsertests bestanden.
+Vierzehn externe Infrastruktur-Gates sowie die opt-in Langzeitnachweise
+wurden ausdrücklich übersprungen und sind dadurch nicht verifiziert.
+Die beiden letzten Cleanup-/PCM-Validierungsänderungen sind in diesem Stand
+enthalten. Der ausgelieferte Frontend-Build blieb unverändert; kein Deployment
+und keine produktive Source-Freischaltung folgen aus diesem lokalen Nachweis.
+
 Noch erforderlich sind insbesondere die produktive Publisher-Clock-Zuordnung,
 Lazy-Decoder mit kontrollierter Keyframe-Anforderung, Gesamtprozesszulassung,
 gemeinsamer Programmtakt, gefenceter Encoder-/Writer-Anschluss und öffentliche
