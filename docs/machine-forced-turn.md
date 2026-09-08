@@ -87,3 +87,17 @@ Test-/CI-Erweiterung bestand anschließend mit Exit 0: 765 Frontendtests,
 (Node 346,856 s). Build, Go-Unit/Vet und statische Gates bestanden. Die 14
 externen Infrastruktur-Gates und der optionale Image-Scan blieben sichtbar
 übersprungen. Die neue externe CI-Stufe wird erst nach dem Push separat geprüft.
+
+## Erster externer CI-Lauf
+
+CI `34287511029`, TURN-Job `102266395034`, scheiterte am 9. September
+2026 bereits beim Erstellen des TLS-Proxy-Containers; beide Browser wurden
+noch nicht gestartet, TCP wurde anschließend übersprungen. Der identische
+Fixture-Aufbau mit `node:22-alpine` und Coturn startete lokal erfolgreich.
+Die Ursache ist damit noch nicht bestimmt. Eine geschlossene Fehlerprojektion
+ergänzt deshalb feste Docker-Operations-, Exit- und Ursachencodes. Sie gibt
+keine ursprünglichen Fehler, Argumente, Secrets oder Netzwerkadressen aus und
+ändert weder Containerlimits noch Transport-/Medienbudgets. Der Bridge behält
+seinen bisherigen maschinenlesbaren Fehlercode. Drei isolierte Diagnose-Tests
+und die 13 zugehörigen Proxy-/TURN-Checks bestanden; der externe Ursachenbefund
+und die Gesamtregression stehen noch aus. Dies ist Diagnose, kein Fixnachweis.

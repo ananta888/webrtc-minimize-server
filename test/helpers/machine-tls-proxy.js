@@ -1,18 +1,10 @@
 // Test-only opaque TLS forwarding on an owned internal network. Never bind a
 // public/host port, change production origin policy or mount host credentials.
-import { execFileSync } from "node:child_process";
+import { machineDockerCommand as docker } from "./machine-docker-command.js";
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import { privateMachineStun } from "./machine-stun-fixture.js";
 import { privateMachineTurn } from "./machine-turn-fixture.js";
-
-function docker(args) {
-  try {
-    return execFileSync("docker", args, { encoding: "utf8", timeout: 30000, maxBuffer: 16384, stdio: ["ignore", "pipe", "pipe"] }).trim();
-  } catch {
-    throw new Error("test_docker_command_failed");
-  }
-}
 
 export function privateMachineTlsProxy(lifetimeSeconds, run = docker, connectionLimit = 16, icePath = "direct") {
   if (!["direct", "turn-udp", "turn-tcp"].includes(icePath)) throw new Error("test_ice_path_invalid");
