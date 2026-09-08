@@ -61,6 +61,27 @@ unverändert. Commit-/Remote-CI-/Deployment-Evidence ist davon getrennt.
 
 ## Deployment
 
+Aktuell läuft `b72c779` nach vollständig erfolgreicher CI 34269707991
+(alle sieben Jobs, einschließlich Keycloak/TURN). Am 8. September 2026 wurde
+der saubere Mini-PC-Checkout exakt auf diese Revision vorgezogen. Der normale
+Drei-Dienste-Runner endete mit Exit 0; Native-Preflight, Runner-Smoke und ein
+unabhängiger externer Smoke bestanden. Alle drei laufenden Images tragen exakt
+diese Revision, mit RestartCount null. Geräteidentität unverändert, keine
+zurückgelassene Deploy-Sperre; Rücksprungsatz `rollback.XwEA35` / `image-set-v1`.
+
+Das öffentliche Release-Manifest und alle fünf Downloads stimmen in Bytes und
+SHA256 mit dem unabhängig attestierten CI-Satz überein. Verifiziert wurden
+Repository, exakter Main-Commit, Workflow und Ausschluss selbst gehosteter
+Runner. Die zuvor durch Folge-Pushes abgebrochenen CI-Läufe gelten nicht als
+bestanden; maßgeblich ist nur der vollständige Lauf 34269707991.
+Dieser Rollout enthält die zusammengeführten Ananta-Chat-/Avatar-Korrekturen
+und den inaktiven v4-Auftragsvertrag, **nicht** den anschließend lokal begonnenen
+Auftragsowner. Maschinenaufnahme bleibt `admissionEnabled: false`; Trust,
+Projektfreigaben, Schlüssel und Ananta-Repository wurden nicht geändert.
+Das ist Software-Deployment-Evidence, keine produktive Hub-/Worker-Abnahme.
+
+### Vorheriger Rollout
+
 Commit `8b72a46` bestand CI 34258722094 mit allen sieben Jobs einschließlich
 echtem Keycloak/TURN und wurde am 8. September 2026 auf dem Mini-PC deployed.
 Web-App, Native-Packager und Origin laufen mit exakt dieser Revision. Preflight,
