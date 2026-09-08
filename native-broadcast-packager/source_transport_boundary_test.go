@@ -15,7 +15,7 @@ import (
 func sourceKeyPair(t *testing.T, init *webrtc.DataChannelInit) (*client, *trustedSourceTransport, *webrtc.DataChannel, <-chan []byte, *sourceTestSink) {
 	t.Helper()
 	c, lease, now := trustedSourceFixture(t)
-	c.api, _ = createWebRTCAPI()
+	c.api = sourceKeyLoopbackAPI(t)
 	sink := &sourceTestSink{frames: make(chan []byte, 8)}
 	c.trustedSourceSinkFactory = func(trustedsframe.SourceLease, *trustedsframe.SourceReceiver) (trustedSourceSink, error) {
 		return sink, nil
@@ -85,6 +85,9 @@ func sourceKeyPair(t *testing.T, init *webrtc.DataChannelInit) (*client, *truste
 		t.Fatal(err)
 	}
 	awaitSource(t, gathered)
+	if !sourceKeyLoopbackCandidates(peer.LocalDescription().SDP) {
+		t.Fatal("key-only fixture requires gathered loopback UDP candidates")
+	}
 	if err = c.handleTrustedSourceSignal(sourcePeerMessage(lease, peer.LocalDescription().SDP)); err != nil {
 		t.Fatal(err)
 	}

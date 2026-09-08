@@ -145,3 +145,15 @@ deadline. Assert its gathered candidates are loopback; do not change production
 ICE, TURN, browser or media fixtures. Verify repeated actual handshakes and all
 negative channel/sequence cases before another isolated full check. This does
 not claim to repair arbitrary host-network ICE establishment.
+
+The key-only fixture now applies an explicit loopback UDP setting to the same
+production codec/interceptor API before creating either PeerConnection, with
+the existing 256-KiB SCTP receive limit. Its gathered SDP is checked locally for
+host-only IPv4 loopback candidates (never logged). The first fixture-only
+attempt omitted Pion's initialized logger factory and failed immediately; that
+configuration error was corrected explicitly, not attributed to transport.
+All twenty repeated five-case real handshakes and candidate-boundary checks
+then passed in 2.656 s, versus three reproduced host-interface startup failures
+in the two earlier ten-run batches. The complete packager Go suite passed in
+17.426 s plus 0.234 s for the SFrame package. Race/vet and isolated full checks
+follow; no test deadline, production network or cryptographic policy changed.
