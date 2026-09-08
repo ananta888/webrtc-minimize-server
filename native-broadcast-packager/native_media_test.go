@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -11,16 +13,36 @@ import (
 )
 
 func TestNativeMediaReceivesBrowserRTP(t *testing.T) {
+	testNativeMediaReceivesBrowserRTP(t, false)
+}
+
+func TestNativeMediaReceivesEarlyICEBeforeAnswer(t *testing.T) {
+	testNativeMediaReceivesBrowserRTP(t, true)
+}
+
+func testNativeMediaReceivesBrowserRTP(t *testing.T, earlyICE bool) {
 	api, err := createWebRTCAPI()
 	if err != nil {
 		t.Fatal(err)
 	}
 	outgoing := make(chan map[string]any, 64)
+	candidateSent := make(chan struct{})
+	var candidateOnce sync.Once
 	packager := &client{api: api}
 	packager.sendOverride = func(value any) error {
 		message, ok := value.(map[string]any)
 		if ok {
+			if _, answer := message["description"]; earlyICE && answer {
+				select {
+				case <-candidateSent:
+				case <-time.After(2 * time.Second):
+					return errors.New("test early ICE ordering unavailable")
+				}
+			}
 			outgoing <- message
+			if _, candidate := message["candidate"]; candidate {
+				candidateOnce.Do(func() { close(candidateSent) })
+			}
 		}
 		return nil
 	}
@@ -57,18 +79,21 @@ func TestNativeMediaReceivesBrowserRTP(t *testing.T) {
 			}
 		}
 	})
+	var signalingFailure, earlyCandidates atomic.Uint32
 	browser.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate == nil {
 			return
 		}
 		raw, marshalErr := json.Marshal(candidate.ToJSON())
 		if marshalErr != nil {
+			signalingFailure.CompareAndSwap(0, 4)
 			return
 		}
-		_ = media.handle(assignmentSignalForTest(assignment, nil, raw))
+		if err := media.handle(assignmentSignalForTest(assignment, nil, raw)); err != nil {
+			signalingFailure.CompareAndSwap(0, 5)
+		}
 	})
 
-	var signalingFailed atomic.Bool
 	stopSignaling := make(chan struct{})
 	signalingDone := make(chan struct{})
 	go func() {
@@ -85,12 +110,17 @@ func TestNativeMediaReceivesBrowserRTP(t *testing.T) {
 			}
 			if description, ok := message["description"].(*webrtc.SessionDescription); ok && description != nil {
 				if applyErr := browser.SetRemoteDescription(*description); applyErr != nil {
-					signalingFailed.Store(true)
+					signalingFailure.CompareAndSwap(0, 1)
 				}
 			}
 			if candidate, ok := message["candidate"].(webrtc.ICECandidateInit); ok && candidate.Candidate != "" {
+				var stage uint32 = 3
+				if browser.RemoteDescription() == nil {
+					earlyCandidates.Add(1)
+					stage = 2
+				}
 				if applyErr := browser.AddICECandidate(candidate); applyErr != nil {
-					signalingFailed.Store(true)
+					signalingFailure.CompareAndSwap(0, stage)
 				}
 			}
 		}
@@ -122,9 +152,15 @@ func TestNativeMediaReceivesBrowserRTP(t *testing.T) {
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	if signalingFailed.Load() || media.packets.Load() == 0 || media.bytes.Load() == 0 {
-		t.Fatalf("native ingress did not receive RTP: state=%s packets=%d bytes=%d signalingFailed=%t",
-			assignment.State, media.packets.Load(), media.bytes.Load(), signalingFailed.Load())
+	if earlyICE && earlyCandidates.Load() == 0 {
+		t.Fatal("test did not exercise early ICE before remote answer")
+	}
+	if signalingFailure.Load() != 0 || media.packets.Load() == 0 || media.bytes.Load() == 0 {
+		packager.assignmentMu.Lock()
+		state := assignment.State
+		packager.assignmentMu.Unlock()
+		t.Fatalf("native ingress failed: state=%s packets=%d bytes=%d signalStage=%d earlyCandidates=%d",
+			state, media.packets.Load(), media.bytes.Load(), signalingFailure.Load(), earlyCandidates.Load())
 	}
 }
 
