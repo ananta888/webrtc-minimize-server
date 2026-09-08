@@ -77,3 +77,10 @@ corrected real gates passed in 41.83 s and 41.27 s, both with zero connection
 drops; the second no longer installs the temporary global HTTP diagnostic
 wrapper. Full isolated regression follows before
 push. No unrelated intermittent single-Worker failure is claimed fixed.
+
+The isolated complete check at `e7c2344` (including upstream `5e002cf`) has
+now passed: 665 frontend tests, build/security/Go unit+vet, 752 Node tests,
+zero failures and two explicit Node skips, 241.028 s for the Node stage.
+Fourteen opt-in external infrastructure gates remain skipped, not verified.
+The check used the separate local Go 1.24.13 / FFmpeg 8.0.1 tooling profile;
+no serving build or service was replaced.
