@@ -204,3 +204,18 @@ temporären Testnutzer mehr. Private Wiedergabe, Visibility-Wechsel, Rücküberg
 Übernahme und Cross-Host-Auslieferung waren nicht Teil dieses Szenarios.
 Der frühere Lauf mit `ERR_NETWORK_CHANGED` bleibt ein fehlgeschlagener Lauf;
 der spätere Erfolg erklärt nicht die Ursache jenes Netzwerkfehlers.
+
+Am 8. September 2026 wurde `ba67caa` nach sieben erfolgreichen CI-Jobs
+(34253165644) auf dieselben drei Mini-PC-Dienste ausgerollt. Die Instanz war
+vor Start leer. Der neue Maschinen-Selektor blieb `disabled disabled`; der
+Runner bestand Native-Preflight, Aktivierung und externen Smoke. Unabhängig
+geprüft wurden alle drei laufenden Image-Revisionen, unveränderte Agent-
+Identität, vorhandener gemeinsamer Rücksprungsnapshot und das Entfernen von
+Operation-Lock und Preflightcontainer. Ein zweiter externer Smoke bestätigte
+Control Plane und Broadcast als bereit, Maschinenaufnahme weiterhin aus.
+Das öffentliche Release-Manifest und alle fünf Binärdownloads entsprachen
+byte-/SHA-256-genau dem separat gegen GitHub-Attestation, Workflow und
+Quellrevision geprüften CI-Artefaktsatz. Dies ist kein erneuter Rollback-Drill
+oder produktiver Ananta-Hub-/Medien-/Langzeitnachweis. Hub-Trust, Projektpolicy,
+Schlüssel und das Ananta-Repository wurden nicht geändert. Der später lokal
+geprüfte Raw-Encoder-Baustein `e6eea5f` ist nicht Teil dieses Deployments.

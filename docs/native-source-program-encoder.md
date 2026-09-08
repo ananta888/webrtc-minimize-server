@@ -77,7 +77,15 @@ Qualitäts-, Echtwelt-Bandbreiten- oder mehrstündige Lastgarantie.
 Die Inventory-Rename-/Delete-Fälle scheiterten mit der ursprünglichen
 Fehlerbehandlung reproduzierbar; die korrigierte Matrix prüft zugleich, dass
 andere Dateifehler und fehlende referenzierte Objekte nicht toleriert werden.
-Der gemeinsame Gesamtcheck mit den neuen echten Node-Gates steht noch aus.
+Der isolierte Gesamtcheck von `e6eea5f` ist mit Exit 0 abgeschlossen:
+698 Frontendtests und 776 Node-Prüfungen bestanden, keine Fehler, zwei explizite
+Node-Skips; Node-Laufzeit 321,609 Sekunden. Die neuen tatsächlichen Encoder-Gates
+bestanden in 4,382 und 26,112 Sekunden. Build, Go-Unit/Vet, Todo- und statische
+Sicherheits-/Konfigurationsgates bestanden. Vierzehn externe Infrastruktur-Gates
+und der optionale Image-Scan bleiben sichtbar übersprungen. Der lokale Serving-
+Build blieb unverändert. Der Raw-Encoder ist noch nicht deployed oder als
+Produktionsfactory aktiviert; der getrennte Software-Rollout von `ba67caa`
+enthält ihn nicht.
 
 Danach bleiben der produktive Publisher-Clock-/Decoder-/Mixer-Owner,
 Generationswechsel mit definierter Discontinuity, Gesamtprozesszulassung und

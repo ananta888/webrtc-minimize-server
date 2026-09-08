@@ -87,3 +87,10 @@ und ein neuer isolierter Gesamtcheck sind bestanden. Neue CI-/Release-Evidence
 sowie das freigegebene Operatorprofil bleiben nötig; Fixture-Erfolge aktivieren
 keinen produktiven Hub-Trust. Unabhängige Laptop-Host-Verbindungsdeadlines bleiben
 offen und werden nicht als durch diese Teständerung behoben ausgegeben.
+
+Am 8. September 2026 bestand anschließend CI 34253165644 für `ba67caa` alle
+sieben Jobs. Der Drei-Dienste-Software-Rollout auf dem Mini-PC und ein separater
+externer Smoke bestanden. Die neue Auswahl wurde dabei tatsächlich ausgeführt
+und blieb `disabled disabled`; `/api/machine/capabilities` meldet weiterhin
+`admissionEnabled: false`. Keine Hub-/Projektpolicy oder Schlüssel wurden
+geändert. Dies deployt die Implementierung, aktiviert aber keine KI-Teilnahme.

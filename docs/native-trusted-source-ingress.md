@@ -818,6 +818,12 @@ Konvertierung und getrenntem Mixer-Programmtime-Port ist in
 dokumentiert. Die oben aufgeführten früheren Fehlläufe bleiben historische
 Evidenz; ein bestandener neuer Teilpfad aktiviert nicht die Produktionsfactory.
 
+Der anschließende [Raw-Programmencoder mit begrenzter HLS-Ausgabe](native-source-program-encoder.md)
+ist als interner Baustein implementiert und separat mit realer Decodierung,
+rollierenden Segmentfenstern und Widerruf geprüft. Der durchgängige produktive
+Assignment-/Quellenowner und seine Generationswechsel fehlen weiterhin;
+die vorhandenen Einzelbausteine aktivieren deshalb noch keine Quellenannahme.
+
 Der additive [Control-Vertrag](../contracts/trusted-decrypt/source-control.v1.schema.json)
 trennt `trusted-source-prepare`, `trusted-source-stop` und
 `trusted-source-status`. Keines dieser Nachrichtenformate enthält Frame-

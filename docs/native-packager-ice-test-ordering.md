@@ -62,6 +62,12 @@ Ananta-Dialogfälle bestanden (Chromium 15,561 / Firefox 16,833 Sekunden): je
 quelle, drei Renewals und aktiver Rechteentzug. Keine menschliche Capture-
 Freigabe oder produktive Hub-/Projektpolicy wurde dadurch erzeugt.
 
-Der Serving-Build blieb SHA-256-identisch. Neue CI und produktiver Rollout stehen
-noch aus; das operatorseitig freigegebene öffentliche Hub-Trustprofil bleibt
-eine separate Voraussetzung. MDS-09 ist nicht abgeschlossen.
+Der lokale Serving-Build blieb SHA-256-identisch. Die nachfolgende CI von
+`ba67caa` (34253165644) bestand alle sieben Jobs einschließlich Native-Race und
+Live-Keycloak/TURN. Dieser Stand wurde am 8. September auf dem Mini-PC für
+Web-App, Native-Packager und Origin deployed; der externe Smoke bestand,
+die Agent-Identität blieb unverändert. Das öffentliche Release-Manifest und
+alle fünf Downloads entsprechen dem unabhängig attestierten CI-Artefaktsatz.
+Die produktive Maschinenaufnahme bleibt aus; das operatorseitig freigegebene
+öffentliche Hub-Trustprofil ist weiterhin erforderlich. Weder der Hostnetz-
+Deadlinebefund noch MDS-09 sind damit abgeschlossen.
