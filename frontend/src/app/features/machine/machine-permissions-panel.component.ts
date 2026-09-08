@@ -1,12 +1,14 @@
 import { Component, effect, inject, signal } from "@angular/core";
 import { DatePipe } from "@angular/common";
 import { MachineReceiveControlsService } from "./machine-receive-controls.service";
+import { MachineAdmissionStatusComponent } from "./machine-admission-status.component";
 
 @Component({
-  selector: "app-machine-permissions-panel", standalone: true, imports: [DatePipe],
+  selector: "app-machine-permissions-panel", standalone: true, imports: [DatePipe, MachineAdmissionStatusComponent],
   providers: [MachineReceiveControlsService],
   template: `<section aria-labelledby="machine-receive-heading">
     <h2 id="machine-receive-heading">Ananta · Freigaben meiner Quellen</h2>
+    @defer (on immediate) { <app-machine-admission-status /> }
     <p>Ananta verarbeitet freigegebene Inhalte als entschlüsselnder KI-Endpunkt, nicht als blinder Relay.
       Die Freigabe gilt nur für deine eigenen aktuellen Quellen. Aufnahme, Speicherung und externe Modellanbieter sind damit nicht erlaubt.</p>
     @for (peer of controls.activities(); track peer.id) {

@@ -1,5 +1,33 @@
 # Additiver Ananta-Maschinenclient
 
+## Aktueller Dialogpfad (v2)
+
+Der ursprüngliche MP4-Einstieg weiter unten ist nicht mehr der gesamte
+Funktionsumfang. Der isolierte `/machine`-Client stellt inzwischen getrennte,
+autorisierungsgebundene Ports bereit:
+
+| Funktion | Meet-Port / Grenze |
+|---|---|
+| Audio empfangen | `.audio`: ausschließlich aktuell freigegebene fremde Mikrofon-/Bildschirmtonpublikationen; begrenzte PCM-Chunks mit ACK, kein Klartext-Audio am Signaling-Server |
+| Chat lesen und antworten | `.chat`: freigegebene neue Beiträge, begrenzter Cursor/ACK, korrelierte Antworten und getrennte Lese-/Senderechte |
+| Agenteneigener Bildschirm | `.screen`: gebundene synthetische Bildquelle; `.screenAudio` als separat erlaubter und stoppbarer Ton; kein menschliches Desktop-Capture |
+| Avatar und Sprache | `.avatar` und `.speech`: unabhängige synthetische Quellen; `.media` für begrenzte MP4-Clips |
+| Sitzungsverlängerung | `.renew`: frischer Hub-Grant, serverseitige Rechteprüfung, gleiche Session mit neuer Lease-Generation; maximal zwei Stunden Gesamtzeit |
+| Fähigkeiten erkennen | `.probe()`: installierte Ports und lokale Browser-Eignung, keine Autorisierung oder Laufzeitbestätigung |
+| Menschliche Kontrolle | Analyse → Ananta: [Betreiberstatus](machine-admission-status.md), [eigene Quellenfreigaben](machine-consent-editor.md) und getrennte Remote-Track-Anzeige |
+
+Der [Rollout-Leitfaden](machine-rollout.md) beschreibt Aufrufe, Grenzen und
+separate Stops; [Sitzungs-Leases](ananta-machine-session-lease.md) beschreiben
+Renewal und Fencing. Die Meet-seitige Chromium-/Firefox-Dialogfixture prüft
+Audio, Chat, bewegte Bildschirmpixel und drei Renewals gemeinsam. Das ersetzt
+weder eine aktuelle Hub-/Worker-/Netzwerkabnahme noch produktiven Trust.
+Die Implementierung ist kein pauschales Recht zum Zuhören: Betreiber-Trust,
+Ananta-Projektauftrag und aktuelle Freigaben betroffener Publisher bleiben
+getrennte Voraussetzungen. Änderungen im Ananta-Repository gehören nicht zu
+diesem Meet-Implementierungsauftrag.
+
+## Ursprünglicher kompatibler MP4-Einstieg (v1)
+
 Standardmäßig ist die Maschinenaufnahme deaktiviert. Human-OIDC, P-256-
 Gerätebeweis und menschlicher Capture-Klick bleiben unverändert.
 
