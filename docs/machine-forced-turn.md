@@ -33,6 +33,13 @@ TURN-Listener, nicht TURN/TLS oder einen TCP-Mediencodec. Der jeweils andere
 Client-Listener ist aus. Cleanup entfernt genau die eigenen Container und das
 eigene Netz, einschließlich fehlgeschlagener Setups.
 
+Die Fixture lässt Docker zunächst einen freien privaten Adresspool wählen und
+reserviert ihn vor dem Containerstart erneut als explizites internes Subnetz.
+Dabei wird nur das eigene, noch leere UUID-Netz entfernt. Ein konkurrierend
+belegter Pool oder eine abweichende IPAM-Rückmeldung beendet den Aufbau; es gibt
+keinen Adressscan, kein Ausweichen auf Hostnetzwerke und keine geratenen IPs.
+Das berücksichtigt die [statische-IP-Prüfung in Docker 28](https://github.com/moby/moby/blob/v28.0.4/api/types/network/endpoint.go#L105-L125).
+
 Der private Browseradapter übernimmt ausschließlich die REST-Credentials aus
 der **tatsächlich erfolgreichen, autorisierten Session-Antwort** desselben
 Browsers. Er erzeugt keine zusätzliche Session oder HTTP-Anfrage und verändert

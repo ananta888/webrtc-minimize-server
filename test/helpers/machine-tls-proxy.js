@@ -33,6 +33,18 @@ export function privateMachineTlsProxy(lifetimeSeconds, run = docker, connection
     // network. Reject unfamiliar IPv6/small subnet layouts rather than guess.
     if (!info?.Internal || isIP(gateway) !== 4 || !/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(gateway)
       || !gateway.endsWith(".1") || !/\/(1[6-9]|2[0-9])$/.test(info.IPAM.Config[0].Subnet)) throw new Error("test_private_proxy_network_invalid");
+    // Docker 28 permits --ip only in an explicitly configured subnet. Let Docker
+    // select a free private pool first, then re-reserve exactly that pool. The
+    // temporary network is still empty and owned by this fixture. A competing
+    // allocation fails creation; never scan, retry with guessed IPs or relax ICE.
+    const subnet = info.IPAM.Config[0].Subnet;
+    run(["network", "rm", network]); networkCreated = false;
+    run(["network", "create", "--internal", "--subnet", subnet, "--gateway", gateway, network]); networkCreated = true;
+    const reserved = JSON.parse(run(["network", "inspect", network]))[0];
+    if (!reserved?.Internal || reserved.IPAM?.Config?.length !== 1
+      || reserved.IPAM.Config[0].Subnet !== subnet || reserved.IPAM.Config[0].Gateway !== gateway) {
+      throw new Error("test_private_proxy_network_invalid");
+    }
     const originHost = gateway.slice(0, -1) + "2";
     const iceScope = { network, address: gateway.slice(0, -1) + "4", lifetimeSeconds };
     stun = icePath === "direct" ? privateMachineStun(iceScope, run)

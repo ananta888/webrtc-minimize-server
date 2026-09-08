@@ -14,6 +14,7 @@ test("fixture Docker runner preserves bounded execution and trimmed successful o
 test("Docker failures expose only fixed operation, bounded status and classified reason", () => {
   const cases = [
     ["No such image", "image_unavailable"], ["no matching manifest", "image_platform"],
+    ["user specified IP address is supported only when connecting to networks with user configured subnets", "network_subnet"],
     ["Address already in use", "network_address"], ["NanoCPUs unsupported", "cpu_limit"],
     ["operation not permitted", "permission"], ["container name is already in use", "container_conflict"],
     ["novel error", "unknown"],

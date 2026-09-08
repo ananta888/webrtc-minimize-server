@@ -142,7 +142,7 @@ try {
     } else throw new Error("unknown_bridge_command");
   }
 } catch (error) {
-  const dockerFailure = /^test_docker_command_failed:(create|start|inspect|image|network|rm|logs|unknown):(\d{1,3}|unknown):(image_unavailable|image_platform|network_address|cpu_limit|permission|container_conflict|deadline|unknown)$/.test(error.message);
+  const dockerFailure = /^test_docker_command_failed:(create|start|inspect|image|network|rm|logs|unknown):(\d{1,3}|unknown):(image_unavailable|image_platform|network_subnet|network_address|cpu_limit|permission|container_conflict|deadline|unknown)$/.test(error.message);
   const code = ["test_public_dir_invalid", "screen_not_moving", "avatar_not_moving", "test_private_frame_or_stop_failed", "test_tls_proxy_not_ready",
     "test_receiver_key_delay_invalid", "test_receiver_key_delay_not_observed",
     "test_navigation_network_changed", "test_navigation_deadline",

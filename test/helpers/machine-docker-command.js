@@ -14,6 +14,7 @@ export function machineDockerCommand(args, execute = execFileSync) {
     let reason = "unknown";
     if (/No such image|Unable to find image|pull access denied/i.test(stderr)) reason = "image_unavailable";
     else if (/no matching manifest|does not match the specified platform/i.test(stderr)) reason = "image_platform";
+    else if (/user specified IP address.*user configured subnets/i.test(stderr)) reason = "network_subnet";
     else if (/Address already in use|address already allocated|IP address.*not.*subnet/i.test(stderr)) reason = "network_address";
     else if (/CPU.*(range|available)|NanoCPUs|CFS scheduler/i.test(stderr)) reason = "cpu_limit";
     else if (/permission denied|operation not permitted/i.test(stderr)) reason = "permission";

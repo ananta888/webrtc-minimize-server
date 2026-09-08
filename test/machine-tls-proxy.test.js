@@ -2,6 +2,48 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { privateMachineTlsProxy } from "./helpers/machine-tls-proxy.js";
 
+test("proxy reserves exactly Docker's chosen pool before any fixed-address container", () => {
+  const f = fixture(), proxy = privateMachineTlsProxy(180, f.run);
+  try {
+    const netCalls = f.calls.filter(args => args[0] === "network");
+    assert.deepEqual(netCalls.map(args => args[1]), ["create", "inspect", "rm", "create", "inspect"]);
+    const name = netCalls[0].at(-1);
+    assert.deepEqual(netCalls[3], ["network", "create", "--internal", "--subnet", "172.30.0.0/16", "--gateway", "172.30.0.1", name]);
+    assert.equal(f.calls.some(args => args[0] === "create"), false);
+    proxy.start(32123);
+  } finally { proxy.close(); }
+});
+
+test("competing pool allocation fails without scanning, retrying or starting a container", () => {
+  const f = fixture();
+  assert.throws(() => privateMachineTlsProxy(180, args => {
+    const result = f.run(args);
+    if (args.includes("--subnet")) throw new Error("synthetic_pool_collision");
+    return result;
+  }), /synthetic_pool_collision/);
+  assert.equal(f.calls.filter(args => args[0] === "network" && args[1] === "create").length, 2);
+  assert.equal(f.calls.filter(args => args[0] === "network" && args[1] === "rm").length, 1);
+  assert.equal(f.calls.some(args => args[0] === "create"), false);
+});
+
+test("changed reserved IPAM or isolation is rejected and only the owned network is cleaned", () => {
+  for (const changed of [ { Internal: false }, { IPAM: { Config: [] } },
+    { IPAM: { Config: [{ Gateway: "172.31.0.1", Subnet: "172.30.0.0/16" }] } },
+    { IPAM: { Config: [{ Gateway: "172.30.0.1", Subnet: "172.31.0.0/16" }] } } ]) {
+    const f = fixture(); let inspections = 0;
+    assert.throws(() => privateMachineTlsProxy(180, args => {
+      const result = f.run(args);
+      if (args[0] === "network" && args[1] === "inspect" && ++inspections === 2) {
+        return JSON.stringify([{ ...JSON.parse(result)[0], ...changed }]);
+      }
+      return result;
+    }), /test_private_proxy_network_invalid/);
+    const removals = f.calls.filter(args => args[0] === "network" && args[1] === "rm");
+    assert.equal(removals.length, 2); assert.equal(removals[0][2], removals[1][2]);
+    assert.equal(f.calls.some(args => args[0] === "create"), false);
+  }
+});
+
 function fixture(change = {}) {
   const calls = [];
   const run = args => {
@@ -29,7 +71,7 @@ test("private proxy preserves canonical TLS without host networking or ports", (
   assert.throws(() => proxy.start(32123), /start_invalid/);
   proxy.close(); proxy.close();
   assert.equal(f.calls.filter(args => args[0] === "rm").length, 2);
-  assert.equal(f.calls.filter(args => args[0] === "network" && args[1] === "rm").length, 1);
+  assert.equal(f.calls.filter(args => args[0] === "network" && args[1] === "rm").length, 2);
 });
 
 test("two packaged Workers use an explicit bounded proxy profile without changing the default", () => {
@@ -92,5 +134,5 @@ test("explicit TURN proxy composes only its own bounded relay and rejects unknow
     assert.ok(!f.calls.some(args => args.includes("--stun-only")));
   } finally { proxy.close(); }
   assert.equal(f.calls.filter(args => args[0] === "rm").length, 2);
-  assert.equal(f.calls.filter(args => args[0] === "network" && args[1] === "rm").length, 1);
+  assert.equal(f.calls.filter(args => args[0] === "network" && args[1] === "rm").length, 2);
 });
