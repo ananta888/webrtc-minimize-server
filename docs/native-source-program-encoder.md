@@ -87,7 +87,13 @@ Build blieb unverändert. Der Raw-Encoder ist noch nicht deployed oder als
 Produktionsfactory aktiviert; der getrennte Software-Rollout von `ba67caa`
 enthält ihn nicht.
 
-Danach bleiben der produktive Publisher-Clock-/Decoder-/Mixer-Owner,
+Die interne [Programm-Generation](native-source-program-generation.md)
+komponiert inzwischen Publisher-Uhren, Decoderbudget, Mixer, Takt und Encoder
+mit exakter Quellenbindung. Der gemeinsame Echtcodec-Gate deckte außerdem eine
+Starvation der zukünftigen Videobilder auf; die begrenzte Queue bewahrt nun das
+nächste fällige Bild. Der neue Baustein ersetzt noch keinen Produktionsadapter.
+
+Danach bleiben der produktive Anschluss des Publisher-Clock-/Decoder-/Mixer-Owners,
 Generationswechsel mit definierter Discontinuity, Gesamtprozesszulassung und
 der öffentliche Approve-/Renew-Pfad samt durchgängiger Mehrpublisherabnahme
 verbindlich. Die Produktionsfactory bleibt aus; diese Dateien aktivieren
