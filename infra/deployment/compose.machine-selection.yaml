@@ -1,0 +1,13 @@
+# Read-only deployment input resolution. Never used to start a service.
+# Docker Compose owns .env interpolation and process-environment precedence.
+services: {}
+x-ananta-machine-deployment:
+  mode: ${MACHINE_DEPLOYMENT_MODE:-disabled}
+  issuer: ${MACHINE_HUB_ISSUER:-}
+  publicKeyFile: ${MACHINE_HUB_PUBLIC_KEY_FILE:-}
+  profileFile: ${MACHINE_HUB_TRUST_PROFILE_JSON_FILE:-}
+  inlineKey: ${MACHINE_HUB_PUBLIC_KEY:-}
+  inlineProfile: ${MACHINE_HUB_TRUST_PROFILE_JSON:-}
+  capabilities: ${MACHINE_ALLOWED_CAPABILITIES-chat.read,chat.send}
+  authMode: ${AUTH_MODE:-required}
+  mediaE2eeMode: ${MEDIA_E2EE_MODE:-required}

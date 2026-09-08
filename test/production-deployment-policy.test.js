@@ -64,6 +64,7 @@ test("production deploy anchors unique local rollback tags before a same-revisio
   mkdirSync(bin);
   writeFileSync(path.join(bin, "node"), `#!/bin/sh
 case "$*" in
+  *machine-deployment-config.mjs*) printf 'disabled disabled\\n' ;;
   *native-broadcast-deployment-enabled.mjs*) printf 'disabled\\n' ;;
 esac
 exit 0
@@ -126,6 +127,7 @@ test("broadcast signing-key rotation is confirmed, atomic and removes the previo
 
   writeFileSync(path.join(bin, "node"), `#!/bin/sh
 case "$*" in
+  *machine-deployment-config.mjs*) printf 'disabled disabled\\n'; exit 0 ;;
   *ensure-broadcast-signing-key.mjs*) exec ${process.execPath} "$@" ;;
   *native-broadcast-deployment-enabled.mjs*) printf 'disabled\\n'; exit 0 ;;
   *production-smoke-gate.mjs*) exit 0 ;;

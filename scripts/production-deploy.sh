@@ -13,6 +13,27 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$script_dir/deployment-image-set.sh"
 
 cd "$project_dir"
+case "$action" in deploy|rollback|rotate-broadcast-key|smoke) ;;
+  *) echo 'Invalid deployment action' >&2; exit 2 ;;
+esac
+# Read-only validation precedes locks, signing keys, snapshots and Docker writes.
+machine_selection=$(node "$script_dir/machine-deployment-config.mjs")
+case "$machine_selection" in
+  'disabled disabled'|'legacy enabled'|'legacy disabled'|'profile enabled'|'profile disabled') ;;
+  *) echo 'Invalid machine deployment selection' >&2; exit 2 ;;
+esac
+set -- $machine_selection
+machine_mode=$1
+machine_admission=$2
+machine_override=
+case "$machine_mode" in
+  legacy) machine_override=infra/deployment/compose.machine.yaml ;;
+  profile) machine_override=infra/deployment/compose.machine-profile.yaml ;;
+esac
+if [ -n "$machine_override" ]; then
+  [ -f "$machine_override" ] || { echo 'Machine deployment override is unavailable' >&2; exit 2; }
+  compose_files="$compose_files -f $machine_override"
+fi
 mkdir -p "$state_dir"
 case "$action" in deploy|rollback|rotate-broadcast-key)
   operation_lock="$state_dir/operation.lock"
@@ -27,7 +48,7 @@ native_broadcast=$(node scripts/native-broadcast-deployment-enabled.mjs)
 smoke() {
   attempts=0
   while [ "$attempts" -lt 12 ]; do
-    if PRODUCTION_ORIGIN="$production_origin" EXPECT_NATIVE_BROADCAST="$native_broadcast" \
+    if PRODUCTION_ORIGIN="$production_origin" EXPECT_NATIVE_BROADCAST="$native_broadcast" EXPECT_MACHINE_ADMISSION="$machine_admission" \
       node scripts/production-smoke-gate.mjs; then
       return 0
     fi

@@ -40,6 +40,13 @@ if (expectedNative && !["enabled", "disabled"].includes(expectedNative)) {
   throw new Error("EXPECT_NATIVE_BROADCAST must be enabled or disabled");
 }
 const nativeEnabled = config.nativePackagers.publicationEnabled;
+const expectedMachine = String(process.env.EXPECT_MACHINE_ADMISSION || "");
+if (expectedMachine) {
+  if (!["enabled", "disabled"].includes(expectedMachine)) throw new Error("invalid expected machine admission");
+  const machine = await (await get("/api/machine/capabilities", "application/json")).json();
+  if (machine.schema !== "ananta.meet-capabilities.v1" || typeof machine.admissionEnabled !== "boolean"
+    || machine.admissionEnabled !== (expectedMachine === "enabled")) throw new Error("machine admission deployment mismatch");
+}
 if (expectedNative && (expectedNative === "enabled") !== nativeEnabled) {
   throw new Error("native broadcast deployment does not match its expected state");
 }
@@ -62,4 +69,5 @@ process.stdout.write(JSON.stringify({
   broadcast: readiness.broadcast,
   broadcastWhipEnabled: config.broadcast.whip.enabled,
   broadcastNativeEnabled: nativeEnabled,
+  ...(expectedMachine ? { machineAdmissionEnabled: expectedMachine === "enabled" } : {}),
 }) + "\n");

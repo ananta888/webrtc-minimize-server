@@ -48,6 +48,11 @@ Separat erforderlich und nicht durch Planfelder ersetzbar:
 
 ## Expliziter Trust und Capability-Obergrenze
 
+Der [Produktions-Runner](machine-production-compose.md) unterstützt jetzt die
+explizite Auswahl `MACHINE_DEPLOYMENT_MODE=disabled|legacy|profile`. Er validiert
+die von Compose aufgelösten Werte vor Deployment-Schreibzugriffen und übernimmt
+denselben Public-Trust-Override auch beim Image-Rollback. Standard bleibt aus.
+
 Ohne Hub-Key und Issuer bleibt Maschinenaufnahme deaktiviert. Der optionale
 Compose-Override `infra/deployment/compose.machine.yaml` mountet ausschließlich
 den Public Key als read-only Secret. Er wird **nicht automatisch eingebunden**.

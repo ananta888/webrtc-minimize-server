@@ -1,0 +1,12 @@
+# Explicit operator trust only. No Hub private keys and no implicit activation.
+services:
+  webrtc:
+    environment:
+      MACHINE_HUB_TRUST_PROFILE_JSON_FILE: /run/secrets/machine-hub-trust-profile
+      MACHINE_ALLOWED_CAPABILITIES: ${MACHINE_ALLOWED_CAPABILITIES-chat.read,chat.send}
+    secrets:
+      - source: machine-hub-trust-profile
+        target: machine-hub-trust-profile
+secrets:
+  machine-hub-trust-profile:
+    file: ${MACHINE_HUB_TRUST_PROFILE_JSON_FILE:?Public Hub trust profile required}

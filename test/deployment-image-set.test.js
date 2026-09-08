@@ -16,6 +16,7 @@ function fixture(t) {
   script("git", `case "$1" in status) ;; rev-parse) echo ${revision} ;; show) echo 2026-09-06T00:00:00Z ;; *) exit 2 ;; esac`);
   script("sleep", "exit 0");
   script("node", `case "$*" in
+    *machine-deployment-config.mjs*) echo "\${IMAGE_SET_TEST_MACHINE:-disabled disabled}" ;;
     *native-broadcast-deployment-enabled.mjs*) echo enabled ;;
     *production-smoke-gate.mjs*)
       echo smoke >> "$IMAGE_SET_TEST_ROOT/log"
@@ -80,6 +81,31 @@ test("complete image-set update builds and preflights before switching, then res
   assert.equal(read("origin-active").trim(), snapshot[3]);
   assert.doesNotMatch(read("log"), /(?:^|\n)build --pull|volume rm|down |enroll|\bprune\b/);
   assert.ok(!fs.existsSync(path.join(root,".deploy/operation.lock")));
+});
+
+for (const mode of ["legacy", "profile"]) test(`${mode} trust selection stays present through deployment and rollback`, t => {
+  const { root, run, read } = fixture(t);
+  const directory = path.join(root, "infra/deployment"); fs.mkdirSync(directory, { recursive: true });
+  const file = mode === "profile" ? "compose.machine-profile.yaml" : "compose.machine.yaml";
+  fs.copyFileSync(new URL(`../infra/deployment/${file}`, import.meta.url), path.join(directory, file));
+  const extra = { IMAGE_SET_TEST_MACHINE: `${mode} enabled` };
+  run("deploy", extra); run("rollback", extra);
+  const calls = read("log").split("\n").filter(line => line.startsWith("compose "));
+  assert.ok(calls.length > 5); for (const call of calls) assert.ok(call.includes(file));
+});
+
+test("missing selected override fails before creating deployment state", t => {
+  const { root, run } = fixture(t);
+  assert.throws(() => run("deploy", { IMAGE_SET_TEST_MACHINE: "profile enabled" }));
+  assert.equal(fs.existsSync(path.join(root, ".deploy")), false);
+  assert.equal(fs.existsSync(path.join(root, "log")), false);
+});
+
+test("invalid deployment selection fails before locks, snapshots and any Docker mutation", t => {
+  const { root, run } = fixture(t);
+  assert.throws(() => run("deploy", { IMAGE_SET_TEST_MACHINE: "invalid private-output" }));
+  assert.equal(fs.existsSync(path.join(root, ".deploy")), false);
+  assert.equal(fs.existsSync(path.join(root, "log")), false);
 });
 
 for (const failure of ["native-build", "preflight", "web-build", "native-up", "web-up", "smoke"]) {

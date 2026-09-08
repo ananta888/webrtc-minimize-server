@@ -2,6 +2,7 @@
 
 1. `git status --short` muss leer sein; `npm run check` und CI müssen grün sein.
 2. Secret-Dateien ausschließlich root-/service-lesbar außerhalb des Repositories ablegen und über `*_FILE` referenzieren.
+   Maschinenaufnahme bleibt standardmäßig aus. Für bereits vorautorisierten Hub-Trust zuerst die [explizite Legacy-/Profil-Auswahl](../machine-production-compose.md) konfigurieren und `node scripts/machine-deployment-config.mjs` prüfen. Das strukturelle Ergebnis ersetzt weder den versionierten Rollout-Preflight noch Projekt-/Raumfreigaben.
 3. Firewall gegen `infra/deployment/port-firewall-matrix.v1.json` prüfen. Keine Broadcast-/MoQ-Ports ohne aktivierte Capability öffnen. Die Produktions-Compose-Datei startet den digest-fixierten Egress-Guard und wartet auf dessen Healthcheck; geänderte OIDC-, Control- oder TURN-Hostnamen müssen zugleich in `WEBRTC_CONTROL_EGRESS_HTTPS_HOSTS`, `WEBRTC_PACKAGER_EGRESS_HTTPS_HOSTS` beziehungsweise `WEBRTC_PACKAGER_EGRESS_TURN_HOSTS` gesetzt werden.
 4. `WEBRTC_REVERSE_PROXY_NETWORK=bbb-edge PRODUCTION_ORIGIN=https://webrtc.ananta.de scripts/production-deploy.sh deploy` ausführen.
 5. Ausgabe des externen Smoke-Gates und `docker compose ... ps` prüfen. Der Runner übergibt den erwarteten Native-Broadcast-Zustand; bei aktivem Native-Pfad müssen Agent und interner Origin in `/readyz` gesund sein, sonst erfolgt Rollback. Private/public Broadcastwiedergabe und Stop/Cleanup nur testen, wenn Broadcast ausdrücklich aktiviert ist; dabei keine Inhalte oder Tokens aufzeichnen.
