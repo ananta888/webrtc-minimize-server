@@ -812,6 +812,12 @@ Node-Protokoll erhält Medien, Frame-Schlüssel oder Referenzzeit-Autorität.
 
 ### Prepare, Renewal und Stop
 
+Der nächste interne Anschluss mit gemessener Audio-Clock, echter Sample-
+Konvertierung und getrenntem Mixer-Programmtime-Port ist in
+[native-source-audio-resampling.md](native-source-audio-resampling.md)
+dokumentiert. Die oben aufgeführten früheren Fehlläufe bleiben historische
+Evidenz; ein bestandener neuer Teilpfad aktiviert nicht die Produktionsfactory.
+
 Der additive [Control-Vertrag](../contracts/trusted-decrypt/source-control.v1.schema.json)
 trennt `trusted-source-prepare`, `trusted-source-stop` und
 `trusted-source-status`. Keines dieser Nachrichtenformate enthält Frame-

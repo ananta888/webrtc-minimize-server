@@ -155,6 +155,7 @@ type sourceAVClockSink struct {
 	*sourceMediaClock
 	probe                    *sourceAVClockProbe
 	decoder                  trustedSourceSink
+	resampler                *sourceAudioResampler
 	finished                 <-chan struct{}
 	kind                     int
 	encoded, decoded, mapped atomic.Int32
@@ -191,30 +192,53 @@ func (s *sourceAVClockSink) WritePCM(rate, channels int, timestamp uint32, pcm [
 		return errors.New("AV fixture PCM")
 	}
 	s.decoded.Add(1)
-	if at, ok := s.Map(timestamp); ok {
-		var energy float64
-		for i := 0; i < len(pcm); i += 4 {
-			value := float64(int16(binary.LittleEndian.Uint16(pcm[i:]))) / 32768
-			energy += value * value
-		}
-		s.mapped.Add(1)
-		s.probe.observe(1, at, energy/float64(len(pcm)/4) > 0.0004)
-	} else {
+	if s.resampler == nil {
+		return errors.New("AV fixture missing sample conversion")
+	}
+	err := s.resampler.WritePCM(rate, channels, timestamp, pcm)
+	if !s.resampler.Ready() {
 		s.probe.unavailable(1)
 	}
+	return err
+}
+
+type sourceAVProgramAudioOutput struct{ owner *sourceAVClockSink }
+
+func (p sourceAVProgramAudioOutput) WriteProgramPCM(at int64, pcm []byte) error {
+	s := p.owner
+	if s.closed.Load() || len(pcm) == 0 || len(pcm)%4 != 0 {
+		return errors.New("AV fixture converted PCM denied")
+	}
+	var energy float64
+	for i := 0; i < len(pcm); i += 4 {
+		value := float64(int16(binary.LittleEndian.Uint16(pcm[i:]))) / 32768
+		energy += value * value
+	}
+	s.mapped.Add(1)
+	s.probe.observe(1, at, energy/float64(len(pcm)/4) > .0004)
 	return nil
 }
+func (p sourceAVProgramAudioOutput) Close() { p.owner.closed.Store(true); p.owner.probe.unavailable(1) }
 
 // Decoder output must not recursively call its own Close. Keep a separate
 // terminal output facade; the transport remains owner of decoder shutdown.
 type sourceAVDecodedOutput struct{ *sourceAVClockSink }
 
-func (s sourceAVDecodedOutput) Close() { s.closed.Store(true); s.probe.unavailable(s.kind) }
+func (s sourceAVDecodedOutput) Close() {
+	if s.resampler != nil {
+		s.resampler.Close()
+	}
+	s.closed.Store(true)
+	s.probe.unavailable(s.kind)
+}
 
 func (s *sourceAVClockSink) Close() {
 	s.closed.Store(true)
 	if s.decoder != nil {
 		s.decoder.Close()
+	}
+	if s.resampler != nil {
+		s.resampler.Close()
 	}
 }
 
@@ -266,7 +290,13 @@ func TestSourcePublisherAVClockInterop(t *testing.T) {
 			lease.Consent.SourceKind = "microphone"
 		}
 		leases[i] = lease
-		clock, err := group.NewSource()
+		var clock *sourceMediaClock
+		var err error
+		if i == 1 {
+			clock, err = group.NewAdaptiveAudioSource()
+		} else {
+			clock, err = group.NewSource()
+		}
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -289,6 +319,11 @@ func TestSourcePublisherAVClockInterop(t *testing.T) {
 			}
 			s.decoder, s.finished = d, d.finished
 		} else {
+			processor, err := newSourceAudioResampler(sourceAudioResampleConfig{timing: s.AudioTiming, authorized: receiver.AliveNow}, sourceAVProgramAudioOutput{s})
+			if err != nil {
+				return nil, err
+			}
+			s.resampler = processor
 			d, err := newSourceAudioDecoder(sourceAudioDecodeConfig{ffmpegPath: ffmpeg, authorized: receiver.AliveNow, revoked: receiver.Done()}, output)
 			if err != nil {
 				return nil, err
@@ -397,7 +432,10 @@ func TestSourcePublisherAVClockInterop(t *testing.T) {
 			for i, s := range sinks {
 				awaitSource(t, transports[i].done)
 				awaitSource(t, s.finished)
-				if _, ok := s.Map(0); ok || !s.closed.Load() || s.mapped.Load() < 100 {
+				s.mu.Lock()
+				clockClosed, fitCleared := s.sourceMediaClock.closed, s.fit.count == 0
+				s.mu.Unlock()
+				if _, ok := s.Map(0); ok || !clockClosed || !fitCleared || !s.closed.Load() || s.mapped.Load() < 100 {
 					t.Fatal("paired clock revoke or media scope failed")
 				}
 			}

@@ -55,6 +55,8 @@ type sourceMediaClock struct {
 	uncertain                    bool
 	outliers, recovery           uint8
 	uncertainAt                  time.Time
+	adaptive                     bool
+	fit                          sourceClockFit
 }
 
 func sourceDurationSamples(d time.Duration) int64 {
@@ -143,7 +145,7 @@ func (c *sourceMediaClock) BindSourceClock(ssrc, rate uint32) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now, err := c.publisher.timeNow()
-	if c.closed || err != nil || (rate != 48000 && rate != 90000) || (c.bound && (c.ssrc != ssrc || c.rate != rate)) {
+	if c.closed || err != nil || (rate != 48000 && rate != 90000) || (c.adaptive && rate != 48000) || (c.bound && (c.ssrc != ssrc || c.rate != rate)) {
 		c.failLocked(1)
 		return errors.New("source clock binding denied")
 	}
@@ -205,7 +207,7 @@ func (c *sourceMediaClock) SourceSenderReport(report sourceSenderReport) error {
 		tolerance := jitter + ntpSamples/200
 		skew := rtpSamples - ntpSamples
 		invalidShape := delta == 0 || rtpDelta <= 0 || ntpSamples <= 0 || ntpSamples > 12*48000
-		if invalidShape || skew > tolerance || skew < -tolerance {
+		if invalidShape || (!c.adaptive && (skew > tolerance || skew < -tolerance)) {
 			c.failureInterval = int32(max(-576000, min(576000, ntpSamples)))
 			c.failureSkew = int32(max(-48000, min(48000, skew)))
 			// A moderate rate outlier is not a new clock anchor. Suspend output
@@ -233,7 +235,21 @@ func (c *sourceMediaClock) SourceSenderReport(report sourceSenderReport) error {
 	}
 	if c.reports == 0 {
 		c.first, c.anchor = report, programSample
-	} else {
+	}
+	if c.adaptive {
+		if !c.fit.add(float64(elapsedRTP), float64(programSample)) {
+			if c.outliers < 2 {
+				if !c.uncertain {
+					c.uncertainAt = observedAt
+				}
+				c.uncertain, c.recovery = true, 0
+				c.outliers++
+				return nil
+			}
+			c.failLocked(7)
+			return errors.New("source adaptive clock inconsistent")
+		}
+	} else if c.reports > 0 {
 		predicted := c.anchor + elapsedRTP*48000/int64(c.rate)
 		if predicted-programSample > 4800 || programSample-predicted > 4800 {
 			c.failLocked(7)
@@ -261,7 +277,7 @@ func (c *sourceMediaClock) SourceSenderReport(report sourceSenderReport) error {
 func (c *sourceMediaClock) Map(timestamp uint32) (int64, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if _, err := c.currentLocked(); err != nil || c.reports < 2 || c.uncertain {
+	if _, err := c.currentLocked(); err != nil || c.reports < 2 || c.uncertain || c.adaptive {
 		return 0, false
 	}
 	distance := int64(int32(timestamp - c.last.rtp))
@@ -279,6 +295,7 @@ func (c *sourceMediaClock) closeLocked() {
 	c.closed = true
 	c.first, c.last, c.anchor, c.reports = sourceSenderReport{}, sourceSenderReport{}, 0, 0
 	c.elapsedRTP = 0
+	c.fit = sourceClockFit{}
 	c.uncertain, c.outliers, c.recovery = false, 0, 0
 	c.uncertainAt = time.Time{}
 	c.publisher.mu.Lock()

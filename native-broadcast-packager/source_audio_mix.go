@@ -64,13 +64,17 @@ func validSourceAudioGain(left, right int) bool {
 }
 
 func (m *sourceAudioMixer) Add(cfg sourceAudioMixInputConfig) (*sourceAudioMixInput, error) {
+	return m.add(cfg, false)
+}
+
+func (m *sourceAudioMixer) add(cfg sourceAudioMixInputConfig, programTime bool) (*sourceAudioMixInput, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed || !m.cfg.authorized() {
 		m.closeLocked()
 		return nil, errors.New("source audio mixer closed")
 	}
-	if cfg.mapTimestamp == nil || cfg.authorized == nil || !cfg.authorized() || !validSourceAudioGain(cfg.left, cfg.right) ||
+	if (cfg.mapTimestamp == nil && !programTime) || (cfg.mapTimestamp != nil && programTime) || cfg.authorized == nil || !cfg.authorized() || !validSourceAudioGain(cfg.left, cfg.right) ||
 		len(m.sources) >= m.cfg.maxSources || m.pcmBytes+m.cfg.queueSamples*4 > m.cfg.maxPCMBytes {
 		return nil, errors.New("source audio mixer admission denied")
 	}
@@ -88,13 +92,26 @@ func (s *sourceAudioMixInput) WritePCM(rate, channels int, timestamp uint32, pcm
 		m.closeLocked()
 		return errors.New("source audio mixer closed")
 	}
-	if s.closed || !s.cfg.authorized() || rate != 48000 || channels != 2 || len(pcm) == 0 || len(pcm)%4 != 0 || len(pcm) > 5760*4 {
+	if s.closed || !s.cfg.authorized() || rate != 48000 || channels != 2 || s.cfg.mapTimestamp == nil || len(pcm) == 0 || len(pcm)%4 != 0 || len(pcm) > 5760*4 {
+		s.closeLocked()
+		return errors.New("source audio mixer format denied")
+	}
+	start, ok := s.cfg.mapTimestamp(timestamp)
+	return s.writeProgramLocked(start, pcm, ok)
+}
+
+func (s *sourceAudioMixInput) writeProgramLocked(start int64, pcm []byte, mapped bool) error {
+	m := s.mixer
+	if m.closed || !m.cfg.authorized() {
+		m.closeLocked()
+		return errors.New("source audio mixer closed")
+	}
+	if s.closed || !s.cfg.authorized() || len(pcm) == 0 || len(pcm)%4 != 0 || len(pcm) > 5760*4 {
 		s.closeLocked()
 		return errors.New("source audio mixer input denied")
 	}
-	start, ok := s.cfg.mapTimestamp(timestamp)
 	samples := int64(len(pcm) / 4)
-	if !ok || start < 0 || start > sourceAudioMixMaxTime || (s.started && start < s.lastEnd) ||
+	if !mapped || start < 0 || start > sourceAudioMixMaxTime || (s.started && start < s.lastEnd) ||
 		start+samples > m.cursor+int64(m.cfg.queueSamples) {
 		s.closeLocked()
 		return errors.New("source audio mixer clock or queue denied")
