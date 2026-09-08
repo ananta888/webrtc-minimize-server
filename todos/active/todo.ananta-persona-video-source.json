@@ -1,0 +1,33 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": "1.0",
+  "owner": "Ananta Meet maintainers",
+  "track": "ananta-persona-video-source",
+  "status": "in_progress",
+  "purpose": "Add bounded silent video artwork to the existing independently stopped machine avatar source, under Ananta MAP-12/MAP-20.",
+  "related_tracks": ["todos/active/todo.ananta-machine-dialog-screen.json", "ananta/todos/todo.meet-autonomous-agent-persona-media.json"],
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [{"id": "AVS-M1", "title": "Bounded video artwork and actual receiver verification", "task_ids": ["AVS-01"], "status": "in_progress"}],
+  "tasks": [{
+    "id": "AVS-01", "title": "Implement explicit persona-video-v1 artwork without changing legacy image authority",
+    "status": "in_progress", "progress_percent": 1, "priority": "P1", "risk": "high", "depends_on": [],
+    "acceptance_criteria": [
+      "Expose a separate read-only versioned video feasibility probe; existing client-probe.v1 remains identical. Missing codec support fails without fallback or capture.",
+      "Accept only a closed hash-bound normalized silent 256x256 MP4 up to 1.5 MB, 2..120 frames at 12 Hz, explicit loop/hold_last and provenance classification; never load an external media URL.",
+      "Separate bounded single-loader/decoder ownership from existing 5 FPS avatar surface and immutable KI labels; session/generation/epoch/key checks, 2.5s controller watchdog and 30s lease stay unchanged.",
+      "Close/pause/revoke releases own video, URL, canvas and camera publication without affecting speech/screen, and late asynchronous completion never attaches a stale source.",
+      "Deterministic invalid-input, concurrent decoder, lifecycle, clock, cleanup and unsupported tests plus actual private receiver video/image switch and revocation; full npm run check in an isolated build, no serving/trust deployment."
+    ],
+    "implementation_note": "Source8b72a46: existing avatar surface supports neutral/image only; normalized clips exist in Ananta. New artwork loader composes with existing source/surface/ownership ports (SRP/DIP), no inference on the Meet server. Browser metadata checks are not a decoder memory sandbox; Hub admission and isolated Worker/container limits remain necessary. Root plan docs/contracts/meet-dialog-avatar-video.md."
+  }],
+  "critical_path_tasks": ["AVS-01"],
+  "tasks_status_summary": {
+    "total": 1, "by_status": {"todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 0},
+    "progress_percent_done": 0, "by_priority": {"P0": 0, "P1": 1, "P2": 0, "P3": 0},
+    "by_risk": {"low": 0, "medium": 0, "high": 1, "critical": 0},
+    "critical_path": {"total": 1, "done": 0, "remaining": 1},
+    "milestones": {"total": 1, "todo": 0, "in_progress": 1, "blocked": 0, "done": 0}
+  }
+}
