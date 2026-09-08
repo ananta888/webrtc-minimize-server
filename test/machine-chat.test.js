@@ -55,6 +55,17 @@ test("machine, unknown and own events never trigger the chat adapter", () => {
   }
   assert.equal(f.queue.poll().events.length, 0);
 });
+test("read-only authority receives and acknowledges without gaining reply rights", () => {
+  const f = setup(); f.authority.chatSend = false;
+  assert.equal(f.push(), true);
+  assert.equal(f.queue.poll().events.length, 1);
+  assert.throws(() => f.queue.checkReply(), /meet_chat_reply_denied/);
+  f.queue.ack(1); assert.equal(f.queue.poll().events.length, 0);
+  f.authority.chatSend = true; assert.doesNotThrow(() => f.queue.checkReply());
+  f.authority.chatRead = false;
+  assert.throws(() => f.queue.checkReply(), /meet_chat_receive_denied/);
+  assert.throws(() => f.queue.poll(), /closed/);
+});
 test("scope and freshness are checked independently of valid parsing", () => {
   const f = setup();
   for (const patch of [{ generation: 2 }, { membership_epoch: 2 }, { session_id: "other" },
@@ -63,12 +74,18 @@ test("scope and freshness are checked independently of valid parsing", () => {
   }
 });
 test("revocation, policy/lease changes, expiry and clock rollback immediately clear the endpoint", () => {
-  for (const mutate of [f => { f.authority.chatRead = false; }, f => { f.authority.chatSend = false; },
+  for (const mutate of [f => { f.authority.chatRead = false; }, f => { f.authority.chatSend = "true"; },
     f => { f.authority.scope.policy_revision++; }, f => { f.authority.scope.generation++; },
     f => f.advance(100_000), f => f.advance(-1)]) {
     const f = setup(); f.push(); mutate(f);
     assert.throws(() => f.queue.poll()); assert.throws(() => f.queue.poll(), /closed/);
   }
+});
+test("read-only reply check still fences changed authority before reporting a missing send right", () => {
+  const f = setup(); f.authority.chatSend = false; f.push();
+  f.authority.scope.generation++;
+  assert.throws(() => f.queue.checkReply(), /meet_chat_authority_changed/);
+  assert.throws(() => f.queue.poll(), /closed/);
 });
 test("late events are pruned even when their timestamps arrive out of order", () => {
   const f = setup(); f.push(); f.push({ message_id: "older", sent_at_ms: 70_001 });
