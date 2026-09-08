@@ -98,6 +98,9 @@ test("native trusted VP8 source decodes changing pixels and invalidates on revok
 test("native trusted Opus source decodes timed PCM and invalidates on revoke", {timeout:25000}, t => {
   nativeCodecFixture(t, "TestLiveTrustedSourceAudioDecoder");
 });
+test("native decoder admission retains capacity until reaping and revokes idle children", {timeout:10000}, t => {
+  nativeCodecFixture(t, "TestLiveTrustedSourceDecoderAdmission");
+});
 test("native trusted audio mixer combines two decoded sources and removes revoked queued audio", {timeout:25000}, t => {
   nativeCodecFixture(t, "TestLiveTrustedSourceAudioMixer");
 });

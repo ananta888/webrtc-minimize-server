@@ -20,6 +20,7 @@ type sourceVideoOutput interface {
 }
 
 type sourceVideoDecodeConfig struct {
+	budget        *sourceDecodeBudget
 	ffmpegPath    string
 	width, height int
 	authorized    func() bool // Thread-safe, bounded local policy; must not reenter decoder.
@@ -59,7 +60,7 @@ func sourceVideoDecodeArguments(width, height int) []string {
 
 func newSourceVideoDecoder(cfg sourceVideoDecodeConfig, sink sourceVideoOutput) (*sourceVideoDecoder, error) {
 	if cfg.ffmpegPath == "" || cfg.width < 2 || cfg.width > 1920 || cfg.height < 2 || cfg.height > 1080 ||
-		cfg.width%2 != 0 || cfg.height%2 != 0 || cfg.authorized == nil || cfg.revoked == nil || sink == nil {
+		cfg.width%2 != 0 || cfg.height%2 != 0 || cfg.authorized == nil || cfg.revoked == nil || cfg.budget == nil || sink == nil {
 		return nil, errors.New("source video decoder config")
 	}
 	select {
@@ -70,8 +71,13 @@ func newSourceVideoDecoder(cfg sourceVideoDecodeConfig, sink sourceVideoOutput) 
 	if !cfg.authorized() {
 		return nil, errors.New("source video decoder denied")
 	}
+	reservation, err := cfg.budget.reserve(sourceVideoDecodeBytes(cfg.width, cfg.height))
+	if err != nil {
+		return nil, err
+	}
 	process, err := startSourceDecodeProcess(cfg.ffmpegPath, sourceVideoDecodeArguments(cfg.width, cfg.height))
 	if err != nil {
+		reservation.release()
 		return nil, err
 	}
 	d := &sourceVideoDecoder{sourceDecodeProcess: process, cfg: cfg, sink: sink,
@@ -84,6 +90,7 @@ func newSourceVideoDecoder(cfg sourceVideoDecodeConfig, sink sourceVideoOutput) 
 		// Wait must not close StdoutPipe before the output reader finishes.
 		d.workers.Wait()
 		_ = d.cmd.Wait()
+		reservation.release()
 		close(d.finished)
 	}()
 	return d, nil
@@ -114,7 +121,7 @@ func (d *sourceVideoDecoder) permitted() bool {
 	case <-d.cfg.revoked:
 		return false
 	default:
-		return d.cfg.authorized()
+		return d.cfg.budget.allowed() && d.cfg.authorized()
 	}
 }
 

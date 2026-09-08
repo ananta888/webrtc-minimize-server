@@ -140,6 +140,7 @@ func TestSourcePublisherBrowserInterop(t *testing.T) {
 	if os.Getenv("TRUSTED_SOURCE_BROWSER_DECODE") == "1" {
 		sink.media = &sourceBrowserDecoded{owner: sink}
 	}
+	budget := sourceDecodeTestBudget(t)
 	c.trustedSourceSinkFactory = func(_ trustedsframe.SourceLease, receiver *trustedsframe.SourceReceiver) (trustedSourceSink, error) {
 		if sink.media != nil {
 			ffmpeg, lookupErr := exec.LookPath("ffmpeg")
@@ -147,14 +148,14 @@ func TestSourcePublisherBrowserInterop(t *testing.T) {
 				return nil, errors.New("fixture decoder unavailable")
 			}
 			if lease.Codec == "video/vp8" {
-				decoder, decodeErr := newSourceVideoDecoder(sourceVideoDecodeConfig{ffmpegPath: ffmpeg, width: 320, height: 180,
+				decoder, decodeErr := newSourceVideoDecoder(sourceVideoDecodeConfig{budget: budget, ffmpegPath: ffmpeg, width: 320, height: 180,
 					authorized: receiver.AliveNow, revoked: receiver.Done()}, sink.media)
 				if decodeErr != nil {
 					return nil, decodeErr
 				}
 				sink.decoder, sink.finished = decoder, decoder.finished
 			} else {
-				decoder, decodeErr := newSourceAudioDecoder(sourceAudioDecodeConfig{ffmpegPath: ffmpeg,
+				decoder, decodeErr := newSourceAudioDecoder(sourceAudioDecodeConfig{budget: budget, ffmpegPath: ffmpeg,
 					authorized: receiver.AliveNow, revoked: receiver.Done()}, sink.media)
 				if decodeErr != nil {
 					return nil, decodeErr

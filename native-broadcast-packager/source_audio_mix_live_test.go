@@ -53,6 +53,7 @@ func TestLiveTrustedSourceAudioMixer(t *testing.T) {
 		t.Fatal("explicit source audio mixer gate requires FFmpeg")
 	}
 	m := audioMixFixture(t, 48000, 2)
+	budget := sourceDecodeTestBudget(t)
 	var decoders [2]*sourceAudioDecoder
 	var sinks [2]*countedAudioMixInput
 	var frames [2][][]byte
@@ -71,7 +72,7 @@ func TestLiveTrustedSourceAudioMixer(t *testing.T) {
 		}
 		sinks[index] = &countedAudioMixInput{sourceAudioMixInput: input}
 		revoked[index] = make(chan struct{})
-		d, err := newSourceAudioDecoder(sourceAudioDecodeConfig{ffmpegPath: ffmpeg,
+		d, err := newSourceAudioDecoder(sourceAudioDecodeConfig{budget: budget, ffmpegPath: ffmpeg,
 			authorized: func() bool { return true }, revoked: revoked[index]}, sinks[index])
 		if err != nil {
 			t.Fatal(err)

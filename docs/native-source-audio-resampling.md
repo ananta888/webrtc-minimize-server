@@ -132,3 +132,9 @@ gemeinsamer Programmtakt, gefenceter Encoder-/Writer-Anschluss und öffentliche
 Approve-/Renewal-Workflows. Erst deren durchgängige Abnahme erlaubt eine
 Freischaltung. Dieser interne Baustein erhält weder fremde Medienrechte noch
 Schlüssel ohne den bestehenden expliziten Source-Consent.
+
+Der anschließende interne Baustein
+[Decoder-Zulassung](native-source-decoder-admission.md) führt verpflichtende,
+gemeinsam nutzbare Prozess-/Medienpufferreservierungen bis zum Reaping ein.
+Der produktive Owner-Anschluss und Betriebssystem-RSS-/CPU-Limits werden damit
+noch nicht als fertig erklärt.

@@ -279,6 +279,7 @@ func TestSourcePublisherAVClockInterop(t *testing.T) {
 	}
 	t.Cleanup(group.Close)
 	probe := &sourceAVClockProbe{}
+	budget := sourceDecodeTestBudget(t)
 	var leases [2]trustedsframe.SourceLease
 	var sinks [2]*sourceAVClockSink
 	for i := range leases {
@@ -313,7 +314,7 @@ func TestSourcePublisherAVClockInterop(t *testing.T) {
 		}
 		output := sourceAVDecodedOutput{s}
 		if index == 0 {
-			d, err := newSourceVideoDecoder(sourceVideoDecodeConfig{ffmpegPath: ffmpeg, width: 320, height: 180, authorized: receiver.AliveNow, revoked: receiver.Done()}, output)
+			d, err := newSourceVideoDecoder(sourceVideoDecodeConfig{budget: budget, ffmpegPath: ffmpeg, width: 320, height: 180, authorized: receiver.AliveNow, revoked: receiver.Done()}, output)
 			if err != nil {
 				return nil, err
 			}
@@ -324,7 +325,7 @@ func TestSourcePublisherAVClockInterop(t *testing.T) {
 				return nil, err
 			}
 			s.resampler = processor
-			d, err := newSourceAudioDecoder(sourceAudioDecodeConfig{ffmpegPath: ffmpeg, authorized: receiver.AliveNow, revoked: receiver.Done()}, output)
+			d, err := newSourceAudioDecoder(sourceAudioDecodeConfig{budget: budget, ffmpegPath: ffmpeg, authorized: receiver.AliveNow, revoked: receiver.Done()}, output)
 			if err != nil {
 				return nil, err
 			}

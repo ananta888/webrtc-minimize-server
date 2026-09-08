@@ -20,6 +20,7 @@ type sourceAudioOutput interface {
 }
 
 type sourceAudioDecodeConfig struct {
+	budget     *sourceDecodeBudget
 	ffmpegPath string
 	authorized func() bool // Bounded thread-safe current local policy, no reentry.
 	revoked    <-chan struct{}
@@ -73,7 +74,7 @@ func sourceAudioDecodeArguments() []string {
 }
 
 func newSourceAudioDecoder(cfg sourceAudioDecodeConfig, sink sourceAudioOutput) (*sourceAudioDecoder, error) {
-	if cfg.ffmpegPath == "" || cfg.authorized == nil || cfg.revoked == nil || sink == nil {
+	if cfg.ffmpegPath == "" || cfg.authorized == nil || cfg.revoked == nil || cfg.budget == nil || sink == nil {
 		return nil, errors.New("source audio decoder config")
 	}
 	select {
@@ -84,6 +85,16 @@ func newSourceAudioDecoder(cfg sourceAudioDecodeConfig, sink sourceAudioOutput) 
 	if !cfg.authorized() {
 		return nil, errors.New("source audio decoder denied")
 	}
+	reservation, err := cfg.budget.reserve(sourceAudioDecodeBytes)
+	if err != nil {
+		return nil, err
+	}
+	started := false
+	defer func() {
+		if !started {
+			reservation.release()
+		}
+	}()
 	pipe := &sourceOggPipe{}
 	mux, err := oggwriter.NewWith(pipe, 48000, 2)
 	if err != nil {
@@ -110,8 +121,10 @@ func newSourceAudioDecoder(cfg sourceAudioDecodeConfig, sink sourceAudioOutput) 
 		_ = d.mux.Close()
 		clear(d.pipe.header.Bytes())
 		d.pipe.header.Reset()
+		reservation.release()
 		close(d.finished)
 	}()
+	started = true
 	return d, nil
 }
 
@@ -120,7 +133,7 @@ func (d *sourceAudioDecoder) permitted() bool {
 	case <-d.cfg.revoked:
 		return false
 	default:
-		return d.cfg.authorized()
+		return d.cfg.budget.allowed() && d.cfg.authorized()
 	}
 }
 

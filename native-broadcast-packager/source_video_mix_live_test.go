@@ -64,6 +64,7 @@ func TestLiveTrustedSourceVideoMixer(t *testing.T) {
 		t.Fatal("explicit source compositor gate requires FFmpeg")
 	}
 	m := videoMixFixture(t, 2)
+	budget := sourceDecodeTestBudget(t)
 	var decoders [2]*sourceVideoDecoder
 	var sinks [2]*countedVideoMixInput
 	var frames [2][][]byte
@@ -84,7 +85,7 @@ func TestLiveTrustedSourceVideoMixer(t *testing.T) {
 		// Explicit known synthetic 90-kHz clocks, not a network/RTCP sync claim.
 		sinks[index] = &countedVideoMixInput{sourceVideoMixInput: input}
 		revoked[index] = make(chan struct{})
-		d, err := newSourceVideoDecoder(sourceVideoDecodeConfig{ffmpegPath: ffmpeg, width: 64, height: 36,
+		d, err := newSourceVideoDecoder(sourceVideoDecodeConfig{budget: budget, ffmpegPath: ffmpeg, width: 64, height: 36,
 			authorized: func() bool { return true }, revoked: revoked[index]}, sinks[index])
 		if err != nil {
 			t.Fatal(err)

@@ -79,9 +79,10 @@ func (s *decodedVideoFixture) WriteRGBA(width, height int, timestamp uint32, pix
 func (s *decodedVideoFixture) Close() { s.mu.Lock(); s.closed = true; s.mu.Unlock() }
 
 func TestSourceVideoDecoderClosedConfiguration(t *testing.T) {
-	valid := sourceVideoDecodeConfig{ffmpegPath: "not-executed", width: 64, height: 32,
+	valid := sourceVideoDecodeConfig{budget: sourceDecodeTestBudget(t), ffmpegPath: "not-executed", width: 64, height: 32,
 		authorized: func() bool { return true }, revoked: make(chan struct{})}
 	for _, mutate := range []func(*sourceVideoDecodeConfig){
+		func(c *sourceVideoDecodeConfig) { c.budget = nil },
 		func(c *sourceVideoDecodeConfig) { c.ffmpegPath = "" },
 		func(c *sourceVideoDecodeConfig) { c.width = 1922 },
 		func(c *sourceVideoDecodeConfig) { c.height = 1082 },
@@ -132,7 +133,7 @@ func TestLiveTrustedSourceVideoDecoder(t *testing.T) {
 			allowed.Store(true)
 			revoked := make(chan struct{})
 			sink := &decodedVideoFixture{}
-			d, err := newSourceVideoDecoder(sourceVideoDecodeConfig{ffmpegPath: ffmpeg, width: 64, height: 32,
+			d, err := newSourceVideoDecoder(sourceVideoDecodeConfig{budget: sourceDecodeTestBudget(t), ffmpegPath: ffmpeg, width: 64, height: 32,
 				authorized: allowed.Load, revoked: revoked}, sink)
 			if err != nil {
 				t.Fatal(err)
@@ -192,7 +193,7 @@ func TestLiveTrustedSourceVideoDecoder(t *testing.T) {
 	for _, mode := range []string{"codec", "dimension", "duplicate", "reverse", "hidden", "corrupt", "budget"} {
 		t.Run(mode, func(t *testing.T) {
 			sink := &decodedVideoFixture{}
-			d, err := newSourceVideoDecoder(sourceVideoDecodeConfig{ffmpegPath: ffmpeg, width: 64, height: 32,
+			d, err := newSourceVideoDecoder(sourceVideoDecodeConfig{budget: sourceDecodeTestBudget(t), ffmpegPath: ffmpeg, width: 64, height: 32,
 				authorized: func() bool { return true }, revoked: make(chan struct{})}, sink)
 			if err != nil {
 				t.Fatal(err)

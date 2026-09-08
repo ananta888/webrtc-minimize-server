@@ -51,8 +51,9 @@ func (s *decodedAudioFixture) WritePCM(rate, channels int, timestamp uint32, pcm
 func (s *decodedAudioFixture) Close() { s.mu.Lock(); s.closed = true; s.mu.Unlock() }
 
 func TestSourceAudioDecoderConfiguration(t *testing.T) {
-	valid := sourceAudioDecodeConfig{ffmpegPath: "never-executed", authorized: func() bool { return true }, revoked: make(chan struct{})}
+	valid := sourceAudioDecodeConfig{budget: sourceDecodeTestBudget(t), ffmpegPath: "never-executed", authorized: func() bool { return true }, revoked: make(chan struct{})}
 	for _, mutate := range []func(*sourceAudioDecodeConfig){
+		func(c *sourceAudioDecodeConfig) { c.budget = nil },
 		func(c *sourceAudioDecodeConfig) { c.ffmpegPath = "" },
 		func(c *sourceAudioDecodeConfig) { c.authorized = nil },
 		func(c *sourceAudioDecodeConfig) { c.authorized = func() bool { return false } },
@@ -138,7 +139,7 @@ func TestLiveTrustedSourceAudioDecoder(t *testing.T) {
 			allowed.Store(true)
 			revoked := make(chan struct{})
 			sink := &decodedAudioFixture{}
-			d, err := newSourceAudioDecoder(sourceAudioDecodeConfig{ffmpegPath: ffmpeg, authorized: allowed.Load, revoked: revoked}, sink)
+			d, err := newSourceAudioDecoder(sourceAudioDecodeConfig{budget: sourceDecodeTestBudget(t), ffmpegPath: ffmpeg, authorized: allowed.Load, revoked: revoked}, sink)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -209,7 +210,7 @@ func TestLiveTrustedSourceAudioDecoder(t *testing.T) {
 	for _, mode := range []string{"codec", "framing", "oversize", "duplicate", "overlap", "reverse", "budget", "process"} {
 		t.Run(mode, func(t *testing.T) {
 			sink := &decodedAudioFixture{}
-			d, err := newSourceAudioDecoder(sourceAudioDecodeConfig{ffmpegPath: ffmpeg,
+			d, err := newSourceAudioDecoder(sourceAudioDecodeConfig{budget: sourceDecodeTestBudget(t), ffmpegPath: ffmpeg,
 				authorized: func() bool { return true }, revoked: make(chan struct{})}, sink)
 			if err != nil {
 				t.Fatal(err)
