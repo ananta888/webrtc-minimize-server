@@ -98,3 +98,8 @@ Generationswechsel mit definierter Discontinuity, Gesamtprozesszulassung und
 der öffentliche Approve-/Renew-Pfad samt durchgängiger Mehrpublisherabnahme
 verbindlich. Die Produktionsfactory bleibt aus; diese Dateien aktivieren
 weder neue Capabilities noch Hub-Trust oder eine Broadcast-Publikation.
+
+Software-Rollout vom 8. September 2026: Der geprüfte Stand `8b72a46` enthält
+nun auch diesen Raw-Encoder auf dem Mini-PC. Die Produktions-SourceFactory
+bleibt dennoch deaktiviert. Die anschließend implementierte Programm-Generation
+und ihr Queue-Fix (`45b8b9d`) gehören noch nicht zu diesem Deployment.

@@ -1,5 +1,13 @@
 # Runbook: Produktionsdeployment und Rollback
 
+Aktueller dokumentierter Software-Rollout: `8b72a46` am 8. September 2026 nach
+CI 34258722094 (alle sieben Jobs grün). Alle drei Dienste, Native-Preflight,
+externer Smoke und Identitätserhalt sind geprüft; Snapshot
+`image-set-v1` / `rollback.XK1fzU` bewahrt den vorherigen Satz.
+Maschinenaufnahme bleibt ausgeschaltet. Die unabhängige öffentliche Release-
+und UI-Prüfung ist unter [Ananta-Betreiberstatus](../machine-admission-status.md)
+dokumentiert. Dies ist kein neuer Rollback-/Medien- oder Hub-Trust-Drill.
+
 1. `git status --short` muss leer sein; `npm run check` und CI müssen grün sein.
 2. Secret-Dateien ausschließlich root-/service-lesbar außerhalb des Repositories ablegen und über `*_FILE` referenzieren.
    Maschinenaufnahme bleibt standardmäßig aus. Für bereits vorautorisierten Hub-Trust zuerst die [explizite Legacy-/Profil-Auswahl](../machine-production-compose.md) konfigurieren und `node scripts/machine-deployment-config.mjs` prüfen. Das strukturelle Ergebnis ersetzt weder den versionierten Rollout-Preflight noch Projekt-/Raumfreigaben.
