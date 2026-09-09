@@ -16,10 +16,15 @@ try {
     observeStage: value => { stage = value; } });
   f.human.setDefaultTimeout(12000);
   reply({ origin: f.origin, room_id: f.roomId, certificate: f.certificatePath, test_network: f.testNetwork });
-  let started = false, granted = false;
+  let started = false, granted = false, memberReads = 0;
   for await (const line of readline.createInterface({ input: process.stdin, crlfDelay: Infinity })) {
     if (line === "stop") break;
-    if (line === "source" && !started) {
+    if (line === "members" && ++memberReads <= 240) {
+      stage = "members";
+      const participants = await f.human.evaluate(() => Number.parseInt(document.querySelector("#participant-count")?.textContent, 10));
+      if (!Number.isInteger(participants) || participants < 1 || participants > 20) throw new Error("test_member_count_invalid");
+      reply({ participants });
+    } else if (line === "source" && !started) {
       stage = "source";
       await f.human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
       await startSyntheticVisualPublisher(f.human, source); started = true;
