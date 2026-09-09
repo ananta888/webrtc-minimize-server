@@ -23,6 +23,33 @@ keinen anderen Endpunkt. Angezeigt wird ausschließlich der feste Fehlercode
 `machine_cleanup_failed`, kein Fehlertext mit möglicherweise privaten Inhalten.
 Fehlgeschlagenes Cleanup wird nicht als erfolgreicher Ressourcenstopp behauptet.
 
+## Gesperrter Client nach unbestätigtem Stop
+
+Ein fehlgeschlagener Stop sperrt nun weitere Beitritte im selben Client dauerhaft.
+Auch ein später fehlerfreier, aber möglicherweise leerer `close()`-Aufruf hebt
+diese Sperre nicht auf: Ein bereits entferntes Handle beweist nicht, dass seine
+Ressource beendet wurde. Ein frischer Grant ersetzt ebenfalls keine Stopbestätigung.
+Der Hub muss den alten isolierten Browserkontext schließen und bei weiterhin
+gültiger eigener Policy einen frischen Kontext verwenden. Das ist keine
+automatische Wiederaufnahme oder Verlängerung bestehender Quellenfreigaben.
+
+`RoomSessionService.leave()` liefert additiv einen booleschen Cleanup-Ausgang;
+bestehende Aufrufer können ihn weiterhin ignorieren. Transport- und Meshfehler
+bleiben im Sessiondienst vermerkt, einschließlich eines Meshfehlers beim
+Socket-Disconnect. Neue Beitritte werden vor Gerätenachweis und HTTP verhindert
+(auch für einen späteren menschlichen Join im selben beschädigten Client).
+Die Maschinenpage wertet den Ausgang aus und sperrt zusätzlich nach Fehlern
+ihrer einzelnen Quellen-/Empfangsports. Sie versucht trotzdem alle Stopps und
+isoliert auch Fehler der Benachrichtigung. Die Statusansicht nennt den
+unbestätigten Stop und den erforderlichen frischen Browserkontext; sie behauptet
+keine erfolgreiche Ressourcenfreigabe und bietet keinen Sicherheits-Bypass.
+
+Drei neue Regressionen reproduzierten zunächst unzulässige Folgebeitritte und
+einen durchgereichten privaten Notifierfehler. Nach der Änderung bestehen die
+erweiterten Lifecycle- und realen Sessiondienst-Tests. Dies ist ein gezielter
+Fehlerpfadnachweis, keine kausale Behebung der separat untersuchten sporadischen
+Avatar-/Sprach-Autoritätsfehler und keine öffentliche Hub-Freigabe.
+
 Die fokussierten Tests decken Welcome-Timeout, tatsächliches Fencing eines
 späten Welcome durch `RoomSessionService`, Admissionfehler, abgelöste erfolgreiche
 und fehlerhafte Operationen, Leave während Konfigurationsladen, zerstörte Pages
@@ -41,3 +68,22 @@ mit 16.000 PCM-Samples und aktivem SFrame ohne Transformfehler. Der Prüfkandida
 enthielt auch den separaten v4-Broadcast-Serverpfad; Source und Tests waren
 bytegleich zum lokalen Stand. Öffentliche Maschinenaufnahme und Serving-Build
 wurden nicht verändert. Die gesamte Langzeit-/Produktionsabnahme bleibt offen.
+
+Der neue Quarantäne-Nachtrag bestand 26 fokussierte Tests (1,170 s), einschließlich
+der sieben neuen Fehlerpfadprüfungen. Sein isolierter Gesamtcheck bestand 1.085
+Frontendtests sowie Build, Typcheck, Go und statische Gates. Die Node-Stufe endete
+mit 986 bestanden, drei fehlgeschlagen und zwei übersprungen (446,888 s).
+Die externen Infrastruktur-Gates wurden danach nicht erreicht. Audioempfang,
+Chat, bewegter Bildschirm und drei Erneuerungen bestanden in Chromium
+(14,014 s) und Firefox (16,246 s), jeweils 16.000 PCM-Samples und null
+Transformfehler. Die drei Fehler betreffen separate Avatar-Coexistenz-,
+Quellenzeit- und Zwei-Publisher-Personafälle; diese Abnahme bleibt offen.
+
+Ein gezielter Nachlauf derselben Laufzeitdateien bestand sechs von sieben Fällen
+in 45,952 s. Die Zeitüberwachung reproduzierte `controller-expired`, diesmal
+schon 790 ms nach Beginn der privaten Beobachtung und vor dem ersten Testimpuls.
+Die Ursache ist nicht bewiesen. Die vorhandenen geschlossenen Fehler-/Membership-
+Beobachter erfassen jetzt auch Fehler außerhalb der Avatar-Bewegungsprüfung;
+Fristen, Capture- und Autoritätsregeln bleiben unverändert. Der Nachlauf macht
+den fehlgeschlagenen Gesamtcheck nicht nachträglich grün. Kein Deployment oder
+Hub-Trustwechsel wurde aus diesen Ergebnissen abgeleitet.

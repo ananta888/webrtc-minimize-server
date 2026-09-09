@@ -33,7 +33,7 @@ describe("RoomSessionService teardown", () => {
     service.workspaceRole.set("owner");
     service.roomCreator.set(true);
 
-    service.leave();
+    expect(service.leave()).toBe(true);
 
     expect(observedJoinedStates).toEqual([false, false]);
     expect(service.joined()).toBe(false);
@@ -41,6 +41,18 @@ describe("RoomSessionService teardown", () => {
     expect(service.workspaceId()).toBe("");
     expect(service.workspaceRole()).toBe("");
     expect(service.roomCreator()).toBe(false);
+  });
+
+  it.each(["transport", "mesh"])("keeps a failed %s stop quarantined across later no-op stops", async kind => {
+    const { service, signaling, mesh } = createService();
+    const failed = kind === "transport" ? signaling.leave : mesh.close;
+    failed.mockImplementationOnce(() => { throw new Error("private resource detail"); });
+    expect(service.leave()).toBe(false);
+    expect(service.leave()).toBe(false);
+    await expect(service.join("room-" + "a".repeat(18), "Ananta (KI)", "room", "grant"))
+      .rejects.toThrow("session_cleanup_failed");
+    expect(service.joined()).toBe(false); expect(service.machineLease()).toBeNull();
+    expect(signaling.leave).toHaveBeenCalledTimes(3); expect(mesh.close).toHaveBeenCalledTimes(3);
   });
 
   it("attempts both cleanup paths and remains disconnected if either path fails", () => {

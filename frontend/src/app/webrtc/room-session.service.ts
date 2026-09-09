@@ -41,6 +41,7 @@ export class RoomSessionService {
   private machineRenewal: AbortController | null = null;
   private joinOperation: AbortController | null = null;
   private sessionGeneration = 0;
+  private cleanupUnconfirmed = false;
   private workspaceInvite = "";
 
   constructor(
@@ -74,7 +75,7 @@ export class RoomSessionService {
   }
 
   async join(roomId: string, displayName: string, mode: RoomMode, machineGrant?: string): Promise<void> {
-    this.leave();
+    if (!this.leave()) throw new Error("session_cleanup_failed");
     const generation = this.sessionGeneration;
     const controller = new AbortController();
     this.joinOperation = controller;
@@ -140,7 +141,7 @@ export class RoomSessionService {
           this.joined.set(false);
           this.peerId.set("");
           this.icePolicy.set(null);
-          this.mesh.close();
+          this.closeMesh();
         },
       );
     } catch (error) {
@@ -187,7 +188,8 @@ export class RoomSessionService {
     this.machineContext.set(null);
   }
 
-  leave(): void {
+  /** False remains sticky: a detached handle's later no-op is not a stop ACK. */
+  leave(): boolean {
     ++this.sessionGeneration;
     this.joinOperation?.abort(); this.joinOperation = null;
     this.cancelMachineRenewal();
@@ -204,12 +206,18 @@ export class RoomSessionService {
     } catch {
       cleanupFailed = true;
     }
-    try {
-      this.mesh.close();
-    } catch {
-      cleanupFailed = true;
+    this.closeMesh();
+    this.cleanupUnconfirmed ||= cleanupFailed;
+    if (this.cleanupUnconfirmed) this.error.set("session_cleanup_failed");
+    return !this.cleanupUnconfirmed;
+  }
+
+  private closeMesh(): void {
+    try { this.mesh.close(); }
+    catch {
+      this.cleanupUnconfirmed = true;
+      this.error.set("session_cleanup_failed");
     }
-    if (cleanupFailed) this.error.set("session_cleanup_failed");
   }
 
   private handleMessage(message: ServerMessage, icePolicy: IceTierPolicy): void {

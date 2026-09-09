@@ -8,11 +8,16 @@ import { openTestVideoAvatar, syntheticAvatarVideo } from "./helpers/machine-ava
 import { observeAvatarCommand } from "./helpers/machine-avatar-observation.mjs";
 import { avatarFailureSnapshot } from "./helpers/machine-avatar-failure.mjs";
 import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
+import { machineSourceFailureObservation } from "./helpers/machine-source-failure-observation.mjs";
+import { installMachineSourceFailureTrace } from "./helpers/machine-source-failure-trace.mjs";
+import { observeMachineSourceMembership } from "./helpers/machine-source-membership-observation.mjs";
 
 for (const humanEngine of ["chromium", "firefox"]) {
 test(`${humanEngine} receives actual silent avatar video, image replacement and independent source stop`, { timeout: 90000 }, async t => {
   const clip = syntheticAvatarVideo(), f = await machineBrowserFixture(t, { humanEngine }), { machine, human } = f;
   await human.evaluate(installDialogObservation);
+  const membership = observeMachineSourceMembership(machine);
+  await machine.evaluate(installMachineSourceFailureTrace);
   let phase = "loop";
   try {
     const beforeProbe = await machine.evaluate(() => ({ captures: window.__captures, peers: window.__pcs.length,
@@ -81,6 +86,10 @@ test(`${humanEngine} receives actual silent avatar video, image replacement and 
     t.diagnostic(JSON.stringify({ syntheticPolicy: true, syntheticClip: true, actualVideoDecode: true,
       productionEvidence: false, holdLast: true, heldSamples, generations: [first.generation, second.generation, third.generation], stopMs }));
   } catch (error) {
+    if (!machine.isClosed()) t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, phase,
+      ...await machine.evaluate(machineSourceFailureObservation).catch(() => ({ unavailable: true })),
+      sourceFailureTrace: await machine.evaluate(() => window.__machineSourceFailureTrace.snapshot())
+        .catch(() => ({ unavailable: true })), membership: membership() }));
     if (error?.message === "avatar_not_moving") {
       let timer;
       const source = await Promise.race([
@@ -93,6 +102,7 @@ test(`${humanEngine} receives actual silent avatar video, image replacement and 
   } finally {
     if (!human.isClosed()) await human.evaluate(() => window.__dialogObservation?.close());
     if (!machine.isClosed()) {
+      await machine.evaluate(() => window.__machineSourceFailureTrace?.close());
       await machine.evaluate(() => window.__avatarTestPulse?.stop());
       await machine.evaluate(() => window.__avatarCompanions?.close());
     }

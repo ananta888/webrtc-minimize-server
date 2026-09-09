@@ -53,6 +53,24 @@ Quellzustände und Fortschrittszähler, aber keine Inhalte oder rohen Fehlertext
 Der frühere Gesamtcheck wird durch diesen Nachlauf nicht nachträglich grün;
 die nächste Gesamtregression folgt gebündelt mit der weiteren Implementierung.
 
+Der anschließende Stand `0a63b05` bestand den isolierten Gesamtcheck mit
+1.078 Frontend- und 989 Node-/Browsertests, null Fehlern und zwei Node-Skips.
+Die 14 externen Infrastrukturprüfungen blieben ausdrücklich übersprungen.
+Neue interne Fehlerkategorien grenzen die sporadischen Quellenabbrüche ein;
+eine kausale Behebung dieser Intermittenz ist damit weiterhin nicht behauptet.
+
+Die aktuelle Lifecycle-Ergänzung sperrt einen Client nach unbestätigtem
+Ressourcenstopp für weitere Beitritte. Ein neuer Grant oder ein späterer leerer
+Cleanup-Aufruf hebt diese Sperre nicht auf. Die Maschinenansicht erklärt den
+erforderlichen frischen Browserkontext; alle unabhängigen Stopps werden weiterhin
+versucht. 26 fokussierte Lifecycle-/Renewalprüfungen bestehen. Der neue Gesamtcheck
+bestand 1.085 Frontend- und 986 Nodeprüfungen, scheiterte aber an drei separaten
+Avatar-/Quellenzeitfällen (zwei Node-Skips). Die kombinierten Dialoge bestanden
+in beiden Browsern; die externe Infrastrukturstufe wurde nicht erreicht.
+Im gezielten Nachlauf bestehen sechs von sieben Fällen, der Controller-Frische-
+Abbruch bleibt reproduzierbar und ursächlich offen. Das ist keine vollständige
+Integrationsabnahme und noch kein Deployment des Nachtrags.
+
 ## Im Browser
 
 1. Dem Raum beitreten und **Analyse → Ananta · Freigaben meiner Quellen** öffnen.

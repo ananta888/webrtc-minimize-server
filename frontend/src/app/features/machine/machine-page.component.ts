@@ -27,6 +27,10 @@ import { MachineScreenAudioSessionService } from "./machine-screen-audio-session
     MachineMediaTimingService],
   template: `<main><h1>Ananta (KI)</h1><p>Autorisierter Maschinenclient für synthetische Quellen.</p>
     <p>{{ session.joined() ? 'Verbunden' : 'Nicht verbunden' }}</p>
+    @if (session.error() === 'machine_cleanup_failed' || session.error() === 'session_cleanup_failed') {
+      <p role="alert">Ressourcenstopp nicht bestätigt. Dieser Client bleibt für neue Beitritte gesperrt.
+        Den Maschinen-Browserkontext schließen; eine neue Teilnahme benötigt einen frischen Kontext und eine neue Hub-Freigabe.</p>
+    }
     <button type="button" (click)="leave()">Sofort verlassen</button></main>`,
 })
 export class MachinePageComponent implements OnDestroy {

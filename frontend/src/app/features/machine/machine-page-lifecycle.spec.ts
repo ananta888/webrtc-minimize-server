@@ -55,6 +55,46 @@ it("invalidates before cleanup and attempts every endpoint despite cleanup failu
   expect(f.ports.cleanupFailed).toHaveBeenCalledExactlyOnceWith();
 });
 
+it("quarantines new joins after any cleanup failure, even when later cleanup is a no-op", async () => {
+  const f = fixture(); f.close.mockImplementationOnce(() => { throw new Error("private cleanup detail"); });
+  await expect(f.lifecycle.join(room, "grant")).rejects.toThrow("machine_cleanup_failed");
+  f.lifecycle.leave(); // Detached handles can now return success without proving they stopped.
+  await expect(f.lifecycle.join(room, "fresh")).rejects.toThrow("machine_cleanup_failed");
+  expect(f.ports.load).not.toHaveBeenCalled(); expect(f.ports.join).not.toHaveBeenCalled();
+  expect(f.close).toHaveBeenCalledTimes(2);
+});
+
+it("does not expose notifier errors or let them bypass quarantine and other stops", async () => {
+  const f = fixture(), other = vi.fn();
+  f.ports.cleanup = [() => { throw new Error("private source detail"); }, other];
+  f.ports.cleanupFailed.mockImplementation(() => { throw new Error("private notifier detail"); });
+  expect(() => f.lifecycle.leave()).not.toThrow();
+  expect(other).toHaveBeenCalledOnce();
+  await expect(f.lifecycle.join(room, "grant")).rejects.toThrow("machine_cleanup_failed");
+  expect(f.ports.load).not.toHaveBeenCalled();
+});
+
+it("keeps an old admission failure when its cleanup fails, but denies any subsequent join", async () => {
+  const f = fixture();
+  f.ports.join.mockRejectedValueOnce(new Error("admission_denied"));
+  f.close.mockImplementationOnce(() => {}).mockImplementationOnce(() => { throw new Error("cleanup detail"); });
+  await expect(f.lifecycle.join(room, "grant")).rejects.toThrow("admission_denied");
+  await expect(f.lifecycle.join(room, "fresh")).rejects.toThrow("machine_cleanup_failed");
+  expect(f.ports.join).toHaveBeenCalledOnce();
+});
+
+it("honors the actual RoomSessionService negative cleanup result without another admission", async () => {
+  const signaling = { leave: vi.fn(() => { throw new Error("private transport detail"); }) };
+  const mesh = { close: vi.fn() };
+  const session = new RoomSessionService({} as never, {} as never, {} as never, signaling as never, mesh as never);
+  const load = vi.fn(async () => {}), join = vi.spyOn(session, "join"), other = vi.fn();
+  const lifecycle = new MachinePageLifecycle({ load, join: (id, grant) => session.join(id, "Ananta (KI)", "room", grant),
+    joined: () => session.joined(), cleanup: [() => session.leave(), other], cleanupFailed: vi.fn() });
+  await expect(lifecycle.join(room, "grant")).rejects.toThrow("machine_cleanup_failed");
+  expect(other).toHaveBeenCalledOnce(); expect(mesh.close).toHaveBeenCalledOnce();
+  expect(load).not.toHaveBeenCalled(); expect(join).not.toHaveBeenCalled();
+});
+
 it("retires its own failed admission and rejects calls retained after page destruction", async () => {
   const f = fixture(); f.ports.join.mockRejectedValueOnce(new Error("admission_denied"));
   await expect(f.lifecycle.join(room, "grant")).rejects.toThrow("admission_denied");
@@ -94,4 +134,24 @@ it("fences a late Welcome through the actual RoomSessionService after the page d
   message({ type: "welcome" });
   expect(session.joined()).toBe(false); expect(session.machineExpiresAt()).toBe(0);
   expect(mesh.initialize).not.toHaveBeenCalled();
+});
+
+it("retains a transport-disconnect mesh failure even when its handles later disappear", async () => {
+  let disconnected!: () => void;
+  const signaling = { leave: vi.fn(), connect: vi.fn((_path, _message, onClose) => { disconnected = onClose; }) };
+  const mesh = { close: vi.fn() };
+  const session = new RoomSessionService({ value: () => ({ mediaE2ee: { mode: "required" } }) } as never,
+    {} as never, { createProof: async () => ({}) } as never, signaling as never, mesh as never);
+  const request = vi.fn(async () => ({ ok: true, json: async () => ({
+    signalingPath: "/signal", iceServers: [], machineExpiresAt: Date.now() + 60_000,
+    icePolicy: { version: 1, directIceServers: [], peerRelayIceServers: [], infrastructureRelayIceServers: [],
+      peerRelayAfterMs: 1000, infrastructureRelayAfterMs: 2000 },
+  }) }));
+  vi.stubGlobal("fetch", request);
+  await session.join(room, "Ananta (KI)", "room", "grant");
+  mesh.close.mockImplementationOnce(() => { throw new Error("private mesh detail"); });
+  expect(() => disconnected()).not.toThrow();
+  expect(session.error()).toBe("session_cleanup_failed"); expect(session.machineExpiresAt()).toBe(0);
+  await expect(session.join(room, "Ananta (KI)", "room", "fresh")).rejects.toThrow("session_cleanup_failed");
+  expect(request).toHaveBeenCalledOnce(); expect(signaling.connect).toHaveBeenCalledOnce();
 });
