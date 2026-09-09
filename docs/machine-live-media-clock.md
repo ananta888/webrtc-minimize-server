@@ -216,3 +216,24 @@ renewals each. Both source-timing cases also passed. The failures were separate:
 
 No clock or deadline was changed. Serving files, trust and deployment remain
 unchanged; MDS-08 and the joint long-run acceptance remain open.
+
+## Independent host-clock observation
+
+The later overlay-lifecycle candidate `c537188` passed both timing cases but
+failed Firefox avatar-video hold. Its source trace recorded speech progress
+expiry at 2,459 ms monotonic / 4,640 ms wall and controller expiry at 2,501 /
+4,681 ms (zero rounded read span). The session was still joined; this is not
+evidence that overlay key fencing caused the failure.
+
+A separate passive Node process then sampled host wall and monotonic time 900
+times over 90,250 monotonic milliseconds. The relative difference ranged from
+0 to 7,035 ms; maximum clock-read span was 1 ms. No clock was rewritten. The
+host reports WSL and enabled, synchronized NTP. Thus a discrepancy was observed
+outside the browser as well. Its exact OS, suspend or synchronization mechanism
+is not established, and this later observation alone cannot prove the cause of
+all historical source failures. Log: `/tmp/webrtc-host-clock-observation.log`.
+
+Do not weaken source freshness or absolute grant expiry based on this result.
+Further diagnosis must distinguish a wall-clock correction from actual missing
+controller activity or suspended execution; a monotonic-only freshness policy
+must not silently extend authority through sleep or loss of the controller.

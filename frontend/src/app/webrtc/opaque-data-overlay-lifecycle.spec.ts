@@ -108,4 +108,22 @@ describe("opaque overlay asynchronous ownership", () => {
     expect((await b.receive(packet, alice, receive)).action).toBe("delivered");
     barrier.release(); expect(await slow).toEqual({ action: "drop", reason: "replay" });
   });
+
+  it.each(["destroy", "remove", "replace", "expire", "complete"])("wipes retained partial plaintext on %s", async action => {
+    const { a, b, ak } = await pair(), now = Date.now();
+    const input = new Uint8Array(13000).fill(7), packets = await a.encrypt(bob, input, send, now);
+    const barrier = hold("decrypt"), first = b.receive(packets[0], alice, receive, now);
+    const part = new Uint8Array(await barrier.ready); barrier.release();
+    expect((await first).action).toBe("pending"); expect(part[0]).toBe(7);
+    if (action === "destroy") b.destroy();
+    else if (action === "remove") b.removePeer(alice);
+    else if (action === "replace") await b.setPeerKey(alice, ak);
+    else if (action === "expire") await b.receive({}, alice, receive, now + 60001);
+    else {
+      const result = await b.receive(packets[1], alice, receive, now);
+      expect(result.action).toBe("delivered");
+      if (result.action === "delivered") expect(result.data).toEqual(input);
+    }
+    expect(part.every(value => value === 0)).toBe(true);
+  });
 });

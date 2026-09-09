@@ -58,3 +58,21 @@ initialization. Closed probes and traffic cannot trigger a module load. Retired
 module/initialization results cannot restore a delegate or destroy its successor.
 This is on-demand code loading, not a new capture or authority path. The hard
 budget remains unchanged; a corrected isolated build/check follows.
+
+The corrected `c537188` check passed 1,133 frontend tests and the 1.59 MB build
+under the unchanged hard limit. Types, Go and static/security checks passed.
+Its Node stage finished with 1,012 passes, one failure and two explicit skips
+in 469.748 seconds; the external infrastructure tail was not reached. Both
+combined Ananta dialog/renewal and timing cases passed. Chromium-to-Firefox VP8
+also passed beyond counter 350 and through receiver-quality stop/resume in
+37.406 seconds. These passes do not establish the cause of older startup faults.
+
+The sole failure was Firefox avatar-video hold: source authority expired with
+a 2,180 ms relative wall/monotonic discrepancy. That independent issue remains
+open; see [the clock observations](machine-live-media-clock.md). No release or
+deployment is claimed from this failed aggregate.
+
+Five additional focused cases subsequently captured actual partially assembled
+plaintext and verified zeroing after destroy, peer removal, key replacement,
+expiry and successful reassembly. The final 20-case crypto lifecycle file passed
+in 1.58 seconds; runtime files were unchanged from the combined-check candidate.
