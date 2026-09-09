@@ -28,16 +28,17 @@ export class MachineReceiveControlsService implements OnDestroy {
     const now = this.now();
     return this.targets().map(peer => {
       const grant = this.mesh.ownMachineReceiveGrant(peer.id);
+      const activeGrant = grant && grant.expiresAt > now ? grant : null;
       const available = (source: string) => this.mesh.remoteMedia().some(media => media.peerId === peer.id
         && media.source === source && media.stream.getTracks().some(track => track.readyState === "live" && !track.muted));
-      return Object.freeze({ ...peer, grant: grant && grant.expiresAt > now ? grant : null,
+      return Object.freeze({ ...peer, grant: activeGrant,
         grantState: grant ? grant.expiresAt > now ? "granted" : "expired" : "none",
         audioSupported: this.mesh.machineReceive.supports(peer.id, "audio.receive"),
         videoSupported: this.mesh.machineReceive.supports(peer.id, "video.receive"),
         audioGrantCount: this.sources().filter(source => ["microphone", "screen-audio"].includes(source.source)
-          && grant?.publicationIds.includes(source.publicationId)).length,
+          && activeGrant?.publicationIds.includes(source.publicationId)).length,
         videoGrantCount: this.sources().filter(source => ["camera", "screen"].includes(source.source)
-          && grant?.publicationIds.includes(source.publicationId)).length,
+          && activeGrant?.publicationIds.includes(source.publicationId)).length,
         chatReadSupported: this.mesh.machineReceive.supports(peer.id, "chat.read"),
         chatSendSupported: this.mesh.machineReceive.supports(peer.id, "chat.send"),
         screenSupported: this.mesh.machineReceive.supports(peer.id, "screen.publish"),
@@ -100,6 +101,12 @@ export class MachineReceiveControlsService implements OnDestroy {
       || this.scope.peerId !== this.session.peerId() || !this.targets().some(peer => peer.id === this.requestPeerId())) {
       this.finish(false, "machine_receive_session_changed"); this.receipt = null; this.scope = null; return;
     }
+    // Timer delivery and server replies can be delayed independently. Expiry is
+    // checked before interpreting an ACK; revocation has no grant to extend.
+    if (this.pending && (this.pending.chatRead || this.pending.publicationIds.length)
+      && this.pending.expiresAt <= Date.now()) {
+      this.finish(false); this.state.set("expired"); return;
+    }
     if (this.receipt) {
       if ((this.receipt.chatRead || this.receipt.publicationIds.length) && this.receipt.expiresAt <= Date.now()) {
         this.receipt = null; this.state.set("expired");
@@ -124,7 +131,10 @@ export class MachineReceiveControlsService implements OnDestroy {
       if (JSON.stringify([...command.publicationIds].sort()) !== JSON.stringify(expected))
         throw new Error("machine_receive_selection_changed");
       this.pending = command; this.state.set("pending");
-      this.timeout = setTimeout(() => this.finish(false, "machine_receive_ack_timeout"), 5000);
+      this.timeout = setTimeout(() => {
+        this.reconcile();
+        if (this.pending) this.finish(false, "machine_receive_ack_timeout");
+      }, 5000);
       this.signaling.send(command);
     } catch (error) {
       const code = error instanceof Error && /^machine_receive_[a-z_]{1,64}$/.test(error.message)

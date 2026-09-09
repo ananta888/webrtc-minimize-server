@@ -73,6 +73,15 @@ Integrationsabnahme und noch kein Deployment des Nachtrags.
 
 ## Im Browser
 
+Die Freigabeanzeige behandelt nun auch verspätete Bestätigungen: Ist eine
+angeforderte Empfangsfreigabe inzwischen abgelaufen, bleibt sie `expired`, selbst
+wenn die passende Serverantwort vor dem verzögerten Timer eintrifft. Die UI
+wiederholt oder verlängert die Anfrage nicht. Abgelaufene Quellen zählen nicht
+mehr als aktiv freigegeben. Ein reiner Widerruf benötigt dagegen keine noch
+gültige Grant-Laufzeit. Diese Anzeigeprüfung ersetzt keine serverseitige Policy.
+Die vier ergänzten Tests prüfen Ablauf vor Timerzustellung, fehlende Bestätigung,
+Quellenzähler und unverändert bestätigbaren Widerruf.
+
 1. Dem Raum beitreten und **Analyse → Ananta · Freigaben meiner Quellen** öffnen.
 2. Nach dem separat autorisierten Hub-Beitritt den KI-Teilnehmer auswählen.
 3. Eigene bereits laufende Audio-/Bildquellen beziehungsweise neue Chatbeiträge

@@ -54,7 +54,7 @@ import { MachineAdmissionStatusComponent } from "./machine-admission-status.comp
       </fieldset>
     }
     <p role="status" aria-live="polite">{{ controls.state() === 'pending' ? 'Warte auf Serverbestätigung…' : controls.state() === 'confirmed' ? 'Serverbestätigung erhalten.' : '' }}</p>
-    @if (controls.state() === 'expired') { <p role="status">Die bestätigte Freigabe ist abgelaufen. Es wird nichts automatisch verlängert.</p> }
+    @if (controls.state() === 'expired') { <p role="status">Die Freigabe ist abgelaufen. Es wird nichts automatisch verlängert.</p> }
     @if (controls.requestPeerId() && controls.state() !== 'idle') {
       <p>Rückmeldung für KI-Peer <code>{{ controls.requestPeerId() }}</code>.</p>
     }

@@ -20,6 +20,45 @@ function setup() {
 }
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 describe("machine receive controls", () => {
+  it("does not confirm an expired grant when its ACK arrives before queued timers", () => {
+    vi.useFakeTimers(); const f = setup();
+    f.command.expiresAt = Date.now() + 1000;
+    f.request(); f.grant.set(f.command); f.revision.set(1);
+    vi.setSystemTime(f.command.expiresAt);
+    f.emit({ type: "machine-receive-state", roomId: f.session.roomId() });
+    expect(f.service.state()).toBe("expired");
+    expect(f.service.error()).toBe("");
+    expect(f.signaling.send).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(5000);
+    expect(f.service.state()).toBe("expired");
+    f.service.ngOnDestroy(); expect(vi.getTimerCount()).toBe(0);
+  });
+  it("expires pending consent even without a matching receipt and never resubmits", () => {
+    vi.useFakeTimers(); const f = setup();
+    f.command.expiresAt = Date.now() + 1000; f.request();
+    vi.advanceTimersByTime(1000);
+    expect(f.service.state()).toBe("expired");
+    vi.advanceTimersByTime(5000);
+    expect(f.service.state()).toBe("expired");
+    expect(f.signaling.send).toHaveBeenCalledOnce(); f.service.ngOnDestroy();
+  });
+  it("counts only unexpired audio and visual grants", () => {
+    vi.useFakeTimers(); const f = setup();
+    f.sources.set([{ publicationId: "mic", source: "microphone" }, { publicationId: "cam", source: "camera" }]);
+    f.grant.set({ ...f.command, publicationIds: ["mic", "cam"], expiresAt: Date.now() + 1000 });
+    expect(f.service.activities()[0]).toMatchObject({ audioGrantCount: 1, videoGrantCount: 1 });
+    vi.advanceTimersByTime(1000);
+    expect(f.service.activities()[0]).toMatchObject({ grant: null, grantState: "expired", audioGrantCount: 0, videoGrantCount: 0 });
+    f.service.ngOnDestroy();
+  });
+  it("can confirm a pure revocation without a grant lifetime", () => {
+    vi.useFakeTimers(); const f = setup();
+    f.command.publicationIds = []; f.command.expiresAt = Date.now() - 1;
+    f.service.request(f.command.machinePeerId, false, false, false, 1, "user-action");
+    f.revision.set(1); f.emit({ type: "machine-receive-state", roomId: f.session.roomId() });
+    expect(f.service.state()).toBe("confirmed");
+    expect(f.signaling.send).toHaveBeenCalledOnce(); f.service.ngOnDestroy();
+  });
   it.each(["camera", "screen"])("requires fresh selected IDs for visual %s grants, without capture or implicit consent", source => {
     vi.useFakeTimers(); const f = setup();
     f.mesh.machineReceive.supports = (_id, cap) => cap === "video.receive";
