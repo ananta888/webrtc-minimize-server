@@ -48,3 +48,13 @@ focused overlay, mesh, exact-key-ACK and SFrame-revocation tests passed in
 not a claim about live RTP delivery. The isolated production build, actual
 browser regression and combined check follow before release consideration.
 No serving build, deployment, Hub trust or Ananta repository was changed.
+
+The first isolated combined run passed all 1,128 frontend tests but failed the
+unchanged 1.60 MB initial-bundle hard budget by 1.24 kB. It never reached the
+Go/Node/infrastructure stages and is not a green aggregate. The queue is now a
+small eager module (same limits/order, old export retained); a lifecycle-fenced
+adapter imports the actual overlay only inside the existing async room
+initialization. Closed probes and traffic cannot trigger a module load. Retired
+module/initialization results cannot restore a delegate or destroy its successor.
+This is on-demand code loading, not a new capture or authority path. The hard
+budget remains unchanged; a corrected isolated build/check follows.

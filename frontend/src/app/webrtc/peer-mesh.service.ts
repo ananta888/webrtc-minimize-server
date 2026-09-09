@@ -29,12 +29,12 @@ import {
   parsePeerControl,
 } from "./peer-control-protocol";
 import { ServerMessage, SignalingService } from "./signaling.service";
-import {
-  BoundedOverlayQueue,
-  OpaqueDataOverlay,
+import type {
   OverlayPacket,
   OverlayTrafficClass,
 } from "./opaque-data-overlay";
+import { BoundedOverlayQueue } from "./bounded-overlay-queue";
+import { LazyOpaqueDataOverlay } from "./lazy-opaque-data-overlay";
 import { MediaE2eeController } from "./media-e2ee-controller";
 import {
   AgentTrackInput,
@@ -260,7 +260,7 @@ export class PeerMeshService {
   });
   private readonly relay = new TrustedRelayController(this.topology);
   private readonly quality = new PeerQualityController();
-  private readonly overlay = new OpaqueDataOverlay();
+  private readonly overlay = new LazyOpaqueDataOverlay();
   private overlayPublicKey: JsonWebKey | null = null;
   private overlayInitialization: Promise<void> = Promise.resolve();
   private overlayGeneration = 0;
