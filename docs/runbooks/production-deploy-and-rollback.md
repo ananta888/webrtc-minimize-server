@@ -1,12 +1,13 @@
 # Runbook: Produktionsdeployment und Rollback
 
-Aktueller dokumentierter Software-Rollout: `92f583f` am 9. September 2026 nach
-CI 34283961744 (alle sieben Jobs grün). Alle drei Dienste, Native-Preflight,
-externer Smoke und Identitätserhalt sind geprüft; Snapshot
-`image-set-v1` / `rollback.IxptJI` bewahrt den vorherigen Satz (`76e8866`).
-Maschinenaufnahme bleibt ausgeschaltet. Die unabhängige öffentliche Release-
-und UI-Prüfung ist unter [Ananta-Betreiberstatus](../machine-admission-status.md)
-dokumentiert. Dies ist kein neuer Rollback-/Medien- oder Hub-Trust-Drill.
+Aktueller dokumentierter Software-Rollout: `5a10338` am 9. September 2026 nach
+CI 34380159740 (alle acht Jobs grün). Alle drei Dienste, Native-Preflight und
+unabhängiger externer Smoke sind geprüft; Snapshot
+`image-set-v1` / `rollback.G61Ptl` bewahrt den vorherigen Satz (`92f583f`).
+Maschinenaufnahme bleibt ausgeschaltet. Die unabhängige öffentliche Vertrags-,
+Client-Probe- und Release-Prüfung ist im
+[Ananta-Rollout](../ananta-public-rollout-20260909.md) dokumentiert.
+Dies ist kein neuer Rollback-/Medien- oder Hub-Trust-Drill.
 
 1. `git status --short` muss leer sein; `npm run check` und CI müssen grün sein.
 2. Secret-Dateien ausschließlich root-/service-lesbar außerhalb des Repositories ablegen und über `*_FILE` referenzieren.

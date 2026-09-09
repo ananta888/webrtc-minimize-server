@@ -5,7 +5,31 @@ Aktivierung sind unterschiedliche Zustände. Die öffentliche Meet-Instanz melde
 bei der aktuellen Prüfung `admissionEnabled: false`: Noch kein produktiver
 KI-Beitritt. Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
 
-## Aktueller Nachtrag: Erneuerung im aktiven Dialog
+## Aktueller Nachtrag: öffentlich ausgelieferte Integration
+
+Der geprüfte Stand `5a10338` ist jetzt über den regulären Drei-Dienste-Runner
+auf dem Mini-PC ausgerollt. CI `34380159740` bestand alle acht Jobs. Der neue
+öffentliche Integrationspfad liefert den strikten JSON-Vertrag statt der alten
+HTML-Ausweichseite; die Softwareübersicht und der Maschinenclient sind damit
+öffentlich verfügbar. Beide echten Browser-Client-Proben, Chromium und Firefox,
+bestanden ohne Capture, WebSocket oder PeerConnection. Alle fünf öffentlichen
+Packager-Downloads entsprechen dem unabhängig attestierten CI-Manifest.
+
+Audioempfang, Chat, eigene Bildschirmquelle, Sitzungserneuerung und die
+Freigabeoberfläche sind in diesem Softwarestand enthalten. Eine öffentliche
+Hub-/Worker-Teilnahme wurde damit **nicht** aktiviert: Die explizite Auswahl
+bleibt `disabled disabled`, `admissionEnabled: false`. Dafür fehlen weiterhin
+das vom Betreiber ausgewählte öffentliche Hub-Trustprofil und der freigegebene
+Ananta-Projektauftrag. Gemeinsame Langzeitabnahme und die übrigen offenen
+Trackkriterien bleiben getrennt. [Rollout und genaue Prüfgrenzen](ananta-public-rollout-20260909.md).
+
+Der während dieses Rollouts eingegangene Nachtrag `0c75dea` dokumentiert zudem
+einen fehlgeschlagenen separaten Langzeitlauf: Bildschirmstillstand beim
+Empfänger nach etwa 36 Minuten, Ursache noch offen. Der neue Software-Rollout
+ist kein nachgewiesener Fix dafür. Die [Langzeitdiagnose](ananta-linux-grouped-check-20260909.md#third-long-reference-receiver-movement-failure)
+bleibt Teil der offenen gemeinsamen Abnahme.
+
+## Vorheriger Nachtrag: Erneuerung im aktiven Dialog
 
 Die Meet-seitigen Funktionen sind bereits implementiert. Der neue
 [aktive Renewal-Dialog](machine-active-dialog-renewal.md) schließt eine konkrete
@@ -24,7 +48,7 @@ Zweistundenabnahme.
 
 CI `34374881656` für den bereits gepushten Stand `f67c9e5` ist inzwischen in
 allen acht Jobs erfolgreich. Diese CI enthält den neuen Testnachtrag noch nicht.
-Die aktuelle rein lesende Prüfung meldet öffentlich weiterhin
+Die damals vor dem obigen Rollout erfolgte rein lesende Prüfung meldete öffentlich
 `admissionEnabled: false`, lokal `disabled disabled`. Der neue öffentliche
 Integrationspfad antwortet noch mit HTML statt dem Statusvertrag; die neue
 Übersicht ist damit nicht als öffentlich ausgerollt nachgewiesen. Keine
