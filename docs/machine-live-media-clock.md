@@ -92,3 +92,29 @@ drift 8,200 us in both. Unrefreshed screen publication stopped at 799.87 /
 failed timing row. Zero human capture or transform errors. Log:
 `/tmp/ananta-meet-media-timing-browser-matrix.log`. These are source-clock and
 actual-decode observations, not measured end-to-end A/V alignment or GPU proof.
+
+## Combined regression follow-up
+
+The isolated full check at `38e7f35` passed 965 frontend tests and build/type,
+static/security and Go checks, but its Node stage ended with 968 passed, five
+failed and two skipped in 405.678 seconds. The infrastructure tail was not
+reached. The three new timing browser cases passed again. The five failures
+were existing Chromium avatar-video/avatar-renewal waits and Firefox active
+audio-receive, same-persona and repeated-screen waits. Their causes are not yet
+established; this aggregate is failed, not a completion gate.
+
+An independent upstream screen/audio cleanup change (`92b19a1`) was subsequently
+integrated, retaining both its small screen endpoint and the opt-in timing
+restriction. Its own prior aggregate already records an avatar-video failure.
+370 machine frontend tests passed after integration in 2.87 s. Next use a fresh
+private build and the five affected cases with the available bounded failure
+diagnostics. Do not infer a runtime fix from a green repeat or blame host load
+without a corresponding observation. No serving build or trust changed.
+
+All five affected cases passed on `95d0d4e` in a serial focused repeat (66.583 s),
+without another simultaneous heavy gate. That is repeatability information,
+not a causal fix or a green aggregate. A timer-created `waitFixtureValue` error
+previously lost the awaiting fixture's call site. The test-only helper now
+captures that stack before polling, preserving the unchanged deadline/message
+without serializing page values. Seven deterministic helper checks passed in
+0.430 s, including the retained phase and absence of private predicate values.

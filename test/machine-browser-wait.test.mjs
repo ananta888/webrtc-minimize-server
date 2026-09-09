@@ -26,6 +26,18 @@ test("cancel stops a pending navigation predicate without orphan polling", async
   const pending = waitFixtureValue(page, () => false, null, { signal: controller.signal }); controller.abort();
   await assert.rejects(pending, /cancelled/); await new Promise(resolve => setTimeout(resolve, 60)); assert.equal(calls, 1);
 });
+test("deadline diagnostics retain the original awaiting phase without serializing page values", async () => {
+  const page = { evaluate: async () => ({ secret: "private-fixture-value" }) };
+  async function observeCompanionAudioPhase() {
+    return waitFixtureValue(page, () => false, null, { timeout: 20 });
+  }
+  await assert.rejects(observeCompanionAudioPhase(), error => {
+    assert.equal(error.message, "test_fixture_wait_deadline");
+    assert.match(error.stack, /observeCompanionAudioPhase/);
+    assert.doesNotMatch(error.stack, /private-fixture-value/);
+    return true;
+  });
+});
 test("predicate errors and invalid deadlines are not retried", async () => {
   const error = new Error("policy_denied"); let calls = 0;
   const page = { evaluate: async () => { calls++; throw error; } };

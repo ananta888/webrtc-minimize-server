@@ -5,10 +5,13 @@ export async function waitFixtureValue(page, predicate, arg, {
   timeout = 5000, accept = value => value === true, signal,
 } = {}) {
   if (!Number.isFinite(timeout) || timeout <= 0 || timeout > 30000) throw new Error("test_fixture_wait_budget");
+  // Capture the awaiting fixture's call site before entering the timer callback.
+  // A timer-created stack only identifies this helper, hiding the failing phase.
+  const deadlineError = new Error("test_fixture_wait_deadline");
   let active = true, timer, abort;
   const stopped = new Promise((_, reject) => {
     abort = () => reject(new Error("test_fixture_wait_cancelled"));
-    timer = setTimeout(() => reject(new Error("test_fixture_wait_deadline")), timeout);
+    timer = setTimeout(() => reject(deadlineError), timeout);
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) abort();
   });
