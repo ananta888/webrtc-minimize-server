@@ -692,10 +692,13 @@ export class PeerMeshService {
 
   async acceptOverlayKey(message: ServerMessage): Promise<void> {
     const peerId = String(message["from"] || "");
+    const current = this.overlayOperationCurrent([peerId], false);
     try {
       if (Number(message["membershipEpoch"]) !== this.membershipEpoch() || !this.peers.has(peerId)) return;
       await this.overlayInitialization;
+      if (!current()) return;
       await this.overlay.setPeerKey(peerId, message["key"] as JsonWebKey);
+      if (!current()) return;
       this.updateOverlayAvailability();
       this.provisionMediaKeysForPeer(peerId);
     } catch {
@@ -730,6 +733,7 @@ export class PeerMeshService {
     const firstHop = preferredPath[1];
     const path = this.peers.get(firstHop)?.channels.get("overlay")?.readyState === "open"
       ? preferredPath : [this.ownId, destinationPeerId];
+    const current = this.overlayOperationCurrent(path.slice(1));
     try {
       const packets = await this.overlay.encrypt(destinationPeerId, data, {
         membershipEpoch: this.membershipEpoch(),
@@ -737,6 +741,7 @@ export class PeerMeshService {
         trafficClass,
         path,
       });
+      if (!current()) return false;
       this.overlayMode.set(path.length > 2 ? "opaque-relay" : "direct-encrypted");
       return packets.every((packet) => this.queueOverlayPacket(path[1], packet));
     } catch {
@@ -1256,6 +1261,8 @@ export class PeerMeshService {
   }
 
   private async acceptOverlayPacket(peer: PeerState, raw: unknown): Promise<void> {
+    if (this.peers.get(peer.id) !== peer) return;
+    const current = this.overlayOperationCurrent([peer.id]);
     let value: unknown;
     try { value = typeof raw === "string" ? JSON.parse(raw) : null; } catch { return; }
     const result = await this.overlay.receive(value, peer.id, {
@@ -1263,6 +1270,10 @@ export class PeerMeshService {
       routeEpoch: this.routeEpoch(),
       memberPeerIds: new Set([this.ownId, ...this.peers.keys()]),
     });
+    if (!current()) {
+      if (result.action === "delivered") result.data.fill(0);
+      return;
+    }
     if (result.action === "forward") this.queueOverlayPacket(result.nextPeerId, result.packet);
     if (result.action === "pending") {
       void this.sendOverlayAck(result.originPeerId, result.packetId, result.missing);
@@ -1303,6 +1314,16 @@ export class PeerMeshService {
       packetId,
       missing: missing.slice(0, 96),
     })), "control");
+  }
+
+  /** Async crypto is not authority: recheck the owning session and exact peers. */
+  private overlayOperationCurrent(peerIds: readonly string[], routeBound = true): () => boolean {
+    const ownId = this.ownId, generation = this.overlayGeneration;
+    const membershipEpoch = this.membershipEpoch(), routeEpoch = this.routeEpoch();
+    const peers = peerIds.map(id => ({ id, peer: this.peers.get(id) }));
+    return () => Boolean(ownId) && ownId === this.ownId && generation === this.overlayGeneration
+      && membershipEpoch === this.membershipEpoch() && (!routeBound || routeEpoch === this.routeEpoch())
+      && peers.every(({ id, peer }) => Boolean(peer) && this.peers.get(id) === peer);
   }
 
   private attachChannel(peer: PeerState, channel: RTCDataChannel): void {

@@ -121,6 +121,8 @@ export function parseOverlayPacket(raw: unknown, now = Date.now()): OverlayPacke
 }
 
 export class OpaqueDataOverlay {
+  #lifetime = {};
+  #peerImports = new Map<string, object>();
   #ownPeerId = "";
   #keyPair: CryptoKeyPair | null = null;
   #peerKeys = new Map<string, CryptoKey>();
@@ -133,20 +135,27 @@ export class OpaqueDataOverlay {
     if (!PEER_ID.test(ownPeerId)) throw new Error("invalid_own_peer");
     this.destroy();
     this.#ownPeerId = ownPeerId;
-    this.#keyPair = await crypto.subtle.generateKey(
+    const lifetime = this.#lifetime;
+    const keyPair = await crypto.subtle.generateKey(
       { name: "ECDH", namedCurve: "P-256" },
       false,
       ["deriveKey"],
     );
-    const exported = await crypto.subtle.exportKey("jwk", this.#keyPair.publicKey);
+    this.#assertCurrent(lifetime === this.#lifetime);
+    const exported = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+    this.#assertCurrent(lifetime === this.#lifetime);
+    this.#keyPair = keyPair;
     return { kty: "EC", crv: "P-256", x: exported.x, y: exported.y, ext: true };
   }
 
   async setPeerKey(peerId: string, publicKey: JsonWebKey): Promise<void> {
-    if (!PEER_ID.test(peerId) || peerId === this.#ownPeerId || publicKey.kty !== "EC"
+    if (!this.#keyPair || !PEER_ID.test(peerId) || peerId === this.#ownPeerId || publicKey.kty !== "EC"
       || publicKey.crv !== "P-256" || typeof publicKey.x !== "string" || typeof publicKey.y !== "string") {
       throw new Error("invalid_overlay_key");
     }
+    this.removePeer(peerId);
+    const lifetime = this.#lifetime, operation = {};
+    this.#peerImports.set(peerId, operation);
     const key = await crypto.subtle.importKey(
       "jwk",
       { kty: "EC", crv: "P-256", x: publicKey.x, y: publicKey.y, ext: true },
@@ -154,13 +163,21 @@ export class OpaqueDataOverlay {
       false,
       [],
     );
+    this.#assertCurrent(lifetime === this.#lifetime && this.#peerImports.get(peerId) === operation);
     this.#peerKeys.set(peerId, key);
     this.#derivedKeys.delete(peerId);
   }
 
   removePeer(peerId: string): void {
+    this.#peerImports.delete(peerId);
     this.#peerKeys.delete(peerId);
     this.#derivedKeys.delete(peerId);
+    for (const [id, assembly] of this.#assemblies) {
+      if (assembly.originPeerId === peerId) this.#clearAssembly(id);
+    }
+    for (const [id, outbound] of this.#outbound) {
+      if (outbound.packets.some(packet => packet.path.includes(peerId))) this.#outbound.delete(id);
+    }
   }
 
   hasPeerKey(peerId: string): boolean {
@@ -177,7 +194,9 @@ export class OpaqueDataOverlay {
     if (context.path[0] !== this.#ownPeerId || context.path.at(-1) !== destinationPeerId) {
       throw new Error("invalid_overlay_path");
     }
+    const current = this.#current(destinationPeerId);
     const key = await this.#derive(destinationPeerId);
+    this.#assertCurrent(current());
     const packetId = encode(crypto.getRandomValues(new Uint8Array(18)));
     const chunkCount = Math.max(1, Math.ceil(data.byteLength / MAX_CHUNK_BYTES));
     const createdAt = now;
@@ -201,17 +220,23 @@ export class OpaqueDataOverlay {
         chunkCount,
       };
       const nonceBytes = crypto.getRandomValues(new Uint8Array(12));
-      const ciphertextBytes = new Uint8Array(await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv: bufferSource(nonceBytes), additionalData: bufferSource(aad(immutable)) },
-        key,
-        cleartext,
-      ));
+      let ciphertextBytes: Uint8Array;
+      try {
+        ciphertextBytes = new Uint8Array(await crypto.subtle.encrypt(
+          { name: "AES-GCM", iv: bufferSource(nonceBytes), additionalData: bufferSource(aad(immutable)) },
+          key,
+          cleartext,
+        ));
+      } finally { cleartext.fill(0); }
+      this.#assertCurrent(current());
+      const digest = await sha256(ciphertextBytes);
+      this.#assertCurrent(current());
       packets.push({
         ...immutable,
         hop: 1,
         nonce: encode(nonceBytes),
         ciphertext: encode(ciphertextBytes),
-        digest: await sha256(ciphertextBytes),
+        digest,
       });
     }
     this.#outbound.set(packetId, { expiresAt, packets });
@@ -246,9 +271,13 @@ export class OpaqueDataOverlay {
       return { action: "drop", reason: "unauthorized_path" };
     }
     const replayKey = `${packet.packetId}:${packet.chunkIndex}`;
+    const current = this.#current(packet.originPeerId);
     if (this.#seen.has(replayKey)) return { action: "drop", reason: "replay" };
     const ciphertext = decode(packet.ciphertext);
     if (await sha256(ciphertext) !== packet.digest) return { action: "drop", reason: "digest_mismatch" };
+    if (!current()) return { action: "drop", reason: "lifecycle_changed" };
+    // Another receive can have claimed this packet while digesting.
+    if (this.#seen.has(replayKey)) return { action: "drop", reason: "replay" };
     this.#seen.set(replayKey, packet.expiresAt);
     if (this.#ownPeerId !== packet.destinationPeerId) {
       const nextPeerId = packet.path[packet.hop + 1];
@@ -257,12 +286,17 @@ export class OpaqueDataOverlay {
     }
     try {
       const key = await this.#derive(packet.originPeerId);
+      this.#assertCurrent(current());
       const { hop: _hop, nonce: _nonce, ciphertext: _ciphertext, digest: _digest, ...immutable } = packet;
       const cleartext = new Uint8Array(await crypto.subtle.decrypt(
         { name: "AES-GCM", iv: bufferSource(decode(packet.nonce)), additionalData: bufferSource(aad(immutable)) },
         key,
         bufferSource(ciphertext),
       ));
+      if (!current()) {
+        cleartext.fill(0);
+        return { action: "drop", reason: "lifecycle_changed" };
+      }
       const assemblyKey = `${packet.originPeerId}:${packet.packetId}`;
       let assembly = this.#assemblies.get(assemblyKey);
       if (!assembly) {
@@ -270,7 +304,8 @@ export class OpaqueDataOverlay {
         this.#assemblies.set(assemblyKey, assembly);
       }
       if (assembly.count !== packet.chunkCount || assembly.bytes + cleartext.byteLength > MAX_CHUNK_BYTES * MAX_CHUNKS) {
-        this.#assemblies.delete(assemblyKey);
+        cleartext.fill(0);
+        this.#clearAssembly(assemblyKey);
         return { action: "drop", reason: "assembly_limit" };
       }
       assembly.parts.set(packet.chunkIndex, cleartext);
@@ -288,7 +323,7 @@ export class OpaqueDataOverlay {
         data.set(part, offset);
         offset += part.byteLength;
       }
-      this.#assemblies.delete(assemblyKey);
+      this.#clearAssembly(assemblyKey);
       return { action: "delivered", packetId: packet.packetId, originPeerId: assembly.originPeerId, trafficClass: assembly.trafficClass, data };
     } catch {
       return { action: "drop", reason: "decrypt_failed" };
@@ -296,12 +331,14 @@ export class OpaqueDataOverlay {
   }
 
   destroy(): void {
+    this.#lifetime = {};
+    this.#peerImports.clear();
     this.#ownPeerId = "";
     this.#keyPair = null;
     this.#peerKeys.clear();
     this.#derivedKeys.clear();
     this.#seen.clear();
-    this.#assemblies.clear();
+    for (const id of this.#assemblies.keys()) this.#clearAssembly(id);
     this.#outbound.clear();
   }
 
@@ -310,6 +347,7 @@ export class OpaqueDataOverlay {
     if (cached) return cached;
     const peerKey = this.#peerKeys.get(peerId);
     if (!this.#keyPair || !peerKey) throw new Error("overlay_key_unavailable");
+    const current = this.#current(peerId);
     const key = await crypto.subtle.deriveKey(
       { name: "ECDH", public: peerKey },
       this.#keyPair.privateKey,
@@ -317,14 +355,32 @@ export class OpaqueDataOverlay {
       false,
       ["encrypt", "decrypt"],
     );
+    this.#assertCurrent(current());
     this.#derivedKeys.set(peerId, key);
     return key;
   }
 
   #prune(now: number): void {
     for (const [key, expiresAt] of this.#seen) if (expiresAt <= now) this.#seen.delete(key);
-    for (const [key, assembly] of this.#assemblies) if (assembly.expiresAt <= now) this.#assemblies.delete(key);
+    for (const [key, assembly] of this.#assemblies) if (assembly.expiresAt <= now) this.#clearAssembly(key);
     for (const [key, outbound] of this.#outbound) if (outbound.expiresAt <= now) this.#outbound.delete(key);
+  }
+
+  #current(peerId: string): () => boolean {
+    const lifetime = this.#lifetime, keyPair = this.#keyPair;
+    const peerKey = this.#peerKeys.get(peerId), imported = this.#peerImports.get(peerId);
+    return () => lifetime === this.#lifetime && keyPair === this.#keyPair
+      && peerKey === this.#peerKeys.get(peerId) && imported === this.#peerImports.get(peerId);
+  }
+
+  #assertCurrent(current: boolean): void {
+    if (!current) throw new Error("overlay_lifecycle_changed");
+  }
+
+  #clearAssembly(id: string): void {
+    const assembly = this.#assemblies.get(id);
+    if (assembly) for (const part of assembly.parts.values()) part.fill(0);
+    this.#assemblies.delete(id);
   }
 }
 
