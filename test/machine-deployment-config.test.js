@@ -20,7 +20,15 @@ function fixture(t) {
   fs.writeFileSync(key, trust.keys[0].publicKey.export({ format: "pem", type: "spki" }));
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("MACHINE_")
     && !name.startsWith("COMPOSE_") && !["AUTH_MODE", "MEDIA_E2EE_MODE"].includes(name)));
-  const run = (extra = {}) => spawnSync(process.execPath, [cli], { cwd: root, env: { ...env, ...extra }, encoding: "utf8", timeout: 8000 });
+  const run = (extra = {}) => {
+    const wall = Date.now(), monotonic = performance.now();
+    const result = spawnSync(process.execPath, [cli], { cwd: root, env: { ...env, ...extra }, encoding: "utf8", timeout: 8000 });
+    if (result.status !== 0) t.diagnostic(JSON.stringify({ stage: "deployment-config-cli", status: result.status,
+      signal: ["SIGTERM", "SIGKILL"].includes(result.signal) ? result.signal : null,
+      error: ["ETIMEDOUT", "ENOENT", "EACCES", "ENOBUFS"].includes(result.error?.code) ? result.error.code : null,
+      wallElapsedMs: Date.now() - wall, monotonicElapsedMs: Math.round(performance.now() - monotonic) }));
+    return result;
+  };
   return { root, profile, key, trust, env, run };
 }
 test("pure selection is closed, default-off and never reads disabled trust", () => {
@@ -50,15 +58,18 @@ test("profile and legacy modes validate exclusive public trust and explicit deny
 });
 test("actual Compose resolves .env, interpolation, process precedence and empty ceilings without activation", t => {
   const f = fixture(t);
-  assert.equal(f.run().stdout, "disabled disabled\n");
+  const disabled = f.run();
+  assert.equal(disabled.status, 0); assert.equal(disabled.stdout, "disabled disabled\n");
   fs.writeFileSync(path.join(f.root, ".env"), `MACHINE_DEPLOYMENT_MODE=profile\nPROFILE_PATH=${f.profile}\nMACHINE_HUB_TRUST_PROFILE_JSON_FILE=\${PROFILE_PATH}\n`);
-  assert.equal(f.run().stdout, "profile enabled\n");
+  const enabled = f.run();
+  assert.equal(enabled.status, 0); assert.equal(enabled.stdout, "profile enabled\n");
   const denied = f.run({ MACHINE_ALLOWED_CAPABILITIES: "" });
   assert.equal(denied.status, 0); assert.equal(denied.stdout, "profile disabled\n");
   const mixed = f.run({ MACHINE_HUB_ISSUER: f.trust.profile.issuer });
   assert.equal(mixed.status, 2); assert.equal(mixed.stdout, "");
   assert.deepEqual(JSON.parse(mixed.stderr), { status: "blocked", code: "machine_deployment_config_invalid" });
-  assert.equal(f.run({ MACHINE_DEPLOYMENT_MODE: "disabled", MACHINE_HUB_TRUST_PROFILE_JSON_FILE: "" }).stdout, "disabled disabled\n");
+  const overridden = f.run({ MACHINE_DEPLOYMENT_MODE: "disabled", MACHINE_HUB_TRUST_PROFILE_JSON_FILE: "" });
+  assert.equal(overridden.status, 0); assert.equal(overridden.stdout, "disabled disabled\n");
 });
 test("CLI rejects missing, private, malformed and FIFO input with only a fixed diagnostic", t => {
   const f = fixture(t);

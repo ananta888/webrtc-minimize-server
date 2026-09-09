@@ -7,6 +7,23 @@ KI-Beitritt. Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
 
 ## Aktueller Nachtrag: öffentlich ausgelieferte Integration
 
+Die erneute priorisierte Abnahme auf `529040f` einschließlich der offenen
+Broadcast-Arbeitskopie ist im isolierten Checkout **bestanden (Exit 0)**:
+1.209 Frontendtests, 1.143 Node-/Browserfälle, null Fehler und vier explizite
+Node-Skips (513,191 s). Build, Typprüfung und Go-Unit/Vet bestanden ebenfalls.
+Die beiden aktiven Ananta-Dialoge bestanden in Chromium 10,119 s und Firefox
+11,061 s, jeweils mit vier Phasen mit
+16.000 entschlüsselten PCM-Samples, korrelierten Chatantworten, dekodierten
+roten/grünen Bildschirmbildern und drei Sitzungserneuerungen. Persönliche
+Quellenfreigaben bleiben unverlängert; Widerruf sperrt auch nach einem weiteren
+Renewal. Beide nativen Szenenfälle und der neue reale Audioausgang bestanden
+ebenfalls. 14 externe Infrastruktur-Gates und der optionale Image-Scan wurden
+ausdrücklich übersprungen; die separate Langzeitabnahme bleibt offen.
+Prüfprotokoll: `/tmp/webrtc-ananta-priority-check.lfJUA1/check.log`.
+Es handelt sich um private synthetische Testidentitäten, nicht um eine
+öffentliche Hub-Aktivierung.
+Ein frischer öffentlicher GET bestätigt weiterhin `admissionEnabled: false`.
+
 Der anschließende priorisierte Review sichert die
 [Ablaufgrenze bei der Erneuerungsentscheidung](machine-renewal-decision-boundary.md)
 ab. Die neuen Deadline-/Rücksprungregressionen reproduzierten zunächst eine

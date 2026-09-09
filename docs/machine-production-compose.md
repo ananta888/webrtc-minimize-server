@@ -66,6 +66,17 @@ deshalb bestehende Wartungs-/Rollbackregeln beachten.
 
 ## Prüfstand
 
+Nachtrag 9. September: CI `34391296035` für `bbc526f` scheiterte bei der
+ersten erwarteten `disabled disabled`-Ausgabe. Der alte Test hielt dabei weder
+Exitstatus noch Signal fest; aus dem leeren stdout allein lässt sich die Ursache
+nicht bestimmen. Die unveränderte lokale Fünf-Fälle-Suite bestand in 5,191 s.
+Die Testfixture projiziert nun ausschließlich Exitstatus, bekannte Signale und
+Fehlerkategorien sowie relative Wanduhr-/Monotonlaufzeiten. Erfolg verlangt
+zusätzlich Exit 0. Umgebungswerte, Pfade und rohe Prozessausgaben werden nicht
+als Diagnose übernommen; CLI und seine Fünfsekundengrenze bleiben unverändert.
+Mit dieser Diagnose bestanden fünf Fälle in 5,849 s. Das ist kein kausaler Fix
+oder nachträglich grüner CI-Lauf; keine Hub-Freigabe oder neuer Rollout.
+
 29 gezielte Tests für Auswahl, echte Compose-Auswertung/-Mountkonfiguration,
 Datei-/FIFO-/Privatschlüsselablehnung und den bestehenden Drei-Image-Runner
 bestanden. Smoke-Fixtures prüfen Admission unabhängig von Health; fehlender
