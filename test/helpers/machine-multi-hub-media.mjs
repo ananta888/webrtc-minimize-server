@@ -98,6 +98,30 @@ export async function multiHubMedia(f) {
         if (await replies.count() !== 2) throw new Error("test_multi_reply_count_invalid");
         return { replies: 2 };
       }
+      if (input.command === "answer-count" && Object.keys(input).length === 2 && [1, 2].includes(input.count)) {
+        step = "reconnect-answer";
+        await page.locator("#chat-log").getByText("Synthetic Hub answer", { exact: false }).nth(input.count - 1)
+          .waitFor({ timeout: 25000 });
+        step = "idle";
+        return { replies: input.count };
+      }
+      if (input.command === "recovered-media" && Object.keys(input).length === 1) {
+        await page.locator(".nav-item").filter({ hasText: /^Live/ }).click();
+        let quietSince = null;
+        await waitFixtureValue(page, () => window.__multiPublisher.quiet(), undefined, {
+          timeout: 3000, accept: value => {
+            if (!value || Object.keys(value).sort().join(",") !== "active,failed,tracks"
+              || value.failed !== false || typeof value.active !== "boolean"
+              || !Number.isInteger(value.tracks) || value.tracks < 1 || value.tracks > 4) {
+              throw new Error("test_reconnect_audio_observation_invalid");
+            }
+            if (value.active) quietSince = null;
+            else quietSince ??= Date.now();
+            return quietSince !== null && Date.now() - quietSince >= 300;
+          },
+        });
+        return { oldAudioReplayed: false, quietMs: 300 };
+      }
       if (input.command !== "media" || Object.keys(input).length !== 2
         || !["avatars", "first-speech", "both-speech", "first-revoked", "survivor"].includes(input.phase)) {
         throw new Error("test_multi_media_command_invalid");

@@ -1,4 +1,14 @@
 // Explicit private-fixture fault injection, never a production control port.
+export async function interruptMultiHubMember(page, reconnect, peers) {
+  // Participant count is rendered only in Live, not after the Chat assertion.
+  // Navigate before the interruption so the fixed stop budget observes a real
+  // departure rather than waiting for an element on an unrelated page.
+  await page.locator(".nav-item").filter({ hasText: /^Live/ }).click();
+  const result = reconnect.interrupt(peers);
+  await page.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
+  return result;
+}
+
 export class MultiHubReconnect {
   constructor(registry, roomId) {
     this.registry = registry; this.roomId = roomId;

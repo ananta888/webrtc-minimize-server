@@ -6,7 +6,7 @@ import { machineBrowserFixture } from "./machine-browser-fixture.js";
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
 import { multiHubMedia } from "./machine-multi-hub-media.mjs";
 import { multiHubIcePath, observeMultiHubRelay } from "./machine-multi-hub-relay.mjs";
-import { MultiHubReconnect } from "./machine-multi-hub-reconnect.mjs";
+import { MultiHubReconnect, interruptMultiHubMember } from "./machine-multi-hub-reconnect.mjs";
 
 function screenSignatures(peers) {
   return peers.map(peer => {
@@ -71,10 +71,10 @@ async function run() {
     let peers = null, commands = 0;
     timer = setTimeout(() => process.stdin.destroy(), 240000);
     for await (const line of readline.createInterface({ input: process.stdin, crlfDelay: Infinity })) {
-      if (++commands > 24 || line.length > 1024) throw new Error("test_multi_bridge_budget");
+      if (++commands > (reconnect && media ? 32 : 24) || line.length > 1024) throw new Error("test_multi_bridge_budget");
       if (line === "stop") break;
       const input = JSON.parse(line);
-      if (media && peers && ["consent", "ask", "answers", "media", "floor-start", "floor-result"].includes(input.command)) {
+      if (media && peers && ["consent", "ask", "answers", "media", "floor-start", "floor-result", ...(reconnect ? ["recovered-media", "answer-count"] : [])].includes(input.command)) {
         stage = input.command === "media" && ["avatars", "first-speech", "both-speech", "first-revoked", "survivor"].includes(input.phase)
           ? "media-" + input.phase : input.command;
         reply(await media.command(input, peers)); continue;
@@ -97,9 +97,7 @@ async function run() {
         reply({ matchedPrincipals: 2, distinctDevices: true, participants: 3 });
       } else if (reconnect && peers && Object.keys(input).length === 1 && input.command === "disconnect") {
         stage = "disconnect";
-        const result = reconnect.interrupt(peers);
-        await f.human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
-        reply(result);
+        reply(await interruptMultiHubMember(f.human, reconnect, peers));
       } else if (reconnect && peers && Object.keys(input).length === 1 && input.command === "recovered") {
         stage = "recovered";
         await f.human.locator("#participant-count", { hasText: "3 / 20" }).waitFor();

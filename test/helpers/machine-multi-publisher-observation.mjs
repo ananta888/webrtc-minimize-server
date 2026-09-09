@@ -49,16 +49,21 @@ export function installMultiPublisherObservation() {
     const audio = [...tracks.values()].filter(entry => entry.pc.getReceivers().some(r => videoTracks.includes(r.track)));
     return { elements, audio };
   }
+  function audible(entry) {
+    if (closed || failed || entry.track.readyState !== "live" || entry.context.state !== "running" || !entry.analyser) return false;
+    const pcm = new Float32Array(entry.analyser.fftSize); entry.analyser.getFloatTimeDomainData(pcm);
+    return pcm.some(sample => Math.abs(sample) > .01);
+  }
   window.__multiPublisher = {
+    quiet() {
+      // Include retired connections, not only audio still associated with DOM.
+      return { failed: closed || failed, tracks: tracks.size, active: [...tracks.values()].some(audible) };
+    },
     active(peers) {
       requirePeers(peers);
       // Fresh samples in the same browser callback, not accumulated historical
       // peaks from two non-overlapping speech turns.
-      return peers.map(peer => associated(peer).audio.some(entry => {
-        if (closed || failed || entry.track.readyState !== "live" || entry.context.state !== "running" || !entry.analyser) return false;
-        const pcm = new Float32Array(entry.analyser.fftSize); entry.analyser.getFloatTimeDomainData(pcm);
-        return pcm.some(sample => Math.abs(sample) > .01);
-      }));
+      return peers.map(peer => associated(peer).audio.some(audible));
     },
     snapshot(peers) {
       requirePeers(peers);

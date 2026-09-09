@@ -1,6 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MultiHubReconnect } from "./helpers/machine-multi-hub-reconnect.mjs";
+import { MultiHubReconnect, interruptMultiHubMember } from "./helpers/machine-multi-hub-reconnect.mjs";
+
+test("departure observation navigates from Chat before closing the exact owned member", async () => {
+  const events = [], peers = ["a", "b"], result = { interrupted: 0, attempt: 3 };
+  const page = { locator(selector, options) {
+    if (selector === ".nav-item") return { filter(filter) {
+      assert.equal(filter.hasText.test("Live"), true);
+      return { async click() { events.push("live"); } };
+    } };
+    assert.equal(selector, "#participant-count"); assert.deepEqual(options, { hasText: "2 / 20" });
+    return { async waitFor() { assert.deepEqual(events, ["live", "interrupt"]); events.push("departed"); } };
+  } };
+  const reconnect = { interrupt(current) {
+    assert.equal(current, peers); assert.deepEqual(events, ["live"]); events.push("interrupt"); return result;
+  } };
+  assert.equal(await interruptMultiHubMember(page, reconnect, peers), result);
+  assert.deepEqual(events, ["live", "interrupt", "departed"]);
+});
+
+test("failed Live navigation never interrupts a member", async () => {
+  const failure = new Error("navigation unavailable");
+  const page = { locator() { return { filter() { return { async click() { throw failure; } }; } }; } };
+  await assert.rejects(interruptMultiHubMember(page, { interrupt() { assert.fail("must not interrupt"); } }, []),
+    error => error === failure);
+});
 
 function fixture() {
   let interrupted = 0;

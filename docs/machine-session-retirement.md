@@ -56,3 +56,26 @@ three unpublished local commits. Both sets of TODO notes were retained;
 48 focused chat/floor helper checks passed after integration. That earlier
 aggregate does not cover this retirement implementation. The next combined
 regression must include it before the recovery track is completed.
+# Packaged multimedia recovery follow-up
+
+The private two-Worker fixture now samples silence across all receiver audio
+tracks, including retired connections no longer associated with visible video.
+After interrupting active synthetic speech, two new memberships restore the
+same pinned personas and moving screens. Receive consent must be newly granted
+before a second correlated answer; neither the old input nor audio is replayed.
+The third interruption exhausts the original Hub attempt budget. The fixture
+navigates back from Chat to Live before observing the participant counter; no
+person is required and no production UI, consent or policy behavior is changed.
+
+Actual Ananta Hub/immutable Worker image `e0cea0174a7e` with Meet `87b1a0f`
+frontend and these test adapters passed in 57.78 seconds: recoveries
+6,524.61/6,010.07 ms, exhausted stop 437.82 ms, independent survivor and final
+revocation, zero human capture/transform/proxy errors. Prior Hub control delay
+and the independent third-departure fixture failure remain documented in
+Ananta's `docs/contracts/meet-control-refresh-latency.md`. The Hub used its
+explicit eight-connection SQLite pool, without cached authority or relaxed
+freshness. Twenty-two targeted helper checks passed in 0.531 seconds.
+
+These are private synthetic-policy technical observations, not public TURN,
+multi-host, two-hour soak or production release evidence. A combined isolated
+repository check remains required before closing the lifecycle milestone.
