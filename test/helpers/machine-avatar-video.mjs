@@ -16,8 +16,13 @@ export async function openTestVideoAvatar({ sourceId, video }) {
   window.__avatarTestPulse?.stop();
   const source = window.anantaMachine.avatar, pending = source.open(sourceId, "persona-video-v1", video);
   const generation = source.status().generation;
-  const controller = { timer: null, stop() { clearInterval(this.timer); } };
+  const controller = { timer: null, pulses: 0, failures: 0, lastPulseAt: performance.now(), maxGapMs: 0,
+    stop() { clearInterval(this.timer); } };
   window.__avatarTestPulse = controller;
-  controller.timer = setInterval(() => { try { source.pulse(generation); } catch { controller.stop(); } }, 1000);
+  controller.timer = setInterval(() => {
+    const now = performance.now(); controller.maxGapMs = Math.max(controller.maxGapMs, now - controller.lastPulseAt);
+    try { source.pulse(generation); controller.pulses++; controller.lastPulseAt = now; }
+    catch { controller.failures++; controller.stop(); }
+  }, 1000);
   try { return await pending; } catch (error) { controller.stop(); throw error; }
 }

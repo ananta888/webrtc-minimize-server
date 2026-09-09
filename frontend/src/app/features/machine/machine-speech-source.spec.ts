@@ -112,4 +112,17 @@ describe("bounded synthetic speech source", () => {
     resolve(f.graph); await Promise.resolve(); expect(f.graph.close).toHaveBeenCalledOnce();
     expect(f.source.status().state).toBe("failed");
   });
+  it.each(["clock-backwards", "membershipEpoch", "leaseGeneration", "expiresAt", "sourceId", "progress-expired"])(
+    "retains only the fixed internal %s reason on authority failure", async reason => {
+      const f = setup(); const lease = await f.source.open("speech:hub", 22050);
+      if (reason === "clock-backwards") vi.setSystemTime(now - 1);
+      if (reason === "membershipEpoch") f.authority.membershipEpoch++;
+      if (reason === "leaseGeneration") f.authority.leaseGeneration++;
+      if (reason === "expiresAt") f.authority.expiresAt++;
+      if (reason === "sourceId") f.authority.sourceId = "private-other";
+      if (reason === "progress-expired") vi.setSystemTime(now + 2000);
+      let error: unknown; try { f.source.push(lease.generation, 0, pcm()); } catch (caught) { error = caught; }
+      expect(error).toMatchObject({ message: "meet_speech_authority_changed", cause: reason });
+      expect(JSON.stringify(error)).not.toContain("private-other"); expect(f.graph.close).toHaveBeenCalledOnce();
+    });
 });

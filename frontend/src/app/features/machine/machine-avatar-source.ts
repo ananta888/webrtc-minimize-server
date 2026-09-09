@@ -65,10 +65,14 @@ export class MachineAvatarSource {
 
   private check(): number {
     const current = this.ports.authority(), scope = this.scope, now = this.clock();
-    if (!scope || !Number.isFinite(now) || now < this.lastClock || now >= this.expiresAt || now >= this.controllerUntil
-      || current.sourceId !== scope.sourceId || current.sessionId !== scope.sessionId
-      || current.leaseGeneration !== scope.leaseGeneration || current.membershipEpoch !== scope.membershipEpoch
-      || current.expiresAt !== scope.expiresAt) throw new Error("meet_avatar_authority_expired");
+    const cause = !scope ? "inactive" : !Number.isFinite(now) ? "clock-invalid"
+      : now < this.lastClock ? "clock-backwards" : now >= this.expiresAt ? "activation-expired"
+      : now >= this.controllerUntil ? "controller-expired" : current.sourceId !== scope.sourceId ? "source-id"
+      : current.sessionId !== scope.sessionId ? "session-id" : current.leaseGeneration !== scope.leaseGeneration ? "lease-generation"
+      : current.membershipEpoch !== scope.membershipEpoch ? "membership-epoch"
+      : current.expiresAt !== scope.expiresAt ? "lease-expiry" : null;
+    // Fixed internal reason only: never retain the authority or its values.
+    if (cause) throw new Error("meet_avatar_authority_expired", { cause });
     this.lastClock = now; return now;
   }
 

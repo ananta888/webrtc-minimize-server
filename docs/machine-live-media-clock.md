@@ -128,3 +128,51 @@ tail overlapped the independently owned Ananta GPU component probe; browser
 machine cases ran before that probe. Neither serving files nor trust changed.
 Subsequent upstream `d2c4e0a` was fast-forwarded only after the run completed;
 its broadcast/source and speech-fixture changes are not covered by this result.
+
+## Authority-failure diagnosis (9 September 2026)
+
+The later combined native UI batch passed 1,067 frontend and 981 Node tests,
+but failed one Firefox timing case (two explicit skips; Node 428.821 seconds).
+The failure can occur before the avatar replacement, during hold-last, or after
+the deliberately stale screen stop. A missing timing row is not itself proof
+of clock drift: ordinary source cleanup removes a row, whereas timing-owned
+failure preserves its failed row.
+
+Three targeted diagnostic runs reproduced the failure. The source emitted
+`meet_avatar_authority_expired`; in two runs speech also emitted
+`meet_speech_authority_changed`. The observed session still had over 110 seconds
+remaining, controller pulses had gaps around one second, and the signaling
+observation retained membership epoch 2 with two peers, without a departure.
+These observations narrow the investigation but do not prove its cause.
+
+Avatar and speech now attach a fixed internal `Error.cause` category to their
+existing authority errors. The original scope, generation, backward-clock,
+idle, activation and controller checks remain enforced; no values or authority
+objects are retained in errors, and wire status contracts are unchanged.
+Eleven new reason assertions first failed, then all 46 source tests passed.
+
+The private timing fixture records at most 64 allowlisted error codes/causes
+and 32 count/epoch-only membership events. Native error construction, subclasses,
+causes and thrown identity are preserved; ErrorOptions getters are not invoked
+twice. No exception is suppressed. Arbitrary messages, stacks, IDs, SDP, ICE,
+images and PCM are excluded. The temporary Date.now probe was removed: the final
+fixture leaves application clocks untouched and relies on the exact internal
+reason instead. Opening production pages installs none of these observers.
+
+The final focused matrix passed nine tests in 21.539 seconds, including both
+browser timing cases and the unsupported Firefox publisher case; each timed
+case observed 30 samples and stopped the stale screen within 800 ms. Earlier
+reproductions remain failures, and these passes do not establish a causal fix.
+The next aggregate uses the new closed reason trace if the fault recurs.
+
+The subsequent isolated complete `npm run check` passed with exit 0: 1,078
+frontend tests and 989 Node/browser tests, zero failures and two explicit Node
+skips (447.381 seconds). Both timing engines, human-consented audio/chat/screen
+with three renewals, and native source-publisher media cases passed. Build,
+typecheck, Go and static gates passed; the initial bundle warning remains.
+Fourteen opt-in external infrastructure gates and the optional image scan were
+explicitly skipped, not treated as live evidence. Runtime/test files matched
+the checked isolated snapshot; the serving build and trust were unchanged.
+This is a successful aggregate, not proof that the earlier intermittent
+authority failure has been causally fixed. The internal reason/trace changes
+are the implementation delivered by this diagnostic round.

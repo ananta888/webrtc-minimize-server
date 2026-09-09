@@ -76,15 +76,18 @@ export class MachineSpeechSource {
   }
 
   private check(): void {
+    let cause: string | undefined = "authority-unavailable";
     try {
       const current = this.ports.authority(), now = this.clock();
-      if (!this.scope || now < this.lastNow || now >= this.deadline
-        || this.state === "open" && now >= this.lastProgress + 2000
-        || Object.keys(this.scope).some(k => current[k as keyof MachineSpeechAuthority] !== this.scope![k as keyof MachineSpeechAuthority])) {
-        throw new Error();
+      cause = !this.scope ? "inactive" : now < this.lastNow ? "clock-backwards" : now >= this.deadline ? "activation-expired"
+        : this.state === "open" && now >= this.lastProgress + 2000 ? "progress-expired" : undefined;
+      if (!cause) {
+        const changed = Object.keys(this.scope!).find(k => current[k as keyof MachineSpeechAuthority] !== this.scope![k as keyof MachineSpeechAuthority]);
+        if (changed) cause = ["sourceId", "sessionId", "leaseGeneration", "membershipEpoch", "expiresAt"].includes(changed) ? changed : "scope";
       }
-      this.lastNow = now;
-    } catch { this.close("failed"); throw new Error("meet_speech_authority_changed"); }
+      if (!cause) { this.lastNow = now; return; }
+    } catch { cause = "authority-unavailable"; }
+    this.close("failed"); throw new Error("meet_speech_authority_changed", { cause });
   }
 
   push(generation: number, startSample: number, encoded: unknown): void {

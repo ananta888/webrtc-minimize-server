@@ -9,10 +9,12 @@ test("source failure projection preserves missing timing rows and bounded actual
     screen: { status: () => ({ open: false, generation: 4, sequence: 1 }) },
     timing: { snapshot: () => ({ sources: { screen: { state: "failed", private: "secret" } } }) } };
   const window = { anantaMachine: api, __speechErrors: ["meet_speech_worklet_underrun", "secret"] };
-  const run = vm.runInNewContext(`(${machineSourceFailureObservation.toString()})`, { window });
+  const run = vm.runInNewContext(`(${machineSourceFailureObservation.toString()})`, { window, performance: { now: () => 50 } });
   assert.deepEqual(JSON.parse(JSON.stringify(run())), {
     speech: { state: "failed", generation: 3, receivedSamples: 4410, playedSamples: 2205 },
     avatar: { state: "closed", generation: 5 }, screen: { open: false, generation: 4, sequence: 1 },
+    controller: { pulses: null, failures: null, maxGapMs: null, lastPulseAgeMs: null },
+    session: { joined: false, generation: null, remainingMs: null },
     timing: { available: true, speech: "unknown", avatar: "unknown", screen: "failed" },
     speechErrors: ["meet_speech_worklet_underrun", "unknown"],
   });

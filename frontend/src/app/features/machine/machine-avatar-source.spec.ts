@@ -114,6 +114,18 @@ describe("independent bounded avatar lifecycle", () => {
     const f = setup(); for (let i = 0; i < 4000; i++) { f.source.close(); f.source.status(); }
     expect(f.ports.authority).not.toHaveBeenCalled(); expect((await f.open()).generation).toBe(1); f.source.close();
   });
+  it.each(["clock-backwards", "membership-epoch", "lease-generation", "lease-expiry", "controller-expired"])(
+    "retains a fixed internal %s reason without leaking authority values", async reason => {
+      const f = setup(); const receipt = await f.open();
+      if (reason === "clock-backwards") vi.setSystemTime(now - 1);
+      if (reason === "membership-epoch") f.authority.membershipEpoch++;
+      if (reason === "lease-generation") f.authority.leaseGeneration++;
+      if (reason === "lease-expiry") f.authority.expiresAt++;
+      if (reason === "controller-expired") vi.setSystemTime(now + 2500);
+      let error: unknown; try { f.source.pulse(receipt.generation); } catch (caught) { error = caught; }
+      expect(error).toMatchObject({ message: "meet_avatar_authority_expired", cause: reason });
+      expect(f.source.status().state).toBe("failed"); expect(f.surface.close).toHaveBeenCalledOnce();
+    });
   it("stops on a missing controller pulse and a late pulse cannot revive it", async () => {
     const f = setup(), lease = await f.open();
     expect(lease.heartbeatMs).toBe(2500); vi.advanceTimersByTime(2500);

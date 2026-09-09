@@ -7,6 +7,8 @@ import { openTestVideoAvatar, syntheticAvatarVideo } from "./helpers/machine-ava
 import { observeAvatarCommand } from "./helpers/machine-avatar-observation.mjs";
 import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
 import { machineSourceFailureObservation } from "./helpers/machine-source-failure-observation.mjs";
+import { installMachineSourceFailureTrace } from "./helpers/machine-source-failure-trace.mjs";
+import { observeMachineSourceMembership } from "./helpers/machine-source-membership-observation.mjs";
 
 const PROFILE = "independent-owned-live-v1";
 function checkSnapshot(value, peaks) {
@@ -35,7 +37,9 @@ test(`${engine} receives timed actual owned PCM/video/screen and bounded stale p
   const clip = syntheticAvatarVideo();
   const f = await machineBrowserFixture(t, { machineEngine: "chromium", humanEngine: engine });
   const { machine, human } = f, peaks = {};
+  const membershipObservation = observeMachineSourceMembership(machine);
   await human.evaluate(installDialogObservation);
+  await machine.evaluate(installMachineSourceFailureTrace);
   try {
     assert.deepEqual(await machine.evaluate(() => window.anantaMachine.timing.probe()), {
       schema: "ananta.meet-media-timing-probe.v1", profile: PROFILE, timebase: "browser-performance-v1",
@@ -100,10 +104,14 @@ test(`${engine} receives timed actual owned PCM/video/screen and bounded stale p
   } catch (error) {
     if (!machine.isClosed()) t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false,
       phase: "owned-source-timing", ...await machine.evaluate(machineSourceFailureObservation).catch(() => ({ unavailable: true })) }));
+    if (!machine.isClosed()) t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false,
+      sourceFailureTrace: await machine.evaluate(() => window.__machineSourceFailureTrace.snapshot()).catch(() => ({ unavailable: true })) }));
+    t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, membership: membershipObservation() }));
     throw error;
   } finally {
     if (!machine.isClosed()) await machine.evaluate(async () => {
       window.__avatarTestPulse?.stop(); await window.__avatarCompanions?.close(); window.anantaMachine.leave();
+      window.__machineSourceFailureTrace?.close();
     });
     if (!human.isClosed()) await human.evaluate(() => window.__dialogObservation?.close());
   }
