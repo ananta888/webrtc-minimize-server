@@ -73,6 +73,9 @@ Sekunden leben. Ein Packager hat höchstens eine offene Szenenoperation, der
 Prozess höchstens 128; das ist ein Ressourcenbudget, keine globale Raumgrenze.
 Abbruch, Disconnect, Shutdown, Uhr-Rücksprung und Autoritätsverlust räumen die
 Operation auf. Späte gültige Antworten werden nicht als neue Aufträge behandelt.
+Eine bereits über 64 KiB gefüllte WebSocket-Sendewarteschlange oder ein ungültiger
+Queue-Messwert verhindert weiteren Szenenversand. HTTP meldet Nichtverfügbarkeit,
+ohne die laufende Sendung oder den Socket allein dafür zu stoppen.
 Der HTTP-Director gibt weder interne Writer-Lease noch Command-ID aus.
 
 Unter **Broadcast → Mehrquellen-Sendung → Sendeszene** lässt sich der tatsächliche
@@ -133,3 +136,29 @@ unverändert. Acht Node-Capability-/Assignmentprüfungen bestehen danach.
 Node-/Browser-Gesamtmatrix und Infrastruktur wurden im ersten Check nicht mehr
 erreicht. Ein korrigierter Gesamtcheck ist ein neuer Nachweis, kein rückwirkender
 Erfolg dieses Laufs.
+
+## Korrigierte Gesamtprüfung
+
+Der isolierte Check von `1a34b29` bestand 1.151 Frontendtests sowie 1.082 Node-/
+Browserfälle, bei **einem Fehler und vier expliziten Node-Skips** (444,322 Sekunden).
+Build, Typen, Go-Unit/Vet und statische Gates bestanden. Szenen-HTTP und Angular,
+der tatsächliche native `0.9.0`-TLS/HLS-Control-Pfad mit Query/Apply/CAS/Query
+(11,257 Sekunden), beide 401-Frame-Publisher und gepaarte Senderberichte bestanden.
+
+Der Fehler liegt im separaten Firefox-Ananta-Timingfall: Avatar-
+`controller-expired`, 913 ms monotone Zeit gegenüber 3.076 ms Wanduhrzeit bei
+Messspanne null. Diese Diagnose belegt keine vollständige Ursache und wird nicht
+durch gelockerte Zeitgrenzen ersetzt. Die externe Infrastrukturstufe wurde
+nicht erreicht; der Image-Canary-Scan war ausdrücklich übersprungen.
+
+Die nachträgliche Socket-Backpressure-Prüfung bestand separat am echten
+HTTP-/P-256-Pfad in 444,1 ms: injizierte ungültige/überfüllte Queue-Messwerte
+führen zur Ablehnung, danach funktioniert die normale Abfrage wieder. Dieser
+Nachtrag ist nicht Teil des eingefrorenen Gesamtprüfstands.
+
+TBP-030 bleibt offen. Neben dem gekoppelten Compositor-/Zuschauernachweis fehlen
+noch verständliche Publishernamen für Quellenreferenzen und ein länger
+bearbeitbarer Entwurf, der von der kurzlebigen Zustandsbeobachtung getrennt ist.
+Weitere Handoff-/Standby-/Produktionskriterien bleiben ebenfalls erhalten.
+Kein Deployment und keine öffentliche Freigabe werden aus den Teilprüfungen
+abgeleitet.

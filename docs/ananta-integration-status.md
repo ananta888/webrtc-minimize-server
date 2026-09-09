@@ -45,6 +45,16 @@ Kurzlauf oder der öffentlichen Installation gleichzusetzen. Ein aktueller
 öffentlicher GET bestätigt weiterhin `admissionEnabled: false`. Die laufend
 ausgelieferte lokale Browserdatei wurde bei dieser Prüfung nicht verändert.
 
+Im anschließenden isolierten Gesamtcheck der Broadcast-Szenenintegration
+(`1a34b29`) bestanden 1.151 Frontendtests und 1.082 Node-/Browserfälle; ein
+Firefox-Timingfall scheiterte, vier Nodefälle wurden ausdrücklich übersprungen.
+Beide gemeinsamen Ananta-Dialoge und die unabhängige Sprachausgabe bestanden.
+Die Avatarquelle meldete jedoch `controller-expired` nach 913 ms monotoner Zeit
+gegenüber 3.076 ms Wanduhrzeit, bei noch gültiger Sitzung. Ursache und Abhilfe
+bleiben offen; weder Uhren noch Watchdog-Fristen wurden geändert. Die externe
+Infrastrukturstufe wurde nicht erreicht. Details und Revisionstrennung stehen
+in der [Szenen-Verifikation](native-source-scene-control.md#korrigierte-gesamtprüfung).
+
 | Bereich | Vorhandener Meet-Pfad | Grenze |
 | --- | --- | --- |
 | Audioempfang | Eigener autorisierter Browser-Endpunkt, begrenztes PCM16/16-kHz-Mono, Quellen-/Epoch-Bindung und Stop bei Entzug | ASR und Modellauswahl gehören zum Worker; keine Audio-HTTP-Route im Signaling |

@@ -18,6 +18,13 @@ export async function exerciseNativeSceneHttp({ app, agent, identity, ownerPrinc
     await agent.next(m => m.type === "capability-accepted");
   };
   await report("0.9.0");
+  // Fault injection at the real socket's queue observation, not a claim of network saturation.
+  const serverSocket = nativePackagers.socketFor(packagerId);
+  for (const amount of [65537, -1, NaN, Infinity]) {
+    Object.defineProperty(serverSocket, "bufferedAmount", { value: amount, configurable: true });
+    try { assert.equal((await post()).status, 503, "backpressure must not queue another scene command"); }
+    finally { delete serverSocket.bufferedAmount; }
+  }
   for (const patch of [{ extra: true }, { requestVersion: 2 }, { deviceFingerprint: "bad" }, { action: "anything" }]) {
     assert.equal((await post({ ...input, ...patch })).status, 400);
   }

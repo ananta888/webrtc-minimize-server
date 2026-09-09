@@ -2691,7 +2691,9 @@ export function createAppServer(options = {}) {
     throw new Error("BROADCAST_GATEWAY_AUTH_ENABLED requires a MediaMTX external auth service");
   }
   const services = {
-    nativeSourceScenes: new NativeSourceSceneBroker({ send: (socket, command) => safeSend(socket, command, 16384) }),
+    nativeSourceScenes: new NativeSourceSceneBroker({ send: (socket, command) =>
+      Number.isSafeInteger(socket?.bufferedAmount) && socket.bufferedAmount >= 0 && socket.bufferedAmount <= 65536
+      && safeSend(socket, command, 16384) }),
     machineAdmission,
     machineSessions,
     oidcVerifier,
