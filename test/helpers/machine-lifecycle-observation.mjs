@@ -6,6 +6,13 @@ export function beforeMachineLeaseExpiry(deadline) {
     error: window.__leaseSource.error, e2ee: status.e2ee, observedAt: Date.now() };
 }
 
+export function isMachineLeaseObservation(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    && Object.keys(value).sort().join() === "e2ee,error,joined,observedAt,open"
+    && [value.error, value.joined, value.open].every(v => typeof v === "boolean")
+    && typeof value.e2ee === "string" && Number.isSafeInteger(value.observedAt);
+}
+
 export function retiredMachineAvatar(expectedParticipants) {
   const api = window.anantaMachine, status = api.status();
   const avatar = api.avatar.status();

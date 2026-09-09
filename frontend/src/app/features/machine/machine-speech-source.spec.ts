@@ -88,6 +88,16 @@ describe("bounded synthetic speech source", () => {
     expect(f.source.status().state).toBe("open"); f.source.close();
   });
 
+  it("keeps the exact pre-first-frame idle deadline even while a caller waits for receiver UI", async () => {
+    const f = setup(), lease = await f.source.open("speech:hub", 22050);
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(f.source.status().state).toBe("open"); expect(f.graph.push).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(f.source.status()).toMatchObject({ state: "failed", receivedSamples: 0, playedSamples: 0 });
+    expect(() => f.source.push(lease.generation, 0, pcm())).toThrow();
+    expect(f.graph.push).not.toHaveBeenCalled(); expect(f.graph.close).toHaveBeenCalledOnce();
+  });
+
   it("closes a graph when authority changes after setup resolves", async () => {
     const f = setup(); f.ports.create.mockImplementationOnce(async () => { f.authority.membershipEpoch++; return f.graph; });
     await expect(f.source.open("speech:hub", 441)).rejects.toThrow();

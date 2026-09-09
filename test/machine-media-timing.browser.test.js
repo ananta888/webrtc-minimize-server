@@ -6,6 +6,7 @@ import { decodedAvatar, decodedGreenScreen, startAvatarCompanions } from "./help
 import { openTestVideoAvatar, syntheticAvatarVideo } from "./helpers/machine-avatar-video.mjs";
 import { observeAvatarCommand } from "./helpers/machine-avatar-observation.mjs";
 import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
+import { machineSourceFailureObservation } from "./helpers/machine-source-failure-observation.mjs";
 
 const PROFILE = "independent-owned-live-v1";
 function checkSnapshot(value, peaks) {
@@ -96,6 +97,10 @@ test(`${engine} receives timed actual owned PCM/video/screen and bounded stale p
     }
     t.diagnostic(JSON.stringify({ syntheticPolicy: true, productionEvidence: false, sourceClockOnly: true,
       actualCrossBrowserDecode: true, samples, peakDriftUs: peaks, staleScreenStopMs: stoppedMs }));
+  } catch (error) {
+    if (!machine.isClosed()) t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false,
+      phase: "owned-source-timing", ...await machine.evaluate(machineSourceFailureObservation).catch(() => ({ unavailable: true })) }));
+    throw error;
   } finally {
     if (!machine.isClosed()) await machine.evaluate(async () => {
       window.__avatarTestPulse?.stop(); await window.__avatarCompanions?.close(); window.anantaMachine.leave();

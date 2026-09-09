@@ -2,20 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { machineBrowserFixture } from "./helpers/machine-browser-fixture.js";
 import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
+import { machineSourceFailureObservation } from "./helpers/machine-source-failure-observation.mjs";
 
 for (const humanEngine of ["chromium", "firefox"]) {
 test(`${humanEngine} decodes independent machine PCM over required SFrame without capture`, { timeout: 90000 }, async t => {
   const f = await machineBrowserFixture(t, { humanEngine, tlsPortProxy: process.env.MEET_SPEECH_PRIVATE_BROWSER_GATE === "1" }), { human, machine } = f;
-  t.after(async () => { if (!machine.isClosed()) t.diagnostic(JSON.stringify(await machine.evaluate(() => ({
-    speech: window.anantaMachine.speech.status(), e2ee: window.anantaMachine.status().e2ee,
-    errors: window.__transformErrors, captures: window.__captures })))); });
+  try {
   await machine.evaluate(([room, grant]) => window.anantaMachine.join(room, grant), [f.roomId, await f.grant(["speech.publish"])]);
   await machine.evaluate(() => {
     window.__speechErrors = [];
     const Native = window.AudioWorkletNode;
     window.AudioWorkletNode = class extends Native { constructor(...args) {
       super(...args); this.port.addEventListener("message", ({ data }) => {
-        if (data?.type === "error") window.__speechErrors.push(data.code);
+        if (data?.type === "error" && window.__speechErrors.length < 8) window.__speechErrors.push(data.code);
       }); this.port.start();
     } };
   });
@@ -23,22 +22,8 @@ test(`${humanEngine} decodes independent machine PCM over required SFrame withou
   // Incoming audio must start in Chat too, not require visiting Live first.
   await human.getByRole("button", { name: "Chat", exact: true }).click();
   const source = await machine.evaluate(id => window.anantaMachine.speech.open(id, 22050 * 3), "speech:" + f.binding.sessionId);
-  await human.locator("#room-audio audio").waitFor({ state: "attached" });
-  await human.evaluate(() => { window.__roomAudioElement = document.querySelector("#room-audio audio"); });
-  // Observe actual decrypted receiver PCM, not just RTP bytes. This graph has no device input.
-  await waitFixtureValue(human, () => window.__pcs.some(pc => pc.getReceivers().some(r => r.track.kind === "audio")));
-  await human.evaluate(async () => {
-    const track = window.__pcs.flatMap(pc => pc.getReceivers()).find(r => r.track.kind === "audio").track;
-    const context = new AudioContext(), source = context.createMediaStreamSource(new MediaStream([track]));
-    const analyser = context.createAnalyser(), quiet = context.createGain(); quiet.gain.value = 0;
-    source.connect(analyser); analyser.connect(quiet); quiet.connect(context.destination); await context.resume();
-    window.__speechProbe = { context, analyser, peak: 0, observations: 0 };
-    window.__speechProbe.timer = setInterval(() => {
-      const pcm = new Float32Array(analyser.fftSize); analyser.getFloatTimeDomainData(pcm);
-      window.__speechProbe.peak = Math.max(window.__speechProbe.peak, ...pcm.map(Math.abs));
-      if (pcm.some(v => Math.abs(v) > .05)) window.__speechProbe.observations++;
-    }, 20);
-  });
+  // Supply an opened source immediately. Receiver/UI setup must not consume its
+  // unchanged two-second idle budget before the first PCM frame is offered.
   const playing = machine.evaluate(async lease => {
     const speech = window.anantaMachine.speech; let offset = 0;
     const deadline = Date.now() + 8000;
@@ -57,6 +42,22 @@ test(`${humanEngine} decodes independent machine PCM over required SFrame withou
   }, source);
   // Attach a handler immediately: UI failure must not leak a rejected playback promise.
   playing.catch(() => undefined);
+  await human.locator("#room-audio audio").waitFor({ state: "attached" });
+  await human.evaluate(() => { window.__roomAudioElement = document.querySelector("#room-audio audio"); });
+  // Observe actual decrypted receiver PCM, not just RTP bytes. This graph has no device input.
+  await waitFixtureValue(human, () => window.__pcs.some(pc => pc.getReceivers().some(r => r.track.kind === "audio")));
+  await human.evaluate(async () => {
+    const track = window.__pcs.flatMap(pc => pc.getReceivers()).find(r => r.track.kind === "audio").track;
+    const context = new AudioContext(), source = context.createMediaStreamSource(new MediaStream([track]));
+    const analyser = context.createAnalyser(), quiet = context.createGain(); quiet.gain.value = 0;
+    source.connect(analyser); analyser.connect(quiet); quiet.connect(context.destination); await context.resume();
+    window.__speechProbe = { context, analyser, peak: 0, observations: 0 };
+    window.__speechProbe.timer = setInterval(() => {
+      const pcm = new Float32Array(analyser.fftSize); analyser.getFloatTimeDomainData(pcm);
+      window.__speechProbe.peak = Math.max(window.__speechProbe.peak, ...pcm.map(Math.abs));
+      if (pcm.some(v => Math.abs(v) > .05)) window.__speechProbe.observations++;
+    }, 20);
+  });
   await waitFixtureValue(human, () => window.__speechProbe.peak > .1);
   for (const name of ["Live", "Chat", "Analyse"]) {
     await human.locator(".nav-item").filter({ hasText: new RegExp(`^${name}$`) }).click();
@@ -88,5 +89,10 @@ test(`${humanEngine} decodes independent machine PCM over required SFrame withou
   await machine.evaluate(() => window.anantaMachine.leave());
   await waitFixtureValue(human, () => !document.querySelector("#room-audio audio"));
   t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, ...decoded, playedSamples: result.playedSamples }));
+  } catch (error) {
+    if (!machine.isClosed()) t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false,
+      phase: "independent-speech", ...await machine.evaluate(machineSourceFailureObservation).catch(() => ({ unavailable: true })) }));
+    throw error;
+  }
 });
 }

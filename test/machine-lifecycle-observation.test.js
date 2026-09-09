@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import vm from "node:vm";
-import { beforeMachineLeaseExpiry, retiredMachineAvatar, machineLeaseSupplyObservation } from "./helpers/machine-lifecycle-observation.mjs";
+import { beforeMachineLeaseExpiry, isMachineLeaseObservation, retiredMachineAvatar, machineLeaseSupplyObservation } from "./helpers/machine-lifecycle-observation.mjs";
+import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
 
 function fixture(fn) {
   let now = 1000;
@@ -31,6 +32,18 @@ test("survivor requires its own membership departure and old avatar shutdown, ne
   }
   f.state.joined = false;
   assert.equal(f.run(2), false);
+});
+
+test("lease polling accepts only the closed observed snapshot, never a truthy unresolved result", async () => {
+  const snapshot = { e2ee: "active", error: false, joined: true, open: true, observedAt: 1300 };
+  for (const value of [null, undefined, false, [], {}, { ...snapshot, observedAt: NaN }, { ...snapshot, extra: true },
+    { ...snapshot, joined: "true" }]) assert.equal(isMachineLeaseObservation(value), false);
+  let reads = 0;
+  const observed = await waitFixtureValue({ evaluate: async () => ++reads === 1 ? false : snapshot }, () => {}, null,
+    { accept: isMachineLeaseObservation });
+  assert.equal(observed, snapshot); assert.equal(reads, 2);
+  await assert.rejects(waitFixtureValue({ evaluate: async () => ({ __zone_symbol__state: null }) }, () => {}, null,
+    { accept: isMachineLeaseObservation }), /test_fixture_wait_non_value/);
 });
 
 test("lease supplier diagnostics expose bounded relative timings and fixed reasons, never arbitrary source values", () => {

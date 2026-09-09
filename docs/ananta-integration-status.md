@@ -42,6 +42,17 @@ separater Chromium-Sprachausgang. Die Ursache ist noch nicht belegt; dieser
 Stand ist keine abgeschlossene Integrationsabnahme. Die externe
 Infrastrukturstufe wurde nach den Fehlern nicht mehr ausgeführt.
 
+Die anschließende gezielte Nachprüfung bestand alle sieben Fälle der drei
+betroffenen Browserdateien in 64,989 Sekunden. Zwei konkrete Testschwachstellen
+sind korrigiert: Die synthetische Sprachzufuhr wartet nach dem Öffnen nicht mehr
+auf die Empfänger-UI; der Lease-Test liest einen geschlossenen Statuswert über
+den bereits vorhandenen Host-Poller. Die ursprünglichen Laufzeitgrenzen bleiben
+unverändert. Die fehlende Avatar-Zeitzeile trat nicht erneut auf und ist nicht
+als kausal behoben einzustufen. Eine begrenzte Fehlerprojektion erhält künftig
+Quellzustände und Fortschrittszähler, aber keine Inhalte oder rohen Fehlertexte.
+Der frühere Gesamtcheck wird durch diesen Nachlauf nicht nachträglich grün;
+die nächste Gesamtregression folgt gebündelt mit der weiteren Implementierung.
+
 ## Im Browser
 
 1. Dem Raum beitreten und **Analyse → Ananta · Freigaben meiner Quellen** öffnen.
