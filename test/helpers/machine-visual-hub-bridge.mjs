@@ -21,7 +21,9 @@ try {
     if (line === "stop") break;
     if (line === "members" && ++memberReads <= 240) {
       stage = "members";
-      const participants = await f.human.evaluate(() => Number.parseInt(document.querySelector("#participant-count")?.textContent, 10));
+      // The analysis panel unmounts the live-view counter. Observe the actual
+      // private room membership without navigating or changing source rights.
+      const participants = f.app.registry.members(f.roomId).length;
       if (!Number.isInteger(participants) || participants < 1 || participants > 20) throw new Error("test_member_count_invalid");
       reply({ participants });
     } else if (line === "source" && !started) {
