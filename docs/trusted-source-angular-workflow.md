@@ -114,4 +114,16 @@ Die gebaute Tastaturprüfung bestand in 3,753 Sekunden: Vormerken ohne entfernte
 Auswahl, Abbrechen ohne Request, exaktes `create-own` ohne Ziel-ID, sichtbare
 Eigenquellenzeile und kein automatisches Query/Approve. Null Capture und keine
 zusätzliche PeerConnection. Gemeinsam bestanden 43 Node-/HTTP-/Grant-/UI-Fälle
-in 10,521 Sekunden. Die gebündelte Gesamtregression steht noch aus.
+in 10,521 Sekunden.
+
+Die anschließende isolierte Gesamtregression an `e7d39e3` endete mit Exit 1:
+1.095 Frontendtests und 1.011 Node-/Browsertests bestanden, zwei schlugen fehl,
+zwei wurden ausdrücklich übersprungen (Node: 470,322 Sekunden). Eigenquellen-,
+HTTP-, Grant- und Tastaturtests sowie beide nativen 401-Frame-Publisherfälle
+bestanden; Build, Typen, Go und statische Gates ebenfalls. Die Fehler betreffen
+einen SFrame-Start und die unabhängige Audiofortsetzung im Maschinen-Avatartest;
+die [Diagnose](machine-live-media-clock.md#integrated-own-source-batch) bleibt
+offen. Die externe Infrastrukturstufe wurde nicht erreicht. Der nachträglich
+integrierte Commit `962f678` verändert nur Dokumentation/Todos; `129afa1` besitzt
+identische Runtime-/Testdateien. Kein Deployment oder Opt-in und kein grüner
+Release-Nachweis. TBP-030 bleibt mit seinem übrigen Umfang offen.

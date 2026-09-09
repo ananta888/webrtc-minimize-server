@@ -190,3 +190,29 @@ Separately, CI34348135945 at `faf3c39` failed its TURN job on
 `test_tls_proxy_not_ready` before launching Chromium (6.674 seconds); the Firefox
 case passed. This does not establish a TURN transport or cleanup regression.
 No deadline or source-authority guard has been relaxed in response.
+
+## Integrated own-source batch
+
+The isolated complete check at `e7d39e3` failed: 1,095 frontend tests passed;
+the Node stage had 1,011 passes, two failures and two explicit skips in
+470.322 seconds. Build, types, Go and static/security gates passed. The external
+infrastructure tail was not reached; the optional image scan was skipped.
+The later rebase onto documentation-only `962f678` retained identical runtime
+and test bytes at `129afa1`; it does not turn this aggregate green.
+
+The combined human-consented machine dialog passed with Chromium and Firefox
+in 14.850/16.950 seconds: 16,000 actual PCM samples, chat, owned screen and three
+renewals each. Both source-timing cases also passed. The failures were separate:
+
+- The Chromium-to-Firefox SFrame test remained pending before its counter-350
+  assertion: 298 encoded frames, zero sent packets, no reported transform errors.
+- The Chromium avatar-video test lost companion audio at line 77 after its
+  intentional controller-pulse stop. Avatar expiry is expected in that phase;
+  continued independent audio is the failed requirement. The trace recorded
+  speech `progress-expired` at 5,227 ms monotonic / 7,574 ms wall time and avatar
+  `controller-expired` at 5,271 / 7,618 ms, with zero rounded clock-read span.
+  Both pairs differ by 2,347 ms. This is a measured relative-clock discrepancy,
+  not proof of an OS clock step, scheduling cause or production fix.
+
+No clock or deadline was changed. Serving files, trust and deployment remain
+unchanged; MDS-08 and the joint long-run acceptance remain open.
