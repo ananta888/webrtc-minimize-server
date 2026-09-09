@@ -11,6 +11,7 @@ import { chromium, firefox } from "playwright";
 import { createAppServer } from "../../src/server.js";
 import { createOidcVerifier } from "../../src/oidc-verifier.js";
 import { privateMachineTlsProxy } from "./machine-tls-proxy.js";
+import { waitMachineTlsReady } from "./machine-tls-readiness.mjs";
 import { observeBrowserStartup } from "./machine-browser-startup.mjs";
 import { navigateFixture } from "./machine-browser-navigation.mjs";
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
@@ -83,18 +84,10 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
   await new Promise(resolve => app.server.listen(0, "127.0.0.1", resolve));
   if (tlsPortProxy) {
     observeStage("private-proxy-health");
-    const ca = await fs.readFile(path.join(directory, "cert.pem")), deadline = Date.now() + 5000;
-    for (;;) {
-      const ready = await new Promise(resolve => {
-        const request = https.get(origin + "/healthz", { ca, timeout: 300 }, response => {
-          response.resume(); resolve(response.statusCode === 200);
-        });
-        request.on("timeout", () => request.destroy()); request.on("error", () => resolve(false));
-      });
-      if (ready) break;
-      if (Date.now() >= deadline) throw new Error("test_tls_proxy_not_ready");
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
+    await waitMachineTlsReady(origin, certificateBytes).catch(error => {
+      if (error.tlsReadiness) t.diagnostic?.(JSON.stringify({ tlsReadiness: error.tlsReadiness }));
+      throw error;
+    });
   }
   observeStage("browser-launch");
   const launch = engine => browserLauncher ? browserLauncher({ engine, network: proxy.network,

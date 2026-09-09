@@ -7,9 +7,31 @@ KI-Beitritt. Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
 
 ## Aktuell: sechs Grundfunktionen vorhanden, Aktivierung noch ausstehend
 
+Priorisierte Nachprüfung am 10. September: Die sechs Funktionen bleiben
+Meet-seitig verbunden. Alle vier echten Dialogfälle mit Chromium/Firefox
+über authentisiertes TURN-UDP und TURN-TCP bestehen mit Audio, Chat,
+Bildschirm, drei Erneuerungen und Widerruf. Die
+[private TLS-Startprüfung](machine-tls-readiness.md) erzwingt jetzt ihre
+Gesamtfrist auch bei verspäteten Antworten und hinterlässt keine gepoolten
+Verbindungen. Der Anlass war ein fehlgeschlagener Chromium-Testaufbau in
+CI `34413091470` auf `6fdf26e`; dessen Ursache ist damit nicht bewiesen.
+Der neue gemeinsame isolierte Projektcheck ist erfolgreich abgeschlossen:
+1.221 Frontendtests, 1.189 Node-/Browserprüfungen, null Fehler, vier explizite
+Node-Skips. Build, Typprüfung, Go und statische Gates bestanden; 14 externe
+Infrastrukturprüfungen und der optionale Image-Scan blieben übersprungen.
+Auch beide nativen Szenenfälle bestanden lokal; die gesonderte ältere CI
+bleibt rot. Kein neuer Commit, Push oder Deployment in dieser Nachprüfung.
+Die nachfolgenden älteren Nachweise gelten jeweils nur für ihre Revision.
+
+Ein frischer öffentlicher GET bestätigt alle acht Software-Capabilities,
+aber weiterhin `admissionEnabled: false`. Für die tatsächliche öffentliche
+Hub-/Worker-Teilnahme fehlen das ausgewählte Hub-Trustprofil und der
+freigegebene Ananta-Projektauftrag. Keine Produktionsfreigabe, kein Neustart
+und keine Änderung im Ananta-Repository in dieser Nachprüfung.
+
 Audioempfang, Chatlesen/-antworten, agenteneigener Bildschirm, erneuerbare
 Sitzungen, Berechtigungsprüfung und Angular-Freigaben sind Meet-seitig verbunden.
-Die neueste gepushte Revision `7be5c7df2d92486e69f0ed9ef9a49e1ed098f055`
+Die zuvor geprüfte Revision `7be5c7df2d92486e69f0ed9ef9a49e1ed098f055`
 besitzt jetzt eine vollständig erfolgreiche
 [CI 34409010146](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34409010146):
 alle acht Jobs einschließlich Browser-Gates, authentisiertem Ananta-TURN-Dialog,
