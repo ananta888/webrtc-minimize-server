@@ -1,6 +1,7 @@
 // Private observation-only bridge for two real Ananta Worker containers.
 // It accepts expected Hub principal subjects, never grants or policy overrides.
 import fs from "node:fs/promises";
+import { machineDockerFailure } from "./machine-docker-command.js";
 import readline from "node:readline";
 import { machineBrowserFixture } from "./machine-browser-fixture.js";
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
@@ -120,9 +121,9 @@ async function run() {
       } else throw new Error("test_multi_command_invalid");
     }
   } catch (error) {
+    const dockerFailure = machineDockerFailure(error);
     reply({ bridge_error: "test_multi_bridge_failed", stage,
-      ...(typeof error.message === "string" && /^test_docker_command_failed:(create|start|inspect|image|network|rm|logs|unknown):(unknown|\d{1,3}):(unknown|image_unavailable|image_platform|network_subnet|network_address|cpu_limit|permission|container_conflict|deadline)$/.test(error.message)
-        ? { infrastructure: error.message } : {}),
+      ...(dockerFailure ? { infrastructure: dockerFailure } : {}),
       ...(["floor-start", "floor-result"].includes(stage) ? { floor_error: [
         "test_floor_observer_binding_invalid", "test_floor_observer_connection_invalid",
         "test_floor_observer_audio_unavailable", "test_floor_observation_failed",

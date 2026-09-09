@@ -5,6 +5,7 @@ import readline from "node:readline";
 import { bridgeBrowserLauncher } from "./machine-bridge-browser.mjs";
 import { peerBrowserDriver } from "./machine-peer-driver.mjs";
 import { machineBrowserFixture } from "./machine-browser-fixture.js";
+import { machineDockerFailure } from "./machine-docker-command.js";
 import { installDialogObservation } from "./machine-dialog-observer.mjs";
 import { observeDialogAnswer } from "./machine-chat-observation.mjs";
 import { observeAvatarCommand } from "./machine-avatar-observation.mjs";
@@ -170,13 +171,14 @@ try {
     } else throw new Error("unknown_bridge_command");
   }
 } catch (error) {
-  const dockerFailure = /^test_docker_command_failed:(create|start|inspect|image|network|rm|logs|unknown):(\d{1,3}|unknown):(image_unavailable|image_platform|network_subnet|network_address|cpu_limit|permission|container_conflict|deadline|unknown)$/.test(error.message);
+  const dockerFailure = machineDockerFailure(error);
   const code = ["test_public_dir_invalid", "screen_not_moving", "avatar_not_moving", "test_private_frame_or_stop_failed", "test_tls_proxy_not_ready",
     "test_receiver_key_delay_invalid", "test_receiver_key_delay_not_observed",
     "test_navigation_network_changed", "test_navigation_deadline",
     "test_stun_start_failed", "test_docker_command_failed", "test_private_proxy_network_invalid"].includes(error.message)
     ? error.message : dockerFailure ? "test_docker_command_failed" : error.name === "TimeoutError" ? "test_browser_timeout" : "synthetic_meet_bridge_failed";
   process.stdout.write(JSON.stringify({ bridge_error: code, stage,
+    ...(dockerFailure ? { infrastructure: dockerFailure } : {}),
     ...(Number.isInteger(error.status) ? { command_status: error.status } : {}),
     ...(/net::(ERR_[A-Z_]{1,64})/.test(String(error.message)) ? { network_error: String(error.message).match(/net::(ERR_[A-Z_]{1,64})/)[1] } : {}),
     kind: ["Error", "TypeError", "TimeoutError"].includes(error.name) ? error.name : "Error",
