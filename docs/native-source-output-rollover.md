@@ -2,6 +2,32 @@
 
 ## Aktueller Arbeitsstand: durchgängiger Wiederanlauf bestanden
 
+### Gemeinsamer Abschlusscheck: noch nicht freigegeben
+
+Der isolierte Gesamtcheck des Commits `d2cfea4` endete mit **Exit 1**:
+1.198 Frontendtests und 1.108 Node-/Browserprüfungen bestanden, ein Nodefall
+scheiterte, vier wurden ausdrücklich übersprungen (479,103 Sekunden Node).
+Build, Go-Unit/Vet und statische Gates bestanden; die externe Infrastrukturstufe
+wurde wegen des Fehlers nicht erreicht. Beide gekoppelten nativen Browserfälle
+und die Ananta-Dialoge bestanden innerhalb dieses festen Prüfstands.
+
+Der Fehler betrifft `live public v4 true signaling renews only after ACK and
+stops on publisher revoke`: Die nächste Quellen-Lease wurde innerhalb der
+Wanduhr-Beobachtungsfrist nicht gesehen. Der Test hatte 1,006 Sekunden gemessene
+Gesamtdauer bei einer dreisekündigen Wanduhrfrist; das allein beweist weder eine
+Uhrkorrektur noch deren Ursächlichkeit. Der separate Nachlauf aller vier
+Signalingvarianten bestand in 3,870 Sekunden, ohne Runtime- oder Friständerung.
+Das ist keine nachgewiesene Fehlerbehebung und kein nachträglicher Gesamterfolg.
+
+Die Testbeobachtung protokolliert bei einem weiteren Fehler jetzt ausschließlich
+begrenzte Wand-/Monotonzeitdifferenzen, Lease-Alter/-Restzeit, Socketzustände und
+Nachrichtenzähler/-revisionen. Keine IDs, Tokens, Inhalte oder zusätzlichen
+Browser-RPCs; keine automatische Wiederholung. Ein Produktionsrollout dieser
+Änderungen bleibt ausstehend. Der separat auf dem Mini-PC laufende Browsertest
+wird nicht durch ein Deployment unterbrochen.
+
+### Gezielte Mehrquellen-Nachweise
+
 Der nachträglich ergänzte Zwei-Quellen-Browserfall hat eine weitere echte Lücke
 gefunden: `live → degraded` erhöhte die Anzeige-Programmrevision und entzog damit
 auch der noch freigegebenen Bildschirmquelle ihre Zustimmung. Ein kleiner Test

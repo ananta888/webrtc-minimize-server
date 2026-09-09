@@ -594,9 +594,14 @@ for (const publicActions of [false, true, "receipt-failure", "backpressure"]) te
   });
   await new Promise(resolve => app.server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${app.server.address().port}`;
-  const until = async predicate => {
-    const deadline = Date.now() + 3000;
-    while (!predicate()) { assert.ok(Date.now() < deadline, "bounded signaling observation expired"); await new Promise(resolve => setTimeout(resolve, 5)); }
+  const until = async (predicate, observe = () => ({})) => {
+    const wallStart = Date.now(), monotonicStart = performance.now(), deadline = wallStart + 3000;
+    while (!predicate()) {
+      if (Date.now() >= deadline) t.diagnostic(JSON.stringify({ schema: "synthetic-signaling-wait.v1",
+        wallElapsedMs: Date.now() - wallStart, monotonicElapsedMs: performance.now() - monotonicStart, ...observe() }));
+      assert.ok(Date.now() < deadline, "bounded signaling observation expired");
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
   };
   f.packagers.disconnect(f.socket);
   const nativeMessages = [];
@@ -677,7 +682,13 @@ for (const publicActions of [false, true, "receipt-failure", "backpressure"]) te
   nativeSocket.send(JSON.stringify({ version: 1, type: "trusted-source-status", sourceLeaseId: lease.sourceLeaseId,
     leaseRevision: lease.revision, consentId: c.consentId, assignmentId: lease.assignmentId, fencingRevision: lease.fencingRevision,
     state: "receiver-prepared", expiresAt: lease.expiresAt, observedAt: Date.now() }));
-  await until(() => nativeMessages.some(message => message.type === "trusted-source-prepare" && message.lease.revision === 2));
+  await until(() => nativeMessages.some(message => message.type === "trusted-source-prepare" && message.lease.revision === 2), () => ({
+    leaseRemainingMs: lease.expiresAt - Date.now(), leaseAgeMs: Date.now() - lease.issuedAt,
+    agentOpen: nativeSocket.readyState === WebSocket.OPEN, publisherOpen: socket.readyState === WebSocket.OPEN,
+    prepareRevisions: nativeMessages.filter(m => m.type === "trusted-source-prepare").slice(-4).map(m => m.lease.revision),
+    publisherLeaseCount: browserMessages.filter(m => m.type === "trusted-source-publisher-lease").length,
+    nativeStopCount: nativeMessages.filter(m => m.type === "trusted-source-stop").length,
+  }));
   await until(() => browserMessages.some(message => message.type === "trusted-source-publisher-lease"));
   assert.deepEqual(browserMessages.find(message => message.type === "trusted-source-publisher-lease").lease, lease);
   for (const message of nativeMessages.filter(message => message.type.startsWith("trusted-source-"))) assert.equal(validateControl(message), true);
