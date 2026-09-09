@@ -88,3 +88,12 @@ This does not yet verify a Firefox machine receiver or Ananta analysis.
 The old client probe/capabilities wire remains exact. Public serving assets and
 operator trust are unchanged. Full isolated check remains required before MDS13
 closure; these synthetic observations are not grounded production evidence.
+
+## Isolated full regression, source `aeefe31`
+
+`npm run check` completed with exit0 on2026-09-09 in a separate worktree:
+844 frontend tests and851 Node tests passed, zero failed, two Node tests were
+explicitly skipped. Node execution took340.58s. Production build, Go unit/vet
+and static configuration/security gates passed. Fourteen external infrastructure
+gates remained explicit skips; neither these skips nor the optional image-scan
+skip are claimed as live verification. The public serving tree was not rebuilt.
