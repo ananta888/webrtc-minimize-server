@@ -133,3 +133,10 @@ receivers exposed the already documented ZoneAwarePromise readiness issue in
 `page.waitForFunction`; the existing host-side closed-value wait now handles
 both source readiness and revocation. Reports name the actual receiver engine.
 The next isolated full check includes this expanded fixture matrix.
+
+That check exposed an infrastructure-test discovery error: Node imports files
+under test/helpers too, and the new visual stdio bridge executed without its
+explicit packaged gate. The bridge now follows the existing opt-in convention;
+activated invalid profiles still fail before allocating resources. Four receive
+bridge opt-in/refusal checks passed2.73s. The failed full run is not claimed green;
+the corrected committed fixture must pass the isolated check before closure.
