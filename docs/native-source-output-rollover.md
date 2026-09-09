@@ -2,6 +2,33 @@
 
 ## Aktueller Arbeitsstand: durchgängiger Wiederanlauf bestanden
 
+### Neuester CI-Befund: laufender Player mit Wartebild
+
+CI `34404162155` auf `406f95d` ist fehlgeschlagen: 1.142 Node-/Browserfälle
+bestanden, ein Fehler, vier Skips (535,988 s). Der Einzelquellenfall wartete
+vergeblich auf die ausgewählte rote Kamera. Anders als beim Ratebudgetfehler
+spielte der HLS-Viewer weiter: 21,108 s, 322 Frames, `playing`, `readyState=4`,
+Wartebild-Pixel und weder Player- noch Autorisierungsfehler. Der Zweiquellenfall,
+der native Audioausgang und der separate authentisierte Ananta-TURN-Dialog
+bestanden. Docker und Live-Keycloak/TURN wurden nicht mehr ausgeführt.
+
+Der Test wartete bisher auf „neu abfragen“. Dieser Text erscheint nach einer
+Anwendung, aber auch bei Konflikten und veralteten Auswahlen; er beweist keinen
+angewendeten Szenenwechsel. Die private Fixture beobachtet deshalb zusätzlich
+die letzten acht tatsächlichen nativen Szenenantworten, ausschließlich Typ,
+Revision, festen Layoutnamen und Quellenanzahlen. Vor der Pixelprüfung muss
+eine neue `source-program-scene-applied`-Antwort mit der nächsten Revision
+vorliegen. Keine zusätzliche Steuerung, Wiederholung, Fristlockerung oder
+Produktionsinstrumentierung wurde eingeführt. IDs, Schlüssel und Medien werden
+nicht in diese Projektion übernommen.
+
+Fünf fokussierte Projektions-/Negativtests bestanden in 62 ms. Ein gezielter
+echter Einzelquellenlauf bestand in 31,033 s einschließlich neuer Receiptprüfung,
+roter Kamera und Widerruf zu Slate. Die CI-Ursache trat dabei nicht erneut auf
+und ist **nicht als behoben nachgewiesen**. Der frühere lokale Gesamtcheck bleibt
+sein eigener fester Nachweis. Die anschließende Merge-/Diagnostik-CI muss separat
+bestehen; bis dahin kein neuer Rollout.
+
 Ein späterer Audioausgangstest grenzte einen konkreten HLS-Stillstand auf das
 [falsche Ratebudget für gültige Wiedergabesitzungen](broadcast-playback-rate-budgets.md)
 ein. Nach dessen Korrektur bestehen beide echten Szenenfälle und der neue

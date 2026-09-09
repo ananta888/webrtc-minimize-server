@@ -14,6 +14,7 @@ import { NativePackagerControlRegistry } from "../../src/native-packager-control
 import { nativeSceneProcesses } from "./native-scene-processes.mjs";
 import { machineFixtureAssets } from "./machine-fixture-assets.mjs";
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
+import { recordNativeSceneReply } from "./native-scene-reply-observation.mjs";
 
 const execute = promisify(execFile);
 async function unusedLoopbackPort() {
@@ -27,7 +28,7 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
   assert.equal(typeof allowSyntheticScreen, "boolean");
   assert.equal(typeof allowSyntheticAudio, "boolean");
   let browser, tls, app;
-  const observation = { http: [], native: [] };
+  const observation = { http: [], native: [], scene: [] };
   t.after(async () => {
     await browser?.close();
     if (app) {
@@ -70,10 +71,11 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
       ? [{ ...definition, createdAt: 1, lastAuthenticatedAt: 1, revokedAt: 0 }] : [] },
     nativePackagerInstallerService: { availableTargets: () => [] } });
   app.nativePackagerWebSocketServer.on("connection", socket => socket.on("message", bytes => {
-    if (bytes.length > 65536 || observation.native.length >= 32) return;
+    if (bytes.length > 65536) return;
     try {
       const value = JSON.parse(bytes.toString());
-      if (["assignment-status", "trusted-source-status"].includes(value.type)) {
+      recordNativeSceneReply(observation.scene, value);
+      if (observation.native.length < 32 && ["assignment-status", "trusted-source-status"].includes(value.type)) {
         const fixed = input => typeof input === "string" && /^[a-zA-Z_-]{1,64}$/.test(input) ? input : null;
         observation.native.push({ type: value.type, state: fixed(value.state), code: fixed(value.reasonCode) });
       }

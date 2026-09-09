@@ -3,6 +3,7 @@ import test from "node:test";
 import { nativeSceneLiveFixture } from "./helpers/native-scene-live-fixture.mjs";
 import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
 import { decodedScene, decodedSceneTiles, openSceneViewer, sceneViewerObservation } from "./helpers/native-scene-viewer.mjs";
+import { assertFreshNativeSceneApply } from "./helpers/native-scene-reply-observation.mjs";
 
 async function confirm(page, action) {
   const dialog = page.waitForEvent("dialog"), pending = action();
@@ -69,8 +70,11 @@ for (const multiple of [false, true]) test(multiple
   await page.locator("#native-scene-layout").selectOption(multiple ? "side-by-side" : "single");
   await page.locator("app-native-source-scene").getByRole("checkbox", { name: /Kamera/ }).check();
   if (multiple) await page.locator("app-native-source-scene").getByRole("checkbox", { name: /Bildschirm/ }).check();
+  const queriedScene = f.observation.scene.at(-1);
   await confirm(page, () => page.locator("#native-scene-apply").click());
   await page.locator("#native-scene-status", { hasText: "neu abfragen" }).waitFor();
+  try { assertFreshNativeSceneApply(f.observation.scene, queriedScene); }
+  catch (error) { t.diagnostic(JSON.stringify({ stage: "scene-application-receipt", scene: f.observation.scene })); throw error; }
   const red = await (multiple ? decodedSceneTiles(viewer, ["red", "blue"]) : decodedScene(viewer, "red", initial.time + 1)).catch(async error => {
     t.diagnostic(JSON.stringify({ stage: "selected-source-output", initial, viewer: await sceneViewerObservation(viewer),
       agentAlive: f.agent.alive(), originAlive: f.gateway.alive(), observation: f.observation }));

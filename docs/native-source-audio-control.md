@@ -5,6 +5,16 @@ Control-Socket, serverseitiger Antwort-Broker, HTTP-Director und Angular-Bedienf
 implementiert. Die additive Capability v3 weist Audio-Control v1 ausdrücklich aus.
 TBP-014 bleibt offen; die bestehende Browser-Audiokonfiguration bleibt getrennt.
 
+Die nachfolgende CI `34404162155` auf `406f95d` bestand den neuen nativen
+Audioausgang, scheiterte aber im separaten Einzelquellen-Szenentest
+([Befund und Prüfgrenze](native-source-output-rollover.md)). Es gibt deshalb
+keine neue Deploymentfreigabe aus diesem Lauf. Native-, Blind-Agent-, beide
+macOS- und Ananta-TURN-Jobs bestanden. Das Manifest und das Linux-amd64-Binary
+von Version 0.10.0 wurden zusätzlich unabhängig gegen exakten Commit, Main,
+Workflow und GitHub-Runner-Policy attestiert; alle fünf Dateien entsprechen
+Größe und Hash des attestierten Manifests. Dieser Herkunftsnachweis ersetzt
+keinen vollständigen CI-Erfolg oder eine Installation.
+
 ## HTTP-Director und Angular-Anschluss
 
 `POST /api/broadcasts/:programId/native-source-audio` akzeptiert ausschließlich
