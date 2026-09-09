@@ -103,6 +103,30 @@ höchstens zehn Minuten begrenzt, die gesamte Sitzung auf zwei Stunden und
 512 Generationen. Eine unbenutzte Erstaufnahme verfällt nach 30 Sekunden.
 Es gibt keine implizite Reconnect-, Restart- oder HA-Fortsetzung.
 
+Der separate `test/machine-lease-expiry.browser.test.js` prüft den Ausfall der
+Grant-Erneuerung mit einem echten 15-Sekunden-Grant und unveränderter Echtzeituhr.
+Die synthetische Bildschirmquelle wird weiter beliefert und ist unmittelbar vor
+Ablauf unter aktivem SFrame offen und beim Gegenüber dekodiert. Ohne manuellen
+Leave müssen Quelle, gehaltene Sendertracks, PeerConnections, Membership und
+entfernte Darstellung innerhalb eines gemeinsamen Zwei-Sekunden-Budgets stoppen.
+Ein anschließender alter Push beziehungsweise Renew ohne lebende Session wird
+abgewiesen. Chromium und Firefox sind dabei die Gegenstellen eines Chromium-
+Maschinenclients. Das prüft Meets Ablaufpfad, nicht einen echten Hub-Absturz,
+Audio-Pufferbereinigung oder den zweistündigen Langzeitbetrieb.
+
+Verifikation am 9. September 2026: Die gezielte Prüfung des final verschärften
+Tests bestand mit beiden Gegenstellen (15,727 / 16,002 s). Alte Pushs wurden
+180 / 124 ms nach der Lease-Grenze abgewiesen; sämtliche oben genannten
+Stop-Bedingungen bestanden innerhalb der gemeinsamen zwei Sekunden, ohne
+Capture oder Transformfehler. Ein vorheriger Gesamtcheck war dennoch rot:
+765 Frontendtests und 813 Nodeprüfungen bestanden, drei Nodeprüfungen scheiterten,
+zwei wurden ausdrücklich übersprungen. Betroffen waren ein initialer
+Broadcast-Seitenaufbau, ein Dialog-Renewal und dieser Ablauf-Test mit bereits
+vorzeitig verlassener Sitzung. Die gezielten Nachläufe aller drei Fälle bestanden,
+liefern aber keinen Ursachenfix. Die externe CI des neuen Ablauf-Tests und die
+Diagnose dieser Intermittenz bleiben offen; der Test erweitert die Abnahme,
+nicht die produktive Hub-Autorisierung.
+
 Die Registry löscht Autorität vor dem Socket-Stop. Ablauf, Leave und Verlust
 der aktuellen Membership verhindern eine Wiederbelebung. Ein Socket, der den
 Close-Handshake ignoriert, wird nach einer Sekunde terminiert. Gleichzeitige

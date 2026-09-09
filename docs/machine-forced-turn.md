@@ -108,3 +108,12 @@ keine ursprünglichen Fehler, Argumente, Secrets oder Netzwerkadressen aus und
 seinen bisherigen maschinenlesbaren Fehlercode. Drei isolierte Diagnose-Tests
 und die 13 zugehörigen Proxy-/TURN-Checks bestanden; der externe Ursachenbefund
 und die Gesamtregression stehen noch aus. Dies ist Diagnose, kein Fixnachweis.
+
+Nachtrag: Die Diagnose-Revision `2237643` bestand den vollständigen CI-Gesamtcheck
+mit 811 Nodeprüfungen, null Fehlern und zwei expliziten Skips; der zusätzliche
+TURN-Job blieb vor dem Browserstart rot. Mit der expliziten Subnetzreservierung
+in `b29fa60` bestand anschließend der TURN-Job `102272933695` in CI `34289593981`
+vollständig: UDP und TCP jeweils mit Chromium und Firefox. Der lokale UDP-Lauf
+bestand in 37,889 s, TCP in 37,626 s. Die Schutz- und Medienbudgets blieben
+unverändert. Dies behebt den konkreten CI-Netzaufbau, nicht die getrennt offene
+verzögerte ICE-Stufenumschaltung oder öffentliche NAT-/Hub-/Agent-Pfade.
