@@ -2,7 +2,50 @@
 
 ## Aktueller Arbeitsstand: durchgängiger Wiederanlauf bestanden
 
-### Gemeinsamer Abschlusscheck: noch nicht freigegeben
+### CI-Nachweis und eingegrenzter lokaler Testfehler
+
+Der CI-Browserjob von `2da0440` bestand anschließend den tatsächlichen
+`npm run check`: 1.198 Frontendtests, 1.109 bestandene Node-/Browserprüfungen,
+null Fehler und vier explizite Node-Skips (499,440 Sekunden Node). Beide
+gekoppelten Quellenfälle bestanden. Die externen Skripte dieses Jobs erreichten
+ihre sichtbaren Skip-Pfade; der separate authentifizierte TURN-Job bestand
+zusätzlich vier echte Chromium-/Firefox-Dialogfälle über UDP/TCP ohne Skip.
+Der gesamte [CI-Lauf 34389380539](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34389380539)
+ist inzwischen mit allen acht Jobs erfolgreich abgeschlossen. Der Dockerjob
+prüfte zusätzlich das exportierte Release gegen die Attestation und den
+112.075.776-Byte-OCI-Export auf die vorgesehenen Leakage-Canaries. Der separate
+Live-Keycloak-/TURN-Gate meldete tatsächlich `passed`, zwei ausgewählte
+Relay-Paare und je 32 Payload-Bytes in beide Richtungen. Dessen Scope bleibt
+synthetischer DataChannel im selben Browser; die Anwendungsmedien-Evidence
+stammt aus dem getrennten vierfachen TURN-Dialog, nicht aus diesem Payloadtest.
+Andere nicht aktivierte Infrastrukturprofile blieben ausdrücklich übersprungen.
+
+Ein begrenzter lokaler Reproduktionslauf mit der gepushten Diagnose scheiterte
+bereits im ersten Versuch: 3.768 ms Wandzeit gegenüber 1.236,860 ms Monotonzeit,
+229 ms verbleibende Lease, beide Sockets offen, erste Publisher-Lease bestätigt,
+keine Stopnachricht, noch keine zweite Lease. Damit ist der vorzeitige Ablauf
+der Wanduhr-Testwartefrist belegt. Die produktiven Ablaufregeln wurden nicht
+verändert; insbesondere müssen Leases auch weiterhin bei Zeitverlust enden.
+
+Nur die vier synthetischen In-Prozess-Signalingtests verwenden nun eine durch
+den Node-Testkontext begrenzte Date-Uhr aus Start-Epoch plus echter Monotonzeit.
+Date-Konstruktor und Date.now bleiben konsistent, echte Timer/WebSockets laufen
+weiter, und der Testkontext stellt Date nach Cleanup wieder her. Unit-Tests
+prüfen spätere Wandzeitsprünge, monotone Fortschritte, ungültige Uhren und die
+Wiederherstellung. 37 gezielte Tests bestanden in 4,085 Sekunden; anschließend
+bestand der vorher fehlschlagende Fall 20 von 20 begrenzten Durchläufen.
+Dieser Testnachtrag ist **nicht** Bestandteil des obigen CI-Commits. Er ändert
+weder Browser-, Signaling- noch native Produktionslogik und belegt keinen Fix
+des getrennten Ananta-Langzeitstillstands.
+
+Alle fünf nativen CI-Artefakte von `2da0440` wurden heruntergeladen und anhand
+von Größe/SHA-256 geprüft. Das Release-Manifest mit SHA-256
+`9fc2358e1051eae1e5a84c12192992013ee5eb84d8af0c31377f041c6d1b26e1`
+bestand die unabhängige Attestationsprüfung gegen Repository, Main-Ref,
+Workflow, exakten Quellcommit und den Ausschluss selbst gehosteter Runner.
+Das ist Herkunftsevidence, keine neue öffentliche Bereitstellung.
+
+### Vorheriger lokaler Abschlusscheck: fehlgeschlagen
 
 Der isolierte Gesamtcheck des Commits `d2cfea4` endete mit **Exit 1**:
 1.198 Frontendtests und 1.108 Node-/Browserprüfungen bestanden, ein Nodefall

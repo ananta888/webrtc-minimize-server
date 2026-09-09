@@ -19,6 +19,7 @@ import { NativePackagerAssignmentRegistry } from "../src/native-packager-assignm
 import { parseNativePackagerMessage } from "../src/native-packager-control.js";
 import { TrustedBroadcastSourceActions, parseTrustedSourceAction } from "../src/trusted-broadcast-source-actions.js";
 import { parseClientMessage } from "../src/protocol.js";
+import { steadyFixtureClock } from "./helpers/steady-fixture-clock.mjs";
 
 const validate = new Ajv({ strict: true }).compile(JSON.parse(await fs.readFile(
   new URL("../contracts/trusted-decrypt/wire.v1.schema.json", import.meta.url), "utf8")));
@@ -574,6 +575,7 @@ test("approve budget rejects excess replays before expensive full authority prun
 });
 
 for (const publicActions of [false, true, "receipt-failure", "backpressure"]) test(`live ${publicActions ? `public v4 ${publicActions}` : "internal source"} signaling renews only after ACK and stops on publisher revoke`, { timeout: 10000 }, async t => {
+  steadyFixtureClock(t); // Synthetic policy times only; no production clock/lease change.
   const f = fixture(Date.now(), publicActions), keys = crypto.generateKeyPairSync("ed25519");
   f.rooms.leave(f.publisher);
   const config = { authMode: "required", oidcIssuer: f.identity.issuer, oidcAudience: "human", oidcAlgorithms: ["EdDSA"],
