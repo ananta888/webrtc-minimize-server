@@ -66,3 +66,25 @@ The default remains16 for ordinary fixtures; proxy memory/CPU/PID limits,
 application room/source capacities, request/join/consent deadlines and security
 checks remain unchanged. This new declared test profile requires another native
 run; previous failed runs are not reclassified.
+
+## Joint short and grouped verification
+
+The32-connection bridge passed the full Ananta short scenario in29.32 seconds
+at Meet `66b6055`, then again in28.21 seconds at the integrated `21cff89` with
+Ananta `478bfac39`. Actual chat, moving owned screen, pause/resume, private-marker
+stop and cancellation remained enabled; source timing was explicitly negotiated.
+Both were pre-reserved Hub TEST runs, never production-release evidence.
+
+The isolated full `npm run check` at `21cff89` completed with exit0:
+1085 frontend tests in13.14 seconds, production build in8.060 seconds, Go and
+static/security/configuration gates passed; Node stage1008 passed/0failed/2skips
+in380.582 seconds. Fourteen external infrastructure gates and the optional image
+archive scan were explicit skips. The source build's existing initial-bundle
+budget warning remains; no serving build or running deployment was changed.
+
+The separate Ananta two-hour-profile attempt finished failed in39.95 seconds
+at the750-ms screen freshness fence (observed gap1,096,801 microseconds), while
+the large frontend stage was running. This is neither a two-hour success nor
+proof of a causal scheduling diagnosis. Ananta adds passive bounded scheduling
+observations and separates the next timed soak from large suites. MDS-08/09
+and the public operator/trust/evidence acceptance remain open.
