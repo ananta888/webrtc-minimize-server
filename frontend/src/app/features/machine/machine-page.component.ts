@@ -1,5 +1,6 @@
 import { Component, OnDestroy, effect, inject } from "@angular/core";
 import { MachineLeaseExpiry } from "./machine-lease-expiry";
+import { MachinePageLifecycle } from "./machine-page-lifecycle";
 import { MachineClientProbe, probeMachineClient } from "./machine-client-probe";
 import { RuntimeConfigService } from "../../core/runtime-config.service";
 import { PeerMeshService } from "../../webrtc/peer-mesh.service";
@@ -38,9 +39,20 @@ export class MachinePageComponent implements OnDestroy {
   private readonly machineMedia = inject(MachineMediaSessionService);
   private readonly machineScreenAudio = inject(MachineScreenAudioSessionService);
   private readonly expiry = new MachineLeaseExpiry(() => this.session.machineExpiresAt(), () => this.leave());
-  private generation = 0;
+  private readonly lifecycle = new MachinePageLifecycle({
+    load: () => this.config.load(),
+    join: (roomId, grant) => this.session.join(roomId, "Ananta (KI)", "room", grant),
+    joined: () => this.session.joined(),
+    cleanup: [() => this.expiry.close(), () => this.session.leave(),
+      () => this.machineAvatar.source.close(), () => this.machineSpeech.source.close(),
+      () => this.machineScreenAudio.source.close(), () => this.machineScreen.source.close(),
+      () => this.machineAudio.close(), () => this.machineVisual.close(),
+      () => this.machineChat.endpoint.close(), () => this.machineMedia.publication.close(),
+      () => this.mesh.clearChatHistory()],
+    cleanupFailed: () => this.session.error.set("machine_cleanup_failed"),
+  });
   private readonly api = {
-    join: (roomId: string, grant: string) => this.join(roomId, grant),
+    join: (roomId: string, grant: string) => this.lifecycle.join(roomId, grant),
     renew: (grant: string) => this.session.renewMachine(grant),
     capabilities: () => Object.freeze({ schema: "ananta.meet-capabilities.v1", publication: "mp4-v1",
       sessionLease: "ananta.meet-session-lease.v1", chatEvents: false, audioSubscription: false, screenPublication: false }),
@@ -93,19 +105,6 @@ export class MachinePageComponent implements OnDestroy {
     });
   }
 
-  private async join(roomId: string, grant: string): Promise<void> {
-    this.leave();
-    if (typeof grant !== "string" || grant.length > 4096 || !/^room-[a-f0-9]{18}$/.test(roomId)) {
-      throw new Error("machine_join_invalid");
-    }
-    const generation = this.generation;
-    await this.config.load();
-    if (generation !== this.generation) throw new Error("machine_cancelled");
-    await this.session.join(roomId, "Ananta (KI)", "room", grant);
-    if (generation !== this.generation) { this.session.leave(); throw new Error("machine_cancelled"); }
-    await this.until(() => this.session.joined(), generation);
-  }
-
   private async publish(text: string, encoded: string): Promise<void> {
     const own = this.mesh.ownPeerId();
     if (!["avatar.publish", "speech.publish", "chat.send"].every(capability => this.mesh.machineReceive.supports(own, capability))) {
@@ -115,28 +114,9 @@ export class MachinePageComponent implements OnDestroy {
     await this.machineMedia.publication.publish(encoded, ["avatar", "speech"], () => this.mesh.sendChat(text));
   }
 
-  private async until(ready: () => boolean, generation: number, budget = 20_000): Promise<void> {
-    const deadline = Date.now() + budget;
-    while (!ready()) {
-      if (generation !== this.generation || Date.now() >= deadline) throw new Error("machine_operation_bounded_stop");
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-    if (generation !== this.generation) throw new Error("machine_cancelled");
-  }
-
-  leave(): void {
-    this.machineAvatar.source.close();
-    this.machineSpeech.source.close();
-    this.machineScreenAudio.source.close();
-    this.machineScreen.source.close();
-    this.machineAudio.close();
-    this.machineVisual.close();
-    this.machineChat.endpoint.close();
-    ++this.generation; this.expiry.close();
-    try { this.machineMedia.publication.close(); } finally { this.session.leave(); this.mesh.clearChatHistory(); }
-  }
+  leave(): void { this.lifecycle.leave(); }
 
   ngOnDestroy(): void {
-    this.leave(); Reflect.deleteProperty(window, "anantaMachine");
+    this.lifecycle.destroy(); Reflect.deleteProperty(window, "anantaMachine");
   }
 }

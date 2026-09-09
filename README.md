@@ -163,6 +163,11 @@ Pair-Sessions besitzen daneben einen eigenständigen Daten-Overlay-Kanal. Jeder 
 
 ## Öffentliche Ananta-Voreinstellung
 
+Die Hub-/Worker-Integration ist getrennt von diesem Domain-Preset.
+Den aktuellen Funktionsumfang, die Bedienung der Quellenfreigaben und die
+Voraussetzungen für produktive KI-Teilnahme beschreibt die
+[Ananta-Integrationsübersicht](docs/ananta-integration-status.md).
+
 Das Compose-Deployment verwendet ohne Domain-Overrides bereits diese öffentlichen Endpunkte:
 
 - Anwendung: `https://webrtc.ananta.de`
