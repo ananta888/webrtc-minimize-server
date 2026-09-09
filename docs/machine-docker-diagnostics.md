@@ -21,4 +21,6 @@ Deterministic tests cover all 440 allowed operation/status/reason combinations,
 actual known error strings with a secret canary, malformed/out-of-range status,
 prefixes, suffixes and unknown fields. The 26 focused Docker/TLS/STUN/TURN
 checks passed in 0.251 seconds; both bridge syntax checks and all 28 Todo
-documents passed. Grouped verification remains separate.
+documents passed. The later isolated `c4ef486` full check also passed:
+1,188 frontend and 1,088 Node/browser checks, zero failures and four explicit
+Node skips; see [the Linux checkpoint](ananta-linux-grouped-check-20260909.md).
