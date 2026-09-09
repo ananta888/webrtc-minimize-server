@@ -24,9 +24,11 @@ async function unusedLoopbackPort() {
   await new Promise(resolve => socket.close(resolve)); return port;
 }
 
-export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, allowSyntheticAudio = false } = {}) {
+export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, allowSyntheticAudio = false, allowSyntheticScreenAudio = false } = {}) {
   assert.equal(typeof allowSyntheticScreen, "boolean");
   assert.equal(typeof allowSyntheticAudio, "boolean");
+  assert.equal(typeof allowSyntheticScreenAudio, "boolean");
+  assert.ok(!allowSyntheticScreenAudio || allowSyntheticScreen);
   let browser, tls, app;
   const observation = { http: [], native: [], scene: [] };
   t.after(async () => {
@@ -93,7 +95,7 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
   const token = await new SignJWT({}).setIssuer(issuer).setAudience("human").setSubject("owner").setIssuedAt()
     .setExpirationTime("3m").setProtectedHeader({ alg: "EdDSA" }).sign(identityKeys.privateKey);
   const context = await browser.newContext({ permissions: [] });
-  await context.addInitScript(({ token, allowSyntheticScreen, allowSyntheticAudio }) => {
+  await context.addInitScript(({ token, allowSyntheticScreen, allowSyntheticAudio, allowSyntheticScreenAudio }) => {
     sessionStorage.setItem("webrtc.oidc.access-token", token);
     window.__sceneCaptures = 0;
     const syntheticVideo = color => {
@@ -107,12 +109,10 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
       track.stop = () => { clearInterval(timer); canvas.width = canvas.height = 0; stop(); };
       return stream;
     };
-    navigator.mediaDevices.getUserMedia = async constraints => {
-      if (allowSyntheticAudio && constraints?.audio && !constraints.video) {
-        ++window.__sceneCaptures;
+    const syntheticAudio = async frequency => {
         const audio = new AudioContext({ sampleRate: 48000 }), tone = audio.createOscillator();
         const gain = audio.createGain(), destination = audio.createMediaStreamDestination();
-        gain.gain.value = .25; tone.frequency.value = 440;
+        gain.gain.value = .25; tone.frequency.value = frequency;
         tone.connect(gain).connect(destination); tone.start(); await audio.resume();
         const track = destination.stream.getAudioTracks()[0], stop = track.stop.bind(track);
         let closed = false;
@@ -121,15 +121,25 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
           tone.stop(); tone.disconnect(); gain.disconnect(); stop(); void audio.close();
         };
         return destination.stream;
+    };
+    navigator.mediaDevices.getUserMedia = async constraints => {
+      if (allowSyntheticAudio && constraints?.audio && !constraints.video) {
+        ++window.__sceneCaptures;
+        return syntheticAudio(440);
       }
       if (!constraints?.video || constraints.audio) throw new Error("fixture_capture_profile_denied");
       return syntheticVideo("#e02020");
     };
-    navigator.mediaDevices.getDisplayMedia = async () => {
+    navigator.mediaDevices.getDisplayMedia = async constraints => {
       if (!allowSyntheticScreen) throw new Error("fixture_display_capture_denied");
-      return syntheticVideo("#2020e0");
+      const stream = syntheticVideo("#2020e0");
+      if (allowSyntheticScreenAudio && constraints?.audio) {
+        try { stream.addTrack((await syntheticAudio(880)).getAudioTracks()[0]); }
+        catch (error) { stream.getTracks().forEach(track => track.stop()); throw error; }
+      }
+      return stream;
     };
-  }, { token, allowSyntheticScreen, allowSyntheticAudio });
+  }, { token, allowSyntheticScreen, allowSyntheticAudio, allowSyntheticScreenAudio });
   const page = await context.newPage();
   page.on("response", async response => {
     const pathname = new URL(response.url()).pathname;

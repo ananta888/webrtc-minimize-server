@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import Ajv2020 from "ajv/dist/2020.js";
-import { normalizeNativePackagerCapability, supportsNativeSourceAudioV1, supportsNativeSourceSignalV1, supportsNativeSourceSceneV1 } from "../src/native-packager-policy.js";
+import { normalizeNativePackagerCapability, supportsNativeSourceAudioV1, supportsNativeSourceAudioV2, supportsNativeSourceSignalV1, supportsNativeSourceSceneV1 } from "../src/native-packager-policy.js";
 import { parseNativePackagerMessage } from "../src/native-packager-control.js";
 
 test("v3 audio capability is explicit, closed and preserves source/scene support", () => {
@@ -22,4 +22,23 @@ test("v3 audio capability is explicit, closed and preserves source/scene support
   }
   const legacy = JSON.parse(readFileSync(new URL("./fixtures/native-source-capability.v2.json", import.meta.url))).capability;
   assert.equal(supportsNativeSourceAudioV1(normalizeNativePackagerCapability(legacy, now)), false);
+});
+
+test("v4 strategy capability is explicit, strictly versioned, and also supports old controls", () => {
+  const message = JSON.parse(readFileSync(new URL("./fixtures/native-source-capability.v4.json", import.meta.url)));
+  const schema = JSON.parse(readFileSync(new URL("../contracts/native-packager/capability.v4.schema.json", import.meta.url)));
+  const validate = new Ajv2020({ strict: true }).compile(schema), report = message.capability;
+  assert.equal(validate(report), true);
+  assert.deepEqual(parseNativePackagerMessage(JSON.stringify(message)), message);
+  const current = normalizeNativePackagerCapability(report, report.observedAt);
+  for (const supported of [supportsNativeSourceAudioV1, supportsNativeSourceAudioV2, supportsNativeSourceSignalV1, supportsNativeSourceSceneV1]) assert.equal(supported(current), true);
+  for (const field of Object.keys(report)) {
+    const missing = { ...report }; delete missing[field];
+    assert.equal(validate(missing), false); assert.throws(() => normalizeNativePackagerCapability(missing, report.observedAt));
+  }
+  for (const patch of [{ capabilityVersion: 3 }, { sourceAudioControlVersion: 1 }, { sourceAudioControlVersion: true }, { sourcePrograms: false }, { trust: true }]) {
+    assert.equal(validate({ ...report, ...patch }), false);
+    assert.throws(() => normalizeNativePackagerCapability({ ...report, ...patch }, report.observedAt));
+  }
+  assert.equal(supportsNativeSourceAudioV2({ ...current, capabilityVersion: 3, sourceAudioControlVersion: 1 }), false);
 });

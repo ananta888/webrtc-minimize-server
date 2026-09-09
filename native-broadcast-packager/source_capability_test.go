@@ -8,7 +8,7 @@ import (
 )
 
 func TestSourceProgramCapabilityMatchesSharedWire(t *testing.T) {
-	raw, err := os.ReadFile("../test/fixtures/native-source-capability.v3.json")
+	raw, err := os.ReadFile("../test/fixtures/native-source-capability.v4.json")
 	if err != nil {
 		t.Fatal(err)
 	}

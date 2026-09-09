@@ -18,10 +18,11 @@ export class NativeSourceAudioBroker {
     this.send = send; this.clock = clock; this.schedule = schedule; this.cancel = cancel;
   }
 
-  request(selection, authorize, signal) {
+  request(selection, authorize, signal, version = 1) {
     if (this.#closed || signal?.aborted) return Promise.reject(error("native_audio_cancelled"));
     let now, context, command;
     try {
+      if (![1, 2].includes(version)) throw error("invalid_native_audio_selection", 400);
       now = this.clock(); context = authorize(now);
       // sourceContext supplies an opaque identity handle, not a wire revision.
       if (!positive(now) || !context?.socket || !context.generation || typeof context.generation !== "object"
@@ -30,10 +31,10 @@ export class NativeSourceAudioBroker {
         || !positive(context.expiresAt) || context.expiresAt <= now) throw error("native_audio_unavailable");
       context = Object.freeze({ ...context });
       if (this.#pending.size >= 128 || [...this.#pending.values()].some(p => p.context.packagerId === context.packagerId)) throw error("native_audio_busy", 429);
-      const keys = ["expectedAudioRevision", "sources"];
+      const keys = ["expectedAudioRevision", "sources", ...(version === 2 ? ["strategy"] : [])];
       if (selection !== null && (!selection || typeof selection !== "object" || Array.isArray(selection)
         || Object.keys(selection).length !== keys.length || Object.keys(selection).some(key => !keys.includes(key)))) throw error("invalid_native_audio_selection", 400);
-      const base = { version: 1, commandId: `aud_${randomBytes(18).toString("base64url")}`,
+      const base = { version, commandId: `aud_${randomBytes(18).toString("base64url")}`,
         ...Object.fromEntries(scope.filter(key => !["packagerId", "programRevision"].includes(key)).map(key => [key, context[key]])),
         issuedAt: now, expiresAt: Math.min(now + 4000, context.expiresAt) };
       try {

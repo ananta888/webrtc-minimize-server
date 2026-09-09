@@ -14,7 +14,8 @@ import { NativeSourceProgramController, NativeSourceProgramView } from "./native
 export class NativeSourceProgramService implements OnDestroy {
   readonly view = signal<NativeSourceProgramView>({ phase: "idle", active: false, program: null, error: "" });
   readonly candidates = computed(() => this.packagers.eligible(this.room.roomId())
-    .filter(p => (p.capability?.capabilityVersion === 2 || p.capability?.capabilityVersion === 3 && p.capability.sourceAudioControlVersion === 1)
+    .filter(p => (p.capability?.capabilityVersion === 2 || [3, 4].includes(p.capability?.capabilityVersion ?? 0)
+      && p.capability?.sourceAudioControlVersion === p.capability!.capabilityVersion! - 2)
       && p.capability?.sourcePrograms === true
       && Number.isSafeInteger(p.capability.maximumRenditions) && p.capability.maximumRenditions >= 1
       && p.capability.maximumRenditions <= 3));
@@ -65,11 +66,12 @@ export class NativeSourceProgramService implements OnDestroy {
     const key = this.context(), program = this.requestProgram();
     return key && program ? { key, program } : null;
   }
-  audioContext(): { key: string; program: NonNullable<NativeSourceProgramView["program"]> } | null {
+  audioContext(): { key: string; program: NonNullable<NativeSourceProgramView["program"]>; audioControlVersion: 1 | 2 } | null {
     const context = this.sceneContext(), id = this.controller.controlledPackagerId();
     const capability = this.candidates().find(p => p.id === id)?.capability;
-    return context && capability?.capabilityVersion === 3 && capability.sourceAudioControlVersion === 1
-      ? { ...context, key: JSON.stringify([context.key, id]) } : null;
+    const version = capability?.sourceAudioControlVersion;
+    return context && (version === 1 || version === 2) && capability?.capabilityVersion === version + 2
+      ? { ...context, key: JSON.stringify([context.key, id]), audioControlVersion: version } : null;
   }
   ngOnDestroy(): void { clearInterval(this.timer); this.controller.destroy(); }
 }

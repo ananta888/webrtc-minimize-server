@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import Ajv2020 from "ajv/dist/2020.js";
 
-for (const name of ["source-audio", "source-audio-query", "source-audio-applied", "source-audio-state", "source-audio-rejected"]) {
-  test(`${name} shares the native fixture and rejects unknown, missing and null fields`, () => {
-    const schema = JSON.parse(readFileSync(new URL(`../contracts/native-packager/${name}.v1.schema.json`, import.meta.url)));
-    const fixture = JSON.parse(readFileSync(new URL(`../native-broadcast-packager/testdata/${name}.v1.json`, import.meta.url)));
+for (const version of [1, 2]) for (const name of ["source-audio", "source-audio-query", "source-audio-applied", "source-audio-state", "source-audio-rejected"]) {
+  test(`${name} v${version} shares the native fixture and rejects unknown, missing and null fields`, () => {
+    const schema = JSON.parse(readFileSync(new URL(`../contracts/native-packager/${name}.v${version}.schema.json`, import.meta.url)));
+    const fixture = JSON.parse(readFileSync(new URL(`../native-broadcast-packager/testdata/${name}.v${version}.json`, import.meta.url)));
     const validate = new Ajv2020({ strict: true }).compile(schema);
     assert.equal(validate(fixture), true, JSON.stringify(validate.errors));
     assert.equal(validate({ ...fixture, authority: true }), false);

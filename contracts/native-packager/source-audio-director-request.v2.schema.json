@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/source-audio-director-request.v2.schema.json",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestVersion",
+        "deviceFingerprint",
+        "expectedProgramRevision",
+        "expectedProgramEpoch",
+        "action"
+      ],
+      "properties": {
+        "requestVersion": {
+          "const": 2
+        },
+        "deviceFingerprint": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        },
+        "expectedProgramRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expectedProgramEpoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "action": {
+          "const": "query"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestVersion",
+        "deviceFingerprint",
+        "expectedProgramRevision",
+        "expectedProgramEpoch",
+        "action",
+        "trigger",
+        "expectedAudioRevision",
+        "sources",
+        "strategy"
+      ],
+      "properties": {
+        "requestVersion": {
+          "const": 2
+        },
+        "deviceFingerprint": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        },
+        "expectedProgramRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expectedProgramEpoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "action": {
+          "const": "apply"
+        },
+        "trigger": {
+          "const": "user-action"
+        },
+        "expectedAudioRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740990
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 80,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sourceLeaseId",
+              "leftGainQ15",
+              "rightGainQ15",
+              "muted"
+            ],
+            "properties": {
+              "sourceLeaseId": {
+                "type": "string",
+                "pattern": "^sls_[A-Za-z0-9_-]{16,64}$"
+              },
+              "leftGainQ15": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 32768
+              },
+              "rightGainQ15": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 32768
+              },
+              "muted": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "strategy": {
+          "enum": [
+            "unprocessed",
+            "balanced",
+            "speech-first",
+            "screen-first"
+          ]
+        }
+      }
+    }
+  ]
+}

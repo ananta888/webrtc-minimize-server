@@ -1,11 +1,19 @@
 <section aria-labelledby="native-audio-heading">
-  <h3 id="native-audio-heading">Programmaudio · Pegel und Mute</h3>
+  <h3 id="native-audio-heading">Programmaudio · Pegel und Priorität</h3>
   <p>Nur bereits freigegebene Audioeingänge. Änderungen betreffen den Broadcast-Ausgang, nicht den Raumton. Mute widerruft keine Freigabe. Keine Aufnahme oder lokale Kontrollwiedergabe wird gestartet.</p>
   <button id="native-audio-refresh" type="button" (click)="refresh()" [disabled]="audio.view().phase === 'pending'">Audiowerte abfragen</button>
   <p id="native-audio-status" role="status" aria-live="polite">{{ status() }}</p>
   @if (audio.view().phase === 'ready' && !levels().length) { <p>Noch keine gebundenen Audioeingänge. Eine vorbereitete Freigabe allein ist noch kein Eingang.</p> }
   <fieldset [disabled]="audio.view().phase !== 'ready'">
     <legend>Ausgangspegel je Quelle · maximal 100 %</legend>
+    @if (audio.view().audio?.audioControlVersion === 2) {
+      <label>Native Audio-Strategie
+        <select id="native-audio-strategy" [value]="strategy()" (change)="setStrategy($any($event.target).value)">
+          @for (preset of strategies; track preset) { <option [value]="preset">{{ strategyLabels[preset] }}</option> }
+        </select>
+      </label>
+      <p>Priorität reagiert auf den Pegel freigegebener Quellen, nicht auf Spracherkennung. Bildschirmton wird bei Sprachpriorität auf 28 %, bei Ausgewogen auf 50 % abgesenkt; Bildschirmpriorität senkt Mikrofone auf 28 %. Geglättete Rückkehr, gemeinsamer Stereo-Limiter. Unbearbeitet deaktiviert diese Verarbeitung und kann bei mehreren lauten Quellen clippen. Keine Echounterdrückung oder automatische Capture-Freigabe.</p>
+    }
     @for (source of levels(); track source.sourceLeaseId; let i = $index) {
       <fieldset>
         <legend>{{ sourceLabel(source.sourceLeaseId) }} {{ i + 1 }}</legend>
@@ -14,6 +22,14 @@
         <label><input type="checkbox" [checked]="source.muted" (change)="setMuted(source.sourceLeaseId, $any($event.target).checked)"> Im Broadcast stummschalten</label>
       </fieldset>
     }
-    <button id="native-audio-apply" type="button" [disabled]="!levels().length" (click)="apply()">Audiowerte bewusst anwenden…</button>
+    <button id="native-audio-apply" type="button" [disabled]="!levels().length && audio.view().audio?.audioControlVersion !== 2" (click)="apply()">Audiowerte bewusst anwenden…</button>
   </fieldset>
+  @if (audio.view().audio?.mix; as mix) {
+    <p id="native-audio-dynamics">Bestätigt: {{ strategyLabels[mix.strategy] }}. Letzter Mischblock: Mikrofonfaktor {{ percent(mix.microphoneGainQ15) }} %, Bildschirmtonfaktor {{ percent(mix.screenAudioGainQ15) }} %, Limiterfaktor {{ percent(mix.limiterGainQ15) }} %, Spitze {{ percent(mix.peakQ15) }} %. Momentaufnahme, keine laufende Messkurve.</p>
+  }
+  @if (audio.view().audio?.encoding; as encoding) {
+    <p>Aktuelle Encoder-Konfiguration: AAC · {{ encoding.sampleRate }} Hz · {{ encoding.channels }} Kanäle.
+      @for (rendition of encoding.renditions; track rendition.id) { {{ rendition.id }}: {{ rendition.targetBitsPerSecond / 1000 }} kbit/s Zielrate. }
+      Die tatsächliche Datenrate kann abweichen. Kanalzahl und Codec werden durch diese Live-Mischung nicht geändert; Opus-DTX/FEC sind hier nicht anwendbar.</p>
+  }
 </section>

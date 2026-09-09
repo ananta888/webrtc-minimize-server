@@ -116,7 +116,7 @@ func TestLiveTrustedSourceControlSocket(t *testing.T) {
 			}
 			capability := reported["capability"].(map[string]any)
 			if c.cfg.sourcePrograms {
-				if capability["capabilityVersion"] != float64(3) || capability["sourcePrograms"] != true || capability["sourceAudioControlVersion"] != float64(1) {
+				if capability["capabilityVersion"] != float64(4) || capability["sourcePrograms"] != true || capability["sourceAudioControlVersion"] != float64(2) {
 					t.Fatal("enabled control omitted explicit source capability")
 				}
 			} else if capability["capabilityVersion"] != float64(1) || capability["sourcePrograms"] != nil {

@@ -18,6 +18,8 @@ type sourceAudioLevelChange struct {
 type sourceAudioLevelState struct {
 	revision uint64
 	inputs   map[*sourceAudioMixInput]sourceAudioLevels
+	strategy string
+	dynamics sourceAudioDynamics
 }
 
 func (m *sourceAudioMixer) advanceRevisionLocked() bool {
@@ -48,7 +50,7 @@ func (m *sourceAudioMixer) Levels() (sourceAudioLevelState, error) {
 	if !m.currentLevelsLocked() {
 		return sourceAudioLevelState{}, errors.New("source audio levels unavailable")
 	}
-	state := sourceAudioLevelState{revision: m.revision, inputs: make(map[*sourceAudioMixInput]sourceAudioLevels, len(m.sources))}
+	state := sourceAudioLevelState{revision: m.revision, inputs: make(map[*sourceAudioMixInput]sourceAudioLevels, len(m.sources)), strategy: m.strategy, dynamics: m.dynamics}
 	for input := range m.sources {
 		state.inputs[input] = sourceAudioLevels{input.cfg.left, input.cfg.right, input.muted}
 	}
@@ -58,10 +60,19 @@ func (m *sourceAudioMixer) Levels() (sourceAudioLevelState, error) {
 // All sources and the current command fence are checked before any level changes.
 // Source revocation remains independent and is checked again on every render.
 func (m *sourceAudioMixer) SetLevels(expected uint64, changes []sourceAudioLevelChange, current func() bool) (uint64, error) {
+	return m.setLevelsStrategy(expected, changes, nil, current)
+}
+
+func (m *sourceAudioMixer) SetLevelsStrategy(expected uint64, changes []sourceAudioLevelChange, strategy string, current func() bool) (uint64, error) {
+	return m.setLevelsStrategy(expected, changes, &strategy, current)
+}
+
+func (m *sourceAudioMixer) setLevelsStrategy(expected uint64, changes []sourceAudioLevelChange, strategy *string, current func() bool) (uint64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	denied := func() (uint64, error) { return 0, errors.New("source audio levels denied") }
-	if !m.currentLevelsLocked() || expected != m.revision || expected == 0 || len(changes) == 0 || len(changes) > 80 || current == nil {
+	if !m.currentLevelsLocked() || expected != m.revision || expected == 0 || len(changes) == 0 && strategy == nil || len(changes) > 80 || current == nil ||
+		strategy != nil && !validSourceAudioStrategy(*strategy) {
 		return denied()
 	}
 	seen := make(map[*sourceAudioMixInput]bool, len(changes))
@@ -86,6 +97,12 @@ func (m *sourceAudioMixer) SetLevels(expected uint64, changes []sourceAudioLevel
 	}
 	for _, change := range changes {
 		change.input.cfg.left, change.input.cfg.right, change.input.muted = change.levels.left, change.levels.right, change.levels.muted
+	}
+	if strategy != nil {
+		m.strategy = *strategy
+		if *strategy == "unprocessed" {
+			m.dynamics.microphone, m.dynamics.screen, m.dynamics.limiter = 1, 1, 1
+		}
 	}
 	return m.revision, nil
 }

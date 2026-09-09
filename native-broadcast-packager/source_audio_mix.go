@@ -21,7 +21,8 @@ type sourceAudioMixInputConfig struct {
 	// No arrival-time fallback: missing/invalid clock correspondence denies input.
 	mapTimestamp func(uint32) (int64, bool)
 	authorized   func() bool
-	left, right  int // Q15 gain, 0..32768, independently for each channel.
+	left, right  int    // Q15 gain, 0..32768, independently for each channel.
+	kind         string // Empty only for generic local inputs; never guessed from PCM.
 }
 
 // This stage owns decoded PCM only, not capture, clock synchronization, source
@@ -36,6 +37,8 @@ type sourceAudioMixer struct {
 	closed       bool
 	revision     uint64
 	programOwned bool
+	strategy     string
+	dynamics     sourceAudioDynamics
 	sum          [sourceAudioMixSamples * 2]int64
 	output       [sourceAudioMixSamples * 4]byte
 }
@@ -60,7 +63,8 @@ func newSourceAudioMixer(cfg sourceAudioMixConfig) (*sourceAudioMixer, error) {
 		cfg.authorized == nil || !cfg.authorized() {
 		return nil, errors.New("source audio mixer config denied")
 	}
-	return &sourceAudioMixer{cfg: cfg, sources: make(map[*sourceAudioMixInput]struct{}), cursor: cfg.startSample, revision: 1}, nil
+	return &sourceAudioMixer{cfg: cfg, sources: make(map[*sourceAudioMixInput]struct{}), cursor: cfg.startSample, revision: 1,
+		strategy: "unprocessed", dynamics: initialSourceAudioDynamics()}, nil
 }
 
 func validSourceAudioGain(left, right int) bool {
@@ -78,7 +82,7 @@ func (m *sourceAudioMixer) add(cfg sourceAudioMixInputConfig, programTime bool) 
 		m.closeLocked()
 		return nil, errors.New("source audio mixer closed")
 	}
-	if (cfg.mapTimestamp == nil && !programTime) || (cfg.mapTimestamp != nil && programTime) || cfg.authorized == nil || !cfg.authorized() || !validSourceAudioGain(cfg.left, cfg.right) ||
+	if !oneOf(cfg.kind, "", "microphone", "screen-audio") || (cfg.mapTimestamp == nil && !programTime) || (cfg.mapTimestamp != nil && programTime) || cfg.authorized == nil || !cfg.authorized() || !validSourceAudioGain(cfg.left, cfg.right) ||
 		len(m.sources) >= m.cfg.maxSources || m.pcmBytes+m.cfg.queueSamples*4 > m.cfg.maxPCMBytes {
 		return nil, errors.New("source audio mixer admission denied")
 	}
@@ -180,6 +184,13 @@ func (m *sourceAudioMixer) RenderGuarded(consume func(int64, []byte, sourceRende
 	}
 	defer clear(m.sum[:])
 	defer clear(m.output[:])
+	micStart, screenStart := m.dynamics.microphone, m.dynamics.screen
+	micTarget, screenTarget := m.strategyTargetsLocked()
+	if m.closed {
+		return errors.New("source audio mixer output denied")
+	}
+	m.dynamics.microphone = sourceAudioDuckStep(micStart, micTarget)
+	m.dynamics.screen = sourceAudioDuckStep(screenStart, screenTarget)
 	var guard sourceRenderGuard
 	for s := range m.sources {
 		if !s.cfg.authorized() {
@@ -190,18 +201,24 @@ func (m *sourceAudioMixer) RenderGuarded(consume func(int64, []byte, sourceRende
 		for i := 0; i < sourceAudioMixSamples; i++ {
 			index := int((m.cursor+int64(i))%int64(m.cfg.queueSamples)) * 2
 			if !s.muted {
-				m.sum[i*2] += int64(s.pcm[index]) * int64(s.cfg.left)
-				m.sum[i*2+1] += int64(s.pcm[index+1]) * int64(s.cfg.right)
+				duck := 1.0
+				if m.strategy != "unprocessed" {
+					fraction := float64(i+1) / sourceAudioMixSamples
+					if s.cfg.kind == "microphone" {
+						duck = micStart + (m.dynamics.microphone-micStart)*fraction
+					}
+					if s.cfg.kind == "screen-audio" {
+						duck = screenStart + (m.dynamics.screen-screenStart)*fraction
+					}
+				}
+				m.sum[i*2] += int64(float64(int64(s.pcm[index])*int64(s.cfg.left)) * duck)
+				m.sum[i*2+1] += int64(float64(int64(s.pcm[index+1])*int64(s.cfg.right)) * duck)
 			}
 			s.pcm[index], s.pcm[index+1] = 0, 0
 		}
 	}
-	for i, value := range m.sum {
-		// Sum at full precision, then attenuate and saturate once: independent
-		// of source iteration order, with no gain change when a peer leaves.
-		value = max(-32768, min(32767, value/32768))
-		binary.LittleEndian.PutUint16(m.output[i*2:], uint16(int16(value)))
-	}
+	// Sum at full precision before linked stereo limiting; map order is inaudible.
+	m.renderStrategyLocked()
 	// Source consent may disappear during summation, independently of writer
 	// ownership. Do not hand off a block containing its already-mixed samples.
 	// One silence block is preferable to retaining revoked PCM; unaffected
@@ -210,6 +227,7 @@ func (m *sourceAudioMixer) RenderGuarded(consume func(int64, []byte, sourceRende
 		if !s.cfg.authorized() {
 			s.closeLocked()
 			clear(m.output[:])
+			m.dynamics.peak = 0
 		}
 	}
 	if m.closed || !m.cfg.authorized() {
@@ -256,6 +274,7 @@ func (m *sourceAudioMixer) closeLocked() {
 	}
 	clear(m.sum[:])
 	clear(m.output[:])
+	m.dynamics = sourceAudioDynamics{}
 }
 
 func (m *sourceAudioMixer) Close() {

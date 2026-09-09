@@ -1,15 +1,16 @@
 import { NativeAudioResult, NativeAudioSelection, NativeAudioState, validAudioSelection } from "./native-source-audio-contract";
 import { BroadcastProgramRef } from "./broadcast-ports";
 
-export interface NativeAudioContext { readonly key: string; readonly program: BroadcastProgramRef }
+export interface NativeAudioContext { readonly key: string; readonly program: BroadcastProgramRef; readonly audioControlVersion?: 1 | 2 }
 export interface NativeAudioView { readonly phase: "idle" | "pending" | "ready" | "stale" | "conflict" | "unavailable"; readonly audio: NativeAudioState | null }
 interface Ports {
   context(): NativeAudioContext | null;
-  request(program: BroadcastProgramRef, selection: NativeAudioSelection | null, signal: AbortSignal): Promise<NativeAudioResult>;
+  request(program: BroadcastProgramRef, selection: NativeAudioSelection | null, signal: AbortSignal, version: 1 | 2): Promise<NativeAudioResult>;
   changed(value: NativeAudioView): void;
   clock?: () => number;
 }
 const same = (a: NativeAudioContext | null, b: NativeAudioContext | null) => a && b && a.key === b.key
+  && (a.audioControlVersion ?? 1) === (b.audioControlVersion ?? 1)
   && a.program.programId === b.program.programId && a.program.programRevision === b.program.programRevision && a.program.programEpoch === b.program.programEpoch;
 
 /** No capture/consent/publication ownership. A timed-out apply is uncertain, never retried. */
@@ -36,7 +37,7 @@ export class NativeSourceAudioController {
   async refresh(): Promise<void> { await this.run(null); }
   async apply(selection: NativeAudioSelection, trigger: unknown): Promise<void> {
     this.tick();
-    if (trigger !== "user-action" || !this.audio || !this.current() || !validAudioSelection(selection)
+    if (trigger !== "user-action" || !this.audio || !this.current() || !validAudioSelection(selection, this.audio.audioControlVersion)
       || selection.expectedAudioRevision !== this.audio.audioRevision
       || selection.sources.some(input => !this.audio!.sources.some(s => s.sourceLeaseId === input.sourceLeaseId))) return;
     await this.run(selection);
@@ -54,8 +55,9 @@ export class NativeSourceAudioController {
       abort.signal.addEventListener("abort", onAbort, { once: true });
     });
     try {
-      const result = await Promise.race([this.ports.request(context.program, selection, abort.signal), cancelled]);
-      if (this.closed || this.pending !== abort || abort.signal.aborted || !this.current()) throw new Error();
+      const result = await Promise.race([this.ports.request(context.program, selection, abort.signal, context.audioControlVersion ?? 1), cancelled]);
+      if (this.closed || this.pending !== abort || abort.signal.aborted || !this.current()
+        || result.audioControlVersion !== (context.audioControlVersion ?? 1)) throw new Error();
       if (selection === null) {
         if (result.outcome !== "observed" || this.now() >= result.observedAt + 5000) throw new Error();
         this.audio = result; this.emit("ready");

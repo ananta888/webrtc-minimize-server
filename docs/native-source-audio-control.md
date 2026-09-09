@@ -2,8 +2,98 @@
 
 Arbeitsstand: native Grundlage, geschlossener Vertrag, authentifizierter
 Control-Socket, serverseitiger Antwort-Broker, HTTP-Director und Angular-Bedienfeld
-implementiert. Die additive Capability v3 weist Audio-Control v1 ausdrücklich aus.
+implementiert. Capability v3 weist Audio-Control v1, die neue Capability v4
+Audio-Control v2 ausdrücklich aus.
 TBP-014 bleibt offen; die bestehende Browser-Audiokonfiguration bleibt getrennt.
+
+## Native Mischstrategien v2
+
+Agent 0.11.0 meldet bei aktiviertem Quellenprogramm Capability v4 mit
+`sourceAudioControlVersion: 2`. Der geschlossene v2-Vertrag ist durchgängig in
+nativen Query-/Apply-/State-Nachrichten, Broker, HTTP-Director und Angular
+angebunden. Ein tatsächlicher v3-Agent bleibt auf Gain/Mute v1 beschränkt;
+ein Capability-Verlust verwirft ausstehende v2-Antworten. Ein v1-Pegelauftrag
+auf einem neuen Agenten setzt dessen Strategie nicht zurück.
+
+Vier bewusst wählbare Presets ändern ausschließlich den autorisierten nativen
+PCM-Programmbus:
+
+| Strategie | Bei aktiver priorisierter Quelle | Übersteuerungsschutz |
+|---|---|---|
+| Unbearbeitet | Keine Absenkung; kompatibler Ausgangszustand | Nur bisherige Sample-Begrenzung, Clipping möglich |
+| Ausgewogen | Bildschirmton auf 50 % bei aktivem Mikrofon | Gemeinsamer Stereo-Limiter |
+| Sprache zuerst | Bildschirmton auf 28 % bei aktivem Mikrofon | Gemeinsamer Stereo-Limiter |
+| Bildschirm zuerst | Mikrofone auf 28 % bei aktivem Bildschirmton | Gemeinsamer Stereo-Limiter |
+
+„Aktiv“ bezeichnet mindestens ungefähr 4,5 % Full-Scale-RMS im aktuellen
+20-ms-Block nach den Einzelpegeln und Mute. Das ist keine Spracherkennung oder
+Echounterdrückung. Absenkung wird innerhalb eines Blocks eingeregelt;
+die Rückkehr hat ungefähr 300 ms Zeitkonstante. Der Stereo-Limiter betrachtet
+die aufsummierten Samples desselben Blocks, begrenzt dessen Spitze auf 29490
+von 32768 und erhält das Kanalverhältnis. Keine zusätzliche Medienqueue,
+Capture-API oder lokale Kontrollwiedergabe wird angelegt.
+
+Strategie und Einzelpegel teilen eine CAS-Revision und alle bestehenden
+Quellen-, Writer-, Zeit- und Replayprüfungen. Ein v2-Auftrag darf nur die
+Strategie mit leerer Pegelliste ändern, auch vor dem ersten autorisierten
+Eingang. Er erstellt keine Quelle und verlängert keine Freigabe. Abfrage und
+explizite Bestätigung bleiben erforderlich; alte oder widersprüchliche Werte
+werden nicht automatisch erneut angewendet.
+
+Die UI zeigt zusätzlich begrenzte skalare Messwerte des letzten Mischblocks
+und die tatsächlich konfigurierte AAC-Zielrate je Rendition, 48 kHz und Stereo.
+Die Zielrate ist keine gemessene Netzwerkdatenrate. Ein Strategiewechsel ändert
+weder AAC-Format noch HLS-Epoche. Unabhängige Codec-/Kanalwahl benötigt weiterhin
+einen eigenen Start-/Rendition-Vertrag; Opus-DTX/FEC wird für diesen AAC-Ausgang
+nicht als anwendbare Einstellung angeboten. Physische Akustik, Bluetooth und
+Packager-Handoff bleiben eigene offene TBP-014-Kriterien.
+
+Deterministische Prüfungen umfassen alle Presets, Post-Gain-Schwelle, Mute ohne
+Nachspielen, geglättete Rückkehr, 80 gleichzeitig begrenzte Eingänge,
+stereogekoppelte Spitzenbegrenzung, atomare konkurrierende Änderungen und
+Widerruf. Gemeinsame Go-/Node-Fixtures, beide HTTP-Schemas, tatsächliche
+HTTP-/Socket-Registries und Angular prüfen Versionsgrenzen und Rechteentzug.
+Der neue reale HLS-Test unterscheidet synthetisches Mikrofon (440 Hz) und
+Bildschirmton (880 Hz) in beiden dekodierten Kanälen mittels begrenzter DFT.
+Pegel/Mute und Strategien erhalten getrennte frische Testprogramme, damit
+beide innerhalb ihrer unveränderten Quellenfreigaben geprüft werden können.
+Ein erster Lauf hatte einen falschen UI-Selektor; der folgende kombinierte
+Lauf erreichte bestätigte 50-%-Absenkung, verlor dann aber die zuvor erteilte
+Mikrofonfreigabe. Diese fehlgeschlagenen Läufe sind keine Gesamtabnahme.
+Der anschließende separate Strategietest bestand in 71,208 Sekunden. Tatsächlich
+dekodierte Amplituden (Mikrofon/Bildschirmton, beide Kanäle vergleichbar):
+ungefähr 0,249/0,252 unverarbeitet, 0,249/0,125 ausgewogen, 0,250/0,070 bei
+Sprachpriorität und 0,071/0,250 bei Bildschirmpriorität. Zurück auf unbearbeitet
+ergaben sich wieder 0,248/0,249. Frames und Wiedergabezeit schritten fort;
+nach Quellenwiderruf war der Ausgang still. Native Revisionen 1 bis 9,
+beide Raum-Captures blieben vom Broadcast-Widerruf unberührt. Das ist ein
+digitaler synthetischer Ende-zu-Ende-Nachweis, keine physische Akustikabnahme.
+Der gemeinsame isolierte Gesamtcheck endete mit Exit 1: 1.221 Frontendtests,
+Build (14,838 s), Typen, Go-Unit/Vet und statische Gates bestanden; 1.176
+Node-/Browserprüfungen bestanden, eine scheiterte und vier waren explizit
+übersprungen (537,922 s). Der einzige Fehler betraf den nachgeschalteten
+Einzelwiderruf nach allen vier Strategiewechseln: Bei der Abfrage nach 62,421 s
+waren null statt einer Quelle übrig. Alle vier Strategieausgänge waren zuvor
+bestätigt; der getrennte Gain/Mute-Fall bestand in 48,278 s.
+
+Die Strategiematrix erhält deshalb zwei unabhängige Programme mit jeweils zwei
+Strategien und beiden Einzelwiderrufen. Kein Preset oder Widerruf wird aus der
+Abnahme entfernt; eine abgelaufene Quelle wird nicht als noch freigegeben
+vorausgesetzt. Runtime, Consent-Dauer und Messgrenzen bleiben unverändert.
+Ein gezielter Nachlauf verwendet den unveränderten isolierten Build. Die
+externe Infrastrukturstufe wurde im fehlgeschlagenen Gesamtcheck nicht erreicht;
+der optionale Image-Scan blieb ausdrücklich SKIP. Kein Produktions-Rollout.
+
+Beide abschließenden Strategiepaare bestanden gegen diesen unveränderten Build:
+62,057 s für Ausgewogen/Sprachpriorität und 55,059 s für Bildschirmpriorität/
+Unbearbeitet (zusammen 118,125 s, keine Skips). Jeweils bestätigen native
+Revisionen 1 bis 7 zunächst zwei, nach dem ersten Widerruf genau einen und
+nach dem zweiten keinen Eingang; die letzte Strategie bleibt erhalten.
+Der Zuschauer erhält anschließend Stille, beide Raum-Captures bleiben aktiv.
+Der alte Gesamtcheck bleibt als fehlgeschlagener Lauf dokumentiert. Die
+nächste CI muss den finalen Stand einschließlich dieser Testaufteilung prüfen.
+
+## Historische v1-Abnahme
 
 Die nachfolgende CI `34404162155` auf `406f95d` bestand den neuen nativen
 Audioausgang, scheiterte aber im separaten Einzelquellen-Szenentest

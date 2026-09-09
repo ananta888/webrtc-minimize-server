@@ -37,6 +37,11 @@ it("audio context requires the current controlled packager's explicit v3 capabil
     const capability = { ...f.candidates()[0].capability, capabilityVersion: 3, sourceAudioControlVersion: 1 };
     f.candidates.set([{ id: packagerId, capability }]);
     expect(f.service.audioContext()?.program.programId).toBe(program.programId);
+    expect(f.service.audioContext()?.audioControlVersion).toBe(1);
+    f.candidates.set([{ id: packagerId, capability: { ...capability, capabilityVersion: 4, sourceAudioControlVersion: 2 } }]);
+    expect(f.service.audioContext()?.audioControlVersion).toBe(2);
+    f.candidates.set([{ id: packagerId, capability: { ...capability, capabilityVersion: 4, sourceAudioControlVersion: 1 } }]);
+    expect(f.service.audioContext()).toBeNull();
     f.candidates.set([{ id: "pkr_bbbbbbbbbbbbbbbb", capability }]);
     expect(f.service.audioContext()).toBeNull();
   } finally { f.service.ngOnDestroy(); }

@@ -231,14 +231,14 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
     return parseNativeSceneResult(value, program);
   }
 
-  async nativeSourceAudio(program: BroadcastProgramRef, selection: NativeAudioSelection | null, signal: AbortSignal): Promise<NativeAudioResult> {
+  async nativeSourceAudio(program: BroadcastProgramRef, selection: NativeAudioSelection | null, signal: AbortSignal, version: 1 | 2 = 1): Promise<NativeAudioResult> {
     signal.throwIfAborted();
     const { requestNativeSourceAudio } = await import("./native-source-audio-http");
     signal.throwIfAborted();
     return requestNativeSourceAudio(program, selection, signal, {
       fingerprint: () => this.device.fingerprint(), authorizationHeader: () => this.auth.authorizationHeader(),
       readJson: json, responseError: requestError,
-    });
+    }, version);
   }
 
   /** Explicit v4 entry: no local media, legacy ingress or source consent is implied. */

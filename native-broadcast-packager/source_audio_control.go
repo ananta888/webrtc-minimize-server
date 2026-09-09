@@ -65,7 +65,7 @@ func (p *sourceProgramGeneration) ApplyAudioCommand(raw []byte) (sourceAudioRece
 		return fail()
 	}
 	appliedAt := now.UnixMilli()
-	revision, err := p.SetAudioLevels(c.ExpectedAudioRevision, c.Sources, func() bool {
+	revision, err := p.setAudioLevelsStrategy(c.ExpectedAudioRevision, c.Sources, c.Strategy, func() bool {
 		appliedAt = p.cfg.now().UnixMilli()
 		return appliedAt >= now.UnixMilli() && p.audioScopeCurrent(c.sourceAudioQuery, appliedAt)
 	})
@@ -94,7 +94,7 @@ func (p *sourceProgramGeneration) QueryAudio(raw []byte) (sourceAudioReply, erro
 	if !p.audioScopeCurrent(q, now.UnixMilli()) {
 		return fail()
 	}
-	state, err := p.AudioLevels()
+	state, err := p.audioLevels(q.Version)
 	observedAt := p.cfg.now().UnixMilli()
 	if err != nil || observedAt < now.UnixMilli() || !p.audioScopeCurrent(q, observedAt) {
 		return fail()

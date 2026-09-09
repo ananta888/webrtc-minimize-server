@@ -15,10 +15,11 @@ export function parseNativeSourceAudioReply(raw) {
     const query = value.type === "source-program-audio-state";
     const now = value.type === "source-program-audio-applied" ? value.appliedAt : value.observedAt;
     const scope = Object.fromEntries(["commandId", "assignmentId", "programId", "programEpoch", "leaseId", "fencingRevision"].map(key => [key, value[key]]));
-    const request = { version: 1, type: query ? "source-program-audio-query" : "source-program-audio", ...scope,
+    const request = { version: value.version, type: query ? "source-program-audio-query" : "source-program-audio", ...scope,
       issuedAt: now, expiresAt: now + 1, ...(query ? {} : {
         expectedAudioRevision: value.type === "source-program-audio-applied" ? value.audioRevision - 1 : 1,
         sources: [{ sourceLeaseId: "sls_0000000000000000", leftGainQ15: 0, rightGainQ15: 0, muted: true }],
+        ...(value.version === 2 ? { strategy: "unprocessed" } : {}),
       }) };
     return normalizeNativeSourceAudioReply(value, request, now);
   } catch { throw new Error("invalid_native_source_audio_reply"); }

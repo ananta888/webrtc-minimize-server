@@ -35,6 +35,21 @@ test("audio broker correlates shared wire replies once without retry or leaked t
   }
 });
 
+test("audio broker v2 correlates strategy commands and never accepts a v1 downgrade", async () => {
+  for (const suffix of ["-state", "-applied", "-rejected"]) {
+    const f = setup(), selected = suffix === "-state" ? null : { ...selection, strategy: "speech-first" };
+    const pending = f.broker.request(selected, () => f.context, undefined, 2), command = f.sent[0].command;
+    assert.equal(command.version, 2);
+    const fixture = JSON.parse(readFileSync(new URL(`../native-broadcast-packager/testdata/source-audio${suffix}.v2.json`, import.meta.url)));
+    const response = { ...fixture, commandId: command.commandId };
+    f.broker.acknowledge(f.context.socket, response);
+    assert.deepEqual(await pending, response); assert.equal(f.timers.size, 0); f.broker.destroy();
+  }
+  const f = setup(), pending = f.broker.request(null, () => f.context, undefined, 2);
+  f.broker.acknowledge(f.context.socket, reply(f.sent[0].command));
+  await assert.rejects(pending, /native_audio_reply_invalid/); assert.equal(f.timers.size, 0); f.broker.destroy();
+});
+
 test("audio broker rechecks every authoritative identity before accepting a reply", async () => {
   for (const key of ["socket", "generation", "member", "packagerId", "assignmentId", "programId", "programRevision", "programEpoch", "leaseId", "fencingRevision"]) {
     const f = setup(), result = f.request();

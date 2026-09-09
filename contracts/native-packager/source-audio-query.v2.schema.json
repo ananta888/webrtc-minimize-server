@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/source-audio-query.v2.schema.json",
+  "title": "Native audio presentation control; current authenticated owner and explicit director authority required",
+  "$comment": "Runtime additionally enforces 16 KiB, freshness, unique sourceLeaseId, current scope, source consent and CAS. A receipt is historical, not renewed authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "type",
+    "commandId",
+    "assignmentId",
+    "programId",
+    "programEpoch",
+    "leaseId",
+    "fencingRevision",
+    "issuedAt",
+    "expiresAt"
+  ],
+  "properties": {
+    "version": {
+      "const": 2
+    },
+    "type": {
+      "const": "source-program-audio-query"
+    },
+    "commandId": {
+      "type": "string",
+      "pattern": "^aud_[A-Za-z0-9_-]{16,64}$"
+    },
+    "assignmentId": {
+      "type": "string",
+      "pattern": "^asn_[A-Za-z0-9_-]{16,64}$"
+    },
+    "programId": {
+      "type": "string",
+      "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+    },
+    "programEpoch": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "leaseId": {
+      "type": "string",
+      "pattern": "^lea_[A-Za-z0-9_-]{16,64}$"
+    },
+    "fencingRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "issuedAt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "expiresAt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    }
+  }
+}

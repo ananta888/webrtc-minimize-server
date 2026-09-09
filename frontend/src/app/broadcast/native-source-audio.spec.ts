@@ -3,7 +3,7 @@ import { signal } from "@angular/core";
 import { afterEach, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import Ajv2020 from "ajv/dist/2020.js";
-import { NativeAudioState, parseNativeAudioResult } from "./native-source-audio-contract";
+import { NativeAudioState, parseNativeAudioResult, validAudioSelection } from "./native-source-audio-contract";
 import { NativeAudioContext, NativeAudioView, NativeSourceAudioController } from "./native-source-audio-controller";
 import { NativeSourceAudioComponent } from "./native-source-audio.component";
 import { BroadcastControlPlaneService } from "./broadcast-control-plane.service";
@@ -14,6 +14,8 @@ const state: NativeAudioState = { audioControlVersion: 1, programId: program.pro
   packagerId: "pkr_aaaaaaaaaaaaaaaa", assignmentId: "asn_aaaaaaaaaaaaaaaa", fencingRevision: 3, outcome: "observed", observedAt: now, audioRevision: 2,
   sources: [{ sourceLeaseId: source, sourceKind: "microphone", leftGainQ15: 32768, rightGainQ15: 32768, muted: false }] };
 const selection = { expectedAudioRevision: 2, sources: [{ sourceLeaseId: source, leftGainQ15: 16384, rightGainQ15: 8192, muted: true }] };
+const v2Fixture = JSON.parse(readFileSync("native-broadcast-packager/testdata/source-audio-state.v2.json", "utf8"));
+const strategyState: NativeAudioState = { ...state, audioControlVersion: 2, mix: v2Fixture.mix, encoding: v2Fixture.encoding };
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 function fixture() {
   let clock = now, context: NativeAudioContext | null = { key: "session-alpha", program };
@@ -34,7 +36,7 @@ it("never queries on construction and requires fresh observation and explicit ap
   const f = fixture(); expect(f.request).not.toHaveBeenCalled(); await f.controller.apply(selection, "user-action"); expect(f.request).not.toHaveBeenCalled();
   await f.controller.refresh(); expect(f.views.at(-1)?.phase).toBe("ready");
   await f.controller.apply(selection, "remote"); expect(f.request).toHaveBeenCalledTimes(1);
-  f.request.mockResolvedValue({ outcome: "applied", audioRevision: 3 }); await f.controller.apply(selection, "user-action");
+  f.request.mockResolvedValue({ audioControlVersion: 1, outcome: "applied", audioRevision: 3 }); await f.controller.apply(selection, "user-action");
   expect(f.views.at(-1)).toEqual({ phase: "stale", audio: null });
   await f.controller.apply(selection, "user-action"); expect(f.request).toHaveBeenCalledTimes(2); f.controller.destroy();
 });
@@ -58,7 +60,7 @@ it("bounds hung adapters and ignores late responses after room change or destroy
 it("rejects observations which became stale before continuation, and forces requery on conflicts", async () => {
   const f = fixture(); f.request.mockImplementation(async () => { f.setClock(now + 5000); return state; });
   await f.controller.refresh(); expect(f.views.at(-1)?.phase).toBe("unavailable"); f.controller.destroy();
-  const g = fixture(); await g.controller.refresh(); g.request.mockResolvedValue({ outcome: "rejected" });
+  const g = fixture(); await g.controller.refresh(); g.request.mockResolvedValue({ audioControlVersion: 1, outcome: "rejected" });
   await g.controller.apply(selection, "user-action"); expect(g.views.at(-1)?.phase).toBe("conflict");
   await g.controller.apply(selection, "user-action"); expect(g.request).toHaveBeenCalledTimes(2); g.controller.destroy();
 });
@@ -90,4 +92,57 @@ it("abort during lazy adapter loading cannot access identity or send a request",
   const abort = new AbortController(), pending = control.nativeSourceAudio(program, null, abort.signal);
   abort.abort(); await expect(pending).rejects.toThrow();
   expect(fingerprint).not.toHaveBeenCalled(); expect(authorizationHeader).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+});
+
+it("v2 snapshots require negotiated version and closed immutable strategy/encoding metadata", () => {
+  const observed = parseNativeAudioResult(strategyState, program, now, 2);
+  if (observed.outcome !== "observed" || observed.audioControlVersion !== 2) throw new Error();
+  expect(Object.isFrozen(observed.mix)).toBe(true); expect(Object.isFrozen(observed.encoding.renditions[0])).toBe(true);
+  expect(() => parseNativeAudioResult(strategyState, program, now)).toThrow();
+  expect(() => parseNativeAudioResult(state, program, now, 2)).toThrow();
+  for (const patch of [{ mix: null }, { encoding: null }, { mix: { ...strategyState.mix, strategy: "capture" } },
+    { mix: { ...strategyState.mix, limiterGainQ15: 32769 } }, { encoding: { ...strategyState.encoding, codec: "opus" } },
+    { encoding: { ...strategyState.encoding, renditions: [] } }, { encoding: { ...strategyState.encoding, channels: 1 } },
+    { encoding: { ...strategyState.encoding, dtx: true } }]) expect(() => parseNativeAudioResult({ ...strategyState, ...patch }, program, now, 2)).toThrow();
+  expect(validAudioSelection({ expectedAudioRevision: 2, sources: [], strategy: "balanced" }, 2)).toBe(true);
+  expect(validAudioSelection({ expectedAudioRevision: 2, sources: [], strategy: "balanced" }, 1)).toBe(false);
+  expect(validAudioSelection(selection, 2)).toBe(false);
+});
+
+it("v2 controller binds query and apply to capability version and rejects downgrade", async () => {
+  const f = fixture(); f.setContext({ key: "session-alpha", program, audioControlVersion: 2 });
+  f.request.mockResolvedValue(strategyState); await f.controller.refresh();
+  expect(f.request).toHaveBeenLastCalledWith(program, null, expect.any(AbortSignal), 2);
+  expect(f.views.at(-1)?.phase).toBe("ready");
+  await f.controller.apply(selection, "user-action"); expect(f.request).toHaveBeenCalledTimes(1);
+  f.request.mockResolvedValue({ audioControlVersion: 1, outcome: "applied", audioRevision: 3 });
+  await f.controller.apply({ ...selection, strategy: "balanced" }, "user-action");
+  expect(f.views.at(-1)?.phase).toBe("unavailable"); f.controller.destroy();
+  const g = fixture(); g.setContext({ key: "session-alpha", program, audioControlVersion: 2 });
+  g.request.mockImplementation(async () => { g.setContext({ key: "session-alpha", program, audioControlVersion: 1 }); return strategyState; });
+  await g.controller.refresh(); expect(g.views.at(-1)?.phase).toBe("unavailable"); g.controller.destroy();
+});
+
+it("v2 UI stages strategy alone, rejects unknown presets and cancels changed confirmations", async () => {
+  const audio = { view: signal<NativeAudioView>({ phase: "ready", audio: { ...strategyState, sources: [] } }),
+    controller: { refresh: vi.fn(async () => {}), apply: vi.fn(async () => {}) } };
+  const c = new NativeSourceAudioComponent(audio as never); await c.refresh();
+  expect(c.strategy()).toBe("speech-first"); c.setStrategy("balanced"); c.setStrategy("unsafe"); expect(c.strategy()).toBe("balanced");
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false); await c.apply(); expect(audio.controller.apply).not.toHaveBeenCalled();
+  confirm.mockImplementation(() => { c.setStrategy("screen-first"); return true; });
+  await c.apply(); expect(audio.controller.apply).not.toHaveBeenCalled();
+  confirm.mockReturnValue(true); await c.apply();
+  expect(audio.controller.apply).toHaveBeenCalledExactlyOnceWith({ expectedAudioRevision: 2, sources: [], strategy: "screen-first" }, "user-action");
+  audio.view.set({ phase: "stale", audio: null }); c.setStrategy("unprocessed"); await c.apply(); expect(audio.controller.apply).toHaveBeenCalledTimes(1);
+});
+
+it("v2 HTTP emits the strict director schema and refuses a downgraded reply", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(now);
+  const validate = new Ajv2020({ strict: true }).compile(JSON.parse(readFileSync("contracts/native-packager/source-audio-director-request.v2.schema.json", "utf8")));
+  const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify(strategyState), { headers: { "content-type": "application/json" } }));
+  const control = new BroadcastControlPlaneService({ authorizationHeader: () => ({ Authorization: "Bearer synthetic" }) } as never, { fingerprint: () => "a".repeat(43) } as never);
+  const result = await control.nativeSourceAudio(program, null, new AbortController().signal, 2);
+  expect(result.audioControlVersion).toBe(2); expect(validate(JSON.parse(String(fetch.mock.calls[0][1]!.body)))).toBe(true);
+  fetch.mockImplementationOnce(async () => new Response(JSON.stringify(state), { headers: { "content-type": "application/json" } }));
+  await expect(control.nativeSourceAudio(program, null, new AbortController().signal, 2)).rejects.toThrow("invalid_native_audio_response");
 });

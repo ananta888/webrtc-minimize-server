@@ -6,6 +6,7 @@ import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
 import { openSceneViewer, sceneViewerObservation } from "./helpers/native-scene-viewer.mjs";
 import { startNativeAudioProbe, waitNativeAudioLevel, stopNativeAudioProbe } from "./helpers/native-audio-viewer.mjs";
 import { nativeAudioOutputObservation } from "./helpers/native-audio-output.mjs";
+import { nativeAudioStrategyFlow } from "./helpers/native-audio-strategy-flow.mjs";
 
 async function confirm(page, action, accepted = true) {
   const dialog = page.waitForEvent("dialog"), pending = action();
@@ -14,9 +15,11 @@ async function confirm(page, action, accepted = true) {
   await pending;
 }
 
-test("rendered Angular audio controls actual native source gain/mute without expanding capture or consent", { timeout: 150_000 }, async t => {
+// Separate fresh programs keep both acceptance paths inside their real short
+// consent leases. Strategy changes must not silently renew a source consent.
+for (const strategies of [null, ["balanced", "speech-first"], ["screen-first", "unprocessed"]]) test(`rendered Angular audio controls actual native ${strategies ? "two-source priorities " + strategies.join("+") : "gain/mute"} without expanding consent`, { timeout: 150_000 }, async t => {
   if (process.platform !== "linux") { t.skip("Actual native production process requires Linux containment and local FFmpeg"); return; }
-  const f = await nativeSceneLiveFixture(t, { allowSyntheticAudio: true }), { page } = f;
+  const f = await nativeSceneLiveFixture(t, { allowSyntheticAudio: true, allowSyntheticScreen: Boolean(strategies), allowSyntheticScreenAudio: Boolean(strategies) }), { page } = f;
   page.setDefaultTimeout(5000);
   let stage = "setup";
   const replies = [];
@@ -32,7 +35,7 @@ test("rendered Angular audio controls actual native source gain/mute without exp
         nativeEvents.emit("output-ready");
       }
       if (["source-program-audio-state", "source-program-audio-applied", "source-program-audio-rejected"].includes(value.type)) {
-        replies.push({ type: value.type, audioRevision: value.audioRevision, sources: value.sources });
+        replies.push({ type: value.type, audioRevision: value.audioRevision, sources: value.sources, mix: value.mix, encoding: value.encoding });
       }
     } catch { /* No raw payload diagnostic. */ }
   });
@@ -46,9 +49,14 @@ test("rendered Angular audio controls actual native source gain/mute without exp
     const response = await fetch("/api/native-packagers", { headers: {
       authorization: `Bearer ${sessionStorage.getItem("webrtc.oidc.access-token")}` } });
     return (await response.json()).packagers?.some(p => p.id === id && p.online
-      && p.capability?.capabilityVersion === 3 && p.capability.sourceAudioControlVersion === 1);
+      && p.capability?.capabilityVersion === 4 && p.capability.sourceAudioControlVersion === 2);
   }, f.packagerId, { timeout: 15_000 });
   assert.equal((await f.request("PUT", `/api/native-packagers/${f.packagerId}/room-consents/${f.roomId}`, { enabled: true })).status, 200);
+  // Explicit local setting before program start; setting alone never captures.
+  if (strategies) {
+    await page.locator(".nav-item", { hasText: "Einstellungen" }).click();
+    await page.locator("#screen-audio-enabled").check();
+  }
   await page.locator("#mesh-analysis-navigation").press("Enter");
   await page.locator("#native-packager-analysis-panel").getByRole("button", { name: "Aktualisieren", exact: true }).click();
   await page.locator("#broadcast-navigation").press("Enter");
@@ -71,7 +79,7 @@ test("rendered Angular audio controls actual native source gain/mute without exp
   };
   assert.deepEqual((await query()).sources, []);
   assert.equal(await page.evaluate(() => window.__sceneCaptures), 0);
-  assert.equal(await audio.locator("#native-audio-apply").isDisabled(), true);
+  assert.equal(await audio.locator("#native-audio-apply").isDisabled(), false, "v2 can set a strategy before inputs arrive");
   const viewer = await openSceneViewer(f);
   await startNativeAudioProbe(viewer);
   const measure = async (mode, baseline = null) => {
@@ -94,6 +102,7 @@ test("rendered Angular audio controls actual native source gain/mute without exp
   await sources.locator("#broadcast-source-approval select").selectOption("300000");
   await confirm(page, () => sources.getByRole("button", { name: "Entschlüsselung und Broadcast ausdrücklich erlauben…", exact: true }).click());
   await sources.locator("li", { hasText: "Sender aktiv" }).waitFor({ timeout: 15_000 });
+  if (!strategies) {
   stage = "initial-output-tone";
   audioOutput.initial = await measure("tone");
   const initial = await query();
@@ -127,22 +136,36 @@ test("rendered Angular audio controls actual native source gain/mute without exp
   assert.equal((await query()).sources[0].muted, false);
   stage = "scaled-output";
   audioOutput.scaled = await measure("scaled", audioOutput.initial);
+  }
+  const revoke = async source => {
+    await Promise.all([
+      once(nativeEvents, "output-ready", { signal: AbortSignal.any([t.signal, AbortSignal.timeout(15000)]) }),
+      source.getByRole("button", { name: "Broadcast-Quelle sofort stoppen", exact: true }).click(),
+    ]);
+    for (let i = 0; i < 2; i++) {
+      const response = await page.waitForResponse(r => new URL(r.url()).pathname.endsWith("/native-handoff-control"), { timeout: 5000 });
+      assert.equal(response.status(), 200);
+    }
+    await page.locator("#native-source-status", { hasText: "Ausgabe vom Packager bestätigt" }).waitFor();
+  };
+  if (strategies) {
+    const screen = await nativeAudioStrategyFlow({ page, audio, sources, query, confirm, viewer, strategies,
+      stage: value => { stage = value; }, output: audioOutput });
+    stage = "revoke-screen-audio";
+    await revoke(screen);
+    const retained = await query();
+    assert.equal(retained.sources.length, 1); assert.equal(retained.sources[0].sourceKind, "microphone");
+    assert.equal(retained.mix.strategy, strategies.at(-1));
+    assert.equal(await page.locator("#toggle-screen").getAttribute("aria-pressed"), "true", "broadcast audio revoke preserves room screen capture");
+  }
   stage = "revoke";
   // Revocation rotates the program output. A query during that transition is
   // correctly denied; wait for native readiness and fresh UI writer observations.
-  await Promise.all([
-    once(nativeEvents, "output-ready", { signal: AbortSignal.any([t.signal, AbortSignal.timeout(15000)]) }),
-    sources.locator("li", { hasText: "Sender aktiv" }).getByRole("button", { name: "Broadcast-Quelle sofort stoppen", exact: true }).click(),
-  ]);
-  for (let i = 0; i < 2; i++) {
-    const response = await page.waitForResponse(r => new URL(r.url()).pathname.endsWith("/native-handoff-control"), { timeout: 5000 });
-    assert.equal(response.status(), 200);
-  }
-  await page.locator("#native-source-status", { hasText: "Ausgabe vom Packager bestätigt" }).waitFor();
+  await revoke(sources.locator("li", { hasText: "Sender aktiv" }));
   assert.deepEqual((await query()).sources, []);
-  assert.equal(await audio.locator("#native-audio-apply").isDisabled(), true);
+  assert.equal(await audio.locator("#native-audio-apply").isDisabled(), false);
   assert.equal(await page.locator("#toggle-microphone").getAttribute("aria-pressed"), "true", "broadcast revoke does not stop room microphone");
-  assert.equal(await page.evaluate(() => window.__sceneCaptures), 1);
+  assert.equal(await page.evaluate(() => window.__sceneCaptures), strategies ? 2 : 1);
   assert.equal(f.app.registry.participantCount, 1);
   stage = "revoked-output";
   audioOutput.revoked = await measure("muted");
