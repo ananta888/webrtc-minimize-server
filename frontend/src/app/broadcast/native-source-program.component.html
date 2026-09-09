@@ -1,0 +1,36 @@
+<section class="panel" aria-labelledby="native-source-program-heading">
+  <h2 id="native-source-program-heading">Mehrere Teilnehmer · nativer Trusted Packager</h2>
+  <p>Startet ohne Browser-Medienverbindung und zunächst nur mit Platzhalter. Danach lassen sich über „Quellenanfragen“ Quellen anderer Teilnehmer anfragen. Jeder Teilnehmer muss seine Quelle selbst ausdrücklich freigeben.</p>
+  <p class="policy-note">Dieser Broadcast-Zweig ist nicht SFrame-E2EE zum Publikum. Nur bereits für diesen Raum freigegebene, geeignete Packager sind auswählbar. Geräte verwaltest du unter Analyse → Trusted Broadcast-Packager.</p>
+  <fieldset [disabled]="disabled() || programs.view().active">
+    <legend>Neue Mehrquellen-Sendung</legend>
+    <label class="field" for="native-source-title">Titel</label>
+    <input id="native-source-title" maxlength="80" [value]="title()" (input)="title.set($any($event.target).value)">
+    <label class="field" for="native-source-packager">Trusted Packager</label>
+    <select id="native-source-packager" [value]="packagerId()" (change)="packagerId.set($any($event.target).value)">
+      <option value="">Bitte wählen</option>
+      @for (packager of programs.candidates(); track packager.id) { <option [value]="packager.id">{{ packager.label }}</option> }
+    </select>
+    @if (!programs.candidates().length) { <p>Kein passender Mehrquellen-Packager verfügbar. Geräteübersicht in Analyse aktualisieren und die Raumfreigabe prüfen.</p> }
+    <label class="field" for="native-source-visibility">Publikum</label>
+    <select id="native-source-visibility" [value]="visibility()" (change)="setVisibility($any($event.target).value)">
+      <option value="private">Privat · nur Berechtigte</option>
+      <option value="unlisted">Nicht gelistet · mit Link</option>
+      <option value="public">Öffentlich · im Verzeichnis</option>
+    </select>
+    <label class="field" for="native-source-renditions">Ausgabe-Qualitätsstufen</label>
+    <select id="native-source-renditions" [value]="renditions()" (change)="setRenditions($any($event.target).value)">
+      <option value="1">Eine · geringer Rechenaufwand</option>
+      <option value="2" [disabled]="(selected()?.capability?.maximumRenditions || 0) < 2">Zwei · mehr Anpassung</option>
+      <option value="3" [disabled]="(selected()?.capability?.maximumRenditions || 0) < 3">Drei · höchster Rechenaufwand</option>
+    </select>
+    <label><input id="native-source-hardware" type="checkbox" [checked]="hardware()" (change)="hardware.set($any($event.target).checked)"> Hardwarebeschleunigung erlauben, wenn der Packager sie unterstützt</label>
+    <button id="native-source-start" class="button primary" type="button" [disabled]="!canStart()" (click)="start()">Leere Sendung bewusst starten…</button>
+  </fieldset>
+  <p id="native-source-status" role="status" aria-live="polite">{{ statusLabel() }}</p>
+  @if (programs.requestProgram()) { <p>Jetzt Quellenanfragen öffnen. Die Statusbestätigung ist noch kein Nachweis, dass ein Zuschauer Bild oder Ton empfängt.</p> }
+  @if (programs.view().active) {
+    <button id="native-source-stop" class="button danger" type="button" (click)="stop()">Mehrquellen-Sendung sofort stoppen</button>
+  }
+  @if (error() || programs.view().error) { <p class="error" role="alert">{{ error() || programs.view().error }}</p> }
+</section>

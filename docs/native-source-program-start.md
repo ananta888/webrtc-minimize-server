@@ -46,6 +46,40 @@ frischer v4-Auftrag mit neuer Output-Generation ausgegeben. Alte Source-Grants
 werden nicht übertragen. Standbys erhalten ausschließlich Auswahlmetadaten und
 müssen für ein v4-Programm dieselbe zusätzliche Capability erfüllen.
 
+## Angular-Einstieg
+
+Raumersteller finden unter **Broadcast → Mehrquellen-Sendung öffnen** einen
+eigenen Startpfad. Er verlangt die konkrete Packager-Auswahl und eine lokale
+Bestätigung; Publikum ist zunächst privat, Hardwarebeschleunigung zunächst aus.
+Es werden nur online gemeldete, für den Raum bestätigte, gesunde Geräte mit
+exakter v2-Mehrquellen-Capability angeboten. Dies ersetzt keine serverseitige
+Admission. Die Geräteübersicht lässt sich unter Analyse aktualisieren.
+
+`NativeSourceProgramController` besitzt ausschließlich die Control-Plane-
+Operationen, keine Medienverbindung, Capture-Quelle oder Frame-Schlüssel.
+Der Root-Service bindet ihn an menschliche OIDC-Identität, Gerät, Creator,
+Raum, Peer und Membership-Epoche. Create/Prepare sind auf zusammen 15 Sekunden,
+Statusabrufe auf fünf Sekunden und die erste Outputbestätigung auf 45 Sekunden
+begrenzt. Die Polls überlappen nicht; unbekannte Writer, rückläufige Revisionen,
+andere Epochen, Kontextverlust oder abgelaufene Bestätigungen stoppen den Zweig.
+Eine Annahme des Startauftrags ist noch keine Outputbestätigung. Erst der
+passende serverseitige `live`-Status schaltet den Programmref für die bestehende
+Quellenanfrage-Oberfläche frei. Auch dies beweist keine Zuschauerwiedergabe.
+
+Panelwechsel beendet den Controller nicht. Expliziter Stopp oder Kontextverlust
+widerruft zuerst das Programm und bestätigt separat den nativen Stopp. Geht die
+Prepare-Antwort verloren, wird nach Programmwiderruf die begrenzte Auftragsliste
+auf noch aktive Aufträge dieses Programms geprüft. Ein unbestätigter Stopp bleibt
+sichtbar und wiederholbar; verspätete Start-/Statusantworten aktivieren nichts neu.
+Der Legacy-Browser-/Einzelquellen-Start und dieser Einstieg sperren sich in der UI.
+Es werden weder Standby-Keys verteilt noch automatische Source-Consents erteilt.
+
+Die vorhandene Anfrage-Authority erlaubt Anfragen an **andere** Teilnehmer,
+nicht an sich selbst. Eine direkte eigene Quelle des v4-Controllers, Layout,
+Recovery und dessen vollständige Handoff-/Standby-Oberfläche bleiben als
+Gesamtintegration offen; der Legacy-Handoff wird nicht still auf diesen neuen
+Controller umgedeutet.
+
 ## Verifikation und verbleibender Umfang
 
 58 gezielte Registry-, Capability-, Consent- und Handofftests bestanden in
@@ -85,7 +119,39 @@ Gates bestanden; 14 externe Infrastruktur-Gates wurden sichtbar übersprungen.
 Der frühere Fehler bleibt historisch dokumentiert; dessen unbekannte Ursache
 wird durch den grünen Nachlauf nicht als behoben behauptet.
 
-Die gemeinsame Angular-Start-/Approve-/Renew-Komposition, native Quellen-
-Recovery/Discontinuity, reale vollständige Mehrquellen-Abnahme und das Deployment
-bleiben offen. Dieser Einstieg schließt TBP-030 nicht ab. Es werden weder
+### Angular-Startprüfung vom 9. September 2026
+
+81 fokussierte Tests bestanden in 1,010 Sekunden: exaktes HTTP-Schema,
+Antwortgrößen, falsche Scopes/Fences, fehlende Ausgabe, Abbruchrennen,
+verlorene Prepare-Antwort, Stopbestätigung und lokale UI-Zustimmung. Der echte
+Angular-Tastaturtest bestand zusätzlich (4,124 s): synthetische, kryptografisch
+verifizierte OIDC-Identität und P-256-Room-Membership, native HTTP-Antworten
+explizit simuliert. Kein Capture und keine zusätzliche PeerConnection; Start
+erst nach Bestätigung, Quellenformular erst nach passendem Outputstatus,
+Controller und Stop bleiben nach Panelwechsel erhalten. Das ist kein Encoder-
+oder Zuschauer-HLS-Nachweis.
+
+Der gemeinsame isolierte `npm run check` bestand **nicht**: 1.067 Frontendtests,
+981 erfolgreiche Node-/Browserprüfungen, ein Fehler und zwei explizite Skips
+(Node: 428,821 s). Build, Typen, Go und statische Gates bestanden. Das initiale
+Bundle bleibt mit 1,60 MB über der Warnschwelle; der harte Build-Gate bestand.
+Die externe Infrastrukturstufe wurde nach dem Nodefehler nicht erreicht.
+Der neue Angular-Starttest und beide nativen Source-Publisher-Medienfälle
+bestanden auch in diesem Lauf.
+
+Der verbleibende Fehler betrifft den Ananta-Firefox-Timingtest: In der
+Hold-last-Beobachtung fehlt die Avatar-Timingzeile; vor Cleanup melden Avatar
+und Speech bereits `failed`, Screen bleibt offen. Keine gesicherte Ursache
+und keine kausale Runtimekorrektur werden behauptet. Die getrennten Tests für
+Audio/Chat/Screen mit Human-Consent und drei Renewals bestanden in beiden
+Browsern. Grundlage ist `d2c4e0a` plus dieser Implementierung; der inzwischen
+eingegangene reine Dokumentationscommit `91d9203` wurde konfliktfrei übernommen.
+Serving-Build, Hub-Trust und Produktionspolicy blieben unverändert.
+
+Die Angular-Startkomposition ist jetzt angeschlossen; die getrennte
+Approve-/Publisher-Lease-Komposition ist in
+[Trusted-Source-Workflow](trusted-source-angular-workflow.md) beschrieben.
+Native Quellen-Recovery/Discontinuity, die vollständige Regieoberfläche,
+reale gemeinsame Mehrquellen-Abnahme und das Deployment bleiben offen.
+Dieser Einstieg schließt TBP-030 nicht ab. Es werden weder
 Produktionspolicy noch lokale Agent-Opt-ins durch die Implementierung verändert.

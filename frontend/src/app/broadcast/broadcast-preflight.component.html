@@ -42,6 +42,11 @@
 }
 
 @if (nativePublisherEnabled() && joined() && authenticated()) {
+  @if (roomCreator()) {
+    @defer (on interaction) {
+      <app-native-source-program [roomId]="roomId()" [disabled]="!enabled() || !nativePublisherEnabled() || !joined() || !authenticated() || !roomCreator() || programActive() || controlBusy()" />
+    } @placeholder { <button id="native-source-program-open" class="button secondary" type="button">Mehrquellen-Sendung öffnen</button> }
+  }
   @defer (on interaction) {
     <app-broadcast-source-requests [roomId]="roomId()" [peerId]="peerId()" [identityKey]="identityKey()"
       [disabled]="!joined() || !authenticated()" [candidates]="sourceRequestPeers()" [program]="sourceRequestProgram()" />

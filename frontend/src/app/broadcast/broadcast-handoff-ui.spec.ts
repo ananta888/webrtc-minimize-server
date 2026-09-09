@@ -17,7 +17,7 @@ function fixture() {
   const preflight = { lifecycle: signal("idle"), selectedSourceIds: signal(["src_aaaaaaaaaaaaaaaa"]) };
   const component = runInInjectionContext(Injector.create({ providers: [] }), () => new BroadcastPreflightComponent(
     preflight as never, {} as never, {} as never, {} as never, {} as never, {} as never,
-    publisher as never, onboarding as never,
+    publisher as never, onboarding as never, { view: signal({ active: false }), requestProgram: signal(null) } as never,
   ));
   Object.assign(component, { nativePublisherEnabled: signal(true), joined: signal(true), authenticated: signal(true),
     roomCreator: signal(true), roomId: signal("room-alpha") });

@@ -21,7 +21,8 @@ export interface OwnedNativePackager {
   readonly online: boolean;
   readonly consentedRoomIds: readonly string[];
   readonly confirmedRoomIds: readonly string[];
-  readonly capability: Readonly<{ ffmpegVersion: string; health: string; maximumRenditions: number }> | null;
+  readonly capability: Readonly<{ ffmpegVersion: string; health: string; maximumRenditions: number;
+    capabilityVersion?: number; sourcePrograms?: boolean }> | null;
   readonly heartbeat: Readonly<{ state: string; observedAt: number }> | null;
 }
 

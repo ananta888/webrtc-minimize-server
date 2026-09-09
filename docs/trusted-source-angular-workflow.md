@@ -77,5 +77,9 @@ allein aufgrund dieser Teilnachweise.
 Für den öffentlichen Einstieg braucht es bereits einen v4-Quellen-Writer.
 Der bisherige Legacy-Programmstart in Angular wird dadurch nicht umgedeutet;
 seine Anfrage allein kann keine v4-Source-Freigabe erzeugen. Der gesonderte
-v4-Start-Workflow, Layoutsteuerung, Recovery und die gemeinsame öffentliche
-HLS-Abnahme bleiben in TBP-030 offen. Kein Produktionsschalter wurde aktiviert.
+[v4-Start-Workflow](native-source-program-start.md#angular-einstieg) ist nun
+unter „Mehrquellen-Sendung öffnen“ angeschlossen und liefert nach passender
+Outputbestätigung den Programmref für diese Anfrageoberfläche. Layoutsteuerung,
+Recovery, eigene Controller-Quellen, vollständige Handoff-/Standby-UI und die
+gemeinsame öffentliche HLS-Abnahme bleiben in TBP-030 offen.
+Kein Produktionsschalter wurde aktiviert.
