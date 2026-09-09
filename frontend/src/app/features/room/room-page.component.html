@@ -352,11 +352,7 @@
             <app-pair-workspace-panel />
             <section class="surface compact-panel">
               <div class="surface-heading small"><span class="feature-icon violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 01-4 4H8l-5 3V7a4 4 0 014-4h10a4 4 0 014 4z"/></svg></span><div><p class="eyebrow">DataChannel</p><h2>Raumchat</h2></div></div>
-              <div id="chat-log" class="chat-log" aria-live="polite">
-                @for (entry of mesh.chat(); track entry.id) {
-                  <div class="chat-entry" [class.system]="entry.system"><strong>{{ entry.author }}</strong><span>{{ entry.text }}</span></div>
-                }
-              </div>
+              <app-room-chat-log id="chat-log" class="chat-log" aria-live="polite" [entries]="mesh.chat()" />
               <form id="chat-form" class="chat-form" (submit)="$event.preventDefault(); sendChat()">
                 <input id="chat-message" maxlength="2000" autocomplete="off" placeholder="Nachricht schreiben…" [disabled]="!session.joined()" [ngModel]="chatInput()" (ngModelChange)="chatInput.set($event)" name="chatMessage">
                 <button class="send-button" type="submit" [disabled]="!session.joined() || !chatInput().trim()" aria-label="Nachricht senden">↑</button>
@@ -417,13 +413,7 @@
           <div><button class="back-link" type="button" (click)="show('live')">← Zum Live-Raum</button><p class="eyebrow">DataChannel</p><h1>Raumchat</h1><p>Nachrichten laufen direkt und verschlüsselt zwischen den verbundenen Browsern.</p></div>
         </section>
         <section class="surface chat-page">
-          <div id="chat-log" class="chat-log expanded" aria-live="polite">
-            @for (entry of mesh.chat(); track entry.id) {
-              <div class="chat-entry" [class.system]="entry.system"><strong>{{ entry.author }}</strong><span>{{ entry.text }}</span></div>
-            } @empty {
-              <div class="list-empty"><span aria-hidden="true">···</span><strong>Noch keine Nachrichten</strong><p>Nach dem Beitritt verbindet sich der Peer-Chat automatisch.</p></div>
-            }
-          </div>
+          <app-room-chat-log id="chat-log" class="chat-log expanded" aria-live="polite" [entries]="mesh.chat()" [showEmpty]="true" />
           <form id="chat-form" class="chat-form large" (submit)="$event.preventDefault(); sendChat()">
             <input id="chat-message" maxlength="2000" autocomplete="off" placeholder="Nachricht an alle Peers" [disabled]="!session.joined()" [ngModel]="chatInput()" (ngModelChange)="chatInput.set($event)" name="chatMessage">
             <button class="button primary" type="submit" [disabled]="!session.joined() || !chatInput().trim()">Senden</button>

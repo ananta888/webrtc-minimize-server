@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, effect, signal } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { NativePackagerUpdateComponent } from "../../broadcast/native-packager-update.component";
+import { RoomChatLogComponent } from "../../shared/room-chat-log.component";
 
 import { OidcAuthService } from "../../auth/oidc-auth.service";
 import { BroadcastOwnSourcePreflightService } from "../../broadcast/broadcast-own-source-preflight.service";
@@ -70,6 +71,7 @@ type AppSection = "rooms" | "live" | "broadcast" | "captions" | "analysis" | "ch
   imports: [
     NativePackagerUpdateComponent,
     FormsModule,
+    RoomChatLogComponent,
     BroadcastPreflightComponent,
     MediaControlBarComponent,
     MediaStreamDirective,

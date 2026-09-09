@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { machineBrowserFixture } from "./helpers/machine-browser-fixture.js";
 import { decodedGreenScreen } from "./helpers/machine-avatar-coexistence.mjs";
+import { beforeMachineLeaseExpiry } from "./helpers/machine-lifecycle-observation.mjs";
 
 // Keep supplying only synthetic frames. Missing renewal, not an artificial frame
 // stall or an explicit Leave, must revoke the session and release its resources.
@@ -48,15 +49,17 @@ for (const humanEngine of ["chromium", "firefox"]) {
     await human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
     await machine.evaluate(supplyUntilLeaseEnds, f.binding.sessionId);
     await human.waitForFunction(decodedGreenScreen, null, { timeout: 7000 });
-    await machine.waitForFunction(deadline => Date.now() >= deadline - 700, lease.expiresAt,
+    const handle = await machine.waitForFunction(beforeMachineLeaseExpiry, lease.expiresAt,
       { timeout: 16000, polling: 50 });
-    const beforeExpiry = await machine.evaluate(() => ({ joined: window.anantaMachine.status().joined,
-      open: window.anantaMachine.screen.status().open, error: window.__leaseSource.error,
-      e2ee: window.anantaMachine.status().e2ee }));
+    let observed;
+    try { observed = await handle.jsonValue(); } finally { await handle.dispose(); }
+    const { observedAt, ...beforeExpiry } = observed;
     if (!beforeExpiry.joined || !beforeExpiry.open) t.diagnostic(JSON.stringify({
       phase: "before-expiry", elapsedMs: Math.round(performance.now() - started),
       nodeRemainingMs: lease.expiresAt - Date.now(), browserRemainingMs: await machine.evaluate(deadline => deadline - Date.now(), lease.expiresAt),
-      socketStops, beforeExpiry }));
+      socketStops, beforeExpiry, observedAt }));
+    assert.ok(observedAt >= lease.expiresAt - 700 && observedAt < lease.expiresAt,
+      "pre-expiry observation must occur inside the original window, not after expiry");
     assert.deepEqual(beforeExpiry,
     { joined: true, open: true, error: false, e2ee: "active" });
     await machine.waitForFunction(() => !window.anantaMachine.status().joined

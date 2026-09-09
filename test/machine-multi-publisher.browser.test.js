@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { machineBrowserFixture } from "./helpers/machine-browser-fixture.js";
+import { retiredMachineAvatar } from "./helpers/machine-lifecycle-observation.mjs";
 import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
 import { openTestImageAvatar, syntheticAvatarImage } from "./helpers/machine-avatar-image.mjs";
 import { startAvatarCompanions } from "./helpers/machine-avatar-coexistence.mjs";
@@ -57,6 +58,7 @@ for (const humanEngine of ["chromium", "firefox"]) {
       // Membership changes fence old sources; the surviving controller obtains
       // fresh local source generations under its still-current session.
       await second.machine.evaluate(async () => { window.__avatarTestPulse.stop(); await window.__avatarCompanions.close(); });
+      await waitFixtureValue(second.machine, retiredMachineAvatar, 2, { timeout: 2000 });
       await second.machine.evaluate(openTestImageAvatar, { sourceId: "avatar:" + second.binding.sessionId,
         image: syntheticAvatarImage([20, 20, 220]) });
       await second.machine.evaluate(startAvatarCompanions, { sessionId: second.binding.sessionId, screenColor: "green" });

@@ -1,4 +1,5 @@
-import { Component, effect, inject, signal } from "@angular/core";
+import { Component, computed, effect, inject, signal } from "@angular/core";
+import { machineReceiveFeedback } from "./machine-receive-feedback";
 import { DatePipe } from "@angular/common";
 import { MachineReceiveControlsService, MachineReceiveSelection } from "./machine-receive-controls.service";
 import { MachineAdmissionStatusComponent } from "./machine-admission-status.component";
@@ -57,10 +58,11 @@ import { MachineAdmissionStatusComponent } from "./machine-admission-status.comp
     @if (controls.requestPeerId() && controls.state() !== 'idle') {
       <p>Rückmeldung für KI-Peer <code>{{ controls.requestPeerId() }}</code>.</p>
     }
-    @if (controls.error() === 'machine_receive_selection_changed') {
-      <p role="alert">Quelle oder Sitzung seit der Auswahl geändert. Es wurde keine neue Freigabe gesendet.
-        Bitte „Für diese KI einstellen“ erneut wählen und die gewünschten Quellen prüfen.</p>
-    } @else if (controls.error()) { <p role="alert">{{ controls.error() }}</p> }
+    @if (feedback(); as value) {
+      <div role="alert"><strong>{{ value.title }}</strong><p>{{ value.message }}</p>
+        @if (value.diagnostic) { <details><summary>Technische Diagnose</summary><code>{{ value.diagnostic }}</code></details> }
+      </div>
+    }
   </section>`,
   styles: [`section { margin-top: 1rem; padding: 1.25rem; border: 1px solid var(--border, #526075); border-radius: 1rem; }
     fieldset, article { margin-block: 1rem; } label { display: block; margin-block: .75rem; } button { margin: .25rem .5rem .25rem 0; }
@@ -68,6 +70,7 @@ import { MachineAdmissionStatusComponent } from "./machine-admission-status.comp
 })
 export class MachinePermissionsPanelComponent {
   readonly controls = inject(MachineReceiveControlsService);
+  readonly feedback = computed(() => machineReceiveFeedback(this.controls.error()));
   readonly target = signal(""); readonly microphone = signal(false); readonly screenAudio = signal(false);
   readonly chat = signal(false); readonly minutes = signal(5);
   readonly camera = signal(false); readonly screen = signal(false);

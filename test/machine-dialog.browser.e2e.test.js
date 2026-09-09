@@ -54,6 +54,14 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
   await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).check();
   await panel.getByRole("button", { name: "Auswahl ausdrücklich freigeben" }).click();
   await panel.getByRole("alert").filter({ hasText: "Quelle oder Sitzung seit der Auswahl geändert" }).waitFor();
+  const beforeFeedback = await human.evaluate(() => ({ captures: window.__captures, peers: window.__pcs.length }));
+  const details = panel.locator("details"), summary = details.locator("summary");
+  await summary.focus(); await human.keyboard.press("Enter");
+  assert.equal(await details.locator("code").innerText(), "machine_receive_selection_changed");
+  assert.equal(await details.locator("code").isVisible(), true);
+  await human.keyboard.press("Enter");
+  assert.equal(await details.locator("code").isVisible(), false);
+  assert.deepEqual(await human.evaluate(() => ({ captures: window.__captures, peers: window.__pcs.length })), beforeFeedback);
   assert.deepEqual(await machine.evaluate(() => window.anantaMachine.audio.sources()), []);
   assert.equal(await machine.evaluate(() => window.anantaMachine.chat.status().open), false);
   await panel.getByRole("button", { name: "Für diese KI einstellen" }).click();
@@ -67,7 +75,7 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
   await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).check();
   await panel.getByRole("button", { name: "Auswahl ausdrücklich freigeben" }).click();
   await panel.getByText("Serverbestätigung erhalten.", { exact: true }).waitFor().catch(async error => {
-    const codes = await panel.getByRole("alert").allTextContents();
+    const codes = await panel.getByRole("alert").locator("code").allTextContents();
     t.diagnostic(JSON.stringify({ consentFailure: codes.filter(code => /^machine_receive_[a-z_]{1,64}$/.test(code)).slice(0, 3) }));
     throw error;
   });
@@ -125,8 +133,23 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
   await machine.waitForFunction(() => window.anantaMachine.chat.poll().events.length === 1);
   const event = await machine.evaluate(() => window.anantaMachine.chat.poll().events[0]);
   assert.equal(event.event.sender_kind, "human");
-  await machine.evaluate(item => { window.anantaMachine.chat.ack(item.cursor); window.anantaMachine.chat.reply(item.event.message_id, "Bound synthetic answer"); }, event);
-  await human.locator("#chat-log").getByText("Bound synthetic answer", { exact: false }).waitFor();
+  const answerText = "Bound synthetic answer <b>literal text</b>";
+  await machine.evaluate(({ item, text }) => { window.anantaMachine.chat.ack(item.cursor); window.anantaMachine.chat.reply(item.event.message_id, text); }, { item: event, text: answerText });
+  await human.locator("#chat-log").getByText(answerText, { exact: true }).waitFor();
+  const chatViewBaseline = await human.evaluate(() => ({ captures: window.__captures, peers: window.__pcs.length }));
+  // The same display must work in both views without recreating media or
+  // inferring machine classification from an author name or HTML-like text.
+  for (const section of ["chat", "live", "chat"]) {
+    if (section === "live") await human.locator(".nav-item").filter({ hasText: /^Live/ }).click();
+    else await human.getByRole("button", { name: "Chat", exact: true }).click();
+    const log = human.locator("#chat-log"), answer = log.locator(".chat-entry").filter({ hasText: answerText });
+    await answer.getByText("KI-Nachricht", { exact: true }).waitFor();
+    assert.equal(await answer.getAttribute("data-machine-message"), "true");
+    assert.equal(await answer.getByText("Antwort", { exact: true }).count(), 1);
+    assert.equal(await answer.locator("b").count(), 0, "chat text is escaped, not interpreted as markup");
+    assert.equal(await log.locator(".chat-entry").filter({ hasText: "@ananta synthetic consented question" }).getAttribute("data-machine-message"), null);
+  }
+  assert.deepEqual(await human.evaluate(() => ({ captures: window.__captures, peers: window.__pcs.length })), chatViewBaseline);
   const relayBefore = icePath === "direct" ? [] : await waitMachineRelaySetup([human, machine], 1500);
   for (const observed of relayBefore) assertMachineRelayObservation(observed, icePath.slice(5));
   const pcm = await machine.evaluate(async () => {

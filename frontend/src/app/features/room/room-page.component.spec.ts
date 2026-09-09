@@ -13,6 +13,14 @@ const broadcastStyles = readFileSync("frontend/src/app/broadcast/broadcast-prefl
 const angularConfiguration = JSON.parse(readFileSync("angular.json", "utf8"));
 
 describe("Room page information architecture", () => {
+  it("reuses the same side-effect-free chat presentation in Live and Chat", () => {
+    expect(template.match(/<app-room-chat-log/g)).toHaveLength(2);
+    expect(template).not.toContain('class="chat-entry"');
+    const chat = readFileSync("frontend/src/app/shared/room-chat-log.component.ts", "utf8");
+    expect(chat).toContain("{{ entry.text }}"); expect(chat).toContain("KI-Nachricht");
+    for (const forbidden of ["innerHTML", "getUserMedia", "getDisplayMedia", "PeerConnection", "inject("]) expect(chat).not.toContain(forbidden);
+  });
+
   it("keeps one room-bound audio sink outside every changing navigation section", () => {
     const start = template.indexOf('<main class="app-main">');
     const section = template.indexOf("@if (activeSection() === 'rooms')", start);
