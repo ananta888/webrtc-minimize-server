@@ -5,6 +5,32 @@ Aktivierung sind unterschiedliche Zustände. Die öffentliche Meet-Instanz melde
 bei der aktuellen Prüfung `admissionEnabled: false`: Noch kein produktiver
 KI-Beitritt. Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
 
+## Priorisierter Nachtrag: lokale Erneuerungsentscheidung
+
+Die sechs gewünschten Grundfunktionen bleiben integriert. Neu abgesichert ist
+die [clientseitige Erneuerungsgrenze](machine-client-renewal-boundary.md): Ein
+verspäteter erfolgreicher Server-ACK darf die inzwischen abgelaufene lokale
+Sitzung nicht wiederbeleben. Sechs vorher fehlgeschlagene Service-Regressionen
+sowie die echten Chromium-/Firefox-Fälle bestehen nach der Korrektur.
+Die aktiven Dialoge mit Audioempfang, Chat, Bildschirm, drei Renewals und
+unverändert widerrufbaren Quellenfreigaben bestehen ebenfalls. Der gemeinsame
+isolierte Gesamtcheck bestand 1.217 Frontendtests und 1.160 Node-/Browserfälle,
+scheiterte jedoch an einer Firefox-Avatarprüfung nach bestätigtem Renewal
+(vier Node-Skips). Deren unveränderter gezielter Nachlauf bestand in 13,108 s;
+die Ursache bleibt offen und der Gesamtcheck bleibt rot. Kein Deployment.
+
+Die CI `34406142613` des vorherigen Commits `6e099b8` ist insgesamt **rot**:
+Der Ananta-Dialog über authentisiertes TURN bestand, aber der separate
+Zwei-Quellen-Broadcast zeigte nach bestätigter Szenenanwendung weiterhin das
+Wartebild. Die Einzelquellenprüfung bestand diesmal. Dies erklärt weder die
+frühere Intermittenz noch den Ananta-Langzeitstillstand und wird nicht durch
+die vorliegende Renewal-Korrektur als behoben ausgegeben.
+
+Der aktuelle öffentliche Status bestätigt weiterhin `admissionEnabled: false`
+bei vorhandenen Softwarefähigkeiten. Der beobachtete aktive Raum bleibt
+unangetastet. Betreiber-Trust und Ananta-Projektauftrag werden nicht allein
+aus SSH-Zugriff oder einem gemeinsamen Benutzerkonto abgeleitet.
+
 ## Aktueller Nachtrag: öffentlich ausgelieferte Integration
 
 Die erneute priorisierte Abnahme auf `529040f` einschließlich der offenen

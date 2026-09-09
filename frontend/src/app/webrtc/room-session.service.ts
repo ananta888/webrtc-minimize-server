@@ -155,28 +155,19 @@ export class RoomSessionService {
   }
 
   async renewMachine(grant: string): Promise<MachineSessionLease> {
-    const previous = this.machineLease();
-    if (!this.joined() || !previous || previous.expiresAt <= Date.now() || this.machineRenewal
+    const previous = this.machineLease(), startedAt = Date.now();
+    if (!this.joined() || !previous || previous.expiresAt <= startedAt || this.machineRenewal
       || typeof grant !== "string" || !grant || grant.length > 4096) throw new Error("machine_renewal_unavailable");
     const controller = new SessionOperation(10_000, "machine_renewal_timeout");
     this.machineRenewal = controller;
-    const signal = controller.signal;
     try {
       const roomId = this.roomId();
-      const deviceProof = await controller.wait(() => this.device.createProof({ roomId, mode: "room", displayName: "Ananta (KI)",
-        machineSessionId: previous.sessionId, expectedGeneration: previous.generation }));
-      signal.throwIfAborted();
-      const response = await controller.wait(() => fetch("/api/machine/sessions/renew", { method: "POST", credentials: "same-origin",
-        redirect: "error", signal, headers: { "content-type": "application/json", Authorization: `Bearer ${grant}` },
-        body: JSON.stringify({ roomId, sessionId: previous.sessionId, expectedGeneration: previous.generation, deviceProof }) }));
-      if (!response.ok) throw new Error("machine_renewal_denied");
-      const next = parseMachineSessionLease(await controller.wait(() => response.json()));
-      signal.throwIfAborted();
-      if (!this.joined() || this.machineLease() !== previous || next.sessionId !== previous.sessionId
-        || next.generation !== previous.generation + 1 || next.absoluteExpiresAt !== previous.absoluteExpiresAt
-        || next.expiresAt <= previous.expiresAt) throw new Error("machine_renewal_scope_changed");
-      this.machineLease.set(next); this.machineExpiresAt.set(next.expiresAt);
-      return next;
+      const { renewMachineLease } = await controller.wait(() => import("./machine-session-renewal"));
+      return await renewMachineLease({ previous, startedAt, roomId, grant, operation: controller,
+        createProof: input => this.device.createProof(input),
+        current: () => this.joined() && this.machineLease() === previous && this.roomId() === roomId,
+        commit: next => { this.machineLease.set(next); this.machineExpiresAt.set(next.expiresAt); },
+      });
     } catch (error) {
       // Unknown renewal outcome is not permission to continue on a stale local lease.
       if (this.machineLease() === previous) this.leave();

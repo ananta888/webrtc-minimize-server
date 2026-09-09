@@ -14,8 +14,46 @@ function setup() {
   service.roomId.set(roomId); service.joined.set(true); service.machineLease.set(lease());
   return { service, device, signaling };
 }
-afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 describe("machine session lease client", () => {
+  it("tracks intermediate decision time, not just the initial renewal time", async () => {
+    const startedAt = Date.now(); let now = startedAt;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const f = setup(), previous = f.service.machineLease()!;
+    f.device.createProof.mockImplementationOnce(async () => { now += 1000; return {}; });
+    const body = vi.fn(async () => ({ ...previous, generation: 2, expiresAt: previous.expiresAt + 60_000 }));
+    vi.stubGlobal("fetch", vi.fn(async () => { now -= 1; return { ok: true, json: body }; }));
+    await expect(f.service.renewMachine("grant")).rejects.toThrow("machine_renewal_scope_changed");
+    expect(body).not.toHaveBeenCalled(); expect(f.service.joined()).toBe(false);
+  });
+
+  it("does not send a grant when the room changes while proving the old renewal", async () => {
+    const f = setup();
+    f.device.createProof.mockImplementationOnce(async () => { f.service.roomId.set("room-222222222222222222"); return {}; });
+    const request = vi.fn(); vi.stubGlobal("fetch", request);
+    await expect(f.service.renewMachine("grant")).rejects.toThrow("machine_renewal_scope_changed");
+    expect(request).not.toHaveBeenCalled(); expect(f.service.joined()).toBe(false);
+  });
+
+  it.each(["proof", "fetch", "body"].flatMap(stage => ["deadline", "clock-rollback"].map(boundary => ({ stage, boundary }))))
+    ("rejects $boundary after $stage before a delayed expiry timer can fire", async ({ stage, boundary }) => {
+      const startedAt = Date.now(); let now = startedAt;
+      vi.spyOn(Date, "now").mockImplementation(() => now);
+      const f = setup(), previous = f.service.machineLease()!;
+      const next = { ...previous, generation: 2, expiresAt: previous.expiresAt + 60_000 };
+      const cross = () => { now = boundary === "deadline" ? previous.expiresAt : startedAt - 1; };
+      const body = vi.fn(async () => { if (stage === "body") cross(); return next; });
+      const request = vi.fn(async () => { if (stage === "fetch") cross(); return { ok: true, json: body }; });
+      if (stage === "proof") f.device.createProof.mockImplementationOnce(async () => { cross(); return {}; });
+      vi.stubGlobal("fetch", request);
+      try {
+        await expect(f.service.renewMachine("fresh-grant")).rejects.toThrow("machine_renewal_scope_changed");
+        expect(f.service.machineLease()).toBeNull(); expect(f.service.joined()).toBe(false);
+        expect(f.signaling.leave).toHaveBeenCalledOnce();
+        if (stage === "proof") expect(request).not.toHaveBeenCalled();
+        if (stage === "fetch") expect(body).not.toHaveBeenCalled();
+      } finally { f.service.leave(); }
+    });
   it.each(["proof", "fetch", "body"])("bounds renewal even when %s ignores abort", async stage => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     const f = setup(); let resolve!: (value: object) => void;
