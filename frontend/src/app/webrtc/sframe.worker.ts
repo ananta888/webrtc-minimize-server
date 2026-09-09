@@ -44,28 +44,35 @@ const decryptorKeyIds = new Map<string, Set<string>>();
 const seenKeyIds = new Map<string, Set<string>>();
 const MAX_CONTEXT_KEYS = 512;
 const reportedTransformFailures = new Set<string>();
+// A malformed codec/envelope must not resume on the next valid frame or rekey.
+// Only explicit context teardown admits a new transform lifecycle.
+const failedContexts = new Set<string>();
 
-function reportTransformFailure(contextId: string, direction: "encrypt" | "decrypt", error: unknown): void {
+function reportTransformFailure(contextId: string, direction: "encrypt" | "decrypt", error: unknown): boolean {
   const code = error && typeof error === "object" && "code" in error
     ? String((error as { code: unknown }).code)
     : "media_transform_failed";
   if (!new Set([
     "media_frame_type", "media_codec_unsupported", "media_frame_too_short", "media_envelope_version", "media_key_budget_exhausted",
-  ]).has(code)) return;
+  ]).has(code)) return false;
   const key = `${contextId}\0${direction}\0${code}`;
-  if (reportedTransformFailures.has(key)) return;
+  if (reportedTransformFailures.has(key)) return true;
   reportedTransformFailures.add(key);
   postMessage({ version: 1, type: "transform-error", contextId, direction, code });
+  return true;
 }
 
-function destroyContext(contextId: string): void {
+function destroyContext(contextId: string, resetFailure = true): void {
   encryptors.get(contextId)?.destroy();
   decryptors.get(contextId)?.destroy();
   encryptors.delete(contextId);
   decryptors.delete(contextId);
   decryptorKeyIds.delete(contextId);
   seenKeyIds.delete(`encrypt:${contextId}`); seenKeyIds.delete(`decrypt:${contextId}`);
-  for (const key of reportedTransformFailures) if (key.startsWith(`${contextId}\0`)) reportedTransformFailures.delete(key);
+  if (resetFailure) {
+    failedContexts.delete(contextId);
+    for (const key of reportedTransformFailures) if (key.startsWith(`${contextId}\0`)) reportedTransformFailures.delete(key);
+  }
 }
 
 function clearAll(): void {
@@ -76,6 +83,7 @@ function clearAll(): void {
   decryptorKeyIds.clear();
   seenKeyIds.clear();
   reportedTransformFailures.clear();
+  failedContexts.clear();
 }
 
 addEventListener("message", ({ data }: MessageEvent<WorkerCommand>) => {
@@ -93,6 +101,7 @@ addEventListener("message", ({ data }: MessageEvent<WorkerCommand>) => {
     || !(data.baseKey instanceof ArrayBuffer) || data.baseKey.byteLength !== 16) return;
   const kid = BigInt(`0x${data.keyId}`);
   const key = new Uint8Array(data.baseKey);
+  if (failedContexts.has(data.contextId)) { key.fill(0); return; }
   const direction = data.direction as "encrypt" | "decrypt";
   const historyId = `${direction}:${data.contextId}`;
   let seen = seenKeyIds.get(historyId);
@@ -142,9 +151,11 @@ addEventListener("rtctransform", ((event: TransformEvent) => {
     void event.transformer.readable.cancel("invalid_sframe_transform");
     return;
   }
+  let halted = false;
   const transform = new TransformStream<EncodedFrame, EncodedFrame>({
     async transform(frame, controller) {
       try {
+        if (halted || failedContexts.has(contextId)) { halted = true; return; }
         // Chromium can deliver empty Opus receive frames during startup. There
         // is no envelope or media to process: drop, never enqueue/pass through.
         // Nonempty malformed envelopes still follow the fail-closed error path.
@@ -158,7 +169,11 @@ addEventListener("rtctransform", ((event: TransformEvent) => {
         controller.enqueue(frame);
       } catch (error) {
         // Authentication failures, replay, missing keys and exhausted counters are fail-closed.
-        reportTransformFailure(contextId, direction, error);
+        if (reportTransformFailure(contextId, direction, error)) {
+          halted = true;
+          destroyContext(contextId, false);
+          failedContexts.add(contextId);
+        }
       }
     },
   });
