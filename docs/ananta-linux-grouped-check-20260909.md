@@ -94,13 +94,33 @@ The Ananta matrix at `1ece01072` completed with 4,943 passes, 82 explicit skips
 and zero failures/errors in 1,033.58 seconds, following two causally repaired
 environment-dependent fixture assumptions. MAP-29 is complete at `d29d1780a`;
 this does not close MDS-08's longer-run criterion or the rest of Ananta's track.
-The normal two-hour private dialog/screen reference now runs on frozen Ananta
+The normal two-hour private dialog/screen reference started on frozen Ananta
 `d29d1780a` / Meet `c4ef486` / immutable Worker image `5d4be51c5dda`, without the
 paired-idle fault, under Hub TEST identities
 `SRC_1a79f19adf72bffe8407a72d1ce302c3` /
-`RUN_4c3ab71f6f6734f21aed51c7032dbc19`. It is ongoing, not passed.
+`RUN_4c3ab71f6f6734f21aed51c7032dbc19`. It subsequently failed as recorded below.
 
 The later incoming `f67c9e5` integration-overview feature was preserved in the
 main checkout. It adds a separate read-only endpoint and leaves the old
 capabilities contract unchanged. It is not part of the frozen long-run inputs
 or these local test counts. No serving build or public trust was changed.
+
+## Third long reference: receiver movement failure
+
+The above normal profile failed after 2,166.283 runner / 2,162.03 pytest seconds,
+one failure, no skips/errors, unchanged inputs. Last periodic success: 2,090
+active seconds, 35 lease generations, 45 screen checks, peak sampled RSS
+2,370,232,320 bytes / 22 processes. At generation 36 the receiver's twelve-second
+pixel check returned `screen_not_moving` while the Ananta runtime was still
+active with no error recorded at that assertion. This is not yet attributable
+to the earlier pump cadence problem or the historical decoder startup issue.
+
+The bridge returned bounded receiver state/RTP/frame counters, but pytest
+abbreviated the failure representation. Ananta `5a7be27f5` now retains a
+separate allowlisted JUnit failure property before initial/periodic screen
+assertions, including the last non-atomic source observation. No extra browser
+RPC, media runtime, image, freshness limit, test retry or serving build change.
+21 related observer checks passed in 29.44 seconds; the final twelve projection
+checks passed in 17.91 seconds. A fresh real diagnostic reference follows on
+the same frozen Meet `c4ef486` bundle. The failed run remains failed; no MDS
+task is closed on this basis.
