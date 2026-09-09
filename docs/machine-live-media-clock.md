@@ -176,3 +176,17 @@ the checked isolated snapshot; the serving build and trust were unchanged.
 This is a successful aggregate, not proof that the earlier intermittent
 authority failure has been causally fixed. The internal reason/trace changes
 are the implementation delivered by this diagnostic round.
+
+The `faf3c39` follow-up reproduced `controller-expired` before the first
+one-second fixture pulse. The private failure trace now includes bounded
+relative wall time alongside monotonic elapsed time and the combined clock-read
+span. It changes neither clock and stores no absolute timestamp. Nine focused
+diagnostic tests pass, including forward/backward wall steps, invalid readings,
+sampling delays and unchanged native exception construction. Three bounded
+Chromium repeats passed (9.280/9.347/8.862 seconds); no anomaly was reproduced,
+so neither a clock cause nor a runtime fix is claimed. The series is finished.
+
+Separately, CI34348135945 at `faf3c39` failed its TURN job on
+`test_tls_proxy_not_ready` before launching Chromium (6.674 seconds); the Firefox
+case passed. This does not establish a TURN transport or cleanup regression.
+No deadline or source-authority guard has been relaxed in response.

@@ -2,7 +2,18 @@
 // Error instances, arguments, prototype and thrown values are preserved.
 export function installMachineSourceFailureTrace() {
   window.__machineSourceFailureTrace?.close();
-  const Original = window.Error, started = performance.now(), events = [];
+  const Original = window.Error, events = [];
+  let readingClock = false;
+  const readClock = () => {
+    readingClock = true;
+    try {
+      const before = performance.now(), wall = Date.now(), after = performance.now();
+      return { before, wall, after };
+    } catch { return { before: NaN, wall: NaN, after: NaN }; }
+    finally { readingClock = false; }
+  };
+  const started = readClock();
+  const bounded = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max ? value : null;
   const codes = new Set([
     "meet_avatar_source_denied", "meet_avatar_authority_expired", "meet_avatar_generation_changed",
     "meet_avatar_setup_timeout", "meet_avatar_protection_lost", "meet_avatar_not_ready",
@@ -21,12 +32,14 @@ export function installMachineSourceFailureTrace() {
     "progress-expired", "sourceId", "sessionId", "leaseGeneration", "membershipEpoch", "expiresAt", "scope"]);
   let closed = false, truncated = false;
   const record = (args, value) => {
-    if (closed || typeof args[0] !== "string" || !codes.has(args[0])) return;
+    if (closed || readingClock || typeof args[0] !== "string" || !codes.has(args[0])) return;
     if (events.length === 64) { truncated = true; return; }
-    const elapsed = Math.floor(performance.now() - started);
+    const now = readClock();
     const cause = Object.getOwnPropertyDescriptor(value, "cause")?.value;
     events.push({ code: args[0], ...(typeof cause === "string" && causes.has(cause) ? { cause } : {}),
-      elapsedMs: Number.isSafeInteger(elapsed) && elapsed >= 0 && elapsed <= 120000 ? elapsed : null });
+      elapsedMs: bounded(Math.floor(now.before - started.before), 0, 120000),
+      wallElapsedMs: bounded(Math.floor(now.wall - started.wall), -120000, 120000),
+      clockReadSpanMs: bounded(Math.ceil(now.after - now.before + started.after - started.before), 0, 10000) });
   };
   const Wrapped = new Proxy(Original, {
     construct(target, args, newTarget) { const value = Reflect.construct(target, args, newTarget); record(args, value); return value; },
