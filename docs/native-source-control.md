@@ -7,9 +7,38 @@ No environment, server policy or Ananta trust is activated by this implementatio
 
 The production server still emits only assignment v1/v2/v3, and the agent still
 advertises version 0.8.0. Enabling this switch alone cannot create a broadcast
-source request or publisher grant. Public v4 emission/capability promotion,
+source request or publisher grant. Public v4 emission,
 source recovery/discontinuity and public Approve/Renew remain required work.
 The switch is intended for the bounded integration path until those are ready.
+
+## Explicit capability negotiation
+
+With the local switch enabled, the agent sends the existing version-1 capability
+envelope with the new closed `capabilityVersion: 2` report and required boolean
+`sourcePrograms: true`. The [v2 schema](../contracts/native-packager/capability.v2.schema.json)
+and shared Node/Go fixture describe its exact shape. Without room consent the
+v2 report contains an empty room array. Disabled mode retains the old v1 shape
+and build version; switching modes is local process configuration, not remote
+hot-reload. An older server rejects v2 rather than silently enabling a fallback.
+
+The server derives source-signaling support only from a normalized v2/true
+report on the authenticated device connection, never from a high version
+number. A valid v2/false or v1 report does not advertise this path. Existing
+v1 control-only metadata support remains separate. Normalization still binds
+owner/tenant/device from server authority and intersects room consent; no
+report can grant membership or another publisher's content.
+
+A change in the effective source capability invalidates existing source-scope
+handles. An immediate false/true or v1/v2 round trip cannot revive earlier
+consents even when no broker tick observed the intermediate state. An ordinary
+refresh preserves the handle. Reconnect, expiry and room loss retain their
+existing independent fences. Losing one source does not stop the parent writer.
+
+This advertises the implemented opt-in protocol, not production readiness,
+source reception, decoder health or authorization. The public v4 assignment
+emitter, publisher Approve/Renew workflow, recovery/discontinuity and complete
+multi-publisher acceptance remain required; capability negotiation does not
+replace any of them or turn the switch on in production.
 
 ## Wire and ownership
 
@@ -97,3 +126,32 @@ The separate real TLS/P-256/HLS control gate passed (42.453 s including shared
 native compilation). Root serving assets were not rebuilt. The subsequent
 `cfca893` receiver-observation test-only change passed its 12 focused checks;
 it was not part of that aggregate snapshot. Later chat changes are separate.
+
+### Capability-v2 checks (2026-09-09)
+
+Both new opt-in/closed-shape tests first failed against the v1-only parser.
+The implemented parser, shared schema/Go fixture and source-generation
+revocation then passed 37 targeted Node checks in 2.359 seconds. This includes
+the actual authenticated source-control socket tests and negative field,
+version, room, identity, opt-out/re-enable and legacy-shape cases.
+
+The native shared-wire/probed-capability selection passed three race-enabled
+repetitions and vet with the Bookworm Go toolchain. An earlier Alpine attempt
+could not execute race instrumentation because CGO was unavailable; it is not
+counted as a race pass. The real opt-in TLS/P-256/HLS control gate passed in
+38.910 seconds including compilation, asserting v2/true in enabled mode and
+unchanged v1 shape in disabled mode. Empty-room v2 serialization was subsequently
+covered by the native unit gate in the combined check. Neither this evidence
+nor the report changes the public source-program activation policy.
+
+The combined `89cec3a` candidate completed its frontend (905 tests), build,
+types, Go unit/vet and static checks, but exited 1 with 920 Node passes,
+one failure and two skips (430.609 s). The sole failure was Chromium
+`test_navigation_network_changed` during screen-fixture navigation, before
+decoder assertions. After the aggregate terminated, the unchanged screen
+fixture passed both browsers against the same build in 5.301 seconds. This
+does not turn the failed aggregate into a pass or establish the navigation
+failure's cause. All nine changed capability source/contract/test files were
+byte-identical to the checked snapshot. External opt-in gates were not reached.
+The separate TURN observation correction and its TCP/UDP evidence are documented
+in [the observer report](machine-relay-observation.md). No deployment occurred.

@@ -1,5 +1,14 @@
 # Native-Packager-Control
 
+`capability.v2.schema.json` ergänzt den geschlossenen Report um das verpflichtende
+Boolean `sourcePrograms`. Nur ein explizites `true` im authentisierten v2-Report
+meldet den lokal aktivierten Quellenprogramm-/Signalingpfad; eine Buildversion
+genügt nicht. Das äußere Capability-Control-Envelope bleibt v1. Der bisherige
+v1-Report und dessen Schema bleiben unverändert und akzeptieren keine v2-Felder.
+Default-aus sendet weiterhin v1. Ein Fähigkeitswechsel entwertet bestehende
+Quellenhandles; Room-Consent und Publisherfreigabe bleiben separat erforderlich.
+Siehe [Aushandlung und Grenzen](../../docs/native-source-control.md).
+
 `assignment-prepare.v4.schema.json` beschreibt separat den noch nicht aktivierten
 Trusted-Source-Programmauftrag: expliziter Modus, Tenant-/Membership-/Gerätebindung,
 kein Legacy-Einzelpublisher. Native Parser-/Scope-Prüfung und gemeinsame Fixture
@@ -19,7 +28,7 @@ Bytes sind Gegenstand einer separat zu prüfenden GitHub-Attestation; ein gülti
 JSON oder eine HTTPS-Antwort ist selbst noch kein Signatur-, Aktualitäts- oder
 Freigabenachweis. Siehe [Update-Hilfe](../../docs/native-packager.md).
 
-Diese Verträge gehören ausschließlich zur freiwilligen Trusted-Broadcast-Packager-Rolle. Sie sind weder mit dem blinden `media-agent`-Protokoll noch mit Room-Membership gleichzusetzen. Challenge, Authentisierung, Capability, Status und Signaling bleiben v1. `assignment-prepare.v2` ergänzt ausschließlich die vom Server gewählte Videoencoder- und Software-Fallback-Bindung; Agenten vor 0.6.0 erhalten weiterhin den geschlossenen v1-Auftrag mit `libx264`.
+Diese Verträge gehören ausschließlich zur freiwilligen Trusted-Broadcast-Packager-Rolle. Sie sind weder mit dem blinden `media-agent`-Protokoll noch mit Room-Membership gleichzusetzen. Challenge, Authentisierung, Status, Signaling und das äußere Capability-Envelope bleiben v1; die Report-Versionen sind oben getrennt beschrieben. `assignment-prepare.v2` ergänzt ausschließlich die vom Server gewählte Videoencoder- und Software-Fallback-Bindung; Agenten vor 0.6.0 erhalten weiterhin den geschlossenen v1-Auftrag mit `libx264`.
 
 Der Agent verbindet sich ausgehend über `/native-packager`, authentisiert eine nicht exportierte P-256-Geräteidentität und meldet eine geschlossene Capability. `consentedRoomIds` wird serverseitig stets mit den durch den Kontoinhaber gesetzten flüchtigen Raumfreigaben geschnitten. Ein Report erzeugt niemals selbst Autorität.
 

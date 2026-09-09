@@ -222,6 +222,7 @@ export class NativePackagerControlRegistry {
     }, now);
     const scopes = this.#sourceGenerations.get(packager);
     if (!packager.capability || packager.capability.expiresAt <= now
+      || supportsNativeSourceSignalV1(packager.capability) !== supportsNativeSourceSignalV1(capability)
       || !["healthy", "degraded"].includes(capability.health)) this.#sourceGenerations.delete(packager);
     else if (scopes) for (const roomId of scopes.keys()) {
       if (!capability.consentedRoomIds.includes(roomId)) scopes.delete(roomId);
@@ -325,7 +326,7 @@ export class NativePackagerControlRegistry {
     const packager = this.#bySocket.get(socket);
     return packager ? Object.freeze({ id: packager.definition.id, deviceRef: `dev_${packager.definition.keyFingerprint}`,
       sourceControlV1: supportsNativeSourceControlV1(packager.capability?.agentVersion),
-      sourceSignalV1: supportsNativeSourceSignalV1(packager.capability?.agentVersion) }) : null;
+      sourceSignalV1: supportsNativeSourceSignalV1(packager.capability) }) : null;
   }
 
   disconnect(socket) {

@@ -46,7 +46,7 @@ function fixture(start = 1800000000000) {
     proof: crypto.sign("sha256", Buffer.from(nativePackagerAuthMessage(packagerId, challenge.nonce, now)),
       { key: keys.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url") }, now);
   packagers.consent(owner.principal, packagerId, owner.roomId, true);
-  const capability = { capabilityVersion: 1, agentId: packagerId, tenantId: broadcastTenantRef(issuer),
+  const capability = { capabilityVersion: 2, sourcePrograms: true, agentId: packagerId, tenantId: broadcastTenantRef(issuer),
     ownerSubjectRef: broadcastSubjectRef(ownerIdentity), deviceRef: "dev_aaaaaaaaaaaaaaaa", agentVersion: "1.0.0",
     ffmpegVersion: "6.1.1", videoEncoders: ["libx264"], audioEncoders: ["aac"], hardwareClass: "medium",
     cpuClass: "medium", gpuClass: "integrated", uploadClass: "5-15mbit", energyClass: "ac", health: "healthy",
@@ -241,6 +241,19 @@ test("transient room consent loss, capability expiry and reconnect cannot be hid
   assert.ok(f.lookup(c), "ordinary capability refresh must preserve scope");
 });
 
+test("source-program opt-out and immediate opt-in cannot revive an earlier source consent", () => {
+  for (const downgrade of ["disabled", "legacy"]) {
+    const f = fixture(), consent = f.approve();
+    const refs = { tenantId: f.capability.tenantId, ownerSubjectRef: f.capability.ownerSubjectRef };
+    const changed = { ...f.capability, sourcePrograms: false };
+    if (downgrade === "legacy") { changed.capabilityVersion = 1; delete changed.sourcePrograms; }
+    f.packagers.setCapability(f.socket, changed, refs, f.now());
+    f.refreshCapability(); // No broker tick or grant lookup occurred during opt-out.
+    assert.equal(f.lookup(consent), null);
+    assert.equal(f.assignments.activeForPackager(f.packagerId).state, "running", "source revoke does not terminate the parent");
+  }
+});
+
 test("the real program's pending fenced handoff revokes all predecessor source authority", () => {
   const f = fixture(), c = f.approve(), control = f.runtime.nativeControl(f.ownerIdentity, f.owner, f.programId);
   f.runtime.beginNativeHandoff(f.ownerIdentity, f.owner, f.programId, { requestVersion: 1, trigger: "user-action",
@@ -332,7 +345,7 @@ test("source signaling resolves actual publisher/agent sockets and rejects forge
 
 test("source signaling never reaches a control-only agent and delivery failure terminates only the source", () => {
   const f = sourceControlFixture(), lease = f.prepare(); f.broker.acknowledge(f.socket, f.ack(lease));
-  f.packagers.setCapability(f.socket, { ...f.capability, agentVersion: "0.8.0" }, {
+  f.packagers.setCapability(f.socket, { ...f.capability, sourcePrograms: false }, {
     tenantId: f.capability.tenantId, ownerSubjectRef: f.capability.ownerSubjectRef,
   }, f.now());
   assert.equal(f.broker.publisherSignal(f.publisher, sourceSignal(lease)), false);
@@ -344,7 +357,7 @@ test("source signaling never reaches a control-only agent and delivery failure t
   assert.throws(() => g.prepare(), /terminal/);
   const h = sourceControlFixture(), last = h.prepare(); h.broker.acknowledge(h.socket, h.ack(last));
   assert.equal(h.broker.publisherSignal(h.publisher, sourceSignal(last)), true);
-  h.packagers.setCapability(h.socket, { ...h.capability, agentVersion: "0.8.0" }, {
+  h.packagers.setCapability(h.socket, { ...h.capability, sourcePrograms: false }, {
     tenantId: h.capability.tenantId, ownerSubjectRef: h.capability.ownerSubjectRef,
   }, h.now());
   h.broker.tick(); assert.equal(h.messages.at(-1).type, "trusted-source-stop");

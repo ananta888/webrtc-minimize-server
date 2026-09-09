@@ -73,9 +73,9 @@ export function supportsNativeSourceControlV1(agentVersion) {
   return Boolean(match && (Number(match[1]) > 0 || Number(match[2]) >= 8));
 }
 
-export function supportsNativeSourceSignalV1(agentVersion) {
-  const match = typeof agentVersion === "string" && agentVersion.match(/^(\d+)\.(\d+)\.(\d+)$/);
-  return Boolean(match && (Number(match[1]) > 0 || Number(match[2]) >= 9));
+// Applied to the normalized authenticated report, never a version guess.
+export function supportsNativeSourceSignalV1(capability) {
+  return capability?.capabilityVersion === 2 && capability.sourcePrograms === true;
 }
 
 export function normalizeNativePackagerCapability(value, now = Date.now()) {
@@ -85,9 +85,11 @@ export function normalizeNativePackagerCapability(value, now = Date.now()) {
     "uploadClass", "energyClass", "health", "maximumRenditions", "maximumPixelsPerSecond",
     "consentedRoomIds", "observedAt", "expiresAt",
   ]);
+  if (value?.capabilityVersion === 2) fields.add("sourcePrograms");
   if (!value || typeof value !== "object" || Array.isArray(value)
     || Object.keys(value).length !== fields.size || Object.keys(value).some((key) => !fields.has(key))
-    || value.capabilityVersion !== 1 || !ID.test(value.agentId || "") || !TENANT.test(value.tenantId || "")
+    || ![1, 2].includes(value.capabilityVersion) || value.capabilityVersion === 2 && typeof value.sourcePrograms !== "boolean"
+    || !ID.test(value.agentId || "") || !TENANT.test(value.tenantId || "")
     || !SUBJECT.test(value.ownerSubjectRef || "") || !/^dev_[A-Za-z0-9_-]{16,64}$/.test(value.deviceRef || "")
     || !VERSION.test(value.agentVersion || "") || !VERSION.test(value.ffmpegVersion || "")
     || !Array.isArray(value.videoEncoders) || value.videoEncoders.length > 8
@@ -108,6 +110,12 @@ export function normalizeNativePackagerCapability(value, now = Date.now()) {
     || value.consentedRoomIds.some((roomId) => !ROOM.test(roomId))
     || !Number.isSafeInteger(value.observedAt) || !Number.isSafeInteger(value.expiresAt)
     || value.observedAt > now + 5_000 || value.expiresAt <= now || value.expiresAt > value.observedAt + 60_000) {
+    fail("invalid_native_packager_capability");
+  }
+  if (value.capabilityVersion === 2 && (!/^pkr_[A-Za-z0-9_-]{16,64}$/.test(value.agentId)
+    || value.observedAt < 1 || value.expiresAt < 1
+    || !value.videoEncoders.length || new Set(value.videoEncoders).size !== value.videoEncoders.length
+    || !value.audioEncoders.length || new Set(value.audioEncoders).size !== value.audioEncoders.length)) {
     fail("invalid_native_packager_capability");
   }
   nativeFfmpegVersion(value.ffmpegVersion);

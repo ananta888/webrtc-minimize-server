@@ -558,14 +558,22 @@ func (c *client) capabilityMessage() map[string]any {
 	} else if slices.Contains(c.capability.videoEncoders, "h264_videotoolbox") {
 		gpu = "integrated"
 	}
-	return map[string]any{"version": 1, "type": "capability", "capability": map[string]any{
+	report := map[string]any{
 		"capabilityVersion": 1, "agentId": c.cfg.packagerID, "tenantId": "tn_0000000000000000", "ownerSubjectRef": "sub_0000000000000000",
 		"deviceRef": "dev_0000000000000000", "agentVersion": agentVersion, "ffmpegVersion": c.capability.version,
 		"videoEncoders": c.capability.videoEncoders, "audioEncoders": c.capability.audioEncoders, "hardwareClass": hardwareClass(),
 		"cpuClass": cpuClass(), "gpuClass": gpu, "uploadClass": c.cfg.uploadClass, "energyClass": c.cfg.energyClass, "health": c.currentHealth(),
 		"maximumRenditions": c.cfg.maximumRenditions, "maximumPixelsPerSecond": c.cfg.maximumPixelsPerSecond,
 		"consentedRoomIds": rooms, "observedAt": now, "expiresAt": now + 30000,
-	}}
+	}
+	if c.cfg.sourcePrograms {
+		report["capabilityVersion"] = 2
+		report["sourcePrograms"] = true
+		if rooms == nil {
+			report["consentedRoomIds"] = []string{}
+		}
+	}
+	return map[string]any{"version": 1, "type": "capability", "capability": report}
 }
 
 func (c *client) connect(ctx context.Context, enroll bool) error {

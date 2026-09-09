@@ -100,8 +100,17 @@ func TestLiveTrustedSourceControlSocket(t *testing.T) {
 				write(map[string]any{"version": 1, "type": "packager-authenticated", "packagerId": c.cfg.packagerID})
 			}
 			write(map[string]any{"version": 1, "type": "room-consent-sync", "roomIds": []string{request.RoomID}})
-			if read()["type"] != "capability" {
+			reported := read()
+			if reported["type"] != "capability" {
 				t.Fatal("missing consent capability response")
+			}
+			capability := reported["capability"].(map[string]any)
+			if c.cfg.sourcePrograms {
+				if capability["capabilityVersion"] != float64(2) || capability["sourcePrograms"] != true {
+					t.Fatal("enabled control omitted explicit source capability")
+				}
+			} else if capability["capabilityVersion"] != float64(1) || capability["sourcePrograms"] != nil {
+				t.Fatal("disabled control changed legacy capability")
 			}
 			write(request)
 			if ending == "disabled" || ending == "unauthenticated" {
