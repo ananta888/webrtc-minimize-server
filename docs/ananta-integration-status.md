@@ -5,6 +5,29 @@ Aktivierung sind unterschiedliche Zustände. Die öffentliche Meet-Instanz melde
 bei der aktuellen Prüfung `admissionEnabled: false`: Noch kein produktiver
 KI-Beitritt. Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
 
+Die jüngste isolierte Gesamtprüfung auf Basis `dfa9829` mit nativer Szenenbasis
+und der Freigabe-Ablaufkorrektur endete mit **Exit 1**: 1.142 Frontendtests und
+1.039 Node-/Browsertests bestanden, ein Fehler und zwei Node-Skips
+(Node-Lauf: 455,910 Sekunden). Build, Typprüfung, Go-Unit/Vet und statische Gates
+bestanden. Die externe Infrastrukturstufe wurde wegen des Fehlers nicht erreicht;
+der optionale Container-Image-Scan blieb ausdrücklich übersprungen.
+
+Der gemeinsame Audioempfang-/Chat-/Screen-/Drei-Renewal-Dialog bestand in
+Chromium und Firefox, jeweils mit 16.000 entschlüsselten PCM-Samples und aktivem
+SFrame ohne Transformfehler. Separat endete die synthetische Sprachausgabe im
+Chromium-Fall vorzeitig: 56.889 Samples angenommen, 52.479 abgespielt,
+Sitzung weiterhin verbunden. Die Ursache dieses Abbruchs ist nicht belegt.
+Ein bestandener Dialog ersetzt weder diesen Fehler noch die Langzeitabnahme.
+Die später übernommenen TURN-Testcommits und die neue Prozessbeobachtung wurden
+separat mit 50 bestandenen Tests geprüft; sie waren nicht Teil dieses festen
+Gesamtprüfstands. Keine Produktionsaktivierung oder kausale Medienfehlerbehebung
+wird daraus abgeleitet.
+
+Der zusammengeführte Stand `fd77b6c` einschließlich des neutraleren Ablauftexts
+bestand anschließend den isolierten Produktionsbuild in 15,455 Sekunden
+(1,59 MB initial; unveränderte Budgetwarnung) und die Todo-Validierung.
+Das ist kein nachträglich bestandener Gesamtcheck und kein Deployment.
+
 | Bereich | Vorhandener Meet-Pfad | Grenze |
 | --- | --- | --- |
 | Audioempfang | Eigener autorisierter Browser-Endpunkt, begrenztes PCM16/16-kHz-Mono, Quellen-/Epoch-Bindung und Stop bei Entzug | ASR und Modellauswahl gehören zum Worker; keine Audio-HTTP-Route im Signaling |
