@@ -50,7 +50,10 @@ test(`${humanEngine} receives actual silent avatar video, image replacement and 
     while (performance.now() < holdUntil) {
       const pixels = await human.evaluate(decodedAvatar);
       assert.ok(pixels?.center?.[2] > 170 && pixels.center[0] < 70 && pixels.center[1] < 70,
-        "hold_last must retain blue across a complete possible loop, not return to red");
+        "hold_last must retain blue across a complete possible loop, not return to red: "
+        + JSON.stringify({ center: Array.isArray(pixels?.center) && pixels.center.length === 4
+          && pixels.center.every(value => Number.isInteger(value) && value >= 0 && value <= 255) ? pixels.center : null,
+          decodedWidth: [64, 128, 256].includes(pixels?.decodedWidth) ? pixels.decodedWidth : null }));
       heldSamples++; await new Promise(resolve => setTimeout(resolve, 50));
     }
     assert.ok(heldSamples >= 4, "observe more than isolated endpoint snapshots");
