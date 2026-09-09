@@ -7,6 +7,13 @@ KI-Beitritt. Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
 
 ## Aktueller Nachtrag: öffentlich ausgelieferte Integration
 
+Der anschließende priorisierte Review sichert die
+[Ablaufgrenze bei der Erneuerungsentscheidung](machine-renewal-decision-boundary.md)
+ab. Die neuen Deadline-/Rücksprungregressionen reproduzierten zunächst eine
+unzulässige Verlängerung; nach der Korrektur bestehen die gezielten Prüfungen
+und beide aktiven Audio-/Chat-/Screen-Dialoge. Dieser lokale Nachtrag ist noch
+nicht ausgerollt und behebt nicht nachweislich den separaten Langzeitstillstand.
+
 Der geprüfte Stand `5a10338` ist jetzt über den regulären Drei-Dienste-Runner
 auf dem Mini-PC ausgerollt. CI `34380159740` bestand alle acht Jobs. Der neue
 öffentliche Integrationspfad liefert den strikten JSON-Vertrag statt der alten

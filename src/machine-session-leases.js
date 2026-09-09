@@ -105,6 +105,13 @@ export class MachineSessionLeases {
   renew(id, expectedGeneration, identity, fingerprint) {
     if (!this.live(id)) fail("machine_session_unavailable", 401);
     const r = this.#records.get(id), now = this.#clock();
+    // The decision clock may advance past the old grant, or move backwards,
+    // after live() observed it. A fresh grant must not revive that old lease.
+    if (now < r.lastNow || now >= r.expiresAt) {
+      this.close(id, "machine_session_expired");
+      fail("machine_session_unavailable", 401);
+    }
+    r.lastNow = now;
     if (!r.member || !sameBinding(r.binding, identity.machineBinding) || r.fingerprint !== fingerprint) {
       fail("machine_lease_scope_invalid", 401);
     }

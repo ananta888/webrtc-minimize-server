@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { MachineSessionLeases } from "../src/machine-session-leases.js";
 
-function fixture() {
+function fixture(observeClock = now => now) {
   let now = 1000, member = true;
   const binding = { issuer: "https://hub.example", subject: "machine:ananta", roomId: "room-111111111111111111",
     taskId: "task", tenantId: "tenant", projectId: "project", protocolVersion: "v1", runtimeId: "", hubSessionId: "",
     capabilitySet: "avatar.publish,chat.send,speech.publish" };
   const identity = { machineBinding: binding, machineExpiresAt: now + 120_000 };
-  const leases = new MachineSessionLeases({ clock: () => now });
+  const leases = new MachineSessionLeases({ clock: () => observeClock(now) });
   const first = leases.issue(identity, "device");
   let stopped = 0;
   leases.attach(first.sessionId, () => member, () => { stopped++; });
@@ -50,6 +50,33 @@ test("expiry, membership loss, close and clock rollback prevent revival", () => 
     assert.equal(f.stopped(), 1); f.leases.destroy();
   }
 });
+for (const [boundary, observations] of [["deadline", [120_999, 121_000]], ["clock rollback", [1000, 999]]]) {
+  test(`renewal cannot cross the old ${boundary} between liveness and commit`, t => {
+    const reads = [];
+    const f = fixture(now => reads.length ? reads.shift() : now);
+    t.after(() => f.leases.destroy());
+    reads.push(...observations);
+    const next = { ...f.identity, machineExpiresAt: 200_000 };
+    assert.throws(() => f.leases.renew(f.first.sessionId, 1, next, "device"), /machine_session_unavailable/);
+    assert.equal(f.stopped(), 1, "close owned resources exactly once before returning denial");
+    assert.equal(f.leases.live(f.first.sessionId), false);
+    assert.throws(() => f.leases.renew(f.first.sessionId, 1, next, "device"), /machine_session_unavailable/);
+    assert.equal(f.stopped(), 1, "later clock observations cannot revive the old session");
+  });
+}
+
+test("a valid renewal records its newer decision clock for later rollback fencing", t => {
+  const reads = [];
+  const f = fixture(now => reads.length ? reads.shift() : now);
+  t.after(() => f.leases.destroy());
+  reads.push(1000, 1001);
+  const next = f.leases.renew(f.first.sessionId, 1, { ...f.identity, machineExpiresAt: 200_000 }, "device");
+  assert.equal(next.generation, 2);
+  assert.equal(f.stopped(), 0);
+  assert.equal(f.leases.live(f.first.sessionId), false, "the old 1000ms observation is now a rollback");
+  assert.equal(f.stopped(), 1);
+});
+
 test("absolute session cap cannot be moved by repeated short grants", t => {
   const f = fixture(); t.after(() => f.leases.destroy());
   let lease = f.first;
