@@ -6,6 +6,7 @@ import { machineBrowserFixture } from "./machine-browser-fixture.js";
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
 import { multiHubMedia } from "./machine-multi-hub-media.mjs";
 import { multiHubIcePath, observeMultiHubRelay } from "./machine-multi-hub-relay.mjs";
+import { MultiHubReconnect } from "./machine-multi-hub-reconnect.mjs";
 
 function screenSignatures(peers) {
   return peers.map(peer => {
@@ -57,9 +58,11 @@ async function run() {
     const f = await machineBrowserFixture({ after: fn => cleanup.push(fn) }, {
       listenHost: "127.0.0.2", tlsPortProxy: true, lifetimeSeconds: 300, tlsConnectionLimit: 32,
       icePath, relayParticipants: 3,
+      observeStage(value) { stage = "setup-" + value; },
       hubPublicKey: await fs.readFile(process.env.MEET_TEST_HUB_PUBLIC_KEY, "utf8"),
     });
     fixture = f;
+    const reconnect = process.env.MEET_MULTI_WORKER_RECONNECT_GATE === "1" ? new MultiHubReconnect(f.app.registry, f.roomId) : null;
     f.human.setDefaultTimeout(12000);
     media = process.env.MEET_MULTI_WORKER_MEDIA_GATE === "1" ? await multiHubMedia(f) : null;
     if (media) cleanup.push(() => media.close());
@@ -92,6 +95,16 @@ async function run() {
         }
         peers = members.map(group => group[0].id);
         reply({ matchedPrincipals: 2, distinctDevices: true, participants: 3 });
+      } else if (reconnect && peers && Object.keys(input).length === 1 && input.command === "disconnect") {
+        stage = "disconnect";
+        const result = reconnect.interrupt(peers);
+        await f.human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
+        reply(result);
+      } else if (reconnect && peers && Object.keys(input).length === 1 && input.command === "recovered") {
+        stage = "recovered";
+        await f.human.locator("#participant-count", { hasText: "3 / 20" }).waitFor();
+        peers = reconnect.replace(peers);
+        reply({ rejoined: true, participants: 3, retiredAbsent: true, sameDevice: true });
       } else if (Object.keys(input).length === 1 && ["screens", "survivor"].includes(input.command) && peers) {
         stage = input.command;
         await f.human.locator(".nav-item").filter({ hasText: /^Live/ }).click();
@@ -110,6 +123,8 @@ async function run() {
     }
   } catch (error) {
     reply({ bridge_error: "test_multi_bridge_failed", stage,
+      ...(typeof error.message === "string" && /^test_docker_command_failed:(create|start|inspect|image|network|rm|logs|unknown):(unknown|\d{1,3}):(unknown|image_unavailable|image_platform|network_subnet|network_address|cpu_limit|permission|container_conflict|deadline)$/.test(error.message)
+        ? { infrastructure: error.message } : {}),
       ...(["floor-start", "floor-result"].includes(stage) ? { floor_error: [
         "test_floor_observer_binding_invalid", "test_floor_observer_connection_invalid",
         "test_floor_observer_audio_unavailable", "test_floor_observation_failed",
