@@ -1316,7 +1316,8 @@ function createHttpHandler(config, registry, services) {
         sendJson(response, 200, { room }, securityHeaders(config));
         return;
       }
-      if (request.method === "POST" && ["/api/machine/sessions/authorization", "/api/machine/sessions/observation"].includes(url.pathname)) {
+      if (request.method === "POST" && ["/api/machine/sessions/authorization", "/api/machine/sessions/observation",
+        "/api/machine/sessions/retire"].includes(url.pathname)) {
         if (!requestOriginAllowed(request, config) || url.search) throw new ProtocolError("origin_denied");
         const input = await readJsonBody(request);
         assertAllowedKeys(input, new Set(["roomId", "sessionId", "nonce"]));
@@ -1324,9 +1325,8 @@ function createHttpHandler(config, registry, services) {
           || typeof input.nonce !== "string" || !/^[a-f0-9]{32}$/.test(input.nonce)) throw new ProtocolError("machine_authorization_request_invalid");
         const roomId = normalizeRoomId(input.roomId);
         const identity = await machineAdmission.verify(request.headers.authorization, { roomId, mode: "room", displayName: "Ananta (KI)" });
-        const state = url.pathname.endsWith("/observation")
-          ? machineSessions.observation(input.sessionId, identity, input.nonce)
-          : machineSessions.authorization(input.sessionId, identity, input.nonce);
+        const operation = url.pathname.split("/").at(-1);
+        const state = machineSessions[operation](input.sessionId, identity, input.nonce);
         sendJson(response, 200, state, { ...securityHeaders(config), "cache-control": "no-store" });
         return;
       }
@@ -1773,7 +1773,8 @@ function configureSignaling(
                 const publication = registry.publication(grant.publisherPeerId, id, peer.roomId);
                 return publication ? [Object.freeze({ peerId: grant.publisherPeerId, ...publication })] : [];
               }))) });
-          }, () => machineSessionObservation(peer, roomEpochs.get(peer.roomId)?.membership || 1));
+          }, () => machineSessionObservation(peer, roomEpochs.get(peer.roomId)?.membership || 1),
+          () => { leave(); return !registry.members(peer.roomId).includes(peer); });
       } catch {
         registry.leave(peer); socket.close(1008, "machine_session_unavailable"); return;
       }

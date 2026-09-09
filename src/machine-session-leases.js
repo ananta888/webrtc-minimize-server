@@ -51,15 +51,32 @@ export class MachineSessionLeases {
     this.#records.set(id, record); this.#arm(record);
     return this.#view(record);
   }
-  attach(id, member, stop, authorization = null, observation = null) {
+  attach(id, member, stop, authorization = null, observation = null, detach = null) {
     const record = this.#records.get(id);
     if (!record || record.member || typeof member !== "function" || typeof stop !== "function"
       || !this.live(id) || this.#clock() >= record.createdAt + 30_000) fail("machine_session_unavailable", 401);
-    if ([authorization, observation].some(port => port !== null && typeof port !== "function")) {
+    if ([authorization, observation, detach].some(port => port !== null && typeof port !== "function")) {
       fail("machine_session_unavailable", 401);
     }
     record.member = member; record.stop = stop; record.authorization = authorization;
-    record.observation = observation; this.#arm(record);
+    record.observation = observation; record.detach = detach; this.#arm(record);
+  }
+  retire(id, identity, nonce) {
+    const binding = identity?.machineBinding, record = this.#records.get(id);
+    if (!sameBinding(binding, binding) || binding.protocolVersion !== "v2"
+      || typeof id !== "string" || !/^ms_[A-Za-z0-9_-]{32}$/.test(id)
+      || typeof nonce !== "string" || !/^[a-f0-9]{32}$/.test(nonce)
+      || record && !sameBinding(record.binding, binding)) fail("machine_lease_scope_invalid", 401);
+    if (record?.member) {
+      // Keep occupancy on an uncertain detach. Closing a WebSocket alone does
+      // not prove the registry removed the old peer synchronously.
+      let detached = false;
+      try { detached = record.detach?.() === true; } catch { /* Bounded denial below. */ }
+      if (!detached) fail("machine_session_retirement_unconfirmed", 503);
+    }
+    this.close(id, "machine_session_hub_retired");
+    return Object.freeze({ schema: "ananta.meet-session-retired.v1", nonce, sessionId: id,
+      binding: Object.freeze({ ...binding }), retired: true });
   }
   authorization(id, identity, nonce) {
     return this.#inspect(id, identity, nonce, "authorization", "ananta.meet-authorization.v1");
