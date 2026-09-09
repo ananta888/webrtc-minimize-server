@@ -146,3 +146,18 @@ der private Relay-von-Beginn-Adapter mit tatsächlichen Session-Credentials
 verwendet. Unveränderter automatischer Worker-Fallback und der isolierte
 Gesamtcheck folgen separat. Kein öffentlicher NAT-/TURN-TLS-, GPU-, Soak-
 oder Produktionsfreigabenachweis und keine Änderung an Serving-Dateien.
+
+Der separate unveränderte Chromium-Worker-Fallback bestand danach ebenfalls
+über UDP und TCP (zusammen 130,28 s). In diesen beiden Workern gab es keinen
+Relay-von-Beginn-Adapter und keine zusätzlichen Adapter-Quellmounts. Nur die
+Gegenstelle nutzte weiterhin den privaten Testadapter. Beide Bildschirme,
+ausgewählte Relay-Paare mit steigenden Bytes und unabhängiger Stopp bestanden;
+abschließender Widerruf nach 818,64 / 217,24 ms. Das beweist weder normalen
+Firefox-Fallback noch externe NAT-Erreichbarkeit.
+
+Der isolierte `npm run check` gegen `62b786d` ist abgeschlossen:
+765 Frontendtests, Build, Go-Prüfungen und statische Prüfungen erfolgreich;
+821 Node-Tests bestanden, null Fehler, zwei explizite Skips (307,637 s für
+Node). Weitere 14 externe Infrastruktur-Gates wurden mangels ihres jeweiligen
+expliziten Laufprofils übersprungen, nicht als bestanden gewertet. Der private
+Worktree ließ die laufende Instanz und deren Serving-Dateien unverändert.
