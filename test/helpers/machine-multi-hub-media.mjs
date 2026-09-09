@@ -8,9 +8,9 @@ const blue = pixel => pixel?.[2] > 170 && pixel[0] < 70 && pixel[1] < 70;
 
 export async function multiHubMedia(f) {
   await f.human.evaluate(installMultiPublisherObservation);
-  let step = "idle", publisher = null;
+  let step = "idle", publisher = null, floorObservation = null;
   return {
-    diagnostic() { return { step, publisher }; },
+    diagnostic() { return { step, publisher, ...(floorObservation ? { floor: floorObservation } : {}) }; },
     async close() {
       await f.human.evaluate(async () => { await window.__speakerFloor?.close(); await window.__multiPublisher.close(); });
     },
@@ -18,19 +18,40 @@ export async function multiHubMedia(f) {
       const page = f.human;
       if (input.command === "floor-start" && Object.keys(input).length === 1) {
         await page.locator(".nav-item").filter({ hasText: /^Live/ }).click();
+        await waitFixtureValue(page, peers => peers.every(peer => {
+          const element = [...document.querySelectorAll('.remote-media[data-source="screen"]')]
+            .find(el => el.dataset.peerId === peer);
+          const video = element?.querySelector("video");
+          return Boolean(video?.srcObject && video.readyState >= 2 && video.videoWidth);
+        }), peers, { timeout: 5000 });
         await page.evaluate(installSpeakerFloorObservation, peers);
         return { observing: true };
       }
       if (input.command === "floor-result" && Object.keys(input).length === 1) {
+        // The signed Hub reply has its own existing 25s budget. Only after
+        // reply correlation can source opening (10s) and four-second fixture
+        // PCM be expected to finish. Do not conflate inference and playback.
+        step = "floor-answer";
+        await page.locator("#chat-log").getByText("Synthetic Hub answer", { exact: false }).nth(1)
+          .waitFor({ timeout: 25000 });
+        step = "floor-observation";
         let result;
         await waitFixtureValue(page, () => window.__speakerFloor.snapshot(), undefined, {
           timeout: 18000, accept: value => {
+            const counter = (n, max = 3000) => Number.isInteger(n) && n >= 0 && n <= max ? n : null;
+            floorObservation = {
+              failed: value.failed === true, samples: counter(value.samples), overlap: counter(value.overlap),
+              max_gap_ms: counter(value.max_gap_ms, 60001), quiet_ms: counter(value.quiet_ms, 60001),
+              counts: Array.isArray(value.counts) && value.counts.length === 2 ? value.counts.map(n => counter(n)) : [],
+              active: Array.isArray(value.active) && value.active.length === 2 ? value.active.map(v => v === true) : [],
+            };
             if (value.failed || value.overlap) throw new Error("test_floor_observation_failed");
             result = value;
             return value.counts.every(count => count >= 3) && value.active.every(active => !active) && value.quiet_ms >= 300;
           },
         });
         await page.evaluate(() => window.__speakerFloor.close());
+        step = "idle";
         return result;
       }
       if (input.command === "consent" && Object.keys(input).length === 3

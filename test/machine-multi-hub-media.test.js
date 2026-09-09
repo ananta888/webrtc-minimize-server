@@ -106,3 +106,46 @@ test("failed consent diagnostic contains only a closed step and publisher index"
   assert.deepEqual(media.diagnostic(), { step: "consent-navigation", publisher: 0 });
   await media.close();
 });
+
+test("floor start waits for decoded screen rendering before pinning audio connections", async () => {
+  const steps = []; const ready = [false, true];
+  const media = await multiHubMedia({ human: {
+    async evaluate(fn, arg) {
+      if (arg === undefined) return;
+      assert.deepEqual(arg, peers);
+      if (fn.name === "installSpeakerFloorObservation") {
+        assert.equal(ready.length, 0); steps.push("pin"); return;
+      }
+      steps.push("render"); return ready.shift();
+    },
+    locator() { return { filter() { return { async click() { steps.push("navigate"); } }; } }; },
+  } });
+  assert.deepEqual(await media.command({ command: "floor-start" }, peers), { observing: true });
+  assert.deepEqual(steps, ["navigate", "render", "render", "pin"]);
+  await media.close();
+});
+
+test("floor result requires both actual turns and a stable final quiet window", async () => {
+  const state = { failed: false, overlap: 0, counts: [3, 3], active: [false, false], quiet_ms: 300 };
+  const samples = [{ ...state, counts: [3, 0] }, { ...state, quiet_ms: 20 }, state];
+  let reads = 0;
+  const media = await multiHubMedia({ human: { locator() { return {
+    getByText() { return { nth() { return { async waitFor(options) { assert.equal(options.timeout, 25000); } }; } }; },
+  }; }, async evaluate(fn) {
+    if (fn.toString().includes("__speakerFloor.snapshot")) { reads++; return samples.shift(); }
+  } } });
+  assert.deepEqual(await media.command({ command: "floor-result" }, peers), state);
+  assert.equal(reads, 3); await media.close();
+});
+
+for (const bad of [{ failed: true, overlap: 0 }, { failed: false, overlap: 1 }]) {
+  test(`floor result never accepts an incomplete observation or overlap: ${JSON.stringify(bad)}`, async () => {
+    const media = await multiHubMedia({ human: { locator() { return {
+      getByText() { return { nth() { return { async waitFor() {} }; } }; },
+    }; }, async evaluate(fn) {
+      if (fn.toString().includes("__speakerFloor.snapshot")) return bad;
+    } } });
+    await assert.rejects(media.command({ command: "floor-result" }, peers), /test_floor_observation_failed/);
+    await media.close();
+  });
+}

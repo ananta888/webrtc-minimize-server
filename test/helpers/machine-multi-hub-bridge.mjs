@@ -110,6 +110,11 @@ async function run() {
     }
   } catch (error) {
     reply({ bridge_error: "test_multi_bridge_failed", stage,
+      ...(["floor-start", "floor-result"].includes(stage) ? { floor_error: [
+        "test_floor_observer_binding_invalid", "test_floor_observer_connection_invalid",
+        "test_floor_observer_audio_unavailable", "test_floor_observation_failed",
+        "test_fixture_wait_deadline", "test_fixture_wait_non_value",
+      ].find(code => String(error.message).includes(code)) || "unclassified" } : {}),
       proxy: fixture?.proxyObservation(),
       ...(media ? { media: media.diagnostic(), timeout: error.name === "TimeoutError" } : {}),
       ...(error.message === "test_multi_screen_deadline" ? { observation: error.observation } : {}) }); process.exitCode = 1;
