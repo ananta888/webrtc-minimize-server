@@ -5,7 +5,7 @@ Aktivierung sind unterschiedliche Zustände. Die öffentliche Meet-Instanz melde
 bei der aktuellen Prüfung `admissionEnabled: false`: Noch kein produktiver
 KI-Beitritt. Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
 
-Die jüngste isolierte Gesamtprüfung auf Basis `dfa9829` mit nativer Szenenbasis
+Die frühere isolierte Gesamtprüfung auf Basis `dfa9829` mit nativer Szenenbasis
 und der Freigabe-Ablaufkorrektur endete mit **Exit 1**: 1.142 Frontendtests und
 1.039 Node-/Browsertests bestanden, ein Fehler und zwei Node-Skips
 (Node-Lauf: 455,910 Sekunden). Build, Typprüfung, Go-Unit/Vet und statische Gates
@@ -27,6 +27,23 @@ Der zusammengeführte Stand `fd77b6c` einschließlich des neutraleren Ablauftext
 bestand anschließend den isolierten Produktionsbuild in 15,455 Sekunden
 (1,59 MB initial; unveränderte Budgetwarnung) und die Todo-Validierung.
 Das ist kein nachträglich bestandener Gesamtcheck und kein Deployment.
+
+Die erneute priorisierte Kurzabnahme vom 9. September bestand **alle sechs
+Browserfälle in 59,352 Sekunden**. Geprüft wurde `47f9103` mit dem unveränderten
+isolierten Frontend von `fd77b6c`: Chromium und Firefox empfingen jeweils
+16.000 echte PCM-Samples im gemeinsamen Chat-/Screen-/Drei-Renewal-Dialog
+einschließlich Freigabeentzug. Avatarwechsel und unabhängige Sprachausgabe
+bestanden ebenfalls; letztere spielte jeweils 66.150 Samples ab, ohne
+menschlichen Capture oder Transformfehler. Die frühere Intermittenz wurde
+nicht reproduziert und ist damit nicht als kausal behoben einzustufen.
+
+Die zwischenzeitlich auf `origin/main` eingegangenen Commits `ebd78be` und
+`76628ab` dokumentieren zusätzlich einen **separaten** bestandenen Linux-
+Gesamtcheck (1.142 Frontendtests, 1.066 bestandene Nodefälle, vier Node-Skips).
+Diese externe Arbeitskopie und deren Prüfergebnis sind nicht mit dem hiesigen
+Kurzlauf oder der öffentlichen Installation gleichzusetzen. Ein aktueller
+öffentlicher GET bestätigt weiterhin `admissionEnabled: false`. Die laufend
+ausgelieferte lokale Browserdatei wurde bei dieser Prüfung nicht verändert.
 
 | Bereich | Vorhandener Meet-Pfad | Grenze |
 | --- | --- | --- |
