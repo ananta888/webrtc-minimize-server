@@ -36,6 +36,24 @@ Against the same private `c4ef486` frontend bytes:
 These are local synthetic technical observations, not Hub-reserved new runs,
 an elapsed two-hour test, GPU/public acceptance or a proven freeze repair.
 
+### Browser-runtime comparison boundary
+
+These fast tests use the companion's default native launcher and installed
+Playwright 1.62.1. Its manifest selects Chromium 151.0.7922.34 / Firefox 153.0;
+read-only inspection confirms the current local Chromium binary reports that
+151 version. The exact Ananta browser image `5d4be51c5dda` instead reports
+Playwright 1.58.0 and headless Chromium 145.0.7632.6. This is a current technical
+inspection, not a retroactively reserved version receipt for past native tests.
+Equal frontend bytes do not make these the same browser runtime, so the native
+passes do not exclude a Chromium-145-specific failure.
+
+The existing `machine-peer-driver.mjs` adapter intentionally requires the
+matching 1.58 remote client. Do not silently downgrade app dependencies, connect
+the 1.62 client to that server, upgrade an active test image or infer a repair
+from this version difference. After the frozen diagnostic finishes, prefer a
+short same-runtime reproduction and explicitly bound version comparisons with
+unchanged source/authority/media limits before another long acceptance.
+
 ## Test-only pipeline probe
 
 With the explicit `MEET_TEST_SFRAME_PIPELINE_PROBE=1` diagnostic opt-in,
