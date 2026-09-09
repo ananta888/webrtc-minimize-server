@@ -7,6 +7,9 @@ const fail = (code, status) => { throw new MachineLeaseError(code, status); };
 const bindingKeys = ["issuer", "subject", "roomId", "taskId", "tenantId", "projectId",
   "protocolVersion", "runtimeId", "hubSessionId", "capabilitySet"];
 const sameBinding = (a, b) => bindingKeys.every(key => typeof a?.[key] === "string" && a[key] === b?.[key]);
+const taskOwnerKeys = ["issuer", "tenantId", "projectId", "taskId"];
+const sameV2Task = (a, b) => a.protocolVersion === "v2" && b.protocolVersion === "v2"
+  && taskOwnerKeys.every(key => a[key] === b[key]);
 
 /** Ephemeral session ownership, not Hub authority. Every renewal needs a newly
  * verified Hub grant AND device proof. No membership or receive-right expansion. */
@@ -35,7 +38,10 @@ export class MachineSessionLeases {
       || identity.machineExpiresAt > now + 600_000) fail("machine_lease_scope_invalid", 401);
     this.prune();
     if (this.#records.size >= this.#maxSessions) fail("machine_lease_capacity", 429);
-    if ([...this.#records.values()].some(r => sameBinding(r.binding, binding) && r.fingerprint === fingerprint)) {
+    // Device proofs authenticate a holder; a different device is not authority
+    // to run a second copy of the same Hub Task, even before either ticket joins.
+    if ([...this.#records.values()].some(r => sameV2Task(r.binding, binding)
+      || (sameBinding(r.binding, binding) && r.fingerprint === fingerprint))) {
       fail("machine_session_already_active");
     }
     const id = `ms_${randomBytes(24).toString("base64url")}`;

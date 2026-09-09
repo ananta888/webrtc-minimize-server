@@ -61,3 +61,40 @@ test("absolute session cap cannot be moved by repeated short grants", t => {
   assert.throws(() => f.leases.renew(lease.sessionId, lease.generation,
     { ...f.identity, machineExpiresAt: lease.expiresAt + 100_000 }, "device"), /deadline_invalid/);
 });
+
+test("one live v2 Hub Task cannot acquire a second device or changed runtime binding", t => {
+  const leases = new MachineSessionLeases({ clock: () => 1000 }); t.after(() => leases.destroy());
+  const binding = { issuer: "https://synthetic.example.test", subject: "machine", roomId: "room-one",
+    taskId: "task-one", tenantId: "tenant-one", projectId: "project-one", protocolVersion: "v2",
+    runtimeId: "runtime-one", hubSessionId: "session-one", capabilitySet: "screen.publish" };
+  const identity = { machineBinding: binding, machineExpiresAt: 121000 };
+  const first = leases.issue(identity, "device-one");
+  // Reserve before WebSocket attach, so concurrent admission cannot race tickets.
+  for (const mutation of [{}, { runtimeId: "runtime-two" }, { hubSessionId: "session-two" },
+    { roomId: "room-two" }, { capabilitySet: "chat.send" }, { subject: "other" }]) {
+    assert.throws(() => leases.issue({ ...identity, machineBinding: { ...binding, ...mutation } }, "device-two"),
+      /machine_session_already_active/);
+  }
+  let stopped = 0;
+  leases.attach(first.sessionId, () => true, () => { stopped++; });
+  assert.throws(() => leases.issue(identity, "device-two"), /machine_session_already_active/);
+  assert.equal(leases.live(first.sessionId), true); assert.equal(stopped, 0);
+  // Existing authoritative close releases capacity; it does not issue a grant.
+  leases.close(first.sessionId); assert.equal(stopped, 1);
+  assert.notEqual(leases.issue(identity, "device-two").sessionId, first.sessionId);
+});
+
+test("v2 task occupancy is scoped by issuer, tenant, project and task; v1 stays compatible", t => {
+  const leases = new MachineSessionLeases({ clock: () => 1000 }); t.after(() => leases.destroy());
+  const binding = { issuer: "https://synthetic.example.test", subject: "machine", roomId: "room-one",
+    taskId: "task-one", tenantId: "tenant-one", projectId: "project-one", protocolVersion: "v2",
+    runtimeId: "runtime-one", hubSessionId: "session-one", capabilitySet: "screen.publish" };
+  const identity = { machineBinding: binding, machineExpiresAt: 121000 };
+  leases.issue(identity, "device-one");
+  for (const field of ["issuer", "tenantId", "projectId", "taskId"]) {
+    assert.ok(leases.issue({ ...identity, machineBinding: { ...binding, [field]: "different" } }, "device-one"));
+  }
+  const legacy = { ...identity, machineBinding: { ...binding, protocolVersion: "v1", runtimeId: "", hubSessionId: "" } };
+  leases.issue(legacy, "device-one"); leases.issue(legacy, "device-two");
+  assert.throws(() => leases.issue(legacy, "device-one"), /machine_session_already_active/);
+});
