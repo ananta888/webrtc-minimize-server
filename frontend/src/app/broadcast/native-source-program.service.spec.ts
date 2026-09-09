@@ -28,6 +28,20 @@ function fixture() {
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
+it("audio context requires the current controlled packager's explicit v3 capability", async () => {
+  const f = fixture();
+  try {
+    expect(f.service.audioContext()).toBeNull();
+    await f.service.controller.start(request, "user-action");
+    expect(f.service.audioContext()).toBeNull();
+    const capability = { ...f.candidates()[0].capability, capabilityVersion: 3, sourceAudioControlVersion: 1 };
+    f.candidates.set([{ id: packagerId, capability }]);
+    expect(f.service.audioContext()?.program.programId).toBe(program.programId);
+    f.candidates.set([{ id: "pkr_bbbbbbbbbbbbbbbb", capability }]);
+    expect(f.service.audioContext()).toBeNull();
+  } finally { f.service.ngOnDestroy(); }
+});
+
 it("composes bounded HTTP control only, exposes the confirmed source reference, and stops both endpoints", async () => {
   const f = fixture();
   try {

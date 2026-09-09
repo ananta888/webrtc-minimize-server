@@ -272,6 +272,9 @@ export class BoundedBroadcastQueue {
 
 const ABUSE_ACTIONS = Object.freeze({
   "playback-probe": Object.freeze({ maximum: 30, windowMs: 60_000 }),
+  // Known local playback sessions, not caller-supplied IDs or shared NAT IPs.
+  // Subsecond HLS part/playlist polling needs a media budget, not a probe budget.
+  "playback-media": Object.freeze({ maximum: 1200, windowMs: 60_000 }),
   "credential-attempt": Object.freeze({ maximum: 10, windowMs: 5 * 60_000 }),
   "catalog-read": Object.freeze({ maximum: 60, windowMs: 60_000 }),
   "start-stop": Object.freeze({ maximum: 12, windowMs: 10 * 60_000 }),

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "type": "source-program-audio-rejected",
+  "commandId": "aud_aaaaaaaaaaaaaaaa",
+  "assignmentId": "asn_aaaaaaaaaaaaaaaa",
+  "programId": "prg_aaaaaaaaaaaaaaaa",
+  "programEpoch": 1,
+  "leaseId": "lea_aaaaaaaaaaaaaaaa",
+  "fencingRevision": 1,
+  "observedAt": 1800000000000,
+  "reasonCode": "AUDIO_NOT_APPLIED"
+}

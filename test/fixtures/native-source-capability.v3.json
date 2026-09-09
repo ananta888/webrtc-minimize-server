@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "type": "capability",
+  "capability": {
+    "capabilityVersion": 3,
+    "sourcePrograms": true,
+    "agentId": "pkr_aaaaaaaaaaaaaaaa",
+    "tenantId": "tn_0000000000000000",
+    "ownerSubjectRef": "sub_0000000000000000",
+    "deviceRef": "dev_0000000000000000",
+    "agentVersion": "0.10.0",
+    "ffmpegVersion": "6.1",
+    "videoEncoders": [
+      "libx264"
+    ],
+    "audioEncoders": [
+      "aac"
+    ],
+    "hardwareClass": "medium",
+    "cpuClass": "medium",
+    "gpuClass": "none",
+    "uploadClass": "5-15mbit",
+    "energyClass": "ac",
+    "health": "healthy",
+    "maximumRenditions": 2,
+    "maximumPixelsPerSecond": 27648000,
+    "consentedRoomIds": [
+      "room-alpha"
+    ],
+    "observedAt": 1800000000000,
+    "expiresAt": 1800000030000,
+    "sourceAudioControlVersion": 1
+  }
+}

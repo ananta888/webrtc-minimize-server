@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/source-audio-rejected.v1.schema.json",
+  "title": "Scoped native audio selection rejection; no new authority",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "type",
+    "commandId",
+    "assignmentId",
+    "programId",
+    "leaseId",
+    "programEpoch",
+    "fencingRevision",
+    "observedAt",
+    "reasonCode"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "type": {
+      "const": "source-program-audio-rejected"
+    },
+    "commandId": {
+      "type": "string",
+      "pattern": "^aud_[A-Za-z0-9_-]{16,64}$"
+    },
+    "assignmentId": {
+      "type": "string",
+      "pattern": "^asn_[A-Za-z0-9_-]{16,64}$"
+    },
+    "programId": {
+      "type": "string",
+      "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+    },
+    "leaseId": {
+      "type": "string",
+      "pattern": "^lea_[A-Za-z0-9_-]{16,64}$"
+    },
+    "programEpoch": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "fencingRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "observedAt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "reasonCode": {
+      "const": "AUDIO_NOT_APPLIED"
+    }
+  }
+}

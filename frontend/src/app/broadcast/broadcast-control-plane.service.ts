@@ -10,6 +10,7 @@ import { BroadcastBrowserPortError, BroadcastProgramRef } from "./broadcast-port
 import { parseBroadcastDirectoryEntry } from "./broadcast-directory.service";
 import { NativePackagerHandoffControl, parseNativeHandoffControl } from "./native-packager-handoff-control";
 import { NativeSceneResult, NativeSceneSelection, parseNativeSceneResult } from "./native-source-scene-contract";
+import type { NativeAudioResult, NativeAudioSelection } from "./native-source-audio-contract";
 import {
   WhipAuthorization,
   WhipAuthorizationPort,
@@ -228,6 +229,16 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
     const value = await json(response, "invalid_native_scene_response", 16384);
     signal.throwIfAborted();
     return parseNativeSceneResult(value, program);
+  }
+
+  async nativeSourceAudio(program: BroadcastProgramRef, selection: NativeAudioSelection | null, signal: AbortSignal): Promise<NativeAudioResult> {
+    signal.throwIfAborted();
+    const { requestNativeSourceAudio } = await import("./native-source-audio-http");
+    signal.throwIfAborted();
+    return requestNativeSourceAudio(program, selection, signal, {
+      fingerprint: () => this.device.fingerprint(), authorizationHeader: () => this.auth.authorizationHeader(),
+      readJson: json, responseError: requestError,
+    });
   }
 
   /** Explicit v4 entry: no local media, legacy ingress or source consent is implied. */

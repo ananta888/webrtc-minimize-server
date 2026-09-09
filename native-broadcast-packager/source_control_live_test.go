@@ -32,6 +32,7 @@ func TestLiveTrustedSourceControlSocket(t *testing.T) {
 		t.Run(ending, func(t *testing.T) {
 			c, request, _, lease := sourceOwnerFixture(t)
 			c.sendOverride = nil
+			c.api = nativeLoopbackAPI(t)
 			c.cfg.ffmpegPath, c.cfg.sourceBudget, c.cfg.sourcePrograms = ffmpeg, "compact-v1", ending != "disabled"
 			c.healthProbe = func() string { return "healthy" }
 			c.setConsentedRooms(nil)
@@ -80,11 +81,20 @@ func TestLiveTrustedSourceControlSocket(t *testing.T) {
 			read := func() map[string]any {
 				t.Helper()
 				_ = ws.SetReadDeadline(time.Now().Add(5 * time.Second))
-				var v map[string]any
-				if err := ws.ReadJSON(&v); err != nil {
-					t.Fatal("control read", err)
+				for i := 0; i < 32; i++ {
+					var v map[string]any
+					if err := ws.ReadJSON(&v); err != nil {
+						t.Fatal("control read", err)
+					}
+					// Audio's real SDP offer can emit asynchronous answer/ICE messages.
+					// Do not confuse those with command receipts or ignore other events.
+					if v["type"] == "trusted-source-packager-signal" && v["sourceLeaseId"] == "sls_bbbbbbbbbbbbbbbb" {
+						continue
+					}
+					return v
 				}
-				return v
+				t.Fatal("control signal budget")
+				return nil
 			}
 			nonce := strings.Repeat("a", 43)
 			write(map[string]any{"version": 1, "type": "packager-challenge", "nonce": nonce, "expiresAt": time.Now().Add(10 * time.Second).UnixMilli()})
@@ -106,7 +116,7 @@ func TestLiveTrustedSourceControlSocket(t *testing.T) {
 			}
 			capability := reported["capability"].(map[string]any)
 			if c.cfg.sourcePrograms {
-				if capability["capabilityVersion"] != float64(2) || capability["sourcePrograms"] != true {
+				if capability["capabilityVersion"] != float64(3) || capability["sourcePrograms"] != true || capability["sourceAudioControlVersion"] != float64(1) {
 					t.Fatal("enabled control omitted explicit source capability")
 				}
 			} else if capability["capabilityVersion"] != float64(1) || capability["sourcePrograms"] != nil {
@@ -148,6 +158,7 @@ func TestLiveTrustedSourceControlSocket(t *testing.T) {
 			}
 			lease.IssuedAt, lease.ExpiresAt = time.Now().UnixMilli(), time.Now().Add(5*time.Second).UnixMilli()
 			exerciseSourceSceneSocket(t, request, write, read)
+			exerciseSourceAudioSocket(t, request, lease, write, read)
 			write(map[string]any{"version": 1, "type": "trusted-source-prepare", "lease": lease})
 			if read()["state"] != "receiver-prepared" {
 				t.Fatal("v4 source bootstrap failed")

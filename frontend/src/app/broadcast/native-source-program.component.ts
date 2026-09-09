@@ -2,10 +2,11 @@ import { ChangeDetectionStrategy, Component, computed, input, signal } from "@an
 import { NativeSourceProgramService } from "./native-source-program.service";
 import type { NativeSourceProgramRequest } from "./native-source-program-controller";
 import { NativeSourceSceneComponent } from "./native-source-scene.component";
+import { NativeSourceAudioComponent } from "./native-source-audio.component";
 
 @Component({
   selector: "app-native-source-program", standalone: true,
-  imports: [NativeSourceSceneComponent],
+  imports: [NativeSourceSceneComponent, NativeSourceAudioComponent],
   templateUrl: "./native-source-program.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

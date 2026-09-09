@@ -38,7 +38,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-const agentVersion = "0.9.0"
+const agentVersion = "0.10.0"
 
 var buildRevision = "unknown"
 var buildTimestamp = "unknown"
@@ -486,6 +486,7 @@ func createWebRTCAPI() (*webrtc.API, error) {
 }
 
 type serverMessage struct {
+	SourceAudio     json.RawMessage                 `json:"-"`
 	SourceScene     json.RawMessage                 `json:"-"`
 	SourceProgram   json.RawMessage                 `json:"-"`
 	SourceSignal    *trustedsframe.SourcePeerSignal `json:"-"`
@@ -568,8 +569,9 @@ func (c *client) capabilityMessage() map[string]any {
 		"consentedRoomIds": rooms, "observedAt": now, "expiresAt": now + 30000,
 	}
 	if c.cfg.sourcePrograms {
-		report["capabilityVersion"] = 2
+		report["capabilityVersion"] = 3
 		report["sourcePrograms"] = true
+		report["sourceAudioControlVersion"] = 1
 		if rooms == nil {
 			report["consentedRoomIds"] = []string{}
 		}
@@ -687,6 +689,10 @@ func (c *client) connectUsingDialer(ctx context.Context, enroll bool, dialer *we
 			return decodeErr
 		}
 		switch message.Type {
+		case "source-program-audio", "source-program-audio-query":
+			if err = c.handleSourceAudio(message); err != nil {
+				return err
+			}
 		case "source-program-scene", "source-program-scene-query":
 			if err = c.handleSourceScene(message); err != nil {
 				return err

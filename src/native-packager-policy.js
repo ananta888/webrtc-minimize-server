@@ -75,7 +75,12 @@ export function supportsNativeSourceControlV1(agentVersion) {
 
 // Applied to the normalized authenticated report, never a version guess.
 export function supportsNativeSourceSignalV1(capability) {
-  return capability?.capabilityVersion === 2 && capability.sourcePrograms === true;
+  return (capability?.capabilityVersion === 2 || capability?.capabilityVersion === 3 && capability.sourceAudioControlVersion === 1)
+    && capability.sourcePrograms === true;
+}
+
+export function supportsNativeSourceAudioV1(capability) {
+  return capability?.capabilityVersion === 3 && capability.sourcePrograms === true && capability.sourceAudioControlVersion === 1;
 }
 
 // Released protocol generation plus explicit local source-program opt-in.
@@ -92,10 +97,12 @@ export function normalizeNativePackagerCapability(value, now = Date.now()) {
     "uploadClass", "energyClass", "health", "maximumRenditions", "maximumPixelsPerSecond",
     "consentedRoomIds", "observedAt", "expiresAt",
   ]);
-  if (value?.capabilityVersion === 2) fields.add("sourcePrograms");
+  if ([2, 3].includes(value?.capabilityVersion)) fields.add("sourcePrograms");
+  if (value?.capabilityVersion === 3) fields.add("sourceAudioControlVersion");
   if (!value || typeof value !== "object" || Array.isArray(value)
     || Object.keys(value).length !== fields.size || Object.keys(value).some((key) => !fields.has(key))
-    || ![1, 2].includes(value.capabilityVersion) || value.capabilityVersion === 2 && typeof value.sourcePrograms !== "boolean"
+    || ![1, 2, 3].includes(value.capabilityVersion) || [2, 3].includes(value.capabilityVersion) && typeof value.sourcePrograms !== "boolean"
+    || value.capabilityVersion === 3 && (value.sourcePrograms !== true || value.sourceAudioControlVersion !== 1)
     || !ID.test(value.agentId || "") || !TENANT.test(value.tenantId || "")
     || !SUBJECT.test(value.ownerSubjectRef || "") || !/^dev_[A-Za-z0-9_-]{16,64}$/.test(value.deviceRef || "")
     || !VERSION.test(value.agentVersion || "") || !VERSION.test(value.ffmpegVersion || "")
@@ -119,7 +126,7 @@ export function normalizeNativePackagerCapability(value, now = Date.now()) {
     || value.observedAt > now + 5_000 || value.expiresAt <= now || value.expiresAt > value.observedAt + 60_000) {
     fail("invalid_native_packager_capability");
   }
-  if (value.capabilityVersion === 2 && (!/^pkr_[A-Za-z0-9_-]{16,64}$/.test(value.agentId)
+  if ([2, 3].includes(value.capabilityVersion) && (!/^pkr_[A-Za-z0-9_-]{16,64}$/.test(value.agentId)
     || value.observedAt < 1 || value.expiresAt < 1
     || !value.videoEncoders.length || new Set(value.videoEncoders).size !== value.videoEncoders.length
     || !value.audioEncoders.length || new Set(value.audioEncoders).size !== value.audioEncoders.length)) {

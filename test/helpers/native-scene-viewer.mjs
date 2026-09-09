@@ -34,13 +34,17 @@ export async function decodedScene(page, color, afterTime = 0) {
 export async function sceneViewerObservation(page) {
   return page.evaluate(() => {
     const v = document.querySelector('video[aria-label="Live-Broadcast"]');
-    const candidate = document.querySelector("#broadcast-open-error")?.textContent?.trim().split(".")[0];
-    const errorCode = typeof candidate === "string" && /^broadcast_[a-z_]{1,80}$/.test(candidate) ? candidate : null;
-    if (!v) return { exists: false, errorCode };
+    const publicCode = selector => {
+      const candidate = document.querySelector(selector)?.textContent?.trim().split(".")[0];
+      return typeof candidate === "string" && /^broadcast_[a-z_]{1,80}$/.test(candidate) ? candidate : null;
+    };
+    const errorCode = publicCode("#broadcast-open-error");
+    const playerErrorCode = publicCode("app-broadcast-player .player-message[role=alert] span");
+    if (!v) return { exists: false, errorCode, playerErrorCode };
     const c = document.createElement("canvas"); c.width = c.height = 1; const ctx = c.getContext("2d");
     let rgb = [];
     if (v.readyState >= 2) { ctx.drawImage(v, Math.floor(v.videoWidth / 2), Math.floor(v.videoHeight / 2), 1, 1, 0, 0, 1, 1); rgb = [...ctx.getImageData(0, 0, 1, 1).data]; }
-    return { exists: true, errorCode, time: v.currentTime, frames: v.getVideoPlaybackQuality().totalVideoFrames, ready: v.readyState,
+    return { exists: true, errorCode, playerErrorCode, time: v.currentTime, frames: v.getVideoPlaybackQuality().totalVideoFrames, ready: v.readyState,
       paused: v.paused, ended: v.ended, rgb, lifecycle: document.querySelector("app-broadcast-player [data-state]")?.getAttribute("data-state") };
   });
 }

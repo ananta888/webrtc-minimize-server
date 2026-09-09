@@ -14,7 +14,8 @@ import { NativeSourceProgramController, NativeSourceProgramView } from "./native
 export class NativeSourceProgramService implements OnDestroy {
   readonly view = signal<NativeSourceProgramView>({ phase: "idle", active: false, program: null, error: "" });
   readonly candidates = computed(() => this.packagers.eligible(this.room.roomId())
-    .filter(p => p.capability?.capabilityVersion === 2 && p.capability.sourcePrograms === true
+    .filter(p => (p.capability?.capabilityVersion === 2 || p.capability?.capabilityVersion === 3 && p.capability.sourceAudioControlVersion === 1)
+      && p.capability?.sourcePrograms === true
       && Number.isSafeInteger(p.capability.maximumRenditions) && p.capability.maximumRenditions >= 1
       && p.capability.maximumRenditions <= 3));
   readonly requestProgram = computed(() => ["live", "degraded"].includes(this.view().phase) ? this.view().program : null);
@@ -63,6 +64,12 @@ export class NativeSourceProgramService implements OnDestroy {
   sceneContext(): { key: string; program: NonNullable<NativeSourceProgramView["program"]> } | null {
     const key = this.context(), program = this.requestProgram();
     return key && program ? { key, program } : null;
+  }
+  audioContext(): { key: string; program: NonNullable<NativeSourceProgramView["program"]> } | null {
+    const context = this.sceneContext(), id = this.controller.controlledPackagerId();
+    const capability = this.candidates().find(p => p.id === id)?.capability;
+    return context && capability?.capabilityVersion === 3 && capability.sourceAudioControlVersion === 1
+      ? { ...context, key: JSON.stringify([context.key, id]) } : null;
   }
   ngOnDestroy(): void { clearInterval(this.timer); this.controller.destroy(); }
 }

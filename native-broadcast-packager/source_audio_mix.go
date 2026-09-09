@@ -34,6 +34,7 @@ type sourceAudioMixer struct {
 	pcmBytes     int
 	cursor       int64
 	closed       bool
+	revision     uint64
 	programOwned bool
 	sum          [sourceAudioMixSamples * 2]int64
 	output       [sourceAudioMixSamples * 4]byte
@@ -49,6 +50,7 @@ type sourceAudioMixInput struct {
 	lastEnd int64
 	started bool
 	closed  bool
+	muted   bool
 }
 
 func newSourceAudioMixer(cfg sourceAudioMixConfig) (*sourceAudioMixer, error) {
@@ -58,7 +60,7 @@ func newSourceAudioMixer(cfg sourceAudioMixConfig) (*sourceAudioMixer, error) {
 		cfg.authorized == nil || !cfg.authorized() {
 		return nil, errors.New("source audio mixer config denied")
 	}
-	return &sourceAudioMixer{cfg: cfg, sources: make(map[*sourceAudioMixInput]struct{}), cursor: cfg.startSample}, nil
+	return &sourceAudioMixer{cfg: cfg, sources: make(map[*sourceAudioMixInput]struct{}), cursor: cfg.startSample, revision: 1}, nil
 }
 
 func validSourceAudioGain(left, right int) bool {
@@ -79,6 +81,9 @@ func (m *sourceAudioMixer) add(cfg sourceAudioMixInputConfig, programTime bool) 
 	if (cfg.mapTimestamp == nil && !programTime) || (cfg.mapTimestamp != nil && programTime) || cfg.authorized == nil || !cfg.authorized() || !validSourceAudioGain(cfg.left, cfg.right) ||
 		len(m.sources) >= m.cfg.maxSources || m.pcmBytes+m.cfg.queueSamples*4 > m.cfg.maxPCMBytes {
 		return nil, errors.New("source audio mixer admission denied")
+	}
+	if !m.advanceRevisionLocked() {
+		return nil, errors.New("source audio mixer revision exhausted")
 	}
 	s := &sourceAudioMixInput{mixer: m, cfg: cfg, fence: &sourceRenderFence{allowed: cfg.authorized}, pcm: make([]int16, m.cfg.queueSamples*2)}
 	m.sources[s] = struct{}{}
@@ -144,7 +149,12 @@ func (s *sourceAudioMixInput) SetGain(left, right int) error {
 	if !validSourceAudioGain(left, right) {
 		return errors.New("source audio mixer gain denied")
 	}
-	s.cfg.left, s.cfg.right = left, right
+	if s.cfg.left != left || s.cfg.right != right {
+		if !m.advanceRevisionLocked() {
+			return errors.New("source audio mixer revision exhausted")
+		}
+		s.cfg.left, s.cfg.right = left, right
+	}
 	return nil
 }
 
@@ -179,8 +189,10 @@ func (m *sourceAudioMixer) RenderGuarded(consume func(int64, []byte, sourceRende
 		guard.add(s.fence)
 		for i := 0; i < sourceAudioMixSamples; i++ {
 			index := int((m.cursor+int64(i))%int64(m.cfg.queueSamples)) * 2
-			m.sum[i*2] += int64(s.pcm[index]) * int64(s.cfg.left)
-			m.sum[i*2+1] += int64(s.pcm[index+1]) * int64(s.cfg.right)
+			if !s.muted {
+				m.sum[i*2] += int64(s.pcm[index]) * int64(s.cfg.left)
+				m.sum[i*2+1] += int64(s.pcm[index+1]) * int64(s.cfg.right)
+			}
 			s.pcm[index], s.pcm[index+1] = 0, 0
 		}
 	}
@@ -200,7 +212,7 @@ func (m *sourceAudioMixer) RenderGuarded(consume func(int64, []byte, sourceRende
 			clear(m.output[:])
 		}
 	}
-	if !m.cfg.authorized() {
+	if m.closed || !m.cfg.authorized() {
 		m.closeLocked()
 		return errors.New("source audio mixer output denied")
 	}
@@ -223,6 +235,9 @@ func (s *sourceAudioMixInput) closeLocked() {
 	s.cfg.mapTimestamp, s.cfg.authorized = nil, nil
 	delete(s.mixer.sources, s)
 	s.mixer.pcmBytes -= s.mixer.cfg.queueSamples * 4
+	if !s.mixer.closed {
+		s.mixer.advanceRevisionLocked()
+	}
 }
 
 func (s *sourceAudioMixInput) Close() {

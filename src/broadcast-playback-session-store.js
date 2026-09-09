@@ -177,17 +177,30 @@ export class BroadcastPlaybackSessionStore {
     });
   }
 
-  async authorize({ cookieHeader, method, resourceRef, file, query = "", origin, now = Date.now() }) {
+  #requestSession({ cookieHeader, method, resourceRef, file, query = "", range = "", origin, now = Date.now() }) {
     if (!new Set(["GET", "HEAD"]).has(method) || !RESOURCE.test(resourceRef || "")
-      || !MEDIA_FILE.test(file || "") || (origin && origin !== this.#origin) || !Number.isSafeInteger(now)) notFound();
+      || !MEDIA_FILE.test(file || "") || (origin && origin !== this.#origin) || !Number.isSafeInteger(now)
+      || typeof range !== "string" || range && !/^bytes=\d{0,16}-\d{0,16}$/.test(range)) notFound();
     this.#prune(now);
     const session = cookieEntries(cookieHeader)
-      .map(([, value]) => this.#sessions.get(value))
-      .find((value) => value?.resourceRef === resourceRef);
+      .map(([name, value]) => { const session = this.#sessions.get(value); return session?.cookieName === name ? session : undefined; })
+      .find(value => value?.resourceRef === resourceRef);
     if (!session || session.expiresAt <= now) notFound();
     const manifest = MANIFEST_FILE.test(file);
     const normalizedQuery = parseQuery(query, manifest);
     const path = `/broadcast/play/${resourceRef}`;
+    return { session, manifest, normalizedQuery, path, resourceRef, file, now };
+  }
+
+  /** Cheap rate-bucket identity only. A known session can still have a revoked
+   * grant; authorize() must independently validate EVERY forwarded request. */
+  rateLimitKey(input) {
+    try { return this.#requestSession(input).session.sessionId; }
+    catch { return null; }
+  }
+
+  async authorize(input) {
+    const { session, manifest, normalizedQuery, path, resourceRef, file, now } = this.#requestSession(input);
     try {
       await this.#authority.authorizeGatewayBearer(session.authorizationHeader, {
         action: manifest ? "playback:manifest" : "playback:segment",

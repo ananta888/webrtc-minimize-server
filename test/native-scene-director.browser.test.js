@@ -71,7 +71,11 @@ for (const multiple of [false, true]) test(multiple
   if (multiple) await page.locator("app-native-source-scene").getByRole("checkbox", { name: /Bildschirm/ }).check();
   await confirm(page, () => page.locator("#native-scene-apply").click());
   await page.locator("#native-scene-status", { hasText: "neu abfragen" }).waitFor();
-  const red = multiple ? await decodedSceneTiles(viewer, ["red", "blue"]) : await decodedScene(viewer, "red", initial.time + 1);
+  const red = await (multiple ? decodedSceneTiles(viewer, ["red", "blue"]) : decodedScene(viewer, "red", initial.time + 1)).catch(async error => {
+    t.diagnostic(JSON.stringify({ stage: "selected-source-output", initial, viewer: await sceneViewerObservation(viewer),
+      agentAlive: f.agent.alive(), originAlive: f.gateway.alive(), observation: f.observation }));
+    throw error;
+  });
   await sources.locator("li", { hasText: "Sender aktiv" }).filter({ hasText: "Kamera" })
     .getByRole("button", { name: "Broadcast-Quelle sofort stoppen", exact: true }).click();
   const revoked = await (multiple ? decodedSceneTiles(viewer, ["slate", "blue"]) : decodedScene(viewer, "slate", red.time + 1)).catch(async error => {

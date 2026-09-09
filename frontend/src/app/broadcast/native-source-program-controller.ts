@@ -32,6 +32,11 @@ interface ActiveProgram {
 
 /** Control only. No capture, keys, PeerConnection, automatic consent or source restart. */
 export class NativeSourceProgramController {
+  controlledPackagerId(): string | null {
+    const active = this.active;
+    return !this.destroyed && active && !active.cancelled && active.context === this.ports.context()
+      && ["live", "degraded"].includes(this.phase) ? active.assignment?.packagerId ?? null : null;
+  }
   private active: ActiveProgram | null = null;
   private phase: NativeSourceProgramView["phase"] = "idle";
   private error = "";

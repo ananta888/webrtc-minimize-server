@@ -2,6 +2,45 @@
 
 ## Aktueller Arbeitsstand: durchgängiger Wiederanlauf bestanden
 
+Ein späterer Audioausgangstest grenzte einen konkreten HLS-Stillstand auf das
+[falsche Ratebudget für gültige Wiedergabesitzungen](broadcast-playback-rate-budgets.md)
+ein. Nach dessen Korrektur bestehen beide echten Szenenfälle und der neue
+Audioausgangstest gemeinsam (115,350 s). Das beweist nicht nachträglich die
+Ursache aller folgenden historischen CI-Fehler oder des separaten langen
+Ananta-WebRTC-Laufs. Die gemeinsame isolierte Prüfung der aktuellen Arbeitskopie
+bestand anschließend: Exit 0, 1.209 Frontendtests, 1.143 Node-/Browserfälle,
+null Fehler und vier Node-Skips (513,191 s). Beide Szenenfälle bestanden darin
+in 25,706/27,587 s. 14 externe Gates und der Image-Scan wurden übersprungen;
+noch kein neuer Rollout.
+
+### Neuere Regression: nicht durchgängig stabil
+
+Der nachfolgende CI-Lauf `34391296035` für `bbc526f` ist **fehlgeschlagen**:
+1.112 Node-/Browserfälle bestanden, zwei scheiterten, vier wurden übersprungen.
+Neben der separaten Compose-Prüfung scheiterte der Einzelquellenfall beim Warten
+auf rote dekodierte Kamerapixel. Der Zweiquellen-Wiederanlauf und der separate
+authentisierte Ananta-TURN-Dialog bestanden; Docker und Live-Identity wurden
+wegen des Testfehlers nicht ausgeführt. Der frühere grüne Lauf bleibt ein
+historischer Nachweis, kein Beleg für durchgängige Stabilität.
+
+Ein gezielter lokaler Nachlauf mit dem festen isolierten Frontendbuild von
+`d2cfea4` und der aktuellen nativen Audio-Arbeitskopie scheiterte nach 40,677 s
+an einer anderen Stelle: nach Quellenwiderruf. Der Packager meldete erneut
+`OUTPUT_READY`; der Viewer zeigte Slate-Pixel, aber `failed` und keinen
+hinreichenden Zeit-/Framefortschritt. Der konkrete Playerfehler war noch nicht
+in der vorhandenen Fehlerprojektion enthalten. Diese liest nun zusätzlich
+den bereits öffentlichen, begrenzten Fehlercode aus dem Player, getrennt vom
+Autorisierungsfehler. Auch das erste Warten auf die ausgewählte Quelle hält
+nun dieselbe begrenzte synthetische Beobachtung fest. Zwei Unitprüfungen
+bestanden, einschließlich der Unterdrückung beliebiger DOM-Texte.
+
+Ein zweiter, letzter gezielter Diagnoselauf bestand in 39,619 s; kein
+Produktionspfad, Zeitbudget oder Kriterium wurde zwischen den Läufen geändert.
+Die Ursache ist damit **nicht** behoben oder abschließend bestimmt. Kein
+weiterer Gesamttest, Commit oder Deployment dieses Nachtrags. Der getrennte
+Ananta-Langzeitfehler nach etwa 36 Minuten bleibt ebenfalls offen und wird
+nicht mit diesem HLS-Befund gleichgesetzt.
+
 ### CI-Nachweis und eingegrenzter lokaler Testfehler
 
 Der CI-Browserjob von `2da0440` bestand anschließend den tatsächlichen

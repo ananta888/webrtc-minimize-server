@@ -76,6 +76,9 @@ import { NativePackagerStandbyError } from "./native-packager-standby.js";
 import { NativeSourceSceneBroker, NativeSourceSceneError } from "./native-source-scene-broker.js";
 import { directNativeSourceScene } from "./native-source-scene-director.js";
 import { NATIVE_SCENE_REPLIES } from "./native-source-scene-wire.js";
+import { NativeSourceAudioBroker, NativeSourceAudioError } from "./native-source-audio-broker.js";
+import { directNativeSourceAudio } from "./native-source-audio-director.js";
+import { NATIVE_AUDIO_REPLIES } from "./native-source-audio-wire.js";
 import { BroadcastSourceRequests, BroadcastSourceRequestError } from "./broadcast-source-requests.js";
 import { TrustedBroadcastSourceGrants } from "./trusted-broadcast-source-grants.js";
 import { TrustedBroadcastSourceControl } from "./trusted-broadcast-source-control.js";
@@ -365,6 +368,7 @@ function stopProgramForPrincipal(broadcastRuntime, principal, programId) {
 
 function errorStatus(error) {
   if (error instanceof NativeSourceSceneError) return error.status;
+  if (error instanceof NativeSourceAudioError) return error.status;
   if (error instanceof BroadcastSourceRequestError) return error.status;
   if (error instanceof MachineLeaseError) return error.status;
   if (error instanceof RoomDirectoryError) return error.status;
@@ -386,6 +390,7 @@ function errorStatus(error) {
 
 function createHttpHandler(config, registry, services) {
   const nativeSourceScenes = services.nativeSourceScenes;
+  const nativeSourceAudios = services.nativeSourceAudios;
   const {
     machineAdmission,
     machineSessions,
@@ -760,6 +765,27 @@ function createHttpHandler(config, registry, services) {
         /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/(native-standby-control|native-standbys)$/,
       );
       const nativeSceneMatch = url.pathname.match(/^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/native-source-scene$/);
+      const nativeAudioMatch = url.pathname.match(/^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/native-source-audio$/);
+      if (nativeAudioMatch) {
+        if (!nativeSourceAudios || !broadcastRuntime || config.authMode !== "required" || !config.nativePackagerSelfServiceEnabled
+          || request.method !== "POST" || url.search || !requestOriginAllowed(request, config)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" }); response.end(); return;
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const ownerPrincipal = principalFor(identity), input = await readJsonBody(request);
+        const abort = new AbortController(), onClose = () => abort.abort();
+        response.once("close", onClose);
+        if (response.destroyed) abort.abort();
+        try {
+          const result = await directNativeSourceAudio({ identity, ownerPrincipal, programId: nativeAudioMatch[1], input,
+            getMember: () => registry.membersForPrincipal(ownerPrincipal).find(p => p.deviceFingerprint === input.deviceFingerprint),
+            runtime: broadcastRuntime, assignments: nativePackagerAssignments, control: nativePackagers,
+            broker: nativeSourceAudios, signal: abort.signal });
+          sendJson(response, 200, result, securityHeaders(config));
+        } finally { response.off("close", onClose); }
+        return;
+      }
       if (nativeSceneMatch) {
         if (!nativeSourceScenes || !broadcastRuntime || config.authMode !== "required" || !config.nativePackagerSelfServiceEnabled
           || request.method !== "POST" || url.search || !requestOriginAllowed(request, config)
@@ -1133,15 +1159,7 @@ function createHttpHandler(config, registry, services) {
           response.end();
           return;
         }
-        if (broadcastAbuseGuard && !broadcastAbuseGuard.allow({
-          action: "playback-probe", actorRef: request.socket.remoteAddress || "unknown-address",
-        })) {
-          sendJson(response, 429, { error: "broadcast_temporarily_unavailable" }, {
-            "retry-after": "60", ...securityHeaders(config),
-          });
-          return;
-        }
-        const result = await broadcastHlsProxy.fetchMedia({
+        const mediaInput = {
           cookieHeader: request.headers.cookie || "",
           method: request.method || "",
           resourceRef: broadcastMediaMatch[1],
@@ -1149,7 +1167,21 @@ function createHttpHandler(config, registry, services) {
           query: url.search,
           origin: request.headers.origin || "",
           range: request.headers.range || "",
-        });
+        };
+        const sessionRateKey = services.broadcastPlaybackSessions?.rateLimitKey?.(mediaInput);
+        const knownSession = typeof sessionRateKey === "string" && /^pbs_[A-Za-z0-9_-]{24,64}$/.test(sessionRateKey);
+        if (broadcastAbuseGuard && !broadcastAbuseGuard.allow({
+          action: knownSession ? "playback-media" : "playback-probe",
+          actorRef: knownSession ? sessionRateKey : request.socket.remoteAddress || "unknown-address",
+        })) {
+          sendJson(response, 429, { error: "broadcast_temporarily_unavailable" }, {
+            "retry-after": "60", ...securityHeaders(config),
+          });
+          return;
+        }
+        // Rate classification is never authorization: the proxy still verifies
+        // the current grant, resource, expiry and policy before contacting origin.
+        const result = await broadcastHlsProxy.fetchMedia(mediaInput);
         response.writeHead(result.status, { ...result.headers, ...securityHeaders(config) });
         if (!result.body || request.method === "HEAD") response.end();
         else await pipeline(Readable.fromWeb(result.body), response);
@@ -1576,6 +1608,7 @@ function configureSignaling(
   machineSessions,
   broadcastSourceRequests,
   nativeSourceScenes,
+  nativeSourceAudios,
 ) {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
   const mediaAgentWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
@@ -2416,6 +2449,10 @@ function configureSignaling(
           nativeSourceScenes?.acknowledge(socket, message);
           return;
         }
+        if (NATIVE_AUDIO_REPLIES.includes(message.type)) {
+          nativeSourceAudios?.acknowledge(socket, message);
+          return;
+        }
         if (message.type === "capability") {
           const separator = connection.ownerPrincipal.lastIndexOf("|");
           const identity = {
@@ -2516,6 +2553,7 @@ function configureSignaling(
       const connection = nativePackagers.connection(socket);
       nativePackagers.disconnect(socket);
       nativeSourceScenes?.disconnect(socket);
+      nativeSourceAudios?.disconnect(socket);
       pruneTrustedSources();
       if (connection) {
         const failedAssignment = nativePackagerAssignments.failPackager(connection.id);
@@ -2710,6 +2748,9 @@ export function createAppServer(options = {}) {
     throw new Error("BROADCAST_GATEWAY_AUTH_ENABLED requires a MediaMTX external auth service");
   }
   const services = {
+    nativeSourceAudios: new NativeSourceAudioBroker({ send: (socket, command) =>
+      Number.isSafeInteger(socket?.bufferedAmount) && socket.bufferedAmount >= 0 && socket.bufferedAmount <= 65536
+      && safeSend(socket, command, 16384) }),
     nativeSourceScenes: new NativeSourceSceneBroker({ send: (socket, command) =>
       Number.isSafeInteger(socket?.bufferedAmount) && socket.bufferedAmount >= 0 && socket.bufferedAmount <= 65536
       && safeSend(socket, command, 16384) }),
@@ -2740,6 +2781,7 @@ export function createAppServer(options = {}) {
   };
   const server = http.createServer(createHttpHandler(config, registry, services));
   server.on("close", () => services.nativeSourceScenes.destroy());
+  server.on("close", () => services.nativeSourceAudios.destroy());
   if (broadcastSourceRequests) {
     const sourceRequestPrune = setInterval(() => broadcastSourceRequests.prune(), 5000);
     sourceRequestPrune.unref();
@@ -2758,6 +2800,7 @@ export function createAppServer(options = {}) {
     server, config, registry, ticketStore, directory, mediaAgents, mediaAgentEvents, broadcastRuntime,
     nativePackagers, nativePackagerAssignments, machineSessions, broadcastSourceRequests,
     services.nativeSourceScenes,
+    services.nativeSourceAudios,
   );
   return {
     server,

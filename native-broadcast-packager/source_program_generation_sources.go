@@ -10,6 +10,7 @@ type sourceGenerationSource struct {
 	*sourceLazyDecoder
 	video   *sourceVideoMixInput
 	audio   *sourceAudioMixInput
+	kind    string
 	allowed func() bool
 }
 
@@ -66,7 +67,7 @@ func (p *sourceProgramGeneration) AddSource(lease trustedsframe.SourceLease, rec
 		}
 	}()
 	allowed := func() bool { return p.permitted() && receiver.AliveFor(lease) }
-	s := &sourceGenerationSource{allowed: allowed}
+	s := &sourceGenerationSource{allowed: allowed, kind: lease.Consent.SourceKind}
 	if audio {
 		s.audio, err = p.audio.add(sourceAudioMixInputConfig{authorized: allowed, left: 32768, right: 32768}, true)
 		if err != nil {

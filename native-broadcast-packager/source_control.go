@@ -30,6 +30,21 @@ func decodePackagerControlMessage(raw []byte, now time.Time, sources bool) (serv
 	if json.Unmarshal(raw, &header) != nil {
 		return serverMessage{}, errors.New("invalid control message")
 	}
+	if header.Type == "source-program-audio" || header.Type == "source-program-audio-query" {
+		if !sources {
+			return serverMessage{}, errors.New("source audio control disabled")
+		}
+		var err error
+		if header.Type == "source-program-audio" {
+			_, err = parseSourceAudioCommand(raw, now)
+		} else {
+			_, err = parseSourceAudioQuery(raw, now)
+		}
+		if err != nil {
+			return serverMessage{}, err
+		}
+		return serverMessage{Version: 1, Type: header.Type, SourceAudio: append(json.RawMessage(nil), raw...)}, nil
+	}
 	if header.Type == "source-program-scene" || header.Type == "source-program-scene-query" {
 		if !sources {
 			return serverMessage{}, errors.New("source scenes disabled")

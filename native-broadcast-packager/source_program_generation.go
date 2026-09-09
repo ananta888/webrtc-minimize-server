@@ -38,6 +38,7 @@ func (p *sourceProgramEncoder) ReadySignal() <-chan struct{} { return p.ready }
 func (p *sourceProgramEncoder) Finished() <-chan struct{}    { return p.finished }
 
 type sourceProgramGeneration struct {
+	audioControl           sourceAudioControlState
 	sceneMu                sync.Mutex
 	sceneHistory           map[string]sourceSceneHistory
 	sceneLastNow           int64
