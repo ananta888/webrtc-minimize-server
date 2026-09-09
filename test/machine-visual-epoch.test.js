@@ -18,7 +18,8 @@ test("visual-capable recipients get only server-issued publication epochs; audio
   async function connect(capability) {
     const name = capability || "human", timestamp = Math.floor(Date.now() / 1000);
     const token = capability ? await new SignJWT({ iss: issuer, aud: "ananta-meet-machine-v2", sub: name, jti: name,
-      iat: timestamp, exp: timestamp + 120, roomId, taskId: "task", tenantId: "tenant", projectId: "project",
+      // These are independent Hub assignments, not two devices duplicating one Task.
+      iat: timestamp, exp: timestamp + 120, roomId, taskId: `task-${name}`, tenantId: "tenant", projectId: "project",
       runtimeId: name, sessionId: name, capabilities: [capability] })
       .setProtectedHeader({ alg: "EdDSA", typ: "ananta-meet-machine-v2+jwt" }).sign(keys.privateKey) : "synthetic-human";
     const response = await fetch(base + (capability ? "/api/machine/sessions" : "/api/sessions"), {
