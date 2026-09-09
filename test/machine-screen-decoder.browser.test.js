@@ -48,7 +48,7 @@ function startFreshScreen(sessionId) {
 }
 
 for (const humanEngine of ["chromium", "firefox"]) {
-  test(`${humanEngine} receives only the fresh screen after an outstanding decoder is closed`, { timeout: 60000 }, async t => {
+  test(`${humanEngine} fences late screen decoding and removes an ended synthetic track`, { timeout: 60000 }, async t => {
     const f = await machineBrowserFixture(t, { humanEngine }), { machine, human } = f;
     try {
       await machine.evaluate(([room, grant]) => window.anantaMachine.join(room, grant), [f.roomId, await f.grant(["screen.publish"])]);
@@ -72,6 +72,32 @@ for (const humanEngine of ["chromium", "firefox"]) {
       });
       assert.ok(["meet_screen_authority_changed", "meet_screen_decode_timeout"].includes(settled.outcome));
       assert.equal(settled.closed, 1);
+      await machine.evaluate(() => {
+        const native = HTMLCanvasElement.prototype.captureStream;
+        window.__screenTrackTest = { track: null, restore() { HTMLCanvasElement.prototype.captureStream = native; } };
+        HTMLCanvasElement.prototype.captureStream = function (...args) {
+          const stream = native.apply(this, args);
+          if (this.width === 640 && this.height === 360 && args[0] === 0) {
+            window.__screenTrackTest.track = stream.getVideoTracks()[0];
+          }
+          return stream;
+        };
+      });
+      await machine.evaluate(startFreshScreen, f.binding.sessionId);
+      await waitFixtureValue(human, decodedGreenScreen, null, { timeout: 7000 });
+      assert.equal(await machine.evaluate(() => window.__freshScreenTest.failed), false);
+      await machine.evaluate(() => {
+        const state = window.__freshScreenTest;
+        state.stopped = true; clearTimeout(state.timer);
+        const track = window.__screenTrackTest.track;
+        if (!track || track.readyState !== "live") throw new Error("test_screen_track_missing");
+        // A real native track stop, not screen.close(), Leave or lease expiry.
+        track.stop();
+      });
+      await waitFixtureValue(machine, () => !window.anantaMachine.screen.status().open, null, { timeout: 1000 });
+      await waitFixtureValue(human, () => !document.querySelector('#media-grid .remote-media[data-source="screen"]'),
+        null, { timeout: 2000 });
+      assert.equal(await machine.evaluate(() => window.anantaMachine.status().joined), true);
       await machine.evaluate(startFreshScreen, f.binding.sessionId);
       await waitFixtureValue(human, decodedGreenScreen, null, { timeout: 7000 });
       assert.equal(await machine.evaluate(() => window.__freshScreenTest.failed), false);
@@ -82,11 +108,12 @@ for (const humanEngine of ["chromium", "firefox"]) {
           { captures: 0, errors: [] });
       }
       t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, ...held,
-        disposedBitmaps: settled.closed, freshGreenScreenDecoded: true }));
+        disposedBitmaps: settled.closed, freshGreenScreenDecoded: true,
+        nativeTrackEndRemovedScreen: true, explicitRestartDecoded: true }));
     } finally {
       if (!machine.isClosed()) await machine.evaluate(() => {
         window.__freshScreenTest?.close(); window.__screenDecoderTest?.release?.();
-        window.__screenDecoderTest?.restore(); window.anantaMachine.leave();
+        window.__screenDecoderTest?.restore(); window.__screenTrackTest?.restore(); window.anantaMachine.leave();
       });
     }
   });

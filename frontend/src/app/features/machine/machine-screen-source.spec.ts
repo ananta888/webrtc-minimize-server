@@ -7,7 +7,7 @@ const header = [255, 216, 255, 192, 0, 17, 8, 1, 104, 2, 128, 3, 1, 17, 0, 2, 17
 const encode = (values = header) => btoa(String.fromCharCode(...values));
 function setup() {
   const authority = { sourceId: "screen:hub", sessionId: "ms_test", leaseGeneration: 1, membershipEpoch: 2, expiresAt: now + 60_000 };
-  const surface = { draw: vi.fn(), frame: vi.fn(), close: vi.fn() };
+  const surface = { active: vi.fn(() => true), draw: vi.fn(), frame: vi.fn(), close: vi.fn() };
   const bitmap = { width: 640, height: 360, close: vi.fn() } as unknown as ImageBitmap;
   const ports = { authority: () => authority, create: vi.fn(() => surface),
     decode: vi.fn(async (_bytes: Uint8Array<ArrayBuffer>) => bitmap), monotonic: () => Date.now() };
@@ -48,6 +48,36 @@ describe("isolated machine screen source", () => {
       vi.setSystemTime(now); const f = setup(); f.source.open("screen:hub"); revoke(f); vi.advanceTimersByTime(100);
       expect(f.source.status().open).toBe(false); expect(f.surface.close).toHaveBeenCalledOnce();
     }
+  });
+  it("rejects an already ended surface without announcing an open source", () => {
+    const f = setup(); f.surface.active.mockReturnValue(false);
+    expect(() => f.source.open("screen:hub")).toThrow("meet_screen_authority_changed");
+    expect(f.source.status().open).toBe(false);
+    expect(f.source.diagnostics().lastStopReason).toBe("source_ended");
+    expect(f.surface.close).toHaveBeenCalledOnce(); expect(vi.getTimerCount()).toBe(0);
+  });
+  it("stops an ended track within the existing watchdog budget without reopening it", () => {
+    const f = setup(); f.source.open("screen:hub"); f.surface.active.mockReturnValue(false);
+    vi.advanceTimersByTime(100);
+    expect(f.source.status().open).toBe(false);
+    expect(f.source.diagnostics().lastStopReason).toBe("source_ended");
+    expect(f.surface.close).toHaveBeenCalledOnce(); expect(f.ports.create).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("disposes a decoded frame if its track ends during native decoding", async () => {
+    const f = setup(); let resolve!: (value: ImageBitmap) => void;
+    f.ports.decode.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    const lease = f.source.open("screen:hub"), pending = f.source.push(lease.generation, 1, encode());
+    f.surface.active.mockReturnValue(false); resolve(f.bitmap);
+    await expect(pending).rejects.toThrow("meet_screen_authority_changed");
+    expect(f.surface.draw).not.toHaveBeenCalled(); expect(f.surface.frame).not.toHaveBeenCalled();
+    expect(f.bitmap.close).toHaveBeenCalledOnce(); expect(f.surface.close).toHaveBeenCalledOnce();
+    expect(f.source.status().open).toBe(false);
+    f.surface.active.mockReturnValue(true);
+    const fresh = f.source.open("screen:hub");
+    await expect(f.source.push(lease.generation, 1, encode())).rejects.toThrow("meet_screen_frame_order_invalid");
+    await f.source.push(fresh.generation, 1, encode());
+    expect(f.surface.draw).toHaveBeenCalledOnce(); f.source.close();
   });
   it("reports a bounded stop category without exposing source identity or key material", () => {
     const f = setup(); f.source.open("screen:hub"); vi.advanceTimersByTime(2100);

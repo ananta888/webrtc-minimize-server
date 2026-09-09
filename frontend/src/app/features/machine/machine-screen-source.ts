@@ -3,6 +3,7 @@ export interface MachineScreenAuthority {
   readonly membershipEpoch: number; readonly expiresAt: number;
 }
 export interface MachineScreenSurface {
+  active(): boolean;
   draw(bitmap: ImageBitmap): void; frame(): void; close(): void;
 }
 interface ScreenPorts {
@@ -65,6 +66,7 @@ export class MachineScreenSource {
     this.lastFrame = this.monotonic(); this.lastNow = now; this.sequence = 0;
     try {
       this.surface = this.ports.create();
+      this.check();
       this.timer = setInterval(() => { try { this.check(); } catch { /* Closed by check. */ } }, 100);
       return Object.freeze({ schema: "ananta.meet-screen-source.v1", sourceId, generation: this.generation,
         width: 640, height: 360, fps: 5, expiresAt: this.deadline });
@@ -74,6 +76,7 @@ export class MachineScreenSource {
     try {
       const current = this.ports.authority(), now = this.clock(), elapsed = this.monotonic();
       const reason = !this.surface || !this.scope ? "inactive" : now < this.lastNow ? "clock_rollback"
+        : this.surface.active() !== true ? "source_ended"
         : now >= this.deadline ? "activation_expired" : elapsed < this.lastFrame ? "clock_rollback"
         : elapsed > this.lastFrame + 2000 ? "frame_stalled"
         : Object.keys(this.scope).some(k => current[k as keyof MachineScreenAuthority] !== this.scope![k as keyof MachineScreenAuthority])

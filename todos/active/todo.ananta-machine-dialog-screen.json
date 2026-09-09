@@ -28,7 +28,7 @@
   "risk_scale": ["low", "medium", "high", "critical"],
   "milestones": [
     {"id": "MDS-M1", "title": "Verträge und Autorisierung", "status": "in_progress", "task_ids": ["MDS-01", "MDS-02"]},
-    {"id": "MDS-M2", "title": "Empfang, Chat und Medienquellen", "status": "in_progress", "task_ids": ["MDS-03", "MDS-04", "MDS-05", "MDS-10", "MDS-11", "MDS-12", "MDS-13"]},
+    {"id": "MDS-M2", "title": "Empfang, Chat und Medienquellen", "status": "done", "task_ids": ["MDS-03", "MDS-04", "MDS-05", "MDS-10", "MDS-11", "MDS-12", "MDS-13"]},
     {"id": "MDS-M3", "title": "Lebenszyklus und sichtbare Kontrolle", "status": "in_progress", "task_ids": ["MDS-06", "MDS-07"]},
     {"id": "MDS-M4", "title": "Verifikation und kontrollierter Rollout", "status": "in_progress", "task_ids": ["MDS-08", "MDS-09"]}
   ],
@@ -125,7 +125,10 @@
     },
     {
       "id": "MDS-05", "title": "Agenteneigenen Browserstream als separate Bildschirm-Publikation anbinden",
-      "status": "in_progress", "progress_percent": 70, "priority": "P1", "risk": "high", "depends_on": ["MDS-02"],
+      "completion_verification": "2026-09-09 four Meet source criteria audited in docs/machine-screen-track-lifetime.md: exact Hub-session synthetic source and separate public-dom-v1 Worker workspace binding; independent explicitly authorized screen-audio; bounded source/codec/SFrame transport; decoded remote frames, source switch, expiry, ended-track cleanup and independent media lifecycle. New3 regressions fail before correction,29 targeted tests and2 real counterpart tests pass. Final isolated npm run check Exit0:914 frontend,923 Node PASS/0 FAIL/2 explicit Node skips,426.219s; build/typecheck/Go/static gates pass,14 external infra opt-ins skipped. Existing real Chromium/Firefox dialog and avatar/screen/audio tests include three renewals, actual expiry stop and no capture/transform errors. Declared bounded Meet adapter complete; arbitrary authenticated/dynamic browser sources, full Hub reconnect, broad network/soak/public activation remain outside this task. No Ananta repository changes, trust mutation or deployment; serving index hash unchanged.",
+      "track_end_focused_verification": "2026-09-09 three pre-fix regressions fail as expected, then29 targeted source/surface/screen-audio tests pass0.822s; ngc and todos pass. Isolated production build and actual Chromium/Firefox counterpart gate2PASS8.008s: native Canvas track stopped without source.close/Leave, local source closes, remote screen disappears while membership remains, explicit fresh activation decodes again; late bitmap disposal and eight denied reopen attempts retained, zero capture/transform errors. Aggregate check running; no production or Hub policy change. Read-only Ananta source audit confirms BrowserWorkspaceFrameSource and completed declared public-dom-v1 composition; corrected stale offline-only documentation, not a new arbitrary-browser capability. docs/machine-screen-track-lifetime.md.",
+      "track_end_plan": "2026-09-09 Meet-only continuation: synthetic screen surface currently exposes no track-liveness port, so an ended Canvas track can remain reported open while frames are accepted. Add synchronous liveness checks at activation, watchdog and frame delivery; dispose ended surfaces and pending bitmaps without restarting any publication. Extract existing Canvas adapter for isolated tests, retain 640x360/5FPS/30s and default-deny Hub authority. Reproduce first, then unit and real Chromium/Firefox remote removal and fresh explicit activation; bundled npm run check after implementation. No Ananta repository, trust or production change; broader MDS05 remains open.",
+      "status": "done", "progress_percent": 100, "priority": "P1", "risk": "high", "depends_on": ["MDS-02"],
       "ananta_task_refs": ["MAP-13", "MAP-14", "MAP-15", "MAP-16", "MAP-24"],
       "acceptance_criteria": [
         "Neuen Source-Adapter ausschließlich für die vom Hub gebundene isolierte Agentenansicht integrieren; keine simulierte Bestätigung eines menschlichen getDisplayMedia-Dialogs, kein Host-Capture.",
@@ -305,12 +308,12 @@
   "critical_path_tasks": ["MDS-01", "MDS-02", "MDS-03", "MDS-13", "MDS-07", "MDS-08", "MDS-09"],
   "tasks_status_summary": {
     "total": 13,
-    "by_status": {"todo": 0, "in_progress": 6, "partial": 0, "blocked": 0, "done": 7},
-    "progress_percent_done": 53.85,
+    "by_status": {"todo": 0, "in_progress": 5, "partial": 0, "blocked": 0, "done": 8},
+    "progress_percent_done": 61.54,
     "by_priority": {"P0": 3, "P1": 10, "P2": 0, "P3": 0},
     "by_risk": {"low": 0, "medium": 0, "high": 8, "critical": 5},
     "critical_path": {"total": 7, "done": 3, "remaining": 4},
-    "milestones": {"total": 4, "todo": 0, "in_progress": 4, "blocked": 0, "done": 0}
+    "milestones": {"total": 4, "todo": 0, "in_progress": 3, "blocked": 0, "done": 1}
   },
   "summary_notes": [
     "2026-09-08 isolierter gemeinsamer Vollcheck 83ad520 terminal Exit0:665 Frontendtests/721 Node passed/2 Node-Skips/0 failed, Node234,022s; Build/Go-unit-vet/statische Gates gruen, externe Infrastruktur sichtbar SKIP. Neue ephemere CLI-Fixture prueft echte clean/modified/restored/untracked/restored-Zustaende samt strikter Scope-/Key-/Redaktions-/FIFO-Matrix ohne Zugriff auf wechselnden Parent-Git-Zustand. Ein frueherer c264888-Cleanlinessvergleich war ohne Checkkennung fehlgeschlagen und wird nicht nachtraeglich als ursachensicher behoben bezeichnet. Quellpublisher-Chromium/Firefox-RTP-Matrix ebenfalls gruen. Commit83ad520 gepusht, kein Ananta-Repo-/Trust-/Produktionswrite.",

@@ -19,10 +19,22 @@ isolierte synthetische Quelle `screen:<verifizierte Hub-Session>`. Ein separater
 Canvas-Adapter begrenzt 640×360/5 FPS, 256 KiB pro JPEG, einen ausstehenden Decode,
 eine Sekunde Decode-Zeit und 30 Sekunden pro Aktivierung; bei fehlenden Frames
 schließt er nach zwei Sekunden. Lease-/Membership-Wechsel verwerfen alte Frames.
-Anantas derzeitige Quelle ist eine offline erzeugte eigene Task-Ansicht, kein
-allgemeiner Browsersteuerungs- oder Desktopzugriff. Hub-gesteuertes Pause/Fortsetzen
-und bewegte, beim menschlichen Gegenüber dekodierte CDP-Bilder sind lokal geprüft.
-Freie Navigation und der Wechsel auf bestehende Browser-Worker bleiben offen.
+Neben der offline erzeugten eigenen Task-Ansicht existiert inzwischen Anantas
+Hub-gesteuerter `public-dom-v1`-Workspace. Er liefert eine bereinigte Textansicht
+explizit zugelassener öffentlicher Dokumente über denselben Screen-Port.
+Präsentation und Navigation sind getrennte Hub-Rechte; es ist weder ein
+Desktop-Spiegel noch ein Zugriff auf persönliche Tabs oder beliebige bestehende
+Browser-Worker. Dynamische/authentisierte Seiten und unbekannte Canvas-/Video-
+Inhalte werden nicht still unterstützt. Der rein lesende Quellabgleich vom
+9. September bestätigt `BrowserWorkspaceFrameSource.source_id = "screen:" +
+session_id` und die separate Workspace-/Navigationsgeneration. Anantas
+`docs/contracts/meet-browser-workspace-live.md` dokumentiert die bereits
+durchgeführte private Hub-/Worker-/Empfänger-Abnahme; diese wurde hier nicht
+erneut ausgeführt und erteilt keine produktive Freigabe.
+
+Der Meet-Adapter prüft zusätzlich das [tatsächliche Track-Ende](machine-screen-track-lifetime.md),
+statt eine offene Source-Generation mit einer lebenden Bildschirmquelle
+gleichzusetzen.
 
 Der Audio-Port liefert zusätzlich eine zufällige `subscriptionId`. Eine
 korrelierte Antwort ist höchstens einmal nach vollständig aufgenommenem
@@ -43,16 +55,20 @@ Quell-IDs. Die nachfolgende isolierte TURN-Dialogabnahme ist davon getrennt.
 
 | Bereich | Meet-seitig vorhanden | Verbleibende gemeinsame Abnahme |
 |---|---|---|
-| Audioempfang | Quellfreigabe, SFrame, begrenztes PCM16 mit ACK und Stop; isolierter TURN-UDP/TCP-Dialog | Reale Hub-/ASR-Aufgabe, Agent-Pfad und öffentliche NAT-/TURN-TLS-Abnahme |
+| Audioempfang | Quellfreigabe, SFrame, begrenztes PCM16 mit ACK und Stop; isolierter TURN-UDP/TCP-Dialog; dokumentierter privater Hub-/Worker-Test mit lokaler CUDA-ASR | Agent-Pfad und öffentliche NAT-/TURN-TLS-Abnahme sowie produktiv autorisierter Einsatz |
 | Chat | Neue Ereignisse, Cursor/ACK, korrelierte Antworten, getrennte Rechte | Produktiv autorisierter Hub-/Dialogworkflow |
-| Eigener Bildschirm | Gebundene synthetische Quelle mit separatem Lifecycle | Allgemeine Browser-Worker-Quelle statt nur Offline-Taskansicht |
-| Sitzungen | Frisch signierte Renewals, Fencing und hartes Gesamtlaufzeitlimit | Hub-Ausfall- und vollständiger Dialog-Langzeitnachweis |
+| Eigener Bildschirm | Gebundene synthetische Quelle; zusätzlich Hub-gesteuerte bereinigte öffentliche Textansicht | Produktiv freigegebene Hub-Policy; dynamische/authentisierte und beliebige bestehende Browser-Quellen bleiben außerhalb des unterstützten Profils |
+| Sitzungen | Frisch signierte Renewals, Fencing, Gesamtlaufzeitlimit, exakte Retirement-Bestätigung und dokumentierter Hub-Restart-Stop | Vollständiger kontrollierter Wiederbeitritt und gemeinsame Dialog-Langzeitabnahme |
 | Berechtigungen/UI | Eigene Freigaben, Widerruf, Ablauf, separater Betreiberstatus | Explizit freigegebenes Public-Hub-Profil und Projektauftrag |
 
 Kurze Taskprüfungen laufen unmittelbar; die umfassende Netzwerk-/Langzeitmatrix
 bleibt gebündelt. Das Ananta-Repository wird von dieser Meet-Arbeit nicht verändert.
 Die [erzwungene TURN-Dialogmatrix](machine-forced-turn.md) trennt ihren echten
 Medientransport ausdrücklich vom weiterhin offenen verzögerten Stufen-Fallback.
+Die bereits erfolgten [privaten ASR-/Widerrufstests](machine-packaged-audio-fixture.md)
+und die [exakte Session-Retirement-Schnittstelle](machine-session-retirement.md)
+sind getrennt dokumentiert. Diese Fortschritte sind keine öffentliche
+Aktivierung; der gesamte Ananta-Track ist weiterhin nicht abgeschlossen.
 
 ## Kompatibilität und Zuständigkeiten
 
