@@ -71,7 +71,7 @@ async function run() {
       if (++commands > 24 || line.length > 1024) throw new Error("test_multi_bridge_budget");
       if (line === "stop") break;
       const input = JSON.parse(line);
-      if (media && peers && ["consent", "ask", "answers", "media"].includes(input.command)) {
+      if (media && peers && ["consent", "ask", "answers", "media", "floor-start", "floor-result"].includes(input.command)) {
         stage = input.command === "media" && ["avatars", "first-speech", "both-speech", "first-revoked", "survivor"].includes(input.phase)
           ? "media-" + input.phase : input.command;
         reply(await media.command(input, peers)); continue;

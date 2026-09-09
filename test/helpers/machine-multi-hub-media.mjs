@@ -1,6 +1,7 @@
 // Observation and synthetic receiver UI actions, never a Hub policy authority.
 import { installMultiPublisherObservation } from "./machine-multi-publisher-observation.mjs";
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
+import { installSpeakerFloorObservation } from "./machine-speaker-floor-observation.mjs";
 
 const red = pixel => pixel?.[0] > 170 && pixel[1] < 70 && pixel[2] < 70;
 const blue = pixel => pixel?.[2] > 170 && pixel[0] < 70 && pixel[1] < 70;
@@ -10,9 +11,28 @@ export async function multiHubMedia(f) {
   let step = "idle", publisher = null;
   return {
     diagnostic() { return { step, publisher }; },
-    async close() { await f.human.evaluate(() => window.__multiPublisher.close()); },
+    async close() {
+      await f.human.evaluate(async () => { await window.__speakerFloor?.close(); await window.__multiPublisher.close(); });
+    },
     async command(input, peers) {
       const page = f.human;
+      if (input.command === "floor-start" && Object.keys(input).length === 1) {
+        await page.locator(".nav-item").filter({ hasText: /^Live/ }).click();
+        await page.evaluate(installSpeakerFloorObservation, peers);
+        return { observing: true };
+      }
+      if (input.command === "floor-result" && Object.keys(input).length === 1) {
+        let result;
+        await waitFixtureValue(page, () => window.__speakerFloor.snapshot(), undefined, {
+          timeout: 18000, accept: value => {
+            if (value.failed || value.overlap) throw new Error("test_floor_observation_failed");
+            result = value;
+            return value.counts.every(count => count >= 3) && value.active.every(active => !active) && value.quiet_ms >= 300;
+          },
+        });
+        await page.evaluate(() => window.__speakerFloor.close());
+        return result;
+      }
       if (input.command === "consent" && Object.keys(input).length === 3
         && [0, 1].includes(input.publisher) && typeof input.enabled === "boolean") {
         publisher = input.publisher; step = "consent-navigation";
