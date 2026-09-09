@@ -52,3 +52,17 @@ Focused policy/epoch HTTP-WebSocket tests passed27/27; full candidate frontend
 tests passed825/825 in10.94s (including the subsequent visual-port candidate).
 Further isolated full checks and Ananta analysis integration remain pending;
 this is not public deployment or production evidence.
+
+## Owned pixel-decoder port
+
+`MachineVisualSurfaceFactory` owns only a clone of the admitted remote track,
+a silent video element and a cleared canvas. It bounds input pixels, downsizes
+without upscaling to640x360, accepts only JPEG up to98,304 bytes and explicitly
+wipes late decoded byte arrays. Construction failure, abort and sink-cleanup
+exceptions still release the clone; the publisher track is never stopped.
+`visualOperation` bounds setup/encoding waits and disposes late results. Its
+consumer owns authority and rate/count budgets separately. Fifteen focused
+surface tests passed, including late Blob/array-buffer completion and partial
+construction failure. This port does not itself grant permission or retain
+media. JavaScript immutable strings/Blob backing storage are not claimed to be
+forensically erased; references are discarded and no content is persisted.
