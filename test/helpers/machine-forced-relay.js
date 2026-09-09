@@ -30,6 +30,14 @@ export function installMachineForcedRelay(expectedUrl) {
       const servers = [...authorizedServers];
       super({ ...config, iceServers: servers, iceTransportPolicy: "relay" }, ...rest);
       this.fixtureServers = servers;
+      // Fixed numeric test diagnostic only; never emit URL/address/error text.
+      let errorCount = 0;
+      this.addEventListener("icecandidateerror", event => {
+        if (errorCount < 8 && Number.isInteger(event.errorCode) && event.errorCode >= 300 && event.errorCode <= 799) {
+          errorCount++;
+          console.debug("test_relay_ice_error:" + event.errorCode);
+        }
+      });
     }
     setConfiguration(config) {
       return super.setConfiguration({ ...config, iceServers: this.fixtureServers, iceTransportPolicy: "relay" });

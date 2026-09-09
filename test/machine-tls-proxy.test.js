@@ -136,3 +136,16 @@ test("explicit TURN proxy composes only its own bounded relay and rejects unknow
   assert.equal(f.calls.filter(args => args[0] === "rm").length, 2);
   assert.equal(f.calls.filter(args => args[0] === "network" && args[1] === "rm").length, 2);
 });
+
+test("three-party proxy passes a smaller per-allocation TURN budget without increasing total capacity", () => {
+  const f = fixture();
+  for (const participants of [null, "3", 0, 4, true])
+    assert.throws(() => privateMachineTlsProxy(180, f.run, 32, "turn-udp", participants), /turn_scope_invalid/);
+  assert.equal(f.calls.length, 0);
+  const proxy = privateMachineTlsProxy(180, f.run, 32, "turn-udp", 3);
+  try {
+    proxy.start(32123);
+    const relay = f.calls.find(args => args.includes("--use-auth-secret"));
+    assert.ok(relay.includes("--max-bps=500000") && relay.includes("--bps-capacity=4000000"));
+  } finally { proxy.close(); }
+});

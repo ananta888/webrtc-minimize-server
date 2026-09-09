@@ -5,6 +5,7 @@ import readline from "node:readline";
 import { machineBrowserFixture } from "./machine-browser-fixture.js";
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
 import { multiHubMedia } from "./machine-multi-hub-media.mjs";
+import { multiHubIcePath, observeMultiHubRelay } from "./machine-multi-hub-relay.mjs";
 
 function screenSignatures(peers) {
   return peers.map(peer => {
@@ -28,6 +29,7 @@ async function moving(page, peers, survivor) {
     const error = new Error("test_multi_screen_deadline");
     error.observation = await page.evaluate(async peers => ({
       transformErrors: window.__transformErrors.length,
+      iceEvents: window.__testIce,
       screens: peers.map(peer => [...document.querySelectorAll('.remote-media[data-source="screen"]')]
         .filter(el => el.dataset.peerId === peer).slice(0, 2).map(el => {
           const video = el.querySelector("video"); return { width: video?.videoWidth || 0,
@@ -35,6 +37,9 @@ async function moving(page, peers, survivor) {
         })),
       connections: await Promise.all(window.__pcs.slice(0, 4).map(async pc => ({
         connection: pc.connectionState, ice: pc.iceConnectionState, signaling: pc.signalingState,
+        gathering: pc.iceGatheringState, sctp: pc.sctp?.state || "absent",
+        dtls: pc.sctp?.transport?.state || "absent", policy: pc.getConfiguration().iceTransportPolicy,
+        localDescription: pc.localDescription?.type || "absent", remoteDescription: pc.remoteDescription?.type || "absent",
         video: [...(await pc.getStats()).values()].filter(s => s.type === "inbound-rtp" && s.kind === "video")
           .slice(0, 2).map(s => ({ packets: s.packetsReceived || 0, frames: s.framesDecoded || 0 })),
       }))),
@@ -48,15 +53,18 @@ async function run() {
   const cleanup = []; let stage = "setup", timer, fixture, media;
   const reply = value => process.stdout.write(JSON.stringify(value) + "\n");
   try {
+    const icePath = multiHubIcePath(process.env.MEET_MULTI_WORKER_ICE_PATH);
     const f = await machineBrowserFixture({ after: fn => cleanup.push(fn) }, {
       listenHost: "127.0.0.2", tlsPortProxy: true, lifetimeSeconds: 300, tlsConnectionLimit: 32,
+      icePath, relayParticipants: 3,
       hubPublicKey: await fs.readFile(process.env.MEET_TEST_HUB_PUBLIC_KEY, "utf8"),
     });
     fixture = f;
     f.human.setDefaultTimeout(12000);
     media = process.env.MEET_MULTI_WORKER_MEDIA_GATE === "1" ? await multiHubMedia(f) : null;
     if (media) cleanup.push(() => media.close());
-    reply({ origin: f.origin, room_id: f.roomId, certificate: f.certificatePath, test_network: f.testNetwork });
+    reply({ origin: f.origin, room_id: f.roomId, certificate: f.certificatePath, test_network: f.testNetwork,
+      ...(icePath !== "direct" ? { ice_path: icePath, turn_url: f.turnUrl } : {}) });
     let peers = null, commands = 0;
     timer = setTimeout(() => process.stdin.destroy(), 240000);
     for await (const line of readline.createInterface({ input: process.stdin, crlfDelay: Infinity })) {
@@ -88,7 +96,10 @@ async function run() {
         stage = input.command;
         await f.human.locator(".nav-item").filter({ hasText: /^Live/ }).click();
         if (stage === "survivor") await f.human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
-        reply(await moving(f.human, peers, stage === "survivor"));
+        const screen = await moving(f.human, peers, stage === "survivor");
+        reply({ ...screen, ...(icePath !== "direct" ? {
+          relay: await observeMultiHubRelay(f.human, stage === "survivor" ? 1 : 2, icePath.slice(5)),
+        } : {}) });
       } else if (Object.keys(input).length === 1 && input.command === "alone") {
         stage = "alone";
         await f.human.locator("#participant-count", { hasText: "1 / 20" }).waitFor();

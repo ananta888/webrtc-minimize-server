@@ -30,8 +30,20 @@ for (const transport of ["udp", "tcp"]) test(`test TURN ${transport} requires au
 });
 test("test TURN refuses broad scopes and malformed inputs before side effects", () => {
   for (const patch of [{ network: "host" }, { address: "8.8.8.8" }, { address: "::1" }, { transport: "tls" },
-    { lifetimeSeconds: 179 }, { lifetimeSeconds: 7381 }, { lifetimeSeconds: "180" }])
+    { lifetimeSeconds: 179 }, { lifetimeSeconds: 7381 }, { lifetimeSeconds: "180" },
+    ...[null, "3", 1, 4, 100, true].map(participants => ({ participants }))])
     assert.throws(() => privateMachineTurn({ ...scope, ...patch }, () => assert.fail("no Docker")), /scope_invalid/);
+});
+test("three-party TURN divides the same aggregate capacity into smaller bounded allocations", () => {
+  const f = runner(), relay = privateMachineTurn({ ...scope, participants: 3 }, f.run);
+  relay.start();
+  const create = f.calls.find(args => args[0] === "create");
+  assert.ok(create.includes("--bps-capacity=4000000"));
+  assert.ok(create.includes("--max-bps=500000"));
+  assert.ok(!create.includes("--max-bps=1000000"));
+  for (const unchanged of ["--total-quota=16", "--user-quota=8", "--min-port=49160", "--max-port=49191",
+    "--memory=128m", "--pids-limit=32", "--cpus=.5"]) assert.ok(create.includes(unchanged));
+  relay.close();
 });
 test("test TURN removes only its own uncertain creation and uses a fresh REST secret", () => {
   const f = runner(), first = privateMachineTurn(scope, f.run), second = privateMachineTurn(scope, f.run);

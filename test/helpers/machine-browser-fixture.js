@@ -20,8 +20,9 @@ import { installMachineForcedRelay } from "./machine-forced-relay.js";
 
 export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", listenPort = 0, hubPublicKey, tlsPortProxy = false,
   lifetimeSeconds = 180, humanEngine = "chromium", observeStage = () => {}, tlsConnectionLimit = 16,
-  publicDir = process.env.MEET_TEST_PUBLIC_DIR, receiverKeyDelay = false, icePath = "direct" } = {}) {
+  publicDir = process.env.MEET_TEST_PUBLIC_DIR, receiverKeyDelay = false, icePath = "direct", relayParticipants = 2 } = {}) {
   if (!["direct", "turn-udp", "turn-tcp"].includes(icePath)) throw new Error("test_ice_path_invalid");
+  if (![2, 3].includes(relayParticipants)) throw new Error("test_turn_scope_invalid");
   if (icePath !== "direct") tlsPortProxy = true;
   if (typeof receiverKeyDelay !== "boolean") throw new Error("test_receiver_key_delay_invalid");
   if (![16, 32].includes(tlsConnectionLimit)) throw new Error("test_proxy_connection_limit_invalid");
@@ -47,7 +48,7 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
   });
   if (tlsPortProxy) {
     observeStage("private-network");
-    proxy = privateMachineTlsProxy(lifetimeSeconds, undefined, tlsConnectionLimit, icePath);
+    proxy = privateMachineTlsProxy(lifetimeSeconds, undefined, tlsConnectionLimit, icePath, relayParticipants);
     listenHost = proxy.listenHost;
   }
   const originHost = proxy?.originHost || listenHost;
@@ -178,6 +179,7 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
     return { machine: second, ...identity("synthetic-machine-secondary") };
   }
   return { human, machine, roomId, binding, grant, additionalMachine, browser, app, origin, testNetwork: proxy?.network,
+    turnUrl: proxy?.turnConfig?.turnUrls[0],
     proxyObservation: () => proxy?.observation() || { connectionDrops: 0 },
     certificatePath: path.join(directory, "cert.pem") };
 }
