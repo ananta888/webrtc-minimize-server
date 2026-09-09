@@ -15,7 +15,7 @@ import (
 func sourceKeyPair(t *testing.T, init *webrtc.DataChannelInit) (*client, *trustedSourceTransport, *webrtc.DataChannel, <-chan []byte, *sourceTestSink) {
 	t.Helper()
 	c, lease, now := trustedSourceFixture(t)
-	c.api = sourceKeyLoopbackAPI(t)
+	c.api = nativeLoopbackAPI(t)
 	sink := &sourceTestSink{frames: make(chan []byte, 8)}
 	c.trustedSourceSinkFactory = func(trustedsframe.SourceLease, *trustedsframe.SourceReceiver) (trustedSourceSink, error) {
 		return sink, nil

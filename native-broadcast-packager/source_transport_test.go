@@ -167,10 +167,7 @@ func TestTrustedSourceRealKeyChannelAndRTP(t *testing.T) {
 			if codec == "audio/opus" {
 				lease.Consent.SourceKind = "microphone"
 			}
-			api, err := createWebRTCAPI()
-			if err != nil {
-				t.Fatal(err)
-			}
+			api := nativeLoopbackAPI(t)
 			c.api = api
 			sink := &sourceFeedbackFixture{sourceTestSink: &sourceTestSink{frames: make(chan []byte, 8)}, bound: make(chan func() bool, 1)}
 			c.trustedSourceSinkFactory = func(trustedsframe.SourceLease, *trustedsframe.SourceReceiver) (trustedSourceSink, error) {
@@ -234,6 +231,19 @@ func TestTrustedSourceRealKeyChannelAndRTP(t *testing.T) {
 				}
 			}
 			controlErrors := make(chan error, 1)
+			t.Cleanup(func() {
+				if !t.Failed() {
+					return
+				}
+				t.Logf("source observation: elapsed_ms=%d peer=%s ice=%s channel=%s receiver_alive=%t control_errors=%d", time.Since(now).Milliseconds(), peer.ConnectionState(), peer.ICEConnectionState(), channel.ReadyState(), receiver.AliveNow(), len(controlErrors))
+				c.sourcesMu.Lock()
+				entry := c.trustedSources[lease.SourceLeaseID]
+				c.sourcesMu.Unlock()
+				if entry != nil && entry.transport != nil {
+					transport := entry.transport
+					t.Logf("source transport: peer=%s ice=%s closed=%t failure=%d channel_set=%t", transport.pc.ConnectionState(), transport.pc.ICEConnectionState(), transport.closed.Load(), transport.failure.Load(), transport.channelSet.Load())
+				}
+			})
 			go func() {
 				for {
 					select {
@@ -275,6 +285,9 @@ func TestTrustedSourceRealKeyChannelAndRTP(t *testing.T) {
 				t.Fatal(err)
 			}
 			awaitSource(t, gathered)
+			if !sourceKeyLoopbackCandidates(peer.LocalDescription().SDP) {
+				t.Fatal("RTP fixture escaped its loopback UDP candidate boundary")
+			}
 			if err = c.handleTrustedSourceSignal(sourcePeerMessage(lease, peer.LocalDescription().SDP)); err != nil {
 				t.Fatal(err)
 			}

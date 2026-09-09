@@ -9,14 +9,14 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-// Key-only same-process tests use actual UDP/DTLS/SCTP, but must not depend on
+// Same-process key/RTP tests use actual UDP/DTLS/SCTP/SRTP, but must not depend on
 // unrelated host/Docker interfaces. Keep production codecs/interceptors and
 // SCTP memory limits; do not reuse this profile for browser or network gates.
-func sourceKeyLoopbackAPI(t *testing.T) *webrtc.API {
+func nativeLoopbackAPI(t *testing.T) *webrtc.API {
 	t.Helper()
 	api, err := createWebRTCAPI()
 	if err != nil {
-		t.Fatal("key-only WebRTC API unavailable")
+		t.Fatal("loopback WebRTC API unavailable")
 	}
 	settings := webrtc.SettingEngine{}
 	settings.LoggerFactory = logging.NewDefaultLoggerFactory()

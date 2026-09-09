@@ -21,10 +21,9 @@ func TestNativeMediaReceivesEarlyICEBeforeAnswer(t *testing.T) {
 }
 
 func testNativeMediaReceivesBrowserRTP(t *testing.T, earlyICE bool) {
-	api, err := createWebRTCAPI()
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The browser role here is another real Pion peer in this process, not
+	// a browser or NAT reference. Keep host/Docker networks out of this fixture.
+	api := nativeLoopbackAPI(t)
 	outgoing := make(chan map[string]any, 64)
 	candidateSent := make(chan struct{})
 	var candidateOnce sync.Once
@@ -135,6 +134,7 @@ func testNativeMediaReceivesBrowserRTP(t *testing.T, earlyICE bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	gathered := webrtc.GatheringCompletePromise(browser)
 	if err = browser.SetLocalDescription(offer); err != nil {
 		t.Fatal(err)
 	}
@@ -144,8 +144,12 @@ func testNativeMediaReceivesBrowserRTP(t *testing.T, earlyICE bool) {
 	select {
 	case <-connected:
 	case <-time.After(10 * time.Second):
-		t.Fatalf("browser-to-packager WebRTC connection did not become connected: signalStage=%d earlyCandidates=%d",
-			signalingFailure.Load(), earlyCandidates.Load())
+		t.Fatalf("browser-role Pion connection did not become connected: signalStage=%d earlyCandidates=%d peer=%s ice=%s receiverPeer=%s receiverICE=%s",
+			signalingFailure.Load(), earlyCandidates.Load(), browser.ConnectionState(), browser.ICEConnectionState(), media.pc.ConnectionState(), media.pc.ICEConnectionState())
+	}
+	awaitSource(t, gathered)
+	if !sourceKeyLoopbackCandidates(browser.LocalDescription().SDP) {
+		t.Fatal("native RTP fixture escaped its loopback UDP candidate boundary")
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for media.packets.Load() == 0 && time.Now().Before(deadline) {
