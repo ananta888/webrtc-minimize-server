@@ -2,6 +2,8 @@
 // No tasks, grants, policy overrides or media keys are accepted through this port.
 import fs from "node:fs/promises";
 import readline from "node:readline";
+import { bridgeBrowserLauncher } from "./machine-bridge-browser.mjs";
+import { peerBrowserDriver } from "./machine-peer-driver.mjs";
 import { machineBrowserFixture } from "./machine-browser-fixture.js";
 import { installDialogObservation } from "./machine-dialog-observer.mjs";
 import { observeDialogAnswer } from "./machine-chat-observation.mjs";
@@ -12,6 +14,13 @@ async function runBridge() {
 const cleanup = [];
 let stage = "setup";
 try {
+  const isolatedBrowser = process.env.MEET_ISOLATED_PEER_BROWSER || "0";
+  if (!["0", "1"].includes(isolatedBrowser)) throw new Error("test_browser_launcher_invalid");
+  const peerDriver = isolatedBrowser === "1" ? peerBrowserDriver(process.env.MEET_TEST_PEER_PLAYWRIGHT_PACKAGE) : null;
+  const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+  cleanup.push(() => input.close());
+  const commands = input[Symbol.asyncIterator]();
+  const reply = value => process.stdout.write(JSON.stringify(value) + "\n");
   const receiverKeyDelay = process.env.MEET_TEST_RECEIVER_KEY_DELAY || "0";
   if (!["0", "1"].includes(receiverKeyDelay)) throw new Error("test_receiver_key_delay_invalid");
   const soakSeconds = Number(process.env.MEET_DIALOG_SOAK_SECONDS || 0);
@@ -22,18 +31,19 @@ try {
     observeStage: value => { stage = value; },
     hubPublicKey: await fs.readFile(process.env.MEET_TEST_HUB_PUBLIC_KEY, "utf8"),
     receiverKeyDelay: receiverKeyDelay === "1",
+    browserLauncher: isolatedBrowser === "1" ? bridgeBrowserLauncher({ send: reply,
+      receive: () => commands.next(), connect: (endpoint, options) => peerDriver.connect(endpoint, options) }) : undefined,
   });
   f.human.setDefaultTimeout(12000);
   if (process.env.MEET_DIALOG_GPU_GATE === "1" || process.env.MEET_DIALOG_OBSERVE === "1") {
     await f.human.evaluate(installDialogObservation);
     cleanup.push(() => f.human.evaluate(() => window.__dialogObservation.close()));
   }
-  const reply = value => process.stdout.write(JSON.stringify(value) + "\n");
   reply({ origin: f.origin, room_id: f.roomId, certificate: f.certificatePath, test_network: f.testNetwork });
   stage = "dialog";
   const panel = f.human.locator("app-machine-permissions-panel");
   let answersExpected = 0;
-  for await (const line of readline.createInterface({ input: process.stdin, crlfDelay: Infinity })) {
+  for await (const line of commands) {
     if (line === "stop") break;
     const avatar = await observeAvatarCommand(line, f.human);
     if (avatar) { reply(avatar); continue; }

@@ -1,7 +1,7 @@
 // Ephemeral TLS + cryptographically verified synthetic identities. No production
 // key, auth bypass, human capture, live OIDC provider or Internet ICE dependency.
 import { execFileSync } from "node:child_process";
-import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { createHash, generateKeyPairSync, randomUUID, X509Certificate } from "node:crypto";
 import fs from "node:fs/promises";
 import https from "node:https";
 import os from "node:os";
@@ -20,7 +20,10 @@ import { installMachineForcedRelay } from "./machine-forced-relay.js";
 
 export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", listenPort = 0, hubPublicKey, tlsPortProxy = false,
   lifetimeSeconds = 180, humanEngine = "chromium", machineEngine = "chromium", observeStage = () => {}, tlsConnectionLimit = 16,
-  publicDir = process.env.MEET_TEST_PUBLIC_DIR, receiverKeyDelay = false, icePath = "direct", relayParticipants = 2 } = {}) {
+  publicDir = process.env.MEET_TEST_PUBLIC_DIR, receiverKeyDelay = false, icePath = "direct", relayParticipants = 2,
+  browserLauncher } = {}) {
+  if (browserLauncher !== undefined && (typeof browserLauncher !== "function" || !tlsPortProxy
+    || humanEngine !== "chromium" || machineEngine !== "chromium")) throw new Error("test_browser_launcher_invalid");
   if (!["direct", "turn-udp", "turn-tcp"].includes(icePath)) throw new Error("test_ice_path_invalid");
   if (![2, 3].includes(relayParticipants)) throw new Error("test_turn_scope_invalid");
   if (icePath !== "direct") tlsPortProxy = true;
@@ -56,8 +59,8 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
   execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
     "-subj", `/CN=${originHost}`, "-addext", `subjectAltName=IP:${originHost}`,
     "-keyout", path.join(directory, "key.pem"), "-out", path.join(directory, "cert.pem")], { stdio: "ignore" });
-  tls = https.createServer({ key: await fs.readFile(path.join(directory, "key.pem")),
-    cert: await fs.readFile(path.join(directory, "cert.pem")) });
+  const certificateBytes = await fs.readFile(path.join(directory, "cert.pem"));
+  tls = https.createServer({ key: await fs.readFile(path.join(directory, "key.pem")), cert: certificateBytes });
   observeStage("tls-listen");
   await new Promise((resolve, reject) => { tls.once("error", reject); tls.listen(listenPort, listenHost, resolve); });
   const origin = `https://${originHost}${tlsPortProxy || tls.address().port === 443 ? "" : ":" + tls.address().port}`;
@@ -91,7 +94,10 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
     }
   }
   observeStage("browser-launch");
-  const launch = engine => engine === "chromium"
+  const launch = engine => browserLauncher ? browserLauncher({ engine, network: proxy.network,
+    certificatePath: path.join(directory, "cert.pem"), originHost,
+    spki: createHash("sha256").update(new X509Certificate(certificateBytes).publicKey.export({ type: "spki", format: "der" })).digest("base64") })
+    : engine === "chromium"
     ? chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required"] })
     : firefox.launch({ headless: true });
   browser = await launch(machineEngine);
