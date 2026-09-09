@@ -124,3 +124,12 @@ Der isolierte Produktionsbuild bestand in 13,511 Sekunden; das unveränderte
 harte Bundlebudget bleibt eingehalten, die Warnschwelle wird weiterhin
 überschritten. Die gemeinsame Gesamtregression folgt auf diesem Integrations-
 Batch; frühere fehlgeschlagene Checks werden nicht rückwirkend grün.
+
+Der erste Gesamtcheck von `7617084` bestand 1.151 Frontendtests, Typprüfung,
+Build und statische Gates, scheiterte aber im Go-Vergleich der gemeinsamen
+Capability-Fixture: Diese erwartete noch `0.8.0` statt der neuen nativen
+`0.9.0`. Die gemeinsame Fixture wurde aktualisiert; der exakte Vergleich bleibt
+unverändert. Acht Node-Capability-/Assignmentprüfungen bestehen danach.
+Node-/Browser-Gesamtmatrix und Infrastruktur wurden im ersten Check nicht mehr
+erreicht. Ein korrigierter Gesamtcheck ist ein neuer Nachweis, kein rückwirkender
+Erfolg dieses Laufs.

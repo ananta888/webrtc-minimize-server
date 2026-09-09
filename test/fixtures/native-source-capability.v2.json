@@ -8,7 +8,7 @@
     "tenantId": "tn_0000000000000000",
     "ownerSubjectRef": "sub_0000000000000000",
     "deviceRef": "dev_0000000000000000",
-    "agentVersion": "0.8.0",
+    "agentVersion": "0.9.0",
     "ffmpegVersion": "6.1",
     "videoEncoders": ["libx264"],
     "audioEncoders": ["aac"],
