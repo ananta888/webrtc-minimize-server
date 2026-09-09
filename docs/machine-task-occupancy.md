@@ -35,3 +35,24 @@ multi-node ownership, automatic room rejoin, full Hub restart or safe replacemen
 while an old isolated Worker remains alive. Hub dispatch fencing and original
 deadlines remain mandatory. Tests are synthetic technical observations, not
 production release evidence.
+
+## Combined lifecycle verification
+
+The isolated `npm run check` against **a98706f** is now exit-zero: 874 frontend
+tests (10.58 s), optimized build (8.566 s), TypeScript, Go unit/vet and static
+gates pass; Node reports **876 passed, zero failures, two skips in 345.702 s**.
+This includes the corrected independent-task visual-epoch fixture and the
+SFrame/first-keyframe regressions. The two Node skips are the optional GPU MP4
+fixture and actual Windows PowerShell parser. Fourteen opt-in external
+infrastructure gates remain explicitly skipped; private bridges and compositor
+long-run evidence also require their separate opt-ins. No full external or
+production acceptance is implied by the default aggregate.
+
+Ananta's separate actual packaged Hub-crash/restart gate passes in 168.41 s:
+real visual child completion first, old Worker/browser stopped in 2833.80 ms,
+same persisted original Task/deadline and exactly one later native expiry event,
+no redispatch or new room participant. Only the private fixture's Meet registry
+is read to count members; changing UI sections neither breaks observation nor
+changes grants. See Ananta `docs/contracts/meet-hub-process-restart.md` for exact
+image identities, failed fixture attempts and cleanup. This is fail-closed
+restart/reconciliation, not automatic rejoin or multi-node durability.
