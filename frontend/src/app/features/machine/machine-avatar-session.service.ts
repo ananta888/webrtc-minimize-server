@@ -6,14 +6,15 @@ import { MachineAvatarSurfaceFactory } from "./machine-avatar-surface";
 import { MachineAvatarImageLoader } from "./machine-avatar-image";
 import { MachineAvatarVideoLoader } from "./machine-avatar-video";
 import { probeAvatarVideo } from "./machine-avatar-video-contract";
+import { MachineMediaTimingService } from "./machine-media-timing.service";
 
 @Injectable()
 export class MachineAvatarSessionService implements OnDestroy {
   readonly source: MachineAvatarSource;
   readonly videoProbe = probeAvatarVideo;
-  constructor(session: RoomSessionService, mesh: PeerMeshService, surfaces: MachineAvatarSurfaceFactory) {
+  constructor(session: RoomSessionService, mesh: PeerMeshService, surfaces: MachineAvatarSurfaceFactory, timing: MachineMediaTimingService) {
     const images = new MachineAvatarImageLoader({ create: artwork => surfaces.create(artwork) });
-    const videos = new MachineAvatarVideoLoader({ create: artwork => surfaces.create(artwork) });
+    const videos = new MachineAvatarVideoLoader({ create: artwork => surfaces.create(artwork), timing: () => timing.enabled() });
     this.source = new MachineAvatarSource({ authority: () => {
       const context = session.machineContext(), lease = session.machineLease();
       if (!session.joined() || !context || !lease || !mesh.machineReceive.supports(mesh.ownPeerId(), "avatar.publish")) {

@@ -1,7 +1,10 @@
+import type { DecodedFramePosition } from "./machine-video-frame-clock";
+
 /** Code-native labels remain outside caller image pixels and cannot be omitted. */
 export interface MachineAvatarArtwork {
   draw(drawing: CanvasRenderingContext2D): void;
   close(): void;
+  mediaTiming?(): DecodedFramePosition | null;
 }
 
 export function drawAvatar(drawing: CanvasRenderingContext2D, sequence: number, artwork?: MachineAvatarArtwork): void {

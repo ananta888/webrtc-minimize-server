@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MachineAvatarSurfaceFactory } from "./machine-avatar-surface";
 import { MachinePublicationOwnership } from "./machine-publication-ownership";
 import { MachineAvatarSessionService } from "./machine-avatar-session.service";
+import { MachineMediaTimingService } from "./machine-media-timing.service";
 
 function setup() {
   const drawing = { fillStyle: "", textAlign: "", font: "", fillRect: vi.fn(), beginPath: vi.fn(), arc: vi.fn(), fill: vi.fn(), fillText: vi.fn() };
@@ -11,10 +12,25 @@ function setup() {
   const create = vi.spyOn(document, "createElement").mockReturnValue(canvas as never);
   const mesh = { attachPublication: vi.fn(), detachPublication: vi.fn(), localPublicationProtected: vi.fn(() => true), overlayReady: () => true };
   const ownership = new MachinePublicationOwnership();
-  return { canvas, drawing, track, mesh, create, ownership, factory: new MachineAvatarSurfaceFactory(mesh as never, ownership) };
+  const timing = new MachineMediaTimingService({ joined: () => true, machineLease: () => ({ sessionId: "owned" }) } as never);
+  return { canvas, drawing, track, mesh, create, ownership, timing, factory: new MachineAvatarSurfaceFactory(mesh as never, ownership, timing) };
 }
 afterEach(() => { vi.restoreAllMocks(); });
 describe("neutral synthetic canvas adapter", () => {
+  it("records frame submission only and preserves decoded timing failures through owned cleanup", () => {
+    const f = setup(); f.timing.start("independent-owned-live-v1");
+    try {
+      const canvas = f.factory.create(); canvas.frame(1);
+      expect(f.timing.snapshot().sources.avatar).toMatchObject({ measurement: "canvas-submission", position_us: null, drift_us: null });
+      canvas.close();
+      const position = vi.fn(() => ({ positionUs: 500_000, held: false }));
+      const video = f.factory.create({ draw: vi.fn(), close: vi.fn(), mediaTiming: position }); video.frame(1);
+      expect(f.timing.snapshot().sources.avatar).toMatchObject({ measurement: "decoded-video", position_us: 500_000 });
+      position.mockImplementation(() => { throw new Error("frame_clock_failed"); });
+      expect(() => video.ready()).toThrow("frame_clock_failed");
+      expect(f.timing.snapshot().sources.avatar!.state).toBe("failed"); expect(f.track.stop).toHaveBeenCalledTimes(2);
+    } finally { f.timing.close(); }
+  });
   it("renders optional bounded artwork before immutable labels and releases its bitmap", () => {
     const f = setup(), artwork = { draw: vi.fn(), close: vi.fn() }, source = f.factory.create(artwork);
     expect(artwork.draw).toHaveBeenCalledWith(f.drawing);
@@ -73,7 +89,8 @@ describe("neutral synthetic canvas adapter", () => {
     const mesh = { ownPeerId: () => "p_machine", membershipEpoch: () => 2,
       machineReceive: { supports: vi.fn(() => allowed) } };
     const surfaces = { create: vi.fn() };
-    const service = new MachineAvatarSessionService(session as never, mesh as never, surfaces as never);
+    const service = new MachineAvatarSessionService(session as never, mesh as never, surfaces as never,
+      new MachineMediaTimingService(session as never));
     await expect(service.source.open("avatar:hub", "neutral-ai-v1")).rejects.toThrow("meet_avatar_source_denied");
     joined = true; await expect(service.source.open("avatar:hub", "neutral-ai-v1")).rejects.toThrow();
     expect(mesh.machineReceive.supports).toHaveBeenCalledWith("p_machine", "avatar.publish");

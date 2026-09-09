@@ -1,4 +1,5 @@
 import { AvatarVideoContent } from "./machine-avatar-video-contract";
+import { observeOwnedVideoFrames, VideoFrameClock, DecodedFramePosition } from "./machine-video-frame-clock";
 
 export interface AvatarVideoDecoder {
   /** Holds the single decoder permit even after close until native play settles. */
@@ -6,15 +7,18 @@ export interface AvatarVideoDecoder {
   ready(): boolean;
   draw(drawing: CanvasRenderingContext2D): void;
   close(): void;
+  timing?(): DecodedFramePosition | null;
 }
 
 /** One owned, muted blob decoder. No remote URL, media capture or audio output. */
-export function decodeAvatarVideo(content: AvatarVideoContent): AvatarVideoDecoder {
+export function decodeAvatarVideo(content: AvatarVideoContent, timed = false): AvatarVideoDecoder {
   const video = document.createElement("video");
   let url: string | undefined, closed = false, failed = false;
+  let frameClock: VideoFrameClock | undefined;
   const release = (action: () => void) => { try { action(); } catch { /* Continue releasing only owned resources. */ } };
   const close = () => {
     if (closed) return; closed = true;
+    release(() => frameClock?.close());
     release(() => video.pause()); release(() => video.removeAttribute("src")); release(() => video.load());
     if (url !== undefined) { const owned = url; url = undefined; release(() => URL.revokeObjectURL(owned)); }
   };
@@ -31,9 +35,10 @@ export function decodeAvatarVideo(content: AvatarVideoContent): AvatarVideoDecod
     video.muted = video.defaultMuted = true; video.volume = 0; video.playsInline = true;
     video.preload = "auto"; video.loop = content.repeatMode === "loop"; video.playbackRate = 1;
     url = URL.createObjectURL(new Blob([content.bytes], { type: "video/mp4" })); video.src = url;
+    if (timed) frameClock = observeOwnedVideoFrames(video, content.repeatMode === "loop");
     const pending = video.play();
     const settled = Promise.resolve(pending).then(() => { if (closed) release(() => video.pause()); }, () => { failed = true; close(); });
-    return { settled, ready, draw: drawing => {
+    return { settled, ready, ...(frameClock ? { timing: () => frameClock!.read() } : {}), draw: drawing => {
       if (!ready()) throw new Error("meet_avatar_video_not_ready");
       drawing.drawImage(video, 64, 40, 128, 128);
     }, close };

@@ -8,6 +8,7 @@ interface VideoPorts {
   decode?: (content: AvatarVideoContent) => AvatarVideoDecoder;
   digest?: (bytes: Uint8Array<ArrayBuffer>) => Promise<string>;
   clock?: () => number;
+  timing?: () => boolean;
 }
 
 /** One content/decoder lifetime, composed with the existing independently fenced camera. */
@@ -18,6 +19,7 @@ export class MachineAvatarVideoLoader {
   create(value: unknown, check: () => void): MachineAvatarSurface {
     if (this.busy) throw new Error("meet_avatar_video_decoder_busy");
     const content = parseAvatarVideo(value), clock = this.ports.clock ?? Date.now, started = clock();
+    const timed = this.ports.timing?.() === true;
     let closed = false, failure = false, pending = 1, decoder: AvatarVideoDecoder | undefined, surface: MachineAvatarSurface | undefined;
     const releasePermit = () => { if (closed && pending === 0) this.busy = false; };
     const close = () => {
@@ -37,7 +39,7 @@ export class MachineAvatarVideoLoader {
     void (async () => {
       try {
         if (await (this.ports.digest ?? digestVideo)(content.bytes) !== content.sha256) throw new Error("meet_avatar_video_digest_invalid");
-        current(); decoder = (this.ports.decode ?? decodeAvatarVideo)(content); content.bytes.fill(0);
+        current(); decoder = this.ports.decode ? this.ports.decode(content) : decodeAvatarVideo(content, timed); content.bytes.fill(0);
         pending++;
         void decoder.settled.then(() => { pending--; releasePermit(); }, () => {
           pending--; failure = true; close(); releasePermit();
@@ -54,7 +56,10 @@ export class MachineAvatarVideoLoader {
           current();
           if (!decoder?.ready()) return false;
           const owned = decoder;
-          surface = this.ports.create({ draw: drawing => {
+          surface = this.ports.create({ ...(timed ? { mediaTiming: () => {
+            if (!owned.timing) throw new Error("meet_avatar_video_timing_unsupported");
+            return owned.timing();
+          } } : {}), draw: drawing => {
             check(); owned.draw(drawing);
             drawing.fillStyle = "#ffffff"; drawing.font = "10px sans-serif"; drawing.textAlign = "center";
             drawing.fillText(content.classification === "production" ? "IMPORTED" : content.classification === "test_only" ? "TEST" : "SYNTH", 128, 183);

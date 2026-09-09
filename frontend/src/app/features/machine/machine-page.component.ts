@@ -1,6 +1,7 @@
 import { Component, OnDestroy, effect, inject } from "@angular/core";
 import { MachineLeaseExpiry } from "./machine-lease-expiry";
 import { MachinePageLifecycle } from "./machine-page-lifecycle";
+import { MachineMediaTimingService } from "./machine-media-timing.service";
 import { MachineClientProbe, probeMachineClient } from "./machine-client-probe";
 import { RuntimeConfigService } from "../../core/runtime-config.service";
 import { PeerMeshService } from "../../webrtc/peer-mesh.service";
@@ -22,7 +23,8 @@ import { MachineScreenAudioSessionService } from "./machine-screen-audio-session
 @Component({
   selector: "app-machine-page", standalone: true,
   providers: [MachineChatSessionService, MachineAudioSessionService, MachineVisualSessionService, MachineScreenSessionService, MachineMediaSessionService, MachineScreenAudioSessionService,
-    MachinePublicationOwnership, MachineSpeechGraphFactory, MachineSpeechSessionService, MachineAvatarSurfaceFactory, MachineAvatarSessionService],
+    MachinePublicationOwnership, MachineSpeechGraphFactory, MachineSpeechSessionService, MachineAvatarSurfaceFactory, MachineAvatarSessionService,
+    MachineMediaTimingService],
   template: `<main><h1>Ananta (KI)</h1><p>Autorisierter Maschinenclient für synthetische Quellen.</p>
     <p>{{ session.joined() ? 'Verbunden' : 'Nicht verbunden' }}</p>
     <button type="button" (click)="leave()">Sofort verlassen</button></main>`,
@@ -39,6 +41,7 @@ export class MachinePageComponent implements OnDestroy {
   private readonly machineAvatar = inject(MachineAvatarSessionService);
   private readonly machineMedia = inject(MachineMediaSessionService);
   private readonly machineScreenAudio = inject(MachineScreenAudioSessionService);
+  private readonly mediaTiming = inject(MachineMediaTimingService);
   private readonly expiry = new MachineLeaseExpiry(() => this.session.machineExpiresAt(), () => this.leave());
   private readonly lifecycle = new MachinePageLifecycle({
     load: () => this.config.load(),
@@ -49,6 +52,7 @@ export class MachinePageComponent implements OnDestroy {
       () => this.machineScreenAudio.source.close(), () => this.machineScreen.source.close(),
       () => this.machineAudio.close(), () => this.machineVisual.close(),
       () => this.machineChat.endpoint.close(), () => this.machineMedia.publication.close(),
+      () => this.mediaTiming.close(),
       () => this.mesh.clearChatHistory()],
     cleanupFailed: () => this.session.error.set("machine_cleanup_failed"),
   });
@@ -58,8 +62,10 @@ export class MachinePageComponent implements OnDestroy {
     capabilities: () => Object.freeze({ schema: "ananta.meet-capabilities.v1", publication: "mp4-v1",
       sessionLease: "ananta.meet-session-lease.v1", chatEvents: false, audioSubscription: false, screenPublication: false }),
     probe: (): MachineClientProbe => probeMachineClient(this.api),
+    timing: Object.freeze({ probe: () => this.mediaTiming.probe(), start: (profile: unknown) => this.startTiming(profile),
+      snapshot: () => this.mediaTiming.snapshot() }),
     publish: (text: string, videoBase64: string) => this.publish(text, videoBase64),
-    media: Object.freeze({ publish: (input: unknown) => this.machineMedia.publish(input),
+    media: Object.freeze({ publish: (input: unknown) => { this.requireLegacyMedia(); return this.machineMedia.publish(input); },
       close: () => this.machineMedia.publication.close(), status: () => this.machineMedia.publication.status() }),
     chat: Object.freeze({ open: () => this.machineChat.endpoint.open(),
       poll: () => this.machineChat.endpoint.poll(), ack: (cursor: number) => this.machineChat.endpoint.ack(cursor),
@@ -77,7 +83,7 @@ export class MachinePageComponent implements OnDestroy {
       frame: (subscriptionId: string) => this.machineVisual.frame(subscriptionId),
       close: () => this.machineVisual.close(), status: () => this.machineVisual.status() }),
     screen: machineScreenEndpoint(this.machineScreen.source, this.machineScreenAudio.source),
-    screenAudio: Object.freeze({ open: (sourceId: string) => this.machineScreenAudio.source.open(sourceId),
+    screenAudio: Object.freeze({ open: (sourceId: string) => { this.requireLegacyMedia(); return this.machineScreenAudio.source.open(sourceId); },
       push: (generation: number, sequence: number, pcm: string) => this.machineScreenAudio.source.push(generation, sequence, pcm),
       close: () => this.machineScreenAudio.source.close(), status: () => this.machineScreenAudio.source.status() }),
     speech: Object.freeze({ open: (sourceId: string, samples: number) => this.machineSpeech.source.open(sourceId, samples),
@@ -104,6 +110,7 @@ export class MachinePageComponent implements OnDestroy {
   }
 
   private async publish(text: string, encoded: string): Promise<void> {
+    this.requireLegacyMedia();
     const own = this.mesh.ownPeerId();
     if (!["avatar.publish", "speech.publish", "chat.send"].every(capability => this.mesh.machineReceive.supports(own, capability))) {
       throw new Error("machine_publication_capability_denied");
@@ -113,6 +120,21 @@ export class MachinePageComponent implements OnDestroy {
   }
 
   leave(): void { this.lifecycle.leave(); }
+
+  private startTiming(profile: unknown) {
+    if (!this.mediaTiming.probe().canvas_submission) throw new Error("meet_media_timing_canvas_unsupported");
+    if (this.machineMedia.publication.status().active
+      || this.machineScreen.source.status().open || this.machineScreenAudio.source.status().open
+      || [this.machineSpeech.source.status(), this.machineAvatar.source.status()]
+        .some(status => !["closed", "failed", "completed"].includes(status.state))) {
+      throw new Error("meet_media_timing_start_denied");
+    }
+    return this.mediaTiming.start(profile);
+  }
+
+  private requireLegacyMedia(): void {
+    if (this.mediaTiming.enabled()) throw new Error("meet_media_timing_profile_conflict");
+  }
 
   ngOnDestroy(): void {
     this.lifecycle.destroy(); Reflect.deleteProperty(window, "anantaMachine");

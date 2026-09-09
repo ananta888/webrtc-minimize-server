@@ -25,6 +25,7 @@ export interface MediaTimingSnapshot {
 }
 export interface SourceTimingLease {
   observe(positionUs: number | null, held?: boolean): void;
+  fail(): void;
   close(): void;
 }
 interface Entry { generation: number; measurement: TimingMeasurement; stop: () => void; failed: boolean; row?: TimingRow }
@@ -53,6 +54,7 @@ export class MachineMediaTimeline {
     const entry: Entry = { generation: ++this.generations[source], measurement, stop, failed: false };
     this.entries.set(source, entry);
     return {
+      fail: () => { if (this.entries.get(source) === entry && !this.closed) this.fail(entry); },
       observe: (position, held = false) => {
         if (this.entries.get(source) !== entry || this.closed || entry.failed) return;
         try { this.observe(entry, position, held, this.now()); }

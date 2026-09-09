@@ -3,10 +3,13 @@ import { PeerMeshService } from "../../webrtc/peer-mesh.service";
 import { untilAudioAbort } from "./machine-audio-operation";
 import { MachinePublicationOwnership } from "./machine-publication-ownership";
 import { MachineSpeechGraph, SPEECH_RATE } from "./machine-speech-source";
+import { MachineMediaTimingService } from "./machine-media-timing.service";
+import { SourceTimingLease } from "./machine-media-timeline";
 
 @Injectable()
 export class MachineSpeechGraphFactory {
-  constructor(private readonly mesh: PeerMeshService, private readonly ownership: MachinePublicationOwnership) {}
+  constructor(private readonly mesh: PeerMeshService, private readonly ownership: MachinePublicationOwnership,
+    private readonly timing: MachineMediaTimingService) {}
 
   async create(totalSamples: number, expiresAt: number, progress: (played: number) => void,
     failed: () => void, signal: AbortSignal): Promise<MachineSpeechGraph> {
@@ -16,10 +19,12 @@ export class MachineSpeechGraphFactory {
     let context: AudioContext | null = null, node: AudioWorkletNode | null = null;
     let output: MediaStreamAudioDestinationNode | null = null, quiet: GainNode | null = null;
     let closed = false, attached = false;
+    let timing: SourceTimingLease | undefined;
     // Every owned resource is released even if another browser cleanup API throws.
     const release = (action: () => void) => { try { action(); } catch { /* Already closing; never revive this generation. */ } };
     const close = () => {
       if (closed) return; closed = true; signal.removeEventListener("abort", close);
+      timing?.close();
       if (node) {
         node.port.onmessage = null; node.onprocessorerror = null;
         release(() => node!.port.postMessage({ type: "stop" })); release(() => node!.port.close());
@@ -32,6 +37,7 @@ export class MachineSpeechGraphFactory {
     const fail = () => { if (!closed) { try { failed(); } finally { close(); } } };
     signal.addEventListener("abort", close, { once: true });
     try {
+      timing = this.timing.open("speech", "pcm-progress", fail);
       context = new AudioContext({ sampleRate: SPEECH_RATE, latencyHint: "interactive" });
       if (context.sampleRate !== SPEECH_RATE) throw new Error("meet_speech_rate_unsupported");
       await untilAudioAbort(context.audioWorklet.addModule("/assets/machine-speech.worklet.js"), signal);
@@ -52,7 +58,10 @@ export class MachineSpeechGraphFactory {
         if (closed || signal.aborted) return;
         if (data?.type !== "progress" || Object.keys(data).sort().join() !== "playedSamples,type"
           || !Number.isSafeInteger(data.playedSamples)) { fail(); return; }
-        try { progress(data.playedSamples); } catch { fail(); }
+        try {
+          timing!.observe(Math.floor(data.playedSamples * 1_000_000 / SPEECH_RATE));
+          progress(data.playedSamples);
+        } catch { fail(); }
       };
       node.onprocessorerror = fail;
       attached = true; this.mesh.attachPublication("microphone", output.stream);

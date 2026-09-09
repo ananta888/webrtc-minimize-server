@@ -8,6 +8,13 @@ function fixture() {
 }
 
 describe("membership-owned media timing", () => {
+  it("fences externally observed decoder failure and ignores retired failure callbacks", () => {
+    const f = fixture(), stop = vi.fn(), old = f.timeline.open("avatar", "decoded-video", stop);
+    old.observe(0); old.close(); const fresh = f.timeline.open("avatar", "decoded-video", stop); fresh.observe(0);
+    old.fail(); expect(f.timeline.snapshot().sources.avatar!.state).toBe("running");
+    fresh.fail(); fresh.close(); fresh.fail();
+    expect(f.timeline.snapshot().sources.avatar!.state).toBe("failed"); expect(stop).toHaveBeenCalledOnce();
+  });
   it("projects exact closed independent source clocks and copied rows", () => {
     const f = fixture(), speech = f.timeline.open("speech", "pcm-progress", vi.fn());
     const screen = f.timeline.open("screen", "canvas-submission", vi.fn());

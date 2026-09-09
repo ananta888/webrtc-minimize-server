@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MachinePublicationOwnership } from "./machine-publication-ownership";
 import { MachineSpeechGraphFactory } from "./machine-speech-graph";
+import { MachineMediaTimingService } from "./machine-media-timing.service";
 
 function setup() {
   const makeNode = () => ({ connect: vi.fn(), disconnect: vi.fn() });
@@ -17,13 +18,27 @@ function setup() {
   const mesh = { attachPublication: vi.fn(), detachPublication: vi.fn(), localPublicationProtected: vi.fn(() => true), overlayReady: () => true };
   const ownership = new MachinePublicationOwnership(), controller = new AbortController();
   const progress = vi.fn(), failed = vi.fn();
-  const factory = new MachineSpeechGraphFactory(mesh as never, ownership);
-  return { factory, context, worklet, construct, mesh, track, ownership, quiet, progress, failed, controller,
+  const timing = new MachineMediaTimingService({ joined: () => true, machineLease: () => ({ sessionId: "owned" }) } as never);
+  const factory = new MachineSpeechGraphFactory(mesh as never, ownership, timing);
+  return { factory, timing, context, worklet, construct, mesh, track, ownership, quiet, progress, failed, controller,
     connect: () => factory.create(441, Date.now() + 5000, progress, failed, controller.signal) };
 }
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("synthetic speech WebAudio graph", () => {
+  it("observes actual Worklet progress and quality failure closes only this graph", async () => {
+    let now = 1000; vi.spyOn(performance, "now").mockImplementation(() => now);
+    const f = setup(); f.timing.start("independent-owned-live-v1");
+    try {
+      await f.connect(); const callback = f.worklet.port.onmessage!;
+      callback({ data: { type: "progress", playedSamples: 441 } });
+      expect(f.timing.snapshot().sources.speech).toMatchObject({ measurement: "pcm-progress", position_us: 20_000 });
+      now += 600; callback({ data: { type: "progress", playedSamples: 882 } });
+      expect(f.failed).toHaveBeenCalledOnce(); expect(f.track.stop).toHaveBeenCalledOnce();
+      expect(f.progress).toHaveBeenCalledTimes(1); expect(f.timing.snapshot().sources.speech!.state).toBe("failed");
+      callback({ data: { type: "progress", playedSamples: 1323 } }); expect(f.progress).toHaveBeenCalledTimes(1);
+    } finally { f.timing.close(); }
+  });
   it("publishes only its own synthetic audio stream and drives a silent local clock", async () => {
     const f = setup(), camera = f.ownership.claim(["camera"]), graph = await f.connect();
     expect(f.mesh.attachPublication).toHaveBeenCalledWith("microphone", expect.anything());
