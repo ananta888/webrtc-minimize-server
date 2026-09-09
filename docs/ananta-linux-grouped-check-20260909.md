@@ -73,3 +73,34 @@ comparison, not a current GPU, public or normal two-hour pass.
 The installed two-Worker reference and broader Ananta regression follow this
 updated Meet checkpoint. MDS-08 remains open; no public trust/deployment change,
 new account access, GPU recovery or historical-failure erasure is implied.
+
+## Current forced-relay and Ananta matrix follow-up
+
+The actual combined dialog at fixed Meet `c4ef486` also passed separately with
+`MACHINE_DIALOG_ICE_PATH=turn-udp` and `turn-tcp`, two Chromium/Firefox cases per
+transport: UDP 36.832 seconds, TCP 37.845 seconds, four passes and no skips or
+failures. Each case received 16,000 real decrypted PCM samples, correlated chat,
+the moving own screen, three lease renewals and revocation. Both endpoints had
+one selected relay pair, the exact requested transport, bidirectional payload
+progress and zero relay-policy/transform failures. Consent and input media were
+private synthetic fixtures; this is not public OIDC, external NAT or GPU proof.
+
+The separate actual private TURN payload probe passed both transports in 10.655
+seconds: two selected relay pairs and exact 32-byte payloads in each direction.
+Its narrower same-browser synthetic DataChannel scope is retained; it is not
+relabeled application media or an independent external receiver.
+
+The Ananta matrix at `1ece01072` completed with 4,943 passes, 82 explicit skips
+and zero failures/errors in 1,033.58 seconds, following two causally repaired
+environment-dependent fixture assumptions. MAP-29 is complete at `d29d1780a`;
+this does not close MDS-08's longer-run criterion or the rest of Ananta's track.
+The normal two-hour private dialog/screen reference now runs on frozen Ananta
+`d29d1780a` / Meet `c4ef486` / immutable Worker image `5d4be51c5dda`, without the
+paired-idle fault, under Hub TEST identities
+`SRC_1a79f19adf72bffe8407a72d1ce302c3` /
+`RUN_4c3ab71f6f6734f21aed51c7032dbc19`. It is ongoing, not passed.
+
+The later incoming `f67c9e5` integration-overview feature was preserved in the
+main checkout. It adds a separate read-only endpoint and leaves the old
+capabilities contract unchanged. It is not part of the frozen long-run inputs
+or these local test counts. No serving build or public trust was changed.
