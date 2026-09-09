@@ -859,6 +859,13 @@ export class PeerMeshService {
       .map(p => Object.freeze({ publicationId: p.id, source: p.source })));
   }
 
+  /** Borrow an existing own publication only; this grants no capture or remote-media access. */
+  ownPublicationTrack(publicationId: string, source: string): MediaStreamTrack | null {
+    const publication = this.publications.get(publicationId);
+    return this.membershipStable && publication?.local && publication.source === source && publication.track.readyState === "live"
+      ? publication.track : null;
+  }
+
   machineReceiveConsent(machinePeerId: string, microphone: boolean, screenAudio: boolean, chatRead: boolean, minutes: number, visual?: VisualReceiveSelection) {
     if (!this.peers.has(machinePeerId) || !this.machineReceive.isMachine(machinePeerId)
       || ![1, 5, 10].includes(minutes)) throw new Error("machine_receive_target_unavailable");

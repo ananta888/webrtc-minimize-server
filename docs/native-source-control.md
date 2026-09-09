@@ -8,9 +8,11 @@ No environment, server policy or Ananta trust is activated by this implementatio
 The server implementation now has an [explicit v4 source-program start](native-source-program-start.md);
 legacy requests retain assignment v1/v2/v3, and the agent still advertises
 version 0.8.0. Enabling this switch alone cannot create a broadcast source request
-or publisher grant. Deployment of that new path, its complete public UI,
-source recovery/discontinuity and the complete Angular Approve/Renew workflow
-remain required work. The [public source actions](trusted-source-public-actions.md)
+or publisher grant. Deployment of that new path, its complete public start UI,
+source recovery/discontinuity and end-to-end acceptance remain required work.
+The [Angular source workflow](trusted-source-angular-workflow.md) now composes
+explicit approval and receiver-confirmed renewal with the existing publisher.
+The [public source actions](trusted-source-public-actions.md)
 now connect explicit consent and ACK-confirmed leases to the publisher socket.
 The switch is intended for the bounded integration path until those are ready.
 
@@ -38,8 +40,8 @@ refresh preserves the handle. Reconnect, expiry and room loss retain their
 existing independent fences. Losing one source does not stop the parent writer.
 
 This advertises the implemented opt-in protocol, not production readiness,
-source reception, decoder health or authorization. The publisher Approve/Renew
-UI workflow, recovery/discontinuity and complete
+source reception, decoder health or authorization. Public program-start
+integration, recovery/discontinuity and complete
 multi-publisher acceptance remain required; capability negotiation does not
 replace any of them or turn the switch on in production.
 

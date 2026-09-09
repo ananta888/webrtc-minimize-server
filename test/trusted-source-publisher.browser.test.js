@@ -37,8 +37,9 @@ before(async () => {
   const built = await build({stdin:{resolveDir:root,contents:`
     import { TrustedSourcePublisher } from "./frontend/src/app/broadcast/trusted-source-publisher";
     import { sameTrustedSource } from "./frontend/src/app/broadcast/trusted-source-contract";
+    import { TrustedSourceWorkflow } from "./frontend/src/app/broadcast/trusted-source-workflow";
     import { MediaE2eeController } from "./frontend/src/app/webrtc/media-e2ee-controller";
-    let track, context, oscillator, timer, publisher, lease, connection, allowed = true;
+    let track, context, oscillator, timer, publisher, lease, connection, workflow, workflowTimer, allowed = true;
     const pending = [], states = [], failures = [], lifetime = new AbortController();
     window.createSyntheticSource = async codec => {
       if (codec === "audio/opus") {
@@ -54,25 +55,53 @@ before(async () => {
       return {codec,publicationId:track.id};
     };
     window.acceptSourceNative = async value => {
-      if (!publisher) { if(pending.length>=32) throw new Error("fixture_queue"); pending.push(value); return; }
-      if(value.fixture === "lease") publisher.renew(value.lease);
+      if (!workflow) { if(pending.length>=32) throw new Error("fixture_queue"); pending.push(value); return; }
+      if(value.fixture === "lease") workflow.receive({version:1,type:"trusted-source-publisher-lease",lease:value.lease});
       else if(value.type === "trusted-source-packager-signal") {
         const {type,...fields} = value;
-        await publisher.receiveSignal({...fields,type:"trusted-source-agent-signal",
+        workflow.receive({...fields,type:"trusted-source-agent-signal",
           packagerId:lease.consent.granteePackagerRef,packagerDeviceRef:lease.consent.granteeDeviceRef});
       }
     };
     window.startSourcePublisher = async initial => {
       lease = initial;
-      publisher = await TrustedSourcePublisher.start(initial,track,{}, {
-        signal: lifetime.signal,
-        authorized: current => allowed && track.readyState === "live" && sameTrustedSource(initial,current),
+      // Explicit synthetic control-policy fixture, not HTTP/OIDC/Angular approval evidence.
+      // Exercise the actual local workflow and sender against the real native receiver.
+      const now = Date.now(), requestId = "bsr_"+"a".repeat(24), consent = initial.consent;
+      const scope = {roomId:consent.roomId,peerId:initial.publisherPeerId,roomEpoch:consent.roomEpoch,
+        fingerprint:"a".repeat(43),identity:"synthetic-policy"};
+      workflow = new TrustedSourceWorkflow({
+        context:()=>allowed ? scope : null,
+        references:async()=>({tenantId:consent.tenantId,subjectRef:consent.grantorSubjectRef,deviceRef:initial.publisherDeviceRef}),
+        track:()=>track,
+        changed:()=>{},
+        send:value=>{
+          if(value.type==="trusted-source-publications") workflow.receive({version:1,type:value.type,
+            roomId:scope.roomId,peerId:scope.peerId,roomEpoch:scope.roomEpoch,publicationRevision:1,
+            publications:[{publicationId:track.id,publicationEpoch:initial.publicationEpoch,source:consent.sourceKind}]});
+          else if(value.type==="trusted-source-approve") {
+            workflow.receive({version:1,type:"trusted-source-approved",requestId,consent});
+            workflow.receive({version:1,type:"trusted-source-publisher-lease",lease:initial});
+          } else if(value.type!=="trusted-source-revoke") throw new Error("fixture_control_invalid");
+        },
+        start:async(current,borrowed,signal,authorized,onState)=>{
+          publisher = await TrustedSourcePublisher.start(current,borrowed,{}, {
+        signal,
+        authorized: candidate => authorized(candidate) && sameTrustedSource(initial,candidate),
         sendSignal: value => { void window.sendSourceNative(value); },
-        onState: state => { if(states.length<32) states.push(state); },
+        onState: state => { if(states.length<32) states.push(state); onState(state); },
         createPeerConnection: config => (connection = new RTCPeerConnection(config)),
         createEncryption: fail => new MediaE2eeController((_context,code) => { if(failures.length<8) failures.push(code); fail(); },
           () => { if(failures.length<8) failures.push("worker-failed"); fail(); })
+          }); return publisher;
+        }
       });
+      workflowTimer=setInterval(()=>workflow.tick(),250);
+      await workflow.prepare({requestId,roomId:scope.roomId,programId:consent.programId,programEpoch:consent.programEpoch,
+        programRevision:1,ownerPeerId:scope.peerId==="fedcba9876543210" ? "0123456789abcdef" : "fedcba9876543210",
+        targetPeerId:scope.peerId,packagerRef:consent.granteePackagerRef,sourceKind:consent.sourceKind,
+        state:"pending",authority:"none",createdAt:now,expiresAt:now+120000});
+      workflow.approve(requestId,track.id,600000,"user-action");
       for(const value of pending.splice(0)) await window.acceptSourceNative(value);
     };
     window.sourceObservation = async () => {
@@ -82,7 +111,7 @@ before(async () => {
         outbound:stats.filter(row=>row.type==="outbound-rtp").slice(0,2).map(row=>({
           framesEncoded:Number(row.framesEncoded||0),bytesSent:Number(row.bytesSent||0),packetsSent:Number(row.packetsSent||0)}))};
     };
-    window.cleanupSource = async () => { allowed=false; lifetime.abort(); publisher?.stop(); track?.stop(); clearInterval(timer); oscillator?.stop(); await context?.close(); };
+    window.cleanupSource = async () => { allowed=false; workflow?.destroy(); clearInterval(workflowTimer); lifetime.abort(); publisher?.stop(); track?.stop(); clearInterval(timer); oscillator?.stop(); await context?.close(); };
   `},bundle:true,format:"esm",platform:"browser",write:false,logLevel:"silent"});
   bundle = built.outputFiles[0].contents;
   const workerBuild = await build({entryPoints:[path.join(root,"frontend/src/app/webrtc/sframe.worker.ts")],bundle:true,format:"esm",platform:"browser",write:false,logLevel:"silent"});

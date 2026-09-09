@@ -252,6 +252,11 @@ test("real Angular keyboard inbox loads and declines an actual scoped invitation
   await page.locator("#broadcast-source-requests-load").press("Enter");
   const item = page.locator(`[data-source-request-id="${requestId}"]`);
   await item.getByText("Offen · keine Freigabe", { exact: false }).waitFor();
+  await item.getByRole("button", { name: "Eigene Quelle prüfen", exact: true }).press("Enter");
+  await page.locator("#broadcast-source-approval").getByText("Keine passende laufende Quelle vorhanden.", { exact: false }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Entschlüsselung und Broadcast ausdrücklich erlauben…", exact: true }).count(), 0);
+  assert.equal(await page.evaluate(() => window.__sourceRequestCaptureCalls), 0, "server publication query never starts capture");
+  await page.getByRole("button", { name: "Auswahl schließen", exact: true }).press("Enter");
   await item.getByRole("button", { name: "Ablehnen", exact: true }).press("Enter");
   await item.getByText("Abgelehnt", { exact: false }).waitFor();
   assert.equal(invitationCalls, 2);

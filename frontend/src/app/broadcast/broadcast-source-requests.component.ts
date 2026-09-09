@@ -2,6 +2,7 @@ import { DatePipe } from "@angular/common";
 import { ChangeDetectionStrategy, Component, OnChanges, OnDestroy, OnInit, computed, input, signal } from "@angular/core";
 import { BroadcastSourceRequestsService, SourceInvitation, SourceRequestProgram } from "./broadcast-source-requests.service";
 import { BroadcastSourceKind } from "./broadcast-ports";
+import { TrustedSourceWorkflowService } from "./trusted-source-workflow.service";
 
 @Component({
   selector: "app-broadcast-source-requests", standalone: true, imports: [DatePipe],
@@ -10,7 +11,8 @@ import { BroadcastSourceKind } from "./broadcast-ports";
     <section class="panel" aria-labelledby="broadcast-source-requests-heading">
       <h2 id="broadcast-source-requests-heading">Quellenanfragen</h2>
       <p>Eine Anfrage startet weder Kamera, Mikrofon noch Bildschirm und gibt keine Medien oder Schlüssel frei.
-        Annehmen und die eigentliche Quellenübernahme sind noch nicht verfügbar.</p>
+        Für einen nativen Quellen-Packager kannst du eine bereits laufende eigene Quelle getrennt freigeben.
+        Der Trusted Packager entschlüsselt diese Quelle und kann sie an das Broadcast-Publikum ausgeben.</p>
       <button id="broadcast-source-requests-load" class="button secondary" type="button"
         [disabled]="disabled() || requests.busy()" (click)="load()">Anfragen vom Server laden</button>
       @if (program()) {
@@ -39,6 +41,11 @@ import { BroadcastSourceKind } from "./broadcast-ports";
               · {{ label(item.sourceKind) }} · {{ item.expiresAt <= now() ? 'Abgelaufen' : stateLabel(item.state) }}
               <small>Programm {{ item.programId }} · gültig bis {{ item.expiresAt | date:'HH:mm:ss' }}</small>
               @if (item.state === 'pending') {
+                @if (item.targetPeerId === peerId()) {
+                  <button class="button secondary" type="button"
+                    [disabled]="disabled() || sources.view().preparing || !!sources.view().selection || item.expiresAt <= now()"
+                    (click)="prepareSource(item)">Eigene Quelle prüfen</button>
+                }
                 <button class="button secondary" type="button" [disabled]="disabled() || requests.busy() || item.expiresAt <= now()"
                   (click)="finish(item)">{{ item.ownerPeerId === peerId() ? 'Zurückziehen' : 'Ablehnen' }}</button>
               }
@@ -47,6 +54,40 @@ import { BroadcastSourceKind } from "./broadcast-ports";
         </ul>
       }
       @if (requests.error()) { <p id="broadcast-source-requests-error" class="error" role="alert">{{ requests.error() }}</p> }
+      @if (sources.view().preparing) { <p role="status">Aktuelle eigene Publikation wird beim Server geprüft…</p> }
+      @if (sources.view().selection; as selection) {
+        <fieldset id="broadcast-source-approval"><legend>Getrennte Freigabe für den Trusted Packager</legend>
+          <p>Ziel-Packager: <code>{{ selection.packagerRef }}</code> · Programm: <code>{{ selection.programId }}</code></p>
+          @for (publication of selection.publications; track publication.publicationId) {
+            <p>{{ label(publication.source) }} · bereits laufende eigene Quelle</p>
+            <p>Der interaktive Raum bleibt getrennt verschlüsselt. Der gewählte Packager erhält jedoch einen eigenen
+              Entschlüsselungsschlüssel für diese Quelle. Ein Zuschauer-Broadcast ist nicht Ende-zu-Ende-verschlüsselt.</p>
+            <label>Maximale Freigabedauer
+              <select [value]="sourceTtl()" (change)="setSourceTtl(+$any($event.target).value)">
+                <option value="60000">1 Minute</option><option value="300000">5 Minuten</option><option value="600000">10 Minuten</option>
+              </select>
+            </label>
+            <button type="button" class="button primary" [disabled]="disabled()"
+              (click)="approveSource(selection.requestId, publication.publicationId)">Entschlüsselung und Broadcast ausdrücklich erlauben…</button>
+          } @empty { <p>Keine passende laufende Quelle vorhanden. Starte sie bei Bedarf selbst über die Mediensteuerung und prüfe erneut.</p> }
+          <button type="button" class="button secondary" (click)="sources.workflow.cancelSelection()">Auswahl schließen</button>
+        </fieldset>
+      }
+      @if (sources.view().publications.length) {
+        <h3>Meine Broadcast-Quellen</h3>
+        <ul>@for (publication of sources.view().publications; track publication.requestId) {
+          <li>{{ label(publication.source) }} · {{ sourcePhase(publication.phase) }}
+            @if (publication.phase !== 'stopped' && publication.phase !== 'failed') {
+              · höchstens bis {{ publication.expiresAt | date:'HH:mm:ss' }}
+              <button type="button" class="button secondary" (click)="sources.workflow.revoke(publication.requestId)">Broadcast-Quelle sofort stoppen</button>
+            }
+          </li>
+        }</ul>
+      }
+      @if (sources.view().error) { <p role="alert">Quellenfreigabe nicht bestätigt oder nicht mehr gültig. Bitte Quelle und Anfrage erneut prüfen.</p> }
+      <p>Bis zu vier eigene Quellen. Freigaben werden nicht automatisch verlängert; Server- und Packager-Leases können früher enden.
+        „Sender aktiv“ beweist noch keine Wiedergabe beim Publikum. Panelwechsel stoppt keinen aktiven Broadcastsender;
+        „Broadcast-Quelle sofort stoppen“ beendet nur diesen Zweig, nicht deine laufende Raumfreigabe.</p>
       <p>Keine automatische Aktualisierung. Nach 120 Sekunden, Raum-/Gerätewechsel oder Packager-Übergabe wird die Anfrage ungültig.</p>
     </section>
   `,
@@ -56,13 +97,14 @@ export class BroadcastSourceRequestsComponent implements OnChanges, OnDestroy, O
   readonly candidates = input<readonly { id: string; name: string }[]>([]);
   readonly program = input<SourceRequestProgram | null>(null);
   readonly target = signal(""); readonly kind = signal<BroadcastSourceKind>("camera");
+  readonly sourceTtl = signal(60000);
   readonly canCreate = computed(() => !this.disabled() && !this.requests.busy() && Boolean(this.program())
     && this.candidates().some(candidate => candidate.id === this.target()));
   private identity = "";
   private programKey = "";
   readonly now = signal(Date.now());
   private timer: ReturnType<typeof setInterval> | null = null;
-  constructor(readonly requests: BroadcastSourceRequestsService) {}
+  constructor(readonly requests: BroadcastSourceRequestsService, readonly sources: TrustedSourceWorkflowService) {}
   ngOnChanges(): void {
     const program = this.program(), key = program ? `${program.programId}:${program.programEpoch}` : "";
     if (this.identity !== this.identityKey() || this.programKey !== key) {
@@ -72,7 +114,22 @@ export class BroadcastSourceRequestsComponent implements OnChanges, OnDestroy, O
     if (!this.candidates().some(candidate => candidate.id === this.target())) this.target.set("");
   }
   ngOnInit(): void { this.timer = setInterval(() => this.now.set(Date.now()), 1000); }
-  ngOnDestroy(): void { if (this.timer !== null) clearInterval(this.timer); this.requests.reset(); }
+  ngOnDestroy(): void { if (this.timer !== null) clearInterval(this.timer); this.requests.reset(); this.sources.workflow.cancelSelection(); }
+  setSourceTtl(value: number): void { if ([60000, 300000, 600000].includes(value)) this.sourceTtl.set(value); }
+  async prepareSource(item: SourceInvitation): Promise<void> {
+    if (!this.disabled() && this.requests.items().includes(item)) await this.sources.workflow.prepare(item);
+  }
+  approveSource(requestId: string, publicationId: string): void {
+    const selection = this.sources.view().selection, ttl = this.sourceTtl();
+    if (this.disabled() || selection?.requestId !== requestId || !selection.publications.some(p => p.publicationId === publicationId)) return;
+    if (!window.confirm("Diese eigene Quelle für den angefragten Trusted Packager entschlüsseln und zur Ausstrahlung freigeben? Das Broadcast-Publikum ist nicht SFrame-E2EE geschützt.")) return;
+    if (this.disabled() || this.sources.view().selection !== selection || this.sourceTtl() !== ttl) return;
+    this.sources.workflow.approve(requestId, publicationId, ttl, "user-action");
+  }
+  sourcePhase(value: string): string {
+    return ({ "waiting-consent": "Warte auf Serverfreigabe", "waiting-receiver": "Warte auf Packager-Empfangsbereitschaft",
+      "waiting-key": "Warte auf Schlüsselbestätigung", sending: "Sender aktiv", stopped: "Gestoppt", failed: "Beendet oder fehlgeschlagen" } as Record<string, string>)[value] || "Unbekannt";
+  }
   setKind(value: string): void { if (["camera", "microphone", "screen", "screen-audio"].includes(value)) this.kind.set(value as BroadcastSourceKind); }
   name(id: string): string { return this.candidates().find(candidate => candidate.id === id)?.name || "Teilnehmer nicht mehr im Raum"; }
   label(kind: BroadcastSourceKind): string { return ({ camera: "Kamera", microphone: "Mikrofon", screen: "Bildschirm", "screen-audio": "Bildschirmton" })[kind]; }

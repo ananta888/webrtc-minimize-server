@@ -5,13 +5,31 @@ import { BroadcastSourceRequestsComponent } from "./broadcast-source-requests.co
 
 function fixture() {
   const requests = { busy: signal(false), reset: vi.fn(), setScope: vi.fn(), load: vi.fn(), create: vi.fn(), finish: vi.fn() };
-  const component = runInInjectionContext(Injector.create({ providers: [] }), () => new BroadcastSourceRequestsComponent(requests as never));
+  const sources = { workflow: { cancelSelection: vi.fn(), prepare: vi.fn(), approve: vi.fn(), revoke: vi.fn() },
+    view: signal({ preparing: false, selection: null as any, error: "", publications: [] }) };
+  const component = runInInjectionContext(Injector.create({ providers: [] }), () => new BroadcastSourceRequestsComponent(requests as never, sources as never));
   const inputs = { roomId: signal("room-alpha"), peerId: signal("0123456789abcdef"), identityKey: signal("owner"), disabled: signal(false),
     program: signal({ programId: "prg_aaaaaaaaaaaaaaaa", programEpoch: 2, programRevision: 3 }),
     candidates: signal([{ id: "fedcba9876543210", name: "Synthetic participant" }]) };
   Object.assign(component, inputs); component.target.set("fedcba9876543210");
-  return { component, requests, inputs };
+  return { component, requests, inputs, sources };
 }
+it("confirms a specific selection and never stops an active publisher on panel destroy", () => {
+  const f = fixture();
+  f.sources.view.set({ ...f.sources.view(), selection: { requestId: "request", publications: [{ publicationId: "track" }] } });
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  f.component.approveSource("request", "track"); expect(f.sources.workflow.approve).not.toHaveBeenCalled();
+  confirm.mockReturnValue(true); f.component.approveSource("request", "track");
+  expect(f.sources.workflow.approve).toHaveBeenCalledExactlyOnceWith("request", "track", 60000, "user-action");
+  f.component.ngOnDestroy(); expect(f.sources.workflow.cancelSelection).toHaveBeenCalledOnce();
+  expect(f.sources.workflow.revoke).not.toHaveBeenCalled();
+});
+it("rejects a changed selection during the final decrypt confirmation", () => {
+  const f = fixture();
+  f.sources.view.set({ ...f.sources.view(), selection: { requestId: "request", publications: [{ publicationId: "track" }] } });
+  vi.spyOn(window, "confirm").mockImplementation(() => { f.sources.view.set({ ...f.sources.view(), selection: null }); return true; });
+  f.component.approveSource("request", "track"); expect(f.sources.workflow.approve).not.toHaveBeenCalled();
+});
 afterEach(() => vi.restoreAllMocks());
 it("never fetches on scope changes and confirms only metadata requests", async () => {
   const f = fixture(); f.component.ngOnChanges(); expect(f.requests.load).not.toHaveBeenCalled();

@@ -41,9 +41,10 @@ Die neue v4-Fixture wurde zunächst korrekt wegen einer noch belegten Assignment
 abgewiesen; sie bildet nun die tatsächlich getrennte alte Testverbindung über
 den bestehenden Disconnect-Pfad ab. Keine produktive Stop-Regel wurde gelockert.
 
-Noch zu verbinden: Angular-Zustandsmaschine mit lokaler Quellenauswahl,
-ausdrücklicher Bestätigung und `TrustedSourcePublisher`, v4-Start-UI,
-Mehrquellenlayout, Recovery/Discontinuity und vollständige Mehrquellen-HLS-Abnahme.
+Die [Angular-Quellenfreigabe](trusted-source-angular-workflow.md) verbindet nun
+lokale Quellenauswahl, ausdrückliche Bestätigung und `TrustedSourcePublisher`.
+Noch zu verbinden: v4-Start-UI, Mehrquellenlayout, Recovery/Discontinuity und
+vollständige Mehrquellen-HLS-Abnahme.
 Ein Server-Receipt allein startet keine Browserpublikation. Dieser Schritt
 aktiviert keine Produktionskonfiguration und schließt TBP-030 nicht ab.
 

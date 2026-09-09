@@ -92,6 +92,18 @@ export class SignalingService {
     this.socket.send(JSON.stringify(message));
   }
 
+  /** Separate bounded source-control port; never queues keys or media. */
+  sendSourceControl(message: object): void {
+    if (this.socket?.readyState !== WebSocket.OPEN) throw new Error("signaling_not_connected");
+    const serialized = JSON.stringify(message);
+    const bytes = new TextEncoder().encode(serialized).byteLength;
+    if (serialized.length > 32768 || bytes > 32768 || !Number.isFinite(this.socket.bufferedAmount)
+      || this.socket.bufferedAmount < 0 || this.socket.bufferedAmount + bytes > 65536) {
+      throw new Error("source_signaling_backpressure");
+    }
+    this.socket.send(serialized);
+  }
+
   subscribe(handler: (message: ServerMessage) => void): () => void {
     this.subscribers.add(handler);
     return () => this.subscribers.delete(handler);

@@ -12,6 +12,7 @@ class FakeWebSocket {
   static latest: FakeWebSocket | null = null;
 
   readyState = FakeWebSocket.OPEN;
+  bufferedAmount = 0;
   readonly sent: string[] = [];
   readonly closes: Array<{ code?: number; reason?: string }> = [];
   onopen: (() => void) | null = null;
@@ -37,6 +38,22 @@ describe("signaling server-message envelope", () => {
   });
 
   afterEach(() => vi.unstubAllGlobals());
+
+  it("bounds source control by UTF-8 message bytes and current socket backlog without queueing", () => {
+    const service = new SignalingService();
+    expect(() => service.sendSourceControl({ version: 1 })).toThrow("signaling_not_connected");
+    const socket = new FakeWebSocket("wss://fixture.invalid");
+    (service as any).socket = socket;
+    service.sendSourceControl({ version: 1, type: "trusted-source-publications" });
+    expect(socket.sent).toHaveLength(1);
+    for (const amount of [65536, NaN, -1]) {
+      socket.bufferedAmount = amount;
+      expect(() => service.sendSourceControl({ version: 1 })).toThrow("source_signaling_backpressure");
+    }
+    socket.bufferedAmount = 0;
+    expect(() => service.sendSourceControl({ text: "ü".repeat(20000) })).toThrow("source_signaling_backpressure");
+    expect(socket.sent).toHaveLength(1);
+  });
 
   it("accepts every known server type only at its exact protocol version", () => {
     for (const [type, version] of Object.entries(SERVER_MESSAGE_VERSIONS)) {
