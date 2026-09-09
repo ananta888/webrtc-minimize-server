@@ -76,3 +76,11 @@ Five additional focused cases subsequently captured actual partially assembled
 plaintext and verified zeroing after destroy, peer removal, key replacement,
 expiry and successful reassembly. The final 20-case crypto lifecycle file passed
 in 1.58 seconds; runtime files were unchanged from the combined-check candidate.
+
+Upstream `3a0690e`/`2ce5e2c` was subsequently integrated without conflicts at
+`00b39b4`. Its separate live-infrastructure supervisor/boundary tests passed all
+23 cases in 1.835 seconds. The disabled CLI explicitly skipped; enabled without
+credentials failed before browser startup. These incoming scripts/tests were
+not part of the earlier aggregate; application runtime bytes remained identical.
+Todo validation passed and the serving build stayed unchanged. No new complete
+green aggregate, external authorization or deployment is implied.
