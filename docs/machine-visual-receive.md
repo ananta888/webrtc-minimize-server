@@ -97,3 +97,15 @@ explicitly skipped. Node execution took340.58s. Production build, Go unit/vet
 and static configuration/security gates passed. Fourteen external infrastructure
 gates remained explicit skips; neither these skips nor the optional image-scan
 skip are claimed as live verification. The public serving tree was not rebuilt.
+
+## Next integration fixture
+
+Source8820762/Ananta6dd94fb35: add a private stdio-only visual publisher fixture
+for Ananta's packaged-Worker acceptance. Reuse the verified synthetic camera/
+screen producer and real owner UI consent. The bridge accepts only fixed start,
+revoke, stop commands and one fixed camera/screen test profile; it does not
+accept Tasks, grants, URLs, media contents or keys through stdio. Ephemeral
+TLS/auth/internal network remain owned by the existing fixture. Ananta observes
+its actual Hub child and structured callback, with no application-source mounts
+in the receiving Worker. This is synthetic local integration, not public trust
+or production evidence.
