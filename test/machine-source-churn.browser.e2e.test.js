@@ -2,8 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { machineBrowserFixture } from "./helpers/machine-browser-fixture.js";
 
+// A closed diagnostic profile isolates source-count failures from wall-clock
+// soaks. It does not extend any individual source or membership lease.
+const profile = process.env.MEET_TEST_SCREEN_CHURN || "ordinary";
+if (!["ordinary", "extended", "lease-churn"].includes(profile)) throw new Error("test_screen_churn_profile_invalid");
+const activations = profile === "ordinary" ? 18 : 80;
+const renewalInterval = profile === "lease-churn" ? 2 : 40;
+
 for (const humanEngine of ["chromium", "firefox"]) {
-  test(`${humanEngine} receives 18 separately authorized screen activations without growing SDP or transceivers`, { timeout: 90_000 }, async t => {
+  test(`${humanEngine} receives ${activations} separately authorized screen activations without growing SDP or transceivers`,
+    { timeout: profile === "ordinary" ? 90_000 : 150_000 }, async t => {
     const f = await machineBrowserFixture(t, { humanEngine });
     await f.machine.evaluate(([room, grant]) => window.anantaMachine.join(room, grant), [f.roomId, await f.grant(["screen.publish"])]);
     await f.human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
@@ -14,7 +22,10 @@ for (const humanEngine of ["chromium", "firefox"]) {
         return canvas.toDataURL("image/jpeg", .7).split(",")[1];
       });
     });
-    for (let activation = 0; activation < 18; activation++) {
+    for (let activation = 0; activation < activations; activation++) {
+      if (activation > 0 && activation % renewalInterval === 0) {
+        await f.machine.evaluate(grant => window.anantaMachine.renew(grant), await f.grant(["screen.publish"]));
+      }
       const source = await f.machine.evaluate(id => window.anantaMachine.screen.open(id), "screen:" + f.binding.sessionId);
       for (let seq = 1; seq <= 5; seq++) {
         await f.machine.evaluate(([g, s, frame]) => window.anantaMachine.screen.push(g, s, frame),
@@ -47,6 +58,7 @@ for (const humanEngine of ["chromium", "firefox"]) {
         assert.ok(pc.sdpBytes < 12_000, `activation ${activation + 1}: bounded SDP well below the unchanged 80k gate`);
         assert.equal(pc.state, "stable");
       }
+      if ((activation + 1) % 10 === 0) t.diagnostic(JSON.stringify({ activations: activation + 1, engine: humanEngine }));
     }
     assert.equal(await f.machine.evaluate(() => window.__captures), 0);
     await f.machine.evaluate(() => window.anantaMachine.leave());

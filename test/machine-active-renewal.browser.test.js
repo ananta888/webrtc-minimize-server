@@ -5,9 +5,13 @@ import { decodedCompanionScreen } from "./helpers/machine-avatar-coexistence.mjs
 import { startActiveDialog, activeDialogObservation, staleDialogDenied } from "./helpers/machine-active-dialog.mjs";
 import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
 
+const renewalProfile = process.env.MEET_TEST_DIALOG_RENEWALS || "ordinary";
+if (!["ordinary", "extended"].includes(renewalProfile)) throw new Error("test_dialog_renewals_profile_invalid");
+const renewals = renewalProfile === "extended" ? 39 : 3;
+
 for (const humanEngine of ["chromium", "firefox"]) {
-  test(`${humanEngine} active audio/chat/screen recover through three lease replacements without extending consent`,
-    { timeout: 100_000 }, async t => {
+  test(`${humanEngine} active audio/chat/screen recover through ${renewals} lease replacements without extending consent`,
+    { timeout: renewalProfile === "extended" ? 300_000 : 100_000 }, async t => {
     const f = await machineBrowserFixture(t, { humanEngine }), { human, machine } = f;
     t.after(async () => {
       if (!machine.isClosed()) await machine.evaluate(async () => {
@@ -31,7 +35,7 @@ for (const humanEngine of ["chromium", "firefox"]) {
     await machine.waitForFunction(() => window.anantaMachine.audio.sources().length === 1, null, { timeout: 12_000 });
     const receipts = [];
     let originalLease;
-    for (let phase = 0; phase < 4; phase++) {
+    for (let phase = 0; phase <= renewals; phase++) {
       await human.locator(".nav-item").filter({ hasText: /^Live/ }).click();
       const color = phase % 2 ? "green" : "red";
       await machine.evaluate(startActiveDialog, { sessionId: f.binding.sessionId, color });
@@ -65,7 +69,7 @@ for (const humanEngine of ["chromium", "firefox"]) {
       assert.equal(await panel.getByText(/Bestätigte Freigabe bis/).innerText(), consentText);
       assert.equal(await panel.getByRole("button", { name: "Für diese KI einstellen" }).count(), 1);
       receipts.push({ generation: lease.generation, samples: received.samples, nonzero: received.nonzero, color });
-      if (phase === 3) break;
+      if (phase === renewals) break;
       assert.deepEqual(await machine.evaluate(() => ({ audio: window.anantaMachine.audio.status().open,
         chat: window.anantaMachine.chat.status().open, screen: window.anantaMachine.screen.status().open })),
       { audio: true, chat: true, screen: true });

@@ -11,6 +11,7 @@ import { observeDialogAnswer } from "./machine-chat-observation.mjs";
 import { observeAvatarCommand } from "./machine-avatar-observation.mjs";
 import { requireReceiverKeyDelay } from "./machine-receiver-key-delay.mjs";
 import { transformFailureCounts } from "./machine-transform-observation.mjs";
+import { collectSFramePipelines } from "./sframe-pipeline-probe.mjs";
 async function runBridge() {
 const cleanup = [];
 let stage = "setup";
@@ -26,8 +27,11 @@ try {
   if (!["0", "1"].includes(receiverKeyDelay)) throw new Error("test_receiver_key_delay_invalid");
   const soakSeconds = Number(process.env.MEET_DIALOG_SOAK_SECONDS || 0);
   if (!Number.isInteger(soakSeconds) || soakSeconds < 0 || soakSeconds > 7200) throw new Error("test_soak_invalid");
+  const pipelineProbe = process.env.MEET_TEST_SFRAME_PIPELINE_PROBE || "0";
+  if (!["0", "1"].includes(pipelineProbe)) throw new Error("test_sframe_probe_invalid");
   const f = await machineBrowserFixture({ after: fn => cleanup.push(fn) }, {
     externalMachine: true,
+    receiverPipelineProbe: pipelineProbe === "1",
     // Human browser, Worker browser and its separate route.fetch client share
     // this opaque forwarder. Use the existing bounded multi-client profile.
     tlsConnectionLimit: 32,
@@ -50,6 +54,11 @@ try {
   let answersExpected = 0;
   for await (const line of commands) {
     if (line === "stop") break;
+    if (line === "pipeline_probe") {
+      if (pipelineProbe !== "1") throw new Error("test_sframe_probe_not_enabled");
+      reply(await collectSFramePipelines(f.human));
+      continue;
+    }
     if (line === "fixture_resources") {
       const members = f.app.registry.members(f.roomId);
       reply({ members: members.length, machines: members.filter(member => member.machine === true).length,
@@ -141,6 +150,7 @@ try {
           }))),
         }));
         error.observation.transformFailureCodes = await f.human.evaluate(transformFailureCounts);
+        error.observation.pipelines = await collectSFramePipelines(f.human);
         throw error;
       }
       reply({ moving_screen: true });

@@ -17,11 +17,13 @@ import { waitFixtureValue } from "./machine-browser-wait.mjs";
 import { machineFixtureAssets } from "./machine-fixture-assets.mjs";
 import { installReceiverKeyDelay } from "./machine-receiver-key-delay.mjs";
 import { installMachineForcedRelay } from "./machine-forced-relay.js";
+import { installPrivateSFramePipelineRoute } from "./sframe-pipeline-probe.mjs";
 
 export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", listenPort = 0, hubPublicKey, tlsPortProxy = false,
   lifetimeSeconds = 180, humanEngine = "chromium", machineEngine = "chromium", observeStage = () => {}, tlsConnectionLimit = 16,
   publicDir = process.env.MEET_TEST_PUBLIC_DIR, receiverKeyDelay = false, icePath = "direct", relayParticipants = 2,
-  browserLauncher, externalMachine = false } = {}) {
+  browserLauncher, externalMachine = false, receiverPipelineProbe = false } = {}) {
+  if (typeof receiverPipelineProbe !== "boolean") throw new Error("test_sframe_probe_invalid");
   if (typeof externalMachine !== "boolean") throw new Error("test_external_machine_invalid");
   if (browserLauncher !== undefined && (typeof browserLauncher !== "function" || !tlsPortProxy
     || humanEngine !== "chromium" || machineEngine !== "chromium")) throw new Error("test_browser_launcher_invalid");
@@ -105,6 +107,7 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
   humanBrowser = humanEngine === machineEngine ? browser : await launch(humanEngine);
   async function page(machine = false) {
     const context = await (machine ? browser : humanBrowser).newContext({ permissions: [], ignoreHTTPSErrors: true });
+    if (!machine && receiverPipelineProbe) await installPrivateSFramePipelineRoute(context);
     if (icePath !== "direct") await context.addInitScript(installMachineForcedRelay, proxy.turnConfig.turnUrls[0]);
     if (!machine && receiverKeyDelay) await context.addInitScript(installReceiverKeyDelay);
     await context.addInitScript(({ machine }) => {
