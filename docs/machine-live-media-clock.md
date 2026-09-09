@@ -237,3 +237,21 @@ Do not weaken source freshness or absolute grant expiry based on this result.
 Further diagnosis must distinguish a wall-clock correction from actual missing
 controller activity or suspended execution; a monotonic-only freshness policy
 must not silently extend authority through sleep or loss of the controller.
+
+## Independent speech follow-up
+
+The later combined candidate failed its independent Chromium speech case with
+56,889 received / 52,479 played samples while the session remained joined.
+That test previously reported Worklet errors and state, but not the fixed
+internal authority cause already observed in the timing fixture. It now reuses
+the existing private, bounded error/paired-clock observer, reports it only on
+failure and restores the original Error constructor afterward. No production
+source, application clock, deadline or error behavior changed.
+
+Seven observer tests passed (61.5 ms). A fixed series of three single Chromium
+runs against the isolated `fd77b6c` production build all passed (5.435, 5.843 and
+5.435 seconds), each completing 66,150 samples without capture or transform
+errors. This did not reproduce or explain the preceding failure and is not a
+causal fix. The series is finished; the next grouped check will retain the same
+bounded cause observation if this independent speech failure recurs. No long
+aggregate was rerun solely for this test-only addition.

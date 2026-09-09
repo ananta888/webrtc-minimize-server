@@ -3,10 +3,12 @@ import test from "node:test";
 import { machineBrowserFixture } from "./helpers/machine-browser-fixture.js";
 import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
 import { machineSourceFailureObservation } from "./helpers/machine-source-failure-observation.mjs";
+import { installMachineSourceFailureTrace } from "./helpers/machine-source-failure-trace.mjs";
 
 for (const humanEngine of ["chromium", "firefox"]) {
 test(`${humanEngine} decodes independent machine PCM over required SFrame without capture`, { timeout: 90000 }, async t => {
   const f = await machineBrowserFixture(t, { humanEngine, tlsPortProxy: process.env.MEET_SPEECH_PRIVATE_BROWSER_GATE === "1" }), { human, machine } = f;
+  await machine.evaluate(installMachineSourceFailureTrace);
   try {
   await machine.evaluate(([room, grant]) => window.anantaMachine.join(room, grant), [f.roomId, await f.grant(["speech.publish"])]);
   await machine.evaluate(() => {
@@ -92,7 +94,11 @@ test(`${humanEngine} decodes independent machine PCM over required SFrame withou
   } catch (error) {
     if (!machine.isClosed()) t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false,
       phase: "independent-speech", ...await machine.evaluate(machineSourceFailureObservation).catch(() => ({ unavailable: true })) }));
+    if (!machine.isClosed()) t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false,
+      sourceFailureTrace: await machine.evaluate(() => window.__machineSourceFailureTrace.snapshot()).catch(() => ({ unavailable: true })) }));
     throw error;
+  } finally {
+    if (!machine.isClosed()) await machine.evaluate(() => window.__machineSourceFailureTrace?.close());
   }
 });
 }
