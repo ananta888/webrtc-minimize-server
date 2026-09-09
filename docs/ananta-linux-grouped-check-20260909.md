@@ -124,3 +124,31 @@ RPC, media runtime, image, freshness limit, test retry or serving build change.
 checks passed in 17.91 seconds. A fresh real diagnostic reference follows on
 the same frozen Meet `c4ef486` bundle. The failed run remains failed; no MDS
 task is closed on this basis.
+
+## Host restart and persistent reference
+
+The Linux host restarted at 20:08:10 Europe/Berlin. The subsequent diagnostic
+run `RUN_88068c4c434679702ac991373e66298f` lost its process and `/tmp` inputs;
+no terminal result survived. Its exact persisted Hub TEST reservation was
+cancelled through the registry service after pre-boot/task/source validation,
+not converted into a pass. Previously completed reports survived outside `/tmp`.
+Only its four stopped test containers and then its empty internal network were
+removed. Existing deployed services, model jobs and volumes were not removed.
+
+Ananta reconstructed persistent private worktrees at `5a7be27f5` / Meet
+`c4ef486`, retaining immutable browser image `5d4be51c`. The new private bundle
+has digest `803a77c0f5b8076bff73c6650ffc9a62c4e48db148ec5ecca43cedb2a49b85b8`.
+The real smoke passed in 34.720 seconds, one pass and no failures/errors/skips,
+unchanged inputs: `RUN_e338ee9fdd06f2db559c56b67ce2675f` under
+`SRC_6b5a3906023621addc28d9aa17359fe6`. The normal two-hour diagnostic reference
+now runs as `RUN_9c1e519283f6ad02421b85b96d0a4e86` under the same source
+admission; ongoing, not passed. The newer Ananta `afe23d05a` adds exclusive,
+secret-free, flushed pre-execution reservation receipts for future runs
+(81 focused checks passed, then seven final receipt checks including SIGKILL).
+That change is not retroactively applied to this frozen reference.
+
+GPU detection recovered, but different `moe-test` processes occupy its memory
+and were left untouched. The separately operated public rollout to `5a10338`
+is recorded in [its own report](ananta-public-rollout-20260909.md); neither
+public software readiness nor the private reference enables Hub trust or closes
+the outstanding public/GPU/long-run acceptance criteria.
