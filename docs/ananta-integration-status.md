@@ -5,7 +5,32 @@ Aktivierung sind unterschiedliche Zustände. Die öffentliche Meet-Instanz melde
 bei der aktuellen Prüfung `admissionEnabled: false`: Noch kein produktiver
 KI-Beitritt. Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
 
-## Aktueller Nachtrag: getrennte Quellenzeit
+## Aktueller Nachtrag: Erneuerung im aktiven Dialog
+
+Die Meet-seitigen Funktionen sind bereits implementiert. Der neue
+[aktive Renewal-Dialog](machine-active-dialog-renewal.md) schließt eine konkrete
+Prüflücke: Audioempfang, Chat und eigene Bildschirmquelle bleiben bis zum
+Lease-Wechsel gleichzeitig aktiv; anschließend müssen alte Zugriffe scheitern
+und frisch geöffnete Quellen wieder echte Samples, Antworten und dekodierte
+Bildschirmfarben liefern. Publisherfreigaben dürfen dabei nicht verlängert
+oder nach Widerruf wiederhergestellt werden. Chromium und Firefox bestehen
+die vier Dialogphasen mit drei solchen Erneuerungen. Der isolierte Gesamtcheck
+auf `f67c9e5` plus diesem Testnachtrag ist erfolgreich: 1.192 Frontendtests,
+1.096 Node-/Browserprüfungen, null Fehler, vier explizite Node-Skips. Build,
+Typprüfung, Go und statische Gates bestanden; 14 externe Infrastruktur-Gates
+blieben übersprungen. Die offenen Broadcast-Arbeitskopieänderungen waren nicht
+Teil dieses festen Prüfstands. Noch kein öffentlicher Hub-Rollout und keine
+Zweistundenabnahme.
+
+CI `34374881656` für den bereits gepushten Stand `f67c9e5` ist inzwischen in
+allen acht Jobs erfolgreich. Diese CI enthält den neuen Testnachtrag noch nicht.
+Die aktuelle rein lesende Prüfung meldet öffentlich weiterhin
+`admissionEnabled: false`, lokal `disabled disabled`. Der neue öffentliche
+Integrationspfad antwortet noch mit HTML statt dem Statusvertrag; die neue
+Übersicht ist damit nicht als öffentlich ausgerollt nachgewiesen. Keine
+automatische Trustfreigabe, kein Deployment und keine Änderung im Ananta-Repo.
+
+## Vorheriger Nachtrag: getrennte Quellenzeit
 
 Die anschließende CI `34370659493` für `edc117f` ist vollständig erfolgreich:
 alle acht Jobs einschließlich des authentisierten TURN-Dialogs und des
