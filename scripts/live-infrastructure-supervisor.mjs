@@ -13,15 +13,17 @@ export function validLiveReport(value) {
     || !Array.isArray(value.relays) || value.relays.length > 2) return false;
   if (value.status === "failed") return value.relays.length === 0;
   return value.relays.length > 0 && new Set(value.relays.map(row => row?.tier)).size === value.relays.length
-    && value.relays.every(row => fields(row, ["tier", "candidateCount", "relayCount"])
+    && value.relays.every(row => fields(row, ["tier", "candidateCount", "relayCount", "selectedRelayPairs", "payloadBytesEachDirection"])
       && ["peer-edge", "infrastructure", "configured"].includes(row.tier)
       && Number.isInteger(row.candidateCount) && row.candidateCount > 0 && row.candidateCount <= 4096
-      && Number.isInteger(row.relayCount) && row.relayCount > 0 && row.relayCount <= row.candidateCount);
+      && Number.isInteger(row.relayCount) && row.relayCount >= 2 && row.relayCount <= row.candidateCount
+      && row.selectedRelayPairs === 2 && row.payloadBytesEachDirection === 32);
 }
 
 function result(status, code, relays = []) {
   return { schema: "ananta.meet-live-infrastructure-result.v1", status, code, relays,
-    productionReleaseEvidence: false, selectedPairAndPayloadVerified: false };
+    productionReleaseEvidence: false, selectedPairAndPayloadVerified: status === "passed",
+    payloadScope: "same-browser-synthetic-datachannel", externalReceiverVerified: false, applicationMediaVerified: false };
 }
 
 function validEndpoint(value, issuer = false) {

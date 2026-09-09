@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 import { forbidLiveCapture, liveJson, liveRequestAllowed } from "./live-infrastructure-boundary.mjs";
+import { liveRelayPayload } from "./live-relay-payload.mjs";
 
 export async function runLiveInfrastructure() {
   const appOrigin = process.env.LIVE_APP_ORIGIN || "http://localhost:8080";
@@ -35,32 +36,8 @@ export async function runLiveInfrastructure() {
     }
   }
 
-  async function gatherRelayEvidence(page, servers, label) {
-    const evidence = await page.evaluate(async (iceServers) => {
-      const pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: "relay" });
-      const candidateTypes = [];
-      pc.createDataChannel("turn-gate");
-      pc.onicecandidate = (event) => {
-        if (!event.candidate) return;
-        const type = / typ ([a-z]+)(?: |$)/.exec(event.candidate.candidate)?.[1] || "unknown";
-        if (candidateTypes.length < 4096) candidateTypes.push(type);
-      };
-      await pc.setLocalDescription(await pc.createOffer());
-      await new Promise((resolve) => {
-        if (pc.iceGatheringState === "complete") resolve();
-        else {
-          const timeout = setTimeout(resolve, 10_000);
-          pc.addEventListener("icegatheringstatechange", () => {
-            if (pc.iceGatheringState === "complete") {
-              clearTimeout(timeout);
-              resolve();
-            }
-          });
-        }
-      });
-      pc.close();
-      return { candidateCount: candidateTypes.length, relayCount: candidateTypes.filter((type) => type === "relay").length };
-    }, servers);
+  async function probeRelayEvidence(page, servers, label) {
+    const evidence = await page.evaluate(liveRelayPayload, servers);
     assert.ok(evidence.relayCount > 0, `${label} TURN relay candidate missing (${evidence.candidateCount} candidates)`);
     return evidence;
   }
@@ -133,15 +110,15 @@ export async function runLiveInfrastructure() {
     assert.deepEqual(await page.evaluate(() => window.__captureCalls), [], "join must not invoke capture");
 
     const evidence = [];
-    if (requireEdgeTurn) evidence.push(["peer-edge", await gatherRelayEvidence(page, edgeTurnServers, "peer-edge")]);
+    if (requireEdgeTurn) evidence.push(["peer-edge", await probeRelayEvidence(page, edgeTurnServers, "peer-edge")]);
     if (requireInfrastructureTurn) {
-      evidence.push(["infrastructure", await gatherRelayEvidence(page, infrastructureTurnServers, "infrastructure")]);
+      evidence.push(["infrastructure", await probeRelayEvidence(page, infrastructureTurnServers, "infrastructure")]);
     }
     if (!requireEdgeTurn && !requireInfrastructureTurn) {
-      evidence.push(["configured", await gatherRelayEvidence(page, allTurnServers, "configured")]);
+      evidence.push(["configured", await probeRelayEvidence(page, allTurnServers, "configured")]);
     }
     assert.deepEqual(pageErrors, []);
-    return evidence.map(([tier, value]) => ({ tier, candidateCount: value.candidateCount, relayCount: value.relayCount }));
+    return evidence.map(([tier, value]) => ({ tier, ...value }));
   } finally {
     await browser.close();
   }

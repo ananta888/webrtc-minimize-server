@@ -56,3 +56,8 @@ SRP improves by separating supervision, network/capture boundaries and the live
 scenario. The existing sequential multi-assertion scenario is preserved; no
 runtime business policy is moved into these test helpers. The broader grouped
 suite follows the ongoing isolated soak instead of competing for its resources.
+
+The subsequent [selected-pair/payload probe](live-turn-payload-probe.md) replaces
+the candidate-only sub-operation. Its narrow same-browser data-channel scope
+is explicit in the report; application-media, external-receiver and production
+claims remain false. The original boundary results above remain historical.

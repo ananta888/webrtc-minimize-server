@@ -6,7 +6,8 @@ import test from "node:test";
 import { superviseLiveInfrastructure, validLiveReport } from "../scripts/live-infrastructure-supervisor.mjs";
 
 const environment = { LIVE_OIDC_USERNAME: "test-user", LIVE_OIDC_PASSWORD: "private-test-password" };
-const passed = { status: "passed", relays: [{ tier: "infrastructure", candidateCount: 2, relayCount: 1 }] };
+const passed = { status: "passed", relays: [{ tier: "infrastructure", candidateCount: 2, relayCount: 2,
+  selectedRelayPairs: 2, payloadBytesEachDirection: 32 }] };
 const absent = () => { throw Object.assign(new Error(), { code: "ESRCH" }); };
 
 function scenario(action, overrides = {}) {
@@ -28,7 +29,10 @@ test("fixed child receives only allowlisted configuration and no raw IO", async 
   assert.equal(result.status, "passed");
   assert.deepEqual(result.relays, passed.relays);
   assert.equal(result.productionReleaseEvidence, false);
-  assert.equal(result.selectedPairAndPayloadVerified, false);
+  assert.equal(result.selectedPairAndPayloadVerified, true);
+  assert.equal(result.payloadScope, "same-browser-synthetic-datachannel");
+  assert.equal(result.externalReceiverVerified, false);
+  assert.equal(result.applicationMediaVerified, false);
   assert.equal(calls.length, 1);
   assert.ok(calls[0].entry.endsWith("/scripts/live-infrastructure-worker.mjs"));
   assert.deepEqual(calls[0].args, []);
@@ -67,6 +71,8 @@ test("IPC contract rejects extra data, duplicate tiers and invalid counts", () =
     { status: "passed", relays: [...passed.relays, ...passed.relays] },
     ...[null, {}, { ...passed.relays[0], url: "private" }, { ...passed.relays[0], tier: "unknown" },
       { ...passed.relays[0], candidateCount: 4097 }, { ...passed.relays[0], relayCount: 3 },
+      { ...passed.relays[0], selectedRelayPairs: 0 }, { ...passed.relays[0], selectedRelayPairs: true },
+      { ...passed.relays[0], payloadBytesEachDirection: 0 }, { ...passed.relays[0], payloadBytesEachDirection: "32" },
       { ...passed.relays[0], relayCount: 0 }, { ...passed.relays[0], relayCount: 0.5 }]
       .map(row => ({ status: "passed", relays: [row] })),
   ]) assert.equal(validLiveReport(value), false);
@@ -82,7 +88,8 @@ for (const [label, action, code] of [
 ]) test(`supervisor rejects ${label} with closed diagnostics`, async () => {
   const { promise } = scenario(action);
   assert.deepEqual(await promise, { schema: "ananta.meet-live-infrastructure-result.v1", status: "failed", code,
-    relays: [], productionReleaseEvidence: false, selectedPairAndPayloadVerified: false });
+    relays: [], productionReleaseEvidence: false, selectedPairAndPayloadVerified: false,
+    payloadScope: "same-browser-synthetic-datachannel", externalReceiverVerified: false, applicationMediaVerified: false });
 });
 
 test("deadline terminates only owned group and restores signal listeners", async () => {
