@@ -1,5 +1,7 @@
 import { Injectable, computed, signal } from "@angular/core";
 import { PublicationSenderPool } from "./publication-sender-pool";
+import { machineReceiveCapability } from "./machine-receive-capability";
+import { selectedReceiveSources, VisualReceiveSelection } from "./machine-receive-selection";
 
 import { AudioActivityService } from "./audio-activity.service";
 import { IcePathClass, IceTierPolicy } from "./ice-policy";
@@ -250,6 +252,7 @@ export class PeerMeshService {
   private readonly localStreams = new Map<string, MediaStream>();
   private readonly publications = new Map<string, Publication>();
   private readonly descriptors = new Map<string, Pick<Publication, "rootPeerId" | "rootName" | "source">>();
+  private readonly visualEpochs = new Map<string, Readonly<{ peerId: string; source: string; epoch: number }>>();
   private readonly topology = new PeerTopologyController(() => {
     this.topologyMode.set("adaptive_mesh");
     this.applyReceivePlaybackPreference();
@@ -493,9 +496,12 @@ export class PeerMeshService {
     const source = String(message["source"] || "") as MediaSource;
     if (message["active"] === true) {
       const trackId = String(message["trackId"] || "");
+      if (Number.isSafeInteger(message["publicationEpoch"]) && Number(message["publicationEpoch"]) > 0) {
+        this.visualEpochs.set(trackId, Object.freeze({ peerId: rootPeerId, source, epoch: Number(message["publicationEpoch"]) }));
+      } else this.visualEpochs.delete(trackId);
       for (const [existingId, descriptor] of this.descriptors) {
         if (existingId !== trackId && descriptor.rootPeerId === rootPeerId && descriptor.source === source
-          && !this.publications.has(existingId)) this.descriptors.delete(existingId);
+          && !this.publications.has(existingId)) { this.descriptors.delete(existingId); this.visualEpochs.delete(existingId); }
       }
       this.descriptors.set(trackId, {
         rootPeerId,
@@ -521,6 +527,7 @@ export class PeerMeshService {
     }
     for (const [publicationId, descriptor] of this.descriptors) {
       if (descriptor.rootPeerId === rootPeerId && descriptor.source === source) {
+        this.visualEpochs.delete(publicationId);
         this.descriptors.delete(publicationId);
         this.mediaAgents.clearSubscriptionIntent(rootPeerId, publicationId);
       }
@@ -801,6 +808,23 @@ export class PeerMeshService {
     return Object.freeze({ peerId: publication.rootPeerId, source: publication.source, track: publication.track });
   }
 
+  machineVisualSource(publicationId: string) {
+    const publication = this.publications.get(publicationId), descriptor = this.descriptors.get(publicationId);
+    const epoch = this.visualEpochs.get(publicationId);
+    if (!this.machineReceive.isMachine(this.ownId) || !this.machineReceive.supports(this.ownId, "video.receive")
+      || !publication || publication.local || !descriptor || descriptor.rootPeerId !== publication.rootPeerId
+      || descriptor.source !== publication.source || !["camera", "screen"].includes(publication.source)
+      || !epoch || epoch.peerId !== publication.rootPeerId || epoch.source !== publication.source
+      || !this.peers.has(publication.rootPeerId) || this.machineReceive.isMachine(publication.rootPeerId)
+      || publication.track.kind !== "video" || publication.track.readyState !== "live" || publication.track.muted
+      || !publication.track.enabled || !this.shouldProtectMedia()
+      || !this.machineReceive.mediaAllowed(this.ownId, publication.rootPeerId, publicationId, publication.source)) {
+      throw new Error("meet_visual_source_denied");
+    }
+    return Object.freeze({ peerId: publication.rootPeerId, source: publication.source,
+      publicationEpoch: epoch.epoch, track: publication.track });
+  }
+
   subscribeMachineChat(listener: (event: BoundPeerChat) => void): () => void {
     if (this.machineChatSubscribers.size >= 4) throw new Error("meet_chat_subscriber_limit");
     this.machineChatSubscribers.add(listener);
@@ -831,16 +855,16 @@ export class PeerMeshService {
   /** Read-only editor choices, not consent and never a request to start capture. */
   ownMachineReceiveSources() {
     return Object.freeze([...this.publications.values()].filter(p => p.local && p.track.readyState === "live"
-      && (p.source === "microphone" || p.source === "screen-audio"))
+      && machineReceiveCapability(p.source) !== null)
       .map(p => Object.freeze({ publicationId: p.id, source: p.source })));
   }
 
-  machineReceiveConsent(machinePeerId: string, microphone: boolean, screenAudio: boolean, chatRead: boolean, minutes: number) {
+  machineReceiveConsent(machinePeerId: string, microphone: boolean, screenAudio: boolean, chatRead: boolean, minutes: number, visual?: VisualReceiveSelection) {
     if (!this.peers.has(machinePeerId) || !this.machineReceive.isMachine(machinePeerId)
       || ![1, 5, 10].includes(minutes)) throw new Error("machine_receive_target_unavailable");
-    if ((microphone || screenAudio) && !this.machineReceive.supports(machinePeerId, "audio.receive")
+    const sources = selectedReceiveSources(microphone, screenAudio, visual);
+    if (sources.some(source => !this.machineReceive.supports(machinePeerId, machineReceiveCapability(source)!))
       || chatRead && !this.machineReceive.supports(machinePeerId, "chat.read")) throw new Error("machine_receive_hub_capability_missing");
-    const sources = [microphone ? "microphone" : "", screenAudio ? "screen-audio" : ""].filter(Boolean);
     const publicationIds = [...this.publications.values()].filter(p => p.local && p.track.readyState === "live" && sources.includes(p.source)).map(p => p.id);
     if (publicationIds.length !== sources.length) throw new Error("machine_receive_source_not_active");
     return Object.freeze({ type: "machine-receive-consent", trigger: "user-action", machinePeerId,
@@ -893,6 +917,7 @@ export class PeerMeshService {
     this.remoteMedia.set([]);
     this.publications.clear();
     this.descriptors.clear();
+    this.visualEpochs.clear();
     this.requestedReceiveProfiles.clear();
     this.sentReceiveProfiles.clear();
     this.localStreams.clear();
@@ -1110,6 +1135,7 @@ export class PeerMeshService {
   }
 
   private removePublication(publicationId: string): void {
+    this.visualEpochs.delete(publicationId);
     const publication = this.publications.get(publicationId);
     if (!publication) return;
     if (publication.local) this.clearAgentPublicationKey(publication.id);

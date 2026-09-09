@@ -69,9 +69,9 @@ export function machineMessageAllowed(message, capabilities = null) {
   if (["leave", "signal", "overlay-key"].includes(message.type)) return true;
   // Route/source/subscription authorization remains in the normal server handlers.
   if (["media-agent-signal", "media-agent-peer-state"].includes(message.type)) return Boolean(capabilities?.some(
-    value => value === "audio.receive" || value.endsWith(".publish")));
+    value => value === "audio.receive" || value === "video.receive" || value.endsWith(".publish")));
   if (["media-agent-subscription-intent", "media-agent-subscription-ack"].includes(message.type)) {
-    return capabilities?.includes("audio.receive") === true;
+    return capabilities?.includes("audio.receive") === true || capabilities?.includes("video.receive") === true;
   }
   if (message.type === "media-state") {
     if (!capabilities) return ["camera", "microphone"].includes(message.source);

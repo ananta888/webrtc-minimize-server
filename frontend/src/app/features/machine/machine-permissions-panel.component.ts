@@ -15,13 +15,15 @@ import { MachineAdmissionStatusComponent } from "./machine-admission-status.comp
       <article><h3>{{ peer.name }}</h3>
         <p>KI-Endpunkt · technische Peer-ID: <code>{{ peer.id }}</code>. Keine bewiesene menschliche Identität.</p>
         @if (peer.grant; as grant) {
-          <p>Bestätigte Freigabe bis {{ grant.expiresAt | date:'HH:mm:ss' }} · Audioquellen: {{ grant.publicationIds.length }} · Chat: {{ grant.chatRead ? 'ja' : 'nein' }}</p>
+          <p>Bestätigte Freigabe bis {{ grant.expiresAt | date:'HH:mm:ss' }} · Audioquellen: {{ peer.audioGrantCount }} · Chat: {{ grant.chatRead ? 'ja' : 'nein' }}
+            @if (peer.videoSupported) { · Videoquellen: {{ peer.videoGrantCount }} }</p>
         } @else {
           <p>Keine Empfangsfreigabe erteilt.</p>
           @if (peer.grantState === 'expired') { <p>Die letzte Freigabe ist abgelaufen.</p> }
         }
         <dl>
           <dt>Audioempfang</dt><dd>{{ peer.audioSupported ? 'Vom Hub erlaubt; eigene Quellen benötigen zusätzlich deine Freigabe.' : 'Vom Hub nicht freigegeben.' }}</dd>
+          @if (peer.videoSupported) { <dt>Visueller Empfang</dt><dd>Vom Hub erlaubt; nur ausdrücklich freigegebene eigene Kamera-/Bildschirmquellen. Analyse-Endpunkt kann diese Inhalte entschlüsseln.</dd> }
           <dt>Chat lesen / antworten</dt><dd>{{ peer.chatReadSupported ? 'Leserecht möglich' : 'Kein Leserecht' }} / {{ peer.chatSendSupported ? 'Senderecht vorhanden' : 'Kein Senderecht' }}</dd>
           <dt>Agenteneigener Bildschirm</dt><dd>{{ peer.screenAvailable ? 'Remote-Track verfügbar' : peer.screenSupported ? 'Erlaubt, zurzeit kein Remote-Track' : 'Nicht freigegeben' }}</dd>
           <dt>Agenteneigener Bildschirmton</dt><dd>{{ peer.screenAudioAvailable ? 'Separater Ton-Track verfügbar' : 'Kein Ton-Track' }}</dd>
@@ -39,11 +41,15 @@ import { MachineAdmissionStatusComponent } from "./machine-admission-status.comp
         <label><input type="checkbox" [checked]="screenAudio()" (change)="screenAudio.set($any($event.target).checked)" [disabled]="!supports('audio.receive') || !controls.sourceAvailable('screen-audio')"> Mein laufender Bildschirmton</label>
         @if (!controls.sourceAvailable('screen-audio')) { <p>Kein laufender Bildschirmton vorhanden.</p> }
         <label><input type="checkbox" [checked]="chat()" (change)="chat.set($any($event.target).checked)" [disabled]="!supports('chat.read')"> Meine neuen Chatbeiträge</label>
+        @if (supports('video.receive')) {
+          <label><input type="checkbox" [checked]="camera()" (change)="camera.set($any($event.target).checked)" [disabled]="!controls.sourceAvailable('camera')"> Meine laufende Kamera zur Analyse</label>
+          <label><input type="checkbox" [checked]="screen()" (change)="screen.set($any($event.target).checked)" [disabled]="!controls.sourceAvailable('screen')"> Mein laufender Bildschirm zur Analyse</label>
+        }
         <label>Gültigkeit <select [value]="minutes()" (change)="minutes.set(+$any($event.target).value)"><option value="1">1 Minute</option><option value="5">5 Minuten</option><option value="10">10 Minuten</option></select></label>
-        <p>Nur bereits laufende Audioquellen sind auswählbar. Diese Ansicht startet keine Aufnahme.
+        <p>Nur bereits laufende Quellen sind auswählbar. Diese Ansicht startet keine Aufnahme.
           Die Auswahl ersetzt die bisherigen Freigaben für diese KI erst nach deinem Klick und der Serverbestätigung.
           Ein bestätigtes Recht bedeutet noch nicht, dass Audioerkennung oder Dialog bereits aktiv sind.</p>
-        <button type="button" [disabled]="controls.state() === 'pending'" (click)="controls.request(target(), microphone(), screenAudio(), chat(), minutes(), 'user-action', selected)">Auswahl ausdrücklich freigeben</button>
+        <button type="button" [disabled]="controls.state() === 'pending'" (click)="controls.request(target(), microphone(), screenAudio(), chat(), minutes(), 'user-action', selected, visualSelection())">Auswahl ausdrücklich freigeben</button>
       </fieldset>
     }
     <p role="status" aria-live="polite">{{ controls.state() === 'pending' ? 'Warte auf Serverbestätigung…' : controls.state() === 'confirmed' ? 'Serverbestätigung erhalten.' : '' }}</p>
@@ -64,6 +70,7 @@ export class MachinePermissionsPanelComponent {
   readonly controls = inject(MachineReceiveControlsService);
   readonly target = signal(""); readonly microphone = signal(false); readonly screenAudio = signal(false);
   readonly chat = signal(false); readonly minutes = signal(5);
+  readonly camera = signal(false); readonly screen = signal(false);
   selected?: MachineReceiveSelection;
   constructor() {
     effect(() => {
@@ -71,13 +78,17 @@ export class MachinePermissionsPanelComponent {
       if (!this.controls.sourceAvailable("microphone") || !this.supports("audio.receive")) this.microphone.set(false);
       if (!this.controls.sourceAvailable("screen-audio") || !this.supports("audio.receive")) this.screenAudio.set(false);
       if (!this.supports("chat.read")) this.chat.set(false);
+      if (!this.supports("video.receive") || !this.controls.sourceAvailable("camera")) this.camera.set(false);
+      if (!this.supports("video.receive") || !this.controls.sourceAvailable("screen")) this.screen.set(false);
     });
   }
   select(id: string): void {
     const selection = this.controls.selection(id);
     this.selected = id ? this.controls.selectionScope(id) : undefined;
     this.target.set(id); this.microphone.set(selection.microphone); this.screenAudio.set(selection.screenAudio); this.chat.set(selection.chat);
+    this.camera.set(selection.camera ?? false); this.screen.set(selection.screen ?? false);
   }
   targetName(): string { return this.controls.targets().find(peer => peer.id === this.target())?.name || "Nicht verbunden"; }
+  visualSelection() { return this.supports("video.receive") ? { camera: this.camera(), screen: this.screen() } : undefined; }
   supports(capability: string): boolean { return this.controls.mesh.machineReceive.supports(this.target(), capability); }
 }

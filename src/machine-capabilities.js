@@ -1,5 +1,11 @@
-export const MACHINE_CAPABILITIES = Object.freeze(["audio.receive", "chat.read", "chat.send",
+export const MACHINE_CAPABILITIES = Object.freeze(["audio.receive", "video.receive", "chat.read", "chat.send",
   "screen.publish", "screen-audio.publish", "avatar.publish", "speech.publish"]);
+
+export function machineReceiveCapability(source) {
+  if (["microphone", "screen-audio"].includes(source)) return "audio.receive";
+  if (["camera", "screen"].includes(source)) return "video.receive";
+  return null;
+}
 
 /** An operator ceiling, never a source of task or publisher authorization. Empty denies all. */
 export function machineCapabilityCeiling(value = MACHINE_CAPABILITIES) {

@@ -2027,7 +2027,11 @@ function configureSignaling(
           return;
         }
         for (const recipient of registry.recipients(peer)) {
-          safeSend(recipient.socket, { ...message, from: peer.id, fromName: peer.name });
+          const visual = message.type === "media-state" && message.active
+            && ["camera", "screen"].includes(message.source) && recipient.machineCapabilities?.includes("video.receive")
+            ? registry.publication(peer.id, message.trackId, peer.roomId) : null;
+          safeSend(recipient.socket, { ...message, from: peer.id, fromName: peer.name,
+            ...(visual ? { publicationEpoch: visual.publicationEpoch } : {}) });
         }
       } catch (error) {
         safeSend(socket, {

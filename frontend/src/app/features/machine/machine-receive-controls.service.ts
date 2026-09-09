@@ -2,6 +2,7 @@ import { Injectable, OnDestroy, computed, signal } from "@angular/core";
 import { PeerMeshService } from "../../webrtc/peer-mesh.service";
 import { RoomSessionService } from "../../webrtc/room-session.service";
 import { SignalingService } from "../../webrtc/signaling.service";
+import { selectedReceiveSources, VisualReceiveSelection } from "../../webrtc/machine-receive-selection";
 
 /** A local editor snapshot, never a grant or a substitute for server policy. */
 export interface MachineReceiveSelection {
@@ -32,6 +33,11 @@ export class MachineReceiveControlsService implements OnDestroy {
       return Object.freeze({ ...peer, grant: grant && grant.expiresAt > now ? grant : null,
         grantState: grant ? grant.expiresAt > now ? "granted" : "expired" : "none",
         audioSupported: this.mesh.machineReceive.supports(peer.id, "audio.receive"),
+        videoSupported: this.mesh.machineReceive.supports(peer.id, "video.receive"),
+        audioGrantCount: this.sources().filter(source => ["microphone", "screen-audio"].includes(source.source)
+          && grant?.publicationIds.includes(source.publicationId)).length,
+        videoGrantCount: this.sources().filter(source => ["camera", "screen"].includes(source.source)
+          && grant?.publicationIds.includes(source.publicationId)).length,
         chatReadSupported: this.mesh.machineReceive.supports(peer.id, "chat.read"),
         chatSendSupported: this.mesh.machineReceive.supports(peer.id, "chat.send"),
         screenSupported: this.mesh.machineReceive.supports(peer.id, "screen.publish"),
@@ -63,7 +69,8 @@ export class MachineReceiveControlsService implements OnDestroy {
     const valid = grant && grant.expiresAt > Date.now();
     const allows = (source: string) => Boolean(valid && this.sources().some(value => value.source === source
       && grant.publicationIds.includes(value.publicationId)));
-    return { microphone: allows("microphone"), screenAudio: allows("screen-audio"), chat: Boolean(valid && grant.chatRead) };
+    return { microphone: allows("microphone"), screenAudio: allows("screen-audio"), chat: Boolean(valid && grant.chatRead),
+      ...(this.mesh.machineReceive.supports(peerId, "video.receive") ? { camera: allows("camera"), screen: allows("screen") } : {}) };
   }
   sourceAvailable(source: string): boolean { return this.sources().some(value => value.source === source); }
   selectionScope(machinePeerId: string): MachineReceiveSelection {
@@ -71,10 +78,10 @@ export class MachineReceiveControlsService implements OnDestroy {
       sources: Object.freeze(this.mesh.ownMachineReceiveSources().map(source => Object.freeze({ ...source }))) });
   }
   private selectedPublications(selected: MachineReceiveSelection | undefined, machinePeerId: string,
-    microphone: boolean, screenAudio: boolean): readonly string[] {
+    microphone: boolean, screenAudio: boolean, visual?: VisualReceiveSelection): readonly string[] {
     if (!selected || selected.roomId !== this.session.roomId() || selected.peerId !== this.session.peerId()
       || selected.machinePeerId !== machinePeerId) throw new Error("machine_receive_selection_changed");
-    const kinds = [microphone ? "microphone" : "", screenAudio ? "screen-audio" : ""].filter(Boolean);
+    const kinds = selectedReceiveSources(microphone, screenAudio, visual);
     const sources = selected.sources.filter(source => kinds.includes(source.source));
     if (sources.length !== kinds.length || new Set(sources.map(source => source.source)).size !== kinds.length)
       throw new Error("machine_receive_selection_changed");
@@ -102,7 +109,7 @@ export class MachineReceiveControlsService implements OnDestroy {
     }
   }
   request(peerId: string, microphone: boolean, screenAudio: boolean, chatRead: boolean, minutes: number, trigger: unknown,
-    selected?: MachineReceiveSelection): void {
+    selected?: MachineReceiveSelection, visual?: VisualReceiveSelection): void {
     this.reconcile();
     if (this.destroyed || trigger !== "user-action" || !this.session.joined() || this.session.machineExpiresAt() || this.pending) return;
     this.error.set("");
@@ -111,9 +118,9 @@ export class MachineReceiveControlsService implements OnDestroy {
     try {
       // Grant clicks refer to the sources the user reviewed. Revocation needs no
       // snapshot and must remain possible after a source has stopped or changed.
-      const expected = microphone || screenAudio || chatRead
-        ? this.selectedPublications(selected, peerId, microphone, screenAudio) : [];
-      const command = this.mesh.machineReceiveConsent(peerId, microphone, screenAudio, chatRead, minutes);
+      const expected = selectedReceiveSources(microphone, screenAudio, visual).length || chatRead
+        ? this.selectedPublications(selected, peerId, microphone, screenAudio, visual) : [];
+      const command = this.mesh.machineReceiveConsent(peerId, microphone, screenAudio, chatRead, minutes, visual);
       if (JSON.stringify([...command.publicationIds].sort()) !== JSON.stringify(expected))
         throw new Error("machine_receive_selection_changed");
       this.pending = command; this.state.set("pending");

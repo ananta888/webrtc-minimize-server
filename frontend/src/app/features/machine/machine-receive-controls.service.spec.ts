@@ -20,6 +20,22 @@ function setup() {
 }
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 describe("machine receive controls", () => {
+  it.each(["camera", "screen"])("requires fresh selected IDs for visual %s grants, without capture or implicit consent", source => {
+    vi.useFakeTimers(); const f = setup();
+    f.mesh.machineReceive.supports = (_id, cap) => cap === "video.receive";
+    f.sources.set([{ publicationId: "visual-old", source }]);
+    const selected = f.service.selectionScope(f.command.machinePeerId);
+    const visual = { camera: source === "camera", screen: source === "screen" };
+    f.sources.set([{ publicationId: "visual-new", source }]); f.command.publicationIds = ["visual-new"];
+    f.service.request(f.command.machinePeerId, false, false, false, 1, "user-action", selected, visual);
+    expect(f.signaling.send).not.toHaveBeenCalled();
+    f.service.request(f.command.machinePeerId, false, false, false, 1, "user-action", f.service.selectionScope(f.command.machinePeerId), visual);
+    expect(f.signaling.send).toHaveBeenCalledExactlyOnceWith(f.command);
+    f.grant.set({ ...f.command, expiresAt: Date.now() + 1000 });
+    expect(f.service.selection(f.command.machinePeerId)).toMatchObject(visual);
+    expect(f.service.activities()[0]).toMatchObject({ audioGrantCount: 0, videoGrantCount: 1, videoSupported: true });
+    f.service.ngOnDestroy();
+  });
   it("does not silently consent a replacement publication selected under the old source", () => {
     vi.useFakeTimers(); const f = setup();
     const selected = { roomId: f.session.roomId(), peerId: f.session.peerId(), machinePeerId: f.command.machinePeerId,

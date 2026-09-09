@@ -2,6 +2,38 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { MachineReceivePolicy, parseMachineReceiveConsent } from "../src/machine-receive-policy.js";
 import { RoomRegistry } from "../src/room-registry.js";
+import { machineReceiveCapability } from "../src/machine-capabilities.js";
+
+for (const [source, required] of [["microphone", "audio.receive"], ["screen-audio", "audio.receive"], ["camera", "video.receive"], ["screen", "video.receive"]]) {
+  for (const capability of ["audio.receive", "video.receive", "avatar.publish", "screen.publish", "speech.publish"]) {
+    test(`${source} requires its exact ${required} ceiling, not ${capability} alone`, t => {
+      const f = fixture(); t.after(() => f.policy.destroy());
+      f.owner.publications = new Map([["source", { source }]]); f.machine.machineCapabilities = [capability];
+      const request = { ...f.request, publicationIds: ["source"], chatRead: false };
+      assert.equal(machineReceiveCapability(source), required);
+      if (capability === required) {
+        f.policy.update(f.owner, request);
+        assert.equal(f.policy.mediaAllowed(f.machine, f.owner.id, "source"), true);
+        f.machine.machineCapabilities = [];
+        assert.equal(f.policy.mediaAllowed(f.machine, f.owner.id, "source"), false);
+        f.policy.prune(f.owner.roomId); assert.equal(f.policy.snapshot(f.owner.roomId).grants.length, 0);
+      } else assert.throws(() => f.policy.update(f.owner, request), /scope_denied/);
+    });
+  }
+}
+
+test("four exact audiovisual source grants remain bounded and source replacement revokes", t => {
+  const f = fixture(); t.after(() => f.policy.destroy());
+  const sources = ["microphone", "screen-audio", "camera", "screen"];
+  f.owner.publications = new Map(sources.map(source => [source, { source }]));
+  f.machine.machineCapabilities = ["audio.receive", "video.receive"];
+  f.policy.update(f.owner, { ...f.request, publicationIds: sources, chatRead: false });
+  assert.equal(f.policy.snapshot(f.owner.roomId).grants[0].publicationIds.length, 4);
+  assert.throws(() => parseMachineReceiveConsent({ ...f.request, publicationIds: [...sources, "fifth"] }));
+  f.owner.publications.delete("camera"); f.policy.prune(f.owner.roomId);
+  assert.equal(f.policy.snapshot(f.owner.roomId).grants.length, 0);
+  assert.equal(machineReceiveCapability("toString"), null);
+});
 
 function fixture() {
   let now = 1000;

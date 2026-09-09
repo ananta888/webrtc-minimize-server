@@ -1,3 +1,5 @@
+import { machineReceiveCapability } from "./machine-capabilities.js";
+
 export class MachineReceivePolicyError extends Error {
   constructor(code) { super(code); this.code = code; }
 }
@@ -9,7 +11,7 @@ export function parseMachineReceiveConsent(input) {
     || Object.keys(input).some(key => !fields.includes(key)) || input.type !== "machine-receive-consent"
     || input.trigger !== "user-action" || !/^[a-f0-9]{16}$/.test(input.machinePeerId || "")
     || !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0
-    || !Array.isArray(input.publicationIds) || input.publicationIds.length > 2
+    || !Array.isArray(input.publicationIds) || input.publicationIds.length > 4
     || new Set(input.publicationIds).size !== input.publicationIds.length
     || input.publicationIds.some(id => typeof id !== "string" || !/^[A-Za-z0-9_={}:-]{1,128}$/.test(id))
     || typeof input.chatRead !== "boolean" || !Number.isSafeInteger(input.expiresAt)) fail("machine_receive_consent_invalid");
@@ -17,7 +19,7 @@ export function parseMachineReceiveConsent(input) {
 }
 
 /** Control-plane-only metadata. A publisher may release ONLY its own currently
- * published audio or own chat; a room creator cannot impersonate other sources. */
+ * published audiovisual sources or own chat; a room creator cannot impersonate other sources. */
 export class MachineReceivePolicy {
   #members; #clock; #rooms = new Map(); #changed;
   constructor({ members, changed = () => {}, clock = Date.now }) {
@@ -35,8 +37,10 @@ export class MachineReceivePolicy {
     return owner && !owner.machine && owner.authenticated === true && target?.machine === true
       && grant.expiresAt > this.#clock()
       && (!grant.chatRead || target.machineCapabilities?.includes("chat.read"))
-      && (!grant.publicationIds.length || target.machineCapabilities?.includes("audio.receive"))
-      && grant.publicationIds.every(id => ["microphone", "screen-audio"].includes(owner.publications.get(id)?.source));
+      && grant.publicationIds.every(id => {
+        const capability = machineReceiveCapability(owner.publications.get(id)?.source);
+        return capability !== null && target.machineCapabilities?.includes(capability);
+      });
   }
   #arm(roomId, record) {
     clearTimeout(record.timer); record.timer = null;

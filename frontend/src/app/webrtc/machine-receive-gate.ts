@@ -1,4 +1,5 @@
 import { signal } from "@angular/core";
+import { machineReceiveCapability } from "./machine-receive-capability";
 
 export interface MachineReceiveGrant {
   readonly publisherPeerId: string; readonly machinePeerId: string;
@@ -24,7 +25,7 @@ export class MachineReceiveGate {
     this.members.add(id);
     if (machine) {
       this.machines.add(id);
-      this.capabilities.set(id, Array.isArray(capabilities) && capabilities.length <= 7
+      this.capabilities.set(id, Array.isArray(capabilities) && capabilities.length <= 8
         && capabilities.every(value => typeof value === "string") ? Object.freeze([...capabilities]) : []);
     }
   }
@@ -45,7 +46,7 @@ export class MachineReceiveGate {
         || !this.members.has(value["publisherPeerId"]) || this.machines.has(value["publisherPeerId"])
         || !this.machines.has(value["machinePeerId"])
         || value["publisherPeerId"] === value["machinePeerId"] || !Array.isArray(value["publicationIds"])
-        || value["publicationIds"].length > 2 || new Set(value["publicationIds"]).size !== value["publicationIds"].length
+        || value["publicationIds"].length > 4 || new Set(value["publicationIds"]).size !== value["publicationIds"].length
         || value["publicationIds"].some(id => typeof id !== "string" || !/^[A-Za-z0-9_={}:-]{1,128}$/.test(id))
         || typeof value["chatRead"] !== "boolean" || !Number.isSafeInteger(value["expiresAt"])
         || Number(value["expiresAt"]) < 1
@@ -69,7 +70,8 @@ export class MachineReceiveGate {
   }
   mediaAllowed(receiver: string, publisher: string, publication: string, source: string): boolean {
     if (!this.isMachine(receiver)) return true;
-    if (!["microphone", "screen-audio"].includes(source)) return false;
+    const capability = machineReceiveCapability(source);
+    if (capability === null || !this.supports(receiver, capability)) return false;
     return this.grants().some(g => g.machinePeerId === receiver && g.publisherPeerId === publisher
       && g.publicationIds.includes(publication) && g.expiresAt > this.clock());
   }

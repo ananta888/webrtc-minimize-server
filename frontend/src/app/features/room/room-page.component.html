@@ -538,7 +538,7 @@
 
       @if (activeSection() === 'analysis') {
         <app-mesh-analysis />
-        @if (session.joined()) { <app-machine-permissions-panel /> }
+        @if (session.joined()) { @defer (on immediate) { <app-machine-permissions-panel /> } }
       }
 
       @if (activeSection() === 'settings' || activeSection() === 'analysis') {

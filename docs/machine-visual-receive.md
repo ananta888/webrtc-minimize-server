@@ -28,3 +28,27 @@ Test all capability/source combinations, key-delivery denial, selection snapshot
 changes, bounded pixels, late-callback cleanup, lease/source revoke and actual
 Chromium/Firefox synthetic camera/screen reception before declaring completion.
 Keep the public serving build and operator trust unchanged during implementation.
+
+## Policy, source identity and editor implementation, 2026-09-09
+
+Server and browser receive gates now require the source-specific capability for
+each of up to four explicitly selected current audiovisual publications. Only
+visual-capable recipients receive the registry-issued publication epoch in a
+camera/screen announcement; caller-provided epochs are discarded. Repeated
+announcements preserve identity; stop/restart advances it. Audio-only signaling
+retains its previous shape. A separate mesh read port checks the remote track,
+publisher, descriptor, source epoch and current grant without initiating capture.
+
+The editor conditionally adds camera/screen selection, preserves old audio-only
+selection shape and rejects stale visual source IDs. Its component is deferred
+inside the analysis view: the candidate first exceeded the 1.6MB initial bundle
+error budget by 1.91kB; deferral restored a successful 1.59MB build without
+changing the budget. The existing 1.5MB warning remains visible.
+
+Pure capability/selection modules and a read-only source port keep policy
+separate from decoding (SRP/ISP/DIP). The broad PeerMesh class remains existing
+SRP debt; visual decoding belongs to a separate service/factory, not this class.
+Focused policy/epoch HTTP-WebSocket tests passed27/27; full candidate frontend
+tests passed825/825 in10.94s (including the subsequent visual-port candidate).
+Further isolated full checks and Ananta analysis integration remain pending;
+this is not public deployment or production evidence.

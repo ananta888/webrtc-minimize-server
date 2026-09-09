@@ -10,6 +10,18 @@ function fixture() {
   return { gate, changed, apply };
 }
 afterEach(() => vi.useRealTimers());
+it.each(["camera", "screen"])("separately granted %s keys require video.receive and exact scope", source => {
+  const f = fixture();
+  const g = { ...grant(), publicationIds: ["visual"], chatRead: false };
+  f.apply([g]);
+  expect(f.gate.mediaAllowed(machine, human, "visual", source)).toBe(false);
+  f.gate.setMachine(machine, true, ["video.receive"]);
+  expect(f.gate.mediaAllowed(machine, human, "visual", source)).toBe(true);
+  expect(f.gate.mediaAllowed(machine, human, "visual", "microphone")).toBe(false);
+  expect(f.gate.mediaAllowed(machine, human, "other", source)).toBe(false);
+  f.gate.setMachine(machine, true, ["avatar.publish", "screen.publish"]);
+  expect(f.gate.mediaAllowed(machine, human, "visual", source)).toBe(false); f.gate.clear();
+});
 it("machine receive defaults denied without changing human transport", () => {
   const f = fixture();
   expect(f.gate.mediaAllowed(machine, human, "mic", "microphone")).toBe(false);
