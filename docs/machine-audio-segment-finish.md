@@ -44,4 +44,9 @@ finished at 1.1 seconds of a ten-second maximum: 16,985 / 16,971 nonzero samples
 no remaining chunks, exact idempotent finish, chat send denied, and finish denied
 after source revocation. Required-SFrame stayed active with no transform errors
 and no machine capture calls. The two browser cases took 7.744 seconds total.
-The isolated full check is still pending; this is not production release evidence.
+The isolated `npm run check` at source `b23de52` subsequently passed: 775
+frontend tests, 825 Node passes, zero failures, two explicit Node skips;
+Node duration 330.898 seconds. Build, Go unit/vet and static gates passed.
+Fourteen external infrastructure gates and the optional image scan remained
+explicit skips. The check ran in a detached private worktree, not the serving
+directory. This is not production release evidence or closure of all MDS tasks.
