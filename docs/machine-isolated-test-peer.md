@@ -27,3 +27,10 @@ memory, GPU, public TURN or multi-host acceptance. Twenty-three bounded Node
 handshake/navigation tests passed in 1.636 seconds; the actual joint short and
 long gates remain the next verification. No serving build, trust or deployment
 is changed by these test helpers.
+
+Two subsequent native short attempts failed separately: the first reached chat
+and screen before Ananta's timing fence rejected a source (49.81 seconds); the
+second timed out in automated consent setup (41.20 seconds). Consent now reports
+the fixed operation stage, without exception text, selectors, identifiers or
+policy values. No timeout, approval requirement or assertion is relaxed. These
+failures are not successful isolation or soak acceptance.

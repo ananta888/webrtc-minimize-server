@@ -48,13 +48,21 @@ try {
     const avatar = await observeAvatarCommand(line, f.human);
     if (avatar) { reply(avatar); continue; }
     if (line === "consent") {
+      stage = "consent-live-navigation";
       await f.human.locator(".nav-item").filter({ hasText: /^Live/ }).click();
+      stage = "consent-membership";
       await f.human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
+      stage = "consent-panel-navigation";
       await f.human.locator("#mesh-analysis-navigation").click();
+      stage = "consent-machine-selection";
       await panel.getByRole("button", { name: "Für diese KI einstellen" }).click();
+      stage = "consent-chat-selection";
       await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).check();
+      stage = "consent-submit";
       await panel.getByRole("button", { name: "Auswahl ausdrücklich freigeben" }).click();
+      stage = "consent-confirmation";
       await panel.getByText("Serverbestätigung erhalten.", { exact: true }).waitFor();
+      stage = "dialog";
       reply({ consent: true });
     } else if (line === "ask") {
       await f.human.getByRole("button", { name: "Chat", exact: true }).click();

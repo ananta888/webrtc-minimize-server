@@ -6,6 +6,7 @@
   "status": "in_progress",
   "purpose": "Meet-seitige Erweiterung der vorhandenen KI-Teilnahme um separat autorisierten Empfang, Raumchat-Ereignisse, agenteneigenes Bildschirmteilen und erneuerbare, widerrufbare Sitzungen.",
   "scope": {
+    "private_peer_followup": "MDS-08: optional isolated test peer implemented with bounded owned-browser handshake; actual short attempts failed separately at source timing (49.81s) and automated consent (41.20s). Fixed consent operation-stage diagnostics added without changing deadlines or policy. Joint short/soak and grouped check remain pending; docs/machine-isolated-test-peer.md.",
     "kind": "repository_development_track",
     "implementation_started": true,
     "runtime_authorization_granted": false,
