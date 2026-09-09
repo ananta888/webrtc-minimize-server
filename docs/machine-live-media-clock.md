@@ -37,3 +37,13 @@ submission counts are live delivery or production release evidence.
 SRP/DIP: pure timing, source lifecycle, browser transport and Hub admission
 remain separate. The existing broad machine page is preserved composition
 debt, not a place for another scheduler or policy owner.
+
+The pure timeline is implemented and 21 virtual-clock tests pass; together
+with the newly integrated eight upstream page-lifecycle tests, 29 checks passed
+in 0.928 seconds. It owns at most three source entries, 4,096 generations per
+kind and a 24-hour integer clock range. Failed cleanup cannot erase a failed
+row, and failure before first readiness cannot manufacture a healthy snapshot.
+This is not yet connected to the machine API or sources. Both upstream and
+local TODO notes were preserved when integrating `01669c9`; 27 reconnect/relay
+helper checks passed in 0.549 seconds after integration. The preceding full
+aggregate applies to `49495e5`, not to the subsequent merged source revision.
