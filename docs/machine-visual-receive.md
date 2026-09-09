@@ -109,3 +109,8 @@ TLS/auth/internal network remain owned by the existing fixture. Ananta observes
 its actual Hub child and structured callback, with no application-source mounts
 in the receiving Worker. This is synthetic local integration, not public trust
 or production evidence.
+
+The private integration bridge and reusable synthetic publisher helpers are now
+implemented. The original four actual camera/screen browser cases still pass
+(10.41s) after extraction; no production code or serving assets changed. The
+bridge itself must still be exercised by the packaged Ananta acceptance test.

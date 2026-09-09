@@ -1,34 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { machineBrowserFixture } from "./helpers/machine-browser-fixture.js";
+import { startSyntheticVisualPublisher, grantSyntheticVisualPublisher } from "./helpers/machine-visual-publisher.mjs";
 
 for (const humanEngine of ["chromium", "firefox"]) for (const source of ["camera", "screen"]) {
   test(`${humanEngine} synthetic ${source} reaches only an explicitly authorized bounded visual subscription`, { timeout: 45000 }, async t => {
     const f = await machineBrowserFixture(t, { humanEngine }), { machine, human } = f;
     await machine.evaluate(([room, grant]) => window.anantaMachine.join(room, grant), [f.roomId, await f.grant(["video.receive"])]);
     await human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
-    await human.evaluate(kind => {
-      const capture = async () => {
-        const canvas = document.createElement("canvas"); canvas.width = 1280; canvas.height = 720;
-        const context = canvas.getContext("2d");
-        const paint = () => { context.fillStyle = kind === "camera" ? "#dd2200" : "#00bb22"; context.fillRect(0, 0, 1280, 720); };
-        paint(); const stream = canvas.captureStream(10), timer = setInterval(paint, 100);
-        stream.getVideoTracks()[0].addEventListener("ended", () => { clearInterval(timer); canvas.width = canvas.height = 0; });
-        return stream;
-      };
-      // Synthetic publisher fixture only: never opens a physical camera/display.
-      if (kind === "camera") navigator.mediaDevices.getUserMedia = capture;
-      else navigator.mediaDevices.getDisplayMedia = capture;
-    }, source);
-    await human.locator(`#toggle-${source}`).click();
-    await human.locator(`#toggle-${source}[aria-pressed="true"]`).waitFor();
+    await startSyntheticVisualPublisher(human, source);
     assert.deepEqual(await machine.evaluate(() => window.anantaMachine.visual.sources()), []);
-    await human.locator(".nav-item", { hasText: "Analyse" }).click();
-    const panel = human.locator("app-machine-permissions-panel");
-    await panel.getByRole("button", { name: "Für diese KI einstellen" }).click();
-    await panel.getByLabel(source === "camera" ? "Meine laufende Kamera zur Analyse" : "Mein laufender Bildschirm zur Analyse", { exact: true }).check();
-    await panel.getByRole("button", { name: "Auswahl ausdrücklich freigeben" }).click();
-    await panel.getByText("Serverbestätigung erhalten.", { exact: true }).waitFor();
+    const panel = await grantSyntheticVisualPublisher(human, source);
     await machine.waitForFunction(() => window.anantaMachine.visual.sources().length === 1, null, { timeout: 12000 });
     const result = await machine.evaluate(async () => {
       const api = window.anantaMachine.visual, selected = api.sources()[0], sub = await api.open(selected.publicationId);
