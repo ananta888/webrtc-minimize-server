@@ -118,3 +118,13 @@ previously lost the awaiting fixture's call site. The test-only helper now
 captures that stack before polling, preserving the unchanged deadline/message
 without serializing page values. Seven deterministic helper checks passed in
 0.430 s, including the retained phase and absence of private predicate values.
+
+A complete Node-stage repeat at `28eff78` with the private `95d0d4e` browser
+build passed: 977 tests, zero failures, two explicit skips, 383.400 seconds.
+It includes all five formerly failing machine cases and the three timing
+browser cases. This is the Node aggregate, not another complete `npm run check`,
+and does not establish the causes of previous failures. The last native encoder
+tail overlapped the independently owned Ananta GPU component probe; browser
+machine cases ran before that probe. Neither serving files nor trust changed.
+Subsequent upstream `d2c4e0a` was fast-forwarded only after the run completed;
+its broadcast/source and speech-fixture changes are not covered by this result.
