@@ -20,6 +20,44 @@ function setup() {
   return { service, session, mesh, graphs, close, deny: () => { allowed = false; }, consume: (start: number, pcm = new ArrayBuffer(3200)) => { consume(start, pcm); return pcm; } };
 }
 describe("machine audio subscription", () => {
+  it("probes early segmentation without capturing, opening or authorizing a source", () => {
+    const f = setup(); f.deny();
+    expect(f.service.segmentProbe()).toEqual({ schema: "ananta.meet-audio-segment-probe.v1", profile: "sample-boundary-v1", supported: true });
+    expect(f.graphs.connect).not.toHaveBeenCalled(); expect(f.service.status().open).toBe(false);
+  });
+  it("finishes only acknowledged samples, wipes later queued/callback bytes and retains one authorized reply", async () => {
+    const f = setup(), sub = await f.service.open("audio", 10);
+    for (let i = 0; i < 10; i++) { f.consume(i * 1600); f.service.poll(); f.service.ack(i + 1); }
+    const later = new Uint8Array(3200).fill(123); f.consume(16000, later.buffer);
+    const result = f.service.finish(sub.subscriptionId, 16000);
+    expect(result).toEqual({ schema: "ananta.meet-audio-segment-finished.v1", subscriptionId: sub.subscriptionId, endSample: 16000 });
+    expect(f.service.finish(sub.subscriptionId, 16000)).toEqual(result);
+    expect(f.close).toHaveBeenCalledOnce(); expect(later.every(byte => byte === 0)).toBe(true);
+    const stale = new Uint8Array(3200).fill(77); f.consume(17600, stale.buffer);
+    expect(stale.every(byte => byte === 0)).toBe(true);
+    expect(f.service.poll()).toMatchObject({ completed: true, acknowledged: 10, chunks: [] });
+    f.service.reply(sub.subscriptionId, "Synthetic response");
+    expect(() => f.service.finish(sub.subscriptionId, 16000)).toThrow("meet_audio_finish_denied");
+    expect(() => f.service.reply(sub.subscriptionId, "Again")).toThrow(); f.service.close();
+  });
+  it.each(["unknown", "unacked", "short", "unaligned", "oversize", "revoked", "new-session"])("rejects %s early finish without widening authority", async kind => {
+    const f = setup(), sub = await f.service.open("audio", 10);
+    for (let i = 0; i < 10; i++) { f.consume(i * 1600); f.service.poll(); if (kind !== "unacked") f.service.ack(i + 1); }
+    if (kind === "revoked") f.deny();
+    if (kind === "new-session") await f.service.open("audio", 10);
+    const end = kind === "short" ? 14400 : kind === "unaligned" ? 16001 : kind === "oversize" ? 161600 : 16000;
+    expect(() => f.service.finish(kind === "unknown" ? "other" : sub.subscriptionId, end)).toThrow();
+    expect(f.mesh.sendMachineChatReply).not.toHaveBeenCalled(); f.service.close();
+  });
+  it("early finish neither grants chat send rights nor survives source revocation", async () => {
+    const f = setup(), sub = await f.service.open("audio", 10);
+    for (let i = 0; i < 10; i++) { f.consume(i * 1600); f.service.poll(); f.service.ack(i + 1); }
+    f.service.finish(sub.subscriptionId, 16000); f.mesh.machineReceive.supports.mockReturnValue(false);
+    expect(() => f.service.reply(sub.subscriptionId, "Denied")).toThrow();
+    f.deny(); vi.advanceTimersByTime(100);
+    expect(f.service.status().open).toBe(false);
+    expect(() => f.service.finish(sub.subscriptionId, 16000)).toThrow();
+  });
   it("allows one source-bound reply only after completion and while authority remains current", async () => {
     const f = setup(), sub = await f.service.open("audio", 1);
     expect(() => f.service.reply(sub.subscriptionId, "Answer")).toThrow("meet_audio_reply_denied");

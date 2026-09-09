@@ -19,9 +19,13 @@ export class MachineAudioSessionService implements OnDestroy {
   private deadline = 0; private completed = false; private error = "";
   private lastNow = 0;
   private subscriptionId = ""; private replied = false;
+  private finishedSample: number | null = null;
   constructor(private readonly session: RoomSessionService, private readonly mesh: PeerMeshService,
     private readonly graphs: MachineAudioGraphFactory) {}
   supported(): boolean { return this.graphs.supported(); }
+  segmentProbe() {
+    return Object.freeze({ schema: "ananta.meet-audio-segment-probe.v1", profile: "sample-boundary-v1", supported: this.supported() });
+  }
   sources() {
     if (!this.session.joined() || !this.session.machineContext()) return Object.freeze([]);
     return Object.freeze(this.mesh.remoteMedia().flatMap(view => {
@@ -114,6 +118,22 @@ export class MachineAudioSessionService implements OnDestroy {
     while (this.queue.length && this.queue[0].sequence <= sequence) wipeMachinePcm(this.queue.shift()!.pcm);
   }
   status() { return Object.freeze({ open: Boolean(this.controller), completed: this.completed, error: this.error }); }
+  finish(subscriptionId: string, endSample: number) {
+    this.check();
+    if (typeof subscriptionId !== "string" || subscriptionId !== this.subscriptionId || this.replied
+      || !Number.isSafeInteger(endSample) || endSample < 16000 || endSample > this.maxChunks * 1600
+      || endSample % 1600 !== 0 || endSample !== this.acknowledged * 1600
+      || this.finishedSample !== null && this.finishedSample !== endSample) throw new Error("meet_audio_finish_denied");
+    if (this.finishedSample === null) {
+      this.finishedSample = endSample; this.completed = true;
+      for (const chunk of this.queue) wipeMachinePcm(chunk.pcm); this.queue = [];
+      this.delivered = this.acknowledged;
+      const graph = this.graph; this.graph = null;
+      try { void graph?.close().catch(() => this.stop("meet_audio_finish_failed")); }
+      catch { this.stop("meet_audio_finish_failed"); throw new Error("meet_audio_finish_failed"); }
+    }
+    return Object.freeze({ schema: "ananta.meet-audio-segment-finished.v1", subscriptionId, endSample });
+  }
   reply(subscriptionId: string, text: string) {
     this.check();
     if (!this.completed || subscriptionId !== this.subscriptionId || this.replied
@@ -130,6 +150,7 @@ export class MachineAudioSessionService implements OnDestroy {
     for (const chunk of this.queue) wipeMachinePcm(chunk.pcm); this.queue = [];
     this.source = null; this.binding = ""; this.publicationId = "";
     this.subscriptionId = ""; this.replied = false;
+    this.finishedSample = null;
     this.serial = this.delivered = this.acknowledged = 0; this.completed = false;
   }
   ngOnDestroy(): void { this.close(); }

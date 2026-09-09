@@ -51,6 +51,8 @@ export class MachinePageComponent implements OnDestroy {
       reply: (messageId: string, text: string) => this.machineChat.endpoint.reply(messageId, text),
       close: () => this.machineChat.endpoint.close(), status: () => this.machineChat.endpoint.status() }),
     audio: Object.freeze({ sources: () => this.machineAudio.sources(),
+      segmentProbe: () => this.machineAudio.segmentProbe(),
+      finish: (subscriptionId: string, endSample: number) => this.machineAudio.finish(subscriptionId, endSample),
       open: (publicationId: string, seconds?: number) => this.machineAudio.open(publicationId, seconds),
       poll: () => this.machineAudio.poll(), ack: (sequence: number) => this.machineAudio.ack(sequence),
       reply: (subscriptionId: string, text: string) => this.machineAudio.reply(subscriptionId, text),
