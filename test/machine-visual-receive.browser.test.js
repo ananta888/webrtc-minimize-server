@@ -1,17 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { machineBrowserFixture } from "./helpers/machine-browser-fixture.js";
+import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
 import { startSyntheticVisualPublisher, grantSyntheticVisualPublisher } from "./helpers/machine-visual-publisher.mjs";
 
-for (const humanEngine of ["chromium", "firefox"]) for (const source of ["camera", "screen"]) {
-  test(`${humanEngine} synthetic ${source} reaches only an explicitly authorized bounded visual subscription`, { timeout: 45000 }, async t => {
-    const f = await machineBrowserFixture(t, { humanEngine }), { machine, human } = f;
+for (const humanEngine of ["chromium", "firefox"]) for (const machineEngine of ["chromium", "firefox"])
+  for (const source of ["camera", "screen"]) {
+  test(`${humanEngine} synthetic ${source} to ${machineEngine} reaches only an explicitly authorized bounded visual subscription`, { timeout: 45000 }, async t => {
+    const f = await machineBrowserFixture(t, { humanEngine, machineEngine }), { machine, human } = f;
     await machine.evaluate(([room, grant]) => window.anantaMachine.join(room, grant), [f.roomId, await f.grant(["video.receive"])]);
     await human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
     await startSyntheticVisualPublisher(human, source);
     assert.deepEqual(await machine.evaluate(() => window.anantaMachine.visual.sources()), []);
     const panel = await grantSyntheticVisualPublisher(human, source);
-    await machine.waitForFunction(() => window.anantaMachine.visual.sources().length === 1, null, { timeout: 12000 });
+    await waitFixtureValue(machine, () => window.anantaMachine.visual.sources().length === 1, null, { timeout: 12000 });
     const result = await machine.evaluate(async () => {
       const api = window.anantaMachine.visual, selected = api.sources()[0], sub = await api.open(selected.publicationId);
       window.__visualTestSubscription = sub.subscriptionId;
@@ -40,13 +42,13 @@ for (const humanEngine of ["chromium", "firefox"]) for (const source of ["camera
     assert.equal(result.replayDenied, true); assert.equal(result.captures, 0); assert.equal(result.audioSources, 0);
     assert.equal(result.e2ee, "active"); assert.deepEqual(result.errors, []);
     await panel.getByRole("button", { name: "Meine Freigaben widerrufen" }).click();
-    await machine.waitForFunction(() => !window.anantaMachine.visual.status().open, null, { timeout: 3000 });
+    await waitFixtureValue(machine, () => !window.anantaMachine.visual.status().open, null, { timeout: 3000 });
     assert.deepEqual(await machine.evaluate(() => window.anantaMachine.visual.sources()), []);
     assert.equal(await machine.evaluate(async () => {
       try { await window.anantaMachine.visual.frame(window.__visualTestSubscription); return false; } catch { return true; }
     }), true);
     t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, publisherEngine: humanEngine,
-      receiverEngine: "chromium", source, width: result.width, height: result.height, rgb: result.rgb,
+      receiverEngine: machineEngine, source, width: result.width, height: result.height, rgb: result.rgb,
       exactEpoch: true, noMachineCapture: true, revokedFrameDenied: true }));
   });
 }

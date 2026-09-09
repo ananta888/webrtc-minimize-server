@@ -19,7 +19,7 @@ import { installReceiverKeyDelay } from "./machine-receiver-key-delay.mjs";
 import { installMachineForcedRelay } from "./machine-forced-relay.js";
 
 export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", listenPort = 0, hubPublicKey, tlsPortProxy = false,
-  lifetimeSeconds = 180, humanEngine = "chromium", observeStage = () => {}, tlsConnectionLimit = 16,
+  lifetimeSeconds = 180, humanEngine = "chromium", machineEngine = "chromium", observeStage = () => {}, tlsConnectionLimit = 16,
   publicDir = process.env.MEET_TEST_PUBLIC_DIR, receiverKeyDelay = false, icePath = "direct", relayParticipants = 2 } = {}) {
   if (!["direct", "turn-udp", "turn-tcp"].includes(icePath)) throw new Error("test_ice_path_invalid");
   if (![2, 3].includes(relayParticipants)) throw new Error("test_turn_scope_invalid");
@@ -27,7 +27,7 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
   if (typeof receiverKeyDelay !== "boolean") throw new Error("test_receiver_key_delay_invalid");
   if (![16, 32].includes(tlsConnectionLimit)) throw new Error("test_proxy_connection_limit_invalid");
   if (!Number.isInteger(lifetimeSeconds) || lifetimeSeconds < 180 || lifetimeSeconds > 7380) throw new Error("test_lifetime_invalid");
-  if (!["chromium", "firefox"].includes(humanEngine)) throw new Error("test_engine_invalid");
+  if (![humanEngine, machineEngine].every(engine => ["chromium", "firefox"].includes(engine))) throw new Error("test_engine_invalid");
   observeStage("test-assets");
   const fixturePublicDir = await machineFixtureAssets(publicDir);
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "meet-machine-tls-"));
@@ -91,8 +91,11 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
     }
   }
   observeStage("browser-launch");
-  browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required"] });
-  humanBrowser = humanEngine === "chromium" ? browser : await firefox.launch({ headless: true });
+  const launch = engine => engine === "chromium"
+    ? chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required"] })
+    : firefox.launch({ headless: true });
+  browser = await launch(machineEngine);
+  humanBrowser = humanEngine === machineEngine ? browser : await launch(humanEngine);
   async function page(machine = false) {
     const context = await (machine ? browser : humanBrowser).newContext({ permissions: [], ignoreHTTPSErrors: true });
     if (icePath !== "direct") await context.addInitScript(installMachineForcedRelay, proxy.turnConfig.turnUrls[0]);

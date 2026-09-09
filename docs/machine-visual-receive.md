@@ -114,3 +114,22 @@ The private integration bridge and reusable synthetic publisher helpers are now
 implemented. The original four actual camera/screen browser cases still pass
 (10.41s) after extraction; no production code or serving assets changed. The
 bridge itself must still be exercised by the packaged Ananta acceptance test.
+
+## Packaged Hub and browser-engine matrix
+
+Ananta source `f223cbe53` / packaged image `bd4cc14c24a8` passed actual
+camera/screen receipt, native image statistics and Hub child completion in66.58s.
+The extended pair passed104.85s: regrant permits a fresh bounded assignment and
+revoking it while active prevents completion. The test helper now waits for the
+revoke ACK and editor reset before checking a source again; previously an old
+checked DOM could skip the new checkbox event. The bridge returns bounded stage
+diagnostics rather than exception text or credentials. No production rule changed.
+
+The private browser fixture additionally selects an explicit machine engine,
+default Chromium unchanged. All eight publisher/receiver Chromium/Firefox ×
+camera/screen combinations passed22.03s, including decoded color, exact source
+epoch, bounds, no machine capture and denial after revoke. Initial Firefox
+receivers exposed the already documented ZoneAwarePromise readiness issue in
+`page.waitForFunction`; the existing host-side closed-value wait now handles
+both source readiness and revocation. Reports name the actual receiver engine.
+The next isolated full check includes this expanded fixture matrix.
