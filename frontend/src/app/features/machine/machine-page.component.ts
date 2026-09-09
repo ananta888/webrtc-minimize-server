@@ -6,6 +6,7 @@ import { PeerMeshService } from "../../webrtc/peer-mesh.service";
 import { RoomSessionService } from "../../webrtc/room-session.service";
 import { MachineChatSessionService } from "./machine-chat-session.service";
 import { MachineAudioSessionService } from "./machine-audio-session.service";
+import { MachineVisualSessionService } from "./machine-visual-session.service";
 import { MachinePublicationOwnership } from "./machine-publication-ownership";
 import { MachineSpeechGraphFactory } from "./machine-speech-graph";
 import { MachineSpeechSessionService } from "./machine-speech-session.service";
@@ -18,7 +19,7 @@ import { MachineScreenAudioSessionService } from "./machine-screen-audio-session
 /** Dedicated automation endpoint. No messaging listener, human capture or OIDC shortcut. */
 @Component({
   selector: "app-machine-page", standalone: true,
-  providers: [MachineChatSessionService, MachineAudioSessionService, MachineScreenSessionService, MachineMediaSessionService, MachineScreenAudioSessionService,
+  providers: [MachineChatSessionService, MachineAudioSessionService, MachineVisualSessionService, MachineScreenSessionService, MachineMediaSessionService, MachineScreenAudioSessionService,
     MachinePublicationOwnership, MachineSpeechGraphFactory, MachineSpeechSessionService, MachineAvatarSurfaceFactory, MachineAvatarSessionService],
   template: `<main><h1>Ananta (KI)</h1><p>Autorisierter Maschinenclient für synthetische Quellen.</p>
     <p>{{ session.joined() ? 'Verbunden' : 'Nicht verbunden' }}</p>
@@ -30,6 +31,7 @@ export class MachinePageComponent implements OnDestroy {
   private readonly mesh = inject(PeerMeshService);
   private readonly machineChat = inject(MachineChatSessionService);
   private readonly machineAudio = inject(MachineAudioSessionService);
+  private readonly machineVisual = inject(MachineVisualSessionService);
   private readonly machineScreen = inject(MachineScreenSessionService);
   private readonly machineSpeech = inject(MachineSpeechSessionService);
   private readonly machineAvatar = inject(MachineAvatarSessionService);
@@ -57,6 +59,10 @@ export class MachinePageComponent implements OnDestroy {
       poll: () => this.machineAudio.poll(), ack: (sequence: number) => this.machineAudio.ack(sequence),
       reply: (subscriptionId: string, text: string) => this.machineAudio.reply(subscriptionId, text),
       close: () => this.machineAudio.close(), status: () => this.machineAudio.status() }),
+    visual: Object.freeze({ probe: () => this.machineVisual.probe(), sources: () => this.machineVisual.sources(),
+      open: (publicationId: string) => this.machineVisual.open(publicationId),
+      frame: (subscriptionId: string) => this.machineVisual.frame(subscriptionId),
+      close: () => this.machineVisual.close(), status: () => this.machineVisual.status() }),
     screen: Object.freeze({ open: (sourceId: string) => { this.machineScreenAudio.source.close(); return this.machineScreen.source.open(sourceId); },
       push: (generation: number, sequence: number, jpeg: string) => this.machineScreen.source.push(generation, sequence, jpeg),
       close: () => { this.machineScreenAudio.source.close(); this.machineScreen.source.close(); }, status: () => this.machineScreen.source.status(),
@@ -124,6 +130,7 @@ export class MachinePageComponent implements OnDestroy {
     this.machineScreenAudio.source.close();
     this.machineScreen.source.close();
     this.machineAudio.close();
+    this.machineVisual.close();
     this.machineChat.endpoint.close();
     ++this.generation; this.expiry.close();
     try { this.machineMedia.publication.close(); } finally { this.session.leave(); this.mesh.clearChatHistory(); }

@@ -66,3 +66,25 @@ surface tests passed, including late Blob/array-buffer completion and partial
 construction failure. This port does not itself grant permission or retain
 media. JavaScript immutable strings/Blob backing storage are not claimed to be
 forensically erased; references are discarded and no content is persisted.
+
+## Bounded subscription and real browser verification
+
+The additive `anantaMachine.visual` port exposes closed probe/source/open/frame/
+close/status operations. One subscription binds all planned scope fields and the
+actual publisher epoch, grant deadline and track. It permits at most three
+frames, at least500ms apart, for at most10s, with one outstanding2s-bounded
+operation. Current authority is checked before and after decoding and every100ms.
+No chat reply or audio right is inferred. Reopen/expiry/revoke cancels the owned
+decoder and fences late completions from a previous subscription.
+
+Twenty-four focused lifecycle tests passed. Four real browser cases passed in
+10.37s: Chromium and Firefox synthetic publishers, each camera and screen,
+received by the isolated Chromium machine client over required SFrame. Each
+verified selected-source color, actual epoch, bounded dimensions, zero machine
+capture/audio sources, rate denial and post-revoke denial; no transform errors.
+The initial camera test incorrectly demanded640px despite adaptive320px input;
+it now asserts the actual maximum and aspect ratio without forcing upscaling.
+This does not yet verify a Firefox machine receiver or Ananta analysis.
+The old client probe/capabilities wire remains exact. Public serving assets and
+operator trust are unchanged. Full isolated check remains required before MDS13
+closure; these synthetic observations are not grounded production evidence.
