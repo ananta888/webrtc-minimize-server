@@ -26,6 +26,22 @@ Bild- und Tonstopps unabhängig, damit ein einzelner Cleanupfehler den jeweils
 anderen Stop nicht überspringt. Nach fehlgeschlagenem Cleanup startet er keine
 Ersatzquelle.
 
+Die inzwischen integrierte optionale [Quellen-Zeitüberwachung](machine-live-media-clock.md)
+beobachtet Sprache, Avatar und agenteneigenen Bildschirm getrennt. Sie stoppt
+veraltete oder zeitlich unplausible eigene Quellen, erweitert aber keine
+Berechtigung oder Sitzung. Der Worker muss das Profil ausdrücklich aushandeln;
+es ist weder ein Nachweis von Lippen-Synchronität noch von Empfang beim Publikum.
+
+Die gebündelte Prüfung mit `28eff78` und dem neuen Quellenfreigabe-Workflow
+bestand 1.012 Frontendtests und 975 Nodeprüfungen; drei Browserfälle scheiterten,
+zwei Prüfungen wurden ausdrücklich übersprungen. Der gemeinsame Consent-/Chat-/
+Audioempfang-/Screen-Dialog mit drei Erneuerungen bestand in Chromium und Firefox.
+Offen sind die Chromium-Beobachtung unmittelbar vor Lease-Ablauf, eine fehlende
+Avatar-Zeitzeile nach dem Screenstop unter Firefox sowie ein vorzeitig beendeter
+separater Chromium-Sprachausgang. Die Ursache ist noch nicht belegt; dieser
+Stand ist keine abgeschlossene Integrationsabnahme. Die externe
+Infrastrukturstufe wurde nach den Fehlern nicht mehr ausgeführt.
+
 ## Im Browser
 
 1. Dem Raum beitreten und **Analyse → Ananta · Freigaben meiner Quellen** öffnen.

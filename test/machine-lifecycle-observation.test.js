@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import vm from "node:vm";
-import { beforeMachineLeaseExpiry, retiredMachineAvatar } from "./helpers/machine-lifecycle-observation.mjs";
+import { beforeMachineLeaseExpiry, retiredMachineAvatar, machineLeaseSupplyObservation } from "./helpers/machine-lifecycle-observation.mjs";
 
 function fixture(fn) {
   let now = 1000;
@@ -31,4 +31,19 @@ test("survivor requires its own membership departure and old avatar shutdown, ne
   }
   f.state.joined = false;
   assert.equal(f.run(2), false);
+});
+
+test("lease supplier diagnostics expose bounded relative timings and fixed reasons, never arbitrary source values", () => {
+  const state = { sequence: 12, pushInFlight: false, lastPushDurationMs: 12.4, lastAccepted: 8300, closedAt: 10250,
+    privateFrame: "must-not-appear" };
+  let reason = "activation_expired";
+  const run = vm.runInNewContext(`(${machineLeaseSupplyObservation.toString()})`, {
+    window: { __leaseSource: state, anantaMachine: { screen: { diagnostics: () => ({ lastStopReason: reason }) } } },
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(run(10000))), { suppliedFrames: 12, pushInFlight: false,
+    lastPushDurationMs: 12, lastAcceptedBeforeExpiryMs: 1700, rejectedAfterExpiryMs: 250, sourceStopReason: "activation_expired" });
+  Object.assign(state, { sequence: 100000, pushInFlight: "private", lastPushDurationMs: Infinity, lastAccepted: 1, closedAt: 0 });
+  reason = "private error or frame";
+  assert.deepEqual(JSON.parse(JSON.stringify(run(100000))), { suppliedFrames: 80, pushInFlight: false,
+    lastPushDurationMs: null, lastAcceptedBeforeExpiryMs: 45000, rejectedAfterExpiryMs: null, sourceStopReason: "unknown" });
 });

@@ -12,3 +12,19 @@ export function retiredMachineAvatar(expectedParticipants) {
   return status.joined === true && status.peers === expectedParticipants
     && (avatar.state === "failed" || avatar.state === "closed");
 }
+
+// Fixed numeric/enum projection only; never serialize a source, exception or frame.
+export function machineLeaseSupplyObservation(deadline) {
+  const state = window.__leaseSource, api = window.anantaMachine;
+  const bounded = (value, limit) => Number.isFinite(value) ? Math.max(-limit, Math.min(limit, Math.round(value))) : null;
+  const reasons = ["inactive", "clock_rollback", "source_ended", "activation_expired", "frame_stalled",
+    "scope_changed", "authority_unavailable", "decode_timeout", "decode_or_frame_failed", "decoder_busy", "closed"];
+  const reason = api.screen.diagnostics().lastStopReason;
+  return {
+    suppliedFrames: bounded(state.sequence, 80), pushInFlight: state.pushInFlight === true,
+    lastPushDurationMs: bounded(state.lastPushDurationMs, 45000),
+    lastAcceptedBeforeExpiryMs: state.lastAccepted > 0 ? bounded(deadline - state.lastAccepted, 45000) : null,
+    rejectedAfterExpiryMs: state.closedAt > 0 ? bounded(state.closedAt - deadline, 45000) : null,
+    sourceStopReason: reasons.includes(reason) ? reason : "unknown",
+  };
+}

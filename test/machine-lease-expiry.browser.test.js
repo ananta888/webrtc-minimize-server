@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { machineBrowserFixture } from "./helpers/machine-browser-fixture.js";
 import { decodedGreenScreen } from "./helpers/machine-avatar-coexistence.mjs";
-import { beforeMachineLeaseExpiry } from "./helpers/machine-lifecycle-observation.mjs";
+import { beforeMachineLeaseExpiry, machineLeaseSupplyObservation } from "./helpers/machine-lifecycle-observation.mjs";
 
 // Keep supplying only synthetic frames. Missing renewal, not an artificial frame
 // stall or an explicit Leave, must revoke the session and release its resources.
@@ -12,11 +12,12 @@ function supplyUntilLeaseEnds(sessionId) {
   const ctx = canvas.getContext("2d"); ctx.fillStyle = "rgb(20,220,20)"; ctx.fillRect(0, 0, 640, 360);
   const jpeg = canvas.toDataURL("image/jpeg", .7).split(",")[1]; canvas.width = canvas.height = 0;
   const state = { generation: lease.generation, sequence: 0, lastAccepted: 0, closedAt: 0,
-    error: false, timer: null, stopped: false, tracks: [],
+    error: false, timer: null, stopped: false, tracks: [], pushInFlight: false, lastPushDurationMs: 0,
     close() { this.stopped = true; clearTimeout(this.timer); } };
   window.__leaseSource = state;
   const tick = async () => {
     if (state.stopped || state.sequence >= 80) return;
+    const started = performance.now(); state.pushInFlight = true;
     try {
       await api.screen.push(lease.generation, ++state.sequence, jpeg);
       state.lastAccepted = Date.now();
@@ -26,6 +27,8 @@ function supplyUntilLeaseEnds(sessionId) {
       if (!state.stopped) state.timer = setTimeout(tick, 250);
     } catch {
       state.closedAt = Date.now(); state.error = true;
+    } finally {
+      state.pushInFlight = false; state.lastPushDurationMs = performance.now() - started;
     }
   };
   void tick();
@@ -69,6 +72,10 @@ for (const humanEngine of ["chromium", "firefox"]) {
       closedAt: window.__leaseSource.closedAt, tracks: window.__leaseSource.tracks.length,
       ended: window.__leaseSource.tracks.every(track => track.readyState === "ended"),
       connectionsClosed: window.__pcs.every(pc => pc.connectionState === "closed") }));
+    if (stopped.lastAccepted < lease.expiresAt - 1000 || stopped.closedAt > lease.expiresAt + 2000) {
+      t.diagnostic(JSON.stringify({ phase: "lease-supply-stop", synthetic: true, productionEvidence: false,
+        ...await machine.evaluate(machineLeaseSupplyObservation, lease.expiresAt) }));
+    }
     assert.ok(stopped.lastAccepted >= lease.expiresAt - 1000, "source was live immediately before expiry");
     assert.ok(stopped.closedAt <= lease.expiresAt + 2000, "no fresh grant: bounded stop");
     assert.ok(stopped.tracks > 0); assert.equal(stopped.ended, true); assert.equal(stopped.connectionsClosed, true);
