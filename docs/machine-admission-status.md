@@ -1,5 +1,13 @@
 # Ananta-Betreiberstatus in Analyse
 
+Aktueller Nachtrag: Die Ansicht verwendet jetzt den additiven
+`/api/machine/integration`-Vertrag und zeigt auch die einzelnen Funktionen,
+globale Betreibergrenzen und notwendigen Quellenfreigaben. Der Legacy-Vertrag
+bleibt unverändert. Details und aktuelle Verifikation stehen in der
+[Integrationsübersicht](machine-integration-overview.md).
+Die folgenden Abschnitte dokumentieren die ursprüngliche Admission-Anzeige
+und ihre historischen Rollouts, nicht das Deployment dieses Nachtrags.
+
 Die Anzeige **Analyse → Ananta · Freigaben meiner Quellen → Betreiberstatus**
 liest den vorhandenen öffentlichen `/api/machine/capabilities`-Vertrag.
 Sie unterscheidet ausgeschaltete und eingeschaltete Maschinenaufnahme von

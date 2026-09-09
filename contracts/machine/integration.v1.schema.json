@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ananta.meet-integration.v1",
+  "title": "Read-only Meet integration observation, never authorization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "admissionEnabled", "supportedCapabilities", "operatorCapabilityCeiling", "publisherConsentRequired", "sessionLease"],
+  "properties": {
+    "schema": { "const": "ananta.meet-integration.v1" },
+    "admissionEnabled": { "type": "boolean" },
+    "supportedCapabilities": { "const": ["audio.receive", "avatar.publish", "chat.read", "chat.send", "screen-audio.publish", "screen.publish", "speech.publish", "video.receive"] },
+    "operatorCapabilityCeiling": {
+      "type": "array", "maxItems": 8, "uniqueItems": true,
+      "description": "Globally configured upper bound, sorted lexicographically. Trust scope, grants and publisher consent remain independent requirements.",
+      "items": { "enum": ["audio.receive", "avatar.publish", "chat.read", "chat.send", "screen-audio.publish", "screen.publish", "speech.publish", "video.receive"] }
+    },
+    "publisherConsentRequired": { "const": ["audio.receive", "chat.read", "video.receive"] },
+    "sessionLease": { "const": "ananta.meet-session-lease.v1" }
+  },
+  "if": { "properties": { "admissionEnabled": { "const": true } } },
+  "then": { "properties": { "operatorCapabilityCeiling": { "type": "array", "minItems": 1 } } }
+}

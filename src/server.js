@@ -9,6 +9,7 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import { loadConfig } from "./config.js";
 import { MachineAdmission, machineMessageAllowed } from "./machine-admission.js";
+import { machineIntegrationStatus } from "./machine-integration-status.js";
 import { MachineLeaseError, MachineSessionLeases } from "./machine-session-leases.js";
 import { machineSessionObservation } from "./machine-session-observation.js";
 import { MachineReceivePolicy, MachineReceivePolicyError } from "./machine-receive-policy.js";
@@ -860,6 +861,11 @@ function createHttpHandler(config, registry, services) {
             send: (packagerId, message) => safeSend(nativePackagers.socketFor(packagerId), message), signal: abort.signal });
           sendJson(response, 201, { ...prepared, ownerSubjectRef: broadcastSubjectRef(identity) }, securityHeaders(config));
         } finally { response.off("close", onClose); }
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/api/machine/integration" && !url.search) {
+        sendJson(response, 200, machineIntegrationStatus(machineAdmission.enabled, config.machineAllowedCapabilities),
+          { ...securityHeaders(config), "cache-control": "no-store" });
         return;
       }
       if (request.method === "GET" && url.pathname === "/api/machine/capabilities") {

@@ -1,4 +1,5 @@
 import { Injectable, OnDestroy, signal } from "@angular/core";
+import { MachineIntegrationStatus, parseMachineIntegration } from "./machine-integration-status";
 
 export type MachineAdmissionStatus = "idle" | "checking" | "enabled" | "disabled" | "unavailable" | "stale";
 
@@ -17,7 +18,7 @@ export function parseMachineAdmission(value: unknown): boolean {
   return v["admissionEnabled"];
 }
 
-async function readAdmission(response: Response, signal: AbortSignal): Promise<boolean> {
+async function readAdmission(response: Response, signal: AbortSignal): Promise<MachineIntegrationStatus> {
   const length = response.headers.get("content-length");
   if (response.status !== 200 || response.redirected || !response.body
     || response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json"
@@ -38,7 +39,8 @@ async function readAdmission(response: Response, signal: AbortSignal): Promise<b
       if (bytes > 2048) throw new Error("machine_admission_oversize");
       text += decoder.decode(result.value, { stream: true });
     }
-    return parseMachineAdmission(JSON.parse(text + decoder.decode()));
+    signal.throwIfAborted();
+    return parseMachineIntegration(JSON.parse(text + decoder.decode()));
   } finally {
     signal.removeEventListener("abort", cancel);
     // Cancellation must not extend the request budget, even on a faulty stream.
@@ -51,6 +53,7 @@ async function readAdmission(response: Response, signal: AbortSignal): Promise<b
 export class MachineAdmissionStatusService implements OnDestroy {
   readonly state = signal<MachineAdmissionStatus>("idle");
   readonly checkedAt = signal<number | null>(null);
+  readonly integration = signal<MachineIntegrationStatus | null>(null);
   private pending: AbortController | null = null;
   private freshness: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
@@ -61,7 +64,7 @@ export class MachineAdmissionStatusService implements OnDestroy {
     this.freshness = null;
     const controller = new AbortController();
     this.pending = controller;
-    this.state.set("checking"); this.checkedAt.set(null);
+    this.state.set("checking"); this.checkedAt.set(null); this.integration.set(null);
     let rejectAbort: () => void = () => {};
     const aborted = new Promise<never>((_, reject) => {
       rejectAbort = () => reject(new Error("machine_admission_cancelled"));
@@ -69,16 +72,19 @@ export class MachineAdmissionStatusService implements OnDestroy {
     });
     const timeout = setTimeout(() => controller.abort(), 5000);
     try {
-      const enabled = await Promise.race([
-        fetch("/api/machine/capabilities", { method: "GET", credentials: "omit", cache: "no-store",
+      const snapshot = await Promise.race([
+        fetch("/api/machine/integration", { method: "GET", credentials: "omit", cache: "no-store",
           redirect: "error", signal: controller.signal }).then(async response => {
           if (controller.signal.aborted) { void response.body?.cancel().catch(() => {}); throw new Error("machine_admission_cancelled"); }
           return readAdmission(response, controller.signal);
         }), aborted,
       ]);
       if (this.destroyed || controller.signal.aborted) return;
-      this.state.set(enabled ? "enabled" : "disabled"); this.checkedAt.set(Date.now());
-      this.freshness = setTimeout(() => { this.freshness = null; this.state.set("stale"); }, 30_000);
+      this.integration.set(snapshot);
+      this.state.set(snapshot.admissionEnabled ? "enabled" : "disabled"); this.checkedAt.set(Date.now());
+      this.freshness = setTimeout(() => {
+        this.freshness = null; this.integration.set(null); this.state.set("stale");
+      }, 30_000);
     } catch {
       if (!this.destroyed) this.state.set("unavailable");
     } finally {
@@ -94,6 +100,6 @@ export class MachineAdmissionStatusService implements OnDestroy {
     this.pending?.abort();
     if (this.freshness) clearTimeout(this.freshness);
     this.freshness = null;
-    this.checkedAt.set(null); this.state.set("idle");
+    this.checkedAt.set(null); this.integration.set(null); this.state.set("idle");
   }
 }

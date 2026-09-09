@@ -7,6 +7,17 @@ KI-Beitritt. Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
 
 ## Aktueller Nachtrag: getrennte Quellenzeit
 
+Die anschließende CI `34370659493` für `edc117f` ist vollständig erfolgreich:
+alle acht Jobs einschließlich des authentisierten TURN-Dialogs und des
+Live-Keycloak-/TURN-Gates. Das ist weiterhin kein öffentliches Hub-Deployment.
+Die neue [Integrationsübersicht](machine-integration-overview.md) ergänzt jetzt
+die Analyse um implementierte Funktionen, globale Betreibergrenzen und
+notwendige Quellenfreigaben. Der isolierte Gesamtcheck dieses Nachtrags bestand:
+1.192 Frontendtests, 1.091 Node-/Browserprüfungen, null Fehler und vier Node-Skips;
+14 externe Gates blieben ausdrücklich übersprungen. Beide kombinierten Dialoge
+und die neue UI bestanden in Chromium und Firefox. Das fehlende produktive
+Hub-/Projektprofil bleibt eine eigene Voraussetzung; noch kein Deployment.
+
 Der falsch ausgelöste lokale Sprach-/Avatar-Stillstand ist jetzt mit einem
 gezielten Vorher-/Nachher-Test reproduziert und behoben: Eine Wanduhrkorrektur
 innerhalb einer weiterhin gültigen Lease darf keine bereits verstrichene lokale
