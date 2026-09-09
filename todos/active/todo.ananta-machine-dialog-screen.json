@@ -88,6 +88,7 @@
     },
     {
       "id": "MDS-03", "title": "Begrenzten Audioempfang für den autorisierten KI-Client bereitstellen",
+      "completion_verification": "2026-09-09 Anantac72f8162f/image55ec55247f2e final real microphone/screen-audio pair159.93s:128000samples/localCUDA/wordthreshold/no reply or transcript retention, repeated grant and active revoke deny further completion. Microphone additionally real Meetlease generation renewal/newboundchild and independent Hub audio pause with parent alive. Fixture atmost3single utterances/onepergrant after original Hub budget;10source/file/opt-in guards2.53s pass. Prior actual PCM/earlysegment/revoke and buffer/authority negatives plus isolated d57096d fullcheck844frontend/863Node/0fail/2Nodeskips cover4MDS03criteria. Close only receiveport, not fulltrack/publictrust/release. docs/machine-packaged-audio-fixture.md.",
       "packaged_cuda_fixture": "2026-09-09 private fixed-command source/grant/speak/revoke/stop bridge, bounded local synthetic WAV, actual owner UI source/setting/grant, no machine physical capture or provider policy. One full phrase starts after actual Hub ASR admission, not arbitrary cut into loop. Actual Ananta packaged microphone/screen-audio CUDA pair109.35s passed128000samples each/>=3of4fixedwords/no reply/no transcript persistence; exposed missing Ananta childWorker assignment, corrected Hub. Newimage repeated grant/active revoke next.4bridge opt-in/invalidprofile checks2.73s pass. docs/machine-packaged-audio-fixture.md; no publictrust/release evidence.",
       "early_segment_full_check": "2026-09-09 sourceb23de52 isolated npm run check terminalExit0:775Frontend/825NodePASS/0FAIL/2NodeSkips, Node330.898s. Build/GoUnit+Vet/staticgates passed;14externalinfrastructuregates and optionalimagescan explicitSKIP. Detachedprivateworktree, no servingdist/Trust/servicewrites. docs/machine-audio-segment-finish.md; full-MDS/live-ASR/GPU-receive acceptance remains separate.",
       "early_segment_result": "2026-09-09 optional sample-boundary probe/finish implemented: current exact subscription/ACK/min1s/100ms boundary, idempotent same-boundary finish before reply, graph stop/queue+late callback wipe, unchanged deadline/source/send authority.41focused frontend tests pass; private production Angular build pass with existing bundle warning. Actual Chromium/Firefox receive-only cases7.744s total: each17600samples/1.1s of10s max,16985/16971nonzero, required-SFrame active/no transform errors/no machine capture, empty later queue, reply denied and post-revoke finish denied. docs/machine-audio-segment-finish.md; isolated full check pending, no serving/trust/production changes.",
@@ -95,7 +96,7 @@
       "pcm_cleanup_full_check": "2026-09-08 isolierter npm run check von41b2b38 terminal Exit0:698 Frontendtests/763 Node passed/0 failed/2 ausdrueckliche Node-Skips, Node298.869s. Build/Go-unit-vet/statische Sicherheits- und Konfigurationsgates gruen;14 externe Infrastruktur-Gates plus optionaler Image-Scan sichtbar SKIP. Verschaerfter echter Chromium/Firefox-Dialog entzieht laufenden PCM-Empfang unter drainender Queue, danach binding_changed/Poll/ACK deny. Serving-Build SHA256-identisch, kein Ananta-Repository-/Trust-/Produktionswrite. docs/machine-audio-buffer-lifecycle.md; weitere MDS-Kriterien/Produktivabnahme bleiben offen.",
       "pcm_cleanup_browser_verification": "2026-09-08 Implementierung41b2b38: zuerst neun echte Regressionen fehlgeschlagen/neun vorherige Checks gruen. Nach Korrektur150 Maschinen-Frontendtests und Angular-Typ-/Template-/Todogate gruen. Aktive Subscription unter fortlaufendem Poll/ACK in echtem Chromium/Firefox widerrufen: vor Klick offen, danach binding_changed und Poll/ACK deny, kein Overflow als Ersatz. Integrierter Dialog12.874s/14.745s mit je16000 PCM-Samples/Nutzsignal, Chatantwort, bewegtem Screen und drei Renewals gruen; Required-SFrame aktiv, keine Transformfehler. E2E-Stopwartebudget3s enthaelt UI/Netzwerk, lokale100ms getrennt deterministisch geprueft. Gesamtcheck folgt, keine native Speicherloeschung/Produktivfreigabe behauptet; docs/machine-audio-buffer-lifecycle.md.",
       "pcm_cleanup_plan": "2026-09-08 Quellpruefungff2676c: accept prueft Authority vor Uebernahme eines neuen PCM-Puffers; Ablehnung leert bisher Queue, aber nicht den gerade eingetroffenen Puffer. Graph verwirft spaete/ungueltige Callbacks ebenfalls ohne explizites Leeren; einzelne Cleanup-Ausnahmen koennen weitere Freigaben verhindern. Vor Code: Regression mit markierten eigenen ArrayBuffers fuer Widerruf vor Callback, Timeline/Overflow/Leasewechsel, spaete Graphnachricht und Cleanup-Fehler; kleine Wipe-/Cleanup-Ports, keine neuen Autoritaeten oder Captures. Positivpfad muss bis ACK echte Samples behalten. Lokale Zweibrowser-Dialogabnahme und isolierter Vollcheck am Ende dieses Slices, MDS-03 bleibt in_progress/35 bis gesamte Abnahme erfuellt.",
-      "status": "in_progress", "progress_percent": 35, "priority": "P1", "risk": "critical", "depends_on": ["MDS-02"],
+      "status": "done", "progress_percent": 100, "priority": "P1", "risk": "critical", "depends_on": ["MDS-02"],
       "ananta_task_refs": ["MAP-25", "MAP-27"],
       "acceptance_criteria": [
         "Erst im berechtigten Teilnehmerclient entschlüsselte Audiochunks über einen isolierten Subscription-Port an das gebundene Ananta-Ausführungsprofil geben; keine Klartext-HTTP-Route am Signaling-Server.",
@@ -277,11 +278,11 @@
   "critical_path_tasks": ["MDS-01", "MDS-02", "MDS-03", "MDS-13", "MDS-07", "MDS-08", "MDS-09"],
   "tasks_status_summary": {
     "total": 13,
-    "by_status": {"todo": 0, "in_progress": 9, "partial": 0, "blocked": 0, "done": 4},
-    "progress_percent_done": 30.77,
+    "by_status": {"todo": 0, "in_progress": 8, "partial": 0, "blocked": 0, "done": 5},
+    "progress_percent_done": 38.46,
     "by_priority": {"P0": 3, "P1": 10, "P2": 0, "P3": 0},
     "by_risk": {"low": 0, "medium": 0, "high": 8, "critical": 5},
-    "critical_path": {"total": 7, "done": 1, "remaining": 6},
+    "critical_path": {"total": 7, "done": 2, "remaining": 5},
     "milestones": {"total": 4, "todo": 0, "in_progress": 4, "blocked": 0, "done": 0}
   },
   "summary_notes": [

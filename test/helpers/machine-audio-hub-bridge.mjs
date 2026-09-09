@@ -16,7 +16,7 @@ try {
     observeStage: value => { stage = value; } });
   f.human.setDefaultTimeout(12000);
   reply({ origin: f.origin, room_id: f.roomId, certificate: f.certificatePath, test_network: f.testNetwork });
-  let started = false, granted = false, spoken = false;
+  let started = false, granted = false, spoken = 0, grantSpoken = false;
   for await (const line of readline.createInterface({ input: process.stdin, crlfDelay: Infinity })) {
     if (line === "stop") break;
     if (line === "source" && !started) {
@@ -26,11 +26,11 @@ try {
       reply({ source_started: true });
     } else if (line === "grant" && started && !granted) {
       stage = "grant";
-      await grantSyntheticAudioPublisher(f.human, source); granted = true;
+      await grantSyntheticAudioPublisher(f.human, source); granted = true; grantSpoken = false;
       reply({ source_granted: true });
-    } else if (line === "speak" && granted && !spoken) {
+    } else if (line === "speak" && granted && !grantSpoken && spoken < 3) {
       stage = "speak";
-      await f.human.evaluate(() => window.__startSyntheticReceiveSpeech()); spoken = true;
+      await f.human.evaluate(() => window.__startSyntheticReceiveSpeech()); spoken++; grantSpoken = true;
       reply({ speech_started: true });
     } else if (line === "revoke" && granted) {
       stage = "revoke";
@@ -41,8 +41,9 @@ try {
       granted = false; reply({ source_revoked: true });
     } else throw new Error("test_audio_command_invalid");
   }
-} catch {
-  reply({ bridge_error: "test_audio_bridge_failed", stage }); process.exitCode = 1;
+} catch (error) {
+  reply({ bridge_error: "test_audio_bridge_failed", stage,
+    ...(error.startupObservation ? { startup: error.startupObservation } : {}) }); process.exitCode = 1;
 } finally {
   for (const close of cleanup.reverse()) { try { await close(); } catch { process.exitCode = 1; } }
 }

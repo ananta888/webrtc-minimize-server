@@ -18,7 +18,8 @@ export async function startSyntheticAudioPublisher(page, source, file) {
         try {
           const decoded = await audio.decodeAudioData(bytes.buffer);
           if (decoded.duration < 1 || decoded.duration > 8 || decoded.numberOfChannels !== 1) throw new Error("test_audio_fixture_invalid");
-          const player = audio.createBufferSource(), destination = audio.createMediaStreamDestination();
+          let player = audio.createBufferSource();
+          const destination = audio.createMediaStreamDestination();
           player.buffer = decoded; player.connect(destination);
           stream = destination.stream;
           if (source === "screen-audio") {
@@ -27,10 +28,13 @@ export async function startSyntheticAudioPublisher(page, source, file) {
             const video = canvas.captureStream(1).getVideoTracks()[0]; stream.addTrack(video);
             video.addEventListener("ended", () => { canvas.width = canvas.height = 0; });
           }
-          let spoken = false;
+          let spoken = 0;
           window.__startSyntheticReceiveSpeech = () => {
-            if (spoken || audio.state === "closed") throw new Error("test_audio_speech_already_started");
-            spoken = true; player.start(audio.currentTime + 1);
+            if (spoken >= 3 || audio.state === "closed") throw new Error("test_audio_speech_budget_exhausted");
+            if (spoken) { player = audio.createBufferSource(); player.buffer = decoded; player.connect(destination); }
+            const utterance = player;
+            utterance.onended = () => utterance.disconnect();
+            spoken++; utterance.start(audio.currentTime + 1);
           };
           for (const track of stream.getTracks()) track.addEventListener("ended", () => {
             window.__startSyntheticReceiveSpeech = null;

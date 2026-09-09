@@ -36,8 +36,9 @@ try {
       granted = false; reply({ source_revoked: true });
     } else throw new Error("test_visual_command_invalid");
   }
-} catch {
-  reply({ bridge_error: "test_visual_bridge_failed", stage }); process.exitCode = 1;
+} catch (error) {
+  reply({ bridge_error: "test_visual_bridge_failed", stage,
+    ...(error.startupObservation ? { startup: error.startupObservation } : {}) }); process.exitCode = 1;
 } finally {
   for (const close of cleanup.reverse()) { try { await close(); } catch { process.exitCode = 1; } }
 }
