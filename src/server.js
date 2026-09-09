@@ -72,6 +72,9 @@ import {
 } from "./native-packager-assignment.js";
 import { handoffNativePackager } from "./native-packager-handoff.js";
 import { NativePackagerStandbyError } from "./native-packager-standby.js";
+import { NativeSourceSceneBroker, NativeSourceSceneError } from "./native-source-scene-broker.js";
+import { directNativeSourceScene } from "./native-source-scene-director.js";
+import { NATIVE_SCENE_REPLIES } from "./native-source-scene-wire.js";
 import { BroadcastSourceRequests, BroadcastSourceRequestError } from "./broadcast-source-requests.js";
 import { TrustedBroadcastSourceGrants } from "./trusted-broadcast-source-grants.js";
 import { TrustedBroadcastSourceControl } from "./trusted-broadcast-source-control.js";
@@ -360,6 +363,7 @@ function stopProgramForPrincipal(broadcastRuntime, principal, programId) {
 }
 
 function errorStatus(error) {
+  if (error instanceof NativeSourceSceneError) return error.status;
   if (error instanceof BroadcastSourceRequestError) return error.status;
   if (error instanceof MachineLeaseError) return error.status;
   if (error instanceof RoomDirectoryError) return error.status;
@@ -380,6 +384,7 @@ function errorStatus(error) {
 }
 
 function createHttpHandler(config, registry, services) {
+  const nativeSourceScenes = services.nativeSourceScenes;
   const {
     machineAdmission,
     machineSessions,
@@ -753,6 +758,27 @@ function createHttpHandler(config, registry, services) {
       const nativeStandbyMatch = url.pathname.match(
         /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/(native-standby-control|native-standbys)$/,
       );
+      const nativeSceneMatch = url.pathname.match(/^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/native-source-scene$/);
+      if (nativeSceneMatch) {
+        if (!nativeSourceScenes || !broadcastRuntime || config.authMode !== "required" || !config.nativePackagerSelfServiceEnabled
+          || request.method !== "POST" || url.search || !requestOriginAllowed(request, config)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" }); response.end(); return;
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const ownerPrincipal = principalFor(identity), input = await readJsonBody(request);
+        const abort = new AbortController(), onClose = () => abort.abort();
+        response.once("close", onClose);
+        if (response.destroyed) abort.abort();
+        try {
+          const result = await directNativeSourceScene({ identity, ownerPrincipal, programId: nativeSceneMatch[1], input,
+            getMember: () => registry.membersForPrincipal(ownerPrincipal).find(p => p.deviceFingerprint === input.deviceFingerprint),
+            runtime: broadcastRuntime, assignments: nativePackagerAssignments, control: nativePackagers,
+            broker: nativeSourceScenes, signal: abort.signal });
+          sendJson(response, 200, result, securityHeaders(config));
+        } finally { response.off("close", onClose); }
+        return;
+      }
       if (nativeStandbyMatch) {
         const controlOnly = nativeStandbyMatch[2] === "native-standby-control";
         if (!broadcastRuntime || !config.nativePackagerSelfServiceEnabled
@@ -1543,6 +1569,7 @@ function configureSignaling(
   nativePackagerAssignments,
   machineSessions,
   broadcastSourceRequests,
+  nativeSourceScenes,
 ) {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
   const mediaAgentWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
@@ -2379,6 +2406,10 @@ function configureSignaling(
         if (!nativePackagers.allowMessage(socket)) {
           throw new NativePackagerControlError("native_packager_rate_limited", 429);
         }
+        if (NATIVE_SCENE_REPLIES.includes(message.type)) {
+          nativeSourceScenes?.acknowledge(socket, message);
+          return;
+        }
         if (message.type === "capability") {
           const separator = connection.ownerPrincipal.lastIndexOf("|");
           const identity = {
@@ -2465,6 +2496,7 @@ function configureSignaling(
       clearTimeout(timeout);
       const connection = nativePackagers.connection(socket);
       nativePackagers.disconnect(socket);
+      nativeSourceScenes?.disconnect(socket);
       pruneTrustedSources();
       if (connection) {
         const failedAssignment = nativePackagerAssignments.failPackager(connection.id);
@@ -2659,6 +2691,7 @@ export function createAppServer(options = {}) {
     throw new Error("BROADCAST_GATEWAY_AUTH_ENABLED requires a MediaMTX external auth service");
   }
   const services = {
+    nativeSourceScenes: new NativeSourceSceneBroker({ send: (socket, command) => safeSend(socket, command, 16384) }),
     machineAdmission,
     machineSessions,
     oidcVerifier,
@@ -2685,6 +2718,7 @@ export function createAppServer(options = {}) {
     broadcastPlaybackSessions,
   };
   const server = http.createServer(createHttpHandler(config, registry, services));
+  server.on("close", () => services.nativeSourceScenes.destroy());
   if (broadcastSourceRequests) {
     const sourceRequestPrune = setInterval(() => broadcastSourceRequests.prune(), 5000);
     sourceRequestPrune.unref();
@@ -2702,6 +2736,7 @@ export function createAppServer(options = {}) {
   const signaling = configureSignaling(
     server, config, registry, ticketStore, directory, mediaAgents, mediaAgentEvents, broadcastRuntime,
     nativePackagers, nativePackagerAssignments, machineSessions, broadcastSourceRequests,
+    services.nativeSourceScenes,
   );
   return {
     server,

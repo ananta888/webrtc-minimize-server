@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { validTrustedSourceStatus } from "./trusted-broadcast-source-control.js";
 import { parseTrustedSourceSignal } from "./trusted-broadcast-source-signal.js";
+import { NATIVE_SCENE_REPLIES, parseNativeSourceSceneReply } from "./native-source-scene-wire.js";
 
 import { normalizeNativePackagerCapability, supportsNativeSourceControlV1, supportsNativeSourceSignalV1 } from "./native-packager-policy.js";
 import { validateCandidate, validateDescription } from "./protocol.js";
@@ -46,6 +47,9 @@ function verify(publicKey, message, proof) {
 export function parseNativePackagerMessage(raw) {
   let value;
   try { value = JSON.parse(String(raw)); } catch { fail("invalid_native_packager_message"); }
+  if (NATIVE_SCENE_REPLIES.includes(value?.type)) {
+    try { return parseNativeSourceSceneReply(raw); } catch { fail("invalid_native_source_scene_reply"); }
+  }
   if (value?.type === "trusted-source-packager-signal") {
     try { return parseTrustedSourceSignal(value, value.type); }
     catch { fail("invalid_trusted_source_signal"); }

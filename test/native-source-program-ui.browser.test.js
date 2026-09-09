@@ -8,6 +8,7 @@ import { createAppServer } from "../src/server.js";
 import { createOidcVerifier } from "../src/oidc-verifier.js";
 import { BroadcastRuntimeRegistry } from "../src/broadcast-runtime-registry.js";
 import { machineFixtureAssets } from "./helpers/machine-fixture-assets.mjs";
+import { installNativeSceneUiFixture } from "./helpers/native-scene-ui.mjs";
 
 // Real built Angular + OIDC verification/P-256 room admission. Native HTTP is
 // explicitly a deterministic fixture here; this is not a native encoder/HLS gate.
@@ -57,6 +58,7 @@ test("Angular keyboard starts an empty v4 program only after confirmation, waits
     let outputReady = false, creates = 0, starts = 0, programStops = 0, assignmentStops = 0, startBody;
     let ownRequests = 0, ownBody;
     const page = await context.newPage();
+    const verifySceneUi = await installNativeSceneUiFixture(page, program.programId);
     await page.route("**/api/native-packagers", route => route.fulfill({ json: { packagers: [packager], assignments: [] } }));
     await page.route("**/api/broadcasts", route => {
       if (route.request().method() !== "POST") return route.continue();
@@ -124,6 +126,7 @@ test("Angular keyboard starts an empty v4 program only after confirmation, waits
     assert.equal(Object.hasOwn(ownBody, "targetPeerId"), false);
     assert.equal(ownBody.expectedProgramRevision, 4); assert.equal(ownBody.sourceKind, "camera");
     assert.equal(await page.locator("#broadcast-source-approval").count(), 0, "own intent is not an automatic query or decrypt consent");
+    await verifySceneUi();
     await page.locator("#mesh-analysis-navigation").press("Enter");
     await page.locator("#native-packager-analysis-panel").waitFor(); assert.equal(programStops, 0);
     await page.locator("#broadcast-navigation").press("Enter"); await page.locator("#native-source-program-open").press("Enter");

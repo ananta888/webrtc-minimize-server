@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import Ajv2020 from "ajv/dist/2020.js";
+import { exerciseNativeSceneHttp } from "./helpers/native-scene-http.mjs";
 import { WebSocket } from "ws";
 
 import { createAppServer } from "../src/server.js";
@@ -2017,6 +2018,8 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "sou
       await browser.next(message => message.type === "native-packager-status" && message.state === state);
     }
     // Legacy ingress cannot be activated for this source-program assignment.
+    await exerciseNativeSceneHttp({ app, agent, identity, ownerPrincipal, publicOrigin, packagerId,
+      programId: program.control.programId, fingerprint, nativePackagers, broadcastRuntime });
     agent.socket.send(JSON.stringify({ version: 1, type: "assignment-signal", assignmentId: prepare.assignmentId,
       programEpoch: prepare.programEpoch, fencingRevision: prepare.fencingRevision,
       description: { type: "answer", sdp: "v=0\r\n" } }));

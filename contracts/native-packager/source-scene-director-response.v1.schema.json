@@ -1,0 +1,247 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/source-scene-director-response.v1.schema.json",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sceneControlVersion",
+        "programId",
+        "programRevision",
+        "programEpoch",
+        "packagerId",
+        "assignmentId",
+        "fencingRevision",
+        "outcome",
+        "observedAt",
+        "sceneRevision",
+        "layout",
+        "sourceLeaseIds",
+        "activeSourceLeaseId",
+        "availableSources"
+      ],
+      "properties": {
+        "sceneControlVersion": {
+          "const": 1
+        },
+        "programId": {
+          "type": "string",
+          "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+        },
+        "programRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "programEpoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "packagerId": {
+          "type": "string",
+          "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$"
+        },
+        "assignmentId": {
+          "type": "string",
+          "pattern": "^asn_[A-Za-z0-9_-]{16,64}$"
+        },
+        "fencingRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "outcome": {
+          "const": "observed"
+        },
+        "observedAt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "sceneRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "layout": {
+          "enum": [
+            "single",
+            "screen-presenter",
+            "side-by-side",
+            "active-speaker",
+            "grid",
+            "waiting-slate",
+            "end-slate"
+          ]
+        },
+        "sourceLeaseIds": {
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^sls_[A-Za-z0-9_-]{16,64}$"
+          }
+        },
+        "activeSourceLeaseId": {
+          "anyOf": [
+            {
+              "const": ""
+            },
+            {
+              "type": "string",
+              "pattern": "^sls_[A-Za-z0-9_-]{16,64}$"
+            }
+          ]
+        },
+        "availableSources": {
+          "type": "array",
+          "maxItems": 80,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sourceLeaseId",
+              "sourceKind"
+            ],
+            "properties": {
+              "sourceLeaseId": {
+                "type": "string",
+                "pattern": "^sls_[A-Za-z0-9_-]{16,64}$"
+              },
+              "sourceKind": {
+                "enum": [
+                  "camera",
+                  "screen"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sceneControlVersion",
+        "programId",
+        "programRevision",
+        "programEpoch",
+        "packagerId",
+        "assignmentId",
+        "fencingRevision",
+        "outcome",
+        "appliedAt",
+        "sceneRevision"
+      ],
+      "properties": {
+        "sceneControlVersion": {
+          "const": 1
+        },
+        "programId": {
+          "type": "string",
+          "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+        },
+        "programRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "programEpoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "packagerId": {
+          "type": "string",
+          "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$"
+        },
+        "assignmentId": {
+          "type": "string",
+          "pattern": "^asn_[A-Za-z0-9_-]{16,64}$"
+        },
+        "fencingRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "outcome": {
+          "const": "applied"
+        },
+        "appliedAt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "sceneRevision": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sceneControlVersion",
+        "programId",
+        "programRevision",
+        "programEpoch",
+        "packagerId",
+        "assignmentId",
+        "fencingRevision",
+        "outcome",
+        "observedAt",
+        "reasonCode"
+      ],
+      "properties": {
+        "sceneControlVersion": {
+          "const": 1
+        },
+        "programId": {
+          "type": "string",
+          "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+        },
+        "programRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "programEpoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "packagerId": {
+          "type": "string",
+          "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$"
+        },
+        "assignmentId": {
+          "type": "string",
+          "pattern": "^asn_[A-Za-z0-9_-]{16,64}$"
+        },
+        "fencingRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "outcome": {
+          "const": "rejected"
+        },
+        "observedAt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "reasonCode": {
+          "const": "SCENE_NOT_APPLIED"
+        }
+      }
+    }
+  ]
+}

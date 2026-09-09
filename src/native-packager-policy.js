@@ -78,6 +78,13 @@ export function supportsNativeSourceSignalV1(capability) {
   return capability?.capabilityVersion === 2 && capability.sourcePrograms === true;
 }
 
+// Released protocol generation plus explicit local source-program opt-in.
+// Do not infer scene commands from 0.8's sourcePrograms flag alone.
+export function supportsNativeSourceSceneV1(capability) {
+  const match = typeof capability?.agentVersion === "string" && capability.agentVersion.match(/^(\d+)\.(\d+)\.(\d+)$/);
+  return supportsNativeSourceSignalV1(capability) && Boolean(match && (Number(match[1]) > 0 || Number(match[2]) >= 9));
+}
+
 export function normalizeNativePackagerCapability(value, now = Date.now()) {
   const fields = new Set([
     "capabilityVersion", "agentId", "tenantId", "ownerSubjectRef", "deviceRef", "agentVersion",

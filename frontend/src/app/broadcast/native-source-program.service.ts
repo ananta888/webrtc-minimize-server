@@ -60,5 +60,9 @@ export class NativeSourceProgramService implements OnDestroy {
       || !/^[A-Za-z0-9_-]{43}$/.test(fingerprint)) return null;
     return JSON.stringify([this.room.roomId(), this.room.peerId(), this.mesh.membershipEpoch(), fingerprint, claims["iss"], claims["sub"]]);
   }
+  sceneContext(): { key: string; program: NonNullable<NativeSourceProgramView["program"]> } | null {
+    const key = this.context(), program = this.requestProgram();
+    return key && program ? { key, program } : null;
+  }
   ngOnDestroy(): void { clearInterval(this.timer); this.controller.destroy(); }
 }

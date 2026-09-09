@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/source-scene-director-request.v1.schema.json",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestVersion",
+        "deviceFingerprint",
+        "expectedProgramRevision",
+        "expectedProgramEpoch",
+        "action"
+      ],
+      "properties": {
+        "requestVersion": {
+          "const": 1
+        },
+        "deviceFingerprint": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        },
+        "expectedProgramRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expectedProgramEpoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "action": {
+          "const": "query"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestVersion",
+        "deviceFingerprint",
+        "expectedProgramRevision",
+        "expectedProgramEpoch",
+        "action",
+        "trigger",
+        "expectedSceneRevision",
+        "layout",
+        "sourceLeaseIds",
+        "activeSourceLeaseId"
+      ],
+      "properties": {
+        "requestVersion": {
+          "const": 1
+        },
+        "deviceFingerprint": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        },
+        "expectedProgramRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expectedProgramEpoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "action": {
+          "const": "apply"
+        },
+        "trigger": {
+          "const": "user-action"
+        },
+        "expectedSceneRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740990
+        },
+        "layout": {
+          "enum": [
+            "single",
+            "screen-presenter",
+            "side-by-side",
+            "active-speaker",
+            "grid",
+            "waiting-slate",
+            "end-slate"
+          ]
+        },
+        "sourceLeaseIds": {
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^sls_[A-Za-z0-9_-]{16,64}$"
+          }
+        },
+        "activeSourceLeaseId": {
+          "anyOf": [
+            {
+              "const": ""
+            },
+            {
+              "type": "string",
+              "pattern": "^sls_[A-Za-z0-9_-]{16,64}$"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

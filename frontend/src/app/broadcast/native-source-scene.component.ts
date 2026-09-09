@@ -1,0 +1,56 @@
+import { ChangeDetectionStrategy, Component, computed, signal } from "@angular/core";
+import { NativeSourceSceneService } from "./native-source-scene.service";
+import { NativeSceneSelection, SCENE_LAYOUTS, SceneLayout } from "./native-source-scene-contract";
+
+@Component({ selector: "app-native-source-scene", standalone: true, providers: [NativeSourceSceneService],
+  templateUrl: "./native-source-scene.component.html", changeDetection: ChangeDetectionStrategy.OnPush })
+export class NativeSourceSceneComponent {
+  readonly layout = signal<SceneLayout>("waiting-slate");
+  readonly selected = signal<readonly string[]>([]);
+  readonly active = signal("");
+  readonly layouts: ReadonlyArray<{ value: SceneLayout; label: string }> = [
+    { value: "single", label: "Einzelquelle" }, { value: "screen-presenter", label: "Bildschirm mit Präsentation" },
+    { value: "side-by-side", label: "Nebeneinander" }, { value: "active-speaker", label: "Ausgewählter Sprecher" },
+    { value: "grid", label: "Raster" }, { value: "waiting-slate", label: "Wartebild" }, { value: "end-slate", label: "Endbild" },
+  ];
+  readonly status = computed(() => ({ idle: "Szenenzustand noch nicht abgefragt.", pending: "Warte auf den aktuellen Packager…",
+    ready: "Szenenzustand bestätigt; höchstens fünf Sekunden aktuell.", stale: "Zustand bitte neu abfragen, bevor du weiter änderst.",
+    conflict: "Szene nicht angewendet: Zustand neu abfragen und Auswahl prüfen.",
+    unavailable: "Keine verlässliche Bestätigung. Rechte, aktuelle Sendung und Packager ab Version 0.9 prüfen. Nicht automatisch erneut anwenden.",
+  })[this.scenes.view().phase]);
+  constructor(readonly scenes: NativeSourceSceneService) {}
+  async refresh(): Promise<void> {
+    await this.scenes.controller.refresh();
+    const state = this.scenes.view().scene;
+    if (state) { this.layout.set(state.layout); this.selected.set(state.sourceLeaseIds); this.active.set(state.activeSourceLeaseId); }
+  }
+  setLayout(value: string): void {
+    if (!SCENE_LAYOUTS.includes(value as SceneLayout)) return;
+    this.layout.set(value as SceneLayout);
+    if (!["single", "active-speaker"].includes(value)) this.active.set("");
+  }
+  select(id: string, checked: boolean): void {
+    if (!this.scenes.view().scene?.availableSources.some(s => s.sourceLeaseId === id)) return;
+    const next = this.selected().filter(s => s !== id);
+    if (checked) next.push(id);
+    if (next.length > 20) return;
+    this.selected.set(next);
+    if (!next.includes(this.active())) this.active.set("");
+  }
+  remove(id: string): void {
+    this.selected.set(this.selected().filter(s => s !== id));
+    if (this.active() === id) this.active.set("");
+  }
+  private selection(): NativeSceneSelection | null {
+    const scene = this.scenes.view().scene;
+    return scene ? { expectedSceneRevision: scene.sceneRevision, layout: this.layout(), sourceLeaseIds: [...this.selected()], activeSourceLeaseId: this.active() } : null;
+  }
+  async apply(): Promise<void> {
+    const selection = this.selection();
+    if (this.scenes.view().phase !== "ready" || !selection) return;
+    if (!window.confirm("Diese Szene in der laufenden Sendung ändern? Es werden nur bereits freigegebene Quellen verwendet. "
+      + "Ein Warte-/Endbild beendet die Sendung nicht. Die Bestätigung des Packagers ist kein Zustellnachweis beim Publikum.")) return;
+    if (JSON.stringify(selection) !== JSON.stringify(this.selection())) return;
+    await this.scenes.controller.apply(selection, "user-action");
+  }
+}

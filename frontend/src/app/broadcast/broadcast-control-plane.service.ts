@@ -9,6 +9,7 @@ import {
 import { BroadcastBrowserPortError, BroadcastProgramRef } from "./broadcast-ports";
 import { parseBroadcastDirectoryEntry } from "./broadcast-directory.service";
 import { NativePackagerHandoffControl, parseNativeHandoffControl } from "./native-packager-handoff-control";
+import { NativeSceneResult, NativeSceneSelection, parseNativeSceneResult } from "./native-source-scene-contract";
 import {
   WhipAuthorization,
   WhipAuthorizationPort,
@@ -210,6 +211,23 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
     const value = await json(response, "invalid_native_handoff_control", 4096);
     signal.throwIfAborted();
     return parseNativeHandoffControl(value, programId);
+  }
+
+  async nativeSourceScene(program: BroadcastProgramRef, selection: NativeSceneSelection | null, signal: AbortSignal): Promise<NativeSceneResult> {
+    signal.throwIfAborted();
+    const fingerprint = this.device.fingerprint();
+    if (!PROGRAM.test(program.programId) || !fingerprint) throw new BroadcastBrowserPortError("broadcast_active_device_required");
+    const response = await fetch(`/api/broadcasts/${encodeURIComponent(program.programId)}/native-source-scene`, {
+      method: "POST", headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
+      credentials: "same-origin", cache: "no-store", redirect: "error", signal,
+      body: JSON.stringify({ requestVersion: 1, deviceFingerprint: fingerprint, expectedProgramRevision: program.programRevision,
+        expectedProgramEpoch: program.programEpoch, ...(selection === null ? { action: "query" }
+          : { action: "apply", trigger: "user-action", ...selection }) }),
+    });
+    if (!response.ok) throw requestError(response, "native_scene_unavailable");
+    const value = await json(response, "invalid_native_scene_response", 16384);
+    signal.throwIfAborted();
+    return parseNativeSceneResult(value, program);
   }
 
   /** Explicit v4 entry: no local media, legacy ingress or source consent is implied. */

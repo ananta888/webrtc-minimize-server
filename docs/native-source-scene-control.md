@@ -1,6 +1,8 @@
 # Native Szenensteuerung: Vertrag und nativer Control-Pfad
 
-Diese Ergänzung unter TBP-030 ist noch **kein durchgängiger Bedienpfad**.
+Diese Ergänzung unter TBP-030 verbindet jetzt Angular, den menschlichen
+HTTP-Director, den Server-Broker und den nativen Control-Pfad. Die gemeinsame
+Abnahme mit tatsächlich komponiertem Zuschauerbild steht noch aus.
 Der native Compositor besitzt bereits sieben Layouts. Ein geschlossener
 `source-program-scene`-Befehl bindet deren Auswahl jetzt zusätzlich an Assignment,
 Programm und Programmepoche, Writer-Lease und Fencing-Revision. Die erwartete
@@ -31,7 +33,7 @@ Node und Go verwenden gemeinsame synthetische Befehls-/Belegfixtures. Native
 Tests prüfen auch konkurrierende CAS-Aufrufe, begrenzten Verlauf und eine Quelle
 aus dem wirklichen lokalen Quellenbesitzer.
 
-## Noch zu verbinden
+## Nativer Control-Pfad
 
 Der native Decoder und die bestehende authentisierte WebSocket-Leseschleife
 nehmen nun `source-program-scene` und `source-program-scene-query` ausschließlich
@@ -49,18 +51,47 @@ und kein Nachweis dekodierter oder beim Publikum angekommener Frames.
 Ein gültig gebundener, aber konkurrierender oder nicht ausführbarer Apply-Befehl
 erhält `source-program-scene-rejected` mit ausschließlich `SCENE_NOT_APPLIED`.
 Der laufende Encoder bleibt dabei erhalten. Nach Konflikt oder verlorener
-Bestätigung muss der künftige Director den Zustand frisch abfragen; die Revision
+Bestätigung muss der Director den Zustand frisch abfragen; die Revision
 darf nicht geraten werden. Falsche Authentisierung, Ownerbindung und abgelaufene
 Befehle bleiben abgewiesen. Die Apply-Frist wird zusätzlich unmittelbar vor der
 Szenenänderung unter der Render-Sperre geprüft.
 
-**Noch offen:** explizite Feature-Aushandlung, der Node-Request-/Reply-Broker,
-aktuelle menschliche Controllerberechtigung im HTTP-Pfad, Angular-Auswahl und
-Bestätigung sowie die Prüfung des tatsächlich komponierten Browser-/HLS-Ausgangs.
-Die Agent-Version und Capability-Ankündigung sind noch unverändert.
-Die vorhandene `sourcePrograms`-Capability darf deshalb nicht als Unterstützung
-dieser neuen Szenenbefehle interpretiert werden. Es wurde kein neuer Netzwerkport,
-Capture-Pfad, Hub-Trust oder öffentliches Feature eingeschaltet.
+Die neue Agent-Version `0.9.0` kennzeichnet die Szenenprotokoll-Generation.
+Zusätzlich muss der authentisierte Capability-Bericht `capabilityVersion: 2`
+und `sourcePrograms: true` enthalten. Alte oder Vorabversionen erhalten keine
+unbekannten Szenenbefehle; ein Versionsstring ohne lokale Quellenprogramm-
+Freigabe reicht nicht. Es gibt keinen neuen Netzwerkport oder Capture-Pfad.
+
+## Menschlicher Director und Angular
+
+`POST /api/broadcasts/:programId/native-source-scene` besitzt einen geschlossenen,
+versionierten Query-/Apply-Vertrag. Aktuelle OIDC-Identität, konkrete Geräte-
+Membership, Programmbesitz und Programmrevision, Writer-Lease, v4-Assignment,
+Raumconsent und dieselbe authentisierte Verbindung werden vor Versand, während
+der Wartezeit und vor Ausgabe erneut geprüft. Die Anfrage kann höchstens vier
+Sekunden leben. Ein Packager hat höchstens eine offene Szenenoperation, der
+Prozess höchstens 128; das ist ein Ressourcenbudget, keine globale Raumgrenze.
+Abbruch, Disconnect, Shutdown, Uhr-Rücksprung und Autoritätsverlust räumen die
+Operation auf. Späte gültige Antworten werden nicht als neue Aufträge behandelt.
+Der HTTP-Director gibt weder interne Writer-Lease noch Command-ID aus.
+
+Unter **Broadcast → Mehrquellen-Sendung → Sendeszene** lässt sich der tatsächliche
+Zustand ausdrücklich abfragen. Danach können bis zu 20 angebotene Videoquellen
+in Auswahlreihenfolge angeordnet, auch widerrufene Quellenplätze entfernt und
+die sieben Layouts ausgewählt werden. Audio bleibt unabhängig. Die Quellen-
+anzeige enthält Quellart und opaque Quellenreferenz, noch keine Publishernamen.
+Ein lokaler Bestätigungsdialog prüft die unveränderte Auswahl nochmals.
+Abfragen lösen keinen Capture, Consent oder Sendestart aus.
+
+Ein Snapshot ist höchstens fünf Sekunden frisch. Nach Apply, Konflikt oder
+verlorener Antwort muss neu abgefragt werden: keine geratene Revision und kein
+automatischer Apply-Retry. Auch das Endbild ist kein Stop der Sendung; dafür
+bleibt der getrennte sofortige Stop erhalten. Panelwechsel räumen nur die lokale
+Szenenoperation auf, nicht die laufende Sendung.
+
+**Noch offen:** gemeinsamer Angular/Node/native-Compositor/Zuschauer-Nachweis,
+weitere Layout-/Handoff-/Standby-/Produktionskriterien des vollständigen TBP-030.
+Diese Integration aktiviert keinen öffentlichen Trust und ist noch nicht deployed.
 
 ## Gezielte Verifikation des nativen Abschnitts
 
@@ -79,6 +110,17 @@ die bestehende Prüfung von Renewal, HLS-Dateien und vollständigem Cleanup blei
 erhalten. Ein eigener Test hält die Render-Sperre bis nach der Befehlsfrist und
 prüft, dass die Szene unverändert und der Compositor offen bleibt.
 
-Das ist noch kein Node-/HTTP-/Angular- oder komponierter Zuschauer-Nachweis.
-Die nächste große Gesamtregression folgt gebündelt nach dieser verbleibenden
-Verdrahtung. Der frühere fehlgeschlagene Gesamtcheck wird nicht als grün umgedeutet.
+Die nachfolgende Director-Runde bestand 30 fokussierte Frontendtests, Typprüfung,
+16 Szenen-Vertrags-/Brokerprüfungen und die zusätzliche Control-/Handoff-Matrix
+(27 Tests in 1,934 Sekunden). Der tatsächliche HTTP-/P-256-WebSocket-Test bestand
+in 0,334 Sekunden mit synthetischen nativen Szenenantworten. Die echte gebaute
+Angular-Tastaturbedienung bestand in 4,773 Sekunden mit ausdrücklich simuliertem
+HTTP: Query, Auswahl, abgebrochene und bestätigte Änderung, erneute Abfrage,
+Quellenentfernung und Konflikt ohne Retry. Capture und zusätzliche Browser-
+Medienverbindungen bleiben null. Beide Prüfungen ersetzen nicht den noch
+ausstehenden gemeinsamen Compositor-/Zuschauer-Nachweis.
+
+Der isolierte Produktionsbuild bestand in 13,511 Sekunden; das unveränderte
+harte Bundlebudget bleibt eingehalten, die Warnschwelle wird weiterhin
+überschritten. Die gemeinsame Gesamtregression folgt auf diesem Integrations-
+Batch; frühere fehlgeschlagene Checks werden nicht rückwirkend grün.

@@ -29,6 +29,7 @@
   </fieldset>
   <p id="native-source-status" role="status" aria-live="polite">{{ statusLabel() }}</p>
   @if (programs.requestProgram()) { <p>Jetzt Quellenanfragen öffnen. Die Statusbestätigung ist noch kein Nachweis, dass ein Zuschauer Bild oder Ton empfängt.</p> }
+  @if (programs.requestProgram()) { <app-native-source-scene /> }
   @if (programs.view().active) {
     <button id="native-source-stop" class="button danger" type="button" (click)="stop()">Mehrquellen-Sendung sofort stoppen</button>
   }

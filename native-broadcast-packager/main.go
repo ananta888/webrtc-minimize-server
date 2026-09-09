@@ -38,7 +38,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-const agentVersion = "0.8.0"
+const agentVersion = "0.9.0"
 
 var buildRevision = "unknown"
 var buildTimestamp = "unknown"
