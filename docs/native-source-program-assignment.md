@@ -3,7 +3,8 @@
 `assignment-prepare.v4.schema.json` ist ein neuer geschlossener Vertrag für die
 vorbereitete Mehrquellen-Pipeline. Der [native v4-Control-Einstieg](native-source-control.md)
 ist implementiert, aber standardmäßig ausgeschaltet. Parser, Scope-Projektion und Auftragsowner existieren;
-der Server emittiert weiterhin v1/v2/v3 und Agent-Version 0.8.0 bleibt unverändert.
+der Server besitzt jetzt einen [expliziten v4-Startpfad](native-source-program-start.md).
+Bestehende Einzel-Publisher-Aufträge bleiben v1/v2/v3; Agent-Version 0.8.0 bleibt unverändert.
 Das Schema oder sein erfolgreiches Parsen erlaubt weder Teilnahme noch Decrypt.
 
 ## Explizite Bindung statt abgeleiteter Autorität

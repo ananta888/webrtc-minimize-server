@@ -9,7 +9,7 @@ import { broadcastSubjectRef, broadcastTenantRef } from "../src/broadcast-identi
 const FIRST = "pkr_aaaaaaaaaaaaaaaa", SECOND = "pkr_bbbbbbbbbbbbbbbb";
 const NOW = 1_800_000_000_000;
 
-function fixture() {
+function fixture(sourceProgram = false) {
   let now = NOW;
   let resourceSequence = 0, forcedResource = null;
   const identity = { issuer: "https://identity.example/realms/ananta", subject: "owner", displayName: "Owner" };
@@ -22,26 +22,35 @@ function fixture() {
     issue() {}, issueAnonymousPlayback() {}, revokeProgramEpoch(...args) { revoked.push(args); },
   } });
   const capabilities = new Map([FIRST, SECOND].map(agentId => [agentId, {
-    capabilityVersion: 1, agentId, tenantId: broadcastTenantRef(identity.issuer), ownerSubjectRef: broadcastSubjectRef(identity),
+    capabilityVersion: sourceProgram ? 2 : 1, ...(sourceProgram ? { sourcePrograms: true } : {}),
+    agentId, tenantId: broadcastTenantRef(identity.issuer), ownerSubjectRef: broadcastSubjectRef(identity),
     deviceRef: `dev_${agentId.slice(4)}`, agentVersion: "0.7.0", ffmpegVersion: "6.1.1",
     videoEncoders: ["libx264"], audioEncoders: ["aac"], hardwareClass: "medium", cpuClass: "medium",
     gpuClass: "none", uploadClass: "5-15mbit", energyClass: "ac", health: "healthy", maximumRenditions: 2,
     maximumPixelsPerSecond: 1280 * 720 * 30, consentedRoomIds: [member.roomId], observedAt: NOW, expiresAt: NOW + 30_000,
   }]));
+  const generations = new Map([FIRST, SECOND].map(id => [id, Object.freeze({})]));
   const assignments = new NativePackagerAssignmentRegistry({ controlRegistry: {
     candidate(owner, id) {
       assert.equal(owner, ownerPrincipal);
-      return { online: capabilities.has(id), capability: capabilities.get(id) };
+      return { id, online: capabilities.has(id), capability: capabilities.get(id) };
     },
-  }, iceServersForPackager: () => [{ urls: ["stun:stun.example:3478"] }] });
+    sourceContext(owner, id) { assert.equal(owner, ownerPrincipal);
+      return { id, online: capabilities.has(id), capability: capabilities.get(id), generation: generations.get(id) }; },
+  }, sourceProgramMembership: (owner, room, id) => member?.id === id && member?.principal === owner
+    && member?.roomId === room && member?.creator === true ? 1 : 0,
+    iceServersForPackager: () => [{ urls: ["stun:stun.example:3478"] }] });
   const created = runtime.createProgram(identity, member, { requestVersion: 1, roomId: member.roomId,
     title: "Stable program", visibility: "private" }, now);
   const programId = created.control.programId;
   const sourceIds = ["src_aaaaaaaaaaaaaaaa"];
-  const prepared = runtime.prepareNativePublisher(identity, member, programId, { requestVersion: 1,
-    trigger: "user-action", packagerId: FIRST, sourceIds, requestedRenditions: 2, allowHardwareAcceleration: false,
+  const prepareProgram = sourceProgram ? runtime.prepareNativeSourceProgram.bind(runtime) : runtime.prepareNativePublisher.bind(runtime);
+  const prepared = prepareProgram(identity, member, programId, { requestVersion: 1,
+    trigger: "user-action", packagerId: FIRST, ...(sourceProgram ? { inputMode: "trusted-sframe-v1" } : { sourceIds }),
+    requestedRenditions: 2, allowHardwareAcceleration: false,
   }, request => assignments.admit(ownerPrincipal, FIRST, request, now), now);
-  const first = assignments.prepare(ownerPrincipal, FIRST, prepared.admission, prepared.lease, member.id, now);
+  const prepareAssignment = sourceProgram ? assignments.prepareSourceProgram.bind(assignments) : assignments.prepare.bind(assignments);
+  const first = prepareAssignment(ownerPrincipal, FIRST, prepared.admission, prepared.lease, member.id, now);
   function status(assignment, state, reasonCode) {
     assignments.acknowledge(assignment.packagerId, { version: 1, type: "assignment-status",
       assignmentId: assignment.assignmentId, programEpoch: assignment.programEpoch,
@@ -131,8 +140,8 @@ test("stop and native handoff fence the whole previous standby plan", () => {
   }
 });
 
-test("real assignment stop ACK fences one same-program successor with a fresh output generation", async () => {
-  const f = fixture();
+for (const sourceProgram of [false, true]) test(`${sourceProgram ? "v4 source program" : "legacy publisher"} stop ACK fences one successor with a fresh output generation`, async () => {
+  const f = fixture(sourceProgram);
   const before = f.runtime.listMine(f.identity).owned[0];
   const task = handoffNativePackager(f.args);
   assert.equal(f.sent.length, 1);
@@ -153,6 +162,12 @@ test("real assignment stop ACK fences one same-program successor with a fresh ou
   assert.ok(next.assignment.fencingRevision > f.first.snapshot.fencingRevision);
   const command = f.sent[1].message;
   assert.equal(command.type, "assignment-prepare");
+  assert.equal(command.version, sourceProgram ? 4 : 3);
+  if (sourceProgram) {
+    assert.equal(command.inputMode, "trusted-sframe-v1");
+    assert.equal(command.sourceContext.granteeDeviceRef, f.capabilities.get(SECOND).deviceRef);
+    assert.equal("publisherPeerId" in command, false);
+  }
   assert.notEqual(command.resourceRef, f.prepared.admission.resourceRef);
   assert.equal(f.assignments.activeForPackager(FIRST), null);
   assert.equal(f.runtime.nativeControl(f.identity, f.member, f.programId).handoffPending, false);
@@ -168,6 +183,14 @@ test("real assignment stop ACK fences one same-program successor with a fresh ou
     assignmentId: f.first.snapshot.assignmentId, programEpoch: f.first.snapshot.programEpoch,
     fencingRevision: f.first.snapshot.fencingRevision,
   }, NOW), /stale_native_packager_signal/);
+});
+
+test("source-program handoff rejects a target without opt-in before stopping the old writer", async () => {
+  const f = fixture(true); f.capabilities.get(SECOND).sourcePrograms = false;
+  await assert.rejects(handoffNativePackager(f.args), /native_source_program_unavailable/);
+  assert.equal(f.sent.length, 0);
+  assert.equal(f.assignments.activeForPackager(FIRST).state, "running");
+  assert.equal(f.assignments.activeForPackager(SECOND), null);
 });
 
 for (const reason of ["abort", "deadline", "disconnect", "membership", "consent", "delivery", "prepare-failure"]) {

@@ -680,16 +680,24 @@ export class BroadcastRuntimeRegistry {
   }
 
   prepareNativePublisher(identity, member, programId, value, admit, now = this.#clock()) {
+    return this.#prepareNative(identity, member, programId, value, admit, false, now);
+  }
+
+  prepareNativeSourceProgram(identity, member, programId, value, admit, now = this.#clock()) {
+    return this.#prepareNative(identity, member, programId, value, admit, true, now);
+  }
+
+  #prepareNative(identity, member, programId, value, admit, sourceProgram, now) {
     const refs = identityRefs(identity);
     const input = clone(value, "invalid_native_packager_publication_request");
     closed(input, new Set([
-      "requestVersion", "trigger", "packagerId", "sourceIds", "requestedRenditions", "allowHardwareAcceleration",
+      "requestVersion", "trigger", "packagerId", sourceProgram ? "inputMode" : "sourceIds", "requestedRenditions", "allowHardwareAcceleration",
     ]), "invalid_native_packager_publication_request");
     if (input.requestVersion !== 1 || input.trigger !== "user-action"
       || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(input.packagerId || "")
-      || !Array.isArray(input.sourceIds) || input.sourceIds.length < 1 || input.sourceIds.length > 4
+      || (sourceProgram ? input.inputMode !== "trusted-sframe-v1" : (!Array.isArray(input.sourceIds) || input.sourceIds.length < 1 || input.sourceIds.length > 4
       || new Set(input.sourceIds).size !== input.sourceIds.length
-      || input.sourceIds.some((sourceId) => !/^src_[A-Za-z0-9_-]{16,64}$/.test(sourceId))
+      || input.sourceIds.some((sourceId) => !/^src_[A-Za-z0-9_-]{16,64}$/.test(sourceId))))
       || !Number.isSafeInteger(input.requestedRenditions) || input.requestedRenditions < 1
       || input.requestedRenditions > 3 || typeof input.allowHardwareAcceleration !== "boolean"
       || typeof admit !== "function" || !PROGRAM.test(programId || "")) {
@@ -705,7 +713,7 @@ export class BroadcastRuntimeRegistry {
     }
     if (current.program.state !== "draft") fail("broadcast_program_already_started", 409);
     let candidate = applyBroadcastProgramCommand(current, command(current, "source-change", {
-      sourceIds: input.sourceIds,
+      sourceIds: sourceProgram ? [] : input.sourceIds,
     }), now).state;
     candidate = applyBroadcastProgramCommand(candidate, command(candidate, "start", {
       requiresConsent: false,

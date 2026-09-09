@@ -5,9 +5,10 @@ default `disabled`. Unknown values fail startup. Compose forwards it explicitly.
 It is separate from `NATIVE_PACKAGER_SOURCE_BUDGET`: capacity is not permission.
 No environment, server policy or Ananta trust is activated by this implementation.
 
-The production server still emits only assignment v1/v2/v3, and the agent still
-advertises version 0.8.0. Enabling this switch alone cannot create a broadcast
-source request or publisher grant. Public v4 emission,
+The server implementation now has an [explicit v4 source-program start](native-source-program-start.md);
+legacy requests retain assignment v1/v2/v3, and the agent still advertises
+version 0.8.0. Enabling this switch alone cannot create a broadcast source request
+or publisher grant. Deployment of that new path, its complete public UI,
 source recovery/discontinuity and public Approve/Renew remain required work.
 The switch is intended for the bounded integration path until those are ready.
 

@@ -17,7 +17,9 @@ export async function handoffNativePackager({ runtime, assignments, identity, ow
     if (assignments.activeForPackager(input.packagerId)) {
       throw new NativePackagerAssignmentError("native_packager_assignment_conflict", 409);
     }
-    return assignments.admit(ownerPrincipal, input.packagerId, request, clock());
+    return previous.inputMode === "trusted-sframe-v1"
+      ? assignments.admitSourceProgram(ownerPrincipal, input.packagerId, request, getMember()?.id, clock())
+      : assignments.admit(ownerPrincipal, input.packagerId, request, clock());
   };
   signal.throwIfAborted();
   const pending = runtime.beginNativeHandoff(identity, getMember(), programId, input, admit, clock());
@@ -43,7 +45,9 @@ export async function handoffNativePackager({ runtime, assignments, identity, ow
     const member = getMember(); // Fresh room/device membership after asynchronous drain.
     const prepared = runtime.completeNativeHandoff(identity, member, pending, admit, clock());
     installed = true;
-    const assignment = assignments.prepare(ownerPrincipal, input.packagerId, prepared.admission,
+    const prepare = previous.inputMode === "trusted-sframe-v1"
+      ? assignments.prepareSourceProgram.bind(assignments) : assignments.prepare.bind(assignments);
+    const assignment = prepare(ownerPrincipal, input.packagerId, prepared.admission,
       prepared.lease, member.id, clock());
     if (!send(input.packagerId, assignment.command)) {
       throw new NativePackagerAssignmentError("native_packager_offline", 503);

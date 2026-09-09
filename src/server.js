@@ -744,7 +744,7 @@ function createHttpHandler(config, registry, services) {
         /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/playback-challenges$/,
       );
       const broadcastNativeAssignmentMatch = url.pathname.match(
-        /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/native-assignments$/,
+        /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/(native-assignments|native-source-programs)$/,
       );
       const nativeHandoffMatch = url.pathname.match(
         /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/(native-handoff-control|native-handoffs)$/,
@@ -780,7 +780,9 @@ function createHttpHandler(config, registry, services) {
               if (nativePackagerAssignments.activeForPackager(packagerId)) {
                 throw new NativePackagerAssignmentError("native_packager_assignment_conflict", 409);
               }
-              return nativePackagerAssignments.admit(ownerPrincipal, packagerId, admissionRequest);
+              return nativePackagerAssignments.activeForProgram(nativeStandbyMatch[1])?.inputMode === "trusted-sframe-v1"
+                ? nativePackagerAssignments.admitSourceProgram(ownerPrincipal, packagerId, admissionRequest, member?.id)
+                : nativePackagerAssignments.admit(ownerPrincipal, packagerId, admissionRequest);
             });
           sendJson(response, 200, result, securityHeaders(config));
         }
@@ -843,6 +845,7 @@ function createHttpHandler(config, registry, services) {
         return;
       }
       if (broadcastNativeAssignmentMatch) {
+        const sourceProgram = broadcastNativeAssignmentMatch[2] === "native-source-programs";
         if (!broadcastRuntime || !config.nativePackagerSelfServiceEnabled
           || request.method !== "POST" || url.search || !requestOriginAllowed(request, config)
           || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
@@ -854,7 +857,7 @@ function createHttpHandler(config, registry, services) {
         const ownerPrincipal = principalFor(identity);
         const input = await readJsonBody(request);
         assertAllowedKeys(input, new Set([
-          "requestVersion", "trigger", "packagerId", "sourceIds", "requestedRenditions",
+          "requestVersion", "trigger", "packagerId", sourceProgram ? "inputMode" : "sourceIds", "requestedRenditions",
           "allowHardwareAcceleration", "deviceFingerprint",
         ]));
         if (!/^[A-Za-z0-9_-]{43}$/.test(input.deviceFingerprint || "")) {
@@ -862,7 +865,9 @@ function createHttpHandler(config, registry, services) {
         }
         const activeMember = registry.membersForPrincipal(ownerPrincipal)
           .find((candidate) => candidate.deviceFingerprint === input.deviceFingerprint);
-        const preparedProgram = broadcastRuntime.prepareNativePublisher(
+        const prepareProgram = sourceProgram ? broadcastRuntime.prepareNativeSourceProgram.bind(broadcastRuntime)
+          : broadcastRuntime.prepareNativePublisher.bind(broadcastRuntime);
+        const preparedProgram = prepareProgram(
           identity,
           activeMember,
           broadcastNativeAssignmentMatch[1],
@@ -870,11 +875,13 @@ function createHttpHandler(config, registry, services) {
             requestVersion: input.requestVersion,
             trigger: input.trigger,
             packagerId: input.packagerId,
-            sourceIds: input.sourceIds,
+            ...(sourceProgram ? { inputMode: input.inputMode } : { sourceIds: input.sourceIds }),
             requestedRenditions: input.requestedRenditions,
             allowHardwareAcceleration: input.allowHardwareAcceleration,
           },
-          (admissionRequest) => nativePackagerAssignments.admit(
+          (admissionRequest) => sourceProgram ? nativePackagerAssignments.admitSourceProgram(
+            ownerPrincipal, input.packagerId, admissionRequest, activeMember?.id,
+          ) : nativePackagerAssignments.admit(
             ownerPrincipal,
             input.packagerId,
             admissionRequest,
@@ -882,7 +889,9 @@ function createHttpHandler(config, registry, services) {
         );
         let assignment;
         try {
-          assignment = nativePackagerAssignments.prepare(
+          const prepareAssignment = sourceProgram ? nativePackagerAssignments.prepareSourceProgram.bind(nativePackagerAssignments)
+            : nativePackagerAssignments.prepare.bind(nativePackagerAssignments);
+          assignment = prepareAssignment(
             ownerPrincipal,
             input.packagerId,
             preparedProgram.admission,
@@ -2486,7 +2495,8 @@ function configureSignaling(
     for (const socket of mediaAgentWebSocketServer.clients) socket.terminate();
     for (const socket of nativePackagerWebSocketServer.clients) socket.terminate();
   });
-  return { webSocketServer, mediaAgentWebSocketServer, nativePackagerWebSocketServer, trustedBroadcastSources, trustedBroadcastSourceControl };
+  return { webSocketServer, mediaAgentWebSocketServer, nativePackagerWebSocketServer, trustedBroadcastSources, trustedBroadcastSourceControl,
+    membershipEpoch: roomId => roomEpochs.get(roomId)?.membership || 0 };
 }
 
 export function createAppServer(options = {}) {
@@ -2545,6 +2555,11 @@ export function createAppServer(options = {}) {
     || new NativePackagerAssignmentRegistry({
       controlRegistry: nativePackagers,
       iceServersForPackager: (packagerId, now) => createNativePackagerIceServers(config, packagerId, now),
+      sourceProgramMembership: (owner, roomId, peerId) => {
+        const member = registry.members(roomId).find(peer => peer.id === peerId && peer.principal === owner
+          && peer.authenticated === true && peer.creator === true && peer.machine !== true);
+        return member ? signaling.membershipEpoch(roomId) : 0;
+      },
     });
   const workspaceStore = options.workspaceStore || (config.pairWorkspaceEnabled
     ? new PairWorkspaceStore({ filename: config.pairWorkspaceDb }) : null);

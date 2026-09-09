@@ -4,6 +4,7 @@ import {
   admitNativePackager,
   supportsNativeAssignmentV2,
   supportsNativeAssignmentV3,
+  supportsNativeSourceSignalV1,
 } from "./native-packager-policy.js";
 
 const PACKAGER = /^pkr_[A-Za-z0-9_-]{16,64}$/;
@@ -40,8 +41,8 @@ function exact(value, fields, code = "invalid_native_packager_assignment") {
     || Object.keys(value).some((field) => !fields.has(field))) fail(code);
 }
 
-function normalizeIceServers(value) {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 24) {
+function normalizeIceServers(value, sourceProgram = false) {
+  if (!Array.isArray(value) || value.length < (sourceProgram ? 0 : 1) || value.length > 24) {
     fail("invalid_native_packager_ice_configuration", 500);
   }
   return Object.freeze(value.map((entry) => {
@@ -56,6 +57,10 @@ function normalizeIceServers(value) {
       fail("invalid_native_packager_ice_configuration", 500);
     }
     const usesTurn = urls.some((url) => /^turns?:/i.test(url));
+    if (sourceProgram && (urls.some(url => !/^(?:stuns?|turns?):[!-~]+$/.test(url))
+      || usesTurn && urls.some(url => !/^turns?:/.test(url)))) {
+      fail("invalid_native_packager_ice_configuration", 500);
+    }
     const username = entry.username;
     const credential = entry.credential;
     if (usesTurn !== (typeof username === "string" && username.length >= 1 && username.length <= 512
@@ -88,6 +93,7 @@ function snapshot(record) {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     expiresAt: record.expiresAt,
+    ...(record.assignmentProtocolVersion === 4 ? { inputMode: "trusted-sframe-v1" } : {}),
   });
 }
 
@@ -98,19 +104,23 @@ export class NativePackagerAssignmentRegistry {
   #byProgram = new Map();
   #idFactory;
   #iceServersForPackager;
+  #sourceProgramMembership;
 
   constructor({
     controlRegistry,
     idFactory = () => `asn_${crypto.randomBytes(18).toString("base64url")}`,
     iceServersForPackager = () => [],
+    sourceProgramMembership = () => 0,
   } = {}) {
     if (!controlRegistry || typeof controlRegistry.candidate !== "function"
-      || typeof idFactory !== "function" || typeof iceServersForPackager !== "function") {
+      || typeof idFactory !== "function" || typeof iceServersForPackager !== "function"
+      || typeof sourceProgramMembership !== "function") {
       fail("invalid_native_packager_assignment_configuration", 500);
     }
     this.#control = controlRegistry;
     this.#idFactory = idFactory;
     this.#iceServersForPackager = iceServersForPackager;
+    this.#sourceProgramMembership = sourceProgramMembership;
   }
 
   admit(ownerPrincipal, packagerId, request, now = Date.now()) {
@@ -120,10 +130,53 @@ export class NativePackagerAssignmentRegistry {
   }
 
   prepare(ownerPrincipal, packagerId, admissionValue, leaseValue, publisherPeerId, now = Date.now()) {
+    return this.#prepare(ownerPrincipal, packagerId, admissionValue, leaseValue, publisherPeerId, false, now);
+  }
+
+  prepareSourceProgram(ownerPrincipal, packagerId, admissionValue, leaseValue, controllerPeerId, now = Date.now()) {
+    return this.#prepare(ownerPrincipal, packagerId, admissionValue, leaseValue, controllerPeerId, true, now);
+  }
+
+  admitSourceProgram(ownerPrincipal, packagerId, request, controllerPeerId, now = Date.now()) {
+    const admission = this.admit(ownerPrincipal, packagerId, request, now);
+    this.#sourceAuthority(ownerPrincipal, packagerId, admission.roomId, controllerPeerId, now);
+    if (this.activeForPackager(packagerId)) fail("native_packager_assignment_conflict", 409);
+    return admission;
+  }
+
+  #sourceAuthority(ownerPrincipal, packagerId, roomId, controllerPeerId, now) {
+    if (typeof this.#control.sourceContext !== "function") fail("native_source_program_unavailable", 409);
+    const current = this.#control.sourceContext(ownerPrincipal, packagerId, roomId, now);
+    const capability = current?.capability;
+    const roomEpoch = this.#sourceProgramMembership(ownerPrincipal, roomId, controllerPeerId);
+    if (current?.id !== packagerId || current.online !== true || !current.generation
+      || typeof current.generation !== "object" || !Object.isFrozen(current.generation)
+      || !supportsNativeSourceSignalV1(capability) || capability.agentId !== packagerId
+      || !/^tn_[A-Za-z0-9_-]{16,64}$/.test(capability.tenantId || "")
+      || !/^dev_[A-Za-z0-9_-]{16,64}$/.test(capability.deviceRef || "")
+      || !Number.isSafeInteger(capability.expiresAt) || capability.expiresAt <= now
+      || !["healthy", "degraded"].includes(capability.health)
+      || !capability.consentedRoomIds?.includes(roomId)
+      || !Number.isSafeInteger(roomEpoch) || roomEpoch < 1) fail("native_source_program_unavailable", 409);
+    return { sourceGeneration: current.generation, sourceContext: Object.freeze({
+      schema: "ananta.trusted-source-program-context.v1", tenantId: capability.tenantId,
+      granteeDeviceRef: capability.deviceRef, roomEpoch, frameEnvelope: "codec-prefix-v1",
+    }) };
+  }
+
+  #sourceCurrent(record, now) {
+    const current = this.#sourceAuthority(record.ownerPrincipal, record.packagerId, record.roomId, record.controllerPeerId, now);
+    if (current.sourceGeneration !== record.sourceGeneration
+      || JSON.stringify(current.sourceContext) !== JSON.stringify(record.sourceContext)) {
+      fail("stale_native_source_program", 409);
+    }
+  }
+
+  #prepare(ownerPrincipal, packagerId, admissionValue, leaseValue, peerId, sourceProgram, now) {
     const admission = clone(admissionValue);
     const lease = clone(leaseValue);
     exact(lease, new Set(["leaseId", "fencingRevision", "expiresAt"]));
-    if (!PACKAGER.test(packagerId || "") || !PEER.test(publisherPeerId || "")
+    if (!PACKAGER.test(packagerId || "") || !PEER.test(peerId || "")
       || !LEASE.test(lease.leaseId || "")
       || !Number.isSafeInteger(lease.fencingRevision) || lease.fencingRevision < 1
       || !Number.isSafeInteger(lease.expiresAt) || lease.expiresAt <= now || lease.expiresAt > now + 120_000) {
@@ -146,6 +199,11 @@ export class NativePackagerAssignmentRegistry {
     if (JSON.stringify(verifiedAdmission) !== JSON.stringify(admission)) {
       fail("native_packager_admission_mismatch", 409);
     }
+    const sourceAuthority = sourceProgram
+      ? this.#sourceAuthority(ownerPrincipal, packagerId, admission.roomId, peerId, now) : null;
+    if (sourceAuthority && sourceAuthority.sourceContext.tenantId !== packager.capability.tenantId) {
+      fail("native_source_program_unavailable", 409);
+    }
     const currentForPackager = this.#byPackager.get(packagerId);
     const currentForProgram = this.#byProgram.get(admission.programId);
     if ((currentForPackager && ACTIVE_STATES.has(currentForPackager.state))
@@ -160,7 +218,9 @@ export class NativePackagerAssignmentRegistry {
       assignmentId,
       packagerId,
       ownerPrincipal,
-      publisherPeerId,
+      publisherPeerId: sourceProgram ? null : peerId,
+      controllerPeerId: sourceProgram ? peerId : null,
+      ...sourceAuthority,
       roomId: admission.roomId,
       programId: admission.programId,
       programEpoch: admission.programEpoch,
@@ -168,10 +228,10 @@ export class NativePackagerAssignmentRegistry {
       leaseId: lease.leaseId,
       fencingRevision: lease.fencingRevision,
       admission: Object.freeze(admission),
-      assignmentProtocolVersion: supportsNativeAssignmentV3(packager.capability.agentVersion)
+      assignmentProtocolVersion: sourceProgram ? 4 : supportsNativeAssignmentV3(packager.capability.agentVersion)
         ? 3 : (supportsNativeAssignmentV2(packager.capability.agentVersion) ? 2 : 1),
-      iceServers: supportsNativeAssignmentV3(packager.capability.agentVersion)
-        ? normalizeIceServers(this.#iceServersForPackager(packagerId, now)) : null,
+      iceServers: sourceProgram || supportsNativeAssignmentV3(packager.capability.agentVersion)
+        ? normalizeIceServers(this.#iceServersForPackager(packagerId, now), sourceProgram) : null,
       state: "preparing",
       reasonCode: "AWAITING_AGENT",
       createdAt: now,
@@ -200,6 +260,9 @@ export class NativePackagerAssignmentRegistry {
       || record.fencingRevision !== message.fencingRevision) fail("stale_native_packager_assignment", 409);
     if (record.expiresAt <= now && message.state !== "stopped" && message.state !== "failed") {
       fail("expired_native_packager_assignment", 409);
+    }
+    if (record.assignmentProtocolVersion === 4 && ["ready", "starting", "running", "degraded"].includes(message.state)) {
+      this.#sourceCurrent(record, now);
     }
     const allowed = {
       preparing: new Set(["ready", "failed"]),
@@ -232,6 +295,7 @@ export class NativePackagerAssignmentRegistry {
       || record.fencingRevision !== value.fencingRevision) {
       fail("stale_native_packager_output_status", 409);
     }
+    if (record.assignmentProtocolVersion === 4) this.#sourceCurrent(record, now);
     return Object.freeze({
       resourceRef: record.resourceRef,
       programId: record.programId,
@@ -251,7 +315,7 @@ export class NativePackagerAssignmentRegistry {
       fail("stale_native_packager_status_target", 409);
     }
     return Object.freeze({
-      publisherPeerId: record.publisherPeerId,
+      publisherPeerId: record.controllerPeerId || record.publisherPeerId,
       assignment: snapshot(record),
     });
   }
@@ -262,6 +326,7 @@ export class NativePackagerAssignmentRegistry {
     }
     const record = this.#byPackager.get(packagerId);
     if (!record || !RENEWABLE_STATES.has(record.state) || record.expiresAt <= now) return null;
+    if (record.assignmentProtocolVersion === 4) this.#sourceCurrent(record, now);
     record.expiresAt = now + ASSIGNMENT_LEASE_MS;
     record.updatedAt = now;
     return Object.freeze({
@@ -335,6 +400,9 @@ export class NativePackagerAssignmentRegistry {
   sourceContext(packagerId, now = Date.now()) {
     const record = this.#byPackager.get(packagerId);
     if (!record || !["running", "degraded"].includes(record.state) || record.expiresAt <= now) return null;
+    if (record.assignmentProtocolVersion === 4) {
+      try { this.#sourceCurrent(record, now); } catch { return null; }
+    }
     return Object.freeze({ ...snapshot(record), leaseId: record.leaseId });
   }
 
@@ -417,9 +485,10 @@ export class NativePackagerAssignmentRegistry {
       leaseId: record.leaseId,
       fencingRevision: record.fencingRevision,
       resourceRef: record.resourceRef,
-      publisherPeerId: record.publisherPeerId,
+      ...(record.assignmentProtocolVersion === 4 ? { inputMode: "trusted-sframe-v1", sourceContext: record.sourceContext }
+        : { publisherPeerId: record.publisherPeerId }),
       profile: Object.freeze(profile),
-      ...(record.assignmentProtocolVersion === 3 ? { iceServers: record.iceServers } : {}),
+      ...(record.assignmentProtocolVersion >= 3 ? { iceServers: record.iceServers } : {}),
       expiresAt: record.expiresAt,
     });
   }
@@ -431,7 +500,7 @@ export class NativePackagerAssignmentRegistry {
 
   #signalRecord(message, now) {
     const record = this.#assignments.get(message?.assignmentId);
-    if (!record || !ACTIVE_STATES.has(record.state) || record.expiresAt <= now
+    if (!record || record.assignmentProtocolVersion === 4 || !ACTIVE_STATES.has(record.state) || record.expiresAt <= now
       || record.programEpoch !== message.programEpoch
       || record.fencingRevision !== message.fencingRevision) {
       fail("stale_native_packager_signal", 409);

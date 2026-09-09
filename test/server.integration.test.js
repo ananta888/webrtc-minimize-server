@@ -51,7 +51,9 @@ async function startTestServer(overrides = {}, serverOptions = {}) {
     httpUrl: `http://127.0.0.1:${port}`,
     wsUrl: `ws://127.0.0.1:${port}`,
     async close() {
-      for (const socket of app.webSocketServer.clients) socket.terminate();
+      for (const server of [app.webSocketServer, app.nativePackagerWebSocketServer, app.mediaAgentWebSocketServer]) {
+        for (const socket of server.clients) socket.terminate();
+      }
       await new Promise((resolve) => app.server.close(resolve));
     },
   };
@@ -1799,12 +1801,15 @@ test("authorized sessions keep Edge-TURN credentials in the second ICE tier", as
   assert.equal(JSON.stringify(authorization.body).includes("0123456789abcdef0123456789abcdef"), false);
 });
 
-for (const variant of ["normal", "reject", "handoff", "handoff-http-abort"]) test(variant === "reject"
+for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "source-program"]) test(variant === "source-program"
+  ? "native source program HTTP start emits a membership-bound v4 slate assignment without legacy ingress"
+  : variant === "reject"
   ? "native output rejected by program authority is never advertised ready to the publisher"
   : variant === "handoff-http-abort" ? "aborted HTTP handoff cannot start a successor after a late stop ACK"
   : variant === "handoff" ? "two authenticated native packagers hand off one program only after the old stop ACK"
   : "native packager assignment is owner-, room-, device- and fence-bound end to end", async (context) => {
   const rejectOutput = variant === "reject";
+  const sourceProgram = variant === "source-program";
   const issuer = "https://identity.test/realms/ananta";
   const identity = { issuer, subject: "owner", displayName: "Owner" };
   const ownerPrincipal = `${issuer}|owner`;
@@ -1909,7 +1914,8 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort"]) tes
     version: 1,
     type: "capability",
     capability: {
-      capabilityVersion: 1,
+      capabilityVersion: sourceProgram ? 2 : 1,
+      ...(sourceProgram ? { sourcePrograms: true } : {}),
       agentId: packagerId,
       tenantId: broadcastTenantRef(issuer),
       ownerSubjectRef: broadcastSubjectRef(identity),
@@ -1943,8 +1949,32 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort"]) tes
   assert.equal(programResponse.status, 201);
   const program = await programResponse.json();
   const fingerprint = deviceFingerprint(browser.authorization.device.publicKey.export({ format: "jwk" }));
+  if (sourceProgram) {
+    const start = { requestVersion: 1, trigger: "user-action", inputMode: "trusted-sframe-v1", packagerId,
+      requestedRenditions: 2, allowHardwareAcceleration: false, deviceFingerprint: fingerprint };
+    const validate = new Ajv2020({ strict: true }).compile(JSON.parse(fs.readFileSync(
+      new URL("../contracts/native-packager/source-program-start.v1.schema.json", import.meta.url), "utf8")));
+    assert.equal(validate(start), true);
+    const post = body => fetch(`${app.httpUrl}/api/broadcasts/${program.control.programId}/native-source-programs`, {
+      method: "POST", headers: { "content-type": "application/json", origin: publicOrigin, authorization: "Bearer owner-token" },
+      body: JSON.stringify(body),
+    });
+    for (const patch of [{ sourceIds: ["src_0123456789abcdef"] }, { roomEpoch: 99 },
+      { inputMode: "legacy" }, { requestVersion: 2 }]) {
+      assert.equal(validate({ ...start, ...patch }), false);
+      assert.equal((await post({ ...start, ...patch })).status, 400);
+    }
+    assert.equal((await post({ ...start, deviceFingerprint: "z".repeat(43) })).status, 403);
+    const capability = nativePackagers.candidate(ownerPrincipal, packagerId).capability;
+    agent.socket.send(JSON.stringify({ version: 1, type: "capability", capability: { ...capability, sourcePrograms: false } }));
+    await agent.next(message => message.type === "capability-accepted");
+    assert.equal((await post(start)).status, 409);
+    assert.equal(app.nativePackagerAssignments.activeForProgram(program.control.programId), null);
+    agent.socket.send(JSON.stringify({ version: 1, type: "capability", capability: { ...capability, sourcePrograms: true } }));
+    await agent.next(message => message.type === "capability-accepted");
+  }
   const assignmentResponse = await fetch(
-    `${app.httpUrl}/api/broadcasts/${program.control.programId}/native-assignments`,
+    `${app.httpUrl}/api/broadcasts/${program.control.programId}/${sourceProgram ? "native-source-programs" : "native-assignments"}`,
     {
       method: "POST",
       headers: { "content-type": "application/json", origin: publicOrigin, authorization: "Bearer owner-token" },
@@ -1952,7 +1982,7 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort"]) tes
         requestVersion: 1,
         trigger: "user-action",
         packagerId,
-        sourceIds: ["src_0123456789abcdef"],
+        ...(sourceProgram ? { inputMode: "trusted-sframe-v1" } : { sourceIds: ["src_0123456789abcdef"] }),
         requestedRenditions: 2,
         allowHardwareAcceleration: false,
         deviceFingerprint: fingerprint,
@@ -1965,11 +1995,34 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort"]) tes
   assert.equal(prepare.assignmentId, assignmentBody.assignment.assignmentId);
   assert.equal(prepare.roomId, room.roomId);
   assert.equal(prepare.programId, program.control.programId);
-  assert.equal(prepare.publisherPeerId, welcome.peerId);
-  assert.equal(prepare.version, 3);
+  assert.equal(prepare.publisherPeerId, sourceProgram ? undefined : welcome.peerId);
+  assert.equal(prepare.version, sourceProgram ? 4 : 3);
   assert.deepEqual(prepare.iceServers, [{ urls: ["stun:stun.test:3478"] }]);
   assert.equal(Object.hasOwn(prepare, "accessToken"), false);
   assert.equal(Object.hasOwn(prepare, "sdp"), false);
+
+  if (sourceProgram) {
+    const validate = new Ajv2020({ strict: true }).compile(JSON.parse(fs.readFileSync(
+      new URL("../contracts/native-packager/assignment-prepare.v4.schema.json", import.meta.url), "utf8")));
+    assert.equal(validate(prepare), true, JSON.stringify(validate.errors));
+    assert.equal(prepare.inputMode, "trusted-sframe-v1");
+    assert.equal(prepare.sourceContext.roomEpoch, app.membershipEpoch(room.roomId));
+    assert.equal(prepare.sourceContext.tenantId, broadcastTenantRef(issuer));
+    assert.equal(prepare.sourceContext.granteeDeviceRef, `dev_${definition.keyFingerprint}`);
+    assert.equal(assignmentBody.assignment.inputMode, "trusted-sframe-v1");
+    for (const state of ["ready", "starting", "running"]) {
+      agent.socket.send(JSON.stringify({ version: 1, type: "assignment-status", assignmentId: prepare.assignmentId,
+        programEpoch: prepare.programEpoch, fencingRevision: prepare.fencingRevision,
+        state, reasonCode: state === "running" ? "OUTPUT_READY" : "PREPARING", observedAt: Date.now() }));
+      await browser.next(message => message.type === "native-packager-status" && message.state === state);
+    }
+    // Legacy ingress cannot be activated for this source-program assignment.
+    agent.socket.send(JSON.stringify({ version: 1, type: "assignment-signal", assignmentId: prepare.assignmentId,
+      programEpoch: prepare.programEpoch, fencingRevision: prepare.fencingRevision,
+      description: { type: "answer", sdp: "v=0\r\n" } }));
+    assert.equal((await agent.next(message => message.type === "packager-error")).code, "stale_native_packager_signal");
+    browser.socket.close(); return;
+  }
 
   browser.socket.send(JSON.stringify({
     version: 1,

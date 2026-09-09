@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { before, after, test } from "node:test";
 import { build } from "esbuild";
 import { chromium, firefox } from "playwright";
+import { nativeCompilerDiagnostic } from "./helpers/native-compiler-diagnostic.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const avClockRuns = process.env.TRUSTED_SOURCE_AV_CLOCK_RUNS ?? "1";
@@ -32,7 +33,7 @@ before(async () => {
       assert.ok(cleanup.status===0 || /No such container/.test(cleanup.stderr||""),"native source compiler cleanup failed");
     }
   }
-  assert.equal(compiled.status,0,"native source fixture compilation failed");
+  assert.equal(compiled.status,0,"native source fixture compilation failed: " + JSON.stringify(nativeCompilerDiagnostic(compiled)));
   const built = await build({stdin:{resolveDir:root,contents:`
     import { TrustedSourcePublisher } from "./frontend/src/app/broadcast/trusted-source-publisher";
     import { sameTrustedSource } from "./frontend/src/app/broadcast/trusted-source-contract";

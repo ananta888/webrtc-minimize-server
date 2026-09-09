@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/source-program-start.v1.schema.json",
+  "title": "Explicit owner-controlled trusted source program start",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["requestVersion", "trigger", "inputMode", "packagerId", "requestedRenditions", "allowHardwareAcceleration", "deviceFingerprint"],
+  "properties": {
+    "requestVersion": { "const": 1 },
+    "trigger": { "const": "user-action" },
+    "inputMode": { "const": "trusted-sframe-v1" },
+    "packagerId": { "type": "string", "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$" },
+    "requestedRenditions": { "type": "integer", "minimum": 1, "maximum": 3 },
+    "allowHardwareAcceleration": { "type": "boolean" },
+    "deviceFingerprint": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }
+  }
+}
