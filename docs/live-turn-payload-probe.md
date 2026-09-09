@@ -52,6 +52,24 @@ successful native or public TURN run.
 The explicit `RUN_PRIVATE_TURN_PROBE=1` browser test exercises the exact function
 against private authenticated UDP and TCP TURN using the existing owned fixture.
 It additionally checks zero capture, closed connections and zero proxy drops.
-Its native execution remains pending until the concurrent Ananta two-hour soak
-finishes; the full grouped check also follows that milestone. SRP keeps this
+Its native execution was deferred until the concurrent Ananta soak ended;
+the full grouped check also follows that milestone. SRP keeps this
 transport observation separate from OIDC, Hub admission and application media.
+
+## Actual private UDP/TCP execution
+
+After the independent Ananta soak failed at 2732.759 seconds, the exact probe
+was run from a clean `91bc248` worktree and a fresh private frontend build
+(9.184 seconds; existing 1.50-MB warning, unchanged hard budget). Both native
+cases passed in **10.619 seconds total**: UDP 4.629 seconds, TCP 5.352 seconds.
+Each observed two actual selected relay pairs, exact 32-byte payload/echo,
+zero captures, zero proxy drops and closed owned peer connections. Credentials
+came from the fixture's real synthetic-authorized session response; no public
+account or TURN secret was used. The existing private Coturn fixture owns all
+ports, credentials, containers and network cleanup.
+
+This is actual local authenticated TURN data-channel transport, explicitly a
+same-browser test with synthetic identities. It does not exercise the public
+OIDC realm, deployed machine trust, application SFrame/media, an independent
+external receiver or the two-hour machine-dialog acceptance. The full combined
+check on this updated candidate remains separate.
