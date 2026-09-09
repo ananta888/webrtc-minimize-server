@@ -4,6 +4,7 @@ import { EventEmitter } from "node:events";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { superviseLiveInfrastructure, validLiveReport } from "../scripts/live-infrastructure-supervisor.mjs";
+import { ownedProcessStopped } from "./helpers/owned-process-stopped.mjs";
 
 const environment = { LIVE_OIDC_USERNAME: "test-user", LIVE_OIDC_PASSWORD: "private-test-password" };
 const passed = { status: "passed", relays: [{ tier: "infrastructure", candidateCount: 2, relayCount: 2,
@@ -154,11 +155,7 @@ test("owned process group includes an uncooperative descendant", {
   assert.equal((await promise).code, "live_deadline_exceeded");
   let stopped = false;
   for (let attempt = 0; attempt < 100 && !stopped; attempt++) {
-    try {
-      const status = await readFile(`/proc/${descendant}/status`, "utf8");
-      // A terminated orphan can remain a zombie until this container's init reaps it.
-      stopped = /^State:\s+Z\b/m.test(status);
-    } catch (error) { if (error.code !== "ENOENT") throw error; stopped = true; }
+    stopped = await ownedProcessStopped(descendant);
     if (!stopped) await new Promise(resolve => setTimeout(resolve, 10));
   }
   assert.equal(stopped, true, "owned descendant must no longer execute");

@@ -61,3 +61,12 @@ The subsequent [selected-pair/payload probe](live-turn-payload-probe.md) replace
 the candidate-only sub-operation. Its narrow same-browser data-channel scope
 is explicit in the report; application-media, external-receiver and production
 claims remain false. The original boundary results above remain historical.
+
+The post-merge boundary run initially failed one of 44 tests: an owned descendant
+disappeared while `/proc/<pid>/status` was being read, producing `ESRCH` rather
+than `ENOENT`. The extracted test-only observer accepts either absence code or
+the existing zombie state. Running processes still return false; permission,
+I/O and unknown errors still fail. No supervisor deadline or cleanup action
+changed. Four deterministic observation tests plus the actual descendant test
+and the existing boundary/relay tests then passed: **50 tests, 1.649 seconds**.
+The failed run remains failed; this correction is not a media-stability fix.
