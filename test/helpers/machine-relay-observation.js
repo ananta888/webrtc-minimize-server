@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-/** Observe selected, successful data-bearing pairs, not gathered candidates. */
+/** Observe selected data-bearing transports, not merely gathered candidates. */
 export async function machineRelayObservation(page) {
   return page.evaluate(async () => {
     const active = window.__pcs.filter(pc => pc.connectionState === "connected");
@@ -12,9 +12,20 @@ export async function machineRelayObservation(page) {
       const stats = await pc.getStats();
       const selected = new Set([...stats.values()].filter(s => s.type === "transport" && s.selectedCandidatePairId)
         .map(s => s.selectedCandidatePairId));
+      const connectedSelected = new Set([...stats.values()].filter(s => s.type === "transport"
+        && s.dtlsState === "connected" && s.selectedCandidatePairId).map(s => s.selectedCandidatePairId));
       for (const pair of stats.values()) {
-        if (pair.type !== "candidate-pair" || pair.state !== "succeeded"
+        if (pair.type !== "candidate-pair"
           || !(selected.size ? selected.has(pair.id) : pair.selected === true || pair.nominated === true)) continue;
+        // Chromium can report an ongoing check on the already selected TCP
+        // relay while ICE/DTLS/SCTP and actual payload transport remain active.
+        // This is not permission to count an unselected or failed candidate.
+        const activeCheck = pair.state === "in-progress" && connectedSelected.has(pair.id)
+          && ["connected", "completed"].includes(pc.iceConnectionState)
+          && pc.sctp?.state === "connected" && pc.sctp?.transport?.state === "connected"
+          && Number.isFinite(pair.bytesSent) && pair.bytesSent > 0
+          && Number.isFinite(pair.bytesReceived) && pair.bytesReceived > 0;
+        if (pair.state !== "succeeded" && !activeCheck) continue;
         result.pairs++;
         const local = stats.get(pair.localCandidateId);
         if (local?.candidateType === "relay") result.relayPairs++;
@@ -63,7 +74,7 @@ export async function machineRelayDiagnostics(page) {
 
 export function assertMachineRelayObservation(value, transport, previous) {
   assert.equal(value.connections, 1, "one connected room counterpart");
-  assert.equal(value.pairs, 1, "one selected successful ICE pair");
+  assert.equal(value.pairs, 1, "one selected connected data-bearing ICE pair");
   assert.equal(value.relayPairs, 1, "the selected local candidate is relay");
   assert.equal(value.policyFailures, 0, "relay policy survived configuration updates");
   assert.equal(transport === "udp" ? value.tcp : value.udp, 0, "reported relay protocol matches isolated listener");

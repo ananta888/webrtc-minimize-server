@@ -150,7 +150,11 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
     assert.equal(await log.locator(".chat-entry").filter({ hasText: "@ananta synthetic consented question" }).getAttribute("data-machine-message"), null);
   }
   assert.deepEqual(await human.evaluate(() => ({ captures: window.__captures, peers: window.__pcs.length })), chatViewBaseline);
-  const relayBefore = icePath === "direct" ? [] : await waitMachineRelaySetup([human, machine], 1500);
+  const relayBefore = icePath === "direct" ? [] : await waitMachineRelaySetup([human, machine], 1500).catch(async error => {
+    t.diagnostic(JSON.stringify({ phase: "before-pcm", path: icePath,
+      human: await machineRelayDiagnostics(human), machine: await machineRelayDiagnostics(machine) }));
+    throw error;
+  });
   for (const observed of relayBefore) assertMachineRelayObservation(observed, icePath.slice(5));
   const pcm = await machine.evaluate(async () => {
     const source = window.anantaMachine.audio.sources()[0];
@@ -212,7 +216,11 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
   }
   assert.ok(decoded.frames > 3, "remote frames decoded");
   assert.ok(decoded.pixels.some(p => p[1] > 150 && p[0] < 80), "remote decoded green source pixels");
-  const relayAfter = icePath === "direct" ? [] : await waitMachineRelaySetup([human, machine], 1500);
+  const relayAfter = icePath === "direct" ? [] : await waitMachineRelaySetup([human, machine], 1500).catch(async error => {
+    t.diagnostic(JSON.stringify({ phase: "after-renewals", path: icePath,
+      human: await machineRelayDiagnostics(human), machine: await machineRelayDiagnostics(machine) }));
+    throw error;
+  });
   for (const [index, observed] of relayAfter.entries()) {
     assertMachineRelayObservation(observed, icePath.slice(5), relayBefore[index]);
     t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, path: icePath,
