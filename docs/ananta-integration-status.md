@@ -1,9 +1,43 @@
 # Ananta-Hub und Worker: Integration und Aktivierung
 
-Stand: 9. September 2026. Implementierung, lokale Integration und öffentliche
+Stand: 10. September 2026. Implementierung, lokale Integration und öffentliche
 Aktivierung sind unterschiedliche Zustände. Die öffentliche Meet-Instanz meldet
 bei der aktuellen Prüfung `admissionEnabled: false`: Noch kein produktiver
 KI-Beitritt. Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
+
+## Aktuell: sechs Grundfunktionen vorhanden, Aktivierung noch ausstehend
+
+Audioempfang, Chatlesen/-antworten, agenteneigener Bildschirm, erneuerbare
+Sitzungen, Berechtigungsprüfung und Angular-Freigaben sind Meet-seitig verbunden.
+Die neueste gepushte Revision `7be5c7df2d92486e69f0ed9ef9a49e1ed098f055`
+besitzt jetzt eine vollständig erfolgreiche
+[CI 34409010146](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34409010146):
+alle acht Jobs einschließlich Browser-Gates, authentisiertem Ananta-TURN-Dialog,
+Live-Keycloak/TURN und Docker. Die getrennte uncommittete native Audio-Arbeit
+ist darin nicht enthalten. Der unten dokumentierte lokale Firefoxfehler bleibt
+ein fehlgeschlagener Lauf ohne bewiesene Ursache; eine spätere grüne CI ist
+kein nachgewiesener Fix und keine abgeschlossene Langzeitabnahme.
+
+Frisch ausgeführt: 126 Frontendtests für Quellenfreigaben, Integration,
+Audio-/Chat-/Bildquellen und Sitzungswechsel sowie 100 Node-Tests für
+Chatverträge, Receive-Policy, Leases, Hub-Trust und Integration. Alle bestanden,
+keine Skips. Kein zusätzlicher Gesamtcheck nach dieser reinen Statusergänzung;
+der oben genannte CI-Nachweis gehört ausschließlich zur exakten Revision.
+
+Die öffentliche Instanz antwortet weiterhin mit `admissionEnabled: false`.
+Die rein lesende Mini-PC-Prüfung bestätigt `disabled disabled` und einen
+sauberen Checkout auf `5602ccf`; das ist kein Nachweis der laufenden Image-Revision.
+Bei der Prüfung war ein Teilnehmer in einem Raum aktiv. Kein Dienst wurde
+neu gestartet, keine Betreiberpolicy geändert und das Ananta-Repository nicht
+bearbeitet.
+
+Für den nächsten produktiven Schritt fehlen die ausdrückliche Auswahl des
+öffentlichen Hub-Trustprofils und der freigegebene Ananta-Projektauftrag.
+Benötigt wird die konkrete Konfiguration, kein privater Schlüssel oder Token.
+Danach folgen Preflight, kontrollierter Rollout ohne Unterbrechung eines
+belegten Raums und eine separat vorautorisierte gemeinsame Live-Abnahme.
+Die Softwareübersicht ist bereits unter **Analyse → Ananta · Freigaben meiner
+Quellen → Betreiberstatus** verfügbar; sie meldet keine aktive Hub-Verbindung.
 
 ## Priorisierter Nachtrag: lokale Erneuerungsentscheidung
 
