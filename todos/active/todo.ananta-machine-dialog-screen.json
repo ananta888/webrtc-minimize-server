@@ -281,7 +281,7 @@
     "progress_percent_done": 30.77,
     "by_priority": {"P0": 3, "P1": 10, "P2": 0, "P3": 0},
     "by_risk": {"low": 0, "medium": 0, "high": 8, "critical": 5},
-    "critical_path": {"total": 7, "done": 0, "remaining": 7},
+    "critical_path": {"total": 7, "done": 1, "remaining": 6},
     "milestones": {"total": 4, "todo": 0, "in_progress": 4, "blocked": 0, "done": 0}
   },
   "summary_notes": [
