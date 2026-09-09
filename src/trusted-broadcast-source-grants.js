@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { broadcastDeviceRef, broadcastSubjectRef, broadcastTenantRef, oidcPrincipal } from "./broadcast-identifiers.js";
-import { TRACK_ID_PATTERN } from "./protocol.js";
+import { TRACK_ID_PATTERN } from "./publication-identifiers.js";
 import { TrustedDecryptConsentAuthority } from "./trusted-decrypt-consent-authority.js";
 
 const FIELDS = ["requestVersion", "trigger", "requestId", "roomId", "deviceFingerprint", "publicationId", "expectedPublicationEpoch", "ttlMs"];
@@ -13,7 +13,7 @@ export class TrustedBroadcastSourceError extends Error {
   constructor(code, status = 403) { super(code); this.code = code; this.status = status; }
 }
 const fail = (code, status) => { throw new TrustedBroadcastSourceError(code, status); };
-function normalize(input) {
+export function normalizeTrustedSourceApproval(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)
     || Object.keys(input).length !== FIELDS.length || Object.keys(input).some(key => !FIELDS.includes(key))
     || !["requestId", "roomId", "deviceFingerprint"].every(key => typeof input[key] === "string")
@@ -48,7 +48,7 @@ export class TrustedBroadcastSourceGrants {
   }
 
   approve(identity, raw, actor) {
-    const input = normalize(raw), now = this.#now(), principal = oidcPrincipal(identity);
+    const input = normalizeTrustedSourceApproval(raw), now = this.#now(), principal = oidcPrincipal(identity);
     // The caller supplies the actual authenticated signaling peer, never a JSON
     // reconstruction. A public fingerprint plus an account token is not proof
     // that this request originated at that device's current room connection.

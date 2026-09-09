@@ -9,7 +9,9 @@ The server implementation now has an [explicit v4 source-program start](native-s
 legacy requests retain assignment v1/v2/v3, and the agent still advertises
 version 0.8.0. Enabling this switch alone cannot create a broadcast source request
 or publisher grant. Deployment of that new path, its complete public UI,
-source recovery/discontinuity and public Approve/Renew remain required work.
+source recovery/discontinuity and the complete Angular Approve/Renew workflow
+remain required work. The [public source actions](trusted-source-public-actions.md)
+now connect explicit consent and ACK-confirmed leases to the publisher socket.
 The switch is intended for the bounded integration path until those are ready.
 
 ## Explicit capability negotiation
@@ -36,8 +38,8 @@ refresh preserves the handle. Reconnect, expiry and room loss retain their
 existing independent fences. Losing one source does not stop the parent writer.
 
 This advertises the implemented opt-in protocol, not production readiness,
-source reception, decoder health or authorization. The public v4 assignment
-emitter, publisher Approve/Renew workflow, recovery/discontinuity and complete
+source reception, decoder health or authorization. The publisher Approve/Renew
+UI workflow, recovery/discontinuity and complete
 multi-publisher acceptance remain required; capability negotiation does not
 replace any of them or turn the switch on in production.
 

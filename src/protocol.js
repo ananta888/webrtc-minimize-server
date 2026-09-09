@@ -1,10 +1,12 @@
 import { parseMachineReceiveConsent } from "./machine-receive-policy.js";
 import { parseTrustedSourceSignal } from "./trusted-broadcast-source-signal.js";
+import { parseTrustedSourceAction } from "./trusted-broadcast-source-actions.js";
+import { TRACK_ID_PATTERN } from "./publication-identifiers.js";
+export { TRACK_ID_PATTERN } from "./publication-identifiers.js";
 
 export const MAX_SIGNAL_BYTES = 96 * 1024;
 export const ROOM_ID_PATTERN = /^[a-z0-9][a-z0-9-]{5,47}$/;
 export const PEER_ID_PATTERN = /^[a-f0-9]{16}$/;
-export const TRACK_ID_PATTERN = /^[A-Za-z0-9_={}:-]{1,128}$/;
 
 const SOURCES = new Set(["microphone", "camera", "screen", "screen-audio"]);
 const BATTERY_STATES = new Set(["critical", "limited", "mains", "unknown"]);
@@ -115,6 +117,10 @@ export function validateCandidate(candidate) {
 
 export function parseClientMessage(raw) {
   const value = parseJson(raw);
+  if (["trusted-source-approve", "trusted-source-revoke", "trusted-source-publications"].includes(value.type)) {
+    try { return parseTrustedSourceAction(value); }
+    catch { throw new ProtocolError("invalid_trusted_source_action"); }
+  }
   if (value.type === "trusted-source-publisher-signal") {
     try { return parseTrustedSourceSignal(value, value.type); }
     catch { throw new ProtocolError("invalid_trusted_source_signal"); }

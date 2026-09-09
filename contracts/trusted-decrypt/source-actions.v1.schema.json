@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/trusted-decrypt/source-actions.v1.schema.json",
+  "title": "Explicit source actions on the publisher's authenticated room connection",
+  "oneOf": [
+    {"type":"object","additionalProperties":false,"required":["version","type"],
+      "properties":{"version":{"const":1},"type":{"const":"trusted-source-publications"}}},
+    {"type":"object","additionalProperties":false,"required":["version","type","approval"],
+      "properties":{"version":{"const":1},"type":{"const":"trusted-source-approve"},
+        "approval":{"$ref":"https://webrtc.ananta.de/contracts/trusted-decrypt/source-approval.v1.schema.json"}}},
+    {"type":"object","additionalProperties":false,"required":["version","type","consentId"],
+      "properties":{"version":{"const":1},"type":{"const":"trusted-source-revoke"},
+        "consentId":{"type":"string","pattern":"^cns_[A-Za-z0-9_-]{16,64}$"}}}
+  ]
+}

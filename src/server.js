@@ -75,6 +75,7 @@ import { NativePackagerStandbyError } from "./native-packager-standby.js";
 import { BroadcastSourceRequests, BroadcastSourceRequestError } from "./broadcast-source-requests.js";
 import { TrustedBroadcastSourceGrants } from "./trusted-broadcast-source-grants.js";
 import { TrustedBroadcastSourceControl } from "./trusted-broadcast-source-control.js";
+import { TrustedBroadcastSourceActions } from "./trusted-broadcast-source-actions.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
@@ -1395,6 +1396,7 @@ function createHttpHandler(config, registry, services) {
           name: authorizedName,
           principal,
           authenticated: Boolean(identity),
+          ...(identity ? { sourceIdentity: Object.freeze({ issuer: identity.issuer, subject: identity.subject }) } : {}),
           deviceFingerprint: device.fingerprint,
           machineReceiveVersion: input.machineReceiveVersion === 1 ? 1 : 0,
           origin,
@@ -1559,6 +1561,12 @@ function configureSignaling(
     sendSignal: (socket, message) => socket?.bufferedAmount <= 64 * 1024
       && Buffer.byteLength(JSON.stringify(message)) <= 32 * 1024 && safeSend(socket, message, 32 * 1024),
     send: (socket, message) => socket?.bufferedAmount <= 64 * 1024 && safeSend(socket, message, 8192),
+    sendPublisher: (socket, message) => socket?.bufferedAmount <= 64 * 1024 && safeSend(socket, message, 8192),
+  }) : null;
+  const trustedBroadcastSourceActions = trustedBroadcastSourceControl ? new TrustedBroadcastSourceActions({
+    grants: trustedBroadcastSources, broker: trustedBroadcastSourceControl, requests: broadcastSourceRequests,
+    assignments: nativePackagerAssignments, packagers: nativePackagers, members: roomId => registry.members(roomId),
+    membershipEpoch: roomId => roomEpochs.get(roomId)?.membership || 0,
   }) : null;
   const pruneTrustedSources = () => {
     try { trustedBroadcastSources?.prune(); trustedBroadcastSourceControl?.tick(); }
@@ -1869,6 +1877,22 @@ function configureSignaling(
         }
         if (message.type === "trusted-source-publisher-signal") {
           if (!trustedBroadcastSourceControl?.publisherSignal(peer, message)) throw new ProtocolError("trusted_source_signal_unavailable");
+          return;
+        }
+        if (["trusted-source-approve", "trusted-source-revoke", "trusted-source-publications"].includes(message.type)) {
+          if (!trustedBroadcastSourceActions) throw new ProtocolError("trusted_source_program_unavailable");
+          const receipt = trustedBroadcastSourceActions.execute(peer, identity.sourceIdentity, message);
+          let delivered = false;
+          try { delivered = socket.bufferedAmount <= 64 * 1024 && safeSend(socket, receipt, 8192); }
+          catch { /* Unknown delivery outcome is not authority to keep the source. */ }
+          if (!delivered) {
+            // A lost receipt never permits a sender to start. Retire any grant
+            // created by this operation; short receiver leases remain bounded.
+            if (receipt.type === "trusted-source-approved") {
+              trustedBroadcastSources.revoke(identity.sourceIdentity, peer.deviceFingerprint, receipt.consent.consentId);
+              pruneTrustedSources();
+            }
+          }
           return;
         }
         if (message.type === "native-packager-signal") {

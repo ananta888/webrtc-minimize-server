@@ -22,6 +22,12 @@ export const SERVER_MESSAGE_VERSIONS = Object.freeze({
   "media-agent-subscription-state": 2,
   "native-packager-signal": 1,
   "native-packager-status": 1,
+  "trusted-source-approved": 1,
+  "trusted-source-publications": 1,
+  "trusted-source-revoked": 1,
+  "trusted-source-publisher-lease": 1,
+  "trusted-source-publisher-stop": 1,
+  "trusted-source-agent-signal": 1,
   "overlay-key": 1,
   error: 1,
 } satisfies Readonly<Record<string, number>>);

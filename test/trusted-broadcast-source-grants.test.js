@@ -17,6 +17,8 @@ import { TrustedBroadcastSourceGrants } from "../src/trusted-broadcast-source-gr
 import { TrustedBroadcastSourceControl, validTrustedSourceStatus } from "../src/trusted-broadcast-source-control.js";
 import { NativePackagerAssignmentRegistry } from "../src/native-packager-assignment.js";
 import { parseNativePackagerMessage } from "../src/native-packager-control.js";
+import { TrustedBroadcastSourceActions, parseTrustedSourceAction } from "../src/trusted-broadcast-source-actions.js";
+import { parseClientMessage } from "../src/protocol.js";
 
 const validate = new Ajv({ strict: true }).compile(JSON.parse(await fs.readFile(
   new URL("../contracts/trusted-decrypt/wire.v1.schema.json", import.meta.url), "utf8")));
@@ -27,8 +29,11 @@ for (const name of ["wire", "source-lease"]) controlAjv.addSchema(JSON.parse(awa
   new URL(`../contracts/trusted-decrypt/${name}.v1.schema.json`, import.meta.url), "utf8")));
 const validateControl = controlAjv.compile(JSON.parse(await fs.readFile(
   new URL("../contracts/trusted-decrypt/source-control.v1.schema.json", import.meta.url), "utf8")));
-function fixture(start = 1800000000000) {
-  let now = start, epoch = 3;
+controlAjv.addSchema(JSON.parse(await fs.readFile(new URL("../contracts/trusted-decrypt/source-approval.v1.schema.json", import.meta.url), "utf8")));
+const validateAction = controlAjv.compile(JSON.parse(await fs.readFile(new URL("../contracts/trusted-decrypt/source-actions.v1.schema.json", import.meta.url), "utf8")));
+const validatePublisher = controlAjv.compile(JSON.parse(await fs.readFile(new URL("../contracts/trusted-decrypt/source-publisher-control.v1.schema.json", import.meta.url), "utf8")));
+function fixture(start = 1800000000000, sourceProgram = false) {
+  let now = start, epoch = sourceProgram ? 1 : 3;
   const issuer = "https://synthetic-identity.example/realm/source";
   const ownerIdentity = { issuer, subject: "owner", displayName: "Synthetic owner" }, identity = { issuer, subject: "publisher" };
   const rooms = new RoomRegistry();
@@ -60,17 +65,25 @@ function fixture(start = 1800000000000) {
   } });
   const programId = runtime.createProgram(ownerIdentity, owner, { requestVersion: 1,
     roomId: owner.roomId, title: "Synthetic program", visibility: "private" }, now).control.programId;
-  const prepared = runtime.prepareNativePublisher(ownerIdentity, owner, programId, { requestVersion: 1, trigger: "user-action",
-    packagerId, sourceIds: ["src_aaaaaaaaaaaaaaaa"], requestedRenditions: 1, allowHardwareAcceleration: false }, request => request, now);
+  const prepareProgram = sourceProgram ? runtime.prepareNativeSourceProgram.bind(runtime) : runtime.prepareNativePublisher.bind(runtime);
+  const prepared = prepareProgram(ownerIdentity, owner, programId, { requestVersion: 1, trigger: "user-action",
+    packagerId, ...(sourceProgram ? { inputMode: "trusted-sframe-v1" } : { sourceIds: ["src_aaaaaaaaaaaaaaaa"] }),
+    requestedRenditions: 1, allowHardwareAcceleration: false }, request => request, now);
   const assignments = new NativePackagerAssignmentRegistry({ controlRegistry: packagers,
+    sourceProgramMembership: (_principal, _room, id) => id === owner.id ? epoch : 0,
     iceServersForPackager: () => [{ urls: ["stun:synthetic.invalid:3478"] }] });
-  const assignment = assignments.prepare(owner.principal, packagerId,
-    assignments.admit(owner.principal, packagerId, prepared.admission, now), prepared.lease, owner.id, now).snapshot;
-  for (const state of ["ready", "starting", "running"]) assignments.acknowledge(packagerId, {
-    version: 1, type: "assignment-status", assignmentId: assignment.assignmentId,
-    programEpoch: assignment.programEpoch, fencingRevision: assignment.fencingRevision,
-    state, reasonCode: state === "running" ? "OUTPUT_READY" : "CAPABILITY_READY", observedAt: now,
-  }, now);
+  const prepareAssignment = sourceProgram ? assignments.prepareSourceProgram.bind(assignments) : assignments.prepare.bind(assignments);
+  const installAssignment = () => {
+    const assignment = prepareAssignment(owner.principal, packagerId,
+      assignments.admit(owner.principal, packagerId, prepared.admission, now), prepared.lease, owner.id, now).snapshot;
+    for (const state of ["ready", "starting", "running"]) assignments.acknowledge(packagerId, {
+      version: 1, type: "assignment-status", assignmentId: assignment.assignmentId,
+      programEpoch: assignment.programEpoch, fencingRevision: assignment.fencingRevision,
+      state, reasonCode: state === "running" ? "OUTPUT_READY" : "CAPABILITY_READY", observedAt: now,
+    }, now);
+    return assignment;
+  };
+  const assignment = installAssignment();
   runtime.markNativeOutputReady(prepared.admission.resourceRef, packagerId, prepared.lease.fencingRevision, now);
   const requests = new BroadcastSourceRequests({ members: roomId => rooms.members(roomId),
     program: (...args) => runtime.nativeSourceRequestContext(...args), clock: () => now });
@@ -92,6 +105,7 @@ function fixture(start = 1800000000000) {
   const lookup = consent => grants.forPackager(consent.consentId, packagerId, consent.granteeDeviceRef);
   return { now: () => now, advance: ms => { now += ms; }, epoch: () => { epoch++; }, identity, ownerIdentity, rooms, owner,
     publisher, packagers, packagerId, socket, refreshCapability, runtime, programId, requests, invite, ports, grants, input, approve, lookup, assignments, assignment, capability,
+    reinstallAssignment: () => { assignments.failPackager(packagerId, "CONTROL_DISCONNECTED", now); return installAssignment(); },
     authProof: (nonce, timestamp) => crypto.sign("sha256", Buffer.from(nativePackagerAuthMessage(packagerId, nonce, timestamp)),
       { key: keys.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url"),
     reconnect: () => {
@@ -293,10 +307,14 @@ test("publication references and source IDs are server owned; invalid IDs cannot
 });
 
 function sourceControlFixture() {
-  const f = fixture(), messages = [], consent = f.approve();
-  let deliver = true;
+  const f = fixture(), messages = [], publisherMessages = [], consent = f.approve();
+  let deliver = true, publisherDelivery = true;
   const broker = new TrustedBroadcastSourceControl({ grants: f.grants, assignments: f.assignments, control: f.packagers,
     members: roomId => f.rooms.members(roomId), sendSignal: (socket, message) => { messages.push({ socket, message }); return deliver; },
+    sendPublisher: (socket, message) => {
+      assert.equal(validatePublisher(message), true, JSON.stringify(validatePublisher.errors));
+      publisherMessages.push({ socket, message }); return publisherDelivery;
+    },
     clock: f.now, send: (socket, message) => {
       assert.equal(socket, f.socket); assert.equal(validateControl(message), true, JSON.stringify(validateControl.errors));
       messages.push(message); return deliver;
@@ -305,7 +323,8 @@ function sourceControlFixture() {
   const ack = lease => ({ version: 1, type: "trusted-source-status", sourceLeaseId: lease.sourceLeaseId,
     leaseRevision: lease.revision, consentId: consent.consentId, assignmentId: lease.assignmentId,
     fencingRevision: lease.fencingRevision, state: "receiver-prepared", expiresAt: lease.expiresAt, observedAt: f.now() });
-  return { ...f, broker, messages, consent, prepare, ack, failDelivery: () => { deliver = false; } };
+  return { ...f, broker, messages, publisherMessages, consent, prepare, ack, failDelivery: () => { deliver = false; },
+    failPublisher: () => { publisherDelivery = false; } };
 }
 
 function sourceSignal(lease, publisher = true, sequence = 1) {
@@ -488,8 +507,8 @@ test("approve budget rejects excess replays before expensive full authority prun
   assert.equal(checks, previous);
 });
 
-test("live signaling and authenticated source-control sockets renew only after ACK and stop on publisher revoke", { timeout: 10000 }, async t => {
-  const f = fixture(Date.now()), keys = crypto.generateKeyPairSync("ed25519");
+for (const publicActions of [false, true, "receipt-failure", "backpressure"]) test(`live ${publicActions ? `public v4 ${publicActions}` : "internal source"} signaling renews only after ACK and stops on publisher revoke`, { timeout: 10000 }, async t => {
+  const f = fixture(Date.now(), publicActions), keys = crypto.generateKeyPairSync("ed25519");
   f.rooms.leave(f.publisher);
   const config = { authMode: "required", oidcIssuer: f.identity.issuer, oidcAudience: "human", oidcAlgorithms: ["EdDSA"],
     publicOrigin: "https://synthetic-fixture.example", nativePackagerSelfServiceEnabled: true, stunUrls: [], turnServers: [] };
@@ -527,9 +546,11 @@ test("live signaling and authenticated source-control sockets renew only after A
     ...f.capability, observedAt: Date.now(), expiresAt: Date.now() + 30000,
   } }));
   await until(() => nativeMessages.some(message => message.type === "capability-accepted"));
+  if (publicActions) f.reinstallAssignment(); // Fresh binding after the test's explicit native reconnect.
   // Explicit ephemeral session-policy fixture; this is not a PKCE/device-proof gate.
   const issued = app.ticketStore.issue({ origin: config.publicOrigin, roomId: f.input.roomId, mode: "room",
-    name: "Synthetic source", authenticated: true, principal: oidcPrincipal(f.identity), deviceFingerprint: f.input.deviceFingerprint });
+    name: "Synthetic source", authenticated: true, principal: oidcPrincipal(f.identity), deviceFingerprint: f.input.deviceFingerprint,
+    sourceIdentity: f.identity });
   socket = new WebSocket(`${base.replace("http:", "ws:")}/signal?ticket=${issued.ticket}`, { origin: config.publicOrigin });
   const browserMessages = [];
   socket.on("message", raw => browserMessages.push(JSON.parse(raw)));
@@ -548,17 +569,51 @@ test("live signaling and authenticated source-control sockets renew only after A
   assert.equal(response.status, 201);
   const requestId = (await response.json()).requests[0].requestId;
   const actor = f.rooms.members(f.input.roomId).find(peer => peer.id === joined.peerId);
-  const c = app.trustedBroadcastSources.approve(f.identity, { ...f.input, requestId }, actor);
+  if (publicActions === "receipt-failure") {
+    const send = actor.socket.send.bind(actor.socket);
+    actor.socket.send = (raw, ...args) => {
+      if (JSON.parse(raw).type === "trusted-source-approved") throw new Error("synthetic_send_failure");
+      return send(raw, ...args);
+    };
+  }
+  let c, lease;
+  if (publicActions) {
+    socket.send(JSON.stringify({ version: 1, type: "trusted-source-publications" }));
+    await until(() => browserMessages.some(message => message.type === "trusted-source-publications"));
+    const own = browserMessages.find(message => message.type === "trusted-source-publications");
+    assert.equal(validatePublisher(own), true); assert.equal(own.peerId, joined.peerId);
+    assert.deepEqual(own.publications, [{ publicationId: f.input.publicationId, source: "camera", publicationEpoch: 1 }]);
+    if (publicActions === "backpressure") Object.defineProperty(actor.socket, "bufferedAmount", { configurable: true, get: () => 65537 });
+    socket.send(JSON.stringify({ version: 1, type: "trusted-source-approve",
+      approval: { ...f.input, requestId, expectedPublicationEpoch: own.publications[0].publicationEpoch } }));
+    if (typeof publicActions === "string") {
+      await until(() => app.trustedBroadcastSources.auditEvents().some(event => event.eventType === "consent-revoked"));
+      await until(() => nativeMessages.some(message => message.type === "trusted-source-stop"));
+      assert.equal(browserMessages.some(message => message.type === "trusted-source-approved"), false);
+      assert.equal(browserMessages.some(message => message.type === "trusted-source-publisher-lease"), false);
+      assert.equal(f.assignments.activeForPackager(f.packagerId).state, "running");
+      return;
+    }
+    await until(() => browserMessages.some(message => message.type === "trusted-source-approved"));
+    const receipt = browserMessages.find(message => message.type === "trusted-source-approved");
+    assert.equal(validatePublisher(receipt), true); c = receipt.consent;
+    await until(() => nativeMessages.some(message => message.type === "trusted-source-prepare"));
+    lease = nativeMessages.find(message => message.type === "trusted-source-prepare").lease;
+  } else {
+    c = app.trustedBroadcastSources.approve(f.identity, { ...f.input, requestId }, actor);
+    lease = app.trustedBroadcastSourceControl.prepare(c.consentId, f.packagers.socketFor(f.packagerId));
+  }
   assert.equal(c.roomEpoch, 1, "epoch must come from actual signaling topology");
   assert.ok(app.trustedBroadcastSources.forPackager(c.consentId, f.packagerId, c.granteeDeviceRef));
-  const serverSocket = f.packagers.socketFor(f.packagerId);
-  const lease = app.trustedBroadcastSourceControl.prepare(c.consentId, serverSocket);
   await until(() => nativeMessages.some(message => message.type === "trusted-source-prepare"));
   assert.deepEqual(nativeMessages.at(-1).lease, lease);
+  assert.equal(browserMessages.some(message => message.type === "trusted-source-publisher-lease"), false);
   nativeSocket.send(JSON.stringify({ version: 1, type: "trusted-source-status", sourceLeaseId: lease.sourceLeaseId,
     leaseRevision: lease.revision, consentId: c.consentId, assignmentId: lease.assignmentId, fencingRevision: lease.fencingRevision,
     state: "receiver-prepared", expiresAt: lease.expiresAt, observedAt: Date.now() }));
   await until(() => nativeMessages.some(message => message.type === "trusted-source-prepare" && message.lease.revision === 2));
+  await until(() => browserMessages.some(message => message.type === "trusted-source-publisher-lease"));
+  assert.deepEqual(browserMessages.find(message => message.type === "trusted-source-publisher-lease").lease, lease);
   for (const message of nativeMessages.filter(message => message.type.startsWith("trusted-source-"))) assert.equal(validateControl(message), true);
   const offer = sourceSignal(lease);
   socket.send(JSON.stringify({ ...offer, description: { type: "offer", sdp: "\n".repeat(16384) } }));
@@ -580,6 +635,13 @@ test("live signaling and authenticated source-control sockets renew only after A
   await until(() => browserMessages.some(message => message.type === "error" && message.code === "trusted_source_signal_unavailable"));
   // Stop/ACK here exercise real control WebSockets; the native receiver and
   // ciphertext path have separate Go/browser tests, not a media claim here.
+  if (publicActions) {
+    socket.send(JSON.stringify({ version: 1, type: "trusted-source-revoke", consentId: c.consentId }));
+    await until(() => browserMessages.some(message => message.type === "trusted-source-revoked"));
+    await until(() => browserMessages.some(message => message.type === "trusted-source-publisher-stop"));
+    assert.equal(f.rooms.publication(joined.peerId, f.input.publicationId, f.input.roomId)?.publicationId, f.input.publicationId,
+      "broadcast revoke does not stop the room's capture");
+  }
   socket.send(JSON.stringify({ type: "media-state", source: "camera", active: false }));
   await until(() => app.trustedBroadcastSources.auditEvents().some(event => event.eventType === "consent-revoked"));
   await until(() => nativeMessages.some(message => message.type === "trusted-source-stop"));
@@ -592,4 +654,75 @@ test("live signaling and authenticated source-control sockets renew only after A
   assert.equal(app.trustedBroadcastSources.forPackager(c.consentId, f.packagerId, c.granteeDeviceRef), null);
   assert.equal(nativeSocket.readyState, WebSocket.OPEN);
   assert.equal(f.assignments.activeForPackager(f.packagerId).state, "running");
+});
+
+test("publisher leases are delivered once per native ACK revision, never before it", () => {
+  const f = sourceControlFixture(), first = f.prepare();
+  assert.equal(f.publisherMessages.length, 0);
+  assert.equal(f.broker.acknowledge(f.socket, f.ack(first)), true);
+  assert.equal(f.broker.acknowledge(f.socket, f.ack(first)), true);
+  assert.equal(f.publisherMessages.length, 1);
+  assert.equal(f.publisherMessages[0].socket, f.publisher.socket);
+  f.advance(1000); f.broker.tick(); const next = f.messages.at(-1).lease;
+  assert.equal(f.publisherMessages.length, 1);
+  assert.equal(f.broker.acknowledge(f.socket, f.ack(first)), false);
+  assert.equal(f.broker.acknowledge(f.socket, f.ack(next)), true);
+  assert.equal(f.publisherMessages.length, 2);
+  assert.equal(f.publisherMessages.at(-1).message.lease.revision, 2);
+  f.grants.revoke(f.identity, f.input.deviceFingerprint, f.consent.consentId); f.broker.tick();
+  assert.equal(f.publisherMessages.at(-1).message.type, "trusted-source-publisher-stop");
+  assert.equal(f.assignments.activeForPackager(f.packagerId).state, "running");
+});
+
+test("publisher delivery failure terminates the source without taking down the writer", () => {
+  const f = sourceControlFixture(), lease = f.prepare(); f.failPublisher();
+  assert.equal(f.broker.acknowledge(f.socket, f.ack(lease)), false);
+  assert.equal(f.messages.at(-1).reasonCode, "PUBLISHER_DELIVERY_FAILED");
+  assert.equal(f.assignments.activeForPackager(f.packagerId).state, "running");
+  assert.throws(() => f.prepare(), /terminal/);
+});
+
+test("public source actions preserve actual connection, v4 opt-in and closed contracts", () => {
+  const f = fixture(undefined, true);
+  let prepared = 0, ticks = 0;
+  const actions = new TrustedBroadcastSourceActions({ grants: f.grants,
+    broker: { prepare: () => { prepared++; }, tick: () => { ticks++; } }, requests: f.requests,
+    assignments: f.assignments, packagers: f.packagers, members: f.ports.members, membershipEpoch: f.ports.membershipEpoch });
+  const message = { version: 1, type: "trusted-source-approve", approval: f.input };
+  assert.equal(validateAction(message), true);
+  assert.deepEqual(parseClientMessage(JSON.stringify(message)), message);
+  for (const bad of [{ ...message, identity: f.identity }, { ...message, version: 2 },
+    { ...message, approval: { ...f.input, key: "forbidden" } }]) {
+    assert.equal(validateAction(bad), false); assert.throws(() => parseTrustedSourceAction(bad));
+  }
+  for (const actor of [{ ...f.publisher }, f.owner, { ...f.publisher, machine: true }]) {
+    assert.throws(() => actions.execute(actor, f.identity, message));
+  }
+  assert.throws(() => actions.execute(f.publisher, f.ownerIdentity, message));
+  assert.equal(prepared, 0);
+  const query = { version: 1, type: "trusted-source-publications" };
+  assert.equal(validateAction(query), true); assert.deepEqual(parseClientMessage(JSON.stringify(query)), query);
+  assert.throws(() => actions.execute(f.publisher, f.identity, { ...query, peerId: f.owner.id }));
+  const own = actions.execute(f.publisher, f.identity, query);
+  assert.equal(validatePublisher(own), true); assert.equal(own.peerId, f.publisher.id);
+  assert.equal(own.publications.length, 1); assert.equal(prepared, 0);
+  const approved = actions.execute(f.publisher, f.identity, message);
+  assert.equal(validatePublisher(approved), true); assert.equal(prepared, 1);
+  const revoke = { version: 1, type: "trusted-source-revoke", consentId: approved.consent.consentId };
+  assert.equal(validateAction(revoke), true); assert.deepEqual(parseClientMessage(JSON.stringify(revoke)), revoke);
+  assert.throws(() => actions.execute(f.owner, f.ownerIdentity, revoke));
+  assert.equal(validatePublisher(actions.execute(f.publisher, f.identity, revoke)), true);
+  assert.equal(ticks, 1); assert.equal(f.lookup(approved.consent), null);
+});
+
+test("failed native preparation revokes approval and legacy writers never acquire public source consent", () => {
+  for (const v4 of [true, false]) {
+    const f = fixture(undefined, v4), actions = new TrustedBroadcastSourceActions({ grants: f.grants,
+      broker: { prepare: () => { throw new Error("synthetic_prepare_failure"); }, tick() {} },
+      requests: f.requests, assignments: f.assignments, packagers: f.packagers, members: f.ports.members,
+      membershipEpoch: f.ports.membershipEpoch });
+    assert.throws(() => actions.execute(f.publisher, f.identity, { version: 1, type: "trusted-source-approve", approval: f.input }),
+      v4 ? /synthetic_prepare_failure/ : /program_unavailable/);
+    assert.equal(f.grants.auditEvents().some(event => event.eventType === "consent-revoked"), v4);
+  }
 });

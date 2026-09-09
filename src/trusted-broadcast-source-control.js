@@ -23,18 +23,18 @@ const fail = code => { throw new TrustedSourceControlError(code); };
 // Owns metadata leases, never media or keys. prepare is an internal operation:
 // its consent ID must resolve through the existing current source authority.
 export class TrustedBroadcastSourceControl {
-  #grants; #assignments; #control; #send; #clock; #id; #members; #sendSignal;
+  #grants; #assignments; #control; #send; #clock; #id; #members; #sendSignal; #sendPublisher;
   #records = new Map(); #byConsent = new Map(); #lastNow = 0; #closed = false;
   #ackRates = new WeakMap();
   #signalRates = new WeakMap();
-  constructor({ grants, assignments, control, send, members, sendSignal, clock = Date.now,
+  constructor({ grants, assignments, control, send, members, sendSignal, sendPublisher, clock = Date.now,
     sourceLeaseId = () => `sls_${crypto.randomBytes(18).toString("base64url")}` }) {
     if (typeof grants?.forPackager !== "function" || typeof assignments?.sourceContext !== "function"
       || typeof control?.sourceConnection !== "function" || typeof control?.socketFor !== "function"
-      || [send, clock, sourceLeaseId, members, sendSignal].some(port => typeof port !== "function")) fail("invalid_source_control_ports");
+      || [send, clock, sourceLeaseId, members, sendSignal, sendPublisher].some(port => typeof port !== "function")) fail("invalid_source_control_ports");
     this.#grants = grants; this.#assignments = assignments; this.#control = control;
     this.#send = send; this.#clock = clock; this.#id = sourceLeaseId;
-    this.#members = members; this.#sendSignal = sendSignal;
+    this.#members = members; this.#sendSignal = sendSignal; this.#sendPublisher = sendPublisher;
   }
 
   prepare(consentId, socket) {
@@ -63,7 +63,7 @@ export class TrustedBroadcastSourceControl {
       frameEnvelope: "codec-prefix-v1", issuedAt: now, expiresAt: Math.min(now + 4000, scope.consent.expiresAt, parent.expiresAt) });
     if (lease.expiresAt <= now + 1000) fail("source_control_parent_expiring");
     const record = { lease, socket, packagerId: connection.id, active: true, acknowledged: false,
-      prepared: false, negotiation: new TrustedSourceNegotiation() };
+      prepared: false, publisherRevision: 0, negotiation: new TrustedSourceNegotiation() };
     this.#records.set(sourceLeaseId, record); this.#byConsent.set(consentId, record);
     if (!this.#deliver(record, { version: 1, type: "trusted-source-prepare", lease })) {
       this.#stop(record, "CONTROL_DELIVERY_FAILED"); fail("source_control_delivery_failed");
@@ -94,6 +94,12 @@ export class TrustedBroadcastSourceControl {
       || message.state !== "receiver-prepared") { this.#stop(record, "SOURCE_RECEIVER_FAILED"); return false; }
     record.acknowledged = true;
     record.prepared = true;
+    if (record.publisherRevision !== lease.revision) {
+      if (!this.#publisher(record, { version: 1, type: "trusted-source-publisher-lease", lease })) {
+        this.#stop(record, "PUBLISHER_DELIVERY_FAILED"); return false;
+      }
+      record.publisherRevision = lease.revision;
+    }
     return true;
   }
 
@@ -182,9 +188,20 @@ export class TrustedBroadcastSourceControl {
     if (!record.active) return;
     record.active = false;
     const lease = record.lease;
-    this.#deliver(record, { version: 1, type: "trusted-source-stop", sourceLeaseId: lease.sourceLeaseId,
+    const message = { version: 1, type: "trusted-source-stop", sourceLeaseId: lease.sourceLeaseId,
       leaseRevision: lease.revision, consentId: lease.consent.consentId, assignmentId: lease.assignmentId,
-      fencingRevision: lease.fencingRevision, expiresAt: lease.expiresAt, reasonCode });
+      fencingRevision: lease.fencingRevision, expiresAt: lease.expiresAt, reasonCode };
+    this.#deliver(record, message);
+    this.#publisher(record, { ...message, type: "trusted-source-publisher-stop" });
+  }
+  #publisher(record, message) {
+    const lease = record.lease;
+    try {
+      const peer = this.#members(lease.consent.roomId).find(value => value.id === lease.publisherPeerId);
+      if (!peer || peer.authenticated !== true || peer.machine === true
+        || broadcastDeviceRef(peer.deviceFingerprint) !== lease.publisherDeviceRef) return false;
+      return this.#sendPublisher(peer.socket, message) === true;
+    } catch { return false; }
   }
   #deliver(record, message) {
     try {
