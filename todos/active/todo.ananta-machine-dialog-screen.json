@@ -6,6 +6,7 @@
   "status": "in_progress",
   "purpose": "Meet-seitige Erweiterung der vorhandenen KI-Teilnahme um separat autorisierten Empfang, Raumchat-Ereignisse, agenteneigenes Bildschirmteilen und erneuerbare, widerrufbare Sitzungen.",
   "scope": {
+    "private_peer_capacity_fix": "MDS-08: actual34.03s joint failure at c575830 showed7proxy connection drops and7blocked Worker module requests before join. Bridge unnecessarily provisioned a second local machine context although Ananta owns it. Explicit externalMachine receiver-only fixture removes that unused context and refuses additional local machine contexts; default fixtures,16connection ceiling,timeouts and policy unchanged. Real receiver-only browser and joint regression required; not soak completion. docs/machine-isolated-test-peer.md.",
     "private_peer_followup": "MDS-08: optional isolated test peer implemented with bounded owned-browser handshake; actual short attempts failed separately at source timing (49.81s) and automated consent (41.20s). Fixed consent operation-stage diagnostics added without changing deadlines or policy. Joint short/soak and grouped check remain pending; docs/machine-isolated-test-peer.md.",
     "kind": "repository_development_track",
     "implementation_started": true,

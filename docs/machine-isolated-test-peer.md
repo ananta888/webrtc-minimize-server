@@ -40,3 +40,18 @@ own-room member/machine counts and the existing capped TLS-proxy connection-drop
 count. It returns no membership identifiers, network addresses, keys or contents,
 and accepts no arguments or mutations. This helps distinguish peer startup
 failure from insufficient test-proxy capacity without enlarging any limit.
+
+The next joint run at Ananta `1b2206db2` / Meet `c575830` failed in34.03 seconds:
+seven blocked Worker module requests matched seven actual proxy-capacity drops,
+and the room retained only its human test receiver. The shared fixture had also
+created an unused local machine page even though Ananta owns the real machine
+browser. The Hub bridge now selects `externalMachine: true`, creating only its
+real receiver context and refusing extra local machine contexts. Other browser
+fixtures retain their existing default. The16-connection proxy ceiling, request
+timeouts and security policies are unchanged. A real receiver-only browser check
+and a new joint run verify this fix; no long-run pass is inferred from it.
+
+Receiver-only/native and existing proxy checks passed together:16 tests in
+1.651 seconds, including one actual cryptographically authenticated synthetic
+receiver, exactly one browser context, no capture calls and no local machine
+navigation. The existing proxy limits and negative cases remain covered.

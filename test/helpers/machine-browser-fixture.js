@@ -21,7 +21,8 @@ import { installMachineForcedRelay } from "./machine-forced-relay.js";
 export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", listenPort = 0, hubPublicKey, tlsPortProxy = false,
   lifetimeSeconds = 180, humanEngine = "chromium", machineEngine = "chromium", observeStage = () => {}, tlsConnectionLimit = 16,
   publicDir = process.env.MEET_TEST_PUBLIC_DIR, receiverKeyDelay = false, icePath = "direct", relayParticipants = 2,
-  browserLauncher } = {}) {
+  browserLauncher, externalMachine = false } = {}) {
+  if (typeof externalMachine !== "boolean") throw new Error("test_external_machine_invalid");
   if (browserLauncher !== undefined && (typeof browserLauncher !== "function" || !tlsPortProxy
     || humanEngine !== "chromium" || machineEngine !== "chromium")) throw new Error("test_browser_launcher_invalid");
   if (!["direct", "turn-udp", "turn-tcp"].includes(icePath)) throw new Error("test_ice_path_invalid");
@@ -173,15 +174,21 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
     return { binding, grant };
   }
   const { binding, grant } = identity("synthetic-machine");
-  observeStage("machine-navigation");
-  const machine = await page(true), startup = observeBrowserStartup(machine);
-  try {
-    await navigateFixture(machine, origin + "/machine", () => Boolean(window.anantaMachine));
-    observeStage("machine-ready");
-  } catch (error) { error.startupObservation = startup; throw error; }
+  // An external Worker owns the machine browser. Do not consume extra proxy
+  // connections and renderer resources with an unused local machine context.
+  let machine = null;
+  if (!externalMachine) {
+    observeStage("machine-navigation");
+    machine = await page(true);
+    const startup = observeBrowserStartup(machine);
+    try {
+      await navigateFixture(machine, origin + "/machine", () => Boolean(window.anantaMachine));
+      observeStage("machine-ready");
+    } catch (error) { error.startupObservation = startup; throw error; }
+  }
   let additionalMachineCreated = false;
   async function additionalMachine() {
-    if (additionalMachineCreated) throw new Error("test_machine_fixture_capacity");
+    if (externalMachine || additionalMachineCreated) throw new Error("test_machine_fixture_capacity");
     additionalMachineCreated = true;
     const second = await page(true);
     await navigateFixture(second, origin + "/machine", () => Boolean(window.anantaMachine));

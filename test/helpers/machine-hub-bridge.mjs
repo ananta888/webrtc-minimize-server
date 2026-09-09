@@ -26,6 +26,7 @@ try {
   const soakSeconds = Number(process.env.MEET_DIALOG_SOAK_SECONDS || 0);
   if (!Number.isInteger(soakSeconds) || soakSeconds < 0 || soakSeconds > 7200) throw new Error("test_soak_invalid");
   const f = await machineBrowserFixture({ after: fn => cleanup.push(fn) }, {
+    externalMachine: true,
     listenHost: "127.0.0.2", tlsPortProxy: true,
     lifetimeSeconds: soakSeconds + 180,
     observeStage: value => { stage = value; },
