@@ -14,19 +14,20 @@ type sourceProgramGenerationFactory func(sourceProgramGenerationConfig) (*source
 // This owner is published before construction. Cancellation can therefore fence
 // a codec constructor without waiting for it under any client registry lock.
 type sourceAssignmentOwner struct {
-	request        sourceProgramAssignment
-	localConfig    sourceProgramGenerationConfig
-	client         *client
-	assignment     *packagerAssignment
-	done, finished chan struct{}
-	prepared       chan struct{}
-	waiters        atomic.Int32
-	reasonCode     string // assignmentMu; current state reason, not a synthetic retry reason.
-	once           sync.Once
-	statusMu       sync.Mutex // Wire ordering only; never a registry lock.
-	attached       atomic.Bool
-	generation     atomic.Pointer[sourceProgramGeneration]
-	deadline       atomic.Pointer[time.Time]
+	request          sourceProgramAssignment
+	localConfig      sourceProgramGenerationConfig
+	client           *client
+	assignment       *packagerAssignment
+	done, finished   chan struct{}
+	prepared         chan struct{}
+	waiters          atomic.Int32
+	reasonCode       string // assignmentMu; current state reason, not a synthetic retry reason.
+	once             sync.Once
+	outputStatusOnce sync.Once
+	statusMu         sync.Mutex // Wire ordering only; never a registry lock.
+	attached         atomic.Bool
+	generation       atomic.Pointer[sourceProgramGeneration]
+	deadline         atomic.Pointer[time.Time]
 }
 
 func (o *sourceAssignmentOwner) cancel() {
@@ -58,8 +59,8 @@ func (o *sourceAssignmentOwner) permitted() bool {
 	return c.assignment == a && a.sourceProgram == o && oneOf(a.State, "ready", "starting", "running", "degraded") && a.expiresAt.Load() > now.UnixMilli() && deadline != nil && now.Before(*deadline)
 }
 
-// Internal v4 entry, not wired to the public dispatcher until the source/renew/
-// recovery gates are complete. Resource budgets come from a LOCAL caller;
+// Owned v4 entry behind the explicit local control opt-in. Public source
+// approval/recovery remain separate. Resource budgets come from a LOCAL caller;
 // assignment JSON cannot choose directories, executables or allocation budgets.
 func (c *client) prepareSourceProgramAssignment(raw []byte, now time.Time, local sourceProgramGenerationConfig, create sourceProgramGenerationFactory) error {
 	r, err := parseSourceProgramAssignment(raw, now)

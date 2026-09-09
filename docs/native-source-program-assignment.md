@@ -1,8 +1,8 @@
 # Trusted-Source-Programm: Assignment v4
 
 `assignment-prepare.v4.schema.json` ist ein neuer geschlossener Vertrag für die
-vorbereitete Mehrquellen-Pipeline. Er ist **noch nicht im produktiven Dispatcher
-aktiviert**. Nativer Parser, Scope-Projektion und interner Auftragsowner existieren;
+vorbereitete Mehrquellen-Pipeline. Der [native v4-Control-Einstieg](native-source-control.md)
+ist implementiert, aber standardmäßig ausgeschaltet. Parser, Scope-Projektion und Auftragsowner existieren;
 der Server emittiert weiterhin v1/v2/v3 und Agent-Version 0.8.0 bleibt unverändert.
 Das Schema oder sein erfolgreiches Parsen erlaubt weder Teilnahme noch Decrypt.
 
@@ -69,7 +69,7 @@ typisierte Prüfung ersetzt diese Formprüfung nicht und erteilt keine Autoritä
 Go und JSON Schema verwenden dieselbe eingebettete synthetische Fixture.
 Tests prüfen gültige Bindung, fremdes Gerät, Ablauf, Pflicht-/Fremdfelder,
 Integer-/Renditiongrenzen, ICE-Modi und Legacy-Isolation. Eine echte v4-Nachricht
-muss im bisherigen Dispatcher weiterhin abgewiesen werden: kein stiller Start
+wird im Legacy-Decoder und bei ausgeschaltetem v4-Modus weiter abgewiesen: kein stiller Start
 einer Legacy-PeerConnection und kein automatisches Upgrade bestehender Aufträge.
 Die strengere Parser-Race-Matrix bestand dreimal samt Vet; Schema-Negativfälle
 prüfen ebenfalls Großschreibung, URI-Steuerzeichen und abschließende Zeilenenden.
@@ -178,8 +178,9 @@ Retry-Erweiterung, und aktiviert weiterhin keine öffentliche v4-Freigabe.
 
 Der [lokale Budgetadapter](native-source-local-budget.md) leitet nun feste
 Ressourcenprofile aus Prozesskonfiguration ab und verbindet sie mit diesem
-Owner. Er verändert weder Renditions noch Rechte; die öffentliche Capability-
-Ankündigung und der v4-Control-Dispatcher/Emitter bleiben noch erforderlich,
+Owner. Er verändert weder Renditions noch Rechte; der native Dispatcher ist
+separat opt-in implementiert. Die öffentliche Capability-Ankündigung und der
+serverseitige v4-Emitter bleiben noch erforderlich,
 ebenso Generationswechsel mit
 Discontinuity, öffentlicher Approve-/Renew-Pfad sowie gemeinsame SFrame-/
 Mehrpublisherabnahme. Der interne Owner allein schaltet keine Nutzerfreigabe,

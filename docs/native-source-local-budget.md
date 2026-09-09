@@ -3,9 +3,11 @@
 `NATIVE_PACKAGER_SOURCE_BUDGET` selects a fixed, local native-packager budget.
 The default is `compact-v1`; unknown values fail startup. Compose forwards the
 selection explicitly. This is not a source grant, v4 activation switch, or
-claim that the host can sustain the maximum load. Agent version and public
-dispatcher/capability promotion remain unchanged pending recovery and ingress
-acceptance. Legacy single-publisher assignments keep their existing behavior.
+claim that the host can sustain the maximum load. The separate
+[native v4 control opt-in](native-source-control.md) is disabled by default;
+agent version, public emitter and capability promotion remain unchanged pending
+recovery and ingress acceptance. Legacy single-publisher assignments keep their
+existing behavior.
 
 | Profile | Decoder processes | Decoder buffers | PCM mixer | RGBA compositor | Raw output ceiling | HLS stage | Decoder output ceiling |
 |---|---:|---:|---:|---:|---:|---:|---|

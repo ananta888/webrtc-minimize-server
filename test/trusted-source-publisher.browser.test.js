@@ -119,6 +119,9 @@ test("native program generation composes VP8 Opus through renewals into decodabl
 test("native v4 assignment owns VP8 Opus source bootstrap, renewed HLS output and terminal cleanup", {timeout:25000}, t => {
   nativeCodecFixture(t, "TestLiveTrustedSourceAssignmentProgram");
 });
+test("native opt-in v4 control uses authenticated TLS, real HLS readiness, renewals and terminal cleanup", {timeout:30000}, t => {
+  nativeCodecFixture(t, "TestLiveTrustedSourceControlSocket", 25);
+});
 test("native raw program encoder bounds rolling HLS windows and reaps a revoked writer", {timeout:45000}, t => {
   nativeCodecFixture(t, "TestLiveTrustedSourceProgramEncoderRollingWindow", 40);
 });

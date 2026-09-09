@@ -90,7 +90,7 @@ func TestSourceProgramAssignmentScopeAndLegacyIsolation(t *testing.T) {
 	if _, err = a.scopeForDevice(s.deviceRef, time.UnixMilli(a.ExpiresAt)); err == nil {
 		t.Fatal("expired scope projected")
 	}
-	// Runtime dispatch remains closed until the explicit adapter is completed.
+	// The legacy decoder never treats v4 as its single-publisher media path.
 	if _, err = decodeServerMessage(sourceProgramAssignmentFixture); err == nil {
 		t.Fatal("v4 silently fell through to legacy media")
 	}

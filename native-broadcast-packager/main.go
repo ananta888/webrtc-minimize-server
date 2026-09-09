@@ -51,6 +51,7 @@ type config struct {
 	controlURL, packagerID, identityFile, enrollmentToken, ffmpegPath, outputRoot string
 	energyClass, uploadClass                                                      string
 	sourceBudget                                                                  string
+	sourcePrograms                                                                bool
 	maximumRenditions, maximumPixelsPerSecond                                     int
 	stunURLs                                                                      []string
 	iceTransportPolicy                                                            webrtc.ICETransportPolicy
@@ -107,12 +108,17 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if _, err := sourceProgramLocalBudget(sourceBudget); err != nil {
 		return config{}, err
 	}
+	sourcePrograms, err := sourceProgramsEnabled(getenv("NATIVE_PACKAGER_SOURCE_PROGRAMS"))
+	if err != nil {
+		return config{}, err
+	}
 	return config{
 		controlURL: rawURL, packagerID: id, identityFile: identityFile, enrollmentToken: token,
 		ffmpegPath: defaultValue(getenv("NATIVE_PACKAGER_FFMPEG"), "ffmpeg"), outputRoot: filepath.Clean(outputRoot), energyClass: energy,
 		uploadClass: upload, maximumRenditions: renditions, maximumPixelsPerSecond: pixels, stunURLs: stunURLs,
 		iceTransportPolicy: iceTransportPolicy,
 		sourceBudget:       sourceBudget,
+		sourcePrograms:     sourcePrograms,
 	}, nil
 }
 
@@ -480,6 +486,7 @@ func createWebRTCAPI() (*webrtc.API, error) {
 }
 
 type serverMessage struct {
+	SourceProgram   json.RawMessage                 `json:"-"`
 	SourceSignal    *trustedsframe.SourcePeerSignal `json:"-"`
 	SourceControl   *trustedsframe.SourceCommand    `json:"-"`
 	Version         int                             `json:"version"`
@@ -562,9 +569,16 @@ func (c *client) capabilityMessage() map[string]any {
 }
 
 func (c *client) connect(ctx context.Context, enroll bool) error {
+	dialer := websocket.Dialer{HandshakeTimeout: 15 * time.Second, EnableCompression: false, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
+	return c.connectUsingDialer(ctx, enroll, &dialer)
+}
+
+// Injection is local to tests; production always constructs the strict TLS
+// dialer above. No remote field or environment option relaxes certificate trust.
+func (c *client) connectUsingDialer(ctx context.Context, enroll bool, dialer *websocket.Dialer) error {
 	c.sessionAuthenticated.Store(false)
 	defer c.closeAssignmentMedia()
-	dialer := websocket.Dialer{HandshakeTimeout: 15 * time.Second, EnableCompression: false, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
+	defer c.revokeControlSession()
 	connection, response, err := dialer.DialContext(ctx, c.cfg.controlURL, http.Header{})
 	if err != nil {
 		if response != nil {
@@ -583,6 +597,7 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 	go func() {
 		select {
 		case <-ctx.Done():
+			c.revokeControlSession()
 			_ = connection.WriteControl(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, "packager_shutdown"),
 				time.Now().Add(time.Second))
@@ -624,6 +639,9 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 	if err = c.send(map[string]any{"version": 1, "type": "authenticate", "packagerId": c.cfg.packagerID, "timestamp": timestamp, "proof": proof}); err != nil {
 		return err
 	}
+	sourceQueue := newSourceControlQueue(c, c.prepareControlAssignment, func() { _ = connection.Close() })
+	defer sourceQueue.Close()
+	authenticatedResponse := false // One handshake per connection; never a renewal.
 	periodicDone := make(chan struct{})
 	defer close(periodicDone)
 	go func() {
@@ -645,11 +663,17 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 		}
 	}()
 	for {
+		if err = ctx.Err(); err != nil {
+			return err
+		}
 		_, raw, err = connection.ReadMessage()
 		if err != nil {
 			return err
 		}
-		message, decodeErr := decodeServerMessage(raw)
+		if err = ctx.Err(); err != nil {
+			return err
+		}
+		message, decodeErr := decodePackagerControlMessage(raw, time.Now(), c.cfg.sourcePrograms)
 		if decodeErr != nil {
 			return decodeErr
 		}
@@ -663,10 +687,17 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 				return err
 			}
 		case "packager-authenticated":
-			if message.PackagerID != c.cfg.packagerID {
+			if authenticatedResponse || message.PackagerID != c.cfg.packagerID {
 				return errors.New("invalid authentication response")
 			}
+			authenticatedResponse = true
 			c.sessionAuthenticated.Store(true)
+			// Cancellation may have raced the store after the read-side check.
+			// There can be no queued v4 work before this first authentication.
+			if err = ctx.Err(); err != nil {
+				c.revokeControlSession()
+				return err
+			}
 		case "room-consent-sync":
 			if len(message.RoomIDs) > 20 {
 				return errors.New("too many room consents")
@@ -678,7 +709,12 @@ func (c *client) connect(ctx context.Context, enroll bool) error {
 			}
 		case "capability-accepted":
 		case "assignment-prepare":
-			if err = c.prepareAssignment(message, time.Now()); err != nil {
+			if message.Version == 4 {
+				err = sourceQueue.Enqueue(message)
+			} else {
+				err = c.prepareAssignment(message, time.Now())
+			}
+			if err != nil {
 				return err
 			}
 		case "assignment-stop":
