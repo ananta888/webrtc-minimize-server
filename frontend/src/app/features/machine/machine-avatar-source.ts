@@ -11,7 +11,8 @@ export type MachineAvatarProfile = "neutral-ai-v1" | "persona-image-v1" | "perso
 interface AvatarPorts {
   authority(): MachineAvatarAuthority;
   create(profile: MachineAvatarProfile, image: unknown, check: () => void): MachineAvatarSurface;
-  clock?: () => number;
+  clock?: () => number; // Absolute epoch time for authority and published expiry.
+  monotonicClock?: () => number; // Frame/heartbeat intervals, not grant lifetime.
 }
 export interface MachineAvatarReceipt {
   schema: "ananta.meet-avatar-source.v1"; profile: MachineAvatarProfile;
@@ -26,6 +27,7 @@ export class MachineAvatarSource {
   private pending?: { resolve(value: MachineAvatarReceipt): void; reject(error: Error): void };
   private started = 0;
   private lastClock = 0;
+  private lastMonotonic = 0;
   private lastFrame = 0;
   private expiresAt = 0;
   private frames = 0;
@@ -33,23 +35,29 @@ export class MachineAvatarSource {
   private controllerUntil = 0;
   private profile: MachineAvatarProfile = "neutral-ai-v1";
   private readonly clock: () => number;
+  private readonly monotonicClock: () => number;
 
-  constructor(private readonly ports: AvatarPorts) { this.clock = ports.clock ?? Date.now; }
+  constructor(private readonly ports: AvatarPorts) {
+    this.clock = ports.clock ?? Date.now;
+    this.monotonicClock = ports.monotonicClock ?? (() => performance.now());
+  }
 
   async open(sourceId: string, profile: string, image?: unknown): Promise<MachineAvatarReceipt> {
     if (this.scope) throw new Error("meet_avatar_busy");
-    const authority = this.ports.authority(), now = this.clock();
+    const authority = this.ports.authority(), now = this.clock(), local = this.monotonicClock();
     if ((profile !== "neutral-ai-v1" && profile !== "persona-image-v1" && profile !== "persona-video-v1")
       || (profile === "neutral-ai-v1" && image !== undefined) || (profile !== "neutral-ai-v1" && image === undefined)
       || typeof sourceId !== "string" || sourceId !== authority.sourceId
       || !authority.sessionId || !Number.isSafeInteger(authority.leaseGeneration) || authority.leaseGeneration < 1
       || !Number.isSafeInteger(authority.membershipEpoch) || authority.membershipEpoch < 1
-      || !Number.isFinite(now) || !Number.isFinite(authority.expiresAt) || authority.expiresAt <= now
+      || !Number.isFinite(now) || !Number.isFinite(local) || local < 0
+      || !Number.isFinite(authority.expiresAt) || authority.expiresAt <= now
       || this.generation >= 1024) throw new Error("meet_avatar_source_denied");
     this.scope = { ...authority }; this.generation++; this.state = "opening"; this.profile = profile;
-    this.started = this.lastClock = now; this.lastFrame = 0; this.frames = 0; this.protectionLostAt = 0;
+    this.lastClock = now; this.started = this.lastMonotonic = local;
+    this.lastFrame = 0; this.frames = 0; this.protectionLostAt = 0;
     this.expiresAt = Math.min(authority.expiresAt, now + 30_000);
-    this.controllerUntil = now + 2500;
+    this.controllerUntil = local + 2500;
     const generation = this.generation;
     try { this.surface = this.ports.create(profile, image, () => {
       if (this.generation !== generation) throw new Error("meet_avatar_generation_changed");
@@ -64,16 +72,17 @@ export class MachineAvatarSource {
   }
 
   private check(): number {
-    const current = this.ports.authority(), scope = this.scope, now = this.clock();
-    const cause = !scope ? "inactive" : !Number.isFinite(now) ? "clock-invalid"
-      : now < this.lastClock ? "clock-backwards" : now >= this.expiresAt ? "activation-expired"
-      : now >= this.controllerUntil ? "controller-expired" : current.sourceId !== scope.sourceId ? "source-id"
+    const current = this.ports.authority(), scope = this.scope, now = this.clock(), local = this.monotonicClock();
+    const cause = !scope ? "inactive" : !Number.isFinite(now) || !Number.isFinite(local) ? "clock-invalid"
+      : now < this.lastClock || local < this.lastMonotonic ? "clock-backwards"
+      : now >= this.expiresAt || local >= this.started + 30_000 ? "activation-expired"
+      : local >= this.controllerUntil ? "controller-expired" : current.sourceId !== scope.sourceId ? "source-id"
       : current.sessionId !== scope.sessionId ? "session-id" : current.leaseGeneration !== scope.leaseGeneration ? "lease-generation"
       : current.membershipEpoch !== scope.membershipEpoch ? "membership-epoch"
       : current.expiresAt !== scope.expiresAt ? "lease-expiry" : null;
     // Fixed internal reason only: never retain the authority or its values.
     if (cause) throw new Error("meet_avatar_authority_expired", { cause });
-    this.lastClock = now; return now;
+    this.lastClock = now; this.lastMonotonic = local; return local;
   }
 
   private tick(): void {

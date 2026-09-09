@@ -5,7 +5,24 @@ Aktivierung sind unterschiedliche Zustände. Die öffentliche Meet-Instanz melde
 bei der aktuellen Prüfung `admissionEnabled: false`: Noch kein produktiver
 KI-Beitritt. Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
 
-## Priorisierte Sitzungsintegration: aktueller Nachtrag
+## Aktueller Nachtrag: getrennte Quellenzeit
+
+Der falsch ausgelöste lokale Sprach-/Avatar-Stillstand ist jetzt mit einem
+gezielten Vorher-/Nachher-Test reproduziert und behoben: Eine Wanduhrkorrektur
+innerhalb einer weiterhin gültigen Lease darf keine bereits verstrichene lokale
+Fortschritts- oder Heartbeat-Frist vortäuschen. Epochgebundene Berechtigungen und
+Aktivierungsenden bleiben unverändert; lokale Intervalle verwenden eine getrennte
+monotone Uhr. Details: [Zeitbasen und Nachweis](machine-source-clock-domains.md).
+
+Die isolierte Gesamtprüfung (`0996030` plus Quellenzeitkorrektur) bestand mit
+1.188 Frontendtests und 1.086 Node-/Browserfällen, null Fehlern und vier Node-Skips
+(478,974 s). Beide gemeinsamen Ananta-Dialoge, die unabhängigen Sprachausgaben,
+die Quellenzeit- und die neuen Uhrkorrekturtests bestanden. 14 externe Gates
+blieben ausdrücklich übersprungen. Das ersetzt weder die Zweistundenabnahme noch
+die produktive Hub-/Projektfreigabe. Öffentlich wurde weiterhin
+`admissionEnabled: false` beobachtet; dieses Ergebnis ist kein Deployment.
+
+## Vorheriger Nachtrag: priorisierte Sitzungsintegration
 
 Die sechs angefragten Grundfunktionen sind implementiert; neu gehärtet ist das
 [durchgängig begrenzte Warten auf Beitritt und Erneuerung](machine-page-join-lifecycle.md).

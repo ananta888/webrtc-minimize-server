@@ -13,7 +13,8 @@ export interface MachineSpeechGraph {
 interface SpeechPorts {
   authority(): MachineSpeechAuthority;
   create(totalSamples: number, progress: (played: number) => void, failed: () => void, signal: AbortSignal): Promise<MachineSpeechGraph>;
-  clock?: () => number;
+  clock?: () => number; // Absolute epoch time for authority and published expiry.
+  monotonicClock?: () => number; // Local elapsed time; never extends authority.
 }
 
 export function speechPcm(encoded: unknown): ArrayBuffer {
@@ -34,21 +35,27 @@ export class MachineSpeechSource {
   private timer: ReturnType<typeof setInterval> | null = null;
   private generation = 0; private received = 0; private played = 0; private total = 0;
   private lastNow = 0; private deadline = 0; private lastProgress = 0;
+  private lastMonotonic = 0; private localDeadline = 0;
   private state = "closed";
   private readonly clock: () => number;
-  constructor(private readonly ports: SpeechPorts) { this.clock = ports.clock || Date.now; }
+  private readonly monotonicClock: () => number;
+  constructor(private readonly ports: SpeechPorts) {
+    this.clock = ports.clock ?? Date.now;
+    this.monotonicClock = ports.monotonicClock ?? (() => performance.now());
+  }
 
   async open(sourceId: string, totalSamples: number) {
     this.close();
-    const scope = this.ports.authority(), now = this.clock();
-    if (sourceId !== scope.sourceId || scope.expiresAt <= now || this.generation >= 2048
+    const scope = this.ports.authority(), now = this.clock(), local = this.monotonicClock();
+    if (!Number.isFinite(now) || !Number.isFinite(local) || local < 0 || !Number.isFinite(scope.expiresAt)
+      || sourceId !== scope.sourceId || scope.expiresAt <= now || this.generation >= 2048
       || !Number.isSafeInteger(totalSamples) || totalSamples < 1 || totalSamples > 40 * SPEECH_RATE) {
       throw new Error("meet_speech_source_denied");
     }
     const generation = ++this.generation, controller = new AbortController();
     this.controller = controller; this.scope = Object.freeze({ ...scope });
     this.total = totalSamples; this.received = this.played = 0;
-    this.lastNow = this.lastProgress = now;
+    this.lastNow = now; this.lastMonotonic = this.lastProgress = local; this.localDeadline = local + 50_000;
     this.deadline = Math.min(scope.expiresAt, now + 50_000); this.state = "starting";
     this.timer = setInterval(() => { try { this.check(); } catch { /* check closes its generation */ } }, 100);
     let setupTimer: ReturnType<typeof setTimeout> | undefined;
@@ -58,7 +65,7 @@ export class MachineSpeechSource {
         try {
           this.check();
           if (!Number.isSafeInteger(played) || played <= this.played || played > this.received) throw new Error();
-          this.played = played; this.lastProgress = this.clock();
+          this.played = played; this.lastProgress = this.lastMonotonic;
           if (played === this.total) this.close("completed");
         } catch { this.close("failed"); }
       }, () => { if (generation === this.generation) this.close("failed"); }, controller.signal)
@@ -68,7 +75,7 @@ export class MachineSpeechSource {
         controller.signal.addEventListener("abort", () => reject(new Error("meet_speech_setup_cancelled")), { once: true });
       })]);
       if (generation !== this.generation || controller.signal.aborted) throw new Error("meet_speech_setup_cancelled");
-      this.graph = graph; this.check(); this.state = "open"; this.lastProgress = this.clock();
+      this.graph = graph; this.check(); this.state = "open"; this.lastProgress = this.lastMonotonic;
       return Object.freeze({ schema: "ananta.meet-speech-source.v1", sourceId, generation, sampleRate: SPEECH_RATE,
         channels: 1, format: "pcm_s16le", totalSamples, queueSamples: SPEECH_QUEUE_SAMPLES, expiresAt: this.deadline });
     } catch (error) { if (generation === this.generation) this.close("failed"); throw error; }
@@ -78,14 +85,16 @@ export class MachineSpeechSource {
   private check(): void {
     let cause: string | undefined = "authority-unavailable";
     try {
-      const current = this.ports.authority(), now = this.clock();
-      cause = !this.scope ? "inactive" : now < this.lastNow ? "clock-backwards" : now >= this.deadline ? "activation-expired"
-        : this.state === "open" && now >= this.lastProgress + 2000 ? "progress-expired" : undefined;
+      const current = this.ports.authority(), now = this.clock(), local = this.monotonicClock();
+      cause = !this.scope ? "inactive" : !Number.isFinite(now) || !Number.isFinite(local) ? "clock-invalid"
+        : now < this.lastNow || local < this.lastMonotonic ? "clock-backwards"
+        : now >= this.deadline || local >= this.localDeadline ? "activation-expired"
+        : this.state === "open" && local >= this.lastProgress + 2000 ? "progress-expired" : undefined;
       if (!cause) {
         const changed = Object.keys(this.scope!).find(k => current[k as keyof MachineSpeechAuthority] !== this.scope![k as keyof MachineSpeechAuthority]);
         if (changed) cause = ["sourceId", "sessionId", "leaseGeneration", "membershipEpoch", "expiresAt"].includes(changed) ? changed : "scope";
       }
-      if (!cause) { this.lastNow = now; return; }
+      if (!cause) { this.lastNow = now; this.lastMonotonic = local; return; }
     } catch { cause = "authority-unavailable"; }
     this.close("failed"); throw new Error("meet_speech_authority_changed", { cause });
   }

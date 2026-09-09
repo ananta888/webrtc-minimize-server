@@ -5,7 +5,9 @@ const now = 1_788_000_000_000;
 function setup() {
   const authority = { sourceId: "avatar:hub", sessionId: "ms_test", leaseGeneration: 1, membershipEpoch: 2, expiresAt: now + 60_000 };
   const surface = { ready: vi.fn(() => true), frame: vi.fn(), close: vi.fn() };
-  const ports = { authority: vi.fn(() => authority), create: vi.fn(() => surface) };
+  // This legacy fixture advances both clocks together; see the independent
+  // timebase matrix in machine-source-clock.spec.ts for clock corrections.
+  const ports = { authority: vi.fn(() => authority), monotonicClock: () => Date.now(), create: vi.fn(() => surface) };
   const source = new MachineAvatarSource(ports);
   return { source, authority, surface, ports, open: () => source.open("avatar:hub", "neutral-ai-v1") };
 }

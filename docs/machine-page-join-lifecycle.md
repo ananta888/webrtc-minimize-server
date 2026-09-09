@@ -31,7 +31,10 @@ Membership und PeerConnections werden beendet,
 ohne Capture oder Transformfehler. Der Browserfall bestand in 12,704 Sekunden.
 Das ist kein produktiver Hub-Ausfalltest und keine Freigabe zum automatischen
 Wiederbeitritt. Die [Gesamtprüfung](ananta-integration-status.md) bleibt wegen
-zweier separater Chromium-Quellenzeit-/Sprachfehler nicht bestanden.
+zweier separater Chromium-Quellenzeit-/Sprachfehler damals nicht bestanden.
+Der anschließend separat reproduzierte und korrigierte
+[Quellenzeitpfad](machine-source-clock-domains.md) bestand inzwischen die
+gemeinsame Gesamtprüfung; der frühere fehlgeschlagene Lauf bleibt als solcher erhalten.
 
 Jeder explizite Leave und neue Beitritt invalidiert zuerst die vorherige
 Page-Generation. Verspätete Auflösungen oder Fehler dürfen ausschließlich die

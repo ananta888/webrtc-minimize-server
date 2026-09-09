@@ -9,7 +9,9 @@ function setup() {
   let progress!: (played: number) => void;
   let failed!: () => void;
   let signal!: AbortSignal;
-  const ports = { authority: () => authority, create: vi.fn(async (_total: number, notify: (played: number) => void,
+  // Existing boundary cases advance both virtual clocks together; independent
+  // epoch/monotonic corrections are covered in machine-source-clock.spec.ts.
+  const ports = { authority: () => authority, monotonicClock: () => Date.now(), create: vi.fn(async (_total: number, notify: (played: number) => void,
     error: () => void, abort: AbortSignal): Promise<MachineSpeechGraph> => {
     progress = notify; failed = error; signal = abort; return graph;
   }) };
