@@ -101,6 +101,10 @@ func (p *sourceProgramGeneration) AddSource(lease trustedsframe.SourceLease, rec
 // Presentation controls only. The external director adapter still has to
 // authenticate its caller; these handles do not grant room/moderator rights.
 func (p *sourceProgramGeneration) SetScene(expected uint64, layout string, ids []string, active string) (uint64, error) {
+	return p.setSceneGuarded(expected, layout, ids, active, nil)
+}
+
+func (p *sourceProgramGeneration) setSceneGuarded(expected uint64, layout string, ids []string, active string, current func() bool) (uint64, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.permitted() || len(ids) > 20 {
@@ -121,7 +125,12 @@ func (p *sourceProgramGeneration) SetScene(expected uint64, layout string, ids [
 	if active != "" && selected == nil {
 		return 0, errors.New("source program active source denied")
 	}
-	return p.video.SetScene(expected, layout, inputs, selected)
+	revision, err := p.video.setSceneGuarded(expected, layout, inputs, selected, current)
+	if err == nil {
+		p.sceneSelection = append([]string(nil), ids...)
+		p.sceneSelectedActive, p.sceneSelectionRevision = active, revision
+	}
+	return revision, err
 }
 
 func (p *sourceProgramGeneration) SetGain(id string, left, right int) error {

@@ -91,8 +91,8 @@ func parseSourceSceneCommand(raw []byte, now time.Time) (sourceSceneCommand, err
 	return c, nil
 }
 
-// Local presentation adapter only. A future socket/HTTP director must first
-// authorize the actual caller; possession of these IDs is never authority.
+// Local presentation adapter. The native socket checks its actual current
+// owner; an HTTP director must separately authorize the human caller.
 func (p *sourceProgramGeneration) ApplySceneCommand(raw []byte) (sourceSceneReceipt, error) {
 	p.sceneMu.Lock()
 	defer p.sceneMu.Unlock()
@@ -126,13 +126,18 @@ func (p *sourceProgramGeneration) ApplySceneCommand(raw []byte) (sourceSceneRece
 	if len(p.sceneHistory) >= maximumSourceSceneHistory {
 		return sourceSceneReceipt{}, errors.New("source scene capacity")
 	}
-	revision, err := p.SetScene(c.ExpectedSceneRevision, c.Layout, c.SourceLeaseIDs, c.ActiveSourceLeaseID)
+	appliedAt := now.UnixMilli()
+	revision, err := p.setSceneGuarded(c.ExpectedSceneRevision, c.Layout, c.SourceLeaseIDs, c.ActiveSourceLeaseID, func() bool {
+		appliedAt = p.cfg.now().UnixMilli()
+		return appliedAt >= now.UnixMilli() && appliedAt < c.ExpiresAt
+	})
 	if err != nil {
 		return sourceSceneReceipt{}, errors.New("source scene rejected")
 	}
 	r := sourceSceneReceipt{Version: 1, Type: "source-program-scene-applied", CommandID: c.CommandID, AssignmentID: c.AssignmentID,
 		ProgramID: c.ProgramID, ProgramEpoch: c.ProgramEpoch, LeaseID: c.LeaseID, FencingRevision: c.FencingRevision,
-		SceneRevision: revision, AppliedAt: now.UnixMilli()}
+		SceneRevision: revision, AppliedAt: appliedAt}
+	p.sceneLastNow = appliedAt
 	p.sceneHistory[c.CommandID] = sourceSceneHistory{digest: digest, receipt: r, expiresAt: c.ExpiresAt}
 	return r, nil
 }

@@ -151,6 +151,10 @@ func (s *sourceVideoMixInput) WriteRGBA(width, height int, timestamp uint32, pix
 // It never changes a program epoch, consent, lease or writer fence. A future
 // control adapter must authenticate the director and bind this local owner.
 func (m *sourceVideoMixer) SetScene(expected uint64, layout string, inputs []*sourceVideoMixInput, active *sourceVideoMixInput) (uint64, error) {
+	return m.setSceneGuarded(expected, layout, inputs, active, nil)
+}
+
+func (m *sourceVideoMixer) setSceneGuarded(expected uint64, layout string, inputs []*sourceVideoMixInput, active *sourceVideoMixInput, current func() bool) (uint64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed || !m.cfg.authorized() {
@@ -186,6 +190,11 @@ func (m *sourceVideoMixer) SetScene(expected uint64, layout string, inputs []*so
 	rects, err := sourceVideoSceneRects(layout, kinds, m.cfg.width, m.cfg.height, selected)
 	if err != nil {
 		return m.revision, err
+	}
+	// A command may have expired while waiting for the render mutex. A refused
+	// presentation change must not tear down the running compositor.
+	if current != nil && !current() {
+		return m.revision, errors.New("source scene command expired")
 	}
 	m.scene, m.rects, m.layout = append([]*sourceVideoMixInput(nil), inputs...), rects, layout
 	m.revision++

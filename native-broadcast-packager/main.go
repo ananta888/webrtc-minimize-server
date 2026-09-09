@@ -486,6 +486,7 @@ func createWebRTCAPI() (*webrtc.API, error) {
 }
 
 type serverMessage struct {
+	SourceScene     json.RawMessage                 `json:"-"`
 	SourceProgram   json.RawMessage                 `json:"-"`
 	SourceSignal    *trustedsframe.SourcePeerSignal `json:"-"`
 	SourceControl   *trustedsframe.SourceCommand    `json:"-"`
@@ -686,6 +687,10 @@ func (c *client) connectUsingDialer(ctx context.Context, enroll bool, dialer *we
 			return decodeErr
 		}
 		switch message.Type {
+		case "source-program-scene", "source-program-scene-query":
+			if err = c.handleSourceScene(message); err != nil {
+				return err
+			}
 		case "trusted-source-peer-signal":
 			if err = c.handleTrustedSourceSignal(message.SourceSignal); err != nil {
 				return err

@@ -30,6 +30,21 @@ func decodePackagerControlMessage(raw []byte, now time.Time, sources bool) (serv
 	if json.Unmarshal(raw, &header) != nil {
 		return serverMessage{}, errors.New("invalid control message")
 	}
+	if header.Type == "source-program-scene" || header.Type == "source-program-scene-query" {
+		if !sources {
+			return serverMessage{}, errors.New("source scenes disabled")
+		}
+		var err error
+		if header.Type == "source-program-scene" {
+			_, err = parseSourceSceneCommand(raw, now)
+		} else {
+			_, err = parseSourceSceneQuery(raw, now)
+		}
+		if err != nil {
+			return serverMessage{}, err
+		}
+		return serverMessage{Version: 1, Type: header.Type, SourceScene: append(json.RawMessage(nil), raw...)}, nil
+	}
 	if header.Version == 4 && header.Type == "assignment-prepare" {
 		if !sources {
 			return serverMessage{}, errors.New("source programs disabled")

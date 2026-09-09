@@ -38,20 +38,23 @@ func (p *sourceProgramEncoder) ReadySignal() <-chan struct{} { return p.ready }
 func (p *sourceProgramEncoder) Finished() <-chan struct{}    { return p.finished }
 
 type sourceProgramGeneration struct {
-	sceneMu        sync.Mutex
-	sceneHistory   map[string]sourceSceneHistory
-	sceneLastNow   int64
-	mu             sync.Mutex
-	cfg            sourceProgramGenerationConfig
-	closed         atomic.Bool
-	done, finished chan struct{}
-	output         sourceGenerationOutput
-	clock          *sourceProgramClock
-	audio          *sourceAudioMixer
-	video          *sourceVideoMixer
-	budget         *sourceDecodeBudget
-	publishers     map[sourceGenerationPublisher]*sourcePublisherClock
-	sources        map[string]*sourceGenerationSource
+	sceneMu                sync.Mutex
+	sceneHistory           map[string]sourceSceneHistory
+	sceneLastNow           int64
+	sceneSelection         []string // Configured slots survive input revocation as slate; mu.
+	sceneSelectedActive    string
+	sceneSelectionRevision uint64
+	mu                     sync.Mutex
+	cfg                    sourceProgramGenerationConfig
+	closed                 atomic.Bool
+	done, finished         chan struct{}
+	output                 sourceGenerationOutput
+	clock                  *sourceProgramClock
+	audio                  *sourceAudioMixer
+	video                  *sourceVideoMixer
+	budget                 *sourceDecodeBudget
+	publishers             map[sourceGenerationPublisher]*sourcePublisherClock
+	sources                map[string]*sourceGenerationSource
 }
 
 type sourceGenerationPublisher struct{ peer, device string }

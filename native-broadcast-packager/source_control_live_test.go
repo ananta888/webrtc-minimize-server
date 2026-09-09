@@ -144,6 +144,7 @@ func TestLiveTrustedSourceControlSocket(t *testing.T) {
 				}
 			}
 			lease.IssuedAt, lease.ExpiresAt = time.Now().UnixMilli(), time.Now().Add(5*time.Second).UnixMilli()
+			exerciseSourceSceneSocket(t, request, write, read)
 			write(map[string]any{"version": 1, "type": "trusted-source-prepare", "lease": lease})
 			if read()["state"] != "receiver-prepared" {
 				t.Fatal("v4 source bootstrap failed")

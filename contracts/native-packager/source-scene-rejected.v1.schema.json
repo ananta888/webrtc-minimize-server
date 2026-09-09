@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/source-scene-rejected.v1.schema.json",
+  "title": "Native scene metadata; requires exact current authenticated owner",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "type",
+    "commandId",
+    "assignmentId",
+    "programId",
+    "programEpoch",
+    "leaseId",
+    "fencingRevision",
+    "observedAt",
+    "reasonCode"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "type": {
+      "const": "source-program-scene-rejected"
+    },
+    "commandId": {
+      "type": "string",
+      "pattern": "^scn_[A-Za-z0-9_-]{16,64}$"
+    },
+    "assignmentId": {
+      "type": "string",
+      "pattern": "^asn_[A-Za-z0-9_-]{16,64}$"
+    },
+    "programId": {
+      "type": "string",
+      "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+    },
+    "programEpoch": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "leaseId": {
+      "type": "string",
+      "pattern": "^lea_[A-Za-z0-9_-]{16,64}$"
+    },
+    "fencingRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "observedAt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "reasonCode": {
+      "const": "SCENE_NOT_APPLIED"
+    }
+  }
+}
