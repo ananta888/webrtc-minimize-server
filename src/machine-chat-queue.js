@@ -6,7 +6,7 @@ const same = (left, right) => Object.keys(left).every(key => left[key] === right
 /** Ephemeral endpoint-local transport. Authority must come from a trusted port,
  * never from an event, sender text or the controller polling this queue. */
 export class MachineChatQueue {
-  #authority; #clock; #scope; #items = []; #seen = new Set(); #bytes = 0;
+  #authority; #clock; #scope; #items = []; #seen = new Map(); #bytes = 0;
   #serial = 0; #ack = 0; #delivered = 0; #closed = false; #lastNow = 0;
   constructor({ authority, clock = Date.now }) {
     if (typeof authority !== "function" || typeof clock !== "function") fail("meet_chat_authority_required");
@@ -46,8 +46,14 @@ export class MachineChatQueue {
       || event.generation !== scope.generation || event.membership_epoch !== scope.membership_epoch
       || event.sent_at_ms < now - limits.ageMs || event.sent_at_ms > now + limits.futureMs) fail("meet_chat_event_scope_invalid");
     if (event.sender_peer_id === scope.own_peer_id || event.sender_kind !== "human") return false;
-    const key = `${event.membership_epoch}\0${event.sender_peer_id}\0${event.message_id}`;
-    if (this.#seen.has(key)) return false;
+    // Replies correlate by message ID, so a second connection must never reuse
+    // that ID with a different sender. Keep this bounded binding through ACK and
+    // age pruning, for exactly this subscription's immutable authority scope.
+    const sender = this.#seen.get(event.message_id);
+    if (sender !== undefined) {
+      if (sender !== event.sender_peer_id) { this.close(); fail("meet_chat_message_id_conflict"); }
+      return false;
+    }
     this.#prune();
     const bytes = new TextEncoder().encode(JSON.stringify(event)).length;
     if (this.#items.length >= limits.queueEvents || this.#bytes + bytes > limits.queueBytes
@@ -55,7 +61,7 @@ export class MachineChatQueue {
       this.close(); fail("meet_chat_queue_exhausted");
     }
     this.#current();
-    this.#seen.add(key); this.#bytes += bytes;
+    this.#seen.set(event.message_id, event.sender_peer_id); this.#bytes += bytes;
     this.#items.push({ cursor: ++this.#serial, event, bytes });
     return true;
   }

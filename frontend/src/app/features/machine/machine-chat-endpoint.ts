@@ -27,8 +27,16 @@ export class MachineChatEndpoint {
       this.queue = new MachineChatQueue({ authority: this.ports.authority, clock: this.clock });
       this.scope = Object.freeze({ ...this.ports.authority().scope });
       this.queue.check();
-      this.unsubscribe = this.ports.subscribe(event => this.accept(event));
-      this.timer = setInterval(() => { try { this.check(); } catch { /* Already closed and sanitized. */ } }, 250);
+      const queue = this.queue;
+      const unsubscribe = this.ports.subscribe(event => { if (this.queue === queue) this.accept(event); });
+      // A synchronous first callback may have revoked this owner while the
+      // subscription was being registered. Never attach its cleanup to a successor.
+      if (this.queue !== queue) { unsubscribe(); throw new Error(this.error || "meet_chat_closed"); }
+      this.unsubscribe = unsubscribe;
+      this.timer = setInterval(() => {
+        if (this.queue !== queue) return;
+        try { this.check(); } catch { /* Already closed and sanitized. */ }
+      }, 250);
       return this.scope;
     } catch (error) { this.fail(error); }
   }

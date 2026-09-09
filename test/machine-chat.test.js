@@ -55,6 +55,35 @@ test("machine, unknown and own events never trigger the chat adapter", () => {
   }
   assert.equal(f.queue.poll().events.length, 0);
 });
+for (const phase of ["queued", "delivered", "acknowledged", "aged-out"]) {
+  test(`message ID remains bound to its original sender after ${phase}`, () => {
+    const f = setup(); f.push();
+    if (phase === "delivered" || phase === "acknowledged") f.queue.poll();
+    if (phase === "acknowledged") f.queue.ack(1);
+    if (phase === "aged-out") { f.advance(30_001); assert.equal(f.queue.poll().events.length, 0); }
+    assert.throws(() => f.push({ sender_peer_id: "different-human", sent_at_ms: phase === "aged-out" ? 130_001 : 100_000 }),
+      /meet_chat_message_id_conflict/);
+    assert.throws(() => f.queue.poll(), /meet_chat_closed/);
+    assert.throws(() => f.queue.checkReply(), /meet_chat_closed/);
+  });
+}
+test("equal text from independent sender IDs is not a collision, and same-sender retries are deduplicated", () => {
+  const f = setup(); assert.equal(f.push(), true);
+  assert.equal(f.push({ text: "changed retry content" }), false);
+  assert.equal(f.push({ message_id: "independent-id", sender_peer_id: "different-human" }), true);
+  assert.equal(f.queue.poll().events.length, 2);
+});
+test("sender bindings retain the existing 512-ID budget without retaining an acknowledged history", () => {
+  const f = setup();
+  for (let i = 0; i < 512; i++) {
+    assert.equal(f.push({ message_id: `id-${i}` }), true);
+    const batch = f.queue.poll(); assert.equal(batch.events.length, 1);
+    f.queue.ack(batch.events[0].cursor); assert.equal(f.queue.poll().events.length, 0);
+  }
+  assert.equal(f.push({ message_id: "id-0" }), false);
+  assert.throws(() => f.push({ message_id: "id-512" }), /meet_chat_queue_exhausted/);
+  assert.throws(() => f.queue.poll(), /meet_chat_closed/);
+});
 test("read-only authority receives and acknowledges without gaining reply rights", () => {
   const f = setup(); f.authority.chatSend = false;
   assert.equal(f.push(), true);
