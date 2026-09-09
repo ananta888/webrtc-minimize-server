@@ -34,3 +34,9 @@ second timed out in automated consent setup (41.20 seconds). Consent now reports
 the fixed operation stage, without exception text, selectors, identifiers or
 policy values. No timeout, approval requirement or assertion is relaxed. These
 failures are not successful isolation or soak acceptance.
+
+The private bridge also exposes the fixed `fixture_resources` observation:
+own-room member/machine counts and the existing capped TLS-proxy connection-drop
+count. It returns no membership identifiers, network addresses, keys or contents,
+and accepts no arguments or mutations. This helps distinguish peer startup
+failure from insufficient test-proxy capacity without enlarging any limit.

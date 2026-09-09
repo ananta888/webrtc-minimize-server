@@ -45,6 +45,12 @@ try {
   let answersExpected = 0;
   for await (const line of commands) {
     if (line === "stop") break;
+    if (line === "fixture_resources") {
+      const members = f.app.registry.members(f.roomId);
+      reply({ members: members.length, machines: members.filter(member => member.machine === true).length,
+        connectionDrops: f.proxyObservation().connectionDrops });
+      continue;
+    }
     const avatar = await observeAvatarCommand(line, f.human);
     if (avatar) { reply(avatar); continue; }
     if (line === "consent") {
