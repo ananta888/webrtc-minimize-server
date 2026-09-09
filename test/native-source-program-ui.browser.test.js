@@ -55,6 +55,7 @@ test("Angular keyboard starts an empty v4 program only after confirmation, waits
       createdAt: 1, lastAuthenticatedAt: 1, revokedAt: 0, online: true, consentedRoomIds: [roomId], confirmedRoomIds: [roomId],
       capability: { ffmpegVersion: "fixture", health: "healthy", maximumRenditions: 3, capabilityVersion: 2, sourcePrograms: true }, heartbeat: null };
     let outputReady = false, creates = 0, starts = 0, programStops = 0, assignmentStops = 0, startBody;
+    let ownRequests = 0, ownBody;
     const page = await context.newPage();
     await page.route("**/api/native-packagers", route => route.fulfill({ json: { packagers: [packager], assignments: [] } }));
     await page.route("**/api/broadcasts", route => {
@@ -69,6 +70,15 @@ test("Angular keyboard starts an empty v4 program only after confirmation, waits
     await page.route(`**/api/broadcasts/${program.programId}/native-handoff-control`, route => route.fulfill({ json: {
       controlVersion: 1, programId: program.programId, programRevision: 4, programEpoch: 2,
       state: outputReady ? "live" : "preparing", handoffPending: false, writer: { packagerId, fencingRevision: 4 } } }));
+    await page.route("**/api/broadcast-source-requests", route => {
+      ownRequests++; ownBody = route.request().postDataJSON();
+      const owner = app.registry.members(roomId)[0], now = Date.now();
+      return route.fulfill({ status: 201, json: { responseVersion: 1, requests: [{
+        requestId: "bsr_" + "a".repeat(24), roomId, programId: program.programId, programRevision: 4, programEpoch: 2,
+        ownerPeerId: owner.id, targetPeerId: owner.id, packagerRef: packagerId, sourceKind: ownBody.sourceKind,
+        state: "pending", authority: "none", createdAt: now, expiresAt: now + 120000,
+      }] } });
+    });
     await page.route(`**/api/broadcasts/${program.programId}`, route => {
       assert.equal(route.request().method(), "DELETE"); programStops++;
       return route.fulfill({ json: { program: { directoryVersion: 1, programId: program.programId, title: "Synthetic program",
@@ -102,6 +112,18 @@ test("Angular keyboard starts an empty v4 program only after confirmation, waits
     outputReady = true;
     await page.locator("#native-source-status", { hasText: "Ausgabe vom Packager bestätigt" }).waitFor();
     await page.locator("#broadcast-source-request-target").waitFor();
+    assert.equal(ownRequests, 0);
+    assert.equal(await page.locator("#broadcast-source-request-target").inputValue(), "");
+    const cancelledOwn = page.waitForEvent("dialog"), cancelledOwnClick = page.locator("#broadcast-source-request-own").press("Enter");
+    await (await cancelledOwn).dismiss(); await cancelledOwnClick; assert.equal(ownRequests, 0);
+    const confirmedOwn = page.waitForEvent("dialog"), ownClick = page.locator("#broadcast-source-request-own").press("Enter");
+    const ownDialog = await confirmedOwn; assert.match(ownDialog.message(), /keine Entschlüsselungsfreigabe/);
+    await ownDialog.accept(); await ownClick;
+    await page.getByText("Meine eigene Quelle", { exact: true }).waitFor();
+    assert.equal(ownRequests, 1); assert.equal(ownBody.action, "create-own");
+    assert.equal(Object.hasOwn(ownBody, "targetPeerId"), false);
+    assert.equal(ownBody.expectedProgramRevision, 4); assert.equal(ownBody.sourceKind, "camera");
+    assert.equal(await page.locator("#broadcast-source-approval").count(), 0, "own intent is not an automatic query or decrypt consent");
     await page.locator("#mesh-analysis-navigation").press("Enter");
     await page.locator("#native-packager-analysis-panel").waitFor(); assert.equal(programStops, 0);
     await page.locator("#broadcast-navigation").press("Enter"); await page.locator("#native-source-program-open").press("Enter");

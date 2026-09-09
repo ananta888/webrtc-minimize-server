@@ -29,7 +29,7 @@ export function parseSourceInvitations(raw: unknown, roomId: string, peerId: str
       || !positive(value.programRevision) || !positive(value.programEpoch)
       || typeof value.packagerRef !== "string" || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(value.packagerRef)
       || typeof value.ownerPeerId !== "string" || typeof value.targetPeerId !== "string"
-      || !peer.test(value.ownerPeerId) || !peer.test(value.targetPeerId) || value.ownerPeerId === value.targetPeerId
+      || !peer.test(value.ownerPeerId) || !peer.test(value.targetPeerId)
       || (value.ownerPeerId !== peerId && value.targetPeerId !== peerId)
       || !SOURCE_REQUEST_KINDS.includes(value.sourceKind)
       || !["pending", "declined", "cancelled", "invalidated"].includes(value.state) || value.authority !== "none"

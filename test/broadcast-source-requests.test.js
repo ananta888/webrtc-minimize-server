@@ -43,8 +43,8 @@ function fixture() {
   const context = runtime.nativeSourceRequestContext(identities.owner, peers.owner, programId, now);
   const input = (role, action, extra = {}) => ({ requestVersion: 1, action, roomId: "room-alpha",
     deviceFingerprint: peers[role].deviceFingerprint, ...(action === "list" ? {} : { trigger: "user-action" }),
-    ...(action === "create" ? { programId, expectedProgramRevision: context.programRevision,
-      expectedProgramEpoch: context.programEpoch, targetPeerId: peers.target.id, sourceKind: "camera" } : {}), ...extra });
+    ...(["create", "create-own"].includes(action) ? { programId, expectedProgramRevision: context.programRevision,
+      expectedProgramEpoch: context.programEpoch, ...(action === "create" ? { targetPeerId: peers.target.id } : {}), sourceKind: "camera" } : {}), ...extra });
   const execute = (role, action, extra) => {
     const value = input(role, action, extra);
     assert.equal(requestSchema(value), true, JSON.stringify(requestSchema.errors));
@@ -84,6 +84,32 @@ test("closed command contract rejects injected consent, scopes, missing fields a
     assert.equal(requestSchema(input), false);
     assert.throws(() => f.requests.execute(f.identities.owner, input), /invalid_broadcast_source_request/);
   }
+});
+
+test("own source requests derive their publisher solely from the authenticated controller", () => {
+  const f = fixture(), before = f.runtime.nativeControl(f.identities.owner, f.peers.owner, f.programId);
+  for (const sourceKind of ["camera", "microphone", "screen", "screen-audio"]) {
+    const [item] = f.execute("owner", "create-own", { sourceKind });
+    assert.equal(item.ownerPeerId, f.peers.owner.id); assert.equal(item.targetPeerId, f.peers.owner.id);
+    assert.equal(item.authority, "none");
+    const resolved = f.requests.resolveForPublisher(f.identities.owner, "room-alpha", f.peers.owner.deviceFingerprint, item.requestId);
+    assert.equal(resolved.publisher.id, f.peers.owner.id);
+    assert.throws(() => f.requests.resolveForPublisher(f.identities.target, "room-alpha", f.peers.target.deviceFingerprint, item.requestId), /unavailable/);
+    assert.throws(() => f.execute("owner", "create-own", { sourceKind }), /pending/);
+  }
+  assert.deepEqual(f.execute("target", "list"), []);
+  assert.deepEqual(f.runtime.nativeControl(f.identities.owner, f.peers.owner, f.programId), before);
+  assert.throws(() => f.execute("target", "create-own"), /broadcast_not_available/);
+  for (const extra of [{ targetPeerId: f.peers.target.id }, { consent: true }, { ownerPeerId: f.peers.owner.id }]) {
+    const input = f.input("owner", "create-own", extra);
+    assert.equal(requestSchema(input), false);
+    assert.throws(() => f.requests.execute(f.identities.owner, input), /invalid_broadcast_source_request/);
+  }
+  assert.throws(() => f.execute("owner", "create-own", { deviceFingerprint: f.peers.target.deviceFingerprint }), /membership_required/);
+  assert.throws(() => f.execute("owner", "create-own", { expectedProgramEpoch: 99 }), /stale/);
+  const item = f.execute("owner", "list")[0];
+  assert.equal(f.execute("owner", "cancel", { requestId: item.requestId })[0].state, "cancelled");
+  assert.throws(() => f.requests.resolveForPublisher(f.identities.owner, "room-alpha", f.peers.owner.deviceFingerprint, item.requestId), /unavailable/);
 });
 
 test("current membership, exact device, creator ownership, target identity and program CAS are mandatory", () => {
@@ -186,6 +212,10 @@ test("HTTP invitation route uses actual signed OIDC, Origin/body validation and 
   assert.match(created.headers.get("cache-control"), /no-store/);
   const response = await created.json(); assert.equal(responseSchema(response), true);
   const requestId = response.requests[0].requestId;
+  const ownResponse = await post(f.input("owner", "create-own", { sourceKind: "screen" }));
+  assert.equal(ownResponse.status, 201); const ownItem = (await ownResponse.json()).requests[0];
+  assert.equal(ownItem.targetPeerId, f.peers.owner.id); assert.equal(ownItem.authority, "none");
+  assert.equal((await post(f.input("owner", "create-own", { targetPeerId: f.peers.target.id }))).status, 400);
   const targetHeaders = { authorization: `Bearer ${await token("target")}` };
   const inbox = await post(f.input("target", "list"), targetHeaders);
   assert.equal((await inbox.json()).requests[0].requestId, requestId);

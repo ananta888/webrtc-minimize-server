@@ -74,9 +74,16 @@ sichtbar und wiederholbar; verspätete Start-/Statusantworten aktivieren nichts 
 Der Legacy-Browser-/Einzelquellen-Start und dieser Einstieg sperren sich in der UI.
 Es werden weder Standby-Keys verteilt noch automatische Source-Consents erteilt.
 
-Die vorhandene Anfrage-Authority erlaubt Anfragen an **andere** Teilnehmer,
-nicht an sich selbst. Eine direkte eigene Quelle des v4-Controllers, Layout,
-Recovery und dessen vollständige Handoff-/Standby-Oberfläche bleiben als
+Die Anfrage-Authority behält `create` ausschließlich für **andere** Teilnehmer.
+Der additive Befehl `create-own` merkt eine eigene Controller-Quelle vor, ohne
+eine Zielpeer-ID anzunehmen oder eine Entschlüsselung zu erlauben. In der UI
+„Eigene Quelle vormerken…“ wählen, danach „Eigene Quelle prüfen“ und die
+Entschlüsselung separat bestätigen. Kamera, Mikrofon, Bildschirm und Bildschirmton
+müssen bereits durch den Nutzer gestartet sein. Der Server prüft exakt dieselbe
+aktuelle Mitgliedschaft, Gerätebindung, Writer-/Programmrevision und anschließend
+die konkrete Publikation. Kein Capture beim Vormerken und kein automatischer Consent.
+
+Layout, Recovery und die vollständige Handoff-/Standby-Oberfläche bleiben als
 Gesamtintegration offen; der Legacy-Handoff wird nicht still auf diesen neuen
 Controller umgedeutet.
 

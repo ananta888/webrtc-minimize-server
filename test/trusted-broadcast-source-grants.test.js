@@ -158,6 +158,27 @@ test("approval input cannot inject authority, omit fields or change its bound pu
   assert.throws(() => f.grants.approve(f.ownerIdentity, f.input, f.publisher), /connection_required/);
 });
 
+test("v4 controller owns its four source consents only after a separate current-publication approval", () => {
+  const f = fixture(1800000000000, true);
+  for (const sourceKind of ["camera", "microphone", "screen", "screen-audio"]) {
+    const control = f.runtime.nativeControl(f.ownerIdentity, f.owner, f.programId);
+    const item = f.requests.execute(f.ownerIdentity, { requestVersion: 1, action: "create-own", trigger: "user-action",
+      roomId: f.owner.roomId, deviceFingerprint: f.owner.deviceFingerprint, programId: f.programId,
+      expectedProgramRevision: control.programRevision, expectedProgramEpoch: control.programEpoch, sourceKind }).requests[0];
+    const input = { ...f.input, requestId: item.requestId, publicationId: "own-" + sourceKind, deviceFingerprint: f.owner.deviceFingerprint };
+    assert.throws(() => f.grants.approve(f.ownerIdentity, input, f.owner), /unavailable/);
+    f.rooms.setMediaState(f.owner, { source: sourceKind, active: true, trackId: input.publicationId }, f.now());
+    input.expectedPublicationEpoch = f.rooms.publication(f.owner.id, input.publicationId, f.owner.roomId).publicationEpoch;
+    assert.throws(() => f.grants.approve(f.identity, input, f.publisher), /connection_required|unavailable/);
+    const consent = f.grants.approve(f.ownerIdentity, input, f.owner);
+    assert.equal(validate(consent), true); assert.equal(consent.grantorSubjectRef, broadcastSubjectRef(f.ownerIdentity));
+    assert.equal(f.lookup(consent).publisherPeerId, f.owner.id); assert.equal(consent.sourceKind, sourceKind);
+    f.grants.revoke(f.ownerIdentity, f.owner.deviceFingerprint, consent.consentId);
+    assert.equal(f.lookup(consent), null);
+    assert.ok(f.rooms.publication(f.owner.id, input.publicationId, f.owner.roomId), "revoking the broadcast does not stop the room publication");
+  }
+});
+
 test("uninvited identities, devices, kinds, generations and inactive sources cannot approve", () => {
   for (const mutate of [
     f => { f.input.deviceFingerprint = f.owner.deviceFingerprint; },

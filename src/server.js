@@ -797,7 +797,7 @@ function createHttpHandler(config, registry, services) {
         }
         const identity = await authenticateRequest(request, config, oidcVerifier);
         const input = await readJsonBody(request);
-        sendJson(response, input.action === "create" ? 201 : 200,
+        sendJson(response, ["create", "create-own"].includes(input.action) ? 201 : 200,
           broadcastSourceRequests.execute(identity, input), securityHeaders(config));
         return;
       }

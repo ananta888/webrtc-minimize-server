@@ -53,11 +53,18 @@ export class BroadcastSourceRequestsService {
     await this.request("create", { programId: program.programId, expectedProgramRevision: program.programRevision,
       expectedProgramEpoch: program.programEpoch, targetPeerId, sourceKind });
   }
+  async createOwn(program: SourceRequestProgram, sourceKind: BroadcastSourceKind): Promise<void> {
+    if (!/^prg_[A-Za-z0-9_-]{16,64}$/.test(program.programId) || !positive(program.programRevision)
+      || !positive(program.programEpoch) || !SOURCE_REQUEST_KINDS.includes(sourceKind)) return;
+    await this.request("create-own", { programId: program.programId, expectedProgramRevision: program.programRevision,
+      expectedProgramEpoch: program.programEpoch, sourceKind });
+  }
   async finish(item: SourceInvitation): Promise<void> {
     if (!this.items().includes(item) || item.state !== "pending" || item.expiresAt <= Date.now()) return;
     await this.request(item.ownerPeerId === this.scope?.peerId ? "cancel" : "decline", { requestId: item.requestId });
   }
-  private async request(action: "list" | "create" | "cancel" | "decline", extra: Record<string, unknown>): Promise<void> {
+  private async request(action: "list" | "create" | "create-own" | "cancel" | "decline", extra: Record<string, unknown>): Promise<void> {
+    const creating = action === "create" || action === "create-own";
     const scope = this.scope, fingerprint = this.device.fingerprint(), headers = this.auth.authorizationHeader();
     const previous = this.items().find(item => item.requestId === extra["requestId"]);
     if (!scope || this.busy()) return;
@@ -70,7 +77,7 @@ export class BroadcastSourceRequestsService {
         if (this.scope !== scope || this.controller !== controller || this.device.fingerprint() !== fingerprint
           || JSON.stringify(this.auth.authorizationHeader()) !== JSON.stringify(headers)) throw new Error("identity");
       };
-      if (action === "create") {
+      if (creating) {
         const snapshot = await fetch(`/api/broadcasts/${extra["programId"]}/native-handoff-control`, {
           method: "POST", credentials: "same-origin", redirect: "error", cache: "no-store", signal: controller.signal,
           headers: { ...headers, "content-type": "application/json" },
@@ -93,14 +100,15 @@ export class BroadcastSourceRequestsService {
       controller.signal.throwIfAborted();
       if (this.scope !== scope || this.controller !== controller) return;
       if (this.device.fingerprint() !== fingerprint || JSON.stringify(this.auth.authorizationHeader()) !== JSON.stringify(headers)) throw new Error("identity");
-      if (action !== "list" && (items.length !== 1 || (action === "create"
+      if (action !== "list" && (items.length !== 1 || (creating
         ? items[0].programId !== extra["programId"] || items[0].programRevision !== extra["expectedProgramRevision"]
-          || items[0].programEpoch !== extra["expectedProgramEpoch"] || items[0].targetPeerId !== extra["targetPeerId"]
+          || items[0].programEpoch !== extra["expectedProgramEpoch"]
+          || items[0].targetPeerId !== (action === "create-own" ? scope.peerId : extra["targetPeerId"])
           || items[0].sourceKind !== extra["sourceKind"] || items[0].ownerPeerId !== scope.peerId || items[0].state !== "pending"
         : items[0].requestId !== extra["requestId"] || items[0].state !== (action === "cancel" ? "cancelled" : "declined")))) fail();
       if (["cancel", "decline"].includes(action) && (!previous
         || fields.filter(key => key !== "state").some(key => items[0][key as keyof SourceInvitation] !== previous[key as keyof SourceInvitation]))) fail();
-      if (action === "create" && this.items().some(item => item.requestId === items[0].requestId)) fail();
+      if (creating && this.items().some(item => item.requestId === items[0].requestId)) fail();
       this.items.set(action === "list" ? items : Object.freeze([...this.items().filter(item => item.requestId !== items[0].requestId), ...items].slice(-40)));
       this.loaded.set(true);
     } catch (error) {

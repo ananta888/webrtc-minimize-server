@@ -80,6 +80,38 @@ seine Anfrage allein kann keine v4-Source-Freigabe erzeugen. Der gesonderte
 [v4-Start-Workflow](native-source-program-start.md#angular-einstieg) ist nun
 unter „Mehrquellen-Sendung öffnen“ angeschlossen und liefert nach passender
 Outputbestätigung den Programmref für diese Anfrageoberfläche. Layoutsteuerung,
-Recovery, eigene Controller-Quellen, vollständige Handoff-/Standby-UI und die
+Recovery, vollständige Handoff-/Standby-UI und die
 gemeinsame öffentliche HLS-Abnahme bleiben in TBP-030 offen.
 Kein Produktionsschalter wurde aktiviert.
+
+## Eigene Controller-Quellen
+
+Der zusätzliche geschlossene Request `create-own` enthält Programmrevision,
+Programmepoch, gewünschte Quellenart, Raum, Gerätefingerprint und den expliziten
+Benutzertrigger. Eine `targetPeerId` ist hier verboten; der Server setzt Owner und
+Publisher auf dieselbe aktuell authentisierte menschliche Mitgliedschaft.
+Der bisherige `create`-Befehl bleibt für Selbstanfragen gesperrt.
+
+Die Antwort bleibt eine v1-Metadatenanfrage mit `authority: none`. Ihr bestehendes
+JSON-Schema erlaubte bereits gleiche Peer-IDs; der Browser akzeptiert jetzt
+diesen Fall, sofern er selbst beteiligt ist. Die Anfrage erteilt keine Schlüssel,
+weist keinen Media-Agent zu und ersetzt weder Query noch ausdrücklichen Approve.
+Alte Clients können diese neue Eigenquellenfunktion nicht bedienen.
+
+Die UI braucht dafür keine entfernte Teilnehmerauswahl. Sie bestätigt zunächst
+nur das Vormerken und kennzeichnet die Zeile als „Meine eigene Quelle“. Erst
+die vorhandene Quellenprüfung und getrennte Entschlüsselungsbestätigung führen
+zum aktuellen Publisher-Lease, Receiver-ACK und SFrame-Key-ACK. Dieselben
+Vier-Quellen-, TTL-, Quota-, Scopewechsel- und Sofortwiderrufsgrenzen gelten;
+ein Broadcast-Stopp beendet nicht den ursprünglichen Raumtrack.
+
+59 gezielte Frontendtests sowie die neuen Server-, echten signierten HTTP- und
+v4-Grantprüfungen bestehen. Der Vier-Quellen-Test verwendet die tatsächliche
+serverseitige Publikationsepoch jeder Quelle, nicht pauschal Epoch 1.
+Die erweiterte Angular-Tastaturprüfung nutzt weiter ausdrücklich simulierte
+native HTTP-Antworten; sie ist kein Encoder-/HLS-Ende-zu-Ende-Nachweis.
+Die gebaute Tastaturprüfung bestand in 3,753 Sekunden: Vormerken ohne entfernte
+Auswahl, Abbrechen ohne Request, exaktes `create-own` ohne Ziel-ID, sichtbare
+Eigenquellenzeile und kein automatisches Query/Approve. Null Capture und keine
+zusätzliche PeerConnection. Gemeinsam bestanden 43 Node-/HTTP-/Grant-/UI-Fälle
+in 10,521 Sekunden. Die gebündelte Gesamtregression steht noch aus.

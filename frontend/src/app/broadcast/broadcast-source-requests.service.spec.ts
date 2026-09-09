@@ -3,9 +3,9 @@ import { BroadcastSourceRequestsService, parseSourceInvitations } from "./broadc
 
 const owner = "0123456789abcdef", target = "fedcba9876543210", room = "room-alpha", programId = "prg_aaaaaaaaaaaaaaaa";
 const program = { programId, programRevision: 3, programEpoch: 2 };
-function invitation(overrides = {}) { return { requestId: "bsr_" + "a".repeat(24), roomId: room, programId,
+function invitation(overrides = {}) { const now = Date.now(); return { requestId: "bsr_" + "a".repeat(24), roomId: room, programId,
   programRevision: 5, programEpoch: 2, ownerPeerId: owner, targetPeerId: target, packagerRef: "pkr_aaaaaaaaaaaaaaaa",
-  sourceKind: "camera", state: "pending", createdAt: Date.now(), expiresAt: Date.now() + 120000, authority: "none", ...overrides }; }
+  sourceKind: "camera", state: "pending", createdAt: now, expiresAt: now + 120000, authority: "none", ...overrides }; }
 const reply = (items = [invitation()]) => Response.json({ responseVersion: 1, requests: items });
 const control = () => Response.json({ controlVersion: 1, programId, programRevision: 5, programEpoch: 2,
   state: "live", handoffPending: false, writer: { packagerId: "pkr_aaaaaaaaaaaaaaaa", fencingRevision: 3 } });
@@ -39,6 +39,23 @@ describe("source invitation metadata port", () => {
       expect(() => parseSourceInvitations({ responseVersion: 1, requests: [bad] }, room, owner)).toThrow();
     }
     expect(() => parseSourceInvitations({ responseVersion: 1, requests: [valid, valid] }, room, owner)).toThrow();
+  });
+  it("creates an own-source intent without a caller-selected target and checks its returned owner", async () => {
+    const f = fixture(); f.fetch.mockResolvedValueOnce(control()).mockResolvedValueOnce(reply([invitation({ targetPeerId: owner })]));
+    await f.service.createOwn(program, "camera");
+    const body = JSON.parse(String((f.fetch.mock.calls as unknown as [string, RequestInit][])[1][1].body));
+    expect(body).toEqual({ requestVersion: 1, action: "create-own", roomId: room, deviceFingerprint: "a".repeat(43),
+      trigger: "user-action", programId, expectedProgramRevision: 5, expectedProgramEpoch: 2, sourceKind: "camera" });
+    expect(f.service.items()[0].targetPeerId).toBe(owner); expect(f.service.items()[0].authority).toBe("none");
+    const g = fixture(); g.fetch.mockResolvedValueOnce(control()).mockResolvedValueOnce(reply());
+    await g.service.createOwn(program, "camera"); expect(g.service.items()).toEqual([]); expect(g.service.error()).not.toBe("");
+  });
+  it("cancels its own intent and still refuses self-targeting through the old remote request", async () => {
+    const f = fixture(); await f.service.create(program, owner, "camera"); expect(f.fetch).not.toHaveBeenCalled();
+    const item = invitation({ targetPeerId: owner }); f.fetch.mockResolvedValue(reply([item])); await f.service.load();
+    f.fetch.mockResolvedValue(reply([{ ...item, state: "cancelled" }])); await f.service.finish(f.service.items()[0]);
+    expect(f.service.items()[0].state).toBe("cancelled");
+    expect(JSON.parse(String((f.fetch.mock.calls as unknown as [string, RequestInit][])[1][1].body)).action).toBe("cancel");
   });
   for (const change of ["room", "peer", "reset", "device", "auth"]) {
     it(`ignores late results after ${change} changes`, async () => {

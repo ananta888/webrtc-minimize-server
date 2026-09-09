@@ -30,6 +30,10 @@ import { TrustedSourceWorkflowService } from "./trusted-source-workflow.service"
           </select>
           <button id="broadcast-source-request-create" class="button secondary" type="button"
             [disabled]="!canCreate()" (click)="create()">Anfrage bestätigen…</button>
+          <button id="broadcast-source-request-own" class="button secondary" type="button"
+            [disabled]="!canCreateOwn()" (click)="createOwn()">Eigene Quelle vormerken…</button>
+          <p>Für deine eigene Quelle ist keine Teilnehmerauswahl nötig. Danach die laufende Quelle prüfen und
+            die Entschlüsselung getrennt freigeben; Vormerken startet keine Aufnahme.</p>
         </fieldset>
       }
       @if (requests.loaded()) {
@@ -37,7 +41,8 @@ import { TrustedSourceWorkflowService } from "./trusted-source-workflow.service"
         <ul>
           @for (item of requests.items(); track item.requestId) {
             <li [attr.data-source-request-id]="item.requestId">
-              <strong>{{ item.ownerPeerId === peerId() ? 'Gesendet an ' + name(item.targetPeerId) : 'Anfrage von ' + name(item.ownerPeerId) }}</strong>
+              <strong>{{ item.ownerPeerId === peerId() && item.targetPeerId === peerId() ? 'Meine eigene Quelle'
+                : item.ownerPeerId === peerId() ? 'Gesendet an ' + name(item.targetPeerId) : 'Anfrage von ' + name(item.ownerPeerId) }}</strong>
               · {{ label(item.sourceKind) }} · {{ item.expiresAt <= now() ? 'Abgelaufen' : stateLabel(item.state) }}
               <small>Programm {{ item.programId }} · gültig bis {{ item.expiresAt | date:'HH:mm:ss' }}</small>
               @if (item.state === 'pending') {
@@ -100,6 +105,8 @@ export class BroadcastSourceRequestsComponent implements OnChanges, OnDestroy, O
   readonly sourceTtl = signal(60000);
   readonly canCreate = computed(() => !this.disabled() && !this.requests.busy() && Boolean(this.program())
     && this.candidates().some(candidate => candidate.id === this.target()));
+  readonly canCreateOwn = computed(() => !this.disabled() && !this.requests.busy() && Boolean(this.program())
+    && /^[a-f0-9]{16}$/.test(this.peerId()));
   private identity = "";
   private programKey = "";
   readonly now = signal(Date.now());
@@ -143,4 +150,11 @@ export class BroadcastSourceRequestsComponent implements OnChanges, OnDestroy, O
     await this.requests.create(program, target, kind);
   }
   async finish(item: SourceInvitation): Promise<void> { if (!this.disabled()) await this.requests.finish(item); }
+  async createOwn(): Promise<void> {
+    const program = this.program(), kind = this.kind(), identity = this.identityKey(), room = this.roomId(), peer = this.peerId();
+    if (!this.canCreateOwn() || !program || !window.confirm(`Meine Quelle ${this.label(kind)} für diese Sendung vormerken? Dies startet keine Aufnahme und erteilt keine Entschlüsselungsfreigabe.`)) return;
+    if (!this.canCreateOwn() || this.program() !== program || this.kind() !== kind
+      || this.identityKey() !== identity || this.roomId() !== room || this.peerId() !== peer) return;
+    await this.requests.createOwn(program, kind);
+  }
 }

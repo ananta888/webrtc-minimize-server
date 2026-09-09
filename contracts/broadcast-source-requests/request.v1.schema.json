@@ -7,6 +7,9 @@
       "$ref": "#/$defs/create"
     },
     {
+      "$ref": "#/$defs/create-own"
+    },
+    {
       "$ref": "#/$defs/list"
     },
     {
@@ -17,6 +20,26 @@
     }
   ],
   "$defs": {
+    "create-own": {
+      "description": "Controller's own source intent only. The server derives the publisher from current authenticated membership; separate decrypt consent is still mandatory.",
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/common" },
+        {
+          "type": "object",
+          "required": ["trigger", "programId", "expectedProgramRevision", "expectedProgramEpoch", "sourceKind"],
+          "properties": {
+            "action": { "const": "create-own" },
+            "trigger": { "const": "user-action" },
+            "programId": { "type": "string", "pattern": "^prg_[A-Za-z0-9_-]{16,64}$" },
+            "expectedProgramRevision": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+            "expectedProgramEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+            "sourceKind": { "enum": ["microphone", "camera", "screen", "screen-audio"] }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
     "common": {
       "type": "object",
       "required": [

@@ -4,6 +4,7 @@ import { oidcPrincipal } from "./broadcast-identifiers.js";
 const COMMON = ["requestVersion", "action", "roomId", "deviceFingerprint"];
 const ACTIONS = Object.freeze({
   create: ["trigger", "programId", "expectedProgramRevision", "expectedProgramEpoch", "targetPeerId", "sourceKind"],
+  "create-own": ["trigger", "programId", "expectedProgramRevision", "expectedProgramEpoch", "sourceKind"],
   list: [], decline: ["trigger", "requestId"], cancel: ["trigger", "requestId"],
 });
 const TTL = 120_000;
@@ -21,9 +22,9 @@ function normalize(input) {
     || input.requestVersion !== 1 || typeof input.roomId !== "string" || !/^[a-z0-9][a-z0-9-]{5,47}$/.test(input.roomId)
     || typeof input.deviceFingerprint !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(input.deviceFingerprint)
     || (input.action !== "list" && input.trigger !== "user-action")) fail("invalid_broadcast_source_request");
-  if (input.action === "create" && (typeof input.programId !== "string" || !/^prg_[A-Za-z0-9_-]{16,64}$/.test(input.programId)
+  if (["create", "create-own"].includes(input.action) && (typeof input.programId !== "string" || !/^prg_[A-Za-z0-9_-]{16,64}$/.test(input.programId)
     || ![input.expectedProgramRevision, input.expectedProgramEpoch].every(n => Number.isSafeInteger(n) && n > 0)
-    || typeof input.targetPeerId !== "string" || !/^[a-f0-9]{16}$/.test(input.targetPeerId)
+    || input.action === "create" && (typeof input.targetPeerId !== "string" || !/^[a-f0-9]{16}$/.test(input.targetPeerId))
     || !KINDS.has(input.sourceKind))) fail("invalid_broadcast_source_request");
   if (["decline", "cancel"].includes(input.action)
     && (typeof input.requestId !== "string" || !/^bsr_[A-Za-z0-9_-]{24}$/.test(input.requestId))) fail("invalid_broadcast_source_request");
@@ -62,7 +63,7 @@ export class BroadcastSourceRequests {
     if (!actor || !matches(actor, binding(actor))) fail("broadcast_source_request_membership_required", 403);
     this.#rate(principal, now);
     this.#refresh(now);
-    if (input.action === "create") return this.#create(identity, actor, members, input, now);
+    if (["create", "create-own"].includes(input.action)) return this.#create(identity, actor, members, input, now);
     const accessible = [...this.#records.values()].filter(record => record.roomId === input.roomId
       && (matches(actor, record.owner) || matches(actor, record.target)));
     if (input.action === "list") return this.#response(accessible);
@@ -81,8 +82,9 @@ export class BroadcastSourceRequests {
     if (context.programRevision !== input.expectedProgramRevision || context.programEpoch !== input.expectedProgramEpoch) {
       fail("stale_broadcast_source_request", 409);
     }
-    const target = members.find(peer => peer.id === input.targetPeerId);
-    if (!target || actor.id === target.id || !matches(target, binding(target))) fail("broadcast_source_request_target_unavailable", 404);
+    const own = input.action === "create-own";
+    const target = own ? actor : members.find(peer => peer.id === input.targetPeerId);
+    if (!target || !own && actor.id === target.id || !matches(target, binding(target))) fail("broadcast_source_request_target_unavailable", 404);
     const records = [...this.#records.values()];
     if (records.some(record => record.programId === input.programId && matches(target, record.target)
       && record.sourceKind === input.sourceKind && record.state === "pending")) fail("broadcast_source_request_pending", 409);

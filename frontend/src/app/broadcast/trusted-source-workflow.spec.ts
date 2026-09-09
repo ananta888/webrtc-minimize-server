@@ -77,6 +77,17 @@ describe("explicit browser source workflow", () => {
     const f = fixture(); await f.approve(); f.workflow.receive(ready()); expect(f.ports.start).not.toHaveBeenCalled();
     f.workflow.receive(approval()); await Promise.resolve(); expect(f.ports.start).toHaveBeenCalledOnce();
   });
+  it("requires the same explicit approval and receiver/key ACKs for the controller's own source", async () => {
+    const f = fixture(); await f.workflow.prepare({ ...request, ownerPeerId: context.peerId });
+    f.workflow.receive(sourceResponse());
+    expect(f.view().selection?.publications).toEqual([own]); expect(f.ports.start).not.toHaveBeenCalled();
+    f.workflow.approve(request.requestId, own.publicationId, 60000, "user-action");
+    f.workflow.receive(approval()); expect(f.ports.start).not.toHaveBeenCalled();
+    f.workflow.receive(ready()); await Promise.resolve(); expect(f.view().publications[0].phase).toBe("waiting-key");
+    f.ports.start.mock.calls[0][4]("sending"); expect(f.view().publications[0].phase).toBe("sending");
+    f.workflow.revoke(request.requestId); expect(f.publisher.stop).toHaveBeenCalledOnce();
+    expect(f.track().stop).not.toHaveBeenCalled();
+  });
   it.each(["room", "peer", "identity", "fingerprint", "epoch", "track", "ended", "expiry"])("retires only its sender after %s changes", async kind => {
     const f = fixture(); await f.approve(); f.workflow.receive(approval()); f.workflow.receive(ready()); await Promise.resolve();
     if (kind === "room") f.changeContext({ ...context, roomId: "room-other" });
