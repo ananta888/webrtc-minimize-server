@@ -21,6 +21,10 @@ Langzeit-/Reconnect-Abnahme. Der neue
 [Page-Lifecycle](machine-page-join-lifecycle.md) verhindert insbesondere einen
 offenen Beitritt nach Welcome-Timeout und das Beenden einer neuen Sitzung durch
 eine verspätete alte Operation.
+Der [Bildschirm-Endpoint](machine-screen-endpoint-cleanup.md) versucht außerdem
+Bild- und Tonstopps unabhängig, damit ein einzelner Cleanupfehler den jeweils
+anderen Stop nicht überspringt. Nach fehlgeschlagenem Cleanup startet er keine
+Ersatzquelle.
 
 ## Im Browser
 

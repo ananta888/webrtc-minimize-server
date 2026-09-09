@@ -14,6 +14,7 @@ import { MachineSpeechSessionService } from "./machine-speech-session.service";
 import { MachineAvatarSurfaceFactory } from "./machine-avatar-surface";
 import { MachineAvatarSessionService } from "./machine-avatar-session.service";
 import { MachineScreenSessionService } from "./machine-screen-session.service";
+import { machineScreenEndpoint } from "./machine-screen-endpoint";
 import { MachineMediaSessionService } from "./machine-media-session.service";
 import { MachineScreenAudioSessionService } from "./machine-screen-audio-session.service";
 
@@ -75,10 +76,7 @@ export class MachinePageComponent implements OnDestroy {
       open: (publicationId: string) => this.machineVisual.open(publicationId),
       frame: (subscriptionId: string) => this.machineVisual.frame(subscriptionId),
       close: () => this.machineVisual.close(), status: () => this.machineVisual.status() }),
-    screen: Object.freeze({ open: (sourceId: string) => { this.machineScreenAudio.source.close(); return this.machineScreen.source.open(sourceId); },
-      push: (generation: number, sequence: number, jpeg: string) => this.machineScreen.source.push(generation, sequence, jpeg),
-      close: () => { this.machineScreenAudio.source.close(); this.machineScreen.source.close(); }, status: () => this.machineScreen.source.status(),
-      diagnostics: () => this.machineScreen.source.diagnostics() }),
+    screen: machineScreenEndpoint(this.machineScreen.source, this.machineScreenAudio.source),
     screenAudio: Object.freeze({ open: (sourceId: string) => this.machineScreenAudio.source.open(sourceId),
       push: (generation: number, sequence: number, pcm: string) => this.machineScreenAudio.source.push(generation, sequence, pcm),
       close: () => this.machineScreenAudio.source.close(), status: () => this.machineScreenAudio.source.status() }),
