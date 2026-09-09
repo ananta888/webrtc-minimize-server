@@ -28,11 +28,23 @@
   "risk_scale": ["low", "medium", "high", "critical"],
   "milestones": [
     {"id": "MDS-M1", "title": "Verträge und Autorisierung", "status": "in_progress", "task_ids": ["MDS-01", "MDS-02"]},
-    {"id": "MDS-M2", "title": "Empfang, Chat und Medienquellen", "status": "in_progress", "task_ids": ["MDS-03", "MDS-04", "MDS-05", "MDS-10", "MDS-11", "MDS-12"]},
+    {"id": "MDS-M2", "title": "Empfang, Chat und Medienquellen", "status": "in_progress", "task_ids": ["MDS-03", "MDS-04", "MDS-05", "MDS-10", "MDS-11", "MDS-12", "MDS-13"]},
     {"id": "MDS-M3", "title": "Lebenszyklus und sichtbare Kontrolle", "status": "in_progress", "task_ids": ["MDS-06", "MDS-07"]},
     {"id": "MDS-M4", "title": "Verifikation und kontrollierter Rollout", "status": "in_progress", "task_ids": ["MDS-08", "MDS-09"]}
   ],
   "tasks": [
+    {
+      "id": "MDS-13", "title": "Separat freigegebenen visuellen Empfang begrenzt bereitstellen",
+      "status": "in_progress", "progress_percent": 1, "priority": "P1", "risk": "critical", "depends_on": ["MDS-02", "MDS-06"],
+      "ananta_task_refs": ["MAP-25", "MAP-27"],
+      "acceptance_criteria": [
+        "Default-off video.receive getrennt von Audio-/Senderechten; nur authentisierter Publisher darf seine exakt ausgewählte aktuelle Kamera-/Screen-Publikation freigeben, serverseitige und browserseitige Key-/Subscription-Gates prüfen Source/Capability/Revision.",
+        "Optionaler geschlossener Visual-Probe/Subscription-Port bindet Tenant/Projekt/Task/Runtime/Hubsession/Meetlease/Generation/Raum/Membership/Receive-Revision/Peer/Publikation/Epoch und exportiert nur begrenzte aktuelle dekodierte Frames, keine Capture-API, Keys oder Klartext-Serverroute.",
+        "Dimensionen, Bytes, Frequenz, Zahl und gleichzeitige Frame-Operationen begrenzen; Widerruf, Source-/Trackwechsel, Leaseverlust, Decoderfehler und verspätete Callbacks schließen Ressourcen und verhindern weitere Lieferung.",
+        "UI bietet nur explizit freigegebene Quellarten ohne Capture-Trigger; Aufnahme/Training/Speicherung/Providerfreigabe bleiben getrennt. Deterministische Negativtests und echte Chromium-/Firefox-Frames ohne Empfangsrecht/nach Widerruf denied; isolated npm run check vor Abschluss."
+      ],
+      "source_audit_and_plan": "2026-09-09 b23de52/Ananta7144b5645: bisher nur audio.receive und Mikrofon/Screen-Audio; kein Visualport. docs/machine-visual-receive.md plant additives video.receive, maximal4 exakt aktuell freigegebene audiovisuelle Publikationen, eigene Source/Capability-Gates, optionalen bounded Frameport und UI-Auswahl. Ananta besitzt Analyse-/Task-/Providerpolicy; Meet bekommt weder ASR/Visionmodelle noch Speicherrecht. Kein Public-Serving-/Trustwechsel während Umsetzung."
+    },
     {
       "id": "MDS-01", "title": "Versionierten Maschinen-Contract mit Ananta abstimmen",
       "client_probe_packaged_integration": "2026-09-08 Fresh Anantaimage01db5060da48/rootsource89956ecaf and Meet025d9ae build: both real Hub/two packaged Worker screen/persona/overlapping speech/independent revoke cases passed105.70s without application source mounts. Probe and strict consumer integrated. Separate selected-voice GPU dialog later stopped during second output on stale Hub control after both answers generated; Ananta MAP11/24 tracks diagnosis, no probe or runtime-fix conflation. MDS-01 remains open for broader contract acceptance; no public/native/production claim. docs/machine-client-probe.md.",
@@ -251,14 +263,14 @@
       ]
     }
   ],
-  "critical_path_tasks": ["MDS-01", "MDS-02", "MDS-03", "MDS-07", "MDS-08", "MDS-09"],
+  "critical_path_tasks": ["MDS-01", "MDS-02", "MDS-03", "MDS-13", "MDS-07", "MDS-08", "MDS-09"],
   "tasks_status_summary": {
-    "total": 12,
-    "by_status": {"todo": 0, "in_progress": 9, "partial": 0, "blocked": 0, "done": 3},
-    "progress_percent_done": 25,
-    "by_priority": {"P0": 3, "P1": 9, "P2": 0, "P3": 0},
-    "by_risk": {"low": 0, "medium": 0, "high": 8, "critical": 4},
-    "critical_path": {"total": 6, "done": 0, "remaining": 6},
+    "total": 13,
+    "by_status": {"todo": 0, "in_progress": 10, "partial": 0, "blocked": 0, "done": 3},
+    "progress_percent_done": 23.08,
+    "by_priority": {"P0": 3, "P1": 10, "P2": 0, "P3": 0},
+    "by_risk": {"low": 0, "medium": 0, "high": 8, "critical": 5},
+    "critical_path": {"total": 7, "done": 0, "remaining": 7},
     "milestones": {"total": 4, "todo": 0, "in_progress": 4, "blocked": 0, "done": 0}
   },
   "summary_notes": [
