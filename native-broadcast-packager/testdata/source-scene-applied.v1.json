@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "type": "source-program-scene-applied",
+  "commandId": "scn_aaaaaaaaaaaaaaaa",
+  "assignmentId": "asn_aaaaaaaaaaaaaaaa",
+  "programId": "prg_aaaaaaaaaaaaaaaa",
+  "programEpoch": 1,
+  "leaseId": "lea_aaaaaaaaaaaaaaaa",
+  "fencingRevision": 1,
+  "sceneRevision": 2,
+  "appliedAt": 1788958800000
+}
