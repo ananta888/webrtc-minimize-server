@@ -1,3 +1,5 @@
+import { SessionOperation } from "../../webrtc/session-operation";
+
 export interface MachinePageLifecyclePorts {
   load(): Promise<unknown>;
   join(roomId: string, grant: string): Promise<void>;
@@ -11,6 +13,7 @@ export interface MachinePageLifecyclePorts {
 export class MachinePageLifecycle {
   private generation = 0;
   private destroyed = false;
+  private pending: SessionOperation | null = null;
   // Detached resource handles may make a later close a no-op. Only a fresh
   // page can recover from an unconfirmed stop, never a new grant on this page.
   private quarantined = false;
@@ -27,16 +30,16 @@ export class MachinePageLifecycle {
     }
     const generation = this.generation;
     const current = () => generation === this.generation && !this.destroyed;
+    const operation = new SessionOperation(20_000, "machine_operation_bounded_stop", "machine_cancelled");
+    this.pending = operation;
     try {
-      await this.ports.load();
+      await operation.wait(() => this.ports.load());
       if (!current()) throw new Error("machine_cancelled");
-      await this.ports.join(roomId, grant);
+      await operation.wait(() => this.ports.join(roomId, grant));
       if (!current()) throw new Error("machine_cancelled");
-      const deadline = performance.now() + 20_000;
       while (!this.ports.joined()) {
         if (!current()) throw new Error("machine_cancelled");
-        if (performance.now() >= deadline) throw new Error("machine_operation_bounded_stop");
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await operation.pause(50);
       }
       if (!current()) throw new Error("machine_cancelled");
     } catch (error) {
@@ -44,11 +47,15 @@ export class MachinePageLifecycle {
       // must never close the replacement session or its publications.
       if (current()) this.leave();
       throw error;
+    } finally {
+      operation.dispose();
+      if (this.pending === operation) this.pending = null;
     }
   }
 
   leave(): void {
     ++this.generation;
+    this.pending?.abort(); this.pending = null;
     let failed = false;
     for (const close of this.ports.cleanup) {
       try { if (close() === false) failed = true; } catch { failed = true; }

@@ -7,6 +7,7 @@ import { MachineSessionContext, MachineSessionLease, parseMachineSessionContext,
 import { IceTierPolicy, parseIceTierPolicy } from "./ice-policy";
 import { PeerMeshService } from "./peer-mesh.service";
 import { ServerMessage, SignalingService } from "./signaling.service";
+import { SessionOperation } from "./session-operation";
 
 export type RoomMode = "room" | "pair";
 
@@ -38,8 +39,8 @@ export class RoomSessionService {
   readonly machineExpiresAt = signal(0);
   readonly machineLease = signal<MachineSessionLease | null>(null);
   readonly machineContext = signal<MachineSessionContext | null>(null);
-  private machineRenewal: AbortController | null = null;
-  private joinOperation: AbortController | null = null;
+  private machineRenewal: SessionOperation | null = null;
+  private joinOperation: SessionOperation | null = null;
   private sessionGeneration = 0;
   private cleanupUnconfirmed = false;
   private workspaceInvite = "";
@@ -77,16 +78,16 @@ export class RoomSessionService {
   async join(roomId: string, displayName: string, mode: RoomMode, machineGrant?: string): Promise<void> {
     if (!this.leave()) throw new Error("session_cleanup_failed");
     const generation = this.sessionGeneration;
-    const controller = new AbortController();
+    const controller = new SessionOperation(15_000, "session_join_timeout");
     this.joinOperation = controller;
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]);
+    const signal = controller.signal;
     this.error.set("");
     const normalizedRoom = roomId.trim().toLowerCase();
     const normalizedName = displayName.trim().replace(/\s+/g, " ");
     try {
-      const deviceProof = await this.device.createProof({ roomId: normalizedRoom, mode, displayName: normalizedName });
+      const deviceProof = await controller.wait(() => this.device.createProof({ roomId: normalizedRoom, mode, displayName: normalizedName }));
       signal.throwIfAborted();
-      const response = await fetch(machineGrant ? "/api/machine/sessions" : "/api/sessions", {
+      const response = await controller.wait(() => fetch(machineGrant ? "/api/machine/sessions" : "/api/sessions", {
         method: "POST",
         signal, credentials: "same-origin", redirect: "error",
         headers: { "content-type": "application/json", ...(machineGrant
@@ -99,8 +100,8 @@ export class RoomSessionService {
           machineReceiveVersion: 1,
           ...(this.workspaceInvite ? { workspaceInvite: this.workspaceInvite } : {}),
         }),
-      });
-      const body = await response.json() as SessionResponse & { error?: string };
+      }));
+      const body = await controller.wait(() => response.json()) as SessionResponse & { error?: string };
       signal.throwIfAborted();
       if (generation !== this.sessionGeneration) throw new Error("session_join_cancelled");
       const icePolicy = parseIceTierPolicy(body.icePolicy);
@@ -150,26 +151,26 @@ export class RoomSessionService {
         this.error.set(error instanceof Error ? error.message : "session_join_failed");
       }
       throw error;
-    } finally { if (this.joinOperation === controller) this.joinOperation = null; }
+    } finally { controller.dispose(); if (this.joinOperation === controller) this.joinOperation = null; }
   }
 
   async renewMachine(grant: string): Promise<MachineSessionLease> {
     const previous = this.machineLease();
     if (!this.joined() || !previous || previous.expiresAt <= Date.now() || this.machineRenewal
       || typeof grant !== "string" || !grant || grant.length > 4096) throw new Error("machine_renewal_unavailable");
-    const controller = new AbortController();
+    const controller = new SessionOperation(10_000, "machine_renewal_timeout");
     this.machineRenewal = controller;
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]);
+    const signal = controller.signal;
     try {
       const roomId = this.roomId();
-      const deviceProof = await this.device.createProof({ roomId, mode: "room", displayName: "Ananta (KI)",
-        machineSessionId: previous.sessionId, expectedGeneration: previous.generation });
+      const deviceProof = await controller.wait(() => this.device.createProof({ roomId, mode: "room", displayName: "Ananta (KI)",
+        machineSessionId: previous.sessionId, expectedGeneration: previous.generation }));
       signal.throwIfAborted();
-      const response = await fetch("/api/machine/sessions/renew", { method: "POST", credentials: "same-origin",
+      const response = await controller.wait(() => fetch("/api/machine/sessions/renew", { method: "POST", credentials: "same-origin",
         redirect: "error", signal, headers: { "content-type": "application/json", Authorization: `Bearer ${grant}` },
-        body: JSON.stringify({ roomId, sessionId: previous.sessionId, expectedGeneration: previous.generation, deviceProof }) });
+        body: JSON.stringify({ roomId, sessionId: previous.sessionId, expectedGeneration: previous.generation, deviceProof }) }));
       if (!response.ok) throw new Error("machine_renewal_denied");
-      const next = parseMachineSessionLease(await response.json());
+      const next = parseMachineSessionLease(await controller.wait(() => response.json()));
       signal.throwIfAborted();
       if (!this.joined() || this.machineLease() !== previous || next.sessionId !== previous.sessionId
         || next.generation !== previous.generation + 1 || next.absoluteExpiresAt !== previous.absoluteExpiresAt
@@ -180,7 +181,7 @@ export class RoomSessionService {
       // Unknown renewal outcome is not permission to continue on a stale local lease.
       if (this.machineLease() === previous) this.leave();
       throw error;
-    } finally { if (this.machineRenewal === controller) this.machineRenewal = null; }
+    } finally { controller.dispose(); if (this.machineRenewal === controller) this.machineRenewal = null; }
   }
 
   private cancelMachineRenewal(): void {

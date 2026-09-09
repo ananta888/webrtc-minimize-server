@@ -5,6 +5,33 @@ Aktivierung sind unterschiedliche Zustände. Die öffentliche Meet-Instanz melde
 bei der aktuellen Prüfung `admissionEnabled: false`: Noch kein produktiver
 KI-Beitritt. Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
 
+## Priorisierte Sitzungsintegration: aktueller Nachtrag
+
+Die sechs angefragten Grundfunktionen sind implementiert; neu gehärtet ist das
+[durchgängig begrenzte Warten auf Beitritt und Erneuerung](machine-page-join-lifecycle.md).
+Ein hängender Gerätenachweis kann den Controller nicht mehr unbegrenzt festhalten.
+Leave, Timeout und Ersatzbeitritt verhindern Folgeoperationen aus alten Ergebnissen.
+Hub-Trust, Publisherfreigaben und die bestehenden Lease-Grenzen bleiben unverändert.
+
+Die isolierte Gesamtprüfung auf `e50f246` plus diesem Nachtrag bestand
+1.170 Frontendtests, Build, Typprüfung, Go und statische Gates sowie 1.082
+Node-/Browserfälle. Zwei Fälle scheiterten, vier wurden ausdrücklich übersprungen
+(Node: 506,036 s). Die gemeinsamen Chromium-/Firefox-Dialoge bestanden jeweils
+mit 16.000 PCM-Samples, Chat, bewegtem Screen, drei Renewals und Rechteentzug.
+Der neue echte Chromium-Test für einen hängenden Renewal-Gerätenachweis bestand
+in 12,704 s mit beendeter Membership und geschlossenen Verbindungen.
+
+Offen bleiben die separaten Chromium-Quellenzeit- und Sprachausgabetests.
+Beim Sprachabbruch meldete der Trace `progress-expired` nach 499 ms monotoner
+Zeit gegenüber 2.578 ms Wanduhrzeit; die Sitzung war noch gültig. Die Ursache ist
+nicht abschließend belegt. Die externe Infrastrukturstufe wurde wegen der Fehler
+nicht erreicht; keine Wiederholung wurde als Ursachenfix ausgegeben.
+Die grüne CI `34365113608` betrifft nur den vorherigen Commit `e50f246`, nicht
+diesen Nachtrag. Kein Deployment und keine öffentliche Hub-Aktivierung wurden
+durchgeführt. Dafür fehlt weiterhin das ausdrücklich freigegebene Hub-/Projektprofil.
+
+## Frühere Prüfläufe
+
 Die frühere isolierte Gesamtprüfung auf Basis `dfa9829` mit nativer Szenenbasis
 und der Freigabe-Ablaufkorrektur endete mit **Exit 1**: 1.142 Frontendtests und
 1.039 Node-/Browsertests bestanden, ein Fehler und zwei Node-Skips

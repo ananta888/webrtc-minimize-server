@@ -15,6 +15,43 @@ function fixture() {
 }
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
+it.each(["load", "join"] as const)("bounds a never-settled %s before Welcome", async stage => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  const f = fixture(), held = deferred(); f.ports[stage].mockReturnValueOnce(held.promise);
+  let failure = "";
+  const pending = f.lifecycle.join(room, "grant").catch(error => { failure = error.message; });
+  try {
+    await vi.advanceTimersByTimeAsync(20_050);
+    expect(failure).toBe("machine_operation_bounded_stop");
+    expect(f.close).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { f.lifecycle.leave(); held.resolve(); await pending; }
+});
+
+it("settles a superseded load even if its dependency never completes", async () => {
+  const f = fixture(), held = deferred(); f.ports.load.mockReturnValueOnce(held.promise);
+  let failure = "";
+  const old = f.lifecycle.join(room, "old").catch(error => { failure = error.message; });
+  try {
+    await f.lifecycle.join(room, "fresh");
+    expect(failure).toBe("machine_cancelled");
+    expect(f.ports.join).toHaveBeenCalledExactlyOnceWith(room, "fresh");
+    expect(f.ports.joined()).toBe(true);
+  } finally { held.resolve(); await old; f.lifecycle.leave(); }
+});
+
+it("shares one twenty-second budget across load, admission and Welcome", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  const f = fixture();
+  f.ports.load.mockImplementationOnce(() => new Promise(resolve => setTimeout(resolve, 12_000)));
+  f.ports.join.mockImplementationOnce(() => new Promise(resolve => setTimeout(resolve, 6000)));
+  const rejected = expect(f.lifecycle.join(room, "grant")).rejects.toThrow("machine_operation_bounded_stop");
+  await vi.advanceTimersByTimeAsync(19_999);
+  expect(f.close).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(1); await rejected;
+  expect(f.close).toHaveBeenCalledTimes(2); expect(vi.getTimerCount()).toBe(0);
+});
+
 it("retires an admitted session when Welcome never arrives, without retrying", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
   const f = fixture(); f.ports.join.mockImplementation(async () => {});
@@ -29,8 +66,8 @@ it.each(["resolve", "reject"] as const)("does not retire a replacement on an old
   const f = fixture(), old = deferred();
   f.ports.join.mockImplementationOnce(() => old.promise);
   const first = f.lifecycle.join(room, "old");
-  const rejected = expect(first).rejects.toThrow(outcome === "reject" ? "old failure" : "machine_cancelled");
-  await Promise.resolve();
+  const rejected = expect(first).rejects.toThrow("machine_cancelled");
+  await vi.waitFor(() => expect(f.ports.join).toHaveBeenCalledOnce());
   await f.lifecycle.join(room, "fresh");
   const closes = f.close.mock.calls.length;
   if (outcome === "resolve") old.resolve(); else old.reject(new Error("old failure"));

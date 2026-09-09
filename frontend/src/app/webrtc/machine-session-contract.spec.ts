@@ -14,8 +14,58 @@ function setup() {
   service.roomId.set(roomId); service.joined.set(true); service.machineLease.set(lease());
   return { service, device, signaling };
 }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe("machine session lease client", () => {
+  it.each(["proof", "fetch", "body"])("bounds renewal even when %s ignores abort", async stage => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const f = setup(); let resolve!: (value: object) => void;
+    const held = new Promise<object>(yes => { resolve = yes; });
+    const request = vi.fn(async () => ({ ok: true, json: async () => held }));
+    if (stage === "proof") f.device.createProof.mockReturnValueOnce(held);
+    if (stage === "fetch") request.mockImplementationOnce(() => held as never);
+    vi.stubGlobal("fetch", request);
+    let rejected = false;
+    const pending = f.service.renewMachine("grant").catch(() => { rejected = true; });
+    try {
+      await vi.advanceTimersByTimeAsync(10_050);
+      expect(rejected).toBe(true);
+      expect(f.service.joined()).toBe(false);
+      expect(f.service.machineLease()).toBeNull();
+      expect(vi.getTimerCount()).toBe(0);
+      if (stage === "proof") expect(request).not.toHaveBeenCalled();
+    } finally { f.service.leave(); resolve({}); await pending; }
+  });
+  it("settles a cancelled renewal proof immediately and preserves a replacement lease", async () => {
+    const f = setup(); let resolve!: (value: object) => void;
+    f.device.createProof.mockReturnValueOnce(new Promise(yes => { resolve = yes; }));
+    const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
+    const pending = f.service.renewMachine("old-grant");
+    const rejected = expect(pending).rejects.toThrow("session_operation_cancelled");
+    f.service.leave();
+    const replacement = { ...lease(), sessionId: `ms_${"b".repeat(32)}` };
+    f.service.machineLease.set(replacement); f.service.joined.set(true);
+    await rejected;
+    resolve({}); await Promise.resolve();
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(f.service.machineLease()).toBe(replacement); expect(f.service.joined()).toBe(true);
+    f.service.leave();
+  });
+  it.each(["proof", "fetch", "body"])("bounds session admission when %s ignores abort", async stage => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const f = setup(); let resolve!: (value: object) => void;
+    const held = new Promise<object>(yes => { resolve = yes; });
+    const request = vi.fn(async () => ({ ok: true, json: async () => held }));
+    if (stage === "proof") f.device.createProof.mockReturnValueOnce(held);
+    if (stage === "fetch") request.mockImplementationOnce(() => held as never);
+    vi.stubGlobal("fetch", request);
+    const rejected = expect(f.service.join(roomId, "Ananta (KI)", "room", "grant"))
+      .rejects.toThrow("session_join_timeout");
+    await vi.advanceTimersByTimeAsync(15_000); await rejected;
+    resolve({}); await Promise.resolve();
+    expect(f.service.joined()).toBe(false); expect(f.signaling.connect).not.toHaveBeenCalled();
+    if (stage === "proof") expect(request).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it("accepts only the server's closed v2 scope projection, never capabilities or caller authority", () => {
     const context = { schema: "ananta.meet-machine-context.v1", tenantId: "tenant", projectId: "project",
       taskId: "task", runtimeId: "runtime", hubSessionId: "session" };

@@ -5,11 +5,33 @@ Die Maschinenpage führt weder automatische Reconnects noch eine eigene
 Projekt-/Raumfreigabe ein. `RoomSessionService` besitzt unverändert Admission,
 P-256-Nachweise, Signaling und erneuerbare Leases.
 
-Der separate `MachinePageLifecycle` begrenzt das Warten auf Welcome nach der
-Admission auf 20 Sekunden anhand der monotonen Uhr. Scheitert die eigene
+Der separate `MachinePageLifecycle` begrenzt den gesamten Beitritt einschließlich
+Konfiguration, Admission und Welcome auf 20 Sekunden anhand der monotonen Uhr.
+Der Sessiondienst behält zusätzlich seine 15-Sekunden-Admissiongrenze und die
+10-Sekunden-Grenze für Renewals. Ein gemeinsamer kleiner `SessionOperation`-Port
+begrenzt jeden Await, auch wenn ein WebCrypto-Nachweis oder eine fehlerhafte
+Fetch-/JSON-Abhängigkeit ihr AbortSignal ignoriert. Die Deadline wird auch beim
+Ergebnis geprüft, bevor ein verspäteter Timer laufen konnte. Leave und Ablösung
+beenden den alten Aufrufer sofort; Timer und Abortlistener werden entfernt.
+Das bricht nicht das interne WebCrypto-Promise ab: Seine spätere Auflösung oder
+Ablehnung wird beobachtet, aber nicht mehr für HTTP, Signaling oder Lease-Updates
+verwendet. Die Besitzer prüfen weiterhin ihre Generation und bereinigen ihre
+eigenen Ressourcen. Grant-/Lease-Ablauf, Capture- und Quellenrechte bleiben
+unverändert. Scheitert die eigene
 Operation, beendet sie ihre Aufnahme und alle eigenen Endpunkte. Damit bleibt
 nach einer an den Controller gemeldeten Ablehnung kein Signaling-Join offen,
 der verspätet doch noch erfolgreich werden könnte.
+
+Der aktuelle Nachtrag bestand 43 fokussierte Operation-/Lifecycle-/Sessiontests.
+Sechs der neuen Hang-/Ablösungsfälle scheiterten zuvor reproduzierbar.
+`test/machine-renewal-deadline.browser.test.js` prüft zusätzlich einen echten
+TLS-/Ed25519-/P-256-Beitritt und blockiert erst danach ausschließlich den
+testeigenen WebCrypto-Renewalnachweis. Der Controller meldet den Renewal-Timeout;
+Membership und PeerConnections werden beendet,
+ohne Capture oder Transformfehler. Der Browserfall bestand in 12,704 Sekunden.
+Das ist kein produktiver Hub-Ausfalltest und keine Freigabe zum automatischen
+Wiederbeitritt. Die [Gesamtprüfung](ananta-integration-status.md) bleibt wegen
+zweier separater Chromium-Quellenzeit-/Sprachfehler nicht bestanden.
 
 Jeder explizite Leave und neue Beitritt invalidiert zuerst die vorherige
 Page-Generation. Verspätete Auflösungen oder Fehler dürfen ausschließlich die
