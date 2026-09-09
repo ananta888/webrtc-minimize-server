@@ -140,3 +140,14 @@ explicit packaged gate. The bridge now follows the existing opt-in convention;
 activated invalid profiles still fail before allocating resources. Four receive
 bridge opt-in/refusal checks passed2.73s. The failed full run is not claimed green;
 the corrected committed fixture must pass the isolated check before closure.
+
+## MDS-13 completion
+
+Committed `d57096d` passed the isolated `npm run check` with exit0:844 frontend
+tests,863 Node passes,0 failures and2 explicit Node skips; Node duration340.96s.
+Build, Go and static/security gates passed. External infrastructure and optional
+image scanning remain explicit skips, not claimed evidence. The eight real
+browser-engine/source combinations are included. Together with the actual
+packaged Ananta analysis/regrant/revoke gate, the four scoped MDS-13 criteria are
+met. Only this visual receive port is complete; the surrounding dialog track,
+Ananta's remaining receive work and public/production gates are not closed.
