@@ -56,7 +56,8 @@ three unpublished local commits. Both sets of TODO notes were retained;
 48 focused chat/floor helper checks passed after integration. That earlier
 aggregate does not cover this retirement implementation. The next combined
 regression must include it before the recovery track is completed.
-# Packaged multimedia recovery follow-up
+
+## Packaged multimedia recovery follow-up
 
 The private two-Worker fixture now samples silence across all receiver audio
 tracks, including retired connections no longer associated with visible video.
@@ -79,3 +80,27 @@ freshness. Twenty-two targeted helper checks passed in 0.531 seconds.
 These are private synthetic-policy technical observations, not public TURN,
 multi-host, two-hour soak or production release evidence. A combined isolated
 repository check remains required before closing the lifecycle milestone.
+
+The isolated combined check at `12235df` subsequently completed with 914
+frontend tests passed, successful type/build/Go/static checks, and 945 Node
+tests passed, one failed and two skipped in 380.403 seconds. The failure is
+the six-human Chromium trusted-relay topology wait before camera capture,
+not the packaged reconnect test. The infrastructure tail was not reached.
+MDS-08 retains this compatibility failure; bounded failure-only eligibility
+counts and browser mode enums are being added before targeted reproduction.
+No topology or permission rule is relaxed and this aggregate is not green.
+
+Targeted diagnosis reproduced the failure four times (33.287/33.141/33.206/
+33.005 s). Both browser checkbox events and outgoing consent messages were
+observed, but server `rate_limited` errors accompanied missing registry consent.
+The host had 94 interfaces / 31 IPv4 interface addresses. For this single-host
+six-peer test only, Chromium now uses
+`--force-webrtc-ip-handling-policy=default_public_and_private_interfaces` to
+avoid enumerating every Docker bridge. This preserves private-IP connectivity
+on the default interface; see the
+[Chromium IP-handling policy](https://chromium.googlesource.com/chromium/src/+/376fc41e87a058f7a7b300b0ec3a4982b4ec0960/components/policy/resources/templates/policy_definitions/Miscellaneous/WebRtcIPHandling.yaml).
+The unchanged 240-message/10-second server ceiling and real explicit consent
+then passed the entire relay/camera/adaptive-tier/mosaic case in 6.920 seconds.
+No host interface, runtime policy, timeout or serving build was changed. This
+is a bounded fixture network profile, not a claim about unrestricted host
+candidate storms or public NAT interoperability. Combined confirmation follows.

@@ -7,6 +7,7 @@ import { chromium, firefox } from "playwright";
 
 import { createAppServer } from "../src/server.js";
 import { collectSFrameStartup, installSFrameStartupObservation } from "./helpers/sframe-startup-observation.mjs";
+import { installRelayInputObservation, observeRelayConsent, relayTopologyObservation } from "./helpers/relay-topology-observation.mjs";
 
 const cameraContinuityWindowMs = Math.max(4_000, Math.min(
   180_000,
@@ -825,6 +826,7 @@ test("six Chromium peers use consented video relay, adaptive sender tiers and on
       mediaE2eeMode: "disabled",
     },
   });
+  const consentHistory = observeRelayConsent(app.registry);
   await new Promise((resolve, reject) => {
     app.server.once("error", reject);
     app.server.listen(0, "127.0.0.1", resolve);
@@ -834,6 +836,8 @@ test("six Chromium peers use consented video relay, adaptive sender tiers and on
   const browser = await chromium.launch({
     headless: true,
     args: [
+      // Single-host relay behavior, not enumeration of every Docker bridge.
+      "--force-webrtc-ip-handling-policy=default_public_and_private_interfaces",
       "--use-fake-device-for-media-stream",
       "--use-fake-ui-for-media-stream",
       `--use-file-for-fake-audio-capture=${fakeAudio.filename}`,
@@ -886,6 +890,7 @@ test("six Chromium peers use consented video relay, adaptive sender tiers and on
   });
 
   const names = ["Ada", "Grace", "Linus", "Margaret", "Alan", "Katherine"];
+  await browserContext.addInitScript(installRelayInputObservation);
   const pages = await Promise.all(names.map(() => browserContext.newPage()));
   const pageErrors = [];
   for (const page of pages) page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -904,7 +909,13 @@ test("six Chromium peers use consented video relay, adaptive sender tiers and on
   for (const page of pages) assert.deepEqual(await page.evaluate(() => window.__captureCalls), []);
   await pages[0].locator("#relay-consent").check();
   await pages[1].locator("#relay-consent").check();
-  await Promise.all(pages.map((page) => page.locator("#topology-status", { hasText: "trusted_peer_relay" }).waitFor()));
+  try {
+    await Promise.all(pages.map((page) => page.locator("#topology-status", { hasText: "trusted_peer_relay" }).waitFor()));
+  } catch {
+    assert.fail("test_relay_topology_missing:" + JSON.stringify({
+      ...await relayTopologyObservation(pages, app.registry.members(roomId)), consent: consentHistory(),
+    }));
+  }
   for (const page of pages) assert.deepEqual(await page.evaluate(() => window.__captureCalls), []);
 
   for (const page of pages) {
