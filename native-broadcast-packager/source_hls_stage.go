@@ -16,9 +16,11 @@ var sourceHLSSegment = regexp.MustCompile(`^segment_[0-9]{1,12}\.m4s$`)
 var sourceHLSNumber = regexp.MustCompile(`^[0-9]{1,12}$`)
 
 type sourceHLSPlaylist struct {
-	data  []byte
-	media []string
+	data   []byte
+	media  []string
+	window sourceHLSWindow
 }
+type sourceHLSWindow struct{ first, last uint64 }
 type sourceHLSPublished struct {
 	info   os.FileInfo
 	source os.FileInfo
@@ -32,9 +34,11 @@ type sourceHLSStage struct {
 	owner       *outputOwnership
 	fence       *sourceEncoderFence
 	profile     assignmentProfile
+	epoch       sourceHLSEpoch
 	pending     string
 	directories map[string]os.FileInfo
 	published   map[string]sourceHLSPublished
+	windows     map[string]sourceHLSWindow
 	last        string
 	cycle       uint64
 	maxBytes    int64
@@ -43,11 +47,18 @@ type sourceHLSStage struct {
 }
 
 func newSourceHLSStage(owner *outputOwnership, fence *sourceEncoderFence, profile assignmentProfile, maxBytes int64) (*sourceHLSStage, error) {
+	return newSourceHLSStageWithEpoch(owner, fence, profile, maxBytes, 0)
+}
+
+func newSourceHLSStageWithEpoch(owner *outputOwnership, fence *sourceEncoderFence, profile assignmentProfile, maxBytes int64, epoch sourceHLSEpoch) (*sourceHLSStage, error) {
+	if !epoch.valid() {
+		return nil, errors.New("source HLS generation budget")
+	}
 	if owner == nil || fence == nil || !fence.Valid() || len(profile.Renditions) < 1 || len(profile.Renditions) > 3 || maxBytes < 1 || maxBytes > 128*1024*1024 {
 		return nil, errors.New("source HLS stage config")
 	}
-	s := &sourceHLSStage{owner: owner, fence: fence, profile: profile, pending: filepath.Join(owner.output, ".pending"), maxBytes: maxBytes,
-		directories: map[string]os.FileInfo{"": owner.info}, published: make(map[string]sourceHLSPublished)}
+	s := &sourceHLSStage{owner: owner, fence: fence, profile: profile, epoch: epoch, pending: filepath.Join(owner.output, ".pending"), maxBytes: maxBytes,
+		directories: map[string]os.FileInfo{"": owner.info}, published: make(map[string]sourceHLSPublished), windows: make(map[string]sourceHLSWindow)}
 	s.profile.Renditions = append([]assignmentRendition(nil), profile.Renditions...)
 	paths := []string{".pending"}
 	seen := map[string]bool{}
@@ -166,7 +177,7 @@ func (s *sourceHLSStage) readPlaylist(id, init string) (sourceHLSPlaylist, error
 	if err != nil {
 		return sourceHLSPlaylist{}, err
 	}
-	return sourceHLSParsePlaylist(data, init)
+	return s.epoch.playlist(data, init)
 }
 
 func (s *sourceHLSStage) fileBytes() int64 {
@@ -375,6 +386,9 @@ func (s *sourceHLSStage) Publish() (bool, error) {
 		if err != nil {
 			return false, err
 		}
+		if previous, ok := s.windows[r.ID]; ok && (p.window.first < previous.first || p.window.last < previous.last) {
+			return false, errors.New("source HLS timeline rollback")
+		}
 		plans[i] = p
 		key += string(p.data)
 	}
@@ -401,6 +415,9 @@ func (s *sourceHLSStage) Publish() (bool, error) {
 		return false, err
 	}
 	s.last = key
+	for i, r := range s.profile.Renditions {
+		s.windows[r.ID] = plans[i].window
+	}
 	for relative, p := range s.published {
 		if p.seen+2 < s.cycle {
 			if err := s.remove(relative, p); err != nil {

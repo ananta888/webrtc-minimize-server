@@ -337,7 +337,7 @@ export class BroadcastRuntimeRegistry {
       role: "owner",
       epoch: machine.epochs.membership,
     }, now);
-    const next = Object.freeze({ ...record, snapshot });
+    const next = Object.freeze({ ...record, snapshot, sourceAuthorityRevision: snapshot.machine.program.revision });
     this.#records.set(key, next);
     return entry(next);
   }
@@ -834,6 +834,7 @@ export class BroadcastRuntimeRegistry {
     const machine = record.snapshot.machine;
     const writer = machine.writerLeases.find(lease => lease.role === "packager-writer");
     return Object.freeze({ ...context, tenantId: machine.scope.tenantId,
+      sourceAuthorityRevision: record.sourceAuthorityRevision ?? machine.program.revision,
       ownerSubjectRef: machine.scope.ownerSubjectRef, state: machine.program.state,
       leaseId: writer.leaseId, expiresAt: writer.expiresAt });
   }
@@ -967,19 +968,45 @@ export class BroadcastRuntimeRegistry {
   }
 
   markNativeOutputReady(resourceRef, packagerId, fencingRevision, now = this.#clock()) {
+    const { key, record, packagerLease } = this.#currentNativeOutput(resourceRef, packagerId, fencingRevision, now);
+    let machine = record.snapshot.machine;
+    if (machine.program.state === "live") return entry(record);
+    if (machine.program.state === "degraded") {
+      // A local encoder replacement does not create source or writer authority.
+      // The existing gateway and packager leases must both remain fresh.
+      machine = applyBroadcastProgramCommand(machine, command(machine, "advance", { toState: "live" }), now).state;
+      return entry(this.#synchronizeRecord(key, record, machine, now, true));
+    }
+    if (machine.program.state !== "preparing") fail("broadcast_program_not_preparing", 409);
+    return this.#activateNativeOutput(key, record, packagerLease, now);
+  }
+
+  markNativeOutputUnavailable(resourceRef, packagerId, fencingRevision, now = this.#clock()) {
+    const { key, record } = this.#currentNativeOutput(resourceRef, packagerId, fencingRevision, now);
+    const previous = record.snapshot.machine;
+    if (!["publishing", "live"].includes(previous.program.state)) return entry(record);
+    const machine = applyBroadcastProgramCommand(previous, command(previous, "advance", { toState: "degraded" }), now).state;
+    return entry(this.#synchronizeRecord(key, record, machine, now, true));
+  }
+
+  #currentNativeOutput(resourceRef, packagerId, fencingRevision, now) {
     if (!RESOURCE.test(resourceRef || "") || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(packagerId || "")
-      || !Number.isSafeInteger(fencingRevision) || fencingRevision < 1) unavailable();
+      || !Number.isSafeInteger(fencingRevision) || fencingRevision < 1 || !Number.isSafeInteger(now)) unavailable();
     const found = [...this.#records.entries()].find(([, record]) => record.resourceRef === resourceRef);
     if (!found) unavailable();
     const [key, record] = found;
-    let machine = record.snapshot.machine;
+    const machine = record.snapshot.machine;
     const packagerLease = machine.writerLeases.find(({ role }) => role === "packager-writer");
     if (!packagerLease || packagerLease.holderRef !== packagerId
       || packagerLease.fencingRevision !== fencingRevision || packagerLease.expiresAt <= now) {
       fail("stale_broadcast_packager_output", 409);
     }
-    if (machine.program.state === "live") return entry(record);
-    if (machine.program.state !== "preparing") fail("broadcast_program_not_preparing", 409);
+    return { key, record, packagerLease };
+  }
+
+  #activateNativeOutput(key, record, packagerLease, now) {
+    let machine = record.snapshot.machine;
+    const resourceRef = record.resourceRef;
     machine = applyBroadcastProgramCommand(machine, command(machine, "advance", {
       toState: "awaiting_consent",
     }), now).state;
@@ -1024,7 +1051,7 @@ export class BroadcastRuntimeRegistry {
     return entry(this.#synchronizeRecord(key, record, machine, now));
   }
 
-  #synchronizeRecord(key, record, machine, now) {
+  #synchronizeRecord(key, record, machine, now, outputAvailabilityOnly = false) {
     let policy = record.snapshot.policy;
     if (policy.programEpoch !== machine.program.programEpoch
       || policy.visibility !== machine.program.visibility) {
@@ -1053,7 +1080,11 @@ export class BroadcastRuntimeRegistry {
       policy,
       authorizedViewerSubjectRefs: record.authorizedViewerSubjectRefs,
     }, now);
-    const next = Object.freeze({ ...record, snapshot,
+    // Only local output availability and unchanged-revision lease renewal retain
+    // existing source authority. First approval still checks the UI revision.
+    const sourceAuthorityRevision = outputAvailabilityOnly || machine.program.revision === record.snapshot.machine.program.revision
+      ? record.sourceAuthorityRevision ?? record.snapshot.machine.program.revision : machine.program.revision;
+    const next = Object.freeze({ ...record, snapshot, sourceAuthorityRevision,
       standbyPlan: ACTIVE.has(machine.program.state)
         && record.standbyPlan?.programEpoch === machine.program.programEpoch ? record.standbyPlan : null });
     this.#records.set(key, next);

@@ -60,7 +60,22 @@ func (o *sourceAssignmentOwner) transition(state, reason string) error {
 			return nil
 		}
 		c.assignmentMu.Lock()
-		if c.assignment != a || a.State == state {
+		// Output readiness may heal only its own bounded encoder restart, never
+		// thermal pressure or another independently degraded assignment state.
+		if state == "running" && reason == "OUTPUT_READY" && a.State == "degraded" && o.reasonCode != "SOURCE_PROGRAM_RESTARTING" {
+			c.assignmentMu.Unlock()
+			return nil
+		}
+		if c.assignment != a {
+			c.assignmentMu.Unlock()
+			return nil
+		}
+		if a.State == state {
+			if state == "degraded" && o.reasonCode == "SOURCE_PROGRAM_RESTARTING" && reason != "SOURCE_PROGRAM_RESTARTING" {
+				o.reasonCode = reason
+				c.assignmentMu.Unlock()
+				return c.send(c.assignmentStatus(a, state, reason))
+			}
 			c.assignmentMu.Unlock()
 			return nil
 		}

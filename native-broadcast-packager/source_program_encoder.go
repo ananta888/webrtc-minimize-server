@@ -15,6 +15,7 @@ type sourceProgramEncoderConfig struct {
 	ffmpegPath, outputRoot, packagerID, resourceRef string
 	width, height, fps                              int
 	startSample                                     int64
+	hlsEpoch                                        sourceHLSEpoch
 	profile                                         assignmentProfile
 	maxRawBytes                                     int
 	maxOutputBytes                                  int64
@@ -37,7 +38,7 @@ type sourceProgramEncoder struct {
 }
 
 func validSourceEncoderConfig(c sourceProgramEncoderConfig) bool {
-	if c.ffmpegPath == "" || !validOutputRoot(c.outputRoot) || !packagerIDPattern.MatchString(c.packagerID) || !resourceIDPattern.MatchString(c.resourceRef) ||
+	if !c.hlsEpoch.valid() || c.ffmpegPath == "" || !validOutputRoot(c.outputRoot) || !packagerIDPattern.MatchString(c.packagerID) || !resourceIDPattern.MatchString(c.resourceRef) ||
 		!validSourceVideoSize(c.width, c.height) || c.fps < 1 || c.fps > 60 || c.startSample < 0 || c.startSample > sourceAudioMixMaxTime-48000 || c.authorized == nil || c.revoked == nil ||
 		c.profile.MaximumQueueFrames < 2 || c.profile.MaximumQueueFrames > 120 || c.maxRawBytes < min(16, c.profile.MaximumQueueFrames)*3840+min(8, c.profile.MaximumQueueFrames)*c.width*c.height*4 || c.maxRawBytes > 128*1024*1024 || c.maxOutputBytes < 1 || c.maxOutputBytes > 128*1024*1024 ||
 		c.profile.ProfileID != "h264-aac-720p-v1" || c.profile.KeyframeIntervalSeconds < 1 || c.profile.KeyframeIntervalSeconds > 10 ||
@@ -77,8 +78,13 @@ func sourceProgramEncoderArguments(c sourceProgramEncoderConfig, output, videoUR
 		audioOutputs[i] = fmt.Sprintf("[a%dout]", i)
 	}
 	filters = append(filters, fmt.Sprintf("[1:a]asplit=%d%s", len(audioOutputs), strings.Join(audioOutputs, "")))
-	return append(args, ffmpegTranscodeOutputForMappedFilterGraph(&packagerAssignment{Profile: c.profile}, output, selectedVideoEncoder(c.profile), filters,
-		func(index int) string { return audioOutputs[index] })...)
+	outputs := ffmpegTranscodeOutputForMappedFilterGraph(&packagerAssignment{Profile: c.profile}, output, selectedVideoEncoder(c.profile), filters,
+		func(index int) string { return audioOutputs[index] })
+	if c.hlsEpoch > 0 {
+		target := outputs[len(outputs)-1]
+		outputs = append(outputs[:len(outputs)-1], "-start_number", fmt.Sprint(c.hlsEpoch.start()), target)
+	}
+	return append(args, outputs...)
 }
 
 func newSourceProgramEncoder(c sourceProgramEncoderConfig) (*sourceProgramEncoder, error) {
@@ -112,7 +118,7 @@ func newSourceProgramEncoder(c sourceProgramEncoderConfig) (*sourceProgramEncode
 			_ = owner.close()
 		}
 	}()
-	stage, err := newSourceHLSStage(owner, p.fence, p.cfg.profile, c.maxOutputBytes)
+	stage, err := newSourceHLSStageWithEpoch(owner, p.fence, p.cfg.profile, c.maxOutputBytes, c.hlsEpoch)
 	if err != nil {
 		return nil, err
 	}
@@ -200,6 +206,41 @@ func (p *sourceProgramEncoder) Close() {
 		close(p.done)
 	}
 }
+
+// Local recovery eligibility, not a source permission. Cleanup must have fully
+// finished and the unchanged parent writer must still be authorized. No path
+// here creates a replacement encoder, reopens a source or renews any lease.
+func (p *sourceProgramEncoder) CanRollover() bool {
+	select {
+	case <-p.finished:
+	default:
+		return false
+	}
+	if p.cleanupFailed.Load() || p.fence.failure.Load() != sourceEncoderFailureSource || p.cfg.authorized == nil ||
+		!p.cfg.hlsEpoch.valid() || p.cfg.hlsEpoch+1 >= sourceHLSEpochLimit {
+		return false
+	}
+	select {
+	case <-p.cfg.revoked:
+		return false
+	default:
+		return p.cfg.authorized()
+	}
+}
+
+func (p *sourceProgramEncoder) CurrentReady() bool {
+	if p.closed.Load() || !p.fence.Valid() {
+		return false
+	}
+	select {
+	case <-p.ready:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *sourceProgramEncoder) StopSignal() <-chan struct{} { return p.done }
 
 func (p *sourceProgramEncoder) watch() {
 	ticker := time.NewTicker(50 * time.Millisecond)

@@ -61,7 +61,7 @@ type sourceGenerationPublisher struct{ peer, device string }
 
 func validSourceProgramGeneration(c sourceProgramGenerationConfig) bool {
 	s := c.scope
-	return validSourceEncoderConfig(c.encoder) && c.encoder.startSample == 0 && c.now != nil &&
+	return validSourceEncoderConfig(c.encoder) && c.encoder.startSample == 0 && c.encoder.hlsEpoch == 0 && c.now != nil &&
 		sourceProgramTenant.MatchString(s.tenantID) && sourceProgramDevice.MatchString(s.deviceRef) && roomIDPattern.MatchString(s.roomID) &&
 		programIDPattern.MatchString(s.programID) && assignmentIDPattern.MatchString(s.assignmentID) && leaseIDPattern.MatchString(s.writerLeaseID) &&
 		s.roomEpoch >= 1 && s.roomEpoch <= sourceVideoSceneMaxRevision && s.programEpoch >= 1 && s.programEpoch <= sourceVideoSceneMaxRevision &&
@@ -75,7 +75,7 @@ func validSourceProgramGeneration(c sourceProgramGenerationConfig) bool {
 
 func newSourceProgramGeneration(c sourceProgramGenerationConfig) (*sourceProgramGeneration, error) {
 	return newSourceProgramGenerationWithOutput(c, func(cfg sourceProgramEncoderConfig) (sourceGenerationOutput, error) {
-		output, err := newSourceProgramEncoder(cfg)
+		output, err := newSourceProgramRollover(cfg)
 		if err != nil {
 			// Do not put a nil *encoder into a non-nil lifecycle interface.
 			return nil, err
@@ -148,6 +148,9 @@ func (p *sourceProgramGeneration) permitted() bool {
 func (p *sourceProgramGeneration) Ready() bool {
 	if !p.permitted() {
 		return false
+	}
+	if output, ok := p.output.(interface{ CurrentReady() bool }); ok {
+		return output.CurrentReady()
 	}
 	select {
 	case <-p.output.Finished():

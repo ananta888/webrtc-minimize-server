@@ -283,19 +283,39 @@ export class NativePackagerAssignmentRegistry {
   }
 
   readyOutput(packagerId, value, now = Date.now()) {
+    if (value?.state !== "running" || value?.reasonCode !== "OUTPUT_READY") {
+      fail("invalid_native_packager_output_status");
+    }
+    return this.#acknowledgedOutput(packagerId, value, now);
+  }
+
+  unavailableOutput(packagerId, value, now = Date.now()) {
+    if (!["degraded", "draining", "stopped", "failed"].includes(value?.state)) {
+      fail("invalid_native_packager_output_status");
+    }
+    return this.#acknowledgedOutput(packagerId, value, now);
+  }
+
+  #acknowledgedOutput(packagerId, value, now) {
     if (!PACKAGER.test(packagerId || "") || !ASSIGNMENT.test(value?.assignmentId || "")
-      || value?.state !== "running" || value?.reasonCode !== "OUTPUT_READY"
+      || !REASON.test(value?.reasonCode || "") || !Number.isSafeInteger(now)
       || !Number.isSafeInteger(value?.programEpoch) || !Number.isSafeInteger(value?.fencingRevision)) {
       fail("invalid_native_packager_output_status");
     }
     const record = this.#assignments.get(value.assignmentId);
-    if (!record || record.packagerId !== packagerId || record.state !== "running"
-      || record.reasonCode !== "OUTPUT_READY" || record.expiresAt <= now
+    if (!record || record.packagerId !== packagerId || record.state !== value.state
+      || record.reasonCode !== value.reasonCode || record.updatedAt > now
       || record.programEpoch !== value.programEpoch
       || record.fencingRevision !== value.fencingRevision) {
       fail("stale_native_packager_output_status", 409);
     }
-    if (record.assignmentProtocolVersion === 4) this.#sourceCurrent(record, now);
+    if (record.expiresAt <= now) {
+      // A verified terminal receipt may complete after its old lease ended.
+      // Forward its lifecycle status, but expose no output mutation binding.
+      if (["stopped", "failed"].includes(value.state)) return null;
+      fail("stale_native_packager_output_status", 409);
+    }
+    if (record.assignmentProtocolVersion === 4 && ["running", "degraded"].includes(value.state)) this.#sourceCurrent(record, now);
     return Object.freeze({
       resourceRef: record.resourceRef,
       programId: record.programId,

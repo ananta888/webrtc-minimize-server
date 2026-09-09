@@ -94,6 +94,10 @@ func (o *sourceAssignmentOwner) observeOutputReadiness() {
 			if p == nil {
 				return
 			}
+			if output, ok := p.output.(sourceChangingOutput); ok {
+				o.observeChangingOutput(p, output)
+				return
+			}
 			select {
 			case <-o.done:
 				return

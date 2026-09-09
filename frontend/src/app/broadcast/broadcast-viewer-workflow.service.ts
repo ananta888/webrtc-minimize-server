@@ -193,6 +193,10 @@ export class BroadcastViewerWorkflowService {
           // Fresh authority may confirm the exact same live output after a transient outage.
           // It may never silently widen its policy, roll back an epoch or reuse an old cookie.
           this.isNewGeneration(watch, bootstrap);
+          // An authorized program is not necessarily an encoder-ready output.
+          // Keep the existing bounded recovery budget instead of opening cookies
+          // repeatedly against a restarting encoder and exhausting replacements.
+          if (bootstrap.program.availability === "degraded") throw new Error("broadcast_offline");
           await this.installAuthorizedSession(watch, bootstrap, lifetime);
           return;
         } catch (error) { if (!this.retryable(error)) throw error; }

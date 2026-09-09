@@ -102,6 +102,7 @@ export class TrustedBroadcastSourceGrants {
         state: writer.state, sourceIds: [sourceId] },
     }, now);
     Object.assign(record, { consent, roomEpoch: epoch, leaseId: writer.leaseId,
+      sourceAuthorityRevision: writer.sourceAuthorityRevision,
       generation, retainUntil: Math.max(invite.expiresAt, consent.expiresAt) });
     this.#records.set(consent.consentId, record); this.#byRequest.set(input.requestId, record);
     return consent;
@@ -145,7 +146,9 @@ export class TrustedBroadcastSourceGrants {
       fail("trusted_source_publication_unavailable", 409);
     }
     const writer = this.#ports.writer(record.ownerIdentity, owner, record.programId, now);
-    if (["programRevision", "programEpoch", "packagerRef", "fencingRevision"].some(key => writer[key] !== record[key])
+    if (!positive(writer.sourceAuthorityRevision) || writer.sourceAuthorityRevision > writer.programRevision
+      || (record.consent ? writer.sourceAuthorityRevision !== record.sourceAuthorityRevision : writer.programRevision !== record.programRevision)
+      || ["programEpoch", "packagerRef", "fencingRevision"].some(key => writer[key] !== record[key])
       || writer.tenantId !== broadcastTenantRef(record.publisherIdentity.issuer)
       || writer.ownerSubjectRef !== broadcastSubjectRef(record.ownerIdentity)
       || !/^lea_[A-Za-z0-9_-]{16,64}$/.test(writer.leaseId || "") || !positive(writer.expiresAt)

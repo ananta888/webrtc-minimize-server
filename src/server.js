@@ -2452,6 +2452,19 @@ function configureSignaling(
             broadcastRuntime.markNativeOutputReady(
               output.resourceRef, output.packagerId, output.fencingRevision,
             );
+          } else if (["degraded", "draining", "stopped", "failed"].includes(message.state)) {
+            const output = nativePackagerAssignments.unavailableOutput(connection.id, message);
+            if (output) try {
+              broadcastRuntime.markNativeOutputUnavailable(
+                output.resourceRef, output.packagerId, output.fencingRevision,
+              );
+            } catch (error) {
+              // The ACK was checked above. Stop/handoff may already have removed
+              // the writer; its late negative receipt cannot mutate a successor,
+              // but must not tear down the otherwise reusable control connection.
+              if (!(error instanceof BroadcastRuntimeError)
+                || !["stale_broadcast_packager_output", "broadcast_not_available"].includes(error.code)) throw error;
+            }
           }
           const target = nativePackagerAssignments.statusTarget(connection.id, message);
           const publisher = registry.members(target.assignment.roomId)

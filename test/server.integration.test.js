@@ -2225,6 +2225,14 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "sou
   sendStatus("running", "OUTPUT_READY");
   await browser.next((message) => message.type === "native-packager-status" && message.reasonCode === "OUTPUT_READY");
 
+  const liveOutput = broadcastRuntime.listMine(identity).owned[0];
+  sendStatus("degraded", "SOURCE_PROGRAM_RESTARTING");
+  await browser.next(message => message.type === "native-packager-status" && message.state === "degraded");
+  assert.deepEqual(broadcastRuntime.listMine(identity).owned[0], { ...liveOutput, availability: "degraded" });
+  sendStatus("running", "OUTPUT_READY");
+  await browser.next(message => message.type === "native-packager-status" && message.reasonCode === "OUTPUT_READY");
+  assert.deepEqual(broadcastRuntime.listMine(identity).owned[0], liveOutput);
+
   const stopResponse = await fetch(
     `${app.httpUrl}/api/native-packagers/${packagerId}/assignments/${prepare.assignmentId}`,
     { method: "DELETE", headers: { origin: publicOrigin, authorization: "Bearer owner-token" } },
@@ -2232,6 +2240,10 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "sou
   assert.equal(stopResponse.status, 200);
   assert.equal((await agent.next((message) => message.type === "assignment-stop")).assignmentId, prepare.assignmentId);
   assert.equal((await stopResponse.json()).assignment.state, "draining");
+
+  sendStatus("stopped", "STOP_COMPLETE");
+  await browser.next(message => message.type === "native-packager-status" && message.state === "stopped");
+  assert.equal(agent.socket.readyState, 1, "a valid stop receipt does not kill the reusable agent control connection");
 
   browser.socket.close();
   agent.socket.close();

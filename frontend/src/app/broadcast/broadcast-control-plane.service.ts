@@ -247,7 +247,7 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
         requestedRenditions, allowHardwareAcceleration, deviceFingerprint: fingerprint }),
     });
     if (!response.ok) throw requestError(response, "native_source_program_start_failed");
-    const prepared = await this.acceptNativeAssignment(response, program, packagerId, signal, undefined, 16384);
+    const prepared = await this.acceptNativeAssignment(response, program, packagerId, signal, undefined, 16384, "trusted-sframe-v1");
     return Object.freeze({ program: prepared.program, assignment: this.takePreparedNative(prepared.program) });
   }
 
@@ -278,6 +278,7 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
 
   private async acceptNativeAssignment(
     response: Response, program: BroadcastProgramRef, packagerId: string, signal: AbortSignal, previousFence?: number, maximumBytes?: number,
+    expectedInputMode?: "trusted-sframe-v1",
   ): Promise<Readonly<{ program: BroadcastProgramRef; ownerSubjectRef: string }>> {
     const value = await json(response, "invalid_native_packager_assignment_response", maximumBytes);
     signal.throwIfAborted();
@@ -289,17 +290,20 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
     const returnedProgram = programRef(value["program"]);
     if (returnedProgram.programId !== program.programId || returnedProgram.roomId !== program.roomId
       || returnedProgram.tenantId !== program.tenantId || returnedProgram.programRevision <= program.programRevision
-      || returnedProgram.programEpoch !== program.programEpoch + 1) {
+      // Empty v4 starts retain the source epoch; legacy starts/handoffs change it.
+      || returnedProgram.programEpoch !== program.programEpoch + (expectedInputMode ? 0 : 1)) {
       throw new BroadcastBrowserPortError("invalid_native_packager_assignment_response");
     }
     const assignment = value["assignment"] as Record<string, unknown>;
     const assignmentFields = new Set([
       "assignmentId", "packagerId", "roomId", "programId", "programEpoch", "fencingRevision",
       "profileId", "renditionIds", "state", "reasonCode", "createdAt", "updatedAt", "expiresAt",
+      ...(expectedInputMode ? ["inputMode"] : []),
     ]);
     if (!assignment || typeof assignment !== "object" || Array.isArray(assignment)
       || Object.keys(assignment).length !== assignmentFields.size
       || Object.keys(assignment).some((field) => !assignmentFields.has(field))
+      || (expectedInputMode !== undefined && assignment["inputMode"] !== expectedInputMode)
       || typeof assignment["assignmentId"] !== "string"
       || !ASSIGNMENT.test(String(assignment["assignmentId"] || ""))
       || assignment["packagerId"] !== packagerId || assignment["programId"] !== returnedProgram.programId

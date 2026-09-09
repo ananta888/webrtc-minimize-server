@@ -104,6 +104,67 @@ func TestSourceHLSStagePublishesExactProfileAndInvalidatesGeneration(t *testing.
 	}
 }
 
+func TestSourceHLSStageCommitsProjectedEpochBytes(t *testing.T) {
+	s, _ := sourceStageFixture(t)
+	s.epoch = 1
+	for _, offset := range []int{0, 1} {
+		sequence := int(s.epoch.start()) + offset
+		sourceStageFiles(t, s, sequence)
+		if ready, err := s.Publish(); !ready || err != nil {
+			t.Fatal("epoch stage not published", err)
+		}
+		for i, r := range s.profile.Renditions {
+			init := renditionInitFilename(len(s.profile.Renditions), i)
+			want, err := s.epoch.playlist([]byte(sourceStagePlaylist(init, sequence)), init)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := os.ReadFile(filepath.Join(s.owner.output, r.ID, "index.m3u8"))
+			if err != nil || string(got) != string(want.data) {
+				t.Fatal("projection truncated or wrong rendition timeline", err)
+			}
+			if _, err := os.Stat(filepath.Join(s.owner.output, r.ID, fmt.Sprintf("segment_%09d.m4s", sequence))); err != nil {
+				t.Fatal("new media identity missing", err)
+			}
+		}
+	}
+	// The same encoder generation cannot ingest a previous generation's output.
+	sourceStageFiles(t, s, 0)
+	if ready, err := s.Publish(); ready || err == nil {
+		t.Fatal("previous generation reused")
+	}
+}
+
+func TestSourceHLSStageRejectsTimelineRollbackWithoutChangingMedia(t *testing.T) {
+	for _, kind := range []string{"head", "tail"} {
+		t.Run(kind, func(t *testing.T) {
+			s, _ := sourceStageFixture(t)
+			sourceStageFiles(t, s, 0)
+			sourceStageFiles(t, s, 1)
+			for i, r := range s.profile.Renditions {
+				if kind == "tail" {
+					data := sourceStagePlaylist(renditionInitFilename(len(s.profile.Renditions), i), 0) + "#EXTINF:2.000000,\nsegment_000000001.m4s\n"
+					if err := os.WriteFile(filepath.Join(s.pending, r.ID, "index.m3u8"), []byte(data), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if ready, err := s.Publish(); !ready || err != nil {
+				t.Fatal("initial sequence", err)
+			}
+			for i, r := range s.profile.Renditions {
+				data := sourceStagePlaylist(renditionInitFilename(len(s.profile.Renditions), i), 0)
+				if err := os.WriteFile(filepath.Join(s.pending, r.ID, "index.m3u8"), []byte(data), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if ready, err := s.Publish(); ready || err == nil {
+				t.Fatal("timeline rollback accepted", kind)
+			}
+		})
+	}
+}
+
 type sourceStageRevokingReader struct {
 	source *sourceRenderFence
 	sent   bool

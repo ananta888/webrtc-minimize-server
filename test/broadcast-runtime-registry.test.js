@@ -467,6 +467,26 @@ test("native output becomes live only for the assigned fresh writer fence", () =
     ), /stale_broadcast_packager_output/);
     assert.deepEqual(runtime.listMine(owner), afterReady);
   }
+  for (const [holder, fence, observedAt] of [
+    ["pkr_xxxxxxxxxxxxxxxx", prepared.lease.fencingRevision, NOW + 2],
+    [packagerId, prepared.lease.fencingRevision + 1, NOW + 2],
+    [packagerId, prepared.lease.fencingRevision, prepared.lease.expiresAt],
+  ]) {
+    assert.throws(() => runtime.markNativeOutputUnavailable(
+      "res_hhhhhhhhhhhhhhhh", holder, fence, observedAt,
+    ), /stale_broadcast_packager_output/);
+    assert.deepEqual(runtime.listMine(owner), afterReady);
+  }
+  const degraded = runtime.markNativeOutputUnavailable(
+    "res_hhhhhhhhhhhhhhhh", packagerId, prepared.lease.fencingRevision, NOW + 2,
+  );
+  assert.deepEqual(degraded, { ...live, availability: "degraded" });
+  assert.deepEqual(runtime.markNativeOutputUnavailable(
+    "res_hhhhhhhhhhhhhhhh", packagerId, prepared.lease.fencingRevision, NOW + 3,
+  ), degraded);
+  assert.deepEqual(runtime.markNativeOutputReady(
+    "res_hhhhhhhhhhhhhhhh", packagerId, prepared.lease.fencingRevision, NOW + 3,
+  ), live, "same writer recovers without changing public epoch, policy or resource");
   const renewed = runtime.renewNativeOutput(
     "res_hhhhhhhhhhhhhhhh", packagerId, prepared.lease.fencingRevision, NOW + 90_000, NOW + 30_000,
   );

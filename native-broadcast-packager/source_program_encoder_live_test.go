@@ -22,8 +22,31 @@ func TestLiveTrustedSourceProgramEncoder(t *testing.T) {
 	if err != nil {
 		t.Fatal("explicit encoder gate needs FFmpeg")
 	}
+	var initial [][]byte
+	for _, epoch := range []sourceHLSEpoch{0, 1, 127} {
+		t.Run(fmt.Sprint(epoch), func(t *testing.T) {
+			init := liveTrustedSourceProgramEpoch(t, ffmpeg, epoch)
+			if epoch == 0 {
+				initial = init
+				return
+			}
+			if len(init) != len(initial) {
+				t.Fatal("rendition initialization count changed")
+			}
+			for i := range init {
+				if !bytes.Equal(init[i], initial[i]) {
+					t.Fatal("same-URI initialization changed across encoder timelines")
+				}
+			}
+		})
+	}
+}
+
+func liveTrustedSourceProgramEpoch(t *testing.T, ffmpeg string, epoch sourceHLSEpoch) [][]byte {
+	t.Helper()
 	c := sourceEncoderTestConfig(t.TempDir())
 	c.ffmpegPath = ffmpeg
+	c.hlsEpoch = epoch
 	p, err := newSourceProgramEncoder(c)
 	if err != nil {
 		t.Fatal(err)
@@ -67,19 +90,28 @@ func TestLiveTrustedSourceProgramEncoder(t *testing.T) {
 	}
 	// Capture only this synthetic, already committed fragment while still
 	// authorized. Revocation cannot recall data previously delivered to a viewer.
+	initializations := make([][]byte, len(c.profile.Renditions))
 	for i, r := range c.profile.Renditions {
 		manifest, err := os.ReadFile(filepath.Join(p.owner.output, r.ID, "index.m3u8"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		playlist, err := sourceHLSParsePlaylist(manifest, renditionInitFilename(len(c.profile.Renditions), i))
+		producer, err := os.ReadFile(filepath.Join(p.stage.pending, r.ID, "index.m3u8"))
 		if err != nil {
 			t.Fatal(err)
+		}
+		playlist, err := c.hlsEpoch.playlist(producer, renditionInitFilename(len(c.profile.Renditions), i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(manifest, playlist.data) {
+			t.Fatal("committed timeline differs from bounded epoch projection")
 		}
 		init, err := os.ReadFile(filepath.Join(p.owner.output, r.ID, playlist.media[0]))
 		if err != nil {
 			t.Fatal(err)
 		}
+		initializations[i] = append([]byte(nil), init...)
 		segment, err := os.ReadFile(filepath.Join(p.owner.output, r.ID, playlist.media[1]))
 		if err != nil {
 			t.Fatal(err)
@@ -140,6 +172,10 @@ func TestLiveTrustedSourceProgramEncoder(t *testing.T) {
 	if p.fence.Valid() || p.fence.sources.count != 0 {
 		t.Fatal("encoder source generation revived/retained")
 	}
+	if p.CanRollover() != (epoch+1 < sourceHLSEpochLimit) {
+		t.Fatal("confirmed source revoke lost its clean recovery classification")
+	}
+	return initializations
 }
 
 func sourceDecodeEncodedFragment(t *testing.T, ffmpeg string, fragment []byte, videoFPS int) []byte {

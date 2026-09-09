@@ -134,7 +134,10 @@ func TestLiveTrustedSourceControlSocket(t *testing.T) {
 			a := c.assignment
 			c.assignmentMu.Unlock()
 			p := a.sourceProgram.generation.Load()
-			encoder := p.output.(*sourceProgramEncoder)
+			output := p.output.(*sourceProgramRollover)
+			output.mu.Lock()
+			encoder := output.current.(*sourceProgramEncoder)
+			output.mu.Unlock()
 			if !p.Ready() || a.Media != nil {
 				t.Fatal("missing real source-program output or legacy media started")
 			}

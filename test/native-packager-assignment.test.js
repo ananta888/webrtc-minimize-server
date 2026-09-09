@@ -209,6 +209,28 @@ test("only the fenced output-ready status exposes an internal resource binding",
     packagerId: PACKAGER, fencingRevision: 9,
   });
   assert.equal(assignments.statusTarget(PACKAGER, status("running", "OUTPUT_READY"), NOW + 1).publisherPeerId, PUBLISHER);
+  const restarting = status("degraded", "SOURCE_PROGRAM_RESTARTING");
+  assert.throws(() => assignments.unavailableOutput(PACKAGER, restarting, NOW + 1), /stale/);
+  assignments.acknowledge(PACKAGER, restarting, NOW + 1);
+  const expected = { resourceRef: "res_aaaaaaaaaaaaaaaa", programId: "prg_aaaaaaaaaaaaaaaa",
+    packagerId: PACKAGER, fencingRevision: 9 };
+  assert.deepEqual(assignments.unavailableOutput(PACKAGER, restarting, NOW + 1), expected);
+  assert.throws(() => assignments.readyOutput(PACKAGER, status("running", "OUTPUT_READY"), NOW + 1), /stale/);
+  for (const [holder, message, now] of [
+    ["pkr_bbbbbbbbbbbbbbbb", restarting, NOW + 1],
+    [PACKAGER, { ...restarting, fencingRevision: 10 }, NOW + 1],
+    [PACKAGER, { ...restarting, programEpoch: 8 }, NOW + 1],
+    [PACKAGER, { ...restarting, reasonCode: "THERMAL_PRESSURE" }, NOW + 1],
+    [PACKAGER, restarting, NOW + 60_000],
+  ]) assert.throws(() => assignments.unavailableOutput(holder, message, now), /stale/);
+  assignments.acknowledge(PACKAGER, status("running", "OUTPUT_READY"), NOW + 2);
+  assert.deepEqual(assignments.readyOutput(PACKAGER, status("running", "OUTPUT_READY"), NOW + 2), expected);
+  assert.throws(() => assignments.unavailableOutput(PACKAGER, restarting, NOW + 2), /stale/);
+  const expiredFailure = { ...status("failed", "LEASE_EXPIRED"), observedAt: NOW + 60_000 };
+  assignments.acknowledge(PACKAGER, expiredFailure, NOW + 60_000);
+  assert.equal(assignments.unavailableOutput(PACKAGER, expiredFailure, NOW + 60_000), null);
+  assert.equal(assignments.statusTarget(PACKAGER, expiredFailure, NOW + 60_000).assignment.state, "failed");
+  assert.throws(() => assignments.unavailableOutput("pkr_bbbbbbbbbbbbbbbb", expiredFailure, NOW + 60_000), /stale/);
 });
 
 test("authenticated packager heartbeats renew only the current fenced assignment", () => {

@@ -143,7 +143,10 @@ func runLiveTrustedSourceProgram(t *testing.T, owned bool) {
 	if !p.Ready() {
 		t.Fatal("generation has no ready HLS output")
 	}
-	encoder := p.output.(*sourceProgramEncoder)
+	output := p.output.(*sourceProgramRollover)
+	output.mu.Lock()
+	encoder := output.current.(*sourceProgramEncoder)
+	output.mu.Unlock()
 	for i, rendition := range cfg.encoder.profile.Renditions {
 		root := filepath.Join(encoder.owner.output, rendition.ID)
 		manifest, err := os.ReadFile(filepath.Join(root, "index.m3u8"))
@@ -189,9 +192,20 @@ func runLiveTrustedSourceProgram(t *testing.T, owned bool) {
 		clear(fragment)
 	}
 	receivers[0].Destroy()
-	awaitSource(t, p.finished)
-	if p.Ready() || encoder.cmd.ProcessState == nil || encoder.cleanupFailed.Load() {
+	awaitSource(t, encoder.finished)
+	if encoder.cmd.ProcessState == nil || encoder.cleanupFailed.Load() {
 		t.Fatal("generation revoke did not reap output")
+	}
+	select {
+	case <-p.finished:
+		t.Fatal("one source revoke destroyed the program")
+	default:
+	}
+	// Parent stop still reaps every decoder and any late replacement constructor.
+	p.Close()
+	awaitSource(t, p.finished)
+	if p.Ready() {
+		t.Fatal("parent stop retained readiness")
 	}
 	if p.budget.processes != 0 || p.budget.bytes != 0 || len(p.sources) != 0 || len(p.publishers) != 0 {
 		t.Fatal("generation retained resources")

@@ -6,9 +6,9 @@ const contract = new Ajv2020().compile(JSON.parse(readFileSync("contracts/native
 const packagerId = "pkr_aaaaaaaaaaaaaaaa";
 const program = { tenantId: "tn_aaaaaaaaaaaaaaaa", roomId: "room-alpha", programId: "prg_aaaaaaaaaaaaaaaa", programRevision: 1, programEpoch: 1 };
 function response() {
-  return { program: { ...program, programRevision: 3, programEpoch: 2 }, ownerSubjectRef: "sub_aaaaaaaaaaaaaaaa",
+  return { program: { ...program, programRevision: 3, programEpoch: 1 }, ownerSubjectRef: "sub_aaaaaaaaaaaaaaaa",
     assignment: { assignmentId: "asn_aaaaaaaaaaaaaaaa", packagerId, roomId: program.roomId, programId: program.programId,
-      programEpoch: 2, fencingRevision: 4, profileId: "h264-aac-720p-v1", renditionIds: ["low"], state: "preparing",
+      inputMode: "trusted-sframe-v1", programEpoch: 1, fencingRevision: 4, profileId: "h264-aac-720p-v1", renditionIds: ["low"], state: "preparing",
       reasonCode: "AWAITING_AGENT", createdAt: Date.now(), updatedAt: Date.now(), expiresAt: Date.now() + 30000 } };
 }
 const json = (value: unknown) => new Response(JSON.stringify(value), { status: 201, headers: { "content-type": "application/json" } });
@@ -25,7 +25,7 @@ it("sends precisely the source-start schema without legacy sources, and consumes
   expect(contract(body), JSON.stringify(contract.errors)).toBe(true);
   expect(body).toEqual({ requestVersion: 1, trigger: "user-action", inputMode: "trusted-sframe-v1", packagerId,
     deviceFingerprint: "a".repeat(43), requestedRenditions: 1, allowHardwareAcceleration: false });
-  expect(started.assignment).toMatchObject({ packagerId, programEpoch: 2, fencingRevision: 4 });
+  expect(started.assignment).toMatchObject({ packagerId, programEpoch: 1, fencingRevision: 4 });
   expect(() => control.takePreparedNative(started.program)).toThrow("assignment_required");
 });
 
@@ -36,13 +36,31 @@ it("rejects aborted or implicit starts before making any request", async () => {
   expect(fetch).not.toHaveBeenCalled();
 });
 
-for (const kind of ["oversize", "content-type", "invalid-json", "extra", "tenant", "room", "epoch", "packager", "fence"]) {
+it("does not accept a v4 input mode on the legacy start or handoff route", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+    const value = response(); value.program.programEpoch = value.assignment.programEpoch = 2;
+    return json(value);
+  });
+  const control = service(), signal = new AbortController().signal;
+  await expect(control.prepareNativeStart(program, ["src_aaaaaaaaaaaaaaaa"], packagerId, 1, signal))
+    .rejects.toMatchObject({ code: "invalid_native_packager_assignment_response" });
+  await expect(control.prepareNativeHandoff(program, { controlVersion: 1, programId: program.programId,
+    programRevision: 1, programEpoch: 1, state: "live", handoffPending: false,
+    writer: { packagerId: "pkr_bbbbbbbbbbbbbbbb", fencingRevision: 3 } }, packagerId, 1, signal))
+    .rejects.toMatchObject({ code: "invalid_native_packager_assignment_response" });
+  expect(() => control.takePreparedNative(response().program)).toThrow("assignment_required");
+});
+
+for (const kind of ["oversize", "content-type", "invalid-json", "extra", "tenant", "room", "epoch", "legacy-epoch", "packager", "fence", "missing-mode", "unknown-mode"]) {
   it(`fails closed for ${kind} responses without retaining an assignment`, async () => {
     const value = response();
     if (kind === "extra") Object.assign(value.assignment, { sourceIds: [] });
+    if (kind === "missing-mode") Reflect.deleteProperty(value.assignment, "inputMode");
+    if (kind === "unknown-mode") value.assignment.inputMode = "legacy";
     if (kind === "tenant") value.program.tenantId = "tn_bbbbbbbbbbbbbbbb";
     if (kind === "room") value.program.roomId = "room-other";
     if (kind === "epoch") value.program.programEpoch = 3;
+    if (kind === "legacy-epoch") value.program.programEpoch = value.assignment.programEpoch = 2;
     if (kind === "packager") value.assignment.packagerId = "pkr_bbbbbbbbbbbbbbbb";
     if (kind === "fence") value.assignment.fencingRevision = 0;
     let reply = json(value);

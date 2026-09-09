@@ -71,6 +71,43 @@ describe("BroadcastViewerWorkflowService", () => {
     expect(f.gateway.open.mock.calls[1][0]).toBe(bootstrap(2).resourceRef);
   });
 
+  it("waits for output readiness without spending replacement sessions on degraded encoders", async () => {
+    const f = fixture();
+    await f.service.open(entry, "user-action");
+    f.service.playbackStarted(f.service.manifestUrl());
+    const degraded = { ...bootstrap(), program: { ...entry, availability: "degraded" as const } };
+    f.directory.authorize.mockResolvedValueOnce(degraded).mockResolvedValueOnce(degraded).mockResolvedValueOnce(bootstrap());
+    const recovery = f.service.interrupted(f.service.manifestUrl());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(f.service.reconnecting()).toBe(true);
+    expect(f.gateway.open).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(f.gateway.open).toHaveBeenCalledOnce();
+    expect(f.service.reconnecting()).toBe(true);
+    await vi.advanceTimersByTimeAsync(5000); await recovery;
+    expect(f.gateway.open).toHaveBeenCalledTimes(2);
+    expect(f.service.selected()).toEqual(entry);
+    expect(f.service.reconnecting()).toBe(false);
+    expect(f.service.errorCode()).toBe("");
+  });
+
+  it("checks degraded scope before waiting and cancels pending recovery on leave", async () => {
+    const f = fixture();
+    await f.service.open(entry, "user-action"); f.service.playbackStarted(f.service.manifestUrl());
+    f.directory.authorize.mockResolvedValueOnce({ ...bootstrap(), program: { ...entry, availability: "degraded", policyRevision: 2 } });
+    await f.service.interrupted(f.service.manifestUrl());
+    expect(f.service.errorCode()).toBe("broadcast_playback_scope_changed");
+    await f.service.open(entry, "user-action"); f.service.playbackStarted(f.service.manifestUrl());
+    f.directory.authorize.mockResolvedValue({ ...bootstrap(), program: { ...entry, availability: "degraded" } });
+    const recovery = f.service.interrupted(f.service.manifestUrl());
+    await vi.advanceTimersByTimeAsync(0);
+    const calls = f.directory.authorize.mock.calls.length, opens = f.gateway.open.mock.calls.length;
+    await f.service.close(); await recovery; await vi.advanceTimersByTimeAsync(75_000);
+    expect(f.directory.authorize).toHaveBeenCalledTimes(calls);
+    expect(f.gateway.open).toHaveBeenCalledTimes(opens);
+    expect(f.service.selected()).toBeNull();
+  });
+
   it("cancels retry and all renewal timers on Close/Destroy without later authorization", async () => {
     const f = fixture();
     await f.service.open(entry, "user-action");

@@ -50,7 +50,7 @@ test("Angular keyboard starts an empty v4 program only after confirmation, waits
     const roomId = "room-alpha", packagerId = "pkr_aaaaaaaaaaaaaaaa";
     const program = { tenantId: "tn_aaaaaaaaaaaaaaaa", roomId, programId: "prg_aaaaaaaaaaaaaaaa", programRevision: 1, programEpoch: 1 };
     const assignment = { assignmentId: "asn_aaaaaaaaaaaaaaaa", packagerId, programId: program.programId, roomId,
-      programEpoch: 2, fencingRevision: 4, profileId: "h264-aac-720p-v1", renditionIds: ["low"], state: "preparing",
+      inputMode: "trusted-sframe-v1", programEpoch: 1, fencingRevision: 4, profileId: "h264-aac-720p-v1", renditionIds: ["low"], state: "preparing",
       reasonCode: "AWAITING_AGENT", createdAt: Date.now(), updatedAt: Date.now(), expiresAt: Date.now() + 60000 };
     const packager = { id: packagerId, label: "Synthetic source packager", platform: "linux", keyFingerprint: "a".repeat(43),
       createdAt: 1, lastAuthenticatedAt: 1, revokedAt: 0, online: true, consentedRoomIds: [roomId], confirmedRoomIds: [roomId],
@@ -66,17 +66,17 @@ test("Angular keyboard starts an empty v4 program only after confirmation, waits
     });
     await page.route(`**/api/broadcasts/${program.programId}/native-source-programs`, route => {
       starts++; startBody = route.request().postDataJSON();
-      return route.fulfill({ status: 201, json: { program: { ...program, programRevision: 3, programEpoch: 2 },
+      return route.fulfill({ status: 201, json: { program: { ...program, programRevision: 3, programEpoch: 1 },
         ownerSubjectRef: "sub_aaaaaaaaaaaaaaaa", assignment } });
     });
     await page.route(`**/api/broadcasts/${program.programId}/native-handoff-control`, route => route.fulfill({ json: {
-      controlVersion: 1, programId: program.programId, programRevision: 4, programEpoch: 2,
+      controlVersion: 1, programId: program.programId, programRevision: 4, programEpoch: 1,
       state: outputReady ? "live" : "preparing", handoffPending: false, writer: { packagerId, fencingRevision: 4 } } }));
     await page.route("**/api/broadcast-source-requests", route => {
       ownRequests++; ownBody = route.request().postDataJSON();
       const owner = app.registry.members(roomId)[0], now = Date.now();
       return route.fulfill({ status: 201, json: { responseVersion: 1, requests: [{
-        requestId: "bsr_" + "a".repeat(24), roomId, programId: program.programId, programRevision: 4, programEpoch: 2,
+        requestId: "bsr_" + "a".repeat(24), roomId, programId: program.programId, programRevision: 4, programEpoch: 1,
         ownerPeerId: owner.id, targetPeerId: owner.id, packagerRef: packagerId, sourceKind: ownBody.sourceKind,
         state: "pending", authority: "none", createdAt: now, expiresAt: now + 120000,
       }] } });
@@ -85,7 +85,7 @@ test("Angular keyboard starts an empty v4 program only after confirmation, waits
       assert.equal(route.request().method(), "DELETE"); programStops++;
       return route.fulfill({ json: { program: { directoryVersion: 1, programId: program.programId, title: "Synthetic program",
         ownerLabel: null, ownerVisibility: "hidden", visibility: "private", availability: "ended", viewerCount: 0,
-        latencyMode: "ll-hls", captions: false, programEpoch: 2, policyRevision: 1, playback: "grant-required" } } });
+        latencyMode: "ll-hls", captions: false, programEpoch: 1, policyRevision: 1, playback: "grant-required" } } });
     });
     await page.route(`**/api/native-packagers/${packagerId}/assignments/${assignment.assignmentId}`, route => {
       assert.equal(route.request().method(), "DELETE"); assignmentStops++; return route.fulfill({ json: { assignment: { ...assignment, state: "stopped" } } });

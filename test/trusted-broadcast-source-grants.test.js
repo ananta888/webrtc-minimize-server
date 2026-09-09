@@ -105,6 +105,7 @@ function fixture(start = 1800000000000, sourceProgram = false) {
   const lookup = consent => grants.forPackager(consent.consentId, packagerId, consent.granteeDeviceRef);
   return { now: () => now, advance: ms => { now += ms; }, epoch: () => { epoch++; }, identity, ownerIdentity, rooms, owner,
     publisher, packagers, packagerId, socket, refreshCapability, runtime, programId, requests, invite, ports, grants, input, approve, lookup, assignments, assignment, capability,
+    resourceRef: prepared.admission.resourceRef,
     reinstallAssignment: () => { assignments.failPackager(packagerId, "CONTROL_DISCONNECTED", now); return installAssignment(); },
     authProof: (nonce, timestamp) => crypto.sign("sha256", Buffer.from(nativePackagerAuthMessage(packagerId, nonce, timestamp)),
       { key: keys.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url"),
@@ -137,6 +138,50 @@ test("real membership, publication, signed agent and fenced writer produce one c
   assert.deepEqual(f.runtime.nativeControl(f.ownerIdentity, f.owner, f.programId), before);
   assert.equal(JSON.stringify(f.grants.auditEvents()).includes("track-camera"), false);
   assert.equal(JSON.stringify(f.grants.auditEvents()).includes(f.identity.issuer), false);
+});
+
+test("output availability revisions preserve current source consent without renewing its authority", () => {
+  const f = fixture(1800000000000, true), consent = f.approve();
+  const writer = f.runtime.nativeSourceWriterContext(f.ownerIdentity, f.owner, f.programId, f.now());
+  const resource = f.resourceRef;
+  f.runtime.markNativeOutputUnavailable(resource, f.packagerId, writer.fencingRevision, f.now());
+  assert.ok(f.lookup(consent), "degraded output does not revoke another source");
+  f.runtime.markNativeOutputReady(resource, f.packagerId, writer.fencingRevision, f.now());
+  assert.ok(f.lookup(consent), "recovered output preserves the same consent");
+  const recovered = f.runtime.nativeSourceWriterContext(f.ownerIdentity, f.owner, f.programId, f.now());
+  assert.equal(recovered.sourceAuthorityRevision, writer.sourceAuthorityRevision);
+  assert.equal(recovered.programRevision, writer.programRevision + 2);
+  f.runtime.renewNativeOutput(resource, f.packagerId, writer.fencingRevision, writer.expiresAt + 1000, f.now());
+  assert.ok(f.lookup(consent), "lease renewal does not confuse display and source authority");
+  assert.strictEqual(f.approve(), consent, "replay never extends consent");
+  f.rooms.setMediaState(f.publisher, { source: "screen", active: true, trackId: "track-screen" }, f.now());
+  const invitation = f.invite("screen");
+  const screen = f.grants.approve(f.identity, { ...f.input, requestId: invitation.requestId, publicationId: "track-screen",
+    expectedPublicationEpoch: f.rooms.publication(f.publisher.id, "track-screen", f.owner.roomId).publicationEpoch }, f.publisher);
+  assert.ok(f.lookup(screen), "new approval uses the current invitation revision after recovery");
+  f.grants.revoke(f.identity, f.input.deviceFingerprint, consent.consentId);
+  f.runtime.markNativeOutputUnavailable(resource, f.packagerId, writer.fencingRevision, f.now());
+  f.runtime.markNativeOutputReady(resource, f.packagerId, writer.fencingRevision, f.now());
+  assert.equal(f.lookup(consent), null, "output recovery cannot revive a revoked source");
+  assert.ok(f.lookup(screen), "revoking one source preserves the other");
+  f.runtime.stopProgram(f.ownerIdentity, f.programId, f.now());
+  assert.equal(f.lookup(screen), null, "real program stop still removes source authority");
+});
+
+test("missing, future or changed internal source authority revision invalidates existing grants", () => {
+  for (const value of [undefined, 0, Number.MAX_SAFE_INTEGER]) {
+    const f = fixture(), writer = f.ports.writer;
+    let changed = false;
+    const grants = new TrustedBroadcastSourceGrants({ ...f.ports, writer: (...args) => {
+      const current = writer(...args);
+      return changed ? { ...current, sourceAuthorityRevision: value } : current;
+    } });
+    const consent = grants.approve(f.identity, f.input, f.publisher);
+    changed = true;
+    assert.equal(grants.forPackager(consent.consentId, f.packagerId, consent.granteeDeviceRef), null);
+    changed = false;
+    assert.equal(grants.forPackager(consent.consentId, f.packagerId, consent.granteeDeviceRef), null);
+  }
 });
 
 test("approval input cannot inject authority, omit fields or change its bound publication on replay", () => {

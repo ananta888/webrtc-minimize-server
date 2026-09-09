@@ -58,6 +58,7 @@ func TestSourceEncoderRejectsConfigBeforeOwningOutput(t *testing.T) {
 		func(c *sourceProgramEncoderConfig) { c.authorized = func() bool { return false } }, func(c *sourceProgramEncoderConfig) { c.authorized = nil },
 		func(c *sourceProgramEncoderConfig) { c.revoked = nil }, func(c *sourceProgramEncoderConfig) { ch := make(chan struct{}); close(ch); c.revoked = ch },
 		func(c *sourceProgramEncoderConfig) { c.resourceRef = "../escape" }, func(c *sourceProgramEncoderConfig) { c.packagerID = "unknown" },
+		func(c *sourceProgramEncoderConfig) { c.hlsEpoch = sourceHLSEpochLimit },
 	} {
 		c := base
 		change(&c)
@@ -72,6 +73,24 @@ func TestSourceEncoderRejectsConfigBeforeOwningOutput(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(base.outputRoot, base.resourceRef)); !os.IsNotExist(err) {
 		t.Fatal("denied encoder touched output")
+	}
+}
+
+func TestSourceEncoderArgumentsFenceHLSGenerationNumbers(t *testing.T) {
+	for _, epoch := range []sourceHLSEpoch{0, 1, 127} {
+		c := sourceEncoderTestConfig(t.TempDir())
+		c.hlsEpoch = epoch
+		args := sourceProgramEncoderArguments(c, "/owned/.pending", "pipe:3", "pipe:4")
+		joined := strings.Join(args, " ")
+		if strings.Count(joined, "-start_number") != map[bool]int{true: 1, false: 0}[epoch > 0] {
+			t.Fatal("unexpected HLS generation option")
+		}
+		if epoch > 0 && !strings.HasSuffix(joined, fmt.Sprintf("-start_number %d /owned/.pending/%%v/index.m3u8", epoch.start())) {
+			t.Fatal("generation does not bind output segment numbers")
+		}
+		if strings.Contains(joined, "discont_start") || strings.Contains(joined, "hls_start_number_source") {
+			t.Fatal("producer overrides trusted generation metadata")
+		}
 	}
 }
 
