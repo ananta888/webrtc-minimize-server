@@ -104,3 +104,11 @@ then passed the entire relay/camera/adaptive-tier/mosaic case in 6.920 seconds.
 No host interface, runtime policy, timeout or serving build was changed. This
 is a bounded fixture network profile, not a claim about unrestricted host
 candidate storms or public NAT interoperability. Combined confirmation follows.
+
+The confirmation at `49495e5` completed with exit zero: 914 frontend and 952
+Node tests passed, zero failures and two explicit Node skips (366.306 seconds
+for Node). Build, type, static/security and Go unit/vet checks passed. All 14
+external opt-in infrastructure gates explicitly skipped; none are live
+infrastructure evidence. The serving build and policy remain unchanged.
+This closes this aggregate failure, not the separately recorded earlier
+intermittence or public/long-soak acceptance.
