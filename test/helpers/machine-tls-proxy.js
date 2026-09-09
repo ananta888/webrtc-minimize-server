@@ -6,8 +6,9 @@ import { isIP } from "node:net";
 import { privateMachineStun } from "./machine-stun-fixture.js";
 import { privateMachineTurn } from "./machine-turn-fixture.js";
 
-export function privateMachineTlsProxy(lifetimeSeconds, run = docker, connectionLimit = 16, icePath = "direct") {
+export function privateMachineTlsProxy(lifetimeSeconds, run = docker, connectionLimit = 16, icePath = "direct", relayParticipants = 2) {
   if (!["direct", "turn-udp", "turn-tcp"].includes(icePath)) throw new Error("test_ice_path_invalid");
+  if (![2, 3].includes(relayParticipants)) throw new Error("test_turn_scope_invalid");
   if (!Number.isInteger(lifetimeSeconds) || lifetimeSeconds < 180 || lifetimeSeconds > 7380) throw new Error("test_lifetime_invalid");
   if (![16, 32].includes(connectionLimit)) throw new Error("test_proxy_connection_limit_invalid");
   const image = run(["image", "inspect", process.env.MEET_TEST_PROXY_IMAGE || "webrtc-ci-local-webrtc:latest", "--format", "{{.Id}}"]);
@@ -48,7 +49,7 @@ export function privateMachineTlsProxy(lifetimeSeconds, run = docker, connection
     const originHost = gateway.slice(0, -1) + "2";
     const iceScope = { network, address: gateway.slice(0, -1) + "4", lifetimeSeconds };
     stun = icePath === "direct" ? privateMachineStun(iceScope, run)
-      : privateMachineTurn({ ...iceScope, transport: icePath.slice(5) }, run);
+      : privateMachineTurn({ ...iceScope, transport: icePath.slice(5), participants: relayParticipants }, run);
     return {
       listenHost: gateway, originHost, network, stunUrl: stun.url, turnConfig: stun.config, close,
       observation() {

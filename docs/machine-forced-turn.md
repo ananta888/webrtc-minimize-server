@@ -108,3 +108,41 @@ keine ursprünglichen Fehler, Argumente, Secrets oder Netzwerkadressen aus und
 seinen bisherigen maschinenlesbaren Fehlercode. Drei isolierte Diagnose-Tests
 und die 13 zugehörigen Proxy-/TURN-Checks bestanden; der externe Ursachenbefund
 und die Gesamtregression stehen noch aus. Dies ist Diagnose, kein Fixnachweis.
+
+## Zwei paketierte Ananta-Worker mit separaten Netzwerkgrenzen
+
+Der private `machine-multi-hub-bridge.mjs` akzeptiert nun ausschließlich
+`MEET_MULTI_WORKER_ICE_PATH=direct|turn-udp|turn-tcp` (Standard weiterhin
+`direct`). Er gibt bei TURN zusätzlich die nicht geheime Listener-URL und
+begrenzte, ausgewählte Relay-Paar-/Bytezähler zurück. Der Ananta-Test besitzt
+zwei echte Worker-Container, jeweils einen eigenen Default-Deny-Netzwerk-Guard,
+native Hub-Zuweisungen und getrennten Abbruch/Widerruf. Erlaubt sind nur der
+exakte Hub-Callback, die private Meet-TLS-Origin und TURN auf 3478; keine
+direkten Peer-Ports oder größeren UDP-Bereiche werden freigegeben.
+
+Die ersten drei UDP-Läufe scheiterten nach 67,79/68,76/68,62 Sekunden mit
+einem decodierten und einem nicht verbundenen Bildschirm. Die neue begrenzte
+Diagnose meldete auf beiden Workern ICE-Fehler 486. Die Ursache war das für
+zwei Teilnehmer ausgelegte Allokationsbudget: Coturn reserviert `max-bps` pro
+Allokation, nicht erst tatsächlich gesendete Nutzdaten. 4.000.000 Bytes/s
+Gesamtbudget mit 1.000.000 Bytes/s pro Allokation reicht nur für vier; ein
+Dreier-Mesh benötigt sechs. Siehe den
+[versionsgebundenen Allokationspfad](https://github.com/coturn/coturn/blob/4.17.0/src/server/ns_turn_server.c#L1409).
+
+Nur das explizite private Profil `relayParticipants=3` verwendet deshalb
+500.000 Bytes/s pro Allokation. Gesamtbudget, Quoten, Relay-Portbereich,
+Peer-Allowlist, CPU/RAM/PIDs, Authentisierung und Medienfristen bleiben
+unverändert; Standard `2` behält die bisherigen Werte. Unbekannte Profile
+werden vor Docker-Aktionen abgelehnt. ICE-Diagnosen enthalten höchstens acht
+numerische Fehlercodes pro Verbindung, keine Fehlertexte oder Adressen.
+
+Danach bestanden beide echten Root-Gates in 114,67 Sekunden: UDP 60,988 s,
+TCP 53,302 s. Je zwei bewegte, getrennt zugeordnete Bildschirme, zwei aktive
+ausgewählte Relay-Paare mit steigenden Bytes, danach ein weiterlaufender
+Worker und ein erfolgreicher Widerruf nach 1.352/1.345 ms. Es gab keine
+Transformfehler oder menschlichen Capture-Aufrufe. 25 fokussierte
+Helper-/Negativtests bestanden. Hier wurde auch im Worker ausschließlich
+der private Relay-von-Beginn-Adapter mit tatsächlichen Session-Credentials
+verwendet. Unveränderter automatischer Worker-Fallback und der isolierte
+Gesamtcheck folgen separat. Kein öffentlicher NAT-/TURN-TLS-, GPU-, Soak-
+oder Produktionsfreigabenachweis und keine Änderung an Serving-Dateien.
