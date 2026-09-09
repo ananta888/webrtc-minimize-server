@@ -55,3 +55,14 @@ Receiver-only/native and existing proxy checks passed together:16 tests in
 1.651 seconds, including one actual cryptographically authenticated synthetic
 receiver, exactly one browser context, no capture calls and no local machine
 navigation. The existing proxy limits and negative cases remain covered.
+
+The receiver-only joint repeat loaded all Worker modules without request errors,
+but then failed its real20-second join in34.36 seconds with two further proxy
+capacity drops. Removing the unused context was necessary resource hygiene,
+not a complete capacity fix. The Hub bridge now explicitly uses the existing
+32-connection multi-client test profile: receiver browser, Worker browser and
+Worker's separate restricted `route.fetch` HTTP client share this forwarder.
+The default remains16 for ordinary fixtures; proxy memory/CPU/PID limits,
+application room/source capacities, request/join/consent deadlines and security
+checks remain unchanged. This new declared test profile requires another native
+run; previous failed runs are not reclassified.
