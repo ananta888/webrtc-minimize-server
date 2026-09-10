@@ -23,17 +23,28 @@ Messung vom 4. September 2026 auf der aktuellen Entwicklungs-Hostklasse:
 | MediaMTX-Prozess | 1,61 % CPU, 46,33 MiB RAM, 9 PIDs |
 | Fehler / abgeschlossene Viewer | 0 / 20 |
 
-Das daraus abgeleitete Profil `origin-llhls-x86-dev-v1` begrenzt eine einzelne
-Origin-Instanz auf die tatsächlich geprüften 20 Viewer sowie harte
-Schutzbudgets von 200 Requests/s, 100 Mbit/s Egress und 20 Blocking-Reloads
-innerhalb des Containerlimits von einer CPU und 512 MiB.
-Diese Grenze schützt vor ungemessener Hochrechnung; sie ist keine Messung des
-Mini-PCs und kein End-to-glass-, Browser-, WAN- oder Langzeitnachweis.
+Das daraus abgeleitete Profil `origin-llhls-x86-dev-v1` beschreibt einen
+geprüften Entwicklungs-Testaufbau mit 20 Viewern und 20 Blocking-Reloads sowie
+Zielbudgets von 200 Requests/s und 100 Mbit/s innerhalb des Test-Containerlimits
+von einer CPU und 512 MiB. **Der Profilselektor ist bisher nur ein getesteter
+Policy-Baustein, nicht an die Produktionszulassung angeschlossen.** Seine
+Felder erzwingen daher weder eine produktive 20-Viewer-Grenze noch ein
+Host-Ressourcenlimit. Es ist keine Messung des Mini-PCs und kein
+End-to-glass-, Browser-, WAN- oder Langzeitnachweis.
+
+Der tatsächlich verwendete autorisierte HLS-Proxy besitzt jetzt separat
+operatorseitige, pro Prozess aggregierte Request-/Byte-Tokenbudgets. Die
+Defaults sind 200 Requests/s mit 200 Requests Burst und 100 Mbit/s Body-Daten
+mit höchstens 24 MiB Burst. Sie sind **keine harte Momentanbandbreite** und kein
+Nachweis, dass ein bestimmter Host diese Last schafft. Details, ENV-Variablen
+und die Grenzen des Schutzes stehen in
+[Admission-Control](broadcast-admission-and-abuse-control.md#aggregierte-hls-transportbudgets).
 
 ## Standard-HLS/CDN-Profil
 
-`cdn-standard-hls-v1` bleibt `runtimeVerified: false`. Es ist ausschließlich
-für öffentliche Programme zulässig und wird erst wählbar, wenn CDN-Laufzeit,
+`cdn-standard-hls-v1` bleibt `runtimeVerified: false`. Die noch nicht produktiv
+angeschlossene Auswahlpolicy lässt es ausschließlich für öffentliche Programme
+zu, wenn CDN-Laufzeit,
 Origin-Authentisierung, Host-/Path-Allowlist, Shielding, Purge und Health
 gemeinsam bestätigt sind. Segmente erhalten einen program-epochgebundenen,
 queryfreien Cache-Key und dürfen immutable sein; Manifeste werden höchstens
@@ -44,7 +55,8 @@ Das Origin-Secret wird nur validiert, niemals in das zurückgegebene Policy-
 Objekt kopiert. Ein Cache-Key bindet Host, opaque Resource und Program-Epoche;
 Purge verwendet dieselbe Epoche. Ein Provider- oder Capability-Ausfall fällt
 nur dann auf Origin zurück, wenn dessen gemessene 20-Viewer-Grenze genügt.
-Andernfalls verweigert Admission mit sichtbarer geringerer Kapazität. Ein
+Andernfalls verweigert der Policy-Baustein die Auswahl. Die produktive
+Admission-Anbindung und ihre sichtbare Kapazitätsmeldung fehlen noch. Ein
 Profilwechsel ist derzeit als bewusster kurzer Player-Neustart modelliert und
 nicht als nahtlose Discontinuity behauptet.
 

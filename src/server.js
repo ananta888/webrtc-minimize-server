@@ -2771,6 +2771,9 @@ export function createAppServer(options = {}) {
       ? new BroadcastHlsProxy({
         sessions: broadcastPlaybackSessions,
         gatewayOrigin: config.broadcastGatewayOrigin,
+        maximumRequestsPerSecond: config.broadcastHlsMaximumRequestsPerSecond,
+        maximumEgressBitsPerSecond: config.broadcastHlsMaximumEgressBitsPerSecond,
+        egressBurstBytes: config.broadcastHlsEgressBurstBytes,
       }) : null);
   const ownsBroadcastAbuseGuard = !options.broadcastAbuseGuard && Boolean(broadcastHlsProxy || mediaMtxExternalAuthService);
   const broadcastAbuseGuard = options.broadcastAbuseGuard || (ownsBroadcastAbuseGuard

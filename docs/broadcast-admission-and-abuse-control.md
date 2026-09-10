@@ -78,6 +78,60 @@ offener 401-Body nach Ablehnung transportseitig geschlossen wird. Keine Browser,
 Audioquellen oder öffentlichen Dienste werden dafür gestartet. Dieser Nachweis
 ersetzt weder die vollständige CI noch die noch offene gemeinsame WAN-Lastabnahme.
 
+## Aggregierte HLS-Transportbudgets
+
+Der Produktions-Composition-Root verbindet jetzt ENV/Compose mit einem
+`BroadcastHlsBudget` im realen `BroadcastHlsProxy`. Alle Sessions und Resources
+dieses Proxy-Prozesses teilen sich zwei Tokenbudgets:
+
+| Operatorvariable | Default | Bedeutung |
+| --- | ---: | --- |
+| `BROADCAST_HLS_MAX_REQUESTS_PER_SECOND` | 200 | Nachfüllrate; Burst ebenfalls 200 Requests |
+| `BROADCAST_HLS_MAX_EGRESS_BITS_PER_SECOND` | 100000000 | Nachfüllrate für weitergegebene Body-Bytes, 100 Mbit/s |
+| `BROADCAST_HLS_EGRESS_BURST_BYTES` | 25165824 | maximal 24 MiB angespartes Bytebudget |
+
+Es werden niemals mehr als `Burst + Rate × Zeit` Einheiten zugelassen, auch
+bei vielen Sessions oder lange unbenutztem Proxy. Das ist keine harte
+Momentanbandbreite, kein Fairness-Scheduler und kein gemessener Hostdurchsatz.
+Die monoton laufende Prozessuhr verhindert Nachfüllen durch Wanduhrsprünge.
+Eine ungültige/rückläufige injizierte Uhr sperrt das Budget terminal; der
+normale Produktionspfad verwendet `performance.now()`.
+
+Request-Zulassung erfolgt nach der unveränderten aktuellen Sessionautorisierung,
+aber vor dem Upstream-Fetch. Ein ungültiger privater Request bleibt 404 und
+verbraucht kein Transportbudget. Der bestehende vorgelagerte Abuse-Schutz
+bleibt aktiv. Ein erlaubter Request verbraucht sein Token auch bei Fehler oder
+Cancel; dadurch können Fehlversuche kein Budget zurückgewinnen.
+
+Body-Bytes werden unmittelbar vor `enqueue()` reserviert, gemeinsam über alle
+laufenden Streams. Bei Überschreitung wird ausschließlich der betreffende
+Stream abgebrochen, der Upstream gecancelt und der Slot genau einmal freigegeben.
+Es gibt keine Warteschlange und keinen automatischen Retry. Vor HTTP-Headern
+ist ein Request-Limit ein 429; nach begonnenem Body beendet ein Byte-Limit den
+Stream, **ohne einen nachträglichen HTTP-429 zu versprechen**. Die Player-Recovery
+bleibt durch ihre bereits vorhandenen Grenzen beschränkt.
+
+Die Zählung umfasst Body-Bytes, nicht TLS-/HTTP-Overhead oder bestätigten Empfang.
+Der zuvor gelesene Upstream-Chunk und Transportpuffer sind weiterhin vorhanden;
+dies ist weder Upstream-Ingress-Policing noch eine Begrenzung fremder direkter
+MediaMTX-/CDN-Pfade. Mehrere Prozesse haben getrennte Budgets. Die native
+Start-Admission, clusterweite Quoten, Viewer-/Blocking-Reload-Profilbindung und
+gemessene gemeinsame Lastabnahme bleiben offen.
+
+Zwei neue Regressionen scheiterten am alten Proxy (weiterer Upstream-Request
+trotz Requestlimit; weiterer Datenblock trotz erschöpftem Bytebudget). Der
+reale lokale HTTP-Nachweis nutzt den Produktions-Serverkonstruktor, echten
+Cookie-/Session-Store und separaten HTTP-Upstream: erstes Manifest vollständig,
+zweiter Viewer bei Byteknappheit abgebrochen, privater Miss weiter 404,
+Health weiter 200. Das ist ein Transport-/Verdrahtungsnachweis ohne Browser
+oder Audio, kein Medien- oder WAN-Lasttest.
+
+67 gezielte Node-/Stream-/HTTP-/Session-/Abuse-/Config-/Profilprüfungen
+bestehen in 0,543 Sekunden ohne Skip. Deployment-, Workflow-, Release- und
+Todo-Gates bestehen ebenfalls. Die vollständige CI und das Deployment dieses
+Nachtrags stehen noch aus; die lokale ausgelieferte Angular-Datei blieb
+unverändert.
+
 ## Abuse-Matrix
 
 | Angriff | Durchgesetzte Grenze |

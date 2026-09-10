@@ -8,6 +8,7 @@ import { readFileSync, statSync } from "node:fs";
 import { machineCapabilityEnvironment } from "./machine-capabilities.js";
 import { parseMachineTrustProfile } from "./machine-trust-profile.js";
 import { readMachineTrustFile } from "./machine-trust-file.js";
+import { BROADCAST_HLS_BUDGET_DEFAULTS } from "./broadcast-hls-budget.js";
 
 const DEFAULTS = Object.freeze({
   host: "0.0.0.0",
@@ -708,6 +709,15 @@ export function loadConfig(env = process.env) {
       DEFAULTS.broadcastGatewayAuthAddresses,
     )),
     broadcastGatewayOrigin,
+    broadcastHlsMaximumRequestsPerSecond: boundedInteger(env.BROADCAST_HLS_MAX_REQUESTS_PER_SECOND,
+      BROADCAST_HLS_BUDGET_DEFAULTS.maximumRequestsPerSecond,
+      { minimum: 1, maximum: 10_000, name: "BROADCAST_HLS_MAX_REQUESTS_PER_SECOND" }),
+    broadcastHlsMaximumEgressBitsPerSecond: boundedInteger(env.BROADCAST_HLS_MAX_EGRESS_BITS_PER_SECOND,
+      BROADCAST_HLS_BUDGET_DEFAULTS.maximumEgressBitsPerSecond,
+      { minimum: 1, maximum: 10_000_000_000, name: "BROADCAST_HLS_MAX_EGRESS_BITS_PER_SECOND" }),
+    broadcastHlsEgressBurstBytes: boundedInteger(env.BROADCAST_HLS_EGRESS_BURST_BYTES,
+      BROADCAST_HLS_BUDGET_DEFAULTS.egressBurstBytes,
+      { minimum: 1, maximum: 24 * 1024 * 1024, name: "BROADCAST_HLS_EGRESS_BURST_BYTES" }),
     broadcastSigningPrivateKey,
     broadcastSigningKeyId,
   });

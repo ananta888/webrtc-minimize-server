@@ -1,4 +1,5 @@
 import { BroadcastHlsTraffic } from "./broadcast-hls-traffic.js";
+import { BroadcastHlsBudget } from "./broadcast-hls-budget.js";
 
 const CONTENT_TYPES = new Set([
   "application/vnd.apple.mpegurl",
@@ -15,7 +16,7 @@ function cancelBody(body, reason) {
   try { void Promise.resolve(body?.cancel(reason)).catch(() => {}); } catch { /* no upstream error content */ }
 }
 
-function boundedResponseBody(body, { idleTimeoutMs, streamTimeoutMs, release, traffic }) {
+function boundedResponseBody(body, { idleTimeoutMs, streamTimeoutMs, release, traffic, budget }) {
   const reader = body.getReader();
   let finished = false;
   let idleTimer;
@@ -60,6 +61,10 @@ function boundedResponseBody(body, { idleTimeoutMs, streamTimeoutMs, release, tr
           failStream(controller, "broadcast_gateway_invalid_response", 502);
           return;
         }
+        if (!budget.bytes(result.value.byteLength)) {
+          failStream(controller, "broadcast_playback_temporarily_unavailable", 429);
+          return;
+        }
         streamedBytes += result.value.byteLength;
         controller.enqueue(result.value);
         traffic.bytes(result.value.byteLength);
@@ -96,6 +101,7 @@ export class BroadcastHlsProxy {
   #activeRequests = 0;
   #activeBySession = new Map();
   #traffic = new BroadcastHlsTraffic();
+  #budget;
 
   constructor({
     sessions,
@@ -105,6 +111,10 @@ export class BroadcastHlsProxy {
     maximumConcurrentPerSession = 6,
     idleTimeoutMs = 5_000,
     streamTimeoutMs = 30_000,
+    maximumRequestsPerSecond,
+    maximumEgressBitsPerSecond,
+    egressBurstBytes,
+    clock,
   }) {
     if (!sessions || typeof sessions.create !== "function" || typeof sessions.renew !== "function"
       || typeof sessions.authorize !== "function") {
@@ -128,6 +138,7 @@ export class BroadcastHlsProxy {
     this.#maximumConcurrentPerSession = maximumConcurrentPerSession;
     this.#idleTimeoutMs = idleTimeoutMs;
     this.#streamTimeoutMs = streamTimeoutMs;
+    this.#budget = new BroadcastHlsBudget({ maximumRequestsPerSecond, maximumEgressBitsPerSecond, egressBurstBytes, clock });
   }
 
   createSession(input) { return this.#sessions.create(input); }
@@ -144,6 +155,7 @@ export class BroadcastHlsProxy {
       fail("broadcast_playback_not_found", 404);
     }
     const authorization = await this.#sessions.authorize(input);
+    if (!this.#budget.request()) fail("broadcast_playback_temporarily_unavailable", 429);
     const sessionKey = authorization.sessionId || input.resourceRef || "invalid";
     const release = this.#acquire(sessionKey);
     let response;
@@ -188,6 +200,7 @@ export class BroadcastHlsProxy {
       streamTimeoutMs: this.#streamTimeoutMs,
       release,
       traffic: this.#traffic,
+      budget: this.#budget,
     });
     if (!body) {
       cancelBody(response.body, "broadcast_body_unused");
