@@ -93,6 +93,29 @@ Der Zuschauer erhält anschließend Stille, beide Raum-Captures bleiben aktiv.
 Der alte Gesamtcheck bleibt als fehlgeschlagener Lauf dokumentiert. Die
 nächste CI muss den finalen Stand einschließlich dieser Testaufteilung prüfen.
 
+### Zwischennachweis nach Bildschirmton-Widerruf
+
+Der spätere CI-Lauf `34525060305` scheiterte beim zweiten Widerruf am Warten auf
+`OUTPUT_READY`. Die Encoder-Sperre merkt tatsächliche Beitragsquellen: Hat das
+Mikrofon zur neuen Generation noch nichts beigetragen, erzwingt sein Widerruf
+keinen weiteren Encoderwechsel. Eine Quellenliste allein beweist keinen Beitrag.
+
+Der Browsertest prüft deshalb vor diesem zweiten Widerruf zusätzlich mindestens
+eine Sekunde fortlaufende Ausgabe: In beiden dekodierten Kanälen muss der
+440-Hz-Mikrofonton wieder den ursprünglichen Pegel erreichen, während der
+880-Hz-Bildschirmton verschwunden ist. Alte Frames, Stille, nur ein funktionierender
+Kanal oder weiterhin vorhandener Bildschirmton reichen nicht aus. Erst danach
+wird auch das Mikrofon widerrufen und weiterhin Encoderwechsel sowie Stille
+verlangt. Consent, Wiederanlauf- und Messfristen bleiben unverändert.
+
+Vier browserfreie Mess-/Warteprüfungen und der isolierte native Encoder-Fence-Test
+einschließlich Race-Detector bestehen. Der erste Container-Teststart scheiterte
+am nicht ausführbaren temporären Dateisystem; nach explizitem `exec` bestand der
+Test ohne Änderung des getesteten Codes. Lokale echte Medienprüfungen bleiben
+pausiert. Die erweiterte reale Angular-/Native-/HLS-Abnahme ist noch durch CI zu
+bestätigen; die vermutete Ursache des ursprünglichen Timeouts ist damit noch
+nicht abschließend bewiesen. Keine neue Deploymentfreigabe.
+
 ## Historische v1-Abnahme
 
 Die nachfolgende CI `34404162155` auf `406f95d` bestand den neuen nativen

@@ -7,6 +7,7 @@ import { openSceneViewer, sceneViewerObservation } from "./helpers/native-scene-
 import { startNativeAudioProbe, waitNativeAudioLevel, stopNativeAudioProbe } from "./helpers/native-audio-viewer.mjs";
 import { nativeAudioOutputObservation } from "./helpers/native-audio-output.mjs";
 import { nativeAudioStrategyFlow } from "./helpers/native-audio-strategy-flow.mjs";
+import { waitNativeMicrophoneAfterScreenRevoke } from "./helpers/native-audio-frequency.mjs";
 
 async function confirm(page, action, accepted = true) {
   const dialog = page.waitForEvent("dialog"), pending = action();
@@ -157,10 +158,13 @@ for (const strategies of [null, ["balanced", "speech-first"], ["screen-first", "
     assert.equal(retained.sources.length, 1); assert.equal(retained.sources[0].sourceKind, "microphone");
     assert.equal(retained.mix.strategy, strategies.at(-1));
     assert.equal(await page.locator("#toggle-screen").getAttribute("aria-pressed"), "true", "broadcast audio revoke preserves room screen capture");
+    stage = "retained-microphone-output";
+    audioOutput.retained = await waitNativeMicrophoneAfterScreenRevoke(viewer, audioOutput.baseline, audioOutput[strategies.at(-1)]);
   }
   stage = "revoke";
-  // Revocation rotates the program output. A query during that transition is
-  // correctly denied; wait for native readiness and fresh UI writer observations.
+  // A source proven to contribute to this encoder generation must fence it on
+  // revoke. Registration alone does not imply buffered frames or a restart.
+  // Queries during rollover are denied; wait for readiness and fresh UI state.
   await revoke(sources.locator("li", { hasText: "Sender aktiv" }));
   assert.deepEqual((await query()).sources, []);
   assert.equal(await audio.locator("#native-audio-apply").isDisabled(), false);

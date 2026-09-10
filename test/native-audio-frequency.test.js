@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { nativeAudioFrequencyObservation, nativeAudioStrategyMatches } from "./helpers/native-audio-frequency.mjs";
+import { nativeAudioFrequencyObservation, nativeAudioStrategyMatches, nativeAudioMicrophoneOnlyMatches,
+  waitNativeMicrophoneAfterScreenRevoke } from "./helpers/native-audio-frequency.mjs";
 
 test("fixed synthetic DFT separates both tones in both channels regardless of phase or sample rate", () => {
   const previous = globalThis.window;
@@ -22,6 +23,41 @@ test("fixed synthetic DFT separates both tones in both channels regardless of ph
       assert.deepEqual(Object.keys(result).sort(), ["channels", "contextRunning", "frames", "paused", "ready", "time"]);
     }
   } finally { if (previous === undefined) delete globalThis.window; else globalThis.window = previous; }
+});
+
+test("retained microphone evidence requires both live channels without the revoked screen tone", () => {
+  const baseline = { channels: [[.25, .25], [.125, .0625]] };
+  const value = { channels: [[.25, .00001], [.125, .00001]], time: 10, frames: 150,
+    ready: 4, paused: false, contextRunning: true };
+  assert.equal(nativeAudioMicrophoneOnlyMatches(value, baseline), true);
+  for (const changed of [{ channels: baseline.channels }, { channels: [[.25, .001], [.125, 0]] },
+    { channels: [[.25, 0], [.125, .001]] }, { channels: [[.07, 0], [.035, 0]] },
+    { channels: [[0, 0], [0, 0]] }, { channels: [[.25, 0], [0, 0]] },
+    { channels: [[NaN, 0], [.125, 0]] }, { channels: [[.25, 0]] },
+    { paused: true }, { contextRunning: false }, { ready: undefined }, { ready: NaN },
+    { frames: 0 }, { time: Infinity }]) {
+    assert.equal(nativeAudioMicrophoneOnlyMatches({ ...value, ...changed }, baseline), false);
+  }
+  for (const invalid of [null, {}, { channels: [[0, 0], [0, 0]] }]) {
+    assert.equal(nativeAudioMicrophoneOnlyMatches(value, invalid), false);
+  }
+});
+
+test("retained-source wait rejects old frames and resets its stable interval when screen tone returns", async () => {
+  const baseline = { channels: [[.25, .25], [.25, .25]] };
+  const value = (time, frames, screen = 0) => ({ channels: [[.25, screen], [.25, screen]],
+    time, frames, ready: 4, paused: false, contextRunning: true });
+  const sequence = [value(8, 120), value(10, 150), value(11, 150), value(11, 165),
+    value(11.5, 170, .25), value(12, 180), value(12.5, 185), value(13, 195)];
+  let reads = 0;
+  const page = { evaluate: async () => { assert.ok(reads < sequence.length, "bounded fixture observations"); return sequence[reads++]; } };
+  assert.deepEqual(await waitNativeMicrophoneAfterScreenRevoke(page, baseline, { time: 10, frames: 150 }),
+    { channels: [[.25, 0], [.25, 0]], time: 13, frames: 195 });
+  assert.equal(reads, sequence.length);
+  for (const previous of [null, {}, { time: 10, frames: 0 }, { time: NaN, frames: 150 }]) {
+    await assert.rejects(waitNativeMicrophoneAfterScreenRevoke(page, baseline, previous), /test_audio_retained_source_invalid/);
+  }
+  assert.equal(reads, sequence.length, "invalid anchors never inspect the page");
 });
 
 test("strategy evidence rejects missing tone, wrong priority, stopped output and invalid measurements", () => {

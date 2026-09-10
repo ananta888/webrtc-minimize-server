@@ -6,6 +6,42 @@ import (
 	"testing"
 )
 
+func TestSourceEncoderFenceNewGenerationRequiresRetainedContribution(t *testing.T) {
+	for _, contributed := range []bool{false, true} {
+		microphone := &sourceRenderFence{allowed: func() bool { return true }}
+		screen := &sourceRenderFence{allowed: func() bool { return true }}
+		var both sourceRenderGuard
+		both.add(microphone)
+		both.add(screen)
+		previous := &sourceEncoderFence{writer: func() bool { return true }}
+		if !previous.Admit(both) {
+			t.Fatal("initial two-source contribution")
+		}
+		screen.closed.Store(true)
+		if previous.Valid() {
+			t.Fatal("screen revoke must fence the old encoder")
+		}
+		previous.Clear()
+
+		next := &sourceEncoderFence{writer: func() bool { return true }}
+		if !next.Admit(sourceRenderGuard{}) {
+			t.Fatal("fresh slate/silence generation")
+		}
+		if contributed {
+			var retained sourceRenderGuard
+			retained.add(microphone)
+			if !next.Admit(retained) {
+				t.Fatal("retained microphone contribution")
+			}
+		}
+		microphone.closed.Store(true)
+		if next.Valid() == contributed {
+			t.Fatal("only actual contributors require encoder rollover")
+		}
+		next.Clear()
+	}
+}
+
 func TestSourceEncoderFenceRetainsAllContributorsUntilTerminal(t *testing.T) {
 	var writer atomic.Bool
 	writer.Store(true)
