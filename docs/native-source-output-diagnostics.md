@@ -182,3 +182,21 @@ motion from the surviving source. The explicit DOM, actual HTTP submission and
 native scene-state checks all remain enabled. Shard 1 reports 645 passes,
 zero failures and three explicit infrastructure skips. These are synthetic,
 instrumented-binary results, not a deployed Mini-PC or release-binary claim.
+
+The subsequent run `34506245871` on `0efa1cb` has a different single-source
+failure: the immediate DOM list of fit controls is empty, before HTTP apply or
+native output verification. Its shard reports 650 passes, one failure and three
+skips. A rendered Angular test reproduces the observation boundary without
+media: after the checkbox event the model already contains the selected source,
+but its fit select appears only after Angular's render. The model and eventual
+`contain` value are correct. This does not establish that earlier media failures
+share a cause.
+
+The browser fixture now observes exactly the expected number of `contain` fit
+controls for at most one second before the unchanged value assertion. It does
+not repeat interactions, extend source leases or relax native/pixel assertions.
+The local rendered reproduction passes; the real browser correction awaits CI.
+Separately, related broadcast cleanup hooks share one server-close listener,
+avoiding the new 11-listener warning without changing EventEmitter thresholds.
+The real HTTP/JWT/P-256/source-revoke fixture checks the listener bound and
+still verifies shutdown, passing in 2.146 seconds total without audio/browser.

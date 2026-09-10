@@ -647,6 +647,7 @@ for (const publicActions of [false, true, "receipt-failure", "backpressure"]) te
     nativePackagerAssignments: f.assignments,
     nativePackagerEnrollmentStore: { definitions: () => [] }, nativePackagerInstallerService: {} });
   let socket, nativeSocket;
+  assert.ok(app.server.listenerCount("close") <= 10, "broadcast lifecycles share cleanup without raising listener limits");
   t.after(async () => {
     socket?.terminate();
     nativeSocket?.terminate();

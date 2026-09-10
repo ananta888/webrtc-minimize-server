@@ -43,6 +43,15 @@ it("renders scoped draft, freshness, conflict and separate review/apply controls
   expect(root.textContent).toContain(publisher()); expect(root.querySelector("img")).toBe(null);
   publisher.set(null); await fixture.whenStable(); expect(root.textContent).not.toContain("onerror");
   expect(root.textContent).toContain("Teilnehmer nicht zugeordnet");
+  // A completed input event is not an observation of Angular's next render.
+  const checkbox = element<HTMLInputElement>('input[type="checkbox"]');
+  checkbox.click(); await fixture.whenStable();
+  expect(root.querySelectorAll("select[data-scene-fit]").length).toBe(0);
+  checkbox.click();
+  expect(fixture.componentInstance.selected()).toEqual([source]);
+  expect(root.querySelectorAll("select[data-scene-fit]").length).toBe(0);
+  await fixture.whenStable();
+  expect(Array.from(root.querySelectorAll<HTMLSelectElement>("select[data-scene-fit]"), node => node.value)).toEqual(["contain"]);
   // A refresh begins synchronously, before Angular's next scheduled render.
   // A native select interaction must not appear accepted while its handler is gated.
   let finish!: () => void;

@@ -76,6 +76,12 @@ for (const multiple of [false, true]) test(multiple
   await page.locator("app-native-source-scene").getByRole("checkbox", { name: /Kamera/ }).check();
   if (multiple) await page.locator("app-native-source-scene").getByRole("checkbox", { name: /Bildschirm/ }).check();
   const fitControls = page.locator("app-native-source-scene select[data-scene-fit]");
+  // Checkbox state/model can precede the render of its new fit control. Observe
+  // the actual expected DOM, without replaying clicks or changing scene/media budgets.
+  await waitFixtureValue(page, count => {
+    const nodes = [...document.querySelectorAll("app-native-source-scene select[data-scene-fit]")];
+    return nodes.length === count && nodes.every(node => node.value === "contain");
+  }, multiple ? 2 : 1, { timeout: 1000 });
   assert.deepEqual(await fitControls.evaluateAll(nodes => nodes.map(node => node.value)), multiple ? ["contain", "contain"] : ["contain"]);
   const queriedScene = f.observation.scene.at(-1);
   const sourceBeforeApply = await f.agent.observe();

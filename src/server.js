@@ -2816,11 +2816,13 @@ export function createAppServer(options = {}) {
     broadcastPlaybackSessions,
   };
   const server = http.createServer(createHttpHandler(config, registry, services));
-  server.on("close", () => broadcastMetrics.destroy());
-  server.on("close", () => services.nativeSourceLabels.destroy());
-  server.on("close", () => broadcastMetricsHttp.destroy());
-  server.on("close", () => services.nativeSourceScenes.destroy());
-  server.on("close", () => services.nativeSourceAudios.destroy());
+  server.on("close", () => {
+    broadcastMetrics.destroy();
+    services.nativeSourceLabels.destroy();
+    broadcastMetricsHttp.destroy();
+    services.nativeSourceScenes.destroy();
+    services.nativeSourceAudios.destroy();
+  });
   if (broadcastSourceRequests) {
     const sourceRequestPrune = setInterval(() => broadcastSourceRequests.prune(), 5000);
     sourceRequestPrune.unref();
