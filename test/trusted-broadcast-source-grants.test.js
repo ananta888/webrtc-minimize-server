@@ -401,6 +401,67 @@ function sourceSignal(lease, publisher = true, sequence = 1) {
     description: { type: publisher ? "offer" : "answer", sdp: "v=0\r\n" } };
 }
 
+function publisherContext(f, lease) {
+  return { roomId: f.input.roomId, programId: f.programId, programEpoch: lease.consent.programEpoch,
+    packagerId: f.packagerId, assignmentId: lease.assignmentId, writerLeaseId: lease.writerLeaseId,
+    fencingRevision: lease.fencingRevision };
+}
+
+test("internal publisher bindings expose only prepared current scoped peer references without new authority", () => {
+  const f = sourceControlFixture(), lease = f.prepare(), context = publisherContext(f, lease);
+  assert.deepEqual(f.broker.publisherBindings(context, [lease.sourceLeaseId]), []);
+  assert.equal(f.broker.acknowledge(f.socket, f.ack(lease)), true);
+  const messages = f.messages.length, publisherMessages = f.publisherMessages.length;
+  const rows = f.broker.publisherBindings(context, ["sls_bbbbbbbbbbbbbbbb", lease.sourceLeaseId]);
+  assert.deepEqual(rows, [{ sourceLeaseId: lease.sourceLeaseId, publisherPeerId: f.publisher.id, sourceKind: "camera" }]);
+  assert.ok(Object.isFrozen(rows)); assert.ok(Object.isFrozen(rows[0]));
+  assert.equal(f.messages.length, messages); assert.equal(f.publisherMessages.length, publisherMessages);
+  assert.strictEqual(f.prepare(), lease, "lookup neither issues nor renews a lease");
+  assert.doesNotMatch(JSON.stringify(rows), /Synthetic|principal|fingerprint|consent|publicationId|writer|secret|key|https:/);
+  f.broker.destroy(); assert.throws(() => f.broker.publisherBindings(context, []), /closed/);
+});
+
+test("publisher binding probes cannot inspect or stop a foreign scope and reject malformed bounds", () => {
+  const f = sourceControlFixture(), lease = f.prepare(), context = publisherContext(f, lease);
+  f.broker.acknowledge(f.socket, f.ack(lease));
+  let reads = 0;
+  const original = f.grants.forPackager.bind(f.grants);
+  f.grants.forPackager = (...args) => { reads++; return original(...args); };
+  for (const patch of [{ roomId: "room-other" }, { programId: "prg_bbbbbbbbbbbbbbbb" }, { programEpoch: context.programEpoch + 1 },
+    { packagerId: "pkr_bbbbbbbbbbbbbbbb" }, { assignmentId: "asn_bbbbbbbbbbbbbbbb" },
+    { writerLeaseId: "lea_bbbbbbbbbbbbbbbb" }, { fencingRevision: context.fencingRevision + 1 }]) {
+    assert.deepEqual(f.broker.publisherBindings({ ...context, ...patch }, [lease.sourceLeaseId]), []);
+  }
+  assert.equal(reads, 0, "foreign scope is rejected before grant inspection");
+  assert.equal(f.messages.length, 1); assert.strictEqual(f.prepare(), lease);
+  for (const value of [null, {}, { ...context, extra: true }, { ...context, programEpoch: Infinity }]) {
+    assert.throws(() => f.broker.publisherBindings(value, []), /invalid_source_publisher_context/);
+  }
+  for (const ids of [null, {}, [lease.sourceLeaseId, lease.sourceLeaseId], Array(81).fill(lease.sourceLeaseId), ["bad-id"]]) {
+    assert.throws(() => f.broker.publisherBindings(context, ids), /invalid_source_publisher_context/);
+  }
+  assert.deepEqual(f.broker.publisherBindings(context, Array.from({ length: 80 }, (_, i) => "sls_" + String(i).padStart(16, "0"))), []);
+  f.advance(4000);
+  assert.deepEqual(f.broker.publisherBindings({ ...context, roomId: "room-other" }, [lease.sourceLeaseId]), []);
+  assert.equal(f.messages.length, 1, "even expired foreign-scoped records are not inspected or stopped by this probe");
+  f.broker.destroy();
+});
+
+test("publisher bindings disappear after source, membership, writer, socket, consent or time loss", () => {
+  for (const lose of [f => f.rooms.setMediaState(f.publisher, { source: "camera", active: false }, f.now()),
+    f => f.rooms.leave(f.publisher), f => f.epoch(), f => f.packagers.disconnect(f.socket),
+    f => f.assignments.stop(f.owner.principal, f.packagerId, f.assignment.assignmentId, "TEST_STOP", f.now()),
+    f => f.grants.revoke(f.identity, f.input.deviceFingerprint, f.consent.consentId), f => f.advance(4000)]) {
+    const f = sourceControlFixture(), lease = f.prepare(), context = publisherContext(f, lease);
+    f.broker.acknowledge(f.socket, f.ack(lease)); lose(f);
+    assert.deepEqual(f.broker.publisherBindings(context, [lease.sourceLeaseId]), []);
+    f.broker.destroy();
+  }
+  const f = sourceControlFixture(), lease = f.prepare();
+  f.broker.acknowledge(f.socket, f.ack(lease)); f.advance(-1);
+  assert.throws(() => f.broker.publisherBindings(publisherContext(f, lease), [lease.sourceLeaseId]), /clock_invalid/);
+});
+
 test("source signaling resolves actual publisher/agent sockets and rejects forged, expired or replayed routes", () => {
   const f = sourceControlFixture(), lease = f.prepare(), offer = sourceSignal(lease);
   assert.equal(f.broker.publisherSignal(f.publisher, offer), false, "receiver must acknowledge preparation first");

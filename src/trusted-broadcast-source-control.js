@@ -106,6 +106,33 @@ export class TrustedBroadcastSourceControl {
   publisherSignal(peer, value) { return this.#signal(peer, value, true); }
   packagerSignal(socket, value) { return this.#signal(socket, value, false); }
 
+  // Internal projection for a separately authorized human director. This port
+  // grants no caller authority and must never be exposed as a raw HTTP lookup.
+  publisherBindings(context, sourceLeaseIds) {
+    const fields = ["roomId", "programId", "programEpoch", "packagerId", "assignmentId", "writerLeaseId", "fencingRevision"];
+    if (!context || typeof context !== "object" || Array.isArray(context)
+      || Object.keys(context).length !== fields.length || !fields.every(key => Object.hasOwn(context, key))
+      || typeof context.roomId !== "string" || !/^[a-z0-9][a-z0-9-]{5,47}$/.test(context.roomId)
+      || ![["programId", "prg"], ["packagerId", "pkr"], ["assignmentId", "asn"], ["writerLeaseId", "lea"]]
+        .every(([key, prefix]) => typeof context[key] === "string" && REF(prefix).test(context[key]))
+      || !positive(context.programEpoch) || !positive(context.fencingRevision)
+      || !Array.isArray(sourceLeaseIds) || sourceLeaseIds.length > 80
+      || sourceLeaseIds.some(id => typeof id !== "string" || !REF("sls").test(id))
+      || new Set(sourceLeaseIds).size !== sourceLeaseIds.length) fail("invalid_source_publisher_context");
+    const now = this.#now(), rows = [];
+    for (const id of sourceLeaseIds) {
+      const record = this.#records.get(id), lease = record?.lease;
+      // Reject cross-scope probes before any grant/current checks with lifecycle effects.
+      if (!record?.active || !record.prepared || record.packagerId !== context.packagerId
+        || lease.consent.roomId !== context.roomId || lease.consent.programId !== context.programId
+        || lease.consent.programEpoch !== context.programEpoch || lease.assignmentId !== context.assignmentId
+        || lease.writerLeaseId !== context.writerLeaseId || lease.fencingRevision !== context.fencingRevision
+        || !this.#current(record, now)) continue;
+      rows.push(Object.freeze({ sourceLeaseId: id, publisherPeerId: lease.publisherPeerId, sourceKind: lease.consent.sourceKind }));
+    }
+    return Object.freeze(rows);
+  }
+
   #signal(actor, value, publisher) {
     const message = parseTrustedSourceSignal(value, publisher ? "trusted-source-publisher-signal" : "trusted-source-packager-signal");
     const now = this.#now(), record = this.#records.get(message.sourceLeaseId);
