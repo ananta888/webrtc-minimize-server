@@ -197,6 +197,62 @@ function expectation(issued, fixture, overrides = {}) {
   };
 }
 
+function liveControlConsent(fixture, overrides = {}) {
+  return { contractVersion: 1, type: "consent", tenantId: fixture.tenantId, grantorSubjectRef: fixture.subjectRef,
+    roomId: ROOM_ID, programId: PROGRAM_ID, consentId: "cns_aaaaaaaaaaaaaaaa", granteeRef: fixture.audienceRef,
+    revision: 1, programEpoch: fixture.program.programEpoch, sourceIds: [...fixture.program.sourceIds],
+    actions: ["decrypt-source", "compose-program", "publish-program"], status: "active", grantedAt: NOW - 1000,
+    expiresAt: NOW + 60000, ...overrides };
+}
+
+for (const kind of ["publisher", "packager"]) for (const state of [
+  "draft", "preparing", "awaiting_consent", "publishing", "live", "degraded", "stopping", "stopped", "failed",
+]) test(`${kind} ${state} grant matrix permits only existing states or live WHIP maintenance`, async () => {
+  const f = baseFixture({ program: { state, sourceIds: kind === "packager" ? ["src_aaaaaaaaaaaaaaaa"] : [] },
+    ...(kind === "packager" ? { audienceRef: "pkr_dddddddddddddddd", granteeDevice: device(), membership: { role: "packager" } } : {}) });
+  const grants = authority(), authorization = authorizationFor(f, kind === "packager" ? { consents: [liveControlConsent(f)] } : {});
+  for (const actions of [["whip:create"], ["whip:update"], ["whip:delete"], ["moq:publish"],
+    ["whip:update", "whip:delete"], ["whip:update", "whip:create"], ["whip:delete", "moq:publish"]]) {
+    const request = attachProof(f, requestFor(f, { kind, actions }));
+    if (actions.length !== 1) {
+      await assert.rejects(grants.issue(request, authorization, NOW), errorCode("invalid_broadcast_grant_actions"));
+      continue;
+    }
+    const allowed = ["preparing", "publishing", "degraded"].includes(state)
+      || state === "live" && actions.every(action => ["whip:update", "whip:delete"].includes(action));
+    if (!allowed) {
+      await assert.rejects(grants.issue(request, authorization, NOW), errorCode("invalid_broadcast_grant_program_state"));
+      continue;
+    }
+    const issued = await grants.issue(request, authorization, NOW);
+    assert.deepEqual(issued.grant.actions, [...actions].sort());
+    const action = actions[0];
+    const used = await grants.authorizeGatewayBearer(`Bearer ${issued.token}`, { action,
+      grantKinds: [kind], path: `/broadcast/ingest/${RESOURCE_REF}/session` }, NOW + 1);
+    assert.equal(used.status, "consumed");
+    await assert.rejects(grants.authorizeGatewayBearer(`Bearer ${issued.token}`, { action,
+      grantKinds: [kind], path: `/broadcast/ingest/${RESOURCE_REF}/session` }, NOW + 2), errorCode("inactive_broadcast_grant"));
+  }
+});
+
+for (const action of ["whip:update", "whip:delete"]) test(`live packager ${action} retains complete source consent and identity requirements`, async () => {
+  const f = baseFixture({ program: { state: "live", sourceIds: ["src_aaaaaaaaaaaaaaaa", "src_bbbbbbbbbbbbbbbb"] },
+    audienceRef: "pkr_dddddddddddddddd", granteeDevice: device(), membership: { role: "packager" } });
+  const grants = authority(), request = () => attachProof(f, requestFor(f, { kind: "packager", actions: [action] }));
+  for (const consents of [[], [liveControlConsent(f, { sourceIds: [f.program.sourceIds[0]] })],
+    [liveControlConsent(f, { status: "revoked" })], [liveControlConsent(f, { expiresAt: NOW })],
+    [liveControlConsent(f, { granteeRef: "pkr_eeeeeeeeeeeeeeee" })]]) {
+    await assert.rejects(grants.issue(request(), authorizationFor(f, { consents }), NOW), error => error instanceof BroadcastGrantError);
+  }
+  for (const overrides of [{ membership: { ...f.membership, active: false } },
+    { identity: { ...f.identity, expiresAt: NOW } }, { grantee: { ...f.grantee, deviceFingerprint: device().fingerprint } }]) {
+    await assert.rejects(grants.issue(request(), authorizationFor(f, { consents: [liveControlConsent(f)], ...overrides }), NOW),
+      error => error instanceof BroadcastGrantError);
+  }
+  const issued = await grants.issue(request(), authorizationFor(f, { consents: [liveControlConsent(f)] }), NOW);
+  assert.equal(issued.grant.status, "issued"); assert.deepEqual(issued.grant.actions, [action]);
+});
+
 for (const quota of ["maxActiveGrantsPerSubject", "maxActiveGrantsPerTenant", "maxActiveGrantsPerProgram"]) {
   test(`pending cryptographic signatures reserve ${quota} before concurrent issuance`, async () => {
     const f = baseFixture(), grants = authority({ [quota]: 1 });

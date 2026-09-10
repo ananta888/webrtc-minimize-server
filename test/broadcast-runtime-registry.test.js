@@ -379,9 +379,9 @@ test("WHIP publisher rights are capped and revoked by the same active runtime de
       deviceProof: proof(device, challenge.proofContext, now) });
   };
   const initial = await authorize("whip:create");
+  runtime.markPublished(initial.resourceRef);
   now = NOW + 50_000; const update = await authorize("whip:update");
   assert.equal(update.expiresAt, NOW + 60_000);
-  runtime.markPublished(initial.resourceRef);
   now = NOW + 60_000; runtime.prune();
   assert.equal(runtime.listMine(owner).owned[0].availability, "ended");
   assert.throws(() => authorize("whip:update"));

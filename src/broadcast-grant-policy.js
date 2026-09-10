@@ -32,6 +32,7 @@ const PROGRAM_STATES = Object.freeze({
   packager: new Set(["preparing", "publishing", "degraded"]),
   playback: new Set(["live", "degraded"]),
 });
+const LIVE_WHIP_CONTROL_ACTIONS = new Set(["whip:update", "whip:delete"]);
 const REQUIRED_CONSENT_ACTIONS = Object.freeze([
   "decrypt-source",
   "compose-program",
@@ -253,7 +254,11 @@ function assertProgram(program, request, tenantId) {
   if (program.tenantId !== tenantId || program.roomId !== request.roomId
     || program.programId !== request.programId || program.revision !== request.programRevision
     || program.programEpoch !== request.programEpoch) broadcastGrantFail("broadcast_grant_program_mismatch");
-  if (!PROGRAM_STATES[request.kind].has(program.state)) {
+  // A live publication still needs scoped maintenance and teardown authority.
+  // This does not authorize another ingest or MoQ publisher in the live state.
+  const liveWhipControl = program.state === "live" && ["publisher", "packager"].includes(request.kind)
+    && request.actions.length === 1 && LIVE_WHIP_CONTROL_ACTIONS.has(request.actions[0]);
+  if (!PROGRAM_STATES[request.kind].has(program.state) && !liveWhipControl) {
     broadcastGrantFail("invalid_broadcast_grant_program_state");
   }
 }

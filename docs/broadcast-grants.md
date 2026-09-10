@@ -27,6 +27,39 @@ Die Ausgabe eines Grants ist nur nach dieser Reihenfolge möglich:
    den Quoten pro Subject, Tenant und Programm. Nach der ES256-Signatur prüft
    sie Schlüsselgeneration, Programm-Epoch und Widerruf erneut vor der Ausgabe.
 
+### Steuerung einer laufenden WHIP-Sendung
+
+Publisher und Trusted-Packager können für ein bereits `live` geschaltetes
+Programm genau einen `whip:update`- oder `whip:delete`-Grant anfordern. Die
+frühere pauschale Zustandsprüfung lehnte diese Steuerung mit 403 ab, obwohl die
+Runtime sie vorsah. `live` erlaubt weiterhin weder `whip:create` noch
+`moq:publish`; auch Update und Delete zusammen bleiben verboten. Jeder
+Publisher-/Packager-Grant enthält unverändert genau eine Aktion und ist nur
+einmal verwendbar.
+
+| Programmzustand | Publisher-/Packager-Aktionen |
+| --- | --- |
+| `preparing`, `publishing`, `degraded` | Bisherige einzeln erlaubte Publikations- und Steueraktionen, unverändert |
+| `live` | Ausschließlich ein einzelnes `whip:update` oder `whip:delete` |
+| `draft`, `awaiting_consent`, `stopping`, `stopped`, `failed` | Keine Publisher-/Packager-Grant-Ausgabe |
+
+OIDC, aktuelle Membership, Rollen, P-256-Gerätenachweis, Programmrevision und
+Epoche, Ressourcenpfad, Quoten, Deadline sowie vollständiger Packager-Consent
+bleiben erforderlich. Steuerrechte erzeugen keinen neuen Ingress-URL und
+verändern allein weder den Programmzustand noch dessen Laufzeit. Ein erteilter
+oder verbrauchter Delete-Grant beweist noch keine physische Gateway-Abschaltung.
+
+Vor der Korrektur scheiterten vier Live-Policy-Regressionsgruppen und der echte
+HTTP-Updatepfad trotz kryptografisch geprüftem OIDC-/Gerätenachweis. Nach der
+Korrektur bestehen 73 gezielte Node-/HTTP-/P-256-/JWT-/Laufzeitprüfungen in
+0,628 Sekunden. Die Matrix umfasst beide Grant-Arten, neun Zustände und sieben
+Aktionsauswahlen einschließlich weiterhin abgewiesener Kombinationen. Der
+HTTP-Fall prüft Challenge-Einmaligkeit, Live-Update und -Delete, falsche Aktion
+und Ressource, Gateway-Einmalverbrauch, Membershipverlust und Programmstop.
+Er verwendet einen ephemeren lokalen OIDC-Issuer und keinen Browser oder
+Medienprozess; ein echter MediaMTX-DELETE und dessen Ressourcenfreigabe bleiben
+ein separater Integrationsnachweis.
+
 OIDC-Issuer und Subject werden für Broadcast-Contracts mit SHA-256 in stabile,
 opaque `tenantId`-/`subjectRef`-Werte überführt. Der Gerätefingerprint wird
 ebenfalls als `deviceRef` pseudonymisiert. Rohe Tokens oder OIDC-Claims sind
