@@ -34,8 +34,9 @@ const validateControl = controlAjv.compile(JSON.parse(await fs.readFile(
 controlAjv.addSchema(JSON.parse(await fs.readFile(new URL("../contracts/trusted-decrypt/source-approval.v1.schema.json", import.meta.url), "utf8")));
 const validateAction = controlAjv.compile(JSON.parse(await fs.readFile(new URL("../contracts/trusted-decrypt/source-actions.v1.schema.json", import.meta.url), "utf8")));
 const validatePublisher = controlAjv.compile(JSON.parse(await fs.readFile(new URL("../contracts/trusted-decrypt/source-publisher-control.v1.schema.json", import.meta.url), "utf8")));
-function fixture(start = 1800000000000, sourceProgram = false) {
+function fixture(start = 1800000000000, sourceProgram = false, liveClock = null) {
   let now = start, epoch = sourceProgram ? 1 : 3;
+  const clock = () => liveClock ? liveClock() : now;
   const issuer = "https://synthetic-identity.example/realm/source";
   const ownerIdentity = { issuer, subject: "owner", displayName: "Synthetic owner" }, identity = { issuer, subject: "publisher" };
   const rooms = new RoomRegistry();
@@ -62,7 +63,7 @@ function fixture(start = 1800000000000, sourceProgram = false) {
   const refs = { tenantId: capability.tenantId, ownerSubjectRef: capability.ownerSubjectRef };
   const refreshCapability = () => packagers.setCapability(socket, { ...capability, observedAt: now, expiresAt: now + 30000 }, refs, now);
   refreshCapability();
-  const runtime = new BroadcastRuntimeRegistry({ clock: () => now, grantAuthority: {
+  const runtime = new BroadcastRuntimeRegistry({ clock, grantAuthority: {
     issue() {}, issueAnonymousPlayback() {}, revokeProgramEpoch() {},
   } });
   const programId = runtime.createProgram(ownerIdentity, owner, { requestVersion: 1,
@@ -88,7 +89,7 @@ function fixture(start = 1800000000000, sourceProgram = false) {
   const assignment = installAssignment();
   runtime.markNativeOutputReady(prepared.admission.resourceRef, packagerId, prepared.lease.fencingRevision, now);
   const requests = new BroadcastSourceRequests({ members: roomId => rooms.members(roomId),
-    program: (...args) => runtime.nativeSourceRequestContext(...args), clock: () => now });
+    program: (...args) => runtime.nativeSourceRequestContext(...args), clock });
   const invite = sourceKind => {
     const control = runtime.nativeControl(ownerIdentity, owner, programId);
     return requests.execute(ownerIdentity, { requestVersion: 1, action: "create", trigger: "user-action", roomId: owner.roomId,
@@ -99,7 +100,7 @@ function fixture(start = 1800000000000, sourceProgram = false) {
   const request = invite("camera");
   const ports = { members: roomId => rooms.members(roomId), publication: (...args) => rooms.publication(...args),
     membershipEpoch: () => epoch, invitation: (...args) => requests.resolveForPublisher(...args),
-    writer: (...args) => runtime.nativeSourceWriterContext(...args), packager: (...args) => packagers.sourceContext(...args), clock: () => now };
+    writer: (...args) => runtime.nativeSourceWriterContext(...args), packager: (...args) => packagers.sourceContext(...args), clock };
   const grants = new TrustedBroadcastSourceGrants(ports);
   const input = { requestVersion: 1, trigger: "user-action", requestId: request.requestId, roomId: owner.roomId,
     deviceFingerprint: publisher.deviceFingerprint, publicationId: "track-camera", expectedPublicationEpoch: 1, ttlMs: 60000 };
@@ -638,7 +639,7 @@ test("approve budget rejects excess replays before expensive full authority prun
 
 for (const publicActions of [false, true, "receipt-failure", "backpressure"]) test(`live ${publicActions ? `public v4 ${publicActions}` : "internal source"} signaling renews only after ACK and stops on publisher revoke`, { timeout: 10000 }, async t => {
   steadyFixtureClock(t); // Synthetic policy times only; no production clock/lease change.
-  const f = fixture(Date.now(), publicActions), keys = crypto.generateKeyPairSync("ed25519");
+  const f = fixture(Date.now(), publicActions, Date.now), keys = crypto.generateKeyPairSync("ed25519");
   f.rooms.leave(f.publisher);
   const config = { authMode: "required", oidcIssuer: f.identity.issuer, oidcAudience: "human", oidcAlgorithms: ["EdDSA"],
     publicOrigin: "https://synthetic-fixture.example", nativePackagerSelfServiceEnabled: true, stunUrls: [], turnServers: [] };

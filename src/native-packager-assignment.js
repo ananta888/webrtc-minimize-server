@@ -107,22 +107,25 @@ export class NativePackagerAssignmentRegistry {
   #idFactory;
   #iceServersForPackager;
   #sourceProgramMembership;
+  #programLeaseDeadline;
 
   constructor({
     controlRegistry,
     idFactory = () => `asn_${crypto.randomBytes(18).toString("base64url")}`,
     iceServersForPackager = () => [],
     sourceProgramMembership = () => 0,
+    programLeaseDeadline = () => Number.MAX_SAFE_INTEGER,
   } = {}) {
     if (!controlRegistry || typeof controlRegistry.candidate !== "function"
       || typeof idFactory !== "function" || typeof iceServersForPackager !== "function"
-      || typeof sourceProgramMembership !== "function") {
+      || typeof sourceProgramMembership !== "function" || typeof programLeaseDeadline !== "function") {
       fail("invalid_native_packager_assignment_configuration", 500);
     }
     this.#control = controlRegistry;
     this.#idFactory = idFactory;
     this.#iceServersForPackager = iceServersForPackager;
     this.#sourceProgramMembership = sourceProgramMembership;
+    this.#programLeaseDeadline = programLeaseDeadline;
   }
 
   admit(ownerPrincipal, packagerId, request, now = Date.now()) {
@@ -208,6 +211,10 @@ export class NativePackagerAssignmentRegistry {
     if (sourceAuthority && sourceAuthority.sourceContext.tenantId !== packager.capability.tenantId) {
       fail("native_source_program_unavailable", 409);
     }
+    const programDeadline = this.#programLeaseDeadline({ tenantId: packager.capability.tenantId,
+      programId: admission.programId, programEpoch: admission.programEpoch }, now);
+    if (!Number.isSafeInteger(programDeadline) || programDeadline <= now) fail("native_packager_program_unavailable", 409);
+    lease.expiresAt = Math.min(lease.expiresAt, programDeadline);
     const currentForPackager = this.#byPackager.get(packagerId);
     const currentForProgram = this.#byProgram.get(admission.programId);
     if ((currentForPackager && ACTIVE_STATES.has(currentForPackager.state))
@@ -222,6 +229,7 @@ export class NativePackagerAssignmentRegistry {
       assignmentId,
       packagerId,
       ownerPrincipal,
+      tenantId: packager.capability.tenantId,
       publisherPeerId: sourceProgram ? null : peerId,
       controllerPeerId: sourceProgram ? peerId : null,
       ...sourceAuthority,
@@ -350,8 +358,11 @@ export class NativePackagerAssignmentRegistry {
     }
     const record = this.#byPackager.get(packagerId);
     if (!record || !RENEWABLE_STATES.has(record.state) || record.expiresAt <= now) return null;
+    const programDeadline = this.#programLeaseDeadline({ tenantId: record.tenantId,
+      programId: record.programId, programEpoch: record.programEpoch }, now);
+    if (!Number.isSafeInteger(programDeadline) || programDeadline <= now || !RENEWABLE_STATES.has(record.state)) return null;
     if (record.assignmentProtocolVersion >= 4) this.#sourceCurrent(record, now);
-    record.expiresAt = now + ASSIGNMENT_LEASE_MS;
+    record.expiresAt = Math.min(now + ASSIGNMENT_LEASE_MS, programDeadline);
     record.updatedAt = now;
     return Object.freeze({
       snapshot: snapshot(record),

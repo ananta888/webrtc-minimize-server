@@ -9,7 +9,7 @@ import { broadcastSubjectRef, broadcastTenantRef } from "../src/broadcast-identi
 const FIRST = "pkr_aaaaaaaaaaaaaaaa", SECOND = "pkr_bbbbbbbbbbbbbbbb";
 const NOW = 1_800_000_000_000;
 
-function fixture(sourceProgram = false, audioOutput = null, videoOutput = null) {
+function fixture(sourceProgram = false, audioOutput = null, videoOutput = null, maxProgramRuntimeMs = undefined) {
   let now = NOW;
   let resourceSequence = 0, forcedResource = null;
   const identity = { issuer: "https://identity.example/realms/ananta", subject: "owner", displayName: "Owner" };
@@ -18,6 +18,7 @@ function fixture(sourceProgram = false, audioOutput = null, videoOutput = null) 
     deviceFingerprint: "a".repeat(43), id: "0123456789abcdef" };
   const revoked = [], sent = [], unavailableDelivery = new Set();
   const runtime = new BroadcastRuntimeRegistry({ clock: () => now,
+    maxProgramRuntimeMs,
     programCapacityLimits: { deployment: 1, gateway: 1, tenant: 1, principal: 1 },
     resourceIdFactory: () => forcedResource || `res_${String(++resourceSequence).padStart(16, "0")}`, grantAuthority: {
     issue() {}, issueAnonymousPlayback() {}, revokeProgramEpoch(...args) { revoked.push(args); },
@@ -40,7 +41,8 @@ function fixture(sourceProgram = false, audioOutput = null, videoOutput = null) 
     },
     sourceContext(owner, id) { assert.equal(owner, ownerPrincipal);
       return { id, online: capabilities.has(id), capability: capabilities.get(id), generation: generations.get(id) }; },
-  }, sourceProgramMembership: (owner, room, id) => member?.id === id && member?.principal === owner
+  }, programLeaseDeadline: (scope, at) => runtime.programLeaseDeadline(scope, at),
+    sourceProgramMembership: (owner, room, id) => member?.id === id && member?.principal === owner
     && member?.roomId === room && member?.creator === true ? 1 : 0,
     iceServersForPackager: () => [{ urls: ["stun:stun.example:3478"] }] });
   const created = runtime.createProgram(identity, member, { requestVersion: 1, roomId: member.roomId,
@@ -83,6 +85,22 @@ function standbyRequest(control, standbyPackagerIds = [SECOND]) {
 }
 
 const monoOutput = Object.freeze({ codec: "aac", sampleRate: 48000, channels: 1, targetBitsPerSecond: 48000 });
+for (const sourceProgram of [false, true]) test(`absolute runtime survives ${sourceProgram ? "source" : "legacy"} writer handoff and real lease renewal`, async () => {
+  const f = fixture(sourceProgram, null, null, 60_000);
+  f.setNow(NOW + 20_000);
+  const transfer = handoffNativePackager(f.args);
+  f.status(f.first.snapshot, "stopped", "ASSIGNMENT_STOPPED"); await transfer;
+  const next = f.assignments.activeForProgram(f.programId);
+  assert.equal(f.sent[1].message.expiresAt, NOW + 60_000);
+  assert.equal(next.expiresAt, NOW + 60_000);
+  const renewal = f.assignments.renew(SECOND, NOW + 25_000);
+  assert.equal(renewal.command.expiresAt, NOW + 60_000);
+  assert.equal(renewal.snapshot.expiresAt, NOW + 60_000);
+  f.setNow(NOW + 60_000); f.runtime.prune();
+  assert.equal(f.runtime.nativeControl(f.identity, f.member, f.programId).state, "stopped");
+  assert.equal(f.assignments.renew(SECOND, NOW + 60_000), null);
+  assert.throws(() => f.runtime.completeNativeHandoff(f.identity, f.member, {}, () => assert.fail(), NOW + 60_000));
+});
 for (const audioOutput of [null, monoOutput]) test("selected video survives standby and real stop-ACK handoff without client override", async () => {
   const videoOutput = { profile: "screen-v1" }, f = fixture(true, audioOutput, videoOutput);
   videoOutput.profile = "economy-v1";

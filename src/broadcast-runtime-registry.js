@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { BroadcastProgramCapacity } from "./broadcast-program-capacity.js";
+import { BroadcastProgramLifetime, normalizeBroadcastProgramRuntime } from "./broadcast-program-lifetime.js";
 import { normalizeNativeSourceAudioOutput } from "./native-source-audio-output.js";
 import { normalizeNativeSourceVideoOutput, nativeOutputRequestFields } from "./native-source-video-output.js";
 import { normalizeNativeStandbySelection, nativeStandbyProjection } from "./native-packager-standby.js";
@@ -35,6 +36,13 @@ const MAX_CHALLENGES = 10_000;
 const INACTIVE_PROGRAM_STATES = new Set(["draft", "stopped", "failed"]);
 const capacityScope = machine => ({ tenantId: machine.scope.tenantId,
   principalRef: machine.scope.ownerSubjectRef, programId: machine.scope.programId });
+
+function assertCleanupCapacity(machine) {
+  if (!INACTIVE_PROGRAM_STATES.has(machine.program.state)
+    && machine.appliedCommands.length > MAX_BROADCAST_IDEMPOTENCY_RECORDS - 2) {
+    fail("broadcast_program_cleanup_capacity", 429);
+  }
+}
 
 export class BroadcastRuntimeError extends Error {
   constructor(code, status = 400) {
@@ -138,6 +146,8 @@ export class BroadcastRuntimeRegistry {
   #challenges = new Map();
   #pendingPublishers = new Map();
   #programCapacity;
+  #maxProgramRuntimeMs;
+  #onProgramExpired;
   #challengeTtlMs;
   #clock;
   #idFactory;
@@ -152,6 +162,8 @@ export class BroadcastRuntimeRegistry {
     grantAuthority,
     audienceRegistry,
     programCapacityLimits,
+    maxProgramRuntimeMs,
+    onProgramExpired = () => {},
     challengeTtlMs = 60_000,
     clock = Date.now,
     idFactory = () => `bpc_${crypto.randomBytes(24).toString("base64url")}`,
@@ -167,11 +179,13 @@ export class BroadcastRuntimeRegistry {
       || typeof clock !== "function" || typeof idFactory !== "function"
       || typeof programIdFactory !== "function" || typeof policyIdFactory !== "function"
       || typeof resourceIdFactory !== "function" || typeof leaseIdFactory !== "function"
-      || typeof anonymousSubjectFactory !== "function") {
+      || typeof anonymousSubjectFactory !== "function" || typeof onProgramExpired !== "function") {
       fail("invalid_broadcast_runtime_configuration", 500);
     }
     this.#authority = grantAuthority;
     this.#programCapacity = new BroadcastProgramCapacity(programCapacityLimits);
+    this.#maxProgramRuntimeMs = normalizeBroadcastProgramRuntime(maxProgramRuntimeMs);
+    this.#onProgramExpired = onProgramExpired;
     this.#audience = audienceRegistry || new BroadcastAudienceRegistry({
       revokeProgramEpoch: (...args) => this.#authority.revokeProgramEpoch(...args),
     });
@@ -257,6 +271,7 @@ export class BroadcastRuntimeRegistry {
   register(value, now = this.#clock()) {
     const input = normalizeRegistration(value);
     const machine = validateBroadcastProgramMachine(input.machine);
+    assertCleanupCapacity(machine);
     if (!machine.program || !PROGRAM.test(machine.scope.programId)) {
       fail("invalid_broadcast_runtime_registration");
     }
@@ -272,6 +287,7 @@ export class BroadcastRuntimeRegistry {
     }, now);
     const record = Object.freeze({
       snapshot,
+      lifetime: INACTIVE_PROGRAM_STATES.has(machine.program.state) ? null : new BroadcastProgramLifetime(this.#maxProgramRuntimeMs, now),
       resourceRef: input.resourceRef,
       ownerLabel: input.ownerLabel,
       ownerVisibility: input.ownerVisibility,
@@ -457,7 +473,8 @@ export class BroadcastRuntimeRegistry {
       pathHash: broadcastGrantPathHash(pathPrefix),
       actions,
     });
-    const expiresAt = Math.min(now + this.#challengeTtlMs, anonymous ? now + 30_000 : identity.expiresAt);
+    const expiresAt = Math.min(now + this.#challengeTtlMs, anonymous ? now + 30_000 : identity.expiresAt,
+      record.lifetime.expiresAt);
     if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) fail("broadcast_authentication_required", 401);
     this.#challenges.set(challengeId, Object.freeze({
       kind: "playback", anonymous, challengeId, refs, identity, record, authorization,
@@ -514,7 +531,7 @@ export class BroadcastRuntimeRegistry {
       deviceProof: input.deviceProof,
     };
     const grantAuthorization = {
-      identity,
+      identity: { ...identity, expiresAt: Math.min(identity?.expiresAt ?? Infinity, current.lifetime.expiresAt) },
       membership: null,
       audience: {
         active: true,
@@ -537,13 +554,21 @@ export class BroadcastRuntimeRegistry {
     };
     const issued = challenge.anonymous
       ? await this.#authority.issueAnonymousPlayback(grantRequest, {
-        audience: challenge.authorization,
+        audience: { ...challenge.authorization, expiresAt: Math.min(challenge.authorization.expiresAt, current.lifetime.expiresAt) },
         program: current.snapshot.machine.program,
         viewerPolicy: current.snapshot.policy,
         subjectRef: refs.subjectRef,
         deviceFingerprint: fingerprint,
       }, now)
       : await this.#authority.issue(grantRequest, grantAuthorization, now);
+    let committedAt;
+    try { committedAt = this.#clock(); } catch { committedAt = NaN; }
+    this.prune(committedAt);
+    if (!Number.isSafeInteger(committedAt) || committedAt < now || committedAt >= challenge.expiresAt
+      || committedAt >= issued.grant.expiresAt || this.#records.get(`${refs.tenantId}\0${challenge.proofContext.programId}`) !== current) {
+      this.#authority.revokeGrant(issued.grant.grantId, Number.isSafeInteger(committedAt) && committedAt >= now ? committedAt : now);
+      unavailable();
+    }
     return Object.freeze({
       bootstrapVersion: 1,
       program: entry(current),
@@ -605,7 +630,7 @@ export class BroadcastRuntimeRegistry {
       pathHash: broadcastGrantPathHash(pathPrefix),
       actions: Object.freeze([input.action]),
     });
-    const expiresAt = Math.min(now + this.#challengeTtlMs, identity.expiresAt);
+    const expiresAt = Math.min(now + this.#challengeTtlMs, identity.expiresAt, record.lifetime?.expiresAt ?? Infinity);
     if (expiresAt <= now) fail("broadcast_authentication_required", 401);
     this.#challenges.set(challengeId, Object.freeze({
       kind: "publisher", action: input.action, challengeId, refs, identity, record,
@@ -653,7 +678,7 @@ export class BroadcastRuntimeRegistry {
       pathPrefix: challenge.pathPrefix,
       deviceProof: input.deviceProof,
     }, {
-      identity,
+      identity: { ...identity, expiresAt: Math.min(identity.expiresAt, current.lifetime?.expiresAt ?? now + this.#maxProgramRuntimeMs) },
       membership: {
         active: true,
         tenantId: refs.tenantId,
@@ -727,6 +752,7 @@ export class BroadcastRuntimeRegistry {
       });
       issued = await Promise.race([issuance, cancelled]);
       const committedAt = readClock();
+      this.prune(committedAt);
       if (transaction.abort.signal.aborted || this.#records.get(key) !== challenge.record
         || !Number.isSafeInteger(committedAt) || committedAt < now
         || committedAt >= challenge.expiresAt || committedAt >= identityExpiresAt
@@ -798,6 +824,8 @@ export class BroadcastRuntimeRegistry {
 
   #installNativeWriter(key, record, candidate, input, admit, member, now) {
     this.#assertProgramCapacity(candidate);
+    const lifetime = record.lifetime || new BroadcastProgramLifetime(this.#maxProgramRuntimeMs, now);
+    if (!lifetime.observe(now)) unavailable();
     const programId = candidate.scope.programId;
     const audioOutput = record.nativeAudioOutput ?? input.audioOutput;
     const videoOutput = record.nativeVideoOutput ?? input.videoOutput;
@@ -832,14 +860,14 @@ export class BroadcastRuntimeRegistry {
       fencingRevision: candidate.epochs.lease + 1,
       acquiredAt: now,
       renewedAt: now,
-      expiresAt: now + 60_000,
+      expiresAt: Math.min(now + 60_000, lifetime.expiresAt),
     };
     candidate = applyBroadcastProgramCommand(candidate, command(candidate, "handoff", {
       expectedLeaseEpoch: candidate.epochs.lease,
       lease,
     }), now).state;
     this.#synchronizeRecord(key, {
-      ...record, pendingHandoff: null,
+      ...record, lifetime, pendingHandoff: null,
       ...(audioOutput ? { nativeAudioOutput: audioOutput } : {}),
       ...(videoOutput ? { nativeVideoOutput: videoOutput } : {}),
       publisherPrincipal: member.principal, publisherFingerprint: member.deviceFingerprint,
@@ -862,11 +890,11 @@ export class BroadcastRuntimeRegistry {
     });
   }
 
-  #nativeOwned(identity, member, programId) {
+  #nativeOwned(identity, member, programId, now = this.#clock()) {
     const refs = identityRefs(identity);
     if (!PROGRAM.test(programId || "")) unavailable();
     const key = `${refs.tenantId}\0${programId}`;
-    const record = this.#records.get(key);
+    const record = this.#currentRecord(key, now);
     if (!record || record.snapshot.machine.scope.ownerSubjectRef !== refs.subjectRef) unavailable();
     if (!member || member.principal !== refs.principal || member.creator !== true
       || member.roomId !== record.snapshot.machine.scope.roomId
@@ -897,7 +925,7 @@ export class BroadcastRuntimeRegistry {
   }
 
   nativeSourceRequestContext(identity, member, programId, now = this.#clock()) {
-    const { record } = this.#nativeOwned(identity, member, programId);
+    const { record } = this.#nativeOwned(identity, member, programId, now);
     const machine = record.snapshot.machine;
     const writer = machine.writerLeases.find(lease => lease.role === "packager-writer");
     if (!ACTIVE.has(machine.program.state) || record.pendingHandoff || !writer || writer.expiresAt <= now) {
@@ -910,7 +938,7 @@ export class BroadcastRuntimeRegistry {
   // Server-only scope. A valid invitation is not a writer lease or source consent.
   nativeSourceWriterContext(identity, member, programId, now = this.#clock()) {
     const context = this.nativeSourceRequestContext(identity, member, programId, now);
-    const { record } = this.#nativeOwned(identity, member, programId);
+    const { record } = this.#nativeOwned(identity, member, programId, now);
     const machine = record.snapshot.machine;
     const writer = machine.writerLeases.find(lease => lease.role === "packager-writer");
     return Object.freeze({ ...context, tenantId: machine.scope.tenantId,
@@ -920,7 +948,7 @@ export class BroadcastRuntimeRegistry {
   }
 
   selectNativeStandbys(identity, member, programId, value, admit, now = this.#clock()) {
-    const { key, record } = this.#nativeOwned(identity, member, programId);
+    const { key, record } = this.#nativeOwned(identity, member, programId, now);
     const input = normalizeNativeStandbySelection(value);
     const machine = record.snapshot.machine;
     const current = nativeStandbyProjection(machine, record.standbyPlan);
@@ -949,7 +977,7 @@ export class BroadcastRuntimeRegistry {
   }
 
   beginNativeHandoff(identity, member, programId, value, admit, now = this.#clock()) {
-    const { key, record } = this.#nativeOwned(identity, member, programId);
+    const { key, record } = this.#nativeOwned(identity, member, programId, now);
     const input = clone(value, "invalid_native_packager_handoff");
     const fields = new Set(["requestVersion", "trigger", "packagerId", "expectedProgramRevision",
       "expectedProgramEpoch", "expectedFencingRevision", "requestedRenditions", "allowHardwareAcceleration"]);
@@ -982,14 +1010,14 @@ export class BroadcastRuntimeRegistry {
     const pending = Object.freeze({ ...input, programId, previousPackagerId: writer.holderRef,
       previousProgramEpoch: machine.program.programEpoch, previousFencingRevision: writer.fencingRevision,
       nextProgramRevision: candidate.program.revision, nextProgramEpoch: candidate.program.programEpoch, resourceRef,
-      publisherPeerId: member.id, expiresAt: now + 12_000 });
+      publisherPeerId: member.id, expiresAt: Math.min(now + 12_000, record.lifetime.expiresAt) });
     this.#synchronizeRecord(key, { ...record, resourceRef, pendingHandoff: pending }, candidate, now);
     this.#resourceRefs.add(resourceRef);
     return pending; // Internal capability, never serialized or accepted from a client.
   }
 
   completeNativeHandoff(identity, member, pending, admit, now = this.#clock()) {
-    const { key, record } = this.#nativeOwned(identity, member, pending?.programId);
+    const { key, record } = this.#nativeOwned(identity, member, pending?.programId, now);
     if (!pending || record.pendingHandoff !== pending || pending.expiresAt <= now
       || record.snapshot.machine.program.state !== "preparing"
       || record.snapshot.machine.program.revision !== pending.nextProgramRevision
@@ -1008,6 +1036,7 @@ export class BroadcastRuntimeRegistry {
   }
 
   markPublished(resourceRef, now = this.#clock()) {
+    this.prune(now);
     const found = [...this.#records.entries()].find(([, record]) => record.resourceRef === resourceRef);
     if (!found) unavailable();
     const [key, record] = found;
@@ -1036,7 +1065,7 @@ export class BroadcastRuntimeRegistry {
           fencingRevision: machine.epochs.lease + 1,
           acquiredAt: now,
           renewedAt: now,
-          expiresAt: now + 60_000,
+          expiresAt: Math.min(now + 60_000, record.lifetime.expiresAt),
         },
       }), now).state;
     }
@@ -1071,7 +1100,7 @@ export class BroadcastRuntimeRegistry {
     return entry(this.#synchronizeRecord(key, record, machine, now, true));
   }
 
-  #currentNativeOutput(resourceRef, packagerId, fencingRevision, now) {
+  #currentNativeOutput(resourceRef, packagerId, fencingRevision, now, staleCode = "stale_broadcast_packager_output") {
     if (!RESOURCE.test(resourceRef || "") || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(packagerId || "")
       || !Number.isSafeInteger(fencingRevision) || fencingRevision < 1 || !Number.isSafeInteger(now)) unavailable();
     const found = [...this.#records.entries()].find(([, record]) => record.resourceRef === resourceRef);
@@ -1081,8 +1110,9 @@ export class BroadcastRuntimeRegistry {
     const packagerLease = machine.writerLeases.find(({ role }) => role === "packager-writer");
     if (!packagerLease || packagerLease.holderRef !== packagerId
       || packagerLease.fencingRevision !== fencingRevision || packagerLease.expiresAt <= now) {
-      fail("stale_broadcast_packager_output", 409);
+      fail(staleCode, 409);
     }
+    if (this.#currentRecord(key, now) !== record) fail(staleCode, 409);
     return { key, record, packagerLease };
   }
 
@@ -1123,18 +1153,27 @@ export class BroadcastRuntimeRegistry {
   }
 
   renewNativeOutput(resourceRef, packagerId, fencingRevision, expiresAt, now = this.#clock()) {
-    if (!RESOURCE.test(resourceRef || "")) unavailable();
-    const found = [...this.#records.entries()].find(([, record]) => record.resourceRef === resourceRef);
-    if (!found) unavailable();
-    const [key, record] = found;
+    if (!Number.isSafeInteger(expiresAt) || expiresAt <= now || expiresAt > now + 120_000) {
+      fail("invalid_broadcast_lease_renewal");
+    }
+    const { key, record } = this.#currentNativeOutput(resourceRef, packagerId, fencingRevision, now, "stale_broadcast_lease_renewal");
     const machine = renewBroadcastWriterLeases(record.snapshot.machine, {
-      holderRef: packagerId, fencingRevision, expiresAt,
+      holderRef: packagerId, fencingRevision, expiresAt: Math.min(expiresAt, record.lifetime?.expiresAt ?? expiresAt),
     }, now);
     return entry(this.#synchronizeRecord(key, record, machine, now));
   }
 
   #synchronizeRecord(key, record, machine, now, outputAvailabilityOnly = false) {
     this.#assertProgramCapacity(machine);
+    assertCleanupCapacity(machine);
+    let lifetime = record.lifetime;
+    if (!INACTIVE_PROGRAM_STATES.has(machine.program.state)) {
+      lifetime ||= new BroadcastProgramLifetime(this.#maxProgramRuntimeMs, now);
+      if (!lifetime.observe(now)) {
+        this.#currentRecord(key, now);
+        unavailable();
+      }
+    }
     let policy = record.snapshot.policy;
     if (policy.programEpoch !== machine.program.programEpoch
       || policy.visibility !== machine.program.visibility) {
@@ -1167,7 +1206,7 @@ export class BroadcastRuntimeRegistry {
     // existing source authority. First approval still checks the UI revision.
     const sourceAuthorityRevision = outputAvailabilityOnly || machine.program.revision === record.snapshot.machine.program.revision
       ? record.sourceAuthorityRevision ?? record.snapshot.machine.program.revision : machine.program.revision;
-    const next = Object.freeze({ ...record, snapshot, sourceAuthorityRevision,
+    const next = Object.freeze({ ...record, lifetime, snapshot, sourceAuthorityRevision,
       standbyPlan: ACTIVE.has(machine.program.state)
         && record.standbyPlan?.programEpoch === machine.program.programEpoch ? record.standbyPlan : null });
     this.#records.set(key, next);
@@ -1175,10 +1214,38 @@ export class BroadcastRuntimeRegistry {
   }
 
   prune(now = this.#clock()) {
+    for (const key of this.#records.keys()) this.#currentRecord(key, now);
     for (const [id, challenge] of this.#challenges) {
       if (challenge.expiresAt <= now) this.#challenges.delete(id);
     }
-    this.#authority.prune?.(now);
+    if (Number.isSafeInteger(now) && now > 0) this.#authority.prune?.(now);
+  }
+
+  #currentRecord(key, now) {
+    const record = this.#records.get(key);
+    if (!record?.lifetime || INACTIVE_PROGRAM_STATES.has(record.snapshot.machine.program.state)
+      || record.lifetime.observe(now)) return record;
+    const effectiveAt = record.lifetime.observedAt;
+    const stopped = this.#stopRecord(key, record, "PROGRAM_RUNTIME_EXPIRED", effectiveAt);
+    // Policy revocation is committed before best-effort delivery. The native
+    // lease itself is capped, so a lost stop command cannot extend its deadline.
+    try { this.#onProgramExpired(Object.freeze({ principal: record.publisherPrincipal,
+      programId: record.snapshot.machine.scope.programId, reasonCode: "PROGRAM_RUNTIME_EXPIRED", now: effectiveAt })); }
+    catch { /* No rollback of the terminal policy decision on delivery failure. */ }
+    return stopped;
+  }
+
+  // Internal policy port: caller must already own its assignment scope. Never
+  // accept this deadline or the scope as authority supplied by a remote agent.
+  programLeaseDeadline(scope, now = this.#clock()) {
+    if (!scope || typeof scope !== "object" || Array.isArray(scope)
+      || Object.keys(scope).length !== 3 || Object.keys(scope).some(field => !["tenantId", "programId", "programEpoch"].includes(field))
+      || !Number.isSafeInteger(scope.programEpoch) || scope.programEpoch < 1) return null;
+    const key = `${scope?.tenantId}\0${scope?.programId}`;
+    const previous = this.#records.get(key);
+    if (!previous || previous.snapshot.machine.program.programEpoch !== scope?.programEpoch) return null;
+    const record = this.#currentRecord(key, now);
+    return INACTIVE_PROGRAM_STATES.has(record.snapshot.machine.program.state) ? null : record.lifetime?.expiresAt ?? null;
   }
 
   #assertProgramCapacity(candidate) {

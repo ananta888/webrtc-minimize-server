@@ -92,8 +92,7 @@ function registration(owner, suffix, visibility = "private", viewers = [], anony
   };
 }
 
-function proof(device, context) {
-  const timestamp = NOW;
+function proof(device, context, timestamp = NOW) {
   const nonce = crypto.randomBytes(24).toString("base64url");
   return {
     publicKey: device.publicKey.export({ format: "jwk" }),
@@ -106,6 +105,33 @@ function proof(device, context) {
     ).toString("base64url"),
   };
 }
+
+for (const anonymous of [false, true]) test(`runtime caps ${anonymous ? "anonymous" : "OIDC"} playback grants to the program deadline and rejects late signatures`, async () => {
+  const owner = identity("owner", "Synthetic"), grants = authority();
+  let now = NOW, pending = false, release, issued;
+  const gate = new Promise(resolve => { release = resolve; });
+  let notify; const entered = new Promise(resolve => { notify = resolve; });
+  const runtime = new BroadcastRuntimeRegistry({ clock: () => now, maxProgramRuntimeMs: 60_000, grantAuthority: {
+    issue: async (...args) => { issued = await grants.issue(...args); if (pending) { notify(); await gate; } return issued; },
+    issueAnonymousPlayback: async (...args) => { issued = await grants.issueAnonymousPlayback(...args); if (pending) { notify(); await gate; } return issued; },
+    revokeGrant: (...args) => grants.revokeGrant(...args), revokeProgramEpoch: (...args) => grants.revokeProgramEpoch(...args),
+    prune: (...args) => grants.prune(...args),
+  } });
+  const registered = runtime.register(registration(owner, "a", "public", [], anonymous), now);
+  now = NOW + 50_000;
+  const viewer = anonymous ? null : owner, context = anonymous ? { tenantId: broadcastTenantRef(owner.issuer) } : null;
+  const device = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const authorize = async () => {
+    const challenge = await runtime.createPlaybackChallenge(viewer, registered.programId, now, context);
+    return runtime.authorizePlayback(viewer, { requestVersion: 1, challengeId: challenge.challengeId,
+      deviceProof: proof(device, challenge.proofContext, now) }, now);
+  };
+  const active = await authorize(); assert.equal(active.expiresAt, NOW + 60_000);
+  pending = true; const late = authorize(); await entered; now = NOW + 60_000; release();
+  await assert.rejects(late, /broadcast_not_available/);
+  assert.notEqual(grants.grant(issued.grant.grantId).status, "issued");
+  assert.equal(runtime.listMine(owner).owned[0].availability, "ended");
+});
 
 test("runtime projects public, owned and explicitly authorized programs without room membership", async () => {
   const owner = identity("owner", "Ada");
@@ -333,6 +359,35 @@ test("visibility changes require a fenced stop and remain owner-only", () => {
   assert.equal(visible.availability, "ended");
   assert.equal(runtime.listPublic(broadcastTenantRef(ISSUER)).length, 0);
   assert.equal(runtime.stopProgram(owner, "prg_eeeeeeeeeeeeeeee", NOW + 4).availability, "ended");
+});
+
+test("WHIP publisher rights are capped and revoked by the same active runtime deadline", async () => {
+  let now = NOW;
+  const owner = identity("owner", "Synthetic"), grants = authority();
+  const runtime = new BroadcastRuntimeRegistry({ grantAuthority: grants, clock: () => now, maxProgramRuntimeMs: 60_000 });
+  const device = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const member = { principal: `${owner.issuer}|${owner.subject}`, roomId: "room-alpha", creator: true,
+    id: "0123456789abcdef", deviceFingerprint: deviceFingerprint(device.publicKey.export({ format: "jwk" })) };
+  const programId = runtime.createProgram(owner, member, { requestVersion: 1, roomId: member.roomId,
+    title: "Synthetic", visibility: "private" }).control.programId;
+  const authorize = action => {
+    const challenge = runtime.createPublisherChallenge(owner, member, programId, {
+      requestVersion: 1, action, sourceIds: ["src_aaaaaaaaaaaaaaaa"],
+    });
+    if (action !== "whip:create") assert.equal(challenge.expiresAt, NOW + 60_000);
+    return runtime.authorizePublisher(owner, programId, { requestVersion: 1, challengeId: challenge.challengeId,
+      deviceProof: proof(device, challenge.proofContext, now) });
+  };
+  const initial = await authorize("whip:create");
+  now = NOW + 50_000; const update = await authorize("whip:update");
+  assert.equal(update.expiresAt, NOW + 60_000);
+  runtime.markPublished(initial.resourceRef);
+  now = NOW + 60_000; runtime.prune();
+  assert.equal(runtime.listMine(owner).owned[0].availability, "ended");
+  assert.throws(() => authorize("whip:update"));
+  await assert.rejects(grants.authorizeGatewayBearer(`Bearer ${update.accessToken}`, {
+    action: "whip:update", grantKinds: ["publisher"], path: `/broadcast/ingest/${update.resourceRef}`,
+  }, now), error => ["invalid_broadcast_grant", "revoked_broadcast_program_epoch", "inactive_broadcast_grant"].includes(error.code));
 });
 
 test("publisher device departure stops only programs bound to that room device", async () => {

@@ -10,6 +10,7 @@ import { parseMachineTrustProfile } from "./machine-trust-profile.js";
 import { readMachineTrustFile } from "./machine-trust-file.js";
 import { BROADCAST_HLS_BUDGET_DEFAULTS } from "./broadcast-hls-budget.js";
 import { BROADCAST_PROGRAM_CAPACITY_DEFAULTS } from "./broadcast-program-capacity.js";
+import { BROADCAST_PROGRAM_RUNTIME_DEFAULT_MS } from "./broadcast-program-lifetime.js";
 
 const DEFAULTS = Object.freeze({
   host: "0.0.0.0",
@@ -710,6 +711,9 @@ export function loadConfig(env = process.env) {
       DEFAULTS.broadcastGatewayAuthAddresses,
     )),
     broadcastGatewayOrigin,
+    broadcastMaxProgramRuntimeMs: boundedInteger(env.BROADCAST_MAX_PROGRAM_RUNTIME_MS === "" ? NaN : env.BROADCAST_MAX_PROGRAM_RUNTIME_MS,
+      BROADCAST_PROGRAM_RUNTIME_DEFAULT_MS,
+      { minimum: 60_000, maximum: 86_400_000, name: "BROADCAST_MAX_PROGRAM_RUNTIME_MS" }),
     broadcastProgramCapacity: Object.freeze(Object.fromEntries([
       ["deployment", "BROADCAST_MAX_ACTIVE_PROGRAMS"],
       ["gateway", "BROADCAST_MAX_ACTIVE_PROGRAMS_PER_GATEWAY"],

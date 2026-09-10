@@ -2624,7 +2624,10 @@ function configureSignaling(
     for (const roomId of roomEpochs.keys()) broadcastMediaAgentState(roomId);
   }, config.mediaAgentRenewMs);
   mediaAgentRenewal.unref();
-  const sourceGrantExpiry = setInterval(pruneTrustedSources, 500);
+  const sourceGrantExpiry = setInterval(() => {
+    broadcastRuntime?.prune();
+    pruneTrustedSources();
+  }, 500);
   sourceGrantExpiry.unref();
   server.on("close", () => {
     clearInterval(sourceGrantExpiry);
@@ -2696,6 +2699,7 @@ export function createAppServer(options = {}) {
   const nativePackagerAssignments = options.nativePackagerAssignments
     || new NativePackagerAssignmentRegistry({
       controlRegistry: nativePackagers,
+      programLeaseDeadline: (scope, now) => broadcastRuntime?.programLeaseDeadline(scope, now) ?? null,
       iceServersForPackager: (packagerId, now) => createNativePackagerIceServers(config, packagerId, now),
       sourceProgramMembership: (owner, roomId, peerId) => {
         const member = registry.members(roomId).find(peer => peer.id === peerId && peer.principal === owner
@@ -2745,7 +2749,16 @@ export function createAppServer(options = {}) {
   }
   const broadcastRuntime = options.broadcastRuntime || (broadcastGrantAuthority
     ? new BroadcastRuntimeRegistry({ grantAuthority: broadcastGrantAuthority,
-      programCapacityLimits: config.broadcastProgramCapacity }) : null);
+      programCapacityLimits: config.broadcastProgramCapacity,
+      maxProgramRuntimeMs: config.broadcastMaxProgramRuntimeMs,
+      onProgramExpired: ({ principal, programId, reasonCode, now }) => {
+        if (!principal) return;
+        const assignment = nativePackagerAssignments.activeForProgram(programId);
+        if (!assignment) return;
+        const result = nativePackagerAssignments.stop(principal, assignment.packagerId, assignment.assignmentId, reasonCode, now);
+        if (result.command) safeSend(nativePackagers.socketFor(assignment.packagerId), result.command);
+      },
+    }) : null);
   const broadcastSourceRequests = broadcastRuntime ? new BroadcastSourceRequests({
     members: roomId => registry.members(roomId),
     program: (...args) => broadcastRuntime.nativeSourceRequestContext(...args),
