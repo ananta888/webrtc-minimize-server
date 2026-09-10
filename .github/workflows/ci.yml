@@ -83,6 +83,7 @@ jobs:
           pactl set-default-sink webrtc_ci_audio
           pactl info > /dev/null
       - name: Build the tested application and pull isolated fixture images
+        id: prepare-turn-fixture
         run: |
           npm run build
           docker pull node:22-alpine
@@ -92,6 +93,9 @@ jobs:
           MACHINE_DIALOG_ICE_PATH: turn-udp
         run: node --test test/machine-dialog.browser.e2e.test.js
       - name: Real Chromium and Firefox dialog over TURN TCP
+        # A UDP failure must stay red, but must not hide the independent TCP path.
+        # Do not run after failed preparation or explicit workflow cancellation.
+        if: ${{ !cancelled() && steps.prepare-turn-fixture.outcome == 'success' }}
         env:
           MACHINE_DIALOG_ICE_PATH: turn-tcp
         run: node --test test/machine-dialog.browser.e2e.test.js

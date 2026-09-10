@@ -5,6 +5,32 @@ Aktivierung sind unterschiedliche Zustände. Zuletzt war `admissionEnabled: fals
 bei der Nachprüfung um 10:41 UTC ist der Status wegen HTTP 502 nicht abrufbar.
 Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
 
+## Aktueller CI-Abschluss auf `726876f`
+
+CI `34473189164` ist beendet und **fehlgeschlagen**. Der allgemeine Job
+meldet 1.248 bestandene Node-/Browsertests, einen Fehler und vier Skips
+(664,873 s); anschließend wurde der Job an seinem Zeitlimit abgebrochen.
+Der Standby-Handoff und die Ein-Quellen-Szene bestanden. Die Zwei-Quellen-Szene
+scheiterte weiterhin am tatsächlichen Bildnachweis, nicht an einer fehlenden
+Szenenbestätigung. Die nativen Agent-/Packager- und beide macOS-Jobs bestanden.
+Docker und Live-Keycloak/TURN wurden nicht ausgeführt.
+
+Im separaten Ananta-TURN-Job scheiterte Chromium bereits vor Browserstart:
+TLS `connect/refused`, 99 Versuche, Proxycontainer läuft, keine
+Listener-Ankündigung. Firefox UDP bestand danach mit 16.000 PCM-Samples,
+Chat, Bildschirm, drei Erneuerungen, Widerruf und ausgewählten Relay-Paaren
+auf beiden Seiten. TCP wurde wegen des UDP-Fehlers nicht ausgeführt.
+Die Ursache des Proxy-Starts ist damit eingegrenzt, aber nicht bewiesen.
+
+Die CI führt TCP nun auch nach einem UDP-Fehler aus, sofern die gemeinsame
+Vorbereitung erfolgreich war und der Lauf nicht abgebrochen wurde. Beide
+Prüfungen bleiben strikt; kein `continue-on-error`, Retry oder größeres
+Zeitlimit. Zwölf gezielte Workflow-/TLS-Prüfungen und die YAML-Validierung
+bestanden. Eine Ausführung dieser geänderten CI steht noch aus; kein neuer
+Gesamtcheck nach dieser kleinen CI-Korrektur. Die erneute öffentliche
+Healthprüfung liefert weiterhin HTTP 502. Keine Änderung an Serving-Build,
+Hub-Trust, laufenden Diensten oder Ananta-Repository.
+
 ## Nachtrag: initial deaktivierter Standby-Editor
 
 Die [Standby-Bedienbarkeit](native-standby-dom-readiness.md) ist gezielt
