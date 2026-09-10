@@ -54,6 +54,23 @@ maximal fünf Sekunden oder früherem Challenge-Ablauf endet die Transaktion;
 eine zweite parallele Autorisierung erhält 409, ohne eine weitere Signatur
 anzustoßen. Die Challenge bleibt auch bei Ablehnung einmalig verbraucht.
 
+Vor diesem Verbrauch bindet die Runtime die Challenge an den authentisierten
+Principal **und die Programm-ID der HTTP-Route**. Eine Challenge für Programm A
+an der Route für B oder ein unbekanntes Programm erhält 404, ohne Grant-Ausgabe,
+Programmstart oder Quotenbelegung. Auch eine fremde Identität darf die Challenge
+nicht verbrauchen. Erst ein zum Scope passender Einlöseversuch verbraucht sie;
+dessen spätere Ablehnung erlaubt keine Wiederholung. Die Einmal-Challenge kann
+nach einer bloßen Fehladressierung daher noch an ihrer korrekten Route verwendet
+werden, sofern sie weiterhin gültig ist.
+
+Zwei echte HTTP-Regressionsfälle reproduzierten zunächst die vorherige
+Grant-Ausgabe trotz 404. Nach der Korrektur bestätigen sie null Grant-Aufrufe und
+unveränderten Programmzustand bei falschem Pfad sowie genau eine erfolgreiche
+Einlösung mit realem P-256-Gerätenachweis und JWT-Ausstellung am richtigen Pfad.
+Die OIDC-Identität ist in diesen lokalen HTTP-Tests ausdrücklich synthetisch;
+dies ersetzt keine Live-JWKS-Abnahme. Die gemeinsame browserfreie Registry-,
+Quoten-, Grant- und Handoff-Matrix besteht mit 61 Tests in 1,957 Sekunden.
+
 Owner-Stop und der bestehende serverseitige Room-Leave-Hook widerrufen die
 passende laufende Transaktion. Leave entfernt außerdem noch nicht eingelöste
 Publisher-Challenges desselben Principal-/Raum-/Geräte-/Peer-Kontexts.

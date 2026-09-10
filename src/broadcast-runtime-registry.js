@@ -615,7 +615,8 @@ export class BroadcastRuntimeRegistry {
     return Object.freeze({ challengeVersion: 1, challengeId, proofContext, expiresAt });
   }
 
-  async authorizePublisher(identity, value, now = this.#clock()) {
+  async authorizePublisher(identity, programId, value, now = this.#clock()) {
+    if (typeof programId !== "string" || PROGRAM.exec(programId)?.[0] !== programId) unavailable();
     const input = clone(value, "invalid_broadcast_publisher_authorization");
     closed(input, new Set(["requestVersion", "challengeId", "deviceProof"]),
       "invalid_broadcast_publisher_authorization");
@@ -626,9 +627,11 @@ export class BroadcastRuntimeRegistry {
     this.prune(now);
     const refs = identityRefs(identity);
     const challenge = this.#challenges.get(input.challengeId);
-    this.#challenges.delete(input.challengeId);
     if (!challenge || challenge.kind !== "publisher" || challenge.expiresAt <= now
-      || challenge.refs.principal !== refs.principal) unavailable();
+      || challenge.refs.principal !== refs.principal || challenge.proofContext.programId !== programId) unavailable();
+    // Bind the authenticated route before consuming a challenge, reserving
+    // capacity, issuing a grant or moving a different program out of draft.
+    this.#challenges.delete(input.challengeId);
     const key = `${refs.tenantId}\0${challenge.proofContext.programId}`;
     const current = this.#records.get(key);
     if (current !== challenge.record) unavailable();

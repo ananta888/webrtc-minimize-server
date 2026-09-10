@@ -750,10 +750,7 @@ function createHttpHandler(config, registry, services) {
         }
         const identity = await authenticateRequest(request, config, oidcVerifier);
         const input = await readJsonBody(request);
-        const authorization = await broadcastRuntime.authorizePublisher(identity, input);
-        if (authorization.program.programId !== broadcastPublisherAuthorizationMatch[1]) {
-          throw new BroadcastRuntimeError("broadcast_not_available", 404);
-        }
+        const authorization = await broadcastRuntime.authorizePublisher(identity, broadcastPublisherAuthorizationMatch[1], input);
         const { action, ...publicAuthorization } = authorization;
         sendJson(response, 201, {
           ...publicAuthorization,

@@ -267,7 +267,7 @@ test("owner creates a draft, obtains a device-bound publisher grant and becomes 
     action: "whip:create",
     sourceIds: ["src_aaaaaaaaaaaaaaaa"],
   }, NOW);
-  const authorization = await runtime.authorizePublisher(owner, {
+  const authorization = await runtime.authorizePublisher(owner, created.program.programId, {
     requestVersion: 1,
     challengeId: challenge.challengeId,
     deviceProof: proof(device, challenge.proofContext),
@@ -363,7 +363,7 @@ test("publisher device departure stops only programs bound to that room device",
     action: "whip:create",
     sourceIds: ["src_ffffffffffffffff"],
   }, NOW);
-  await runtime.authorizePublisher(owner, {
+  await runtime.authorizePublisher(owner, created.control.programId, {
     requestVersion: 1,
     challengeId: challenge.challengeId,
     deviceProof: proof(device, challenge.proofContext),
@@ -398,7 +398,7 @@ for (const change of ["stop", "leave", "native-start", "expiry", "clock-rollback
     const programId = created.control.programId;
     const challenge = runtime.createPublisherChallenge(owner, member, programId, {
       requestVersion: 1, action: "whip:create", sourceIds: ["src_aaaaaaaaaaaaaaaa"] });
-    const pending = runtime.authorizePublisher(owner, { requestVersion: 1, challengeId: challenge.challengeId,
+    const pending = runtime.authorizePublisher(owner, programId, { requestVersion: 1, challengeId: challenge.challengeId,
       deviceProof: proof(device, challenge.proofContext) });
     // The real crypto authority has issued a JWT before its delivery is delayed.
     while (!issued.length) await new Promise(resolve => setImmediate(resolve));
@@ -447,7 +447,7 @@ test("pending publisher timeout releases its transaction, rejects concurrent sig
   const start = () => {
     const challenge = runtime.createPublisherChallenge(owner, member, programId, {
       requestVersion: 1, action: "whip:create", sourceIds: ["src_aaaaaaaaaaaaaaaa"] });
-    return runtime.authorizePublisher(owner, { requestVersion: 1, challengeId: challenge.challengeId,
+    return runtime.authorizePublisher(owner, programId, { requestVersion: 1, challengeId: challenge.challengeId,
       deviceProof: proof(device, challenge.proofContext) });
   };
   const pending = start(), late = await ready;
@@ -486,7 +486,7 @@ test("departure invalidates an unredeemed publisher challenge before crypto issu
     requestVersion: 1, action: "whip:create", sourceIds: ["src_aaaaaaaaaaaaaaaa"] });
   runtime.stopProgramsForMember(member);
   assert.equal(runtime.challengeCount, 0);
-  await assert.rejects(runtime.authorizePublisher(owner, { requestVersion: 1, challengeId: challenge.challengeId,
+  await assert.rejects(runtime.authorizePublisher(owner, programId, { requestVersion: 1, challengeId: challenge.challengeId,
     deviceProof: proof(device, challenge.proofContext) }), error => error.code === "broadcast_not_available");
   assert.equal(runtime.programStateCounts().preparing, 0);
 });

@@ -112,7 +112,7 @@ for (const outcome of ["commit", "stop", "timeout", "issuer-failure"]) {
       const nonce = crypto.randomBytes(24).toString("base64url");
       const signature = crypto.sign("sha256", Buffer.from(broadcastGrantDeviceProofMessage(challenge.proofContext, now, nonce)),
         { key: device.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
-      return runtime.authorizePublisher(owner, { requestVersion: 1, challengeId: challenge.challengeId,
+      return runtime.authorizePublisher(owner, programId, { requestVersion: 1, challengeId: challenge.challengeId,
         deviceProof: { publicKey, timestamp: now, nonce, signature } });
     };
     const native = () => runtime.prepareNativeSourceProgram(owner, member, b, { requestVersion: 1, trigger: "user-action",
