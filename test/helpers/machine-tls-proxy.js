@@ -5,8 +5,10 @@ import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import { privateMachineStun } from "./machine-stun-fixture.js";
 import { privateMachineTurn } from "./machine-turn-fixture.js";
+import { observeMachineProxyFailure } from "./machine-proxy-failure-observation.mjs";
 
-export function privateMachineTlsProxy(lifetimeSeconds, run = docker, connectionLimit = 16, icePath = "direct", relayParticipants = 2) {
+export function privateMachineTlsProxy(lifetimeSeconds, run = docker, connectionLimit = 16, icePath = "direct", relayParticipants = 2,
+  inspectFailure = observeMachineProxyFailure) {
   if (!["direct", "turn-udp", "turn-tcp"].includes(icePath)) throw new Error("test_ice_path_invalid");
   if (![2, 3].includes(relayParticipants)) throw new Error("test_turn_scope_invalid");
   if (!Number.isInteger(lifetimeSeconds) || lifetimeSeconds < 180 || lifetimeSeconds > 7380) throw new Error("test_lifetime_invalid");
@@ -56,11 +58,13 @@ export function privateMachineTlsProxy(lifetimeSeconds, run = docker, connection
         if (closed || !containerAttempted) return { connectionDrops: 0 };
         return { connectionDrops: run(["logs", name]).split("\n").filter(line => line === "test_tls_connection_capacity").slice(0, 8).length };
       },
+      failureObservation() { return closed || !containerAttempted ? null : inspectFailure(name); },
       start(port) {
         if (closed || containerAttempted || !Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("test_proxy_start_invalid");
         const code = `const net=require('node:net');const server=net.createServer(s=>{const o=net.connect(${port},${JSON.stringify(gateway)});
           s.setTimeout(120000,()=>s.destroy());s.on('error',()=>o.destroy());o.on('error',()=>s.destroy());s.on('close',()=>o.destroy());o.on('close',()=>s.destroy());s.pipe(o);o.pipe(s)});
           let drops=0;server.on('drop',()=>{if(drops<8){drops++;console.log('test_tls_connection_capacity')}});
+          server.once('listening',()=>console.log('test_tls_listener_ready'));
           server.maxConnections=${connectionLimit};server.listen(443,'0.0.0.0');setTimeout(()=>process.exit(0),${lifetimeSeconds * 1000})`;
         containerAttempted = true;
         run(["create", "--name", name, "--network", network, "--ip", originHost,

@@ -105,6 +105,23 @@ test("proxy diagnostics retain only eight fixed capacity events", () => {
   assert.deepEqual(proxy.observation(), { connectionDrops: 0 });
 });
 
+test("failure inspection remains explicit, started-container-only and separate from ordinary observation", () => {
+  const f = fixture(), inspected = [];
+  const proxy = privateMachineTlsProxy(180, f.run, 16, "direct", 2, name => {
+    inspected.push(name); return { container: null, listenerAnnounced: false };
+  });
+  assert.equal(proxy.failureObservation(), null); assert.deepEqual(inspected, []);
+  try {
+    proxy.start(32123);
+    const create = f.calls.find(args => args[0] === "create");
+    assert.ok(create.at(-1).includes("server.once('listening',()=>console.log('test_tls_listener_ready'))"));
+    proxy.observation(); assert.deepEqual(inspected, []);
+    assert.deepEqual(proxy.failureObservation(), { container: null, listenerAnnounced: false });
+    assert.deepEqual(inspected, [create[create.indexOf("--name") + 1]]);
+  } finally { proxy.close(); }
+  assert.equal(proxy.failureObservation(), null); assert.equal(inspected.length, 1);
+});
+
 test("unfamiliar network is rejected and exact owned network is removed", () => {
   const f = fixture({ Internal: false });
   assert.throws(() => privateMachineTlsProxy(180, f.run), /private_proxy_network_invalid/);

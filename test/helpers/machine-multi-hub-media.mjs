@@ -2,6 +2,7 @@
 import { installMultiPublisherObservation } from "./machine-multi-publisher-observation.mjs";
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
 import { installSpeakerFloorObservation } from "./machine-speaker-floor-observation.mjs";
+import { reconnectQuietWindow } from "./machine-reconnect-quiet-window.mjs";
 
 const red = pixel => pixel?.[0] > 170 && pixel[1] < 70 && pixel[2] < 70;
 const blue = pixel => pixel?.[2] > 170 && pixel[0] < 70 && pixel[1] < 70;
@@ -107,18 +108,8 @@ export async function multiHubMedia(f) {
       }
       if (input.command === "recovered-media" && Object.keys(input).length === 1) {
         await page.locator(".nav-item").filter({ hasText: /^Live/ }).click();
-        let quietSince = null;
         await waitFixtureValue(page, () => window.__multiPublisher.quiet(), undefined, {
-          timeout: 3000, accept: value => {
-            if (!value || Object.keys(value).sort().join(",") !== "active,failed,tracks"
-              || value.failed !== false || typeof value.active !== "boolean"
-              || !Number.isInteger(value.tracks) || value.tracks < 1 || value.tracks > 4) {
-              throw new Error("test_reconnect_audio_observation_invalid");
-            }
-            if (value.active) quietSince = null;
-            else quietSince ??= Date.now();
-            return quietSince !== null && Date.now() - quietSince >= 300;
-          },
+          timeout: 3000, accept: reconnectQuietWindow(),
         });
         return { oldAudioReplayed: false, quietMs: 300 };
       }

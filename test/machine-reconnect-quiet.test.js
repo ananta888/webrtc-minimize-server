@@ -3,6 +3,7 @@ import test from "node:test";
 import vm from "node:vm";
 import { installMultiPublisherObservation } from "./helpers/machine-multi-publisher-observation.mjs";
 import { multiHubMedia } from "./helpers/machine-multi-hub-media.mjs";
+import { reconnectQuietWindow } from "./helpers/machine-reconnect-quiet-window.mjs";
 
 test("silence includes detached audio connections with no remaining visible video", async () => {
   let level = .2;
@@ -50,7 +51,54 @@ test("reconnect silence requires consecutive fresh all-track samples for 300 ms"
   const media = await multiHubMedia(f);
   assert.deepEqual(await media.command({ command: "recovered-media" }, ["a", "b"]),
     { oldAudioReplayed: false, quietMs: 300 });
-  assert.ok(f.samples() >= 8); await media.close();
+  // Scheduling need not produce exactly one observation every 50 ms. The
+  // deterministic window tests enforce duration and the maximum sample gap.
+  assert.ok(f.samples() >= 5); await media.close();
+});
+
+test("quiet window requires 300 monotonic milliseconds with bounded fresh observations", () => {
+  let time = 0;
+  const accept = reconnectQuietWindow(() => time), quiet = { failed: false, tracks: 1, active: false };
+  for (time of [0, 50, 100, 150, 200, 250, 299]) assert.equal(accept(quiet), false);
+  time = 300; assert.equal(accept(quiet), true);
+  time = 350; assert.equal(accept({ ...quiet, active: true }), false);
+  for (time of [400, 500, 600, 699]) assert.equal(accept(quiet), false);
+  time = 700; assert.equal(accept(quiet), true);
+});
+
+test("a sampling gap or changed track count starts a fresh quiet window", () => {
+  let time = 0;
+  const accept = reconnectQuietWindow(() => time), quiet = { failed: false, tracks: 1, active: false };
+  for (time of [0, 150]) assert.equal(accept(quiet), false);
+  time = 301; assert.equal(accept(quiet), false, "151 ms gap resets instead of claiming quiet");
+  time = 451; assert.equal(accept(quiet), false);
+  time = 601; assert.equal(accept(quiet), true);
+  time = 651; assert.equal(accept({ ...quiet, tracks: 2 }), false);
+  for (time of [751, 851, 950]) assert.equal(accept({ ...quiet, tracks: 2 }), false);
+  time = 951; assert.equal(accept({ ...quiet, tracks: 2 }), true);
+});
+
+test("invalid or backwards observation clocks cannot create a quiet receipt", () => {
+  const quiet = { failed: false, tracks: 1, active: false };
+  for (const invalid of [NaN, Infinity, -1, "300", undefined]) {
+    assert.throws(() => reconnectQuietWindow(() => invalid)(quiet), /audio_clock_invalid/);
+  }
+  let time = 300;
+  const accept = reconnectQuietWindow(() => time);
+  assert.equal(accept(quiet), false);
+  time = 299; assert.throws(() => accept(quiet), /audio_clock_invalid/);
+});
+
+test("a wall-clock jump cannot manufacture a 300 ms reconnect silence receipt", async t => {
+  let wall = 1000;
+  t.mock.method(Date, "now", () => wall += 10000);
+  const f = fixture({ failed: false, tracks: 1, active: false });
+  const media = await multiHubMedia(f), started = performance.now();
+  try {
+    assert.deepEqual(await media.command({ command: "recovered-media" }, []),
+      { oldAudioReplayed: false, quietMs: 300 });
+    assert.ok(performance.now() - started >= 300, "quiet proof must span real monotonic time");
+  } finally { await media.close(); }
 });
 
 for (const value of [null, { failed: true, tracks: 1, active: false }, { failed: false, tracks: 0, active: false },

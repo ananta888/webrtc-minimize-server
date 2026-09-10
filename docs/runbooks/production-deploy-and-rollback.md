@@ -1,6 +1,12 @@
 # Runbook: Produktionsdeployment und Rollback
 
-Aktueller dokumentierter Software-Rollout: `5a10338` am 9. September 2026 nach
+Neuer Software-Rollout vom 10. September: `cb2e6e7` nach allen acht grünen
+CI-Jobs, drei laufende Image-Revisionen und unabhängiger Smoke geprüft.
+Snapshot `image-set-v1` / `rollback.NTtRuv` bewahrt den vorherigen Satz;
+Agent-Identität unverändert, Maschinenaufnahme weiterhin aus.
+[Genauer Rolloutnachweis](../ananta-public-rollout-20260910.md).
+
+Vorheriger dokumentierter Software-Rollout: `5a10338` am 9. September 2026 nach
 CI 34380159740 (alle acht Jobs grün). Alle drei Dienste, Native-Preflight und
 unabhängiger externer Smoke sind geprüft; Snapshot
 `image-set-v1` / `rollback.G61Ptl` bewahrt den vorherigen Satz (`92f583f`).

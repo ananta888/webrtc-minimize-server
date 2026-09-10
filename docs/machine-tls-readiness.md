@@ -68,3 +68,69 @@ active rooms, Hub trust and the Ananta repository are unchanged. The public
 integration endpoint still reports `admissionEnabled: false`; public Hub/project
 authorization and the separate long-run acceptance remain outstanding.
 No new commit, push or deployment is part of this verification round.
+
+## Subsequent container failure evidence (10 September)
+
+CI `34459452182` at `3226250` finished failed solely in its Chromium TURN-UDP
+setup: connect/refused after 99 attempts. Firefox UDP and all other jobs passed.
+This is distinct from the prior missing permission-editor failure. The subsequent
+`cb2e6e7` CI completed successfully in all eight jobs; no cancellation or restart.
+That CI predates this test-only diagnostic addition.
+
+On TLS-readiness failure only, the private fixture now inspects its own started,
+not-yet-cleaned proxy container. A separate adapter runs exactly two read-only
+commands, each bounded to one second, 4 KiB and SIGKILL on timeout. It projects
+only status, running/OOM booleans and a bounded exit code. A fixed listener log
+marker indicates a **past announcement**, not proof that the process is still
+listening. Unknown, failed or oversized reads remain null. Raw Docker errors,
+logs, commands, addresses, container IDs and keys are never returned. The normal
+five-second TLS deadline, exact CA and media/consent limits are unchanged.
+
+Thirty focused readiness/proxy/STUN/inspection tests pass (1.076 s). They include
+an actual stuck subprocess killed by the one-second bound, partial-output
+redaction and no inspection before Start or after cleanup. A deliberately exited
+owned proxy (`process.exit(23)`, injected only into that test container's command)
+produces the expected closed snapshot: exited, not running, no OOM, exit 23,
+no listener announcement. The original readiness failure is preserved. This
+host reports connect/timeout for the removed listener, rather than the CI's
+connect/refused; the first manual assertion incorrectly assumed those transport
+outcomes must match. That assertion was corrected, not the TLS gate or its
+deadline. Both owned fixtures were cleaned up.
+
+The actual Chromium consented TURN-UDP dialog also passes (18.430 s), including
+16,000 decoded samples, chat, screen, three renewals and real UDP relay pairs.
+Neither this pass nor the synthetic process fault establishes the historical
+CI root cause. Initial read-only Mini-PC inspection found a clean `5602ccf`
+checkout and three running `5a10338` images. The subsequent verified `cb2e6e7`
+software rollout excludes this diagnostic addition; see the separate
+[deployment evidence](ananta-public-rollout-20260910.md).
+
+## Frozen grouped check of the diagnostic addition
+
+The isolated `/tmp/webrtc-ananta-proxy-check.PZHx9r` `npm run check` completed
+with **exit 1**. Its five changed TLS source/test files are byte-identical to
+the corresponding working-copy files. Frontend: 1,279 tests pass; build
+(15.173 s), typecheck, Go unit/vet and static gates pass. Node: 1,222 passes,
+two failures, one timeout cancellation and four explicit skips (621.303 s).
+The external infrastructure stage was not reached; the optional image scan
+was explicitly skipped. The three unsuccessful cases are:
+
+- Pair Dev's three-browser test: 30-second timeout, phase/cause not established.
+- Firefox consented dialog: the first renewal's dynamic module fetch failed
+  after successful PCM/chat/screen delivery; cause not established.
+- Private reconnect quiet observation: minimum-sample assertion failed after
+  205.612 ms. A subsequently added independent regression demonstrates a
+  wall-clock weakness; the [monotonic-window fix](machine-reconnect-quiet-window.md)
+  and its targeted tests are **not** in this frozen check.
+
+The failed grouped check remains failed, independently of the earlier green
+release CI, deployment and subsequent focused verification. Hub authorization,
+joint long-run acceptance and historical media-freeze causality remain open.
+
+One unchanged focused follow-up against the same frozen source/build passes
+both other unsuccessful browser cases: Pair Dev in 2.854 s and Firefox's
+consented dialog in 15.479 s (19.918 s combined, no skips). Firefox delivers
+16,000 PCM samples with active SFrame and no transform errors. No source
+change or timeout increase was applied to those cases. This does not establish
+the cause of the earlier timeout/module-fetch failure or turn the grouped
+result into a pass.

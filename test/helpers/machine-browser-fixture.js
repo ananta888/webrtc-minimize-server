@@ -85,7 +85,7 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
   if (tlsPortProxy) {
     observeStage("private-proxy-health");
     await waitMachineTlsReady(origin, certificateBytes).catch(error => {
-      if (error.tlsReadiness) t.diagnostic?.(JSON.stringify({ tlsReadiness: error.tlsReadiness }));
+      if (error.tlsReadiness) t.diagnostic?.(JSON.stringify({ tlsReadiness: error.tlsReadiness, proxy: proxy.failureObservation() }));
       throw error;
     });
   }

@@ -7,6 +7,15 @@ KI-Beitritt. Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
 
 ## Aktuell: sechs Grundfunktionen vorhanden, Aktivierung noch ausstehend
 
+Aktuell ausgeliefert ist `cb2e6e7`: alle acht CI-Jobs erfolgreich, anschließend
+der Drei-Dienste-Rollout und unabhängige öffentliche Prüfungen bestanden.
+Die Geräteidentität blieb erhalten. Öffentliche Browserprobes und Downloads
+sind geprüft; Maschinenaufnahme weiterhin aus. Der
+[Rollout vom 10. September](ananta-public-rollout-20260910.md) trennt diesen
+Nachweis von der offenen Hub-/Projektfreigabe, Langzeitabnahme und der
+separaten lokalen Testdiagnose. Die folgenden älteren Prüfstände gelten
+weiterhin nur für ihre jeweils genannten Revisionen.
+
 Priorisierte Nachprüfung am 10. September: Die sechs Funktionen bleiben
 Meet-seitig verbunden. Alle vier echten Dialogfälle mit Chromium/Firefox
 über authentisiertes TURN-UDP und TURN-TCP bestehen mit Audio, Chat,
