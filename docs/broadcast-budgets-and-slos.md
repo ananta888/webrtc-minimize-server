@@ -42,7 +42,12 @@ MediaMTX-Origin-Gate belegt Request-/Ressourcenwerte, nicht diese Player-SLOs.
 
 ## Offene Operationalisierung
 
-Die Policies und Negativtests sind vorhanden; es fehlen noch persistente,
+Der tatsächliche Native-Pfad besitzt inzwischen [Ressourcenbudgets](native-packager-scoped-budgets.md),
+eine [Angular-Kapazitätsvorschau](native-capacity-preview.md) und
+[instanzlokale Encoder-Minuten](native-encoder-time-budgets.md). Diese sind nicht
+mit der vollständigen, oben beschriebenen generischen Kostenpolicy gleichzusetzen.
+
+Die generischen Policies und Negativtests sind vorhanden; es fehlen noch persistente,
 transaktionale Usage-Zähler, konkrete Providerpreise, Monatsperioden,
-UI-Preflightverdrahtung, Alerting/Error-Budget-Auswertung und reproduzierbare
+vollständige Kosten-Preflightverdrahtung, Alerting/Error-Budget-Auswertung und reproduzierbare
 Lastläufe je veröffentlichter Host-/Region-/Codec-/Rendition-Klasse.

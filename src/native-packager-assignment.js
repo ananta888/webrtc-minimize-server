@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { nativeOutputRequestFields } from "./native-source-video-output.js";
 import { NativePackagerScopedResourceBudget } from "./native-packager-scoped-resources.js";
+import { NativeEncoderTimeBudget } from "./native-encoder-time-budget.js";
 
 import {
   admitNativePackager,
@@ -110,6 +111,7 @@ export class NativePackagerAssignmentRegistry {
   #sourceProgramMembership;
   #programLeaseDeadline;
   #resourceBudget;
+  #encoderTimeBudget;
 
   constructor({
     controlRegistry,
@@ -119,6 +121,7 @@ export class NativePackagerAssignmentRegistry {
     programLeaseDeadline = () => Number.MAX_SAFE_INTEGER,
     resourceLimits,
     scopedResourceLimits,
+    encoderMinutesLimits,
   } = {}) {
     if (!controlRegistry || typeof controlRegistry.candidate !== "function"
       || typeof idFactory !== "function" || typeof iceServersForPackager !== "function"
@@ -131,11 +134,13 @@ export class NativePackagerAssignmentRegistry {
     this.#sourceProgramMembership = sourceProgramMembership;
     this.#programLeaseDeadline = programLeaseDeadline;
     this.#resourceBudget = new NativePackagerScopedResourceBudget(resourceLimits, scopedResourceLimits);
+    this.#encoderTimeBudget = new NativeEncoderTimeBudget(encoderMinutesLimits);
   }
 
   admit(ownerPrincipal, packagerId, request, now = Date.now()) {
     const { admission, tenantId } = this.#candidateAdmission(ownerPrincipal, packagerId, request, now);
     this.#assertResources(admission, tenantId, ownerPrincipal, now);
+    this.#assertEncoderTime(admission, tenantId, ownerPrincipal, now, now + ASSIGNMENT_LEASE_MS);
     return admission;
   }
 
@@ -163,6 +168,7 @@ export class NativePackagerAssignmentRegistry {
       this.#sourceAuthority(ownerPrincipal, packagerId, admission.roomId, controllerPeerId, now, !!admission.audioOutput);
     } else if (controllerPeerId !== previous.publisherPeerId) fail("stale_native_packager_replacement", 409);
     this.#assertResources(admission, tenantId, ownerPrincipal, now, previous);
+    this.#assertEncoderTime(admission, tenantId, ownerPrincipal, now, now + ASSIGNMENT_LEASE_MS);
     return admission;
   }
 
@@ -254,6 +260,7 @@ export class NativePackagerAssignmentRegistry {
       fail("native_packager_assignment_conflict", 409);
     }
     this.#assertResources(verifiedAdmission, packager.capability.tenantId, ownerPrincipal, now);
+    this.#assertEncoderTime(verifiedAdmission, packager.capability.tenantId, ownerPrincipal, now, lease.expiresAt);
     const assignmentId = this.#idFactory();
     if (!ASSIGNMENT.test(assignmentId || "") || this.#assignments.has(assignmentId)) {
       fail("invalid_native_packager_assignment_identifier", 500);
@@ -282,8 +289,15 @@ export class NativePackagerAssignmentRegistry {
       createdAt: now,
       updatedAt: now,
       expiresAt: lease.expiresAt,
+      encoderBudgetUntil: lease.expiresAt,
     };
     this.#assertResources(verifiedAdmission, packager.capability.tenantId, ownerPrincipal, now);
+    // Reentrant ICE/ID ports may have admitted another writer since the first checks.
+    if (this.activeForPackager(packagerId) || this.activeForProgram(admission.programId) || this.#assignments.has(assignmentId)) {
+      fail("native_packager_assignment_conflict", 409);
+    }
+    if (!this.#encoderTimeBudget.reserve({ tenantId: record.tenantId, ownerPrincipal }, verifiedAdmission.renditions.length,
+      now, record.expiresAt, now)) fail("broadcast_temporarily_unavailable", 429);
     this.#assignments.set(assignmentId, record);
     this.#byPackager.set(packagerId, record);
     this.#byProgram.set(admission.programId, record);
@@ -300,6 +314,12 @@ export class NativePackagerAssignmentRegistry {
 
   resourceCounts(now = Date.now()) {
     return this.#resourceBudget.snapshot(this.#occupiedResources(now));
+  }
+  encoderTimeCounts(now = Date.now()) { return this.#encoderTimeBudget.snapshot(now); }
+  #assertEncoderTime(admission, tenantId, ownerPrincipal, now, until) {
+    if (!this.#encoderTimeBudget.allows({ tenantId, ownerPrincipal }, admission.renditions.length, now, until, now)) {
+      fail("broadcast_temporarily_unavailable", 429);
+    }
   }
 
   #assertResources(admission, tenantId, ownerPrincipal, now, replacement = null) {
@@ -410,11 +430,17 @@ export class NativePackagerAssignmentRegistry {
     }
     const record = this.#byPackager.get(packagerId);
     if (!record || !RENEWABLE_STATES.has(record.state) || record.expiresAt <= now) return null;
+    const previousExpiry = record.expiresAt;
     const programDeadline = this.#programLeaseDeadline({ tenantId: record.tenantId,
       programId: record.programId, programEpoch: record.programEpoch }, now);
     if (!Number.isSafeInteger(programDeadline) || programDeadline <= now || !RENEWABLE_STATES.has(record.state)) return null;
     if (record.assignmentProtocolVersion >= 4) this.#sourceCurrent(record, now);
-    record.expiresAt = Math.min(now + ASSIGNMENT_LEASE_MS, programDeadline);
+    if (this.#byPackager.get(packagerId) !== record || !RENEWABLE_STATES.has(record.state) || record.expiresAt !== previousExpiry) return null;
+    const expiresAt = Math.min(now + ASSIGNMENT_LEASE_MS, programDeadline);
+    if (!this.#encoderTimeBudget.reserve({ tenantId: record.tenantId, ownerPrincipal: record.ownerPrincipal }, record.admission.renditions.length,
+      record.encoderBudgetUntil, Math.max(record.encoderBudgetUntil, expiresAt), now)) return null;
+    record.encoderBudgetUntil = Math.max(record.encoderBudgetUntil, expiresAt);
+    record.expiresAt = expiresAt;
     record.updatedAt = now;
     return Object.freeze({
       snapshot: snapshot(record),

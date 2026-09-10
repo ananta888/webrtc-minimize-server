@@ -2719,6 +2719,7 @@ export function createAppServer(options = {}) {
     || new NativePackagerAssignmentRegistry({
       controlRegistry: nativePackagers,
       resourceLimits: config.broadcastNativeResourceLimits,
+      encoderMinutesLimits: config.broadcastNativeEncoderMinutes,
       scopedResourceLimits: options.config && !Object.hasOwn(options.config, "broadcastNativeScopedResourceLimits")
         ? undefined : config.broadcastNativeScopedResourceLimits,
       programLeaseDeadline: (scope, now) => broadcastRuntime?.programLeaseDeadline(scope, now) ?? null,

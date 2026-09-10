@@ -15,6 +15,9 @@ Assignment-Zulassung, nicht aus einer Messung freier Hardware.
 
 Die native Ressourcenprüfung berücksichtigt die momentan belegten Budgets der
 Instanz, des verifizierten Tenants und des Kontos. Sie reserviert nichts.
+Zusätzlich muss das instanzlokale [Encoder-Minuten-Budget](native-encoder-time-budgets.md)
+eine initiale 60-Sekunden-Lease der gewählten Stufen erlauben. Auch diese reine
+Vorprüfung verbraucht keine Minuten; fremde Verbrauchswerte werden nicht gezeigt.
 Aktive-Programmlimits, Viewer-Kapazität, verfügbare Leitung, CDN-Last, Providerpreis
 und Kostenfreigabe sind dadurch nicht bestätigt. Kosten bleiben ausdrücklich
 „nicht berechenbar“. Bei einem späteren Start werden die dann gültigen
