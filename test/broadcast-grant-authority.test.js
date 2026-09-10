@@ -474,6 +474,30 @@ test("signed playback grants from two users sharing one device cannot transfer a
   assert.equal(store.size, 2);
 });
 
+test("real signed viewer grants share a program quota and preserve private authorization after rejection", async () => {
+  const first = baseFixture({ program: { state: "live" } });
+  const other = baseFixture({ identity: { subject: "second-viewer" }, membership: { role: "viewer" }, program: first.program });
+  const policy = { contractVersion: 1, type: "viewer-policy", tenantId: first.tenantId,
+    ownerSubjectRef: first.subjectRef, roomId: ROOM_ID, programId: PROGRAM_ID, policyId: POLICY_ID,
+    revision: 3, programEpoch: first.program.programEpoch, visibility: "private", authentication: "required",
+    directoryListed: false, anonymousAllowed: false, allowedOriginHashes: [], updatedAt: NOW };
+  const grants = authority();
+  const issue = f => grants.issue(attachProof(f, requestFor(f, { kind: "playback",
+    actions: ["playback:manifest", "playback:segment"], pathPrefix: `/broadcast/play/${RESOURCE_REF}`,
+    policyId: POLICY_ID, policyRevision: policy.revision })), authorizationFor(f, { viewerPolicy: policy }), NOW);
+  const a = await issue(first), b = await issue(other), origin = "https://webrtc.test";
+  const store = new BroadcastPlaybackSessionStore({ authority: grants, publicOrigin: origin, capacityLimits: { program: 1 } });
+  const create = token => store.create({ authorizationHeader: `Bearer ${token}`, resourceRef: RESOURCE_REF, origin, now: NOW });
+  const session = await create(a.token);
+  await assert.rejects(create(b.token), error => error.status === 429);
+  await assert.rejects(create("invalid"), error => error.status === 404);
+  const cookieHeader = session.setCookie[0].split(";", 1)[0];
+  await store.authorize({ cookieHeader, method: "GET", file: "index.m3u8", resourceRef: RESOURCE_REF, origin, now: NOW });
+  store.close({ sessionId: session.playbackSessionId, cookieHeader, origin, now: NOW });
+  await create(b.token);
+  assert.equal(store.size, 1);
+});
+
 test("trusted packager grant requires complete fresh source consent and its registered device", async () => {
   const packagerDevice = device();
   const fixture = baseFixture({

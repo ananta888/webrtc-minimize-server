@@ -12,7 +12,8 @@ function fixture() {
     async authorizeGatewayBearer(header, expectation, now) {
       authorizations++;
       if (revoked || header !== "Bearer synthetic" || expectation.path !== `/broadcast/play/${resourceRef}`) throw new Error("denied");
-      return { grantKind: "playback", resourceRef, audienceRef: "aud_synthetic", expiresAt: now + 60000 };
+      return { grantKind: "playback", resourceRef, audienceRef: "sub_aaaaaaaaaaaaaaaa",
+        tenantId: "tn_aaaaaaaaaaaaaaaa", programId: "prg_aaaaaaaaaaaaaaaa", expiresAt: now + 60000 };
     },
   } });
   const proxy = new BroadcastHlsProxy({ sessions, gatewayOrigin: "http://127.0.0.1:9", fetchImpl: async () => {

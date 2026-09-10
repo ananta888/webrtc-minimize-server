@@ -18,7 +18,8 @@ test("ENV budgets reach the production proxy and terminate excess HTTP bodies wi
   const sessions = new BroadcastPlaybackSessionStore({ publicOrigin: origin, authority: {
     async authorizeGatewayBearer(header, expectation, now) {
       assert.equal(header, "Bearer synthetic"); assert.equal(expectation.path, `/broadcast/play/${resourceRef}`);
-      return { grantKind: "playback", resourceRef, audienceRef: "aud_synthetic", expiresAt: now + 60000 };
+      return { grantKind: "playback", resourceRef, audienceRef: "sub_aaaaaaaaaaaaaaaa",
+        tenantId: "tn_aaaaaaaaaaaaaaaa", programId: "prg_aaaaaaaaaaaaaaaa", expiresAt: now + 60000 };
     },
   } });
   const one = await sessions.create({ origin, resourceRef, authorizationHeader: "Bearer synthetic" });

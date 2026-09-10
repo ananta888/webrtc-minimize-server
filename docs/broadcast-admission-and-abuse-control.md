@@ -8,6 +8,10 @@ erzwingt.
 
 ## Pre-Allocation-Grenzen
 
+Der reale HLS-Cookiepfad besitzt zusätzlich konfigurierbare
+[Sitzungsquoten pro Prozess, Tenant, Programm und Audience](broadcast-playback-capacity.md).
+Diese zählen Sitzungen, nicht eindeutig erkannte Zuschauer.
+
 ### Produktiv angeschlossene Programm-Slots
 
 Der Registry-Composition-Root erzwingt jetzt dieselben logischen Programmquoten

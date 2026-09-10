@@ -9,6 +9,7 @@ import { machineCapabilityEnvironment } from "./machine-capabilities.js";
 import { parseMachineTrustProfile } from "./machine-trust-profile.js";
 import { readMachineTrustFile } from "./machine-trust-file.js";
 import { BROADCAST_HLS_BUDGET_DEFAULTS } from "./broadcast-hls-budget.js";
+import { BROADCAST_PLAYBACK_CAPACITY_DEFAULTS, BROADCAST_PLAYBACK_CAPACITY_ENV } from "./broadcast-playback-capacity.js";
 import { BROADCAST_PROGRAM_CAPACITY_DEFAULTS } from "./broadcast-program-capacity.js";
 import { BROADCAST_PROGRAM_RUNTIME_DEFAULT_MS } from "./broadcast-program-lifetime.js";
 import { NATIVE_PACKAGER_RESOURCE_DEFAULTS, NATIVE_PACKAGER_RESOURCE_ENV } from "./native-packager-resource-budget.js";
@@ -725,6 +726,9 @@ export function loadConfig(env = process.env) {
       ["principal", "BROADCAST_MAX_ACTIVE_PROGRAMS_PER_PRINCIPAL"],
     ].map(([scope, name]) => [scope, boundedInteger(env[name], BROADCAST_PROGRAM_CAPACITY_DEFAULTS[scope],
       { minimum: 1, maximum: 10_000, name })]))),
+    broadcastPlaybackCapacity: Object.freeze(Object.fromEntries(Object.entries(BROADCAST_PLAYBACK_CAPACITY_ENV)
+      .map(([field, name]) => [field, boundedInteger(env[name] === "" ? NaN : env[name], BROADCAST_PLAYBACK_CAPACITY_DEFAULTS[field],
+        { minimum: 0, maximum: 10000, name })]))),
     broadcastHlsMaximumRequestsPerSecond: boundedInteger(env.BROADCAST_HLS_MAX_REQUESTS_PER_SECOND,
       BROADCAST_HLS_BUDGET_DEFAULTS.maximumRequestsPerSecond,
       { minimum: 1, maximum: 10_000, name: "BROADCAST_HLS_MAX_REQUESTS_PER_SECOND" }),

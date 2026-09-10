@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { BroadcastPlaybackCapacity, normalizeBroadcastPlaybackCapacity, playbackCapacityScope } from "./broadcast-playback-capacity.js";
 
 const RESOURCE = /^res_[A-Za-z0-9_-]{16,64}$/;
 const SESSION = /^pbs_[A-Za-z0-9_-]{24,64}$/;
@@ -63,8 +64,7 @@ export class BroadcastPlaybackSessionStore {
   #origin;
   #sessions = new Map();
   #idFactory;
-  #maximumSessions;
-  #maximumPerAudience;
+  #capacity;
 
   constructor(options) {
     if (!options?.authority || typeof options.authority.authorizeGatewayBearer !== "function") {
@@ -79,10 +79,12 @@ export class BroadcastPlaybackSessionStore {
     this.#authority = options.authority;
     this.#origin = origin.origin;
     this.#idFactory = options.idFactory || (() => `pbs_${crypto.randomBytes(24).toString("base64url")}`);
-    this.#maximumSessions = options.maximumSessions ?? 1_024;
-    this.#maximumPerAudience = options.maximumPerAudience ?? 4;
-    if (!Number.isSafeInteger(this.#maximumSessions) || this.#maximumSessions < 1
-      || !Number.isSafeInteger(this.#maximumPerAudience) || this.#maximumPerAudience < 1) {
+    try {
+      this.#capacity = new BroadcastPlaybackCapacity({ ...normalizeBroadcastPlaybackCapacity(options.capacityLimits),
+        ...(options.maximumSessions === undefined ? {} : { deployment: options.maximumSessions }),
+        ...(options.maximumPerAudience === undefined ? {} : { audience: options.maximumPerAudience }),
+      });
+    } catch {
       fail("invalid_broadcast_playback_session_configuration", 500);
     }
   }
@@ -111,8 +113,9 @@ export class BroadcastPlaybackSessionStore {
     if (!grant || grant.grantKind !== "playback" || grant.resourceRef !== resourceRef
       || !Number.isSafeInteger(grant.expiresAt) || grant.expiresAt <= now
       || typeof grant.audienceRef !== "string") notFound();
-    if (this.#sessions.size >= this.#maximumSessions
-      || [...this.#sessions.values()].filter(({ audienceRef }) => audienceRef === grant.audienceRef).length >= this.#maximumPerAudience) {
+    let capacityScope;
+    try { capacityScope = playbackCapacityScope(grant); } catch { notFound(); }
+    if (!this.#capacity.allows(capacityScope, [...this.#sessions.values()].map(session => session.grantScope))) {
       fail("broadcast_playback_session_quota_reached", 429);
     }
     const sessionId = this.#idFactory();

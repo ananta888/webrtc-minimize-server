@@ -2773,6 +2773,7 @@ export function createAppServer(options = {}) {
       ? new BroadcastPlaybackSessionStore({
         authority: broadcastGrantAuthority,
         publicOrigin: config.publicOrigin,
+        capacityLimits: config.broadcastPlaybackCapacity,
       }) : null);
   const broadcastHlsProxy = options.broadcastHlsProxy
     || (broadcastPlaybackSessions && config.broadcastGatewayOrigin
