@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { nativeOutputRequestFields } from "./native-source-video-output.js";
-import { NativePackagerResourceBudget } from "./native-packager-resource-budget.js";
+import { NativePackagerScopedResourceBudget } from "./native-packager-scoped-resources.js";
 
 import {
   admitNativePackager,
@@ -118,6 +118,7 @@ export class NativePackagerAssignmentRegistry {
     sourceProgramMembership = () => 0,
     programLeaseDeadline = () => Number.MAX_SAFE_INTEGER,
     resourceLimits,
+    scopedResourceLimits,
   } = {}) {
     if (!controlRegistry || typeof controlRegistry.candidate !== "function"
       || typeof idFactory !== "function" || typeof iceServersForPackager !== "function"
@@ -129,19 +130,19 @@ export class NativePackagerAssignmentRegistry {
     this.#iceServersForPackager = iceServersForPackager;
     this.#sourceProgramMembership = sourceProgramMembership;
     this.#programLeaseDeadline = programLeaseDeadline;
-    this.#resourceBudget = new NativePackagerResourceBudget(resourceLimits);
+    this.#resourceBudget = new NativePackagerScopedResourceBudget(resourceLimits, scopedResourceLimits);
   }
 
   admit(ownerPrincipal, packagerId, request, now = Date.now()) {
-    const admission = this.#candidateAdmission(ownerPrincipal, packagerId, request, now);
-    this.#assertResources(admission, now);
+    const { admission, tenantId } = this.#candidateAdmission(ownerPrincipal, packagerId, request, now);
+    this.#assertResources(admission, tenantId, ownerPrincipal, now);
     return admission;
   }
 
   #candidateAdmission(ownerPrincipal, packagerId, request, now) {
     const packager = this.#control.candidate(ownerPrincipal, packagerId, now);
     if (!packager.online || !packager.capability) fail("native_packager_offline", 503);
-    return admitNativePackager(packager.capability, request, now);
+    return { admission: admitNativePackager(packager.capability, request, now), tenantId: packager.capability.tenantId };
   }
 
   // Server-only replacement preview. This neither reserves capacity nor skips
@@ -156,12 +157,12 @@ export class NativePackagerAssignmentRegistry {
       fail("stale_native_packager_replacement", 409);
     }
     if (this.activeForPackager(packagerId)) fail("native_packager_assignment_conflict", 409);
-    const admission = this.#candidateAdmission(ownerPrincipal, packagerId, request, now);
+    const { admission, tenantId } = this.#candidateAdmission(ownerPrincipal, packagerId, request, now);
     if (previous.assignmentProtocolVersion >= 4) {
       if (controllerPeerId !== previous.controllerPeerId) fail("stale_native_packager_replacement", 409);
       this.#sourceAuthority(ownerPrincipal, packagerId, admission.roomId, controllerPeerId, now, !!admission.audioOutput);
     } else if (controllerPeerId !== previous.publisherPeerId) fail("stale_native_packager_replacement", 409);
-    this.#assertResources(admission, now, previous);
+    this.#assertResources(admission, tenantId, ownerPrincipal, now, previous);
     return admission;
   }
 
@@ -252,7 +253,7 @@ export class NativePackagerAssignmentRegistry {
       || (currentForProgram && ACTIVE_STATES.has(currentForProgram.state))) {
       fail("native_packager_assignment_conflict", 409);
     }
-    this.#assertResources(verifiedAdmission, now);
+    this.#assertResources(verifiedAdmission, packager.capability.tenantId, ownerPrincipal, now);
     const assignmentId = this.#idFactory();
     if (!ASSIGNMENT.test(assignmentId || "") || this.#assignments.has(assignmentId)) {
       fail("invalid_native_packager_assignment_identifier", 500);
@@ -282,7 +283,7 @@ export class NativePackagerAssignmentRegistry {
       updatedAt: now,
       expiresAt: lease.expiresAt,
     };
-    this.#assertResources(verifiedAdmission, now);
+    this.#assertResources(verifiedAdmission, packager.capability.tenantId, ownerPrincipal, now);
     this.#assignments.set(assignmentId, record);
     this.#byPackager.set(packagerId, record);
     this.#byProgram.set(admission.programId, record);
@@ -294,15 +295,15 @@ export class NativePackagerAssignmentRegistry {
     return [...this.#assignments.values()]
       .filter(record => record !== replacement
         && (ACTIVE_STATES.has(record.state) || record.state === "failed" && record.expiresAt > now))
-      .map(record => record.admission);
+      .map(record => ({ tenantId: record.tenantId, ownerPrincipal: record.ownerPrincipal, admission: record.admission }));
   }
 
   resourceCounts(now = Date.now()) {
     return this.#resourceBudget.snapshot(this.#occupiedResources(now));
   }
 
-  #assertResources(admission, now, replacement = null) {
-    if (!this.#resourceBudget.allows(admission, this.#occupiedResources(now, replacement))) {
+  #assertResources(admission, tenantId, ownerPrincipal, now, replacement = null) {
+    if (!this.#resourceBudget.allows({ admission, tenantId, ownerPrincipal }, this.#occupiedResources(now, replacement))) {
       fail("broadcast_temporarily_unavailable", 429);
     }
   }

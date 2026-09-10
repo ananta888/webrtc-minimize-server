@@ -9,7 +9,7 @@ import { broadcastSubjectRef, broadcastTenantRef } from "../src/broadcast-identi
 const FIRST = "pkr_aaaaaaaaaaaaaaaa", SECOND = "pkr_bbbbbbbbbbbbbbbb";
 const NOW = 1_800_000_000_000;
 
-function fixture(sourceProgram = false, audioOutput = null, videoOutput = null, maxProgramRuntimeMs = undefined, resourceLimits = undefined, programSlots = 1) {
+function fixture(sourceProgram = false, audioOutput = null, videoOutput = null, maxProgramRuntimeMs = undefined, resourceLimits = undefined, programSlots = 1, scopedResourceLimits = undefined) {
   let now = NOW;
   let resourceSequence = 0, forcedResource = null;
   const identity = { issuer: "https://identity.example/realms/ananta", subject: "owner", displayName: "Owner" };
@@ -34,7 +34,7 @@ function fixture(sourceProgram = false, audioOutput = null, videoOutput = null, 
   const generations = new Map([FIRST, SECOND].map(id => [id, Object.freeze({})]));
   if (audioOutput) for (const capability of capabilities.values()) Object.assign(capability,
     { capabilityVersion: 5, sourceAudioControlVersion: 3, sourceAudioEncodingVersion: 1 });
-  const assignments = new NativePackagerAssignmentRegistry({ resourceLimits, controlRegistry: {
+  const assignments = new NativePackagerAssignmentRegistry({ resourceLimits, scopedResourceLimits, controlRegistry: {
     candidate(owner, id) {
       assert.equal(owner, ownerPrincipal);
       return { id, online: capabilities.has(id), capability: capabilities.get(id) };
@@ -91,8 +91,9 @@ function replacementRequest(f, patch = {}) {
     requestedRenditions: 2, allowHardwareAcceleration: false, ...patch };
 }
 
-for (const source of [false, true]) test(`replacement preview is scoped metadata, never prepare permission, source=${source}`, () => {
-  const f = fixture(source, null, null, undefined, { encoderSlots: 2 });
+for (const scope of ["deployment", "tenant", "principal"]) for (const source of [false, true]) test(`${scope} replacement preview is scoped metadata, never prepare permission, source=${source}`, () => {
+  const f = fixture(source, null, null, undefined, scope === "deployment" ? { encoderSlots: 2 } : undefined, 1,
+    scope === "deployment" ? undefined : { [scope]: { encoderSlots: 2 } });
   const preview = (request = replacementRequest(f), id = f.first.snapshot.assignmentId, owner = f.ownerPrincipal, peer = f.member.id) =>
     f.assignments.previewReplacement(owner, SECOND, request, id, peer, NOW);
   const admitted = preview();

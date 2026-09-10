@@ -161,9 +161,10 @@ test("resource observation never prunes expired active assignments and rejects i
   }
 });
 
-test("reentrant ICE preparation cannot bypass the final resource commit check", () => {
+for (const scope of ["deployment", "tenant", "principal"]) test(`${scope} reentrant ICE preparation cannot bypass the final resource commit check`, () => {
   let sequence = 0, nested = false, successor;
-  const assignments = new NativePackagerAssignmentRegistry({ resourceLimits: { encoderSlots: 1 },
+  const assignments = new NativePackagerAssignmentRegistry({
+    ...(scope === "deployment" ? { resourceLimits: { encoderSlots: 1 } } : { scopedResourceLimits: { [scope]: { encoderSlots: 1 } } }),
     controlRegistry: { candidate: (_owner, id) => ({ id, online: true, capability: capability({ agentId: id }) }) },
     idFactory: () => `asn_${String(++sequence).padStart(16, "a")}`,
     iceServersForPackager: () => {
@@ -178,6 +179,31 @@ test("reentrant ICE preparation cannot bypass the final resource commit check", 
   assert.equal(assignments.activeForPackager(PACKAGER), null);
   assert.equal(assignments.list(OWNER).length, 1);
   assert.equal(assignments.activeForPackager(successor.snapshot.packagerId).assignmentId, successor.snapshot.assignmentId);
+});
+
+for (const scope of ["tenant", "principal"]) test(`${scope} assignment quota retains failed occupancy and excludes unrelated owners or tenants`, () => {
+  let now = NOW, sequence = 0;
+  const other = OWNER + "-other", outside = OWNER + "-outside";
+  const tenant = owner => owner === outside ? "tn_bbbbbbbbbbbbbbbb" : "tn_aaaaaaaaaaaaaaaa";
+  const subject = owner => owner === OWNER ? "sub_aaaaaaaaaaaaaaaa" : "sub_bbbbbbbbbbbbbbbb";
+  const assignments = new NativePackagerAssignmentRegistry({ scopedResourceLimits: { [scope]: { encoderSlots: 1 } },
+    iceServersForPackager: () => [{ urls: ["stun:synthetic.invalid:3478"] }],
+    controlRegistry: { candidate: (owner, id) => ({ id, online: true, capability: capability({ agentId: id,
+      tenantId: tenant(owner), ownerSubjectRef: subject(owner), observedAt: now, expiresAt: now + 30000 }) }) },
+    idFactory: () => `asn_${String(++sequence).padStart(16, "a")}`,
+  });
+  const input = (owner, programId) => ({ ...request(), tenantId: tenant(owner), ownerSubjectRef: subject(owner),
+    programId, requestedRenditions: 1, allowHardwareAcceleration: false });
+  const firstInput = input(OWNER, request().programId), first = assignments.admit(OWNER, PACKAGER, firstInput, now);
+  assignments.prepare(OWNER, PACKAGER, first, { leaseId: "lea_aaaaaaaaaaaaaaaa", fencingRevision: 9, expiresAt: now + 60000 }, PUBLISHER, now);
+  const second = "pkr_bbbbbbbbbbbbbbbb", owner = scope === "tenant" ? other : OWNER;
+  const next = input(owner, "prg_bbbbbbbbbbbbbbbb");
+  assert.throws(() => assignments.admit(owner, second, next, now), /broadcast_temporarily_unavailable/);
+  const separate = scope === "tenant" ? outside : other;
+  assert.ok(assignments.admit(separate, second, input(separate, next.programId), now));
+  assignments.failPackager(PACKAGER, "CONTROL_DISCONNECTED", now);
+  assert.throws(() => assignments.admit(owner, second, next, now), /broadcast_temporarily_unavailable/);
+  now += 60000; assert.ok(assignments.admit(owner, second, next, now));
 });
 
 test("assignment wire carries only the aggregate-budget-admitted rendition prefix", () => {

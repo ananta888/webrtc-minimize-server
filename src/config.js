@@ -14,6 +14,7 @@ import { BROADCAST_PLAYBACK_CAPACITY_DEFAULTS, BROADCAST_PLAYBACK_CAPACITY_ENV }
 import { BROADCAST_PROGRAM_CAPACITY_DEFAULTS } from "./broadcast-program-capacity.js";
 import { BROADCAST_PROGRAM_RUNTIME_DEFAULT_MS } from "./broadcast-program-lifetime.js";
 import { NATIVE_PACKAGER_RESOURCE_DEFAULTS, NATIVE_PACKAGER_RESOURCE_ENV } from "./native-packager-resource-budget.js";
+import { nativePackagerScopedResourcesFromEnvironment } from "./native-packager-scoped-resources.js";
 
 const DEFAULTS = Object.freeze({
   host: "0.0.0.0",
@@ -721,6 +722,7 @@ export function loadConfig(env = process.env) {
     broadcastNativeResourceLimits: Object.freeze(Object.fromEntries(Object.entries(NATIVE_PACKAGER_RESOURCE_ENV)
       .map(([field, name]) => [field, boundedInteger(env[name] === "" ? NaN : env[name], NATIVE_PACKAGER_RESOURCE_DEFAULTS[field],
         { minimum: 0, maximum: 1_000_000_000, name })]))),
+    broadcastNativeScopedResourceLimits: nativePackagerScopedResourcesFromEnvironment(env),
     broadcastProgramCapacity: Object.freeze(Object.fromEntries([
       ["deployment", "BROADCAST_MAX_ACTIVE_PROGRAMS"],
       ["gateway", "BROADCAST_MAX_ACTIVE_PROGRAMS_PER_GATEWAY"],
