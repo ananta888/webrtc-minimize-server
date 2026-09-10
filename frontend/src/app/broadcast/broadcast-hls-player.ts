@@ -2,6 +2,7 @@ import Hls, { Events } from "hls.js";
 import type { ErrorData, HlsConfig, Level } from "hls.js";
 
 import { BroadcastBrowserPortError } from "./broadcast-ports";
+import { loadBroadcastCaption } from "./broadcast-caption-loader";
 import {
   BroadcastViewerQualityMode,
   BroadcastViewerQualityPolicy,
@@ -296,21 +297,10 @@ export class BroadcastHlsPlayer {
       const controller = new AbortController();
       this.captionController = controller;
       try {
-        const response = await fetch(url.href, {
-          method: "GET", credentials: "same-origin", cache: "no-store", redirect: "error",
-          signal: controller.signal,
-        });
+        const body = await loadBroadcastCaption(url.href, controller.signal);
         if (controller.signal.aborted || generation !== this.generation) return;
-        if (!response.ok) {
-          if (response.status === 404) this.clearCaptionTrack();
-          return;
-        }
-        if (response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "text/vtt") return;
-        const raw = await response.arrayBuffer();
-        if (raw.byteLength < 8 || raw.byteLength > 64 * 1024) return;
-        const body = new TextDecoder("utf-8", { fatal: true }).decode(raw);
-        if (controller.signal.aborted || generation !== this.generation
-          || !body.startsWith("WEBVTT\n\n") || body === this.captionBody || !this.video) return;
+        if (body === null) this.clearCaptionTrack();
+        if (!body || body === this.captionBody || !this.video) return;
         const nextUrl = URL.createObjectURL(new Blob([body], { type: "text/vtt" }));
         const previousUrl = this.captionObjectUrl;
         let track = this.captionTrack;

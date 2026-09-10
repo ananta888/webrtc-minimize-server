@@ -111,6 +111,33 @@ Resource-/Cookie-Scope. Er akzeptiert nur `text/vtt`, maximal 64 KiB und einen
 gültigen `WEBVTT`-Header, ersetzt den lokalen Blob-TextTrack nur bei Änderung
 und behandelt 404/Widerruf ohne Ausfall von Bild und Ton.
 
+`broadcast-caption-loader.ts` liest diese Grenze streamweise ein: Vor dem
+Dekodieren jedes Chunks wird die tatsächliche Bytezahl geprüft, unabhängig
+von fehlender oder falscher `Content-Length`. Eine angekündigte Übergröße wird
+vor dem Lesen verworfen. UTF-8 wird strikt und über Chunkgrenzen hinweg
+dekodiert; `arrayBuffer()` wird nicht mehr verwendet. Die Grenze betrifft die
+vom Anwendungscode akkumulierten Daten, nicht bereits intern vom Browser
+gepufferte Netzwerkchunks.
+
+Headers und Body teilen sich ein Fünfsekundenbudget. Timeout, Stop oder
+Generationswechsel beenden das Warten, brechen den Fetch ab und geben den
+Reader frei; auch ein hängender Cancel-Hook darf den Aufrufer nicht festhalten.
+Ignorierte Fehler-/Content-Type-Antworten werden ebenfalls abgebrochen. Eine
+nicht kooperative Fetch-Promise kann weiter bestehen, aber ihre späte Antwort
+wird geschlossen und nicht mehr gerendert. Es gibt keinen zusätzlichen Retry;
+nur der bestehende Zwei-Sekunden-Poller darf die nächste aktuelle Abfrage starten.
+URL, Cookie-Scope, Consent und Wiedergabequalität ändern sich dadurch nicht.
+
+Verifikation am 10. September 2026: Beide alten Fälle (überlanges und hängendes
+Caption-Body) scheiterten zunächst am fehlenden Abbruch. Nach Integration
+bestehen 54 gezielte Loader-/Player-/Komponententests in 1,530 s, darunter
+64-KiB-Grenzwerte, falsche Längenangaben, geteiltes/ungültiges UTF-8,
+Headers-/Body-/kombinierte Frist, später Fetch, hängender Cancel-Hook,
+geschützte URLs und weiterhin laufende Wiedergabe. Die Tests verwenden
+WebStreams und synthetische Medienports, keinen lokalen Browser oder Ton.
+TypeScript und der isolierte Produktionsbuild (11,033 s) bestehen; reale
+Spracherkennung, Caption-Synchronität und Produktionsabnahme bleiben offen.
+
 Abort, Schließen, Tab-Hintergrund, Navigation und Component-Destroy stoppen
 Loads, zerstören hls.js, entfernen Listener und eigene Texttracks, pausieren das
 Video und löschen `src`. Nach Sichtbarkeitswechsel ist ein neuer lokaler Klick

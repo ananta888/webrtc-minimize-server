@@ -61,6 +61,26 @@ const fakeModule = {
 };
 
 describe("BroadcastHlsPlayer", () => {
+  it.each(["oversize", "hanging"])("cancels an %s caption body within its budget without stopping playback", async scenario => {
+    vi.useFakeTimers(); FakeHls.instances = [];
+    let stream!: ReadableStreamDefaultController<Uint8Array>;
+    const cancel = vi.fn(), body = new ReadableStream<Uint8Array>({ start(controller) {
+      stream = controller;
+      if (scenario === "oversize") controller.enqueue(new Uint8Array(65537));
+    }, cancel });
+    const request = vi.fn().mockResolvedValueOnce(new Response(body, { headers: { "content-type": "text/vtt" } }))
+      .mockResolvedValue(new Response(null, { status: 404 }));
+    vi.stubGlobal("fetch", request);
+    const element = video(), player = new BroadcastHlsPlayer(() => undefined, async () => fakeModule as never);
+    try {
+      await player.open(element, "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8", { muted: true, volume: 1, captions: true }, new AbortController().signal);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(cancel).toHaveBeenCalled(); expect(body.locked).toBe(false);
+      expect(element.querySelector("track[data-broadcast-player]")).toBeNull();
+      expect(player.snapshot().lifecycle).toBe("playing");
+      expect(element.pause).not.toHaveBeenCalled();
+    } finally { await player.destroy(); stream.error(new Error("fixture-finished")); vi.useRealTimers(); }
+  });
   it.each([401, 403, 404, 410, 429])("keeps HTTP %i terminal despite late media events and watchdog time", async status => {
     vi.useFakeTimers(); FakeHls.instances = [];
     const element = video(), player = new BroadcastHlsPlayer(() => undefined, async () => fakeModule as never);
