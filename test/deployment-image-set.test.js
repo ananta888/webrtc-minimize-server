@@ -38,7 +38,11 @@ case "$*" in
     case "$*" in *web-container) echo sha256:web ;; *native-container) echo sha256:native ;; *origin-container) echo sha256:origin ;; esac ;;
   'image inspect --platform '*)
     if [ "\${IMAGE_SET_TEST_FAIL:-}" = manifest-mismatch ]; then echo sha256:${"c".repeat(64)}; else echo sha256:${"b".repeat(64)}; fi ;;
-  'image inspect --format '*) echo sha256:available-index ;;
+  'image inspect --format '*)
+    case "$4" in *io.ananta.meet.trust-reload*)
+      if [ "\${IMAGE_SET_TEST_FAIL:-}" != reload-unsupported ]; then echo sighup-v1; fi ;;
+      *) echo sha256:available-index ;;
+    esac ;;
   'image inspect '*)
     [ "\${IMAGE_SET_TEST_FAIL:-}" != missing-image ]
     case "\${IMAGE_SET_TEST_FAIL:-}" in missing-index|manifest-mismatch) case "$*" in *sha256:origin) exit 1 ;; esac ;; esac ;;
@@ -83,10 +87,11 @@ test("complete image-set update builds and preflights before switching, then res
   assert.ok(!fs.existsSync(path.join(root,".deploy/operation.lock")));
 });
 
-for (const mode of ["legacy", "profile"]) test(`${mode} trust selection stays present through deployment and rollback`, t => {
+for (const mode of ["legacy", "profile", "profile-reload"]) test(`${mode} trust selection stays present through deployment and rollback`, t => {
   const { root, run, read } = fixture(t);
   const directory = path.join(root, "infra/deployment"); fs.mkdirSync(directory, { recursive: true });
-  const file = mode === "profile" ? "compose.machine-profile.yaml" : "compose.machine.yaml";
+  const file = mode === "profile-reload" ? "compose.machine-profile-reload.yaml"
+    : mode === "profile" ? "compose.machine-profile.yaml" : "compose.machine.yaml";
   fs.copyFileSync(new URL(`../infra/deployment/${file}`, import.meta.url), path.join(directory, file));
   const extra = { IMAGE_SET_TEST_MACHINE: `${mode} enabled` };
   run("deploy", extra); run("rollback", extra);
@@ -99,6 +104,20 @@ test("missing selected override fails before creating deployment state", t => {
   assert.throws(() => run("deploy", { IMAGE_SET_TEST_MACHINE: "profile enabled" }));
   assert.equal(fs.existsSync(path.join(root, ".deploy")), false);
   assert.equal(fs.existsSync(path.join(root, "log")), false);
+});
+
+test("live trust rejects an incompatible baseline or rollback image before service changes", t => {
+  const { root, run, read } = fixture(t);
+  const directory = path.join(root, "infra/deployment"); fs.mkdirSync(directory, { recursive: true });
+  const file = "compose.machine-profile-reload.yaml";
+  fs.copyFileSync(new URL(`../infra/deployment/${file}`, import.meta.url), path.join(directory, file));
+  const selection = { IMAGE_SET_TEST_MACHINE: "profile-reload enabled" };
+  assert.throws(() => run("deploy", { ...selection, IMAGE_SET_TEST_FAIL: "reload-unsupported" }));
+  assert.doesNotMatch(read("log"), / up | build /);
+  run("deploy", selection);
+  fs.writeFileSync(path.join(root, "log"), "");
+  assert.throws(() => run("rollback", { ...selection, IMAGE_SET_TEST_FAIL: "reload-unsupported" }));
+  assert.doesNotMatch(read("log"), / up | stop /);
 });
 
 test("invalid deployment selection fails before locks, snapshots and any Docker mutation", t => {

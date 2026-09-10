@@ -1,5 +1,5 @@
 import { createPublicKey } from "node:crypto";
-import { isAbsolute } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { machineCapabilityEnvironment } from "./machine-capabilities.js";
 import { parseMachineTrustProfile } from "./machine-trust-profile.js";
 
@@ -8,10 +8,19 @@ const fields = ["mode", "issuer", "publicKeyFile", "profileFile", "inlineKey", "
 /** Structural deployment validation only, not Hub/room authorization or delivery. */
 export function machineDeploymentConfig(value, readFile) {
   try {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const directory = Object.hasOwn(value, "profileDirectory") ? value.profileDirectory : "";
+      if (typeof directory !== "string" || directory.includes("\0") || directory.length > 4096
+        || (value.mode === "profile-reload"
+          ? !isAbsolute(directory) || value.profileFile !== join(directory, "machine-trust.json")
+          : directory !== "")) throw new Error();
+      const { profileDirectory: _directory, ...rest } = value;
+      value = rest;
+    }
     if (!value || typeof value !== "object" || Array.isArray(value)
       || Object.keys(value).length !== fields.length || fields.some(key => typeof value[key] !== "string")
       || Object.keys(value).some(key => !fields.includes(key))
-      || !["disabled", "legacy", "profile"].includes(value.mode) || value.inlineKey || value.inlineProfile) throw new Error();
+      || !["disabled", "legacy", "profile", "profile-reload"].includes(value.mode) || value.inlineKey || value.inlineProfile) throw new Error();
     const capabilities = machineCapabilityEnvironment(value.capabilities);
     const read = file => {
       if (!isAbsolute(file) || file.includes("\0") || file.length > 4096) throw new Error();
@@ -21,7 +30,7 @@ export function machineDeploymentConfig(value, readFile) {
       if (value.issuer || value.publicKeyFile || value.profileFile) throw new Error();
     } else {
       if (value.authMode !== "required" || value.mediaE2eeMode !== "required") throw new Error();
-      if (value.mode === "profile") {
+      if (["profile", "profile-reload"].includes(value.mode)) {
         if (value.issuer || value.publicKeyFile || !value.profileFile) throw new Error();
         parseMachineTrustProfile(read(value.profileFile));
       } else {

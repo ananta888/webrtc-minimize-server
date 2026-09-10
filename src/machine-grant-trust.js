@@ -3,7 +3,7 @@ import { jwtVerify } from "jose";
 import { MACHINE_GRANT_AUDIENCES, machineTrustScopeAllows, parseMachineTrustProfile } from "./machine-trust-profile.js";
 import { parseMachineTrustJson } from "./machine-trust-json.js";
 
-/** Fixed, bounded operator keys. No network key discovery or runtime reload. */
+/** One immutable operator-key snapshot. No network key discovery; reload creates a new snapshot. */
 export class MachineGrantTrust {
   #profile;
   #keys = new Map();
@@ -67,5 +67,19 @@ export class MachineGrantTrust {
 
   allows(payload, capabilities) {
     return !this.#profile || machineTrustScopeAllows(this.#profile, payload, capabilities);
+  }
+
+  /** Private continuation evidence for an already verified grant, not a JWT bypass. */
+  continuation({ payload, protectedHeader }, capabilities) {
+    const anchor = this.#profile ? this.#keys.get(protectedHeader.kid)?.x : this.#legacyKey;
+    return (current, now) => {
+      if (!Number.isSafeInteger(now) || now < payload.iat * 1000 || now >= payload.exp * 1000
+        || current.#issuer !== payload.iss || !current.allows(payload, capabilities)) return false;
+      if (!current.#profile) return Boolean(anchor) && current.#legacyKey === anchor;
+      const key = current.#keys.get(protectedHeader.kid);
+      return Boolean(key) && key.x === anchor && current.#profile.audiences.includes(payload.aud)
+        && now / 1000 >= key.notBefore && now / 1000 < key.notAfter
+        && payload.iat >= key.notBefore && payload.exp <= key.notAfter;
+    };
   }
 }

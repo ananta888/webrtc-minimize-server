@@ -14,12 +14,15 @@ const sameV2Task = (a, b) => a.protocolVersion === "v2" && b.protocolVersion ===
 /** Ephemeral session ownership, not Hub authority. Every renewal needs a newly
  * verified Hub grant AND device proof. No membership or receive-right expansion. */
 export class MachineSessionLeases {
-  #records = new Map(); #clock; #maxSessions;
-  constructor({ clock = Date.now, maxSessions = 1000 } = {}) {
-    if (typeof clock !== "function" || !Number.isSafeInteger(maxSessions) || maxSessions < 1 || maxSessions > 10_000) {
+  #records = new Map(); #clock; #maxSessions; #authorize;
+  constructor({ clock = Date.now, maxSessions = 1000, authorize = () => true } = {}) {
+    if (typeof clock !== "function" || typeof authorize !== "function" || !Number.isSafeInteger(maxSessions) || maxSessions < 1 || maxSessions > 10_000) {
       fail("machine_lease_config_invalid", 500);
     }
-    this.#clock = clock; this.#maxSessions = maxSessions;
+    this.#clock = clock; this.#maxSessions = maxSessions; this.#authorize = authorize;
+  }
+  #authorized(identity, now) {
+    try { return this.#authorize(identity, now) === true; } catch { return false; }
   }
   #view(record) {
     return Object.freeze({ schema: "ananta.meet-session-lease.v1", sessionId: record.id,
@@ -33,7 +36,7 @@ export class MachineSessionLeases {
   }
   issue(identity, fingerprint) {
     const now = this.#clock(), binding = identity.machineBinding;
-    if (!sameBinding(binding, binding) || typeof fingerprint !== "string" || !fingerprint
+    if (!this.#authorized(identity, now) || !sameBinding(binding, binding) || typeof fingerprint !== "string" || !fingerprint
       || !Number.isSafeInteger(identity.machineExpiresAt) || identity.machineExpiresAt <= now
       || identity.machineExpiresAt > now + 600_000) fail("machine_lease_scope_invalid", 401);
     this.prune();
@@ -45,7 +48,7 @@ export class MachineSessionLeases {
       fail("machine_session_already_active");
     }
     const id = `ms_${randomBytes(24).toString("base64url")}`;
-    const record = { id, binding: Object.freeze({ ...binding }), fingerprint, createdAt: now, lastNow: now,
+    const record = { id, identity, binding: Object.freeze({ ...binding }), fingerprint, createdAt: now, lastNow: now,
       expiresAt: identity.machineExpiresAt, absoluteExpiresAt: now + 7_200_000, generation: 1,
       member: null, stop: null, timer: null };
     this.#records.set(id, record); this.#arm(record);
@@ -97,6 +100,7 @@ export class MachineSessionLeases {
   live(id) {
     const r = this.#records.get(id), now = this.#clock();
     if (!r) return false;
+    if (!this.#authorized(r.identity, now)) { this.revoke(id); return false; }
     let member = true;
     try { member = !r.member || r.member() === true; } catch { member = false; }
     if (now < r.lastNow || now >= r.expiresAt || !member) { this.close(id, "machine_session_expired"); return false; }
@@ -112,7 +116,7 @@ export class MachineSessionLeases {
       fail("machine_session_unavailable", 401);
     }
     r.lastNow = now;
-    if (!r.member || !sameBinding(r.binding, identity.machineBinding) || r.fingerprint !== fingerprint) {
+    if (!this.#authorized(identity, now) || !r.member || !sameBinding(r.binding, identity.machineBinding) || r.fingerprint !== fingerprint) {
       fail("machine_lease_scope_invalid", 401);
     }
     if (!Number.isSafeInteger(expectedGeneration) || expectedGeneration !== r.generation || r.generation >= 512) {
@@ -121,7 +125,7 @@ export class MachineSessionLeases {
     const expiresAt = identity.machineExpiresAt;
     if (!Number.isSafeInteger(expiresAt) || expiresAt <= r.expiresAt || expiresAt > now + 600_000
       || expiresAt > r.absoluteExpiresAt) fail("machine_lease_deadline_invalid");
-    r.expiresAt = expiresAt; ++r.generation; this.#arm(r);
+    r.expiresAt = expiresAt; r.identity = identity; ++r.generation; this.#arm(r);
     return this.#view(r);
   }
   close(id, reason = "machine_session_closed") {
@@ -129,6 +133,15 @@ export class MachineSessionLeases {
     if (!r) return;
     this.#records.delete(id); clearTimeout(r.timer);
     try { r.stop?.(reason); } catch { /* Deleted authority remains revoked. */ }
+  }
+  revoke(id) {
+    const record = this.#records.get(id);
+    if (!record) return;
+    this.#records.delete(id); clearTimeout(record.timer);
+    // Remove membership before returning from an operator revocation. Socket
+    // teardown remains bounded even when a client ignores the close handshake.
+    try { record.detach?.(); } catch { /* Still revoke authority and terminate its socket. */ }
+    try { record.stop?.("machine_session_trust_revoked"); } catch { /* Authority remains revoked. */ }
   }
   prune() {
     for (const [id, r] of this.#records) {

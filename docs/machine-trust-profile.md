@@ -23,8 +23,10 @@ Ananta adds optional Hub-owned `ANANTA_MEET_MACHINE_KEY_ID` to JWT headers;
 existing v1/v2 payloads and participant/session identities stay unchanged.
 Overlapping preinstalled public keys allow scheduled Hub rotation without
 Meet restart. Operator configuration replacement/restart removes trust and
-terminates this server's ephemeral memberships. No reload API, identity
-migration or room/publisher consent is inferred from trust.
+terminates this server's ephemeral memberships. The optional operator-local
+[SIGHUP reload](machine-trust-reload.md) now provides a separate, explicit
+live-revocation path. No HTTP reload API, identity migration or room/publisher
+consent is inferred from trust.
 
 Separate profile validation, JWT trust and HTTP composition (SRP/DIP). The
 large server remains SRP debt, not a home for additional trust policy.

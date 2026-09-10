@@ -3,6 +3,13 @@
 # Snapshot files are data, never shell input. Tags are unique per snapshot so a
 # failed later snapshot cannot silently repoint an older rollback target.
 
+require_machine_reload_image() {
+  [ "${machine_mode:-disabled}" = profile-reload ] || return 0
+  [ "$1" = '-' ] && return 0
+  reload_profile=$(docker image inspect --format '{{index .Config.Labels "io.ananta.meet.trust-reload"}}' "$1") || return 1
+  [ "$reload_profile" = sighup-v1 ] || { echo 'Image lacks required local machine trust reload support.' >&2; return 1; }
+}
+
 snapshot_service() {
   snapshot_container=$(docker compose $compose_files --profile native-packager ps -q "$1") || return 1
   if [ -z "$snapshot_container" ]; then printf '%s\n' '-'; return 0; fi
@@ -28,6 +35,7 @@ save_image_set() {
   snapshot_temporary=$(mktemp "$state_dir/rollback.XXXXXX") || return 1
   snapshot_suffix=${snapshot_temporary##*/}
   snapshot_web=$(snapshot_service webrtc "webrtc-minimize-server:$snapshot_suffix") || return 1
+  require_machine_reload_image "$snapshot_web" || return 1
   snapshot_native=$(snapshot_service native-packager "webrtc-minimize-server-native-packager:$snapshot_suffix") || return 1
   snapshot_origin=$(snapshot_service broadcast-hls-origin "webrtc-minimize-server-broadcast-hls-origin:$snapshot_suffix") || return 1
   # A partly provisioned native pair is not a recoverable baseline.
@@ -61,6 +69,7 @@ read_image_set() {
     docker image inspect "$rollback_native" "$rollback_origin" >/dev/null || return 1
   fi
   [ "$rollback_web" = '-' ] || docker image inspect "$rollback_web" >/dev/null || return 1
+  require_machine_reload_image "$rollback_web" || return 1
 }
 
 restore_image_set() {
@@ -83,6 +92,7 @@ restore_image_set() {
 }
 
 activate_image_set() {
+  require_machine_reload_image "$candidate" || return 1
   if [ "$native_broadcast" = enabled ]; then
     NATIVE_PACKAGER_IMAGE="$candidate_native" BROADCAST_HLS_ORIGIN_IMAGE="$candidate_origin" \
       docker compose $compose_files --profile native-packager up -d --no-build --pull never --wait native-packager broadcast-hls-origin || return 1

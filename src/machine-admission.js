@@ -1,4 +1,6 @@
 import { MachineGrantTrust } from "./machine-grant-trust.js";
+import { isDeepStrictEqual } from "node:util";
+import { parseMachineTrustProfile } from "./machine-trust-profile.js";
 import { AuthenticationError, bearerToken } from "./oidc-verifier.js";
 import { MACHINE_CAPABILITIES, machineCapabilityCeiling } from "./machine-capabilities.js";
 export { MACHINE_CAPABILITIES } from "./machine-capabilities.js";
@@ -13,21 +15,54 @@ export class MachineAdmission {
   #issuer;
   #allowedCapabilities;
   #used = new Map();
+  #continuations = new WeakMap();
+  #profile;
+  #suspended = false;
+  #epoch = {};
 
   constructor({ publicKey = "", issuer = "", allowedCapabilities, trustProfile = null } = {}) {
     this.#allowedCapabilities = machineCapabilityCeiling(allowedCapabilities);
     this.#trust = new MachineGrantTrust({ publicKey, issuer, trustProfile });
     this.#issuer = this.#trust.issuer;
+    this.#profile = trustProfile === null ? null : parseMachineTrustProfile(trustProfile);
   }
 
-  get enabled() { return this.#trust.enabled && this.#allowedCapabilities.length > 0; }
+  get enabled() { return !this.#suspended && this.#trust.enabled && this.#allowedCapabilities.length > 0; }
+
+  suspendTrust() { this.#suspended = true; this.#epoch = {}; }
+
+  replaceTrustProfile(input) {
+    if (!this.#profile) throw new Error("machine_trust_reload_disabled");
+    try {
+      const profile = parseMachineTrustProfile(input);
+      if (profile.issuer !== this.#issuer || profile.revision < this.#profile.revision
+        || profile.revision === this.#profile.revision
+          && (this.#suspended || !isDeepStrictEqual(profile, this.#profile))) throw new Error();
+      if (profile.revision === this.#profile.revision) return false;
+      const trust = new MachineGrantTrust({ trustProfile: profile });
+      this.#trust = trust; this.#profile = profile; this.#suspended = false; this.#epoch = {};
+      return true;
+    } catch {
+      this.suspendTrust();
+      throw new Error("machine_trust_reload_rejected");
+    }
+  }
+
+  current(identity, now = Date.now()) {
+    if (!this.enabled) return false;
+    try { return this.#continuations.get(identity)?.(this.#trust, now) === true; }
+    catch { return false; }
+  }
 
   async verify(header, { roomId, mode, displayName }, now = Date.now()) {
-    if (!this.#trust.enabled) throw new AuthenticationError("machine_admission_disabled");
+    if (!this.enabled) throw new AuthenticationError("machine_admission_disabled");
     const token = bearerToken(header);
     if (!token || token.length > 4096) throw new AuthenticationError("machine_grant_invalid");
     try {
-      const { payload, protectedHeader } = await this.#trust.verify(token, now, [...FIELDS]);
+      const trust = this.#trust, epoch = this.#epoch;
+      const verified = await trust.verify(token, now, [...FIELDS]);
+      if (epoch !== this.#epoch || !this.enabled) throw new Error("trust_changed");
+      const { payload, protectedHeader } = verified;
       const v2 = payload.aud === "ananta-meet-machine-v2";
       const allowedFields = v2 ? V2_FIELDS : FIELDS;
       if (protectedHeader.typ !== (v2 ? "ananta-meet-machine-v2+jwt" : "ananta-meet-machine+jwt")
@@ -51,13 +86,15 @@ export class MachineAdmission {
       for (const [id, expiry] of this.#used) if (expiry <= now) this.#used.delete(id);
       if (this.#used.has(payload.jti) || this.#used.size >= 10_000) throw new Error("replayed_or_full");
       this.#used.set(payload.jti, payload.exp * 1000);
-      return Object.freeze({ issuer: this.#issuer, subject: `machine:${payload.sub}`, displayName: "Ananta (KI)",
+      const identity = Object.freeze({ issuer: this.#issuer, subject: `machine:${payload.sub}`, displayName: "Ananta (KI)",
         machineBinding: Object.freeze({ issuer: this.#issuer, subject: `machine:${payload.sub}`,
           roomId: payload.roomId, taskId: payload.taskId, tenantId: payload.tenantId, projectId: payload.projectId,
           protocolVersion: v2 ? "v2" : "v1", runtimeId: v2 ? payload.runtimeId : "",
           hubSessionId: v2 ? payload.sessionId : "", capabilitySet: capabilities.join(",") }),
         machineCapabilities: Object.freeze(capabilities),
         machineExpiresAt: payload.exp * 1000, controllerOrigin: new URL(this.#issuer).origin });
+      this.#continuations.set(identity, trust.continuation(verified, capabilities));
+      return identity;
     } catch {
       throw new AuthenticationError("machine_grant_invalid");
     }

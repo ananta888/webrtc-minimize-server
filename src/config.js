@@ -8,6 +8,7 @@ import { readFileSync, statSync } from "node:fs";
 import { machineCapabilityEnvironment } from "./machine-capabilities.js";
 import { parseMachineTrustProfile } from "./machine-trust-profile.js";
 import { readMachineTrustFile } from "./machine-trust-file.js";
+import { machineTrustReloadFile } from "./machine-trust-reload.js";
 import { BROADCAST_HLS_BUDGET_DEFAULTS } from "./broadcast-hls-budget.js";
 import { BROADCAST_PLAYBACK_CAPACITY_DEFAULTS, BROADCAST_PLAYBACK_CAPACITY_ENV } from "./broadcast-playback-capacity.js";
 import { BROADCAST_PROGRAM_CAPACITY_DEFAULTS } from "./broadcast-program-capacity.js";
@@ -537,6 +538,7 @@ export function loadConfig(env = process.env) {
     machineHubPublicKey: environmentOrFile(env, "MACHINE_HUB_PUBLIC_KEY") || "",
     machineHubIssuer: String(env.MACHINE_HUB_ISSUER || ""),
     machineHubTrustProfile: machineTrustProfileEnvironment(env),
+    machineHubTrustReloadFile: machineTrustReloadFile(env),
     machineAllowedCapabilities: machineCapabilityEnvironment(env.MACHINE_ALLOWED_CAPABILITIES),
     oidcIssuer,
     oidcAudience,

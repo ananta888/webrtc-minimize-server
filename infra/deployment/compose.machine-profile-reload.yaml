@@ -1,0 +1,14 @@
+# Explicit live policy only; bind the directory so atomic rename is observable.
+services:
+  webrtc:
+    environment:
+      MACHINE_HUB_TRUST_PROFILE_JSON_FILE: /run/machine-trust/machine-trust.json
+      MACHINE_HUB_TRUST_RELOAD: signal
+      MACHINE_ALLOWED_CAPABILITIES: ${MACHINE_ALLOWED_CAPABILITIES-chat.read,chat.send}
+    volumes:
+      - type: bind
+        source: ${MACHINE_HUB_TRUST_PROFILE_DIRECTORY:?Operator-owned public trust directory required}
+        target: /run/machine-trust
+        read_only: true
+        bind:
+          create_host_path: false

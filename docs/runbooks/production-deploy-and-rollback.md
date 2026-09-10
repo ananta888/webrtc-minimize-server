@@ -1,5 +1,11 @@
 # Runbook: Produktionsdeployment und Rollback
 
+Optionaler neuer Modus `MACHINE_DEPLOYMENT_MODE=profile-reload`: atomar
+erneuerbare öffentliche Trust-Datei und lokaler SIGHUP-Widerruf ohne Neustart
+menschlicher Räume. Auswahl, Revisionsgrenzen und Einschränkungen beim Rollback
+auf ältere Software stehen im [Trust-Reload-Runbook](../machine-trust-reload.md).
+Dies ist keine bereits erfolgte produktive Aktivierung.
+
 Neuer Software-Rollout vom 10. September: `cb2e6e7` nach allen acht grünen
 CI-Jobs, drei laufende Image-Revisionen und unabhängiger Smoke geprüft.
 Snapshot `image-set-v1` / `rollback.NTtRuv` bewahrt den vorherigen Satz;

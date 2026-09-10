@@ -19,7 +19,7 @@ esac
 # Read-only validation precedes locks, signing keys, snapshots and Docker writes.
 machine_selection=$(node "$script_dir/machine-deployment-config.mjs")
 case "$machine_selection" in
-  'disabled disabled'|'legacy enabled'|'legacy disabled'|'profile enabled'|'profile disabled') ;;
+  'disabled disabled'|'legacy enabled'|'legacy disabled'|'profile enabled'|'profile disabled'|'profile-reload enabled'|'profile-reload disabled') ;;
   *) echo 'Invalid machine deployment selection' >&2; exit 2 ;;
 esac
 set -- $machine_selection
@@ -29,6 +29,7 @@ machine_override=
 case "$machine_mode" in
   legacy) machine_override=infra/deployment/compose.machine.yaml ;;
   profile) machine_override=infra/deployment/compose.machine-profile.yaml ;;
+  profile-reload) machine_override=infra/deployment/compose.machine-profile-reload.yaml ;;
 esac
 if [ -n "$machine_override" ]; then
   [ -f "$machine_override" ] || { echo 'Machine deployment override is unavailable' >&2; exit 2; }
@@ -77,6 +78,7 @@ rollback() {
     *) echo "Recorded rollback image is invalid" >&2; return 1 ;;
   esac
   docker image inspect "$previous_image" >/dev/null
+  require_machine_reload_image "$previous_image" || return 1
   WEBRTC_IMAGE="$previous_image" WEBRTC_REVERSE_PROXY_NETWORK="$proxy_network" \
     docker compose $compose_files up -d --no-build --pull never --wait webrtc
   smoke
@@ -100,6 +102,7 @@ rotate_broadcast_key() {
   fi
   current_image=$(docker inspect --format '{{.Config.Image}}' "$current_container")
   docker image inspect "$current_image" >/dev/null
+  require_machine_reload_image "$current_image" || return 1
   node scripts/ensure-broadcast-signing-key.mjs "$next_key"
   mv -Tf "$signing_key" "$previous_key"
   mv -Tf "$next_key" "$signing_key"

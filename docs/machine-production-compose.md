@@ -1,6 +1,7 @@
 # Expliziter Maschinen-Trust im Deployment
 
-`MACHINE_DEPLOYMENT_MODE` wählt `disabled` (Standard), `legacy` oder `profile`.
+`MACHINE_DEPLOYMENT_MODE` wählt `disabled` (Standard), `legacy`, `profile` oder
+den ausdrücklich aktivierbaren [Live-Modus `profile-reload`](machine-trust-reload.md).
 Die Auswahl gilt für `production-deploy.sh deploy`, `rollback`, `smoke` und
 `rotate-broadcast-key`. Es gibt keine automatische Erkennung oder Freigabe nur
 aufgrund einer vorhandenen Schlüsseldatei. Die bestehende separate Hub-/Projekt-
@@ -54,13 +55,16 @@ lieferung; dafür bleiben der versionierte Rollout-Preflight und Live-Gates nöt
 
 Die gültige Operator-Konfiguration muss während eines Deployments stabil bleiben.
 Die Dateiprüfung und spätere Containeraktivierung sind keine atomare Transaktion.
-Der Server prüft das Profil beim Start erneut; es gibt keinen Hot-Reload.
+Der Server prüft das Profil beim Start erneut. Die bisherigen Modi bleiben
+statisch; nur `profile-reload` erlaubt den lokalen SIGHUP-Pfad nach atomarem
+Austausch im gesondert read-only gemounteten öffentlichen Trust-Verzeichnis.
 Ein Image-Rollback benutzt dieselbe aktuell gewählte Trustkonfiguration und setzt
 keine Policydateien, Schlüssel oder Projektfreigaben zurück. Geplante Policy-
 Änderungen und deren Rückweg müssen deshalb separat kompatibel sein.
 
 Zum Abschalten `disabled` wählen **und** alle Hub-Key-/Issuer-/Profilwerte
-entfernen beziehungsweise leeren. Widersprüchliche Restwerte werden abgewiesen,
+einschließlich `MACHINE_HUB_TRUST_PROFILE_DIRECTORY` entfernen beziehungsweise
+leeren. Widersprüchliche Restwerte werden abgewiesen,
 nicht still ignoriert. Ein kontrollierter Neustart beendet flüchtige Räume;
 deshalb bestehende Wartungs-/Rollbackregeln beachten.
 

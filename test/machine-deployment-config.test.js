@@ -56,6 +56,27 @@ test("profile and legacy modes validate exclusive public trust and explicit deny
     assert.throws(() => machineDeploymentConfig({ ...defaults, mode: "legacy", issuer: f.trust.profile.issuer, publicKeyFile: f.key }, () => pem));
   }
 });
+
+test("live profile deployment requires the exact public directory file and fails closed outside that mode", t => {
+  const f = fixture(t), file = path.join(f.root, "machine-trust.json");
+  fs.writeFileSync(file, JSON.stringify(f.trust.profile));
+  const config = { ...defaults, mode: "profile-reload", profileDirectory: f.root, profileFile: file };
+  assert.deepEqual(machineDeploymentConfig(config, value => fs.readFileSync(value, "utf8")), { mode: "profile-reload", admission: "enabled" });
+  for (const patch of [{ mode: "disabled" }, { mode: "legacy" }, { mode: "profile" }, { profileDirectory: null },
+    { profileDirectory: "" }, { profileDirectory: "relative" }, { profileFile: f.profile }]) {
+    assert.throws(() => machineDeploymentConfig({ ...config, ...patch }, () => assert.fail()), /machine_deployment_config_invalid/);
+  }
+  const result = f.run({ MACHINE_DEPLOYMENT_MODE: "profile-reload", MACHINE_HUB_TRUST_PROFILE_DIRECTORY: f.root,
+    MACHINE_HUB_TRUST_PROFILE_JSON_FILE: file });
+  assert.equal(result.status, 0); assert.equal(result.stdout, "profile-reload enabled\n");
+  const rendered = JSON.parse(execFileSync("docker", ["compose", "-f", path.join(repository,
+    "infra/deployment/compose.machine-profile-reload.yaml"), "config", "--format", "json", "--no-consistency"],
+    { env: { ...f.env, MACHINE_HUB_TRUST_PROFILE_DIRECTORY: f.root }, encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] }));
+  const service = rendered.services.webrtc;
+  assert.equal(service.environment.MACHINE_HUB_TRUST_RELOAD, "signal");
+  assert.equal(service.environment.MACHINE_HUB_TRUST_PROFILE_JSON_FILE, "/run/machine-trust/machine-trust.json");
+  assert.deepEqual(service.volumes[0], { type: "bind", source: f.root, target: "/run/machine-trust", read_only: true, bind: { create_host_path: false } });
+});
 test("actual Compose resolves .env, interpolation, process precedence and empty ceilings without activation", t => {
   const f = fixture(t);
   const disabled = f.run();

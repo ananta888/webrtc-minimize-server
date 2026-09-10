@@ -6,6 +6,7 @@ x-ananta-machine-deployment:
   issuer: ${MACHINE_HUB_ISSUER:-}
   publicKeyFile: ${MACHINE_HUB_PUBLIC_KEY_FILE:-}
   profileFile: ${MACHINE_HUB_TRUST_PROFILE_JSON_FILE:-}
+  profileDirectory: ${MACHINE_HUB_TRUST_PROFILE_DIRECTORY:-}
   inlineKey: ${MACHINE_HUB_PUBLIC_KEY:-}
   inlineProfile: ${MACHINE_HUB_TRUST_PROFILE_JSON:-}
   capabilities: ${MACHINE_ALLOWED_CAPABILITIES-chat.read,chat.send}

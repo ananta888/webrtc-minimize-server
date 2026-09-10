@@ -100,6 +100,7 @@ FROM node:22-alpine
 ARG SOURCE_REVISION
 LABEL org.opencontainers.image.source="https://github.com/ananta888/webrtc-minimize-server" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
+      io.ananta.meet.trust-reload="sighup-v1" \
       org.opencontainers.image.licenses="BSD-3-Clause"
 ENV NODE_ENV=production
 WORKDIR /app

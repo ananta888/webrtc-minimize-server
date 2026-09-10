@@ -9,6 +9,7 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import { loadConfig } from "./config.js";
 import { MachineAdmission, machineMessageAllowed } from "./machine-admission.js";
+import { createMachineTrustReload, bindMachineTrustReload } from "./machine-trust-reload.js";
 import { machineIntegrationStatus } from "./machine-integration-status.js";
 import { MachineLeaseError, MachineSessionLeases } from "./machine-session-leases.js";
 import { machineSessionObservation } from "./machine-session-observation.js";
@@ -2655,7 +2656,9 @@ export function createAppServer(options = {}) {
   const oidcVerifier = options.oidcVerifier || createOidcVerifier(config);
   const machineAdmission = new MachineAdmission({ publicKey: config.machineHubPublicKey, issuer: config.machineHubIssuer,
     allowedCapabilities: config.machineAllowedCapabilities, trustProfile: config.machineHubTrustProfile });
-  const machineSessions = new MachineSessionLeases();
+  const machineSessions = new MachineSessionLeases({ authorize: (identity, now) => machineAdmission.current(identity, now) });
+  const reloadMachineTrust = createMachineTrustReload({ file: config.machineHubTrustReloadFile,
+    profile: config.machineHubTrustProfile, admission: machineAdmission, sessions: machineSessions });
   const deviceProofVerifier = options.deviceProofVerifier || new DeviceProofVerifier({
     maxAgeMs: config.deviceProofMaxAgeMs,
   });
@@ -2861,6 +2864,7 @@ export function createAppServer(options = {}) {
     server,
     ...signaling,
     broadcastMetrics,
+    reloadMachineTrust,
     config,
     registry,
     directory,
@@ -2888,6 +2892,7 @@ export async function startServer(options = {}) {
     app.server.listen(app.config.port, app.config.host, resolve);
   });
   const address = app.server.address();
+  bindMachineTrustReload(app);
   console.log(`WebRTC room server listening on http://${app.config.host}:${address.port}`);
   return app;
 }
