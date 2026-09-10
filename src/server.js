@@ -859,9 +859,8 @@ function createHttpHandler(config, registry, services) {
               if (nativePackagerAssignments.activeForPackager(packagerId)) {
                 throw new NativePackagerAssignmentError("native_packager_assignment_conflict", 409);
               }
-              return nativePackagerAssignments.activeForProgram(nativeStandbyMatch[1])?.inputMode === "trusted-sframe-v1"
-                ? nativePackagerAssignments.admitSourceProgram(ownerPrincipal, packagerId, admissionRequest, member?.id)
-                : nativePackagerAssignments.admit(ownerPrincipal, packagerId, admissionRequest);
+              return nativePackagerAssignments.previewReplacement(ownerPrincipal, packagerId, admissionRequest,
+                nativePackagerAssignments.activeForProgram(nativeStandbyMatch[1])?.assignmentId, member?.id);
             });
           sendJson(response, 200, result, securityHeaders(config));
         }

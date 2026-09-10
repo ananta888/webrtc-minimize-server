@@ -17,9 +17,8 @@ export async function handoffNativePackager({ runtime, assignments, identity, ow
     if (assignments.activeForPackager(input.packagerId)) {
       throw new NativePackagerAssignmentError("native_packager_assignment_conflict", 409);
     }
-    return previous.inputMode === "trusted-sframe-v1"
-      ? assignments.admitSourceProgram(ownerPrincipal, input.packagerId, request, getMember()?.id, clock())
-      : assignments.admit(ownerPrincipal, input.packagerId, request, clock());
+    return assignments.previewReplacement(ownerPrincipal, input.packagerId, request,
+      previous.assignmentId, getMember()?.id, clock());
   };
   signal.throwIfAborted();
   const pending = runtime.beginNativeHandoff(identity, getMember(), programId, input, admit, clock());

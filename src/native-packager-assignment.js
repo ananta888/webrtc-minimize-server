@@ -133,10 +133,35 @@ export class NativePackagerAssignmentRegistry {
   }
 
   admit(ownerPrincipal, packagerId, request, now = Date.now()) {
+    const admission = this.#candidateAdmission(ownerPrincipal, packagerId, request, now);
+    this.#assertResources(admission, now);
+    return admission;
+  }
+
+  #candidateAdmission(ownerPrincipal, packagerId, request, now) {
     const packager = this.#control.candidate(ownerPrincipal, packagerId, now);
     if (!packager.online || !packager.capability) fail("native_packager_offline", 503);
-    const admission = admitNativePackager(packager.capability, request, now);
-    this.#assertResources(admission, now);
+    return admitNativePackager(packager.capability, request, now);
+  }
+
+  // Server-only replacement preview. This neither reserves capacity nor skips
+  // the full occupancy check in prepare, even if the old writer is draining.
+  previewReplacement(ownerPrincipal, packagerId, request, previousAssignmentId, controllerPeerId, now = Date.now()) {
+    const previous = this.#assignments.get(previousAssignmentId);
+    if (!previous || previous.ownerPrincipal !== ownerPrincipal || previous.packagerId === packagerId
+      || !["running", "degraded", "draining", "stopped"].includes(previous.state) || previous.expiresAt <= now
+      || request?.programId !== previous.programId || request?.roomId !== previous.roomId
+      || request?.tenantId !== previous.tenantId
+      || ![previous.programEpoch, previous.programEpoch + 1].includes(request?.programEpoch)) {
+      fail("stale_native_packager_replacement", 409);
+    }
+    if (this.activeForPackager(packagerId)) fail("native_packager_assignment_conflict", 409);
+    const admission = this.#candidateAdmission(ownerPrincipal, packagerId, request, now);
+    if (previous.assignmentProtocolVersion >= 4) {
+      if (controllerPeerId !== previous.controllerPeerId) fail("stale_native_packager_replacement", 409);
+      this.#sourceAuthority(ownerPrincipal, packagerId, admission.roomId, controllerPeerId, now, !!admission.audioOutput);
+    } else if (controllerPeerId !== previous.publisherPeerId) fail("stale_native_packager_replacement", 409);
+    this.#assertResources(admission, now, previous);
     return admission;
   }
 
@@ -264,10 +289,11 @@ export class NativePackagerAssignmentRegistry {
     return Object.freeze({ snapshot: snapshot(record), command: this.#prepareCommand(record) });
   }
 
-  #assertResources(admission, now) {
+  #assertResources(admission, now, replacement = null) {
     if (!Number.isSafeInteger(now) || now < 1) fail("broadcast_temporarily_unavailable", 429);
     const occupied = [...this.#assignments.values()]
-      .filter(record => ACTIVE_STATES.has(record.state) || record.state === "failed" && record.expiresAt > now)
+      .filter(record => record !== replacement
+        && (ACTIVE_STATES.has(record.state) || record.state === "failed" && record.expiresAt > now))
       .map(record => record.admission);
     if (!this.#resourceBudget.allows(admission, occupied)) fail("broadcast_temporarily_unavailable", 429);
   }

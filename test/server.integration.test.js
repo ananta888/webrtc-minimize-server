@@ -1873,6 +1873,7 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "sou
     oidcAudience: "webrtc-room-server",
     oidcClientId: "webrtc-browser",
     nativePackagerSelfServiceEnabled: true,
+    broadcastNativeResourceLimits: ["handoff", "handoff-http-abort"].includes(variant) ? { encoderSlots: 2 } : undefined,
   }, { oidcVerifier, nativePackagers, nativePackagerEnrollmentStore: enrollmentStore, broadcastRuntime });
   context.after(() => app.close());
 

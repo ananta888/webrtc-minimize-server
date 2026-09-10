@@ -44,6 +44,18 @@ Prepare-Commit ein gemeinsames Betreiberbudget für alle nativen Assignments
 dieser Control-Plane-Instanz. Ein positiver Vorabcheck ist keine Reservation.
 Die tatsächlich installierten Assignments sind die einzige Belegungsquelle.
 
+Standby-Auswahl und Handoff verwenden eine getrennte, serverinterne
+Ersatz-Vorprüfung: Sie rechnet den Nachfolger anstelle genau des bisherigen
+Assignments desselben Owners, Tenants, Raums und Programms. Dabei werden das
+gebundene Steuergerät, frische Capability/Quellfreigabe sowie die aktuelle oder
+unmittelbar folgende Programmepoche geprüft. Andere Programme bleiben gezählt.
+Die Vorprüfung reserviert nichts und stellt weder Lease noch Schlüssel aus.
+Der reale Prepare-Commit prüft weiterhin die vollständige Belegung; ein
+`draining`-Writer wird dort niemals ausgenommen. Der Handoff wartet zusätzlich
+auf den echten Stop-ACK. Belegt inzwischen ein anderes Programm die freien
+Ressourcen, wird die Übergabe sichtbar abgewiesen, ohne dieses Programm zu
+verdrängen. So benötigt ein serieller Ersatz keine doppelte Budgetkapazität.
+
 | ENV | Standard | Bedeutung |
 | --- | ---: | --- |
 | `BROADCAST_NATIVE_CPU_UNITS` | 512 | Geplante CPU-Kosten, eine Unit pro aufgerundeter Million Ausgabepixel/s |
@@ -93,6 +105,13 @@ Software-Fallback-Bedarf geprüft. Ein echter Serverkonstruktor mit
 `BROADCAST_NATIVE_ENCODER_SLOTS=0` weist wiederholte Starts vor der Aktivierung
 ab; Draft und HTTP-Health bleiben unverändert. Dies sind browserfreie
 Control-Plane-Prüfungen und kein physischer Encoder-Lasttest.
+
+Sieben zusätzliche Ersatzprüfungen decken Legacy-, Source-, ausgewählte Audio-
+und Video-Handoffs bei exakt einem Writerbudget, manipulierte Ersatzscopes,
+keylose Standby-Auswahl und ein während des Wartens konkurrierendes Programm
+ab. Zwei echte HTTP-/Socket-Tests prüfen Standby, Übergabe und HTTP-Abbruch
+ebenfalls mit nur zwei Encoder-Slots. Der ACK stammt dabei vom expliziten
+Test-Agenten, nicht von einem realen Medienprozess.
 
 Der echte FFmpeg-Gate erzeugt alle drei H.264/AAC-fMP4-Varianten, prüft
 unabhängige Segmente, End-of-stream und begrenzte Playlists. Unit-Tests decken

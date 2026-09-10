@@ -9,7 +9,7 @@ import { broadcastSubjectRef, broadcastTenantRef } from "../src/broadcast-identi
 const FIRST = "pkr_aaaaaaaaaaaaaaaa", SECOND = "pkr_bbbbbbbbbbbbbbbb";
 const NOW = 1_800_000_000_000;
 
-function fixture(sourceProgram = false, audioOutput = null, videoOutput = null, maxProgramRuntimeMs = undefined) {
+function fixture(sourceProgram = false, audioOutput = null, videoOutput = null, maxProgramRuntimeMs = undefined, resourceLimits = undefined, programSlots = 1) {
   let now = NOW;
   let resourceSequence = 0, forcedResource = null;
   const identity = { issuer: "https://identity.example/realms/ananta", subject: "owner", displayName: "Owner" };
@@ -19,7 +19,7 @@ function fixture(sourceProgram = false, audioOutput = null, videoOutput = null, 
   const revoked = [], sent = [], unavailableDelivery = new Set();
   const runtime = new BroadcastRuntimeRegistry({ clock: () => now,
     maxProgramRuntimeMs,
-    programCapacityLimits: { deployment: 1, gateway: 1, tenant: 1, principal: 1 },
+    programCapacityLimits: { deployment: programSlots, gateway: programSlots, tenant: programSlots, principal: programSlots },
     resourceIdFactory: () => forcedResource || `res_${String(++resourceSequence).padStart(16, "0")}`, grantAuthority: {
     issue() {}, issueAnonymousPlayback() {}, revokeProgramEpoch(...args) { revoked.push(args); },
   } });
@@ -34,7 +34,7 @@ function fixture(sourceProgram = false, audioOutput = null, videoOutput = null, 
   const generations = new Map([FIRST, SECOND].map(id => [id, Object.freeze({})]));
   if (audioOutput) for (const capability of capabilities.values()) Object.assign(capability,
     { capabilityVersion: 5, sourceAudioControlVersion: 3, sourceAudioEncodingVersion: 1 });
-  const assignments = new NativePackagerAssignmentRegistry({ controlRegistry: {
+  const assignments = new NativePackagerAssignmentRegistry({ resourceLimits, controlRegistry: {
     candidate(owner, id) {
       assert.equal(owner, ownerPrincipal);
       return { id, online: capabilities.has(id), capability: capabilities.get(id) };
@@ -84,7 +84,82 @@ function standbyRequest(control, standbyPackagerIds = [SECOND]) {
     standbyPackagerIds, requestedRenditions: 2, allowHardwareAcceleration: false };
 }
 
+function replacementRequest(f, patch = {}) {
+  return { requestVersion: 1, trigger: "user-action", tenantId: broadcastTenantRef(f.identity.issuer),
+    ownerSubjectRef: broadcastSubjectRef(f.identity), roomId: f.member.roomId, programId: f.programId,
+    programEpoch: f.first.snapshot.programEpoch + 1, resourceRef: "res_zzzzzzzzzzzzzzzz",
+    requestedRenditions: 2, allowHardwareAcceleration: false, ...patch };
+}
+
+for (const source of [false, true]) test(`replacement preview is scoped metadata, never prepare permission, source=${source}`, () => {
+  const f = fixture(source, null, null, undefined, { encoderSlots: 2 });
+  const preview = (request = replacementRequest(f), id = f.first.snapshot.assignmentId, owner = f.ownerPrincipal, peer = f.member.id) =>
+    f.assignments.previewReplacement(owner, SECOND, request, id, peer, NOW);
+  const admitted = preview();
+  assert.equal(admitted.agentId, SECOND);
+  assert.equal(f.assignments.list(f.ownerPrincipal).length, 1);
+  for (const patch of [{ programId: "prg_zzzzzzzzzzzzzzzz" }, { roomId: "other-room" },
+    { tenantId: "tn_zzzzzzzzzzzzzzzz" }, { ownerSubjectRef: "sub_zzzzzzzzzzzzzzzz" },
+    { programEpoch: 0 }, { programEpoch: f.first.snapshot.programEpoch + 2 }]) {
+    assert.throws(() => preview(replacementRequest(f, patch)));
+  }
+  assert.throws(() => preview(undefined, "asn_zzzzzzzzzzzzzzzz"), /stale_native_packager_replacement/);
+  assert.throws(() => preview(undefined, undefined, "foreign"), /stale_native_packager_replacement/);
+  assert.throws(() => preview(undefined, undefined, undefined, "fedcba9876543210"), /stale_native_packager_replacement/);
+  assert.throws(() => f.assignments.previewReplacement(f.ownerPrincipal, FIRST, replacementRequest(f),
+    f.first.snapshot.assignmentId, f.member.id, NOW), /stale_native_packager_replacement/);
+  const prepare = source ? f.assignments.prepareSourceProgram.bind(f.assignments) : f.assignments.prepare.bind(f.assignments);
+  assert.throws(() => prepare(f.ownerPrincipal, SECOND, admitted, f.prepared.lease, f.member.id, NOW));
+  const standby = f.runtime.nativeStandbyControl(f.identity, f.member, f.programId);
+  f.runtime.selectNativeStandbys(f.identity, f.member, f.programId, standbyRequest(standby),
+    (_id, request) => preview(request), NOW);
+  assert.equal(f.assignments.activeForPackager(SECOND), null);
+  assert.deepEqual(f.sent, []);
+  f.assignments.failPackager(FIRST, "CONTROL_DISCONNECTED", NOW);
+  assert.throws(() => preview(), /stale_native_packager_replacement/);
+});
+
+test("another program can consume released capacity while a handoff waits, but cannot be evicted", async () => {
+  const f = fixture(false, null, null, undefined, { encoderSlots: 2 }, 2);
+  const transfer = handoffNativePackager(f.args);
+  const rejected = assert.rejects(transfer, /broadcast_temporarily_unavailable/);
+  f.status(f.first.snapshot, "stopped", "ASSIGNMENT_STOPPED");
+  const otherId = f.runtime.createProgram(f.identity, f.member, {
+    requestVersion: 1, roomId: f.member.roomId, title: "Independent program", visibility: "private",
+  }, NOW).control.programId;
+  const other = f.runtime.prepareNativePublisher(f.identity, f.member, otherId, {
+    requestVersion: 1, trigger: "user-action", packagerId: FIRST, sourceIds: ["src_aaaaaaaaaaaaaaaa"],
+    requestedRenditions: 2, allowHardwareAcceleration: false,
+  }, request => f.assignments.admit(f.ownerPrincipal, FIRST, request, NOW), NOW);
+  const occupied = f.assignments.prepare(f.ownerPrincipal, FIRST, other.admission, other.lease, f.member.id, NOW);
+  await rejected;
+  assert.equal(f.assignments.activeForPackager(FIRST).assignmentId, occupied.snapshot.assignmentId);
+  assert.equal(f.assignments.activeForPackager(SECOND), null);
+  assert.equal(f.sent.length, 1);
+  assert.equal(f.runtime.listMine(f.identity).owned.find(program => program.programId === f.programId).availability, "ended");
+});
+
 const monoOutput = Object.freeze({ codec: "aac", sampleRate: 48000, channels: 1, targetBitsPerSecond: 48000 });
+for (const [source, audio, video] of [[false, null, null], [true, null, null], [true, monoOutput, null],
+  [true, monoOutput, { profile: "screen-v1" }]]) {
+  test(`serial handoff fits a single writer budget for source=${source} audio=${!!audio} video=${!!video}`, async () => {
+    const f = fixture(source, audio, video, undefined, { encoderSlots: 2 });
+    const transfer = handoffNativePackager(f.args);
+    // Attach rejection observation before yielding, including the pre-fix failure.
+    const result = transfer.then(value => ({ value }), error => ({ error }));
+    assert.equal(f.assignments.activeForPackager(SECOND), null);
+    assert.equal(f.sent.length, 1, "preflight must allow a serial replacement and send only the original stop");
+    assert.equal(f.sent[0].message.type, "assignment-stop");
+    f.status(f.first.snapshot, "stopped", "ASSIGNMENT_STOPPED");
+    const settled = await result;
+    assert.equal(settled.error, undefined);
+    assert.equal(settled.value.assignment.packagerId, SECOND);
+    assert.equal(f.sent.length, 2);
+    assert.equal(f.sent[1].message.type, "assignment-prepare");
+    assert.equal(f.sent[1].message.version, source ? (audio ? 5 : 4) : 3);
+    assert.equal(f.assignments.activeForPackager(FIRST), null);
+  });
+}
 for (const sourceProgram of [false, true]) test(`absolute runtime survives ${sourceProgram ? "source" : "legacy"} writer handoff and real lease renewal`, async () => {
   const f = fixture(sourceProgram, null, null, 60_000);
   f.setNow(NOW + 20_000);
