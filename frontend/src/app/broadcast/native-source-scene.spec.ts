@@ -18,7 +18,7 @@ afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 it("does not expose an editable ready scene before refresh has hydrated the form", async () => {
   let finish!: () => void;
   const gate = new Promise<void>(resolve => { finish = resolve; });
-  const scenes = { view: signal<NativeSceneView>({ phase: "idle", scene: null }),
+  const scenes = { ownerKey: () => "owner-alpha", view: signal<NativeSceneView>({ phase: "idle", scene: null }),
     controller: { refresh: vi.fn(async () => {
       scenes.view.set({ phase: "ready", scene: { ...state, layout: "waiting-slate", sourceLeaseIds: [], activeSourceLeaseId: "" } });
       await gate;
@@ -42,8 +42,8 @@ it("does not expose an editable ready scene before refresh has hydrated the form
     sourceLeaseIds: [source], activeSourceLeaseId: "" }, "user-action");
 });
 
-it.each(["pending", "stale", "conflict", "unavailable"] as const)("keeps all draft controls inert in %s", async phase => {
-  const scenes = { view: signal<NativeSceneView>({ phase: "ready", scene: { ...state, sceneControlVersion: 2, sourceFits: ["cover"] } }),
+it.each(["pending", "conflict", "unavailable"] as const)("keeps all draft controls inert in %s", async phase => {
+  const scenes = { ownerKey: () => "owner-alpha", view: signal<NativeSceneView>({ phase: "ready", scene: { ...state, sceneControlVersion: 2, sourceFits: ["cover"] } }),
     controller: { refresh: vi.fn(async () => {}), apply: vi.fn(async () => {}) } };
   const component = new NativeSourceSceneComponent(scenes as never);
   await component.refresh();
@@ -57,7 +57,7 @@ it.each(["pending", "stale", "conflict", "unavailable"] as const)("keeps all dra
 });
 
 it("does not hydrate stale observations and releases the local refresh gate after failure", async () => {
-  const scenes = { view: signal<NativeSceneView>({ phase: "stale", scene: state }),
+  const scenes = { ownerKey: () => "owner-alpha", view: signal<NativeSceneView>({ phase: "stale", scene: state }),
     controller: { refresh: vi.fn(async () => {}), apply: vi.fn(async () => {}) } };
   const component = new NativeSourceSceneComponent(scenes as never);
   await component.refresh(); expect(component.layout()).toBe("waiting-slate");
@@ -93,7 +93,7 @@ it("v2 apply requires explicit fits and rejects a downgraded native receipt", as
 });
 
 it("v2 UI copies the observed fit and confirms the exact ordered presentation before applying", async () => {
-  const scenes = { view: signal<NativeSceneView>({ phase: "ready", scene: { ...state, sceneControlVersion: 2, sourceFits: ["cover"] } }),
+  const scenes = { ownerKey: () => "owner-alpha", view: signal<NativeSceneView>({ phase: "ready", scene: { ...state, sceneControlVersion: 2, sourceFits: ["cover"] } }),
     controller: { refresh: vi.fn(async () => {}), apply: vi.fn(async () => {}) } };
   const component = new NativeSourceSceneComponent(scenes as never);
   await component.refresh(); expect(component.fits()[source]).toBe("cover");
@@ -176,7 +176,7 @@ it("bounds an unresponsive adapter and discards late results after room change o
   }
 });
 it("UI supports removing unavailable slots, exact confirmation, and no action while merely opened", async () => {
-  const scenes = { view: signal<NativeSceneView>({ phase: "ready", scene: { ...state, availableSources: [] } }),
+  const scenes = { ownerKey: () => "owner-alpha", view: signal<NativeSceneView>({ phase: "ready", scene: { ...state, availableSources: [] } }),
     controller: { refresh: vi.fn(async () => {}), apply: vi.fn(async () => {}) } };
   const component = runInInjectionContext(Injector.create({ providers: [] }), () => new NativeSourceSceneComponent(scenes as never));
   expect(scenes.controller.refresh).not.toHaveBeenCalled(); expect(scenes.controller.apply).not.toHaveBeenCalled();

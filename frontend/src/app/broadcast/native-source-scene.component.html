@@ -3,14 +3,23 @@
   <p>Nur aktuell freigegebene Videoquellen dieser Sendung sind auswählbar. Diese Bedienung startet keine Aufnahme und erteilt keine Decrypt-Freigabe. Audio bleibt unabhängig vom Videolayout.</p>
   <p id="native-scene-status" role="status" aria-live="polite">{{ status() }}</p>
   <button id="native-scene-refresh" type="button" [disabled]="refreshing() || scenes.view().phase === 'pending'" (click)="refresh()">Szenenzustand abfragen</button>
+  @if (formState()) {
+  @if (dirty()) { <p id="native-scene-draft-status" role="status">Lokaler, noch nicht angewendeter Entwurf. Eine Abfrage derselben Szene behält deine Änderungen.</p> }
+  @if (draftConflict()) {
+    <p id="native-scene-draft-conflict" role="alert">Die bestätigte Szene hat sich zwischenzeitlich geändert. Entwurf vor dem Anwenden ausdrücklich neu prüfen oder verwerfen.</p>
+    <button id="native-scene-draft-review" type="button" [disabled]="refreshing() || scenes.view().phase !== 'ready'" (click)="reviewDraft(true)">Entwurf gegen aktuellen Zustand prüfen…</button>
+  }
+  @if (dirty() || draftConflict()) {
+    <button id="native-scene-draft-discard" type="button" [disabled]="refreshing() || scenes.view().phase !== 'ready'" (click)="reviewDraft(false)">Entwurf verwerfen…</button>
+  }
   <fieldset [disabled]="!editable()">
     <legend>Szene bewusst ändern</legend>
     <label for="native-scene-layout">Videolayout</label>
     <select id="native-scene-layout" [value]="layout()" (change)="setLayout($any($event.target).value)">
       @for (option of layouts; track option.value) { <option [value]="option.value">{{ option.label }}</option> }
     </select>
-    @if (scenes.view().scene; as state) {
-      <p>Bestätigte Szenenrevision: {{ state.sceneRevision }}. Quellenreihenfolge entspricht der Auswahlreihenfolge, maximal 20.</p>
+    @if (formState(); as state) {
+      <p>Zuletzt abgefragte Szenenrevision: {{ state.sceneRevision }}. Quellenreihenfolge entspricht der Auswahlreihenfolge, maximal 20. Eine alte Quellenliste ist keine aktuelle Freigabe.</p>
       @for (source of state.availableSources; track source.sourceLeaseId; let index = $index) {
         <label><input type="checkbox" [checked]="selected().includes(source.sourceLeaseId)"
           (change)="select(source.sourceLeaseId, $any($event.target).checked)">
@@ -38,6 +47,8 @@
         </select>
       }
     }
-    <button id="native-scene-apply" type="button" (click)="apply()">Szene bewusst anwenden…</button>
+    <button id="native-scene-apply" type="button" [disabled]="!canApply()" (click)="apply()">Szene bewusst anwenden…</button>
+    @if (scenes.view().phase === 'ready' && !canApply() && !draftConflict()) { <p>Auswahl prüfen: nicht mehr verfügbare Quellenplätze vor dem Anwenden entfernen.</p> }
   </fieldset>
+  }
 </section>

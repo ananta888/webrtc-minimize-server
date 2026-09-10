@@ -28,12 +28,29 @@ export async function installNativeSceneUiFixture(page, programId) {
     await page.locator("#native-scene-status", { hasText: "Szenenzustand bestätigt" }).waitFor();
     await page.locator("#native-scene-layout").selectOption("grid");
     await page.getByRole("checkbox", { name: /Bildschirm 1/ }).press("Space");
+    await page.locator("#native-scene-refresh").press("Enter");
+    await page.locator("#native-scene-status", { hasText: "Szenenzustand bestätigt" }).waitFor();
+    assert.equal(await page.locator("#native-scene-layout").inputValue(), "grid");
+    assert.equal(await page.getByRole("checkbox", { name: /Bildschirm 1/ }).isChecked(), true);
+    assert.equal(applies, 0, "refresh preserves the local draft without applying it");
+    // Explicitly synthetic concurrent director change; never a native media claim.
+    sceneRevision++; layout = "end-slate";
+    await page.locator("#native-scene-refresh").press("Enter");
+    await page.locator("#native-scene-draft-conflict").waitFor();
+    assert.equal(await page.locator("#native-scene-apply").isDisabled(), true);
+    assert.equal(await page.locator("#native-scene-layout").inputValue(), "grid");
+    const reviewCancel = page.waitForEvent("dialog"), reviewCancelClick = page.locator("#native-scene-draft-review").press("Enter");
+    await (await reviewCancel).dismiss(); await reviewCancelClick;
+    assert.equal(await page.locator("#native-scene-apply").isDisabled(), true);
+    const review = page.waitForEvent("dialog"), reviewClick = page.locator("#native-scene-draft-review").press("Enter");
+    await (await review).accept(); await reviewClick;
+    assert.equal(applies, 0, "review is not publication or apply consent");
     const cancelled = page.waitForEvent("dialog"), cancelClick = page.locator("#native-scene-apply").press("Enter");
     await (await cancelled).dismiss(); await cancelClick; assert.equal(applies, 0);
     const accepted = page.waitForEvent("dialog"), applyClick = page.locator("#native-scene-apply").press("Enter");
     const dialog = await accepted; assert.match(dialog.message(), /kein Zustellnachweis/); await dialog.accept(); await applyClick;
     await page.locator("#native-scene-status", { hasText: "neu abfragen" }).waitFor();
-    assert.equal(applies, 1); assert.equal(queries, 1); assert.deepEqual(selected, [source]);
+    assert.equal(applies, 1); assert.equal(queries, 3); assert.deepEqual(selected, [source]);
     await page.locator("#native-scene-refresh").press("Enter");
     await page.locator("#native-scene-status", { hasText: "Szenenzustand bestätigt" }).waitFor();
     assert.equal(await page.locator("#native-scene-layout").inputValue(), "grid");
@@ -42,7 +59,7 @@ export async function installNativeSceneUiFixture(page, programId) {
     const conflict = page.waitForEvent("dialog"), conflictClick = page.locator("#native-scene-apply").press("Enter");
     await (await conflict).accept(); await conflictClick;
     await page.locator("#native-scene-status", { hasText: "Szene nicht angewendet" }).waitFor();
-    assert.equal(applies, 2); assert.equal(queries, 2);
+    assert.equal(applies, 2); assert.equal(queries, 4);
     assert.equal(await page.locator("#native-scene-apply").isDisabled(), true);
   };
 }

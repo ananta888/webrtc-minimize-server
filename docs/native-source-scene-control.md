@@ -93,6 +93,33 @@ Bedienelemente. Doppelte Abfragen und Änderungen in diesem Zwischenzustand werd
 nicht ausgeführt; veraltete oder fehlgeschlagene Antworten überschreiben keinen
 Entwurf. Das verlängert weder die fünf Sekunden Gültigkeit noch Quellenrechte.
 
+### Lokaler Entwurf und konkurrierende Änderungen
+
+Ein begonnener Entwurf bleibt nach Ablauf der fünf Sekunden lokal bearbeitbar.
+Die letzte Quellenliste ist dann ausdrücklich nur eine alte Beobachtung, keine
+Freigabe. Anwenden bleibt deaktiviert, bis eine neue Abfrage den aktuellen Zustand
+bestätigt. Eine unveränderte Szene behält Layout, Reihenfolge, aktive Quelle und
+Bildanpassung des Entwurfs; die Abfrage sendet keinen Apply-Befehl.
+
+Bei einer anderen Szenenrevision oder abweichender Präsentation wird der Entwurf
+nicht still auf den neuen Zustand umgestellt. Die Regie zeigt den Konflikt und
+bietet zwei bestätigungspflichtige Aktionen: Entwurf verwerfen und beobachtete
+Szene übernehmen, oder Entwurf gegen die neue Revision prüfen. Auch Letzteres
+wendet nichts an; dafür bleibt der eigene Apply-Bestätigungsdialog erforderlich.
+Eine vom Packager beobachtete Szene, die bereits genau dem Entwurf entspricht,
+wird als neuer Ausgangszustand übernommen, etwa nach dem eigenen erfolgreichen Apply.
+
+Ein Konto-/Sitzungskontextwechsel blendet den alten Entwurf aus und sperrt seine
+Aktionen. Ein neuer Kontext sowie Programm-, Writer-, Assignment-, Fence- oder
+Protokollwechsel übernehmen keine alten Änderungen. Widerrufene Quellenplätze
+bleiben lokal entfernbar, können aber nicht erneut angewendet werden: sämtliche
+ausgewählten Quellen müssen in der frischen Liste verfügbar sein. Entfernte
+Plätze verlieren auch ihre lokalen Fit-Einträge. Entwürfe bleiben ausschließlich
+im lokalen Panel, ohne Storage, Serverpersistenz, Medien oder Capture.
+
+Der Controller und Server prüfen weiterhin die tatsächliche Aktualität,
+Membership, Consent und Revision. Der lokale Entwurf erteilt keine Autorität.
+
 Ein Snapshot ist höchstens fünf Sekunden frisch. Nach Apply, Konflikt oder
 verlorener Antwort muss neu abgefragt werden: keine geratene Revision und kein
 automatischer Apply-Retry. Auch das Endbild ist kein Stop der Sendung; dafür
@@ -164,8 +191,11 @@ führen zur Ablehnung, danach funktioniert die normale Abfrage wieder. Dieser
 Nachtrag ist nicht Teil des eingefrorenen Gesamtprüfstands.
 
 TBP-030 bleibt offen. Neben dem gekoppelten Compositor-/Zuschauernachweis fehlen
-noch verständliche Publishernamen für Quellenreferenzen und ein länger
-bearbeitbarer Entwurf, der von der kurzlebigen Zustandsbeobachtung getrennt ist.
+noch verständliche Publishernamen für Quellenreferenzen. Der inzwischen lokal
+implementierte Entwurf besitzt 27 gezielte jsdom-/Controller-/Vergleichstests;
+Typ- und Angular-Templateprüfung ohne Emit bestehen. Die erweiterte echte
+Tastaturprüfung mit explizit simulierten HTTP-Antworten folgt in CI und ersetzt
+keinen nativen Medien- oder Produktionsnachweis.
 Weitere Handoff-/Standby-/Produktionskriterien bleiben ebenfalls erhalten.
 Kein Deployment und keine öffentliche Freigabe werden aus den Teilprüfungen
 abgeleitet.
