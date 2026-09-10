@@ -78,3 +78,21 @@ besteht diesmal. Daraus folgt keine Ursachenbehebung. Native Packager,
 Blind Media und beide macOS-Jobs bestehen. Der separate Ananta-TURN-Job
 scheitert in drei Fällen vor Browserstart am privaten Testproxy; Firefox TCP
 besteht. Aggregat rot, Docker und Live-Keycloak/TURN übersprungen.
+
+## Laufzeitmetriken und HLS-Backpressure
+
+`34492118006` auf `cfdcf44` endet mit 620 Passes, einem Fehler und drei Skips
+in Shard 1 (256,138 s) sowie 669 Passes, null Fehlern und einem Skip in
+Shard 2 (339,634 s). Die neuen Runtime-Metriken bestehen. Ananta-TURN und alle
+nativen Agenten-/macOS-Jobs bestehen; nur der Ein-Quellen-Szenentest scheitert.
+
+`34493133874` auf `6408b96` endet mit 677 Passes, null Fehlern und einem Skip
+in Shard 1 (364,585 s) sowie 623 Passes, einem Fehler und drei Skips in
+Shard 2 (257,988 s). Der HLS-Backpressure- und reale HTTP-Abbruchnachweis
+besteht. Der Ein-Quellen-Szenentest scheitert weiterhin vor diesem neuen
+Decoder-Startfix. Separat scheitert Chromium TURN-UDP wieder vor Browserstart
+(connect/refused, Container running, keine Startmarker); Firefox UDP und beide
+TCP-Fälle bestehen. Native/Blind/macOS-Jobs bestehen. Beide Gesamtläufe bleiben
+rot; Docker und Live-Keycloak/TURN werden nicht ausgeführt. Die Verteilung der
+Testdateien auf Shards ändert sich durch neue Dateien; eine Shardnummer ist
+keine dauerhafte Kategoriezuordnung.

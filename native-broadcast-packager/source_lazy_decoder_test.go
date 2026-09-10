@@ -111,14 +111,19 @@ type sourceLazyTestState struct {
 	d        *sourceLazyTestDecoder
 	entered  chan struct{}
 	unblock  func()
+	revoke   func()
 	requests atomic.Int32
 }
 
 func lazyVideoFixture(t *testing.T, ready bool) *sourceLazyTestState {
+	return lazyVideoFixtureClock(t, ready, time.Now)
+}
+
+func lazyVideoFixtureClock(t *testing.T, ready bool, clock func() time.Time) *sourceLazyTestState {
 	t.Helper()
 	b := sourceDecodeTestBudget(t)
-	now := time.Now()
-	g, err := newSourcePublisherClock(now, time.Now, 14400)
+	now := clock()
+	g, err := newSourcePublisherClock(now, clock, 14400)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +142,9 @@ func lazyVideoFixture(t *testing.T, ready bool) *sourceLazyTestState {
 	gate := make(chan struct{})
 	var once sync.Once
 	state.unblock = func() { once.Do(func() { close(gate) }) }
-	l := newSourceLazyState("video/vp8", c, b, func() bool { return true }, make(chan struct{}), func() {})
+	revoked := make(chan struct{})
+	state.revoke = func() { close(revoked) }
+	l := newSourceLazyState("video/vp8", c, b, func() bool { return true }, revoked, func() {})
 	state.l = l
 	l.prepare = func() (*sourcePendingDecoder, error) {
 		return newSourcePendingDecoder(b, sourceVideoDecodeBytes(64, 32), l.permitted,
@@ -247,6 +254,135 @@ func TestSourceLazySpawnLossRequiresFreshKeyframe(t *testing.T) {
 	defer f.d.mu.Unlock()
 	if f.d.frames != 1 || !f.d.firstKey {
 		t.Fatal("fresh keyframe not used")
+	}
+}
+
+func lazySpawnQuarantineFixture(t *testing.T) (*sourceLazyTestState, func(int)) {
+	t.Helper()
+	var epoch atomic.Int64
+	start := time.Now()
+	epoch.Store(start.UnixNano())
+	setNow := func(second int) { epoch.Store(start.Add(time.Duration(second) * time.Second).UnixNano()) }
+	f := lazyVideoFixtureClock(t, true, func() time.Time { return time.Unix(0, epoch.Load()) })
+	if err := f.l.WriteEncoded("video/vp8", 92000, syntheticVP8Key()); err != nil {
+		t.Fatal(err)
+	}
+	awaitSource(t, f.entered)
+	f.l.mu.Lock()
+	warmup := f.l.frame
+	f.l.mu.Unlock()
+	setNow(2)
+	if err := f.l.SourceSenderReport(sourceSenderReport{1, 3 << 32, 183000}); err != nil {
+		t.Fatal(err)
+	}
+	if f.l.VideoTime().state != sourceVideoTimeSuspended {
+		t.Fatal("fixture did not enter recoverable quarantine")
+	}
+	f.unblock()
+	awaitLazyActive(t, f.l)
+	if f.l.closed.Load() {
+		t.Fatal("temporary clock quarantine during spawn permanently closed the source")
+	}
+	for _, b := range warmup {
+		if b != 0 {
+			t.Fatal("quarantine retained startup plaintext")
+		}
+	}
+	return f, setNow
+}
+
+func TestSourceLazySpawnQuarantineRecoversOnlyWithFreshClockAndKeyframe(t *testing.T) {
+	f, setNow := lazySpawnQuarantineFixture(t)
+	assertFrames := func(want int) {
+		t.Helper()
+		f.d.mu.Lock()
+		defer f.d.mu.Unlock()
+		if f.d.frames != want || (want > 0 && !f.d.firstKey) {
+			t.Fatal("unexpected decoder output or missing fresh keyframe", f.d.frames)
+		}
+	}
+	assertFrames(0)
+	if err := f.l.WriteEncoded("video/vp8", 185000, syntheticVP8Key()); err != nil {
+		t.Fatal(err)
+	}
+	assertFrames(0)
+	setNow(3)
+	if err := f.l.SourceSenderReport(sourceSenderReport{1, 4 << 32, 271000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.l.WriteEncoded("video/vp8", 275000, syntheticVP8Key()); err != nil {
+		t.Fatal(err)
+	}
+	assertFrames(0)
+	if f.requests.Load() != 0 {
+		t.Fatal("unready clock requested unnecessary keyframes")
+	}
+	setNow(4)
+	if err := f.l.SourceSenderReport(sourceSenderReport{1, 5 << 32, 361000}); err != nil {
+		t.Fatal(err)
+	}
+	if f.l.VideoTime().state != sourceVideoTimeReady {
+		t.Fatal("two valid reports failed to restore clock")
+	}
+	if err := f.l.WriteEncoded("video/vp8", 365000, []byte{0x11, 0, 0}); err != nil {
+		t.Fatal(err)
+	}
+	assertFrames(0)
+	if f.requests.Load() == 0 {
+		t.Fatal("recovery did not request a fresh keyframe")
+	}
+	if err := f.l.WriteEncoded("video/vp8", 368000, syntheticVP8Key()); err != nil {
+		t.Fatal(err)
+	}
+	assertFrames(1)
+	f.b.mu.Lock()
+	defer f.b.mu.Unlock()
+	if f.b.processes != 1 {
+		t.Fatal("quarantine recovery changed decoder budget")
+	}
+}
+
+func TestSourceLazySpawnQuarantineKeepsTerminalBoundaries(t *testing.T) {
+	for _, mode := range []string{"revoke", "budget", "clock-closed", "expired", "invalid-timestamp", "replay"} {
+		t.Run(mode, func(t *testing.T) {
+			f, setNow := lazySpawnQuarantineFixture(t)
+			switch mode {
+			case "revoke":
+				f.revoke()
+			case "budget":
+				f.b.Close()
+			case "clock-closed":
+				f.l.sourceMediaClock.Close()
+			case "replay":
+				if err := f.l.WriteEncoded("video/vp8", 92000, syntheticVP8Key()); err == nil {
+					t.Fatal("quarantine erased the timestamp replay fence")
+				}
+			case "expired":
+				setNow(14)
+				if f.l.SourceClockTick() == nil {
+					t.Fatal("quarantine extended the clock deadline")
+				}
+			case "invalid-timestamp":
+				for second := 3; second <= 4; second++ {
+					setNow(second)
+					if err := f.l.SourceSenderReport(sourceSenderReport{1, uint64(second+1) << 32, 1000 + uint32(second)*90000}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := f.l.WriteEncoded("video/vp8", 361000+13*90000, syntheticVP8Key()); err == nil {
+					t.Fatal("invalid media timestamp revived waiting decoder")
+				}
+			}
+			awaitSource(t, f.l.finished)
+			if !f.l.closed.Load() || !f.d.closed || f.d.frames != 0 {
+				t.Fatal("terminal quarantine source remained usable")
+			}
+			f.b.mu.Lock()
+			defer f.b.mu.Unlock()
+			if f.b.processes != 0 || f.b.bytes != 0 {
+				t.Fatal("terminal quarantine retained decoder admission")
+			}
+		})
 	}
 }
 

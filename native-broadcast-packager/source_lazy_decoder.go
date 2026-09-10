@@ -24,6 +24,7 @@ type sourceLazyDecoder struct {
 	frame                      []byte
 	timestamp, last            uint32
 	observed, missing, needKey bool
+	waitingClock               bool
 	start                      chan struct{}
 	done, finished             chan struct{}
 }
@@ -113,6 +114,18 @@ func (l *sourceLazyDecoder) WriteEncoded(codec string, ts uint32, frame []byte) 
 	}
 	l.observed, l.last = true, ts
 	if l.decoder.sink != nil {
+		if l.waitingClock {
+			_, snapshot := l.MapVideo(ts)
+			state := snapshot.state
+			if state == sourceVideoTimeDenied {
+				l.closeLocked()
+				return errors.New("lazy source clock denied")
+			}
+			if state != sourceVideoTimeReady {
+				return nil
+			}
+			l.waitingClock = false
+		}
 		if l.needKey {
 			if !key {
 				l.requestLocked()
@@ -225,7 +238,7 @@ func (l *sourceLazyDecoder) run() {
 				return
 			}
 			l.mu.Lock()
-			if l.needKey {
+			if l.needKey && !l.waitingClock {
 				l.requestLocked()
 			}
 			l.mu.Unlock()
@@ -246,17 +259,30 @@ func (l *sourceLazyDecoder) run() {
 			}
 			l.decoder = d
 			decodedDone = d.finished
-			if !l.permitted() || !l.ready(l.timestamp) {
+			ready, waitingClock := false, false
+			// A recoverable report quarantine may begin while process startup is
+			// in flight. Keep this already charged decoder, but wipe its warmup
+			// and require a recovered clock plus a new keyframe before any input.
+			if l.codec == "video/vp8" {
+				_, snapshot := l.MapVideo(l.timestamp)
+				ready, waitingClock = snapshot.state == sourceVideoTimeReady, snapshot.state == sourceVideoTimeSuspended
+			} else {
+				ready = l.ready(l.timestamp)
+			}
+			if !l.permitted() || (!ready && !waitingClock) {
 				d.sink.Close()
 				l.closeLocked()
 				l.mu.Unlock()
 				return
 			}
-			if l.codec == "video/vp8" && l.missing {
+			if l.codec == "video/vp8" && (l.missing || waitingClock) {
 				// Spawn-time loss must not feed delta frames referencing an omitted
 				// frame. Ask for a new keyframe and let the decoder start there.
 				l.needKey = true
-				l.requestLocked()
+				l.waitingClock = waitingClock
+				if !waitingClock {
+					l.requestLocked()
+				}
 			} else {
 				err = d.sink.WriteEncoded(l.codec, l.timestamp, l.frame)
 			}
