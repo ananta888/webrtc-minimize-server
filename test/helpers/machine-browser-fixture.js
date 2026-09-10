@@ -19,6 +19,7 @@ import { machineFixtureAssets } from "./machine-fixture-assets.mjs";
 import { installReceiverKeyDelay } from "./machine-receiver-key-delay.mjs";
 import { installMachineForcedRelay } from "./machine-forced-relay.js";
 import { installPrivateSFramePipelineRoute } from "./sframe-pipeline-probe.mjs";
+import { installMachineSyntheticCapture } from "./machine-synthetic-capture.mjs";
 
 export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", listenPort = 0, hubPublicKey, tlsPortProxy = false,
   lifetimeSeconds = 180, humanEngine = "chromium", machineEngine = "chromium", observeStage = () => {}, tlsConnectionLimit = 16,
@@ -103,7 +104,8 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
     if (!machine && receiverPipelineProbe) await installPrivateSFramePipelineRoute(context);
     if (icePath !== "direct") await context.addInitScript(installMachineForcedRelay, proxy.turnConfig.turnUrls[0]);
     if (!machine && receiverKeyDelay) await context.addInitScript(installReceiverKeyDelay);
-    await context.addInitScript(({ machine }) => {
+    await context.addInitScript(installMachineSyntheticCapture, { machine });
+    await context.addInitScript(() => {
       window.__captures = 0; window.__pcs = []; window.__transformErrors = [];
       window.__testIce = { emitted: 0, mdns: 0, received: 0, failed: 0 };
       const NativeWorker = window.Worker;
@@ -113,16 +115,6 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
           if (data?.type === "transform-error") window.__transformErrors.push(data.code);
         });
       } };
-      navigator.mediaDevices.getDisplayMedia = () => { ++window.__captures; throw new Error("human_display_forbidden"); };
-      navigator.mediaDevices.getUserMedia = async () => {
-        ++window.__captures;
-        if (machine) throw new Error("human_capture_forbidden");
-        // Human fixture only: a visible UI click starts an oscillator, never a device.
-        const audio = new AudioContext(), oscillator = audio.createOscillator(), dest = audio.createMediaStreamDestination();
-        oscillator.frequency.value = 440; oscillator.connect(dest); oscillator.start(); await audio.resume();
-        dest.stream.getAudioTracks()[0].addEventListener("ended", () => audio.close());
-        return dest.stream;
-      };
       const Native = window.RTCPeerConnection;
       window.RTCPeerConnection = class extends Native {
         constructor(...args) { super(...args); window.__pcs.push(this);
@@ -135,7 +127,7 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
           catch (e) { window.__testIce.failed++; throw e; }
         }
       };
-    }, { machine });
+    });
     if (!machine) {
       const token = await new SignJWT({ preferred_username: "Synthetic Human" }).setIssuer(issuer).setAudience("human")
         .setSubject(randomUUID()).setIssuedAt().setExpirationTime("3h").setProtectedHeader({ alg: "EdDSA" }).sign(humanKeys.privateKey);
