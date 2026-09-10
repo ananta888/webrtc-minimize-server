@@ -38,16 +38,21 @@ export async function installNativeSceneUiFixture(page, programId, getPublisher)
     await page.locator("#native-scene-heading").waitFor(); assert.equal(queries, 0); assert.equal(applies, 0);
     await page.locator("#native-scene-refresh").press("Enter");
     await page.locator("#native-scene-status", { hasText: "Szenenzustand bestätigt" }).waitFor();
-    await page.locator("#native-scene-layout").selectOption("grid");
-    await page.getByRole("checkbox", { name: /Bildschirm 1/ }).press("Space");
-    await page.locator("#native-scene-refresh").press("Enter");
-    await page.locator("#native-scene-status", { hasText: "Szenenzustand bestätigt" }).waitFor();
     await page.getByRole("checkbox", { name: new RegExp(`Bildschirm 1.*${getPublisher().name}`) }).waitFor();
     assert.equal(labelQueries, 1);
-    labelsAvailable = false; // Next observation has no current binding, never retain the prior name.
+    await page.locator("#native-scene-layout").selectOption("grid");
+    await page.getByRole("checkbox", { name: /Bildschirm 1/ }).press("Space");
+    labelsAvailable = false; // Revoke the fixture binding before requesting its next observation.
+    const emptyLabels = page.waitForResponse(response =>
+      new URL(response.url()).pathname === `/api/broadcasts/${programId}/native-source-labels`
+      && response.request().method() === "POST");
+    await page.locator("#native-scene-refresh").press("Enter");
+    assert.equal((await emptyLabels).status(), 200);
+    await page.locator("#native-scene-status", { hasText: "Szenenzustand bestätigt" }).waitFor();
     assert.equal(await page.locator("#native-scene-layout").inputValue(), "grid");
     assert.equal(await page.getByRole("checkbox", { name: /Bildschirm 1/ }).isChecked(), true);
     await page.getByRole("checkbox", { name: /Bildschirm 1.*Teilnehmer nicht zugeordnet/ }).waitFor();
+    assert.equal(labelQueries, 2);
     assert.equal(await page.getByRole("checkbox", { name: new RegExp(`Bildschirm 1.*${getPublisher().name}`) }).count(), 0);
     assert.equal(applies, 0, "refresh preserves the local draft without applying it");
     // Explicitly synthetic concurrent director change; never a native media claim.

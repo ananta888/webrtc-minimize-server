@@ -96,3 +96,14 @@ seiner tatsächlich beigetretenen Testidentität und das Entfernen des Namens
 nach einer leeren Folgeantwort. Die Metadatenantwort dort ist ausdrücklich
 synthetisch; sie ersetzt weder den separaten realen HTTP-Policy-Test noch eine
 Produktions- oder Medienabnahme.
+
+CI-Nachprüfung vom 10. September 2026: Lauf 34508867134 auf `5fcaf6f` scheiterte
+im UI-Helper, der nach zwei expliziten Refreshes fälschlich genau eine
+Label-Abfrage erwartete. Außerdem wurde die synthetische Zuordnung erst nach
+der zweiten Antwort entfernt. Der Ablauf prüft jetzt den Namen nach der ersten
+Antwort, entfernt die Fixture-Zuordnung vor dem zweiten Refresh und wartet auf
+dessen konkrete HTTP-Antwort, bevor er zwei Abfragen und die fehlende
+Namensanzeige prüft. Draft-Erhalt, Konfliktprüfung, ausdrückliches Apply und
+Capture-Verbote bleiben unverändert. Dies korrigiert die Beobachtungsreihenfolge,
+nicht die Produktpolicy. Der echte Browserablauf benötigt erneut CI;
+lokale Browser-/Audiotests bleiben pausiert.
