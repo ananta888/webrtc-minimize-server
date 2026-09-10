@@ -122,6 +122,41 @@ function fixture(start = 1800000000000, sourceProgram = false, liveClock = null)
     } };
 }
 
+test("invitation resolution may advance time without falsely expiring the active writer", () => {
+  const f = fixture();
+  const grants = new TrustedBroadcastSourceGrants({ ...f.ports, invitation: (...args) => {
+    f.advance(1);
+    return f.ports.invitation(...args);
+  } });
+  const consent = grants.approve(f.identity, f.input, f.publisher);
+  assert.equal(consent.status, "active");
+  assert.equal(f.runtime.nativeControl(f.ownerIdentity, f.owner, f.programId).state, "live");
+  assert.ok(grants.forPackager(consent.consentId, f.packagerId, consent.granteeDeviceRef));
+  assert.equal(grants.approve(f.identity, f.input, f.publisher), consent, "replay cannot refresh consent");
+});
+
+test("invitation expiration during resolution cannot issue source consent", () => {
+  const f = fixture();
+  const grants = new TrustedBroadcastSourceGrants({ ...f.ports, invitation: (...args) => {
+    const invite = f.ports.invitation(...args);
+    f.advance(invite.expiresAt - f.now());
+    return invite;
+  } });
+  assert.throws(() => grants.approve(f.identity, f.input, f.publisher), /trusted_source_invitation_unavailable/);
+  assert.equal(grants.auditEvents().length, 0);
+});
+
+test("real clock rollback during invitation resolution remains terminal", () => {
+  const f = fixture();
+  const grants = new TrustedBroadcastSourceGrants({ ...f.ports, invitation: (...args) => {
+    const invite = f.ports.invitation(...args); f.advance(-1); return invite;
+  } });
+  assert.throws(() => grants.approve(f.identity, f.input, f.publisher), /invalid_trusted_source_clock/);
+  assert.equal(grants.auditEvents().length, 0);
+  f.advance(1);
+  assert.throws(() => grants.approve(f.identity, f.input, f.publisher), /trusted_sources_closed/);
+});
+
 test("real membership, publication, signed agent and fenced writer produce one closed explicit source consent", () => {
   const f = fixture(), before = f.runtime.nativeControl(f.ownerIdentity, f.owner, f.programId);
   assert.equal(f.grants.auditEvents().length, 0);

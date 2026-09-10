@@ -48,7 +48,8 @@ export class TrustedBroadcastSourceGrants {
   }
 
   approve(identity, raw, actor) {
-    const input = normalizeTrustedSourceApproval(raw), now = this.#now(), principal = oidcPrincipal(identity);
+    const input = normalizeTrustedSourceApproval(raw), principal = oidcPrincipal(identity);
+    let now = this.#now();
     // The caller supplies the actual authenticated signaling peer, never a JSON
     // reconstruction. A public fingerprint plus an account token is not proof
     // that this request originated at that device's current room connection.
@@ -66,6 +67,10 @@ export class TrustedBroadcastSourceGrants {
       return old.consent; // Never refresh key, consent or writer lifetime on replay.
     }
     const invite = this.#ports.invitation(identity, input.roomId, input.deviceFingerprint, input.requestId);
+    // Resolving the invitation checks the live writer using its own clock. Do
+    // not send our older sample back into the monotonic program lifetime, or
+    // authorize against an invitation that expired while being resolved.
+    now = this.#now();
     if (invite.publisher.id !== actor.id || invite.publisher.principal !== principal || invite.publisher.fingerprint !== input.deviceFingerprint
       || invite.roomId !== input.roomId || invite.expiresAt <= now) fail("trusted_source_invitation_unavailable", 404);
     const record = { ...invite, publisherIdentity: Object.freeze({ issuer: identity.issuer, subject: identity.subject }),

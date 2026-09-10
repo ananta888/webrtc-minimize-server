@@ -17,15 +17,16 @@ const requestSchema = ajv.compile(JSON.parse(await fs.readFile(new URL("../contr
 const responseSchema = ajv.compile(JSON.parse(await fs.readFile(new URL("../contracts/broadcast-source-requests/response.v1.schema.json", import.meta.url))));
 const issuer = "https://synthetic-identity.example/realm/test";
 
-function fixture() {
+function fixture(live = false) {
   let now = Date.now(), sequence = 0;
+  const clock = live ? Date.now : () => now;
   const identities = { owner: { issuer, subject: "owner", displayName: "Synthetic owner" },
     target: { issuer, subject: "target" }, other: { issuer, subject: "other" } };
   const rooms = new RoomRegistry();
   const peers = Object.fromEntries(Object.entries(identities).map(([role, identity], i) => [role,
     rooms.join("room-alpha", {}, role, now, { authenticated: true, principal: `${issuer}|${identity.subject}`,
       deviceFingerprint: String.fromCharCode(97 + i).repeat(43) }).peer]));
-  const runtime = new BroadcastRuntimeRegistry({ clock: () => now, grantAuthority: {
+  const runtime = new BroadcastRuntimeRegistry({ clock, grantAuthority: {
     issue() {}, issueAnonymousPlayback() {}, revokeProgramEpoch() {},
   } });
   const programId = runtime.createProgram(identities.owner, peers.owner, {
@@ -38,7 +39,7 @@ function fixture() {
   }, request => request, now);
   runtime.markNativeOutputReady(prepared.admission.resourceRef, "pkr_aaaaaaaaaaaaaaaa", prepared.lease.fencingRevision, now);
   const requests = new BroadcastSourceRequests({ members: room => rooms.members(room),
-    program: (...args) => runtime.nativeSourceRequestContext(...args), clock: () => now,
+    program: (...args) => runtime.nativeSourceRequestContext(...args), clock,
     idFactory: () => `bsr_${String(++sequence).padStart(24, "0")}` });
   const context = runtime.nativeSourceRequestContext(identities.owner, peers.owner, programId, now);
   const input = (role, action, extra = {}) => ({ requestVersion: 1, action, roomId: "room-alpha",
@@ -186,7 +187,7 @@ test("a prepared writer handoff invalidates pending invitations before any new w
 });
 
 test("HTTP invitation route uses actual signed OIDC, Origin/body validation and current room membership", async t => {
-  const f = fixture(), keys = generateKeyPairSync("ed25519");
+  const f = fixture(true), keys = generateKeyPairSync("ed25519");
   const config = { authMode: "required", oidcIssuer: issuer, oidcAudience: "human", oidcAlgorithms: ["EdDSA"],
     publicOrigin: "https://fixture.example", nativePackagerSelfServiceEnabled: true };
   const oidcVerifier = createOidcVerifier(config, { jwks: createLocalJWKSet({ keys: [await exportJWK(keys.publicKey)] }) });
@@ -227,7 +228,7 @@ test("HTTP invitation route uses actual signed OIDC, Origin/body validation and 
 
 test("real Angular keyboard inbox loads and declines an actual scoped invitation without capture", { timeout: 60000 }, async t => {
   try { await fs.access(chromium.executablePath()); } catch { t.skip("Playwright Chromium required for invitation keyboard gate"); return; }
-  const f = fixture(), keys = generateKeyPairSync("ed25519");
+  const f = fixture(true), keys = generateKeyPairSync("ed25519");
   const config = { authMode: "required", oidcIssuer: issuer, oidcAudience: "human", oidcAlgorithms: ["EdDSA"],
     publicOrigin: "", nativePackagerSelfServiceEnabled: true, broadcastNativeOutputEnabled: true,
     stunUrls: [], turnServers: [] };

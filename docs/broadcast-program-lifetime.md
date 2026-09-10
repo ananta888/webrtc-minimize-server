@@ -59,6 +59,25 @@ Legacy-Gateways**, keine Clusterquote und keinen abgeschlossenen TBP-033.
 
 ## Verifikation
 
+### Frische Zeit nach der Einladungsprüfung
+
+Die Quellenfreigabe liest nach dem Auflösen einer Einladung die Uhr erneut.
+Die Einladung prüft selbst den aktuellen Writer; ihr neuerer Zeitwert darf
+nicht anschließend durch den älteren Startzeitpunkt der Freigabe ersetzt
+werden. Schon ein normaler Fortschritt von einer Millisekunde konnte dadurch
+fälschlich als Uhrenrücksprung die Sendung stoppen. Die monotone Laufzeitgrenze
+bleibt unverändert; es gibt weder eine Rücksprungtoleranz noch Zeit-Clamping.
+
+Drei deterministische Regressionen mit echten Runtime-, Einladungs- und
+Consent-Registries reproduzierten vor der Korrektur den falschen Stop sowie
+fehlende Ablehnungen bei Ablauf beziehungsweise echtem Uhrenrücksprung während
+der Einladungsauflösung. Danach bestehen sie einschließlich fortbestehendem
+Writer, gebundenem Packagerzugriff und nicht verlängernder Consent-Wiederholung.
+Die HTTP-/Browser-Inbox-Fixtures verwenden ebenfalls eine gemeinsame laufende
+Uhr statt einer eingefrorenen Runtime-Uhr neben der Serverzeit. Ihre reale
+Browserprüfung bleibt CI vorbehalten; andere historische Audiofehler sind
+dadurch noch nicht als behoben nachgewiesen.
+
 Vor der Implementierung scheiterten acht neue Runtime-/Konfigurationsprüfungen,
 darunter eine Lease-Erneuerung auf 90 statt maximal 60 Sekunden und fortbestehende
 Quellenrechte am Programmende. Danach bestanden 173 gezielte browserfreie
