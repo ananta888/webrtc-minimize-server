@@ -8,7 +8,7 @@ import {
 } from "../identity/device-identity.service";
 import { BroadcastBrowserPortError, BroadcastProgramRef } from "./broadcast-ports";
 import { parseBroadcastDirectoryEntry } from "./broadcast-directory.service";
-import { NativePackagerHandoffControl, parseNativeHandoffControl } from "./native-packager-handoff-control";
+import type { NativePackagerHandoffControl } from "./native-packager-handoff-control";
 import type { NativeSceneResult, NativeSceneSelection, NativeSceneState } from "./native-source-scene-contract";
 import type { NativeSourceLabels } from "./native-source-labels-contract";
 import type { NativeAudioResult, NativeAudioSelection } from "./native-source-audio-contract";
@@ -203,17 +203,12 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
 
   async nativeHandoffControl(programId: string, signal: AbortSignal): Promise<NativePackagerHandoffControl> {
     signal.throwIfAborted();
-    const fingerprint = this.device.fingerprint();
-    if (!PROGRAM.test(programId) || !fingerprint) throw new BroadcastBrowserPortError("broadcast_active_device_required");
-    const response = await fetch(`/api/broadcasts/${encodeURIComponent(programId)}/native-handoff-control`, {
-      method: "POST", headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
-      credentials: "same-origin", redirect: "error", signal,
-      body: JSON.stringify({ requestVersion: 1, deviceFingerprint: fingerprint }),
-    });
-    if (!response.ok) throw requestError(response, "native_handoff_control_failed");
-    const value = await json(response, "invalid_native_handoff_control", 4096);
+    const { requestNativeHandoffControl } = await import("./native-handoff-control-http");
     signal.throwIfAborted();
-    return parseNativeHandoffControl(value, programId);
+    return requestNativeHandoffControl(programId, signal, {
+      fingerprint: () => this.device.fingerprint(), authorizationHeader: () => this.auth.authorizationHeader(),
+      readJson: json, responseError: requestError,
+    });
   }
 
   async nativeSourceScene(program: BroadcastProgramRef, selection: NativeSceneSelection | null, signal: AbortSignal): Promise<NativeSceneResult> {

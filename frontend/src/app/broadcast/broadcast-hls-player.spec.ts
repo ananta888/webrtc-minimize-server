@@ -61,6 +61,30 @@ const fakeModule = {
 };
 
 describe("BroadcastHlsPlayer", () => {
+  it.each([401, 403, 404, 410, 429])("keeps HTTP %i terminal despite late media events and watchdog time", async status => {
+    vi.useFakeTimers(); FakeHls.instances = [];
+    const element = video(), player = new BroadcastHlsPlayer(() => undefined, async () => fakeModule as never);
+    try {
+      await player.open(element, "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8", { muted: true, volume: 1 }, new AbortController().signal);
+      const hls = FakeHls.instances[0];
+      hls.emit("hlsError", { fatal: false, type: "networkError", response: { code: status } });
+      const terminal = player.snapshot();
+      element.dispatchEvent(new Event("playing"));
+      element.dispatchEvent(new Event("waiting"));
+      await vi.advanceTimersByTimeAsync(40_000);
+      hls.emit("hlsError", { fatal: true, type: "mediaError" });
+      player.selectQuality(0); player.setAdaptiveMode("low"); player.adaptQuality();
+      expect(hls.startLoad).not.toHaveBeenCalled();
+      expect(hls.recoverMediaError).not.toHaveBeenCalled();
+      expect(player.snapshot()).toEqual(terminal);
+      await expect(player.play()).rejects.toMatchObject({ code: terminal.errorCode });
+      expect(element.play).toHaveBeenCalledOnce(); expect(element.pause).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+      await player.destroy();
+      await player.open(video(), "/broadcast/play/res_bbbbbbbbbbbbbbbb/index.m3u8", { muted: true, volume: 1 }, new AbortController().signal);
+      expect(player.snapshot().lifecycle).toBe("playing");
+    } finally { await player.destroy(); vi.useRealTimers(); }
+  });
   it("bounds a non-cooperative engine load without fetching media or silently choosing native HLS", async () => {
     vi.useFakeTimers();
     FakeHls.instances = [];
@@ -77,6 +101,74 @@ describe("BroadcastHlsPlayer", () => {
       expect(loader).toHaveBeenCalledTimes(1); expect(FakeHls.instances).toHaveLength(0);
       expect(element.getAttribute("src")).toBe(null); expect(element.play).not.toHaveBeenCalled();
     } finally { await player.destroy(); vi.useRealTimers(); }
+  });
+  it.each(["resolve", "reject"])("does not revive a denied output when an earlier play promise later %ss", async outcome => {
+    FakeHls.instances = [];
+    const element = video(), player = new BroadcastHlsPlayer(() => undefined, async () => fakeModule as never);
+    try {
+      await player.open(element, "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8", { muted: true, volume: 1 }, new AbortController().signal);
+      let resolve!: () => void, reject!: (error: unknown) => void;
+      vi.mocked(element.play).mockImplementationOnce(() => new Promise<void>((yes, no) => { resolve = yes; reject = no; }));
+      const pending = player.play();
+      FakeHls.instances[0].emit("hlsError", { fatal: false, type: "networkError", response: { code: 403 } });
+      const terminal = player.snapshot();
+      if (outcome === "resolve") resolve(); else reject(new DOMException("denied", "NotAllowedError"));
+      await pending; expect(player.snapshot()).toEqual(terminal);
+    } finally { await player.destroy(); }
+  });
+  it("cancels captions on terminal denial and ignores a non-cooperative late caption response", async () => {
+    vi.useFakeTimers(); FakeHls.instances = [];
+    let release!: (response: Response) => void;
+    const request = vi.fn((_url: string, _options: RequestInit) => new Promise<Response>(resolve => { release = resolve; }));
+    vi.stubGlobal("fetch", request);
+    const element = video(), player = new BroadcastHlsPlayer(() => undefined, async () => fakeModule as never);
+    try {
+      await player.open(element, "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8", { muted: true, volume: 1, captions: true }, new AbortController().signal);
+      expect(request).toHaveBeenCalledOnce();
+      FakeHls.instances[0].emit("hlsError", { fatal: false, type: "networkError", response: { code: 403 } });
+      expect(request.mock.calls[0][1].signal?.aborted).toBe(true);
+      release(new Response("WEBVTT\n\ncc-1\n00:00:01.000 --> 00:00:02.000\nLate\n", { headers: { "content-type": "text/vtt" } }));
+      await vi.advanceTimersByTimeAsync(40_000);
+      expect(request).toHaveBeenCalledOnce(); expect(vi.getTimerCount()).toBe(0);
+      expect(element.querySelector("track[data-broadcast-player]")).toBeNull();
+    } finally { await player.destroy(); vi.useRealTimers(); }
+  });
+  it.each(["ended", "error"])("keeps native HLS %s terminal until a new player generation", async event => {
+    FakeHls.supported = false;
+    const element = video(true), player = new BroadcastHlsPlayer(() => undefined, async () => fakeModule as never);
+    try {
+      await player.open(element, "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8", { muted: true, volume: 1 }, new AbortController().signal);
+      element.dispatchEvent(new Event(event)); const terminal = player.snapshot();
+      element.dispatchEvent(new Event("playing"));
+      await expect(player.play()).rejects.toMatchObject({ code: event === "ended" ? "broadcast_ended" : "broadcast_player_media_failed" });
+      expect(player.snapshot()).toEqual(terminal); expect(element.play).toHaveBeenCalledOnce();
+    } finally { await player.destroy(); }
+  });
+  it("does not clear successor captions when an old cancelled poll returns 404", async () => {
+    vi.useFakeTimers(); FakeHls.instances = [];
+    const oldCreate = Object.getOwnPropertyDescriptor(URL, "createObjectURL"), oldRevoke = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:new-captions") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+    let release!: (response: Response) => void;
+    const request = vi.fn().mockImplementationOnce(() => new Promise<Response>(resolve => { release = resolve; }))
+      .mockResolvedValueOnce(new Response("WEBVTT\n\ncc-2\n00:00:01.000 --> 00:00:02.000\nCurrent\n", { headers: { "content-type": "text/vtt" } }));
+    vi.stubGlobal("fetch", request);
+    const element = video(), player = new BroadcastHlsPlayer(() => undefined, async () => fakeModule as never);
+    const options = { muted: true, volume: 1, captions: true };
+    try {
+      await player.open(video(), "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8", options, new AbortController().signal);
+      await player.destroy();
+      await player.open(element, "/broadcast/play/res_bbbbbbbbbbbbbbbb/index.m3u8", options, new AbortController().signal);
+      await vi.advanceTimersByTimeAsync(0);
+      const track = element.querySelector("track[data-broadcast-player]"); expect(track).not.toBeNull();
+      release(new Response(null, { status: 404 })); await vi.advanceTimersByTimeAsync(0);
+      expect(element.querySelector("track[data-broadcast-player]")).toBe(track);
+      expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    } finally {
+      await player.destroy(); vi.useRealTimers();
+      if (oldCreate) Object.defineProperty(URL, "createObjectURL", oldCreate); else Reflect.deleteProperty(URL, "createObjectURL");
+      if (oldRevoke) Object.defineProperty(URL, "revokeObjectURL", oldRevoke); else Reflect.deleteProperty(URL, "revokeObjectURL");
+    }
   });
   it.each(["abort", "destroy"])("settles a hung loader immediately on %s and ignores its late completion", async action => {
     vi.useFakeTimers(); FakeHls.instances = [];
@@ -273,7 +365,7 @@ describe("BroadcastHlsPlayer", () => {
     await player.destroy();
   });
 
-  it("bounds fatal recovery and rejects token-bearing or foreign-shaped manifests", async () => {
+  it.each(["networkError", "mediaError"])("bounds fatal %s recovery and rejects token-bearing or foreign-shaped manifests", async type => {
     FakeHls.instances = [];
     const element = video(false);
     const player = new BroadcastHlsPlayer(() => undefined, async () => fakeModule as never);
@@ -285,11 +377,12 @@ describe("BroadcastHlsPlayer", () => {
       muted: true, volume: 1,
     }, new AbortController().signal);
     const hls = FakeHls.instances[0];
-    hls.emit("hlsError", { fatal: true, type: "networkError" });
-    hls.emit("hlsError", { fatal: true, type: "networkError" });
-    hls.emit("hlsError", { fatal: true, type: "networkError" });
+    hls.emit("hlsError", { fatal: true, type });
+    hls.emit("hlsError", { fatal: true, type });
+    hls.emit("hlsError", { fatal: true, type });
     await Promise.resolve();
     expect(hls.startLoad).toHaveBeenCalledTimes(2);
+    expect(hls.recoverMediaError).toHaveBeenCalledTimes(type === "mediaError" ? 2 : 0);
     expect(hls.stopLoad).toHaveBeenCalledOnce();
     expect(player.snapshot()).toMatchObject({ lifecycle: "failed", recoveryCount: 2, errorCode: "broadcast_player_recovery_exhausted" });
     await player.destroy();

@@ -61,6 +61,43 @@ Fortschrittssamples, springt kontrolliert zur Live-Position und erlaubt
 höchstens zwei Recoveries in 30 Sekunden. Danach endet der Versuch sichtbar,
 statt bei weiterlaufendem Download unbeschränkt neu zu laden.
 
+Ein End- oder Fehlerzustand bleibt für diese Playergeneration terminal. Dies
+gilt insbesondere für HTTP 401/403/404/410, das Ratelimit 429, ausgeschöpfte
+Recovery und native Medienfehler. Der Player stoppt Watchdog, HLS-Loads und
+Caption-Polling, bricht eine laufende Caption-Anfrage ab, entfernt eigene
+Untertitel und pausiert die Wiedergabe. Späte `playing`-Events, Play-Promises,
+Qualitätsänderungen oder weitere Decoderfehler dürfen weder die alte Ausgabe
+neu starten noch deren Endzustand überschreiben. Auch Decoder-Reinitialisierung
+verbraucht das bestehende Zwei-Versuche-Budget und findet nicht davor statt.
+Erst Destroy und eine neue Ausgabe-/Sitzungsgeneration können wieder öffnen;
+der übergeordnete autorisierte Handoff-/Viewer-Recovery-Pfad bleibt zuständig.
+Bereits empfangene Medien lassen sich beim Empfänger dadurch nicht rückwirkend
+widerrufen; serverseitige Request-Autorisierung bleibt unabhängig erforderlich.
+
+Zusätzlich prüft der Caption-Poller seine Generation bereits unmittelbar nach
+der HTTP-Antwort. Eine alte, trotz Abort verspätete 404 darf deshalb nicht den
+Untertiteltrack einer inzwischen geöffneten neuen Ausgabe entfernen.
+
+Die ursprüngliche Lücke wurde für alle fünf genannten HTTP-Codes mit jeweils
+drei erneuten `startLoad`-Aufrufen innerhalb von 40 Sekunden Fake-Zeit
+reproduziert. Die Regressionstests prüfen das Unterbleiben neuer Loads und
+Decoderstarts, unveränderten Endzustand, späte Play-Ergebnisse, Caption-Abbruch,
+native End-/Fehlerereignisse sowie eine anschließend funktionsfähige neue
+Generation. Es sind synthetische Engine-/DOM-Tests, kein Produktionsnachweis.
+
+Die Handoff-Beobachtung nutzt wie Audio-/Szenensteuerung einen getrennten,
+bedarfsgeladenen HTTP-Adapter. Dadurch bleiben Auth, geschlossener Parser,
+4096-Byte-Grenze und Abort-Prüfung erhalten, ohne das initiale Bundle um den
+optionalen Regieparser zu vergrößern. Die bewusst statische HLS-Engine bleibt
+unverändert; die Buildbudgetgrenzen wurden nicht angehoben.
+
+Für diese Endzustands-/Handoff-Runde bestehen 70 gezielte Frontend-,
+HTTP-Adapter- und Handoff-Controller-Tests (1,400 s), TypeScript/Angular-no-emit
+und das Todo-Gate. Der isolierte Produktionsbuild besteht in 9,582 s mit
+1.598.533 initialen Bytes bei unveränderter 1.600.000-Byte-Hardcap;
+die Warnschwelle bleibt überschritten. Das lokal ausgelieferte `dist` wurde
+nicht verändert. Gesamtcheck und reale Browserabnahme erfolgen separat in CI.
+
 Manifest-URLs sind auf den exakten Same-Origin-Pfad
 `/broadcast/play/res_…/index.m3u8` beziehungsweise `master.m3u8` begrenzt.
 Credentials, Fragment und jede Query werden verworfen. hls.js sendet nur

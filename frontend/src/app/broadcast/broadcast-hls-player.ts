@@ -87,6 +87,7 @@ export class BroadcastHlsPlayer {
   private abortSignal: AbortSignal | null = null;
   private engineLoadAbort: AbortController | null = null;
   private generation = 0;
+  private terminal = false;
   private listeners: Array<readonly [keyof HTMLMediaElementEventMap, EventListener]> = [];
   private captionPoll: ReturnType<typeof setInterval> | null = null;
   private captionController: AbortController | null = null;
@@ -179,14 +180,15 @@ export class BroadcastHlsPlayer {
     const video = this.video;
     const generation = this.generation;
     if (!video) throw new BroadcastBrowserPortError("broadcast_player_not_open");
+    if (this.terminal) throw new BroadcastBrowserPortError(this.snapshotValue.errorCode || "broadcast_ended");
     try {
       await video.play();
-      if (generation !== this.generation) return;
+      if (generation !== this.generation || this.terminal) return;
       if (this.snapshotValue.lifecycle !== "failed") {
         this.update({ lifecycle: "playing", errorCode: "" });
       }
     } catch (error) {
-      if (generation !== this.generation) return;
+      if (generation !== this.generation || this.terminal) return;
       if (error instanceof DOMException && error.name === "NotAllowedError") {
         this.update({ lifecycle: "awaiting-user", errorCode: "broadcast_player_user_activation_required" });
         return;
@@ -213,6 +215,7 @@ export class BroadcastHlsPlayer {
   }
 
   selectQuality(value: "auto" | number): void {
+    if (this.terminal) return;
     if (value !== "auto" && (!Number.isSafeInteger(value) || value < 0)) {
       throw new BroadcastBrowserPortError("invalid_broadcast_player_quality");
     }
@@ -228,13 +231,14 @@ export class BroadcastHlsPlayer {
   }
 
   setAdaptiveMode(mode: BroadcastViewerQualityMode): void {
+    if (this.terminal) return;
     this.qualityPolicy.setMode(mode);
     if (this.hls) this.hls.currentLevel = -1;
     this.update({ adaptiveMode: mode, selectedQuality: "auto" });
   }
 
   adaptQuality(sample = this.qualitySample()): void {
-    if (!this.hls || this.snapshotValue.qualities.length < 1
+    if (this.terminal || !this.hls || this.snapshotValue.qualities.length < 1
       || this.snapshotValue.selectedQuality !== "auto") return;
     const decision = this.qualityPolicy.evaluate(this.snapshotValue.qualities, sample);
     if (decision.changed || this.snapshotValue.adaptiveMode !== "auto") {
@@ -251,16 +255,9 @@ export class BroadcastHlsPlayer {
     this.abortListener = null;
     const video = this.video;
     if (!video) return;
-    if (this.watchdog) clearInterval(this.watchdog);
-    this.watchdog = null;
-    this.hls?.stopLoad();
+    this.stopLoading();
     this.hls?.destroy();
     this.hls = null;
-    if (this.captionPoll) clearInterval(this.captionPoll);
-    this.captionPoll = null;
-    this.captionController?.abort(new DOMException("destroy", "AbortError"));
-    this.captionController = null;
-    this.clearCaptionTrack();
     for (const [event, listener] of this.listeners) video.removeEventListener(event, listener);
     this.listeners = [];
     for (const track of Array.from(video.querySelectorAll("track[data-broadcast-player]"))) track.remove();
@@ -272,6 +269,7 @@ export class BroadcastHlsPlayer {
     this.stalledSamples = 0;
     this.recoveries = [];
     this.abortListener = null;
+    this.terminal = false;
     this.snapshotValue = initialSnapshot();
     this.onState(this.snapshotValue);
   }
@@ -289,6 +287,7 @@ export class BroadcastHlsPlayer {
   }
 
   private startCaptionPolling(manifestUrl: string): void {
+    if (this.terminal) return;
     const generation = this.generation;
     const url = new URL(manifestUrl);
     url.pathname = url.pathname.replace(/\/(?:index|master)\.m3u8$/, "/captions_live.vtt");
@@ -301,6 +300,7 @@ export class BroadcastHlsPlayer {
           method: "GET", credentials: "same-origin", cache: "no-store", redirect: "error",
           signal: controller.signal,
         });
+        if (controller.signal.aborted || generation !== this.generation) return;
         if (!response.ok) {
           if (response.status === 404) this.clearCaptionTrack();
           return;
@@ -347,6 +347,7 @@ export class BroadcastHlsPlayer {
   }
 
   private startWatchdog(): void {
+    if (this.terminal) return;
     this.watchdog = setInterval(() => {
       const video = this.video;
       if (!video || video.paused || video.ended || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
@@ -359,19 +360,19 @@ export class BroadcastHlsPlayer {
     }, 2_000);
   }
 
-  private recover(_reason: "stall" | "network" | "media"): void {
+  private recover(reason: "stall" | "network" | "media"): void {
     const video = this.video;
-    if (!video) return;
+    if (!video || this.terminal) return;
     const now = Date.now();
     this.recoveries = this.recoveries.filter((value) => value > now - 30_000);
     if (this.recoveries.length >= 2) {
-      this.hls?.stopLoad();
       this.update({ lifecycle: "failed", errorCode: "broadcast_player_recovery_exhausted" });
       return;
     }
     this.recoveries.push(now);
     this.stalledSamples = 0;
     this.update({ lifecycle: "recovering", recoveryCount: this.recoveries.length });
+    if (reason === "media") this.hls?.recoverMediaError();
     const live = this.hls?.liveSyncPosition;
     const seekableEnd = video.seekable.length ? video.seekable.end(video.seekable.length - 1) : null;
     const target = typeof live === "number" ? live : seekableEnd === null ? null : Math.max(0, seekableEnd - 2);
@@ -381,17 +382,15 @@ export class BroadcastHlsPlayer {
   }
 
   private handleHlsError(data: ErrorData): void {
+    if (this.terminal) return;
     const status = Number(data.response?.code || 0);
     if (data.type === "networkError" && [401, 403, 404, 410].includes(status)) {
-      this.hls?.stopLoad();
       this.update({ lifecycle: "ended", errorCode: "broadcast_ended" });
     } else if (data.type === "networkError" && status === 429) {
-      this.hls?.stopLoad();
       this.update({ lifecycle: "failed", errorCode: "broadcast_player_rate_limited" });
     } else if (!data.fatal) return;
     else if (data.type === "networkError") this.recover("network");
     else if (data.type === "mediaError" && this.hls) {
-      this.hls.recoverMediaError();
       this.recover("media");
     } else this.update({ lifecycle: "failed", errorCode: "broadcast_player_hls_failed" });
   }
@@ -511,8 +510,25 @@ export class BroadcastHlsPlayer {
     };
   }
 
+  private stopLoading(): void {
+    if (this.watchdog) clearInterval(this.watchdog);
+    this.watchdog = null;
+    if (this.captionPoll) clearInterval(this.captionPoll);
+    this.captionPoll = null;
+    this.captionController?.abort(new DOMException("player-stopped", "AbortError"));
+    this.captionController = null;
+    this.clearCaptionTrack();
+    this.hls?.stopLoad();
+  }
+
   private update(change: Partial<BroadcastPlayerSnapshot>): void {
+    if (this.terminal) return;
     this.snapshotValue = Object.freeze({ ...this.snapshotValue, ...change });
+    if (change.lifecycle === "failed" || change.lifecycle === "ended") {
+      this.terminal = true;
+      this.stopLoading();
+      this.video?.pause();
+    }
     this.onState(this.snapshotValue);
   }
 }

@@ -201,6 +201,29 @@ describe("BroadcastControlPlaneService", () => {
       { fingerprint: () => "f".repeat(43) } as never);
   }
 
+  it("does not read identity or send a handoff query when cancelled during adapter loading", async () => {
+    const fingerprint = vi.fn(() => "f".repeat(43)), authorizationHeader = vi.fn(() => ({ Authorization: "Bearer oidc" }));
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockReset();
+    const service = new BroadcastControlPlaneService({ authorizationHeader } as never, { fingerprint } as never);
+    const controller = new AbortController();
+    const pending = service.nativeHandoffControl(program.programId, controller.signal);
+    controller.abort(new DOMException("cancelled", "AbortError"));
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(fingerprint).not.toHaveBeenCalled(); expect(authorizationHeader).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("retains the 4096-byte handoff response limit after adapter extraction", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockReset();
+    const body = JSON.stringify(snapshot);
+    fetchMock.mockResolvedValueOnce(new Response(body.padEnd(4096, " "), { headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(body.padEnd(4097, " "), { headers: { "content-type": "application/json" } }));
+    const service = nativeService();
+    expect(await service.nativeHandoffControl(program.programId, new AbortController().signal)).toEqual(snapshot);
+    await expect(service.nativeHandoffControl(program.programId, new AbortController().signal)).rejects.toMatchObject({ code: "invalid_native_handoff_control" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("fetches a closed device-bound snapshot and sends precisely its revisions, not stale local revisions", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json(snapshot, 200)).mockResolvedValueOnce(json(nativeResponse()));
     const service = nativeService(), signal = new AbortController().signal;
