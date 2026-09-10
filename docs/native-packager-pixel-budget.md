@@ -28,3 +28,9 @@ nur die zugelassene Leiter. Kein Produktionsbudget wurde angehoben.
 Das ist eine Voraussetzung für den weiteren Ausbau auswählbarer
 Video-Ausgabeprofile, nicht dessen Abschluss. Deren Native-/HTTP-/UI-Vertrag
 und die gemeinsame Projektabnahme bleiben im aktiven TBP-020-Track offen.
+
+Der anschließende gemeinsame isolierte Check auf `8455530` bestätigt die
+Policy-Regressionen, ist insgesamt aber fehlgeschlagen: 1.286 Frontendtests,
+1.247 bestandene Node-/Browsertests, zwei native Broadcast-Fehler und vier
+Skips. Die Fehler betreffen Szeneninhalt und Standby-Bedienung nach Übergabe;
+eine Behebung durch diese Budgetkorrektur wird nicht behauptet.

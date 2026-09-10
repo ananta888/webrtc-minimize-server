@@ -5,6 +5,41 @@ Aktivierung sind unterschiedliche Zustände. Zuletzt war `admissionEnabled: fals
 bei der Nachprüfung um 10:41 UTC ist der Status wegen HTTP 502 nicht abrufbar.
 Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
 
+## Neuester CI-Befund und aktueller Prüfkandidat
+
+CI `34468539328` auf `e9e8699` ist beendet und fehlgeschlagen. Der getrennte
+authentisierte Ananta-TURN-Dialog und die nativen Agent-/macOS-Jobs bestanden.
+Im allgemeinen Node-/Browserjob bestanden 1.238 Tests, drei scheiterten und
+vier wurden übersprungen. Die zwei Szenenfälle erhalten eine native
+Anwendungsbestätigung, zeigen aber weiterhin den Platzhalter — auch in den
+tatsächlichen erzeugten HLS-Segmenten. Eine UI-Bestätigung ist damit kein
+Bildnachweis. Der dritte Fehler wartet nach einer Packager-Übergabe vergeblich
+auf die Antwort zum bewussten Laden der Standby-Auswahl. Die Ursachen dieser
+drei Fehler sind noch nicht belegt; Docker und Live-Keycloak/TURN wurden in
+diesem Run übersprungen. Kein grüner Gesamt- oder Deploymentnachweis.
+
+Der neue lokale Kandidat `8455530` enthält zusätzlich die explizite
+[Ladefehler-Bedienung für Ananta-Freigaben](machine-permission-load-recovery.md)
+und die [kumulative native Pixelbudgetprüfung](native-packager-pixel-budget.md).
+Sein gemeinsamer isolierter Projektcheck ist mit Exit 1 beendet:
+1.286 Frontendtests und 1.247 Node-/Browsertests bestanden, zwei scheiterten,
+vier wurden übersprungen (Node-Lauf: 623,065 s). Build, Typprüfung, Go und
+statische Gates bestanden. Die nachgelagerten externen Infrastruktur-Gates
+wurden wegen des Fehlers nicht erreicht; der optionale Image-Scan wurde
+ausdrücklich übersprungen.
+
+Die beiden vollständigen Ananta-Dialoge einschließlich PCM, Chat, eigener
+Bildschirmquelle, drei Erneuerungen und aktivem Widerruf sowie die vier neuen
+Ladefehler-Fälle bestanden. Lokal reproduziert sind der Ein-Quellen-Szenenfehler
+mit Wartebild und die ausbleibende Standby-Ladeantwort nach Übergabe. Der
+Zwei-Quellen-Fall bestand diesmal; eine Ursache oder Reparatur ist damit nicht
+bewiesen. Die öffentliche Nachprüfung ergab erneut HTTP 502 und LAN-SSH
+`No route to host`. Serving-Build und Ananta-Repository sind unverändert.
+
+Diese Änderungen reparieren nicht nachgewiesenermaßen die CI-Fehler. Insbesondere sind
+auswählbare neue Video-Ausgabeprofile, öffentliche Hub-/Projektaktivierung
+und die gemeinsame Langzeitabnahme weiterhin offen.
+
 ## Aktuelle Erreichbarkeitsstörung
 
 `/`, `/healthz` und `/api/machine/integration` liefern aktuell HTTP 502 von

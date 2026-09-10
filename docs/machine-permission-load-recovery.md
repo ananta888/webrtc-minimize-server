@@ -40,6 +40,11 @@ Chromium-/Firefox-Fälle in 42,826 s, null Fehler oder Skips. Das explizit
 gestartete synthetische Mikrofon ist nach der Leave-Aktion tatsächlich beendet.
 Die zwei normalen Dialoge prüfen weiterhin Audioempfang, Chat, Bildschirm,
 drei Renewals und wirksamen Freigabeentzug unter erforderlichem SFrame.
-Ein vollständiger Projektcheck dieses Nachtrags steht noch aus. Die laufende
-CI `34468539328` betrifft ausschließlich den vorherigen Stand `e9e8699`.
+Der gemeinsame isolierte Projektcheck auf `8455530` ist inzwischen beendet:
+1.286 Frontendtests und 1.247 Node-/Browsertests bestanden, darunter alle vier
+Ladefehler-Fälle und die beiden vollständigen Ananta-Dialoge. Zwei native
+Broadcast-Fälle scheiterten, vier Tests wurden übersprungen. Deshalb bleibt
+die gemeinsame Abnahme offen; der Gesamtcheck ist nicht grün. CI `34468539328`
+ist ebenfalls fehlgeschlagen und betrifft ausschließlich den vorherigen Stand
+`e9e8699`; die konkreten Befunde stehen im [Integrationsstatus](ananta-integration-status.md).
 Keine Änderung am Ananta-Repository, Serving-Build oder öffentlichen Hub-Trust.
