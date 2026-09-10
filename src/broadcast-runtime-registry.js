@@ -20,7 +20,7 @@ import {
   initializeBroadcastProgramMachine,
   renewBroadcastWriterLeases,
 } from "./broadcast-program-machine.js";
-import { MAX_BROADCAST_IDEMPOTENCY_RECORDS, validateBroadcastProgramMachine } from "./broadcast-program-model.js";
+import { BROADCAST_PROGRAM_STATES, MAX_BROADCAST_IDEMPOTENCY_RECORDS, validateBroadcastProgramMachine } from "./broadcast-program-model.js";
 
 const PROGRAM = /^prg_[A-Za-z0-9_-]{16,64}$/;
 const RESOURCE = /^res_[A-Za-z0-9_-]{16,64}$/;
@@ -1117,5 +1117,16 @@ export class BroadcastRuntimeRegistry {
   }
 
   get programCount() { return this.#records.size; }
+  // Control-plane inventory only: never imply decoded media or audience health.
+  // Do not pass records, keys or per-program observations across this boundary.
+  programStateCounts() {
+    const counts = Object.fromEntries(BROADCAST_PROGRAM_STATES.map(state => [state, 0]));
+    for (const record of this.#records.values()) {
+      const state = record.snapshot.machine.program.state;
+      if (!Object.hasOwn(counts, state)) fail("invalid_broadcast_program_state", 500);
+      counts[state] += 1;
+    }
+    return Object.freeze(counts);
+  }
   get challengeCount() { return this.#challenges.size; }
 }

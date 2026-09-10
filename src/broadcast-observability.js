@@ -1,3 +1,5 @@
+import { BROADCAST_PROGRAM_STATES } from "./broadcast-program-model.js";
+
 const METRIC = /^[a-z][a-z0-9_]{2,95}$/;
 const REASON = /^[A-Z][A-Z0-9_]{1,31}$/;
 const HISTOGRAM_BOUNDS = Object.freeze([0.1, 0.25, 0.5, 1, 2, 3, 5, 8, 12, 30, 60]);
@@ -7,6 +9,7 @@ const COMPONENTS = Object.freeze([
 const COMPONENT_STATUS = new Set(["disabled", "healthy", "degraded", "unavailable"]);
 
 const DEFINITIONS = Object.freeze({
+  broadcast_control_programs: { type: "gauge", labels: { state: BROADCAST_PROGRAM_STATES } },
   broadcast_program_state: { type: "gauge", labels: { state: ["idle", "starting", "live", "degraded", "stopping", "stopped", "failed"], profile: ["origin", "cdn"] } },
   broadcast_program_transition_seconds: { type: "histogram", labels: { transition: ["start", "stop", "handoff", "source-change"] } },
   broadcast_whip_sessions: { type: "gauge", labels: { state: ["opening", "active", "closing", "failed"] } },

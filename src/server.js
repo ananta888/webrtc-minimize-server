@@ -48,6 +48,7 @@ import {
 } from "./broadcast-playback-session-store.js";
 import { BroadcastAbuseGuard } from "./broadcast-admission-control.js";
 import { BroadcastHealthRegistry } from "./broadcast-observability.js";
+import { BroadcastRuntimeMetrics } from "./broadcast-runtime-metrics.js";
 import { BroadcastRuntimeError, BroadcastRuntimeRegistry } from "./broadcast-runtime-registry.js";
 import { BroadcastProgramError } from "./broadcast-program-machine.js";
 import { broadcastSubjectRef, broadcastTenantRef } from "./broadcast-identifiers.js";
@@ -2786,6 +2787,8 @@ export function createAppServer(options = {}) {
     broadcastPlaybackSessions,
   };
   const server = http.createServer(createHttpHandler(config, registry, services));
+  const broadcastMetrics = new BroadcastRuntimeMetrics({ runtime: broadcastRuntime });
+  server.on("close", () => broadcastMetrics.destroy());
   server.on("close", () => services.nativeSourceScenes.destroy());
   server.on("close", () => services.nativeSourceAudios.destroy());
   if (broadcastSourceRequests) {
@@ -2811,6 +2814,7 @@ export function createAppServer(options = {}) {
   return {
     server,
     ...signaling,
+    broadcastMetrics,
     config,
     registry,
     directory,

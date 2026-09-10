@@ -1,13 +1,14 @@
 # Inhaltsfreie Broadcast-Observability
 
-Stand: 2026-09-04. TBP-034 definiert und testet eine kleine Metrik- und
-Readiness-Grenze. Es ist noch kein externer Collector im öffentlichen
+Stand: 2026-09-10. TBP-034 definiert und testet eine kleine Metrik- und
+Readiness-Grenze sowie einen angeschlossenen Control-Plane-Messport.
+Es ist noch kein externer Collector im öffentlichen
 Deployment aktiviert; die SLOs bleiben deshalb `runtimeVerified: false`.
 
 ## Metrikgrenze
 
-`BroadcastMetricRegistry` kennt ausschließlich 18 feste Metriknamen und pro
-Metrik geschlossene Enum-Labels. Erfasst werden Program-State und
+`BroadcastMetricRegistry` kennt ausschließlich 19 feste Metriknamen und pro
+Metrik geschlossene Enum-Labels. Der Katalog umfasst Program-State und
 Start/Stop/Handoff, WHIP-Sessions, Ingest-/Egress-Bitrate, encoded/keyframe/
 dropped Frames, Encoderzeit, Segmente/Parts, Viewerklassen, Playerstart,
 End-to-glass, Rebuffering, A/V-Sync-Proxy, Caption-Delay, CPU/RAM/Disk,
@@ -20,6 +21,37 @@ Histogramme speichern Count, Summe und feste Buckets, keine einzelnen
 Beobachtungen. Stale Werte können über `purgeBefore` gelöscht und bei Destroy
 vollständig verworfen werden. Eine Prometheus-Darstellung existiert als
 interner Port, wird aber nicht öffentlich ausgeliefert.
+
+### Angeschlossene Runtime-Instrumentierung
+
+`createAppServer().broadcastMetrics` bietet in-process `snapshot()` und
+`prometheus()`. Beide lesen denselben Cache und fragen höchstens einmal pro
+15 Sekunden `BroadcastRuntimeRegistry.programStateCounts()` ab. Es gibt keinen
+Hintergrundtimer, Exportprozess oder HTTP-Endpunkt. Nach Server-Close werden
+Cache und Runtime-Referenz verworfen; spätere Leseaufrufe bleiben leer.
+
+Die neue Gauge `broadcast_control_programs{state="…"}` zählt die neun exakten
+Domainzustände: `draft`, `preparing`, `awaiting_consent`, `publishing`, `live`,
+`degraded`, `stopping`, `stopped`, `failed`. Jede erfolgreiche Stichprobe enthält
+auch Nullwerte. Gezählt werden alle in dieser Serverinstanz registrierten
+Programme, einschließlich beendeter Einträge, über alle Tenants hinweg.
+Das ist ein interner Operator-Messwert, keine öffentlich zulässige Übersicht.
+Der Registry-Port gibt weder einzelne Records noch IDs, Namen oder Titel aus.
+
+Ein `live`-Control-State beweist weder aktuelle Writer-Leases noch decodierte
+Frames, hörbaren Ton oder erreichbare Zuschauer. Deshalb wird er nicht als
+Medien-SLO und nicht als die profilabhängige Gauge `broadcast_program_state`
+ausgegeben. Die Runtime kennt keine verlässliche Origin/CDN-Profilzuordnung;
+diese wird nicht geraten. Auch kurzlebige Zwischenzustände und ihre Dauer lassen
+sich aus 15-s-Stichproben nicht zuverlässig ableiten.
+
+Fehlende Runtime-Capability, unbekannte Felder, ungültige Counts, Abfragefehler
+oder ungültige Uhrwerte leeren den Cache, ohne Ausnahmeinhalte zu loggen oder
+Programmzustände zu ändern. Eine zurückspringende Uhr leert den Cache und setzt
+die 15-s-Samplinggrenze neu. Ein Fehler erzeugt keine erfundenen Nullmesswerte.
+Der Port hält nur neun aktuelle aggregierte Gauges, keine Einzelereignisse oder
+Historie. Die übrigen Katalogmetriken sind damit ausdrücklich noch nicht an
+Medien-, Player- oder Hostmessungen angeschlossen.
 
 ## Health und Readiness
 
@@ -52,7 +84,10 @@ Löschung erfolgt im Collector per TTL und im In-Memory-Port per Purge/Clear.
 
 Tests prüfen vollständigen Metrikkatalog, geschlossene Labels, Aggregation,
 Cardinality, Purge, getrennte Readiness, alle Alarm-/Runbook-Zuordnungen und
-synthetische Leakage-Canaries. Offen bleiben echte Instrumentierung der noch
-nicht aktiven Program-Orchestrierung, abgesicherter Prometheus-Collector,
+synthetische Leakage-Canaries. Der Runtime-Port wird zusätzlich gegen echte
+Registry-Erstellung, Publisher-Autorisierung/Gateway-Aktivierung und Stop sowie
+die Server-Close-Grenze geprüft, ohne Browser oder Audio zu starten.
+Offen bleiben Medien-/Player-/Host-Instrumentierung, Übergangslatenzen,
+abgesicherter Prometheus-Collector,
 Dashboard-Import, Alarmzustellung, Zugriffsaudit und Last-/SLO-Messungen auf
-dem Zielhost. Daher bleibt TBP-034 `partial`.
+dem Zielhost. Daher bleibt TBP-034 offen (`in_progress`).

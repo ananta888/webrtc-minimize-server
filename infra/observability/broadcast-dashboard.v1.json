@@ -15,7 +15,7 @@
     "raw_media_or_caption_content": "never"
   },
   "panels": [
-    { "id": "program-state", "metrics": ["broadcast_program_state", "broadcast_program_transition_seconds"] },
+    { "id": "program-state", "metrics": ["broadcast_control_programs", "broadcast_program_state", "broadcast_program_transition_seconds"] },
     { "id": "ingest-and-encoding", "metrics": ["broadcast_whip_sessions", "broadcast_ingest_bits_per_second", "broadcast_frames_total", "broadcast_encoder_seconds_total"] },
     { "id": "delivery", "metrics": ["broadcast_delivery_objects_total", "broadcast_egress_bits_per_second", "broadcast_viewers"] },
     { "id": "viewer-experience", "metrics": ["broadcast_player_start_seconds", "broadcast_end_to_glass_seconds", "broadcast_rebuffer_ratio", "broadcast_av_sync_offset_seconds", "broadcast_caption_delay_seconds"] },

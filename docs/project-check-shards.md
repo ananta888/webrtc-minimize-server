@@ -67,3 +67,14 @@ TCP-Fälle bestehen. Native Agenten und beide macOS-Jobs bestehen.
 
 Damit sind Ausführung und Fehlerweitergabe der Partitionierung real belegt,
 nicht die Fehlerfreiheit der Anwendung oder ein erfolgreicher Release.
+
+## Nachfolgender Lauf auf 5671aea
+
+CI `34490651291` ist ebenfalls terminal fehlgeschlagen. Shard 1: 658 Passes,
+null Fehler, ein Skip in 368,127 s. Shard 2: 624 Passes, ein Fehler, drei Skips
+in 258,694 s. Die Ein-Quellen-Szene liefert weiterhin Slate in Producer und
+committed HLS, obwohl der Player Frames dekodiert; der Zwei-Quellen-Fall
+besteht diesmal. Daraus folgt keine Ursachenbehebung. Native Packager,
+Blind Media und beide macOS-Jobs bestehen. Der separate Ananta-TURN-Job
+scheitert in drei Fällen vor Browserstart am privaten Testproxy; Firefox TCP
+besteht. Aggregat rot, Docker und Live-Keycloak/TURN übersprungen.

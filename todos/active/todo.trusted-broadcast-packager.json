@@ -1014,7 +1014,7 @@
     {
       "id": "TBP-034",
       "title": "Inhaltsfreie Observability, SLOs und Alarmierung etablieren",
-      "status": "partial",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "high",
       "progress_percent": 68,
@@ -1170,7 +1170,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 0, "in_progress": 8, "partial": 11, "blocked": 0, "done": 21 },
+    "by_status": { "todo": 0, "in_progress": 9, "partial": 10, "blocked": 0, "done": 21 },
     "progress_percent_done": 52.5,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -1180,12 +1180,14 @@
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 8,
-    "partial": 11,
+    "in_progress": 9,
+    "partial": 10,
     "blocked": 0,
     "done": 21
   },
   "summary_notes": [
+    "2026-09-10 TBP-034 Runtime-Slice umgesetzt: echte Registry liefert nur neun eingefrorene Control-State-Summen; gemeinsamer In-Process-JSON/Prometheus-Port sampelt hoechstens je15s, ersetzt Nullwerte, verwirft bei Fehler/Uhr-Ruecksprung und sperrt nach Server-Close. Kein HTTP-/Collector-/Mediengesundheitsversprechen. 25 fokussierte Node-Pruefungen PASS/0Skip in0.489s; darunter echte Create/Stop/abgewiesene Fremdaktion, Publishergrant/Gateway-Live-Wechsel, Schema-Paritaet, Cache/Close/Leakage. App/Domain Typecheck PASS; statischer Leakage-Gate PASS mit explizitem optionalem Image-Skip. Zusaetzlicher HTTP/WS-Integrationslauf hat einen Fehler beim bestehenden Vosk-Worker-Download: assets/vosk-worker.js fehlt im unveraenderten lokalen dist, HTTP404 statt200. Kein Frontend-Rebuild zur Veraenderung des laufenden Builds; Buildnachweis folgt isoliert in CI. Vorheriger CI34490651291/5671aea terminalFAIL: Shard1 658PASS/0FAIL/1SKIP, Shard2 624PASS/1FAIL/3SKIP; SingleScene Slate, TwoSourcePASS; drei private TURN-Faelle scheitern vor Browserstart, FirefoxTCP besteht. Native/Blind/macOS-Gates PASS. Kein Deployment, keine Ananta-Aenderung, lokale Browser-/Audiopause eingehalten. TBP-034 bleibt68/in_progress bis Collector, Medienmetriken und SLO-Abnahme vorliegen.",
+    "2026-09-10 TBP-034 vor Implementierung: aktuelle Runtime besitzt Program-State, liefert aber keine aggregierte Observability. Separaten read-only In-Process-Port mit hoechstens einer Abfrage je 15s an die echte BroadcastRuntimeRegistry anschliessen. Neue geschlossene Metrik broadcast_control_programs bildet exakt die neun Domainzustaende ab; keine erfundene Origin/CDN-Zuordnung, Mediengesundheit, Live-Viewerzahl oder Frame-Bitrate. Aggregate enthalten keinerlei Program-/Tenant-/Owner-/Room-Daten, auch keine pseudonymen IDs. Fehler/unglaubliche Counts/Uhrfehler leeren den Messwert statt Erfolg zu behaupten; Server-Close verwirft und sperrt den Port. Akzeptanz dieses Slices: reale Registry-Erstellung/Stop/abgewiesene Aktionen korrekt gezaehlt, Nullwerte ersetzen alte Counts, 15s-Abfragegrenze, Fehler-/Close-/Leakage-Regression und Serververdrahtung. Kein oeffentlicher oder unautorisiert erfundener Operator-Endpunkt. Collector/RBAC, Medieninstrumentierung und SLO-Abnahme bleiben offen; lokale Browser-/Audiotests wegen Windows-Firefox-Diagnose pausiert.",
     "2026-09-08 finaler isolierter Vollcheck exakt1f498fe terminal Exit0:665 Frontendtests/723 Node passed/2 Node-Skips/0 failed, Node229,679s; Build/Go-unit-vet/statische Gates gruen, externe Infrastruktur sichtbar SKIP. Chromium/Firefox-zu-nativem SourceReceiver und VP8-/Opus-Decoder bestanden einschliesslich weiter wechselnder Endpixel/letztem PCM-Ton und vollstaendigem Cleanup. Derselbe Binarysnapshot bestand zusaetzlich mit FFmpeg6.1.1 lokal (Audio1,92s/Video3,46s) und FFmpeg8.0 ohne Netz (1,77s/3,42s). Checkworktree sauber, keine benannten Source-Testcontainer verblieben, Serving-index-Hash unveraendert. Vorherige CI34215088478 fuerfa24e93 terminal erfolgreich, keine Uebertragung dieses CI-PASS auf neue Revision. Kein Ananta-Repo-Write/Deployment/Versionssprung. Weiterer echter Implementierungsbedarf: globale Decoderzulassung, native Mixer-/Slate-/Clock-/Writer-Anbindung und explizite Quellenannahme/Renewal; TBP-030 bleibt82 und Summen unveraendert. Quellfreigaben binden derzeit programRevision (TrustedBroadcastSourceGrants.#check); native Layoutsteuerung muss deshalb einen getrennten CAS-Stand besitzen und darf reine Bildanordnung nicht als Programme-Autoritaetswechsel tarnen.",
     "2026-09-08 Opus/PCM-Adapter implementiert: strukturierte RFC6716-TOC/CBR/VBR/Padding-/Groessenpruefung, begrenzte 48-kHz-Stereo-PCM-Ausgabe und samplegenaue Pre-Skip-/RTP-Zeitabbildung aus echtem Pion-Ogg-Header. Reale Sinustests mit2,5/20/60ms-Paketen, partieller/mehrpaketiger Pre-Skip, Wrap und Zeitluecke bestanden; ergaenzte Codec-/Framing-/Oversize-/Overlap-/Replay-/Budget-/Prozessfehler und Idle-Widerruf im Race-Lauf ebenfalls gruen (Audio2,01s, Videoregression3,46s). Gemeinsame Prozessownership extrahiert und Kindumgebung auf OS-/Loaderpfade begrenzt; keine Control-Secrets/FFREPORT geerbt. Fuzzparser82.316 Eingaben in10,101s ohne Fehler. Browserfixture benutzt erstmals echte SourceReceiver-Aliveness/Done mit beiden Codec-Sinks: Chromium/Firefox liefern≥401 authentisierte Frames und≥350 decodierte Bild-/PCM-Bloecke, Cleanup inkl.Prozess/Wipe; erster gemeinsamer Vier-Test-Lauf ohneSkip74,463s. Danach strengere spaete Freeze-/Ton-Ausfallassertions ergaenzt; deren finaler Gesamtcheck folgt. Keine native Produktivfactory-/Mixer-/Slate-/HLS-/Approve-Abnahme oder Versionsanhebung. Vorherige CI34215088478 fuerfa24e93 ist terminal erfolgreich; SourceDecoder-Produktionszulassung, Gesamtbudgets und Programmanbindung bleiben offen, TBP-030 weiterhin82.",
     "TBP-030 Audioanschluss beginnt vor Code (P1/high, weiterhin82): sourceeigener Opus-zu-48kHz-Stereo-PCM16-Pipeadapter mit geschlossenem RFC6716-Paket-/Dauerparser, maximal120ms je Paket und echten RTP-Timestamps. Den tatsaechlichen Pre-Skip aus dem Pion-Ogg-Header lesen und der Ausgabe samplegenau zuordnen; keine stillen 80ms-Verschiebungen oder kuenstlich aufgefuellten RTP-Luecken. Verpflichtende aktuelle lokale Policy plus Widerrufssignal, begrenzte Eingabe/PCM-/Zeitqueues, aktive Fristen und synchroner Sinkentzug/Prozesscleanup wie beim Video. Codec-/Container-/Timingport vom Lebenszyklus getrennt; gemeinsame Prozessownership wird als kleiner Adapter extrahiert, keine generische Quell-URL/Codec/Argumentautoritaet. Akzeptanz: TOC-/Framing-/Padding-/Laengen-/120ms-Grenzmatrix, Pre-Skip ueber mehrere/angebrochene Pakete, Wrap und Luecken, echter decodierter Sinuston samt Samples/Timestamps, Widerruf/Fehler/Queuecleanup und Race; danach gemeinsame Browser-SFrame-zu-Decoder-Pruefung und native Mixer/Slate/Writer-/Annahme-Anbindung. Produktionsfactory und Version bleiben bis zur Gesamteinbindung unveraendert.",

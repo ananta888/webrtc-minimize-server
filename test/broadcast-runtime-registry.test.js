@@ -247,6 +247,7 @@ test("owner creates a draft, obtains a device-bound publisher grant and becomes 
     visibility: "public",
   }, NOW);
   assert.equal(created.program.availability, "offline");
+  assert.equal(runtime.programStateCounts().draft, 1);
   assert.deepEqual(runtime.listPublic(broadcastTenantRef(ISSUER)), []);
 
   const challenge = runtime.createPublisherChallenge(owner, member, created.program.programId, {
@@ -261,6 +262,8 @@ test("owner creates a draft, obtains a device-bound publisher grant and becomes 
   }, NOW);
   assert.equal(authorization.action, "whip:create");
   assert.equal(authorization.program.programEpoch, 2);
+  assert.equal(runtime.programStateCounts().draft, 0);
+  assert.equal(runtime.programStateCounts().preparing, 1);
   assert.deepEqual(runtime.listPublic(broadcastTenantRef(ISSUER)), []);
 
   const gateway = new MediaMtxExternalAuthService({
@@ -283,6 +286,8 @@ test("owner creates a draft, obtains a device-bound publisher grant and becomes 
   const visible = runtime.listPublic(broadcastTenantRef(ISSUER));
   assert.equal(visible.length, 1);
   assert.equal(visible[0].availability, "live");
+  assert.equal(runtime.programStateCounts().preparing, 0);
+  assert.equal(runtime.programStateCounts().live, 1);
 });
 
 test("visibility changes require a fenced stop and remain owner-only", () => {

@@ -11,6 +11,7 @@ import {
 
 test("metric catalog covers the required broadcast signals with closed labels", () => {
   const required = [
+    "broadcast_control_programs",
     "broadcast_program_state", "broadcast_program_transition_seconds", "broadcast_whip_sessions",
     "broadcast_ingest_bits_per_second", "broadcast_egress_bits_per_second", "broadcast_frames_total",
     "broadcast_encoder_seconds_total", "broadcast_delivery_objects_total", "broadcast_viewers",

@@ -31,7 +31,17 @@ mocked network/timer ports to verify marker order, port, connection ceiling
 and lifetime. Exact-line and unknown/oversized-log cases plus existing
 readiness/proxy/TURN-workflow checks pass: 31 tests in 1.080 seconds, no skips.
 No local browser or audio service is started by these checks. The marker
-addition still needs its next real CI observation; it is not a startup fix.
+addition is not a startup fix.
+
+CI `34490651291` on `5671aea` has now finished **failed**. Both UDP cases
+failed before browser launch with connect/refused: their container state was
+running, but none of the three log markers was observed. Chromium TCP also
+failed before browser launch; both JavaScript-entry and network-module markers
+were observed, but not the listening marker. Firefox TCP passed, including
+16,000 decrypted PCM samples, chat, screen, three renewals and real TCP relay
+pairs. Marker absence does not prove the process never executed, and historical
+marker presence does not prove it stayed healthy. No warmup, deadline increase
+or causal repair is inferred from these observations.
 
 This is test infrastructure, not a production TLS or Hub-policy change.
 CI `34413091470` at `6fdf26e` failed its Chromium TURN-UDP case before

@@ -4,6 +4,10 @@ import {
 } from "./broadcast-contracts.js";
 
 export const BROADCAST_MACHINE_VERSION = 1;
+export const BROADCAST_PROGRAM_STATES = Object.freeze([
+  "draft", "preparing", "awaiting_consent", "publishing", "live",
+  "degraded", "stopping", "stopped", "failed",
+]);
 export const MAX_BROADCAST_IDEMPOTENCY_RECORDS = 256;
 export const BROADCAST_PROGRAM_ACTIONS = Object.freeze([
   "create",
