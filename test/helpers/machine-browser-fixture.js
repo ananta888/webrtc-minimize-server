@@ -190,7 +190,7 @@ export async function machineBrowserFixture(t, { listenHost = "127.0.0.1", liste
     await navigateFixture(second, origin + "/machine", () => Boolean(window.anantaMachine));
     return { machine: second, ...identity("synthetic-machine-secondary") };
   }
-  return { human, machine, roomId, binding, grant, additionalMachine, browser, app, origin, testNetwork: proxy?.network,
+  return { human, machine, roomId, binding, grant, additionalMachine, browser, app, origin, humanStartup, testNetwork: proxy?.network,
     turnUrl: proxy?.turnConfig?.turnUrls[0],
     proxyObservation: () => proxy?.observation() || { connectionDrops: 0 },
     certificatePath: path.join(directory, "cert.pem") };

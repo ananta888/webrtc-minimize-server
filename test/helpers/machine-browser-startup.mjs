@@ -23,3 +23,17 @@ export function observeBrowserStartup(page) {
   });
   return observed;
 }
+
+/** Read-only failure projection. Text is compared locally, never returned. */
+export function observeMachinePermissionUi(document = globalThis.document) {
+  const panel = document.querySelector("app-machine-permissions-panel");
+  return {
+    analysisActive: document.querySelector("#mesh-analysis-navigation")?.getAttribute("aria-current") === "page",
+    panelPresent: !!panel,
+    choices: Math.min(20, [...(panel?.querySelectorAll("button") ?? [])]
+      .filter(button => button.textContent.trim() === "Für diese KI einstellen").length),
+    empty: [...(panel?.querySelectorAll("p") ?? [])]
+      .some(p => p.textContent.trim() === "Zurzeit ist keine KI im Raum verbunden."),
+    signalingConnected: document.querySelector("#connection-status")?.textContent.trim() === "Signaling verbunden",
+  };
+}

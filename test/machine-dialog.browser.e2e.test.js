@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { machineBrowserFixture } from "./helpers/machine-browser-fixture.js";
 import { machineRelayObservation, assertMachineRelayObservation, waitMachineRelaySetup, machineRelayDiagnostics } from "./helpers/machine-relay-observation.js";
+import { observeMachinePermissionUi } from "./helpers/machine-browser-startup.mjs";
 
 const icePath = process.env.MACHINE_DIALOG_ICE_PATH ?? "direct";
 assert.ok(["direct", "turn-udp", "turn-tcp"].includes(icePath), "closed test ICE path");
@@ -28,7 +29,11 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
   assert.equal(await machine.evaluate(() => { try { window.anantaMachine.chat.open(); return true; } catch { return false; } }), false);
   await human.locator(".nav-item", { hasText: "Analyse" }).click();
   const panel = human.locator("app-machine-permissions-panel");
-  await panel.getByRole("button", { name: "Für diese KI einstellen" }).click();
+  await panel.getByRole("button", { name: "Für diese KI einstellen" }).click().catch(async error => {
+    t.diagnostic(JSON.stringify({ stage: "initial-machine-permission-entry", browser: f.humanStartup,
+      ui: await human.evaluate(observeMachinePermissionUi).catch(() => null) }));
+    throw error;
+  });
   assert.equal(await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).isDisabled(), true);
   assert.equal(await panel.getByLabel("Mein laufender Bildschirmton", { exact: true }).isDisabled(), true);
   assert.equal(await human.evaluate(() => window.__captures), 0, "permission editor does not start capture");
