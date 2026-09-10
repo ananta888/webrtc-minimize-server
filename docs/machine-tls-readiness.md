@@ -1,5 +1,38 @@
 # Bounded private Ananta TLS readiness
 
+## Current isolated startup finding
+
+The Ananta job of CI `34489193294` at `cae41da` failed before launching its
+Chromium UDP browser: connect/refused after 99 attempts; the owned container
+was running without OOM and had not announced its listener. Firefox UDP and
+both TCP cases passed. The complete CI has since finished failed: one project
+shard passed; the other failed both native scene-output checks.
+
+A local **proxy-only** invocation of the unchanged fixture completed TLS
+readiness and cleanup in 4.281 seconds. Its explicit launcher interception
+stopped execution before any browser was started. This used ephemeral private
+TURN/policy infrastructure, not a human source or production authority.
+Local audio/browser tests remain paused while the reported Windows-Firefox
+audio issue is investigated. The healthy local startup is neither a
+reproduction nor a fix for the GitHub failure; no deadline was extended.
+
+The private proxy now emits a fixed marker immediately on entering its
+JavaScript and another after loading `node:net`, before creating the listener.
+Failure-only inspection projects these as `processEntered` and
+`networkModuleLoaded` (boolean, or null when logs cannot be read), alongside
+the existing historical listener marker. This distinguishes missing evidence
+of JavaScript entry from a later startup stall; it does not by itself explain
+either condition. The two bounded read-only Docker operations, 16-line/4-KiB
+limits, TLS deadline and container budgets remain unchanged. No warmup,
+extra readiness retry or restart is introduced.
+
+The actual generated proxy program is exercised in a controlled VM with
+mocked network/timer ports to verify marker order, port, connection ceiling
+and lifetime. Exact-line and unknown/oversized-log cases plus existing
+readiness/proxy/TURN-workflow checks pass: 31 tests in 1.080 seconds, no skips.
+No local browser or audio service is started by these checks. The marker
+addition still needs its next real CI observation; it is not a startup fix.
+
 This is test infrastructure, not a production TLS or Hub-policy change.
 CI `34413091470` at `6fdf26e` failed its Chromium TURN-UDP case before
 browser launch with `test_tls_proxy_not_ready`. Firefox UDP passed;

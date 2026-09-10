@@ -47,3 +47,23 @@ Agenten und beide macOS-Jobs bestanden. Die neue Partitionierung war darin
 noch nicht enthalten. Lokale Audio-/Browsertests sind wegen der gemeldeten
 Windows-Audiostörung pausiert; weitere vollständige Prüfungen erfolgen
 zunächst ausschließlich auf GitHub-Runnern, nicht über das lokale WSLg-Audio.
+
+## Erster vollständiger Lauf der neuen Topologie
+
+CI `34489193294` auf `cae41da` ist terminal fehlgeschlagen. Shard 1 besteht
+mit 657 Node-Passes, null Fehlern und einem Skip (364,200 s); Shard 2 meldet
+622 Passes, zwei Fehler und drei Skips (276,692 s). Beide Runner beenden ihre
+Jobs innerhalb der unveränderten 15 Minuten: 9:40 beziehungsweise 7:46.
+Die komplette Vorbereitung besteht auf beiden Runnern. Die neuen echten
+Receiver-Widerrufe bestehen ebenfalls, nach 28 beziehungsweise 33 dekodierten
+Frames mit geschlossenem Transport und entzogener Parent-Policy.
+
+Shard 2 scheitert in beiden Szenenfällen an weiterhin dekodiertem Slate statt
+Quellbild, bereits in Producer und committed HLS. Der andere Shard wird
+dennoch bis zum Ende geprüft. Das Aggregat bleibt danach korrekt rot;
+Docker und Live-Keycloak/TURN bleiben gesperrt. Separat scheitert Chromium
+TURN-UDP vor Browserstart am Testproxy, während Firefox UDP und beide
+TCP-Fälle bestehen. Native Agenten und beide macOS-Jobs bestehen.
+
+Damit sind Ausführung und Fehlerweitergabe der Partitionierung real belegt,
+nicht die Fehlerfreiheit der Anwendung oder ein erfolgreicher Release.

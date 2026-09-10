@@ -1,6 +1,34 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
+import { runInNewContext } from "node:vm";
 import { privateMachineTlsProxy } from "./helpers/machine-tls-proxy.js";
+
+test("generated proxy announces process entry, module loading and listener in order without extra startup work", () => {
+  const f = fixture(), proxy = privateMachineTlsProxy(180, f.run);
+  try {
+    proxy.start(32123);
+    const code = f.calls.find(args => args[0] === "create").at(-1);
+    const events = [], timers = [], server = new EventEmitter();
+    server.listen = (port, host) => {
+      assert.equal(port, 443); assert.equal(host, "0.0.0.0");
+      assert.equal(server.maxConnections, 16);
+      server.emit("listening"); return server;
+    };
+    runInNewContext(code, {
+      console: { log: value => events.push(value) },
+      require: name => {
+        assert.equal(name, "node:net");
+        assert.deepEqual(events, ["test_tls_process_entered"]);
+        return { createServer: () => server };
+      },
+      setTimeout: (_callback, delay) => timers.push(delay),
+      process: { exit: () => assert.fail("unexpected fixture exit") },
+    }, { timeout: 100 });
+    assert.deepEqual(events, ["test_tls_process_entered", "test_tls_network_module_loaded", "test_tls_listener_ready"]);
+    assert.deepEqual(timers, [180000]);
+  } finally { proxy.close(); }
+});
 
 test("proxy reserves exactly Docker's chosen pool before any fixed-address container", () => {
   const f = fixture(), proxy = privateMachineTlsProxy(180, f.run);

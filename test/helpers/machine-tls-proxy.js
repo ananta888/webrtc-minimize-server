@@ -61,7 +61,7 @@ export function privateMachineTlsProxy(lifetimeSeconds, run = docker, connection
       failureObservation() { return closed || !containerAttempted ? null : inspectFailure(name); },
       start(port) {
         if (closed || containerAttempted || !Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("test_proxy_start_invalid");
-        const code = `const net=require('node:net');const server=net.createServer(s=>{const o=net.connect(${port},${JSON.stringify(gateway)});
+        const code = `console.log('test_tls_process_entered');const net=require('node:net');console.log('test_tls_network_module_loaded');const server=net.createServer(s=>{const o=net.connect(${port},${JSON.stringify(gateway)});
           s.setTimeout(120000,()=>s.destroy());s.on('error',()=>o.destroy());o.on('error',()=>s.destroy());s.on('close',()=>o.destroy());o.on('close',()=>s.destroy());s.pipe(o);o.pipe(s)});
           let drops=0;server.on('drop',()=>{if(drops<8){drops++;console.log('test_tls_connection_capacity')}});
           server.once('listening',()=>console.log('test_tls_listener_ready'));

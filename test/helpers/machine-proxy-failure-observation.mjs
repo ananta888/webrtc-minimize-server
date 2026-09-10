@@ -23,6 +23,7 @@ export function observeMachineProxyFailure(name, execute = execFileSync) {
         oomKilled: value.OOMKilled, exitCode: value.ExitCode });
     }
   } catch { /* Unknown or oversized state is not a healthy container. */ }
-  return Object.freeze({ container, listenerAnnounced: logs === null ? null
-    : logs.split("\n").some(line => line === "test_tls_listener_ready") });
+  const announced = marker => logs === null ? null : logs.split("\n").some(line => line === marker);
+  return Object.freeze({ container, processEntered: announced("test_tls_process_entered"),
+    networkModuleLoaded: announced("test_tls_network_module_loaded"), listenerAnnounced: announced("test_tls_listener_ready") });
 }
