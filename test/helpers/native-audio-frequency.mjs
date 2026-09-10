@@ -40,10 +40,15 @@ const playing = value => amplitudes(value?.channels) && Number.isFinite(value.ti
   && Number.isSafeInteger(value.frames) && value.frames >= 1 && Number.isFinite(value.ready) && value.ready >= 2
   && validEpoch(value.mediaEpoch) && value.paused === false && value.contextRunning === true;
 const baselineValid = baseline => amplitudes(baseline?.channels) && baseline.channels.every(row => row.every(v => v > .02));
+// native-scene-live-fixture generates both oscillators with gain .25. Mere
+// audibility is not a full-level reference: decoder startup can ramp a tone.
+const calibratedLevels = value => value.channels.every(row => row.every(v => v >= .225 && v <= .275));
+const stableLevels = (first, value) => value.channels.every((row, channel) => row.every((v, tone) =>
+  Math.abs(v - first.channels[channel][tone]) <= first.channels[channel][tone] * .02));
 
 export function nativeAudioStrategyMatches(value, strategy, baseline = null) {
   if (!Object.hasOwn(targets, strategy) || !playing(value)) return false;
-  if (baseline === null) return strategy === "unprocessed" && value.channels.every(row => row.every(v => v > .02));
+  if (baseline === null) return strategy === "unprocessed" && calibratedLevels(value);
   if (!baselineValid(baseline)) return false;
   return value.channels.every((row, channel) => row.every((v, tone) =>
     Math.abs(v / baseline.channels[channel][tone] - targets[strategy][tone]) < .1));
@@ -59,7 +64,7 @@ export function nativeAudioMicrophoneOnlyMatches(value, baseline) {
 export async function waitNativeAudioStrategy(page, strategy, baseline = null) {
   if (!Object.hasOwn(targets, strategy) || baseline === null && strategy !== "unprocessed") throw new Error("test_audio_strategy_invalid");
   return waitFrequencyMatch(page, value => nativeAudioStrategyMatches(value, strategy, baseline),
-    { code: "test_audio_strategy_unconfirmed", strategy });
+    { code: "test_audio_strategy_unconfirmed", strategy, phase: baseline === null ? "calibration" : "strategy" }, baseline === null);
 }
 
 export async function waitNativeMicrophoneAfterScreenRevoke(page, baseline, previous) {
@@ -71,12 +76,14 @@ export async function waitNativeMicrophoneAfterScreenRevoke(page, baseline, prev
       && value.time > previous.time && value.frames > previous.frames), { code: "test_audio_retained_source_unconfirmed" });
 }
 
-async function waitFrequencyMatch(page, matches, diagnostic) {
-  let first = null, latest = null;
+async function waitFrequencyMatch(page, matches, diagnostic, requireStableLevels = false) {
+  let first = null, previous = null, latest = null;
   const result = await waitFixtureValue(page, nativeAudioFrequencyObservation, undefined, { timeout: 20000, accept: value => {
     latest = value;
-    if (!matches(value)) { first = null; return false; }
-    if (first && (value.mediaEpoch !== first.mediaEpoch || value.time < first.time || value.frames < first.frames)) first = null;
+    if (!matches(value)) { first = null; previous = null; return false; }
+    if (previous && (value.mediaEpoch !== previous.mediaEpoch || value.time < previous.time || value.frames < previous.frames)
+      || first && requireStableLevels && !stableLevels(first, value)) first = null;
+    previous = value;
     first ??= value;
     return value.time - first.time >= 1 && value.frames > first.frames;
   } }).catch(() => { throw new Error(JSON.stringify({ ...diagnostic, latest })); });

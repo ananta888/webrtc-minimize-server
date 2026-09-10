@@ -1,7 +1,88 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { nativeAudioFrequencyObservation, nativeAudioStrategyMatches, nativeAudioMicrophoneOnlyMatches,
-  waitNativeMicrophoneAfterScreenRevoke } from "./helpers/native-audio-frequency.mjs";
+  waitNativeMicrophoneAfterScreenRevoke, waitNativeAudioStrategy } from "./helpers/native-audio-frequency.mjs";
+
+const toneValue = (amplitude, time, mediaEpoch = 1) => ({ channels: [[.25, amplitude], [.25, amplitude]],
+  mediaEpoch, time, frames: Math.round(time * 15) + 1, ready: 4, paused: false, contextRunning: true });
+
+test("recorded low CI reference is not a calibrated full-level baseline", () => {
+  const baseline = { ...toneValue(.15502754521258622, 15.501333),
+    channels: [[.24730195705274544, .15502754521258622], [.2473019551676795, .15502754505717414]] };
+  const balanced = { ...toneValue(.124679787656311, 35.944),
+    channels: [[.25117954619903865, .124679787656311], [.25117954161970213, .12467978764831991]] };
+  assert.equal(nativeAudioStrategyMatches(baseline, "unprocessed"), false);
+  assert.equal(nativeAudioStrategyMatches(balanced, "balanced", baseline), false, "do not widen relative strategy tolerances");
+  assert.equal(nativeAudioStrategyMatches(balanced, "balanced", toneValue(.25, 20)), true);
+});
+
+test("calibration requires the known amplitude in every channel and every tone", () => {
+  for (const level of [.225, .25, .275]) {
+    const good = { ...toneValue(level, 1), channels: [[level, level], [level, level]] };
+    assert.equal(nativeAudioStrategyMatches(good, "unprocessed"), true);
+  }
+  for (let channel = 0; channel < 2; channel++) for (let tone = 0; tone < 2; tone++) {
+    for (const level of [0, .02, .155, .2249, .2751, 1, NaN, Infinity]) {
+      const bad = toneValue(.25, 1); bad.channels[channel][tone] = level;
+      assert.equal(nativeAudioStrategyMatches(bad, "unprocessed"), false);
+    }
+  }
+});
+
+for (let channel = 0; channel < 2; channel++) for (let tone = 0; tone < 2; tone++) {
+  test(`calibration stability includes channel ${channel} tone ${tone}`, async () => {
+    const sequence = [1, 1.5, 2, 2.5, 3].map(time => toneValue(.25, time));
+    sequence[0].channels[channel][tone] = .23;
+    sequence[1].channels[channel][tone] = .24;
+    let reads = 0;
+    const page = { evaluate: async () => { assert.ok(reads < sequence.length); return sequence[reads++]; } };
+    await waitNativeAudioStrategy(page, "unprocessed");
+    assert.equal(reads, sequence.length);
+  });
+}
+
+test("calibration keeps its 20-second deadline and ignores a late successful observation", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let release, reads = 0;
+  const page = { evaluate: () => { reads++; return new Promise(resolve => { release = resolve; }); } };
+  const pending = waitNativeAudioStrategy(page, "unprocessed");
+  let settled = false;
+  const rejected = assert.rejects(pending, error => {
+    settled = true;
+    const diagnostic = JSON.parse(error.message);
+    return diagnostic.code === "test_audio_strategy_unconfirmed" && diagnostic.phase === "calibration";
+  });
+  t.mock.timers.tick(19999); await Promise.resolve(); assert.equal(settled, false);
+  t.mock.timers.tick(1); await rejected;
+  release(toneValue(.25, 5)); await Promise.resolve(); await Promise.resolve();
+  assert.equal(reads, 1);
+});
+
+for (const [name, sequence] of [
+  ["persistent low level then full output", [toneValue(.155, 1), toneValue(.155, 1.5), toneValue(.155, 2),
+    toneValue(.25, 3), toneValue(.25, 3.5), toneValue(.25, 4)]],
+  ["ramp inside the absolute band", [toneValue(.23, 1), toneValue(.24, 1.5), toneValue(.25, 2),
+    toneValue(.25, 2.5), toneValue(.25, 3)]],
+  ["level drops during the calibration window", [toneValue(.25, 1), toneValue(.25, 1.5), toneValue(.15, 2),
+    toneValue(.25, 3), toneValue(.25, 3.5), toneValue(.25, 4)]],
+  ["new output generation", [toneValue(.25, 1), toneValue(.25, 1.5), toneValue(.25, 1, 2),
+    toneValue(.25, 1.5, 2), toneValue(.25, 2, 2)]],
+  ["time rollback above the window start", [toneValue(.25, 1), toneValue(.25, 1.75), toneValue(.25, 1.5),
+    toneValue(.25, 2), toneValue(.25, 2.5)]],
+  ["frame rollback above the window start", [toneValue(.25, 1), toneValue(.25, 1.5),
+    { ...toneValue(.25, 1.75), frames: 20 }, toneValue(.25, 2), toneValue(.25, 2.75)]],
+]) test(`baseline wait requires full and stable level: ${name}`, async () => {
+  let reads = 0;
+  const page = { evaluate: async () => { assert.ok(reads < sequence.length, "bounded fixture reads"); return sequence[reads++]; } };
+  const result = await waitNativeAudioStrategy(page, "unprocessed");
+  const final = sequence.at(-1);
+  assert.equal(reads, sequence.length, "reference must not be accepted before the complete calibration window");
+  assert.deepEqual(result, { channels: final.channels, mediaEpoch: final.mediaEpoch, time: final.time, frames: final.frames });
+  for (const [strategy, factors] of Object.entries({ unprocessed: [1, 1], balanced: [1, .5], "speech-first": [1, .28], "screen-first": [.28, 1] })) {
+    const correct = { ...final, channels: final.channels.map(row => row.map((value, tone) => value * factors[tone])) };
+    assert.equal(nativeAudioStrategyMatches(correct, strategy, result), true);
+  }
+});
 
 test("retained audio freshness follows output generations when HLS resets time and frame counters", async () => {
   const baseline = { channels: [[.25, .25], [.25, .25]] };
@@ -32,7 +113,8 @@ test("fixed synthetic DFT separates both tones in both channels regardless of ph
       for (const [channel, expected] of [[0, [.25, .2]], [1, [.125, .05]]]) {
         for (let tone = 0; tone < 2; tone++) assert.ok(Math.abs(result.channels[channel][tone] - expected[tone]) < .001);
       }
-      assert.equal(nativeAudioStrategyMatches(result, "unprocessed"), true);
+      assert.equal(nativeAudioStrategyMatches(result, "unprocessed", { channels: [[.25, .2], [.125, .05]] }), true);
+      assert.equal(nativeAudioStrategyMatches(result, "unprocessed"), false, "unequal test tones are not the full-level fixture baseline");
       assert.deepEqual(Object.keys(result).sort(), ["channels", "contextRunning", "frames", "mediaEpoch", "paused", "ready", "time"]);
       assert.equal(result.mediaEpoch, 1); assert.equal(nativeAudioFrequencyObservation().mediaEpoch, 1);
       globalThis.window.__nativeAudioProbe.video.currentSrc = "blob:synthetic-two";
