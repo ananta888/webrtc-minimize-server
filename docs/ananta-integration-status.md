@@ -5,6 +5,21 @@ Aktivierung sind unterschiedliche Zustände. Zuletzt war `admissionEnabled: fals
 bei der Nachprüfung um 10:41 UTC ist der Status wegen HTTP 502 nicht abrufbar.
 Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
 
+## Nachtrag: initial deaktivierter Standby-Editor
+
+Die [Standby-Bedienbarkeit](native-standby-dom-readiness.md) ist gezielt
+abgesichert: Der neu eingefügte Button bleibt deaktiviert, bis die reguläre
+Angular-Bindung ihn freigibt. Vorher scheiterte die neue DOM-Regression;
+danach bestanden 48 Service-/Controllerprüfungen, drei echte Browserfälle
+und ein erweiterter Zwei-Packager-Handoff mit zwei weiteren Editoröffnungen.
+Keine automatischen Aktionen oder gelockerten Sicherheitsprüfungen.
+
+Die inzwischen beendete CI `34471659288` auf `12b6393` enthält diesen Fix
+noch nicht und scheiterte an beiden Szenentests sowie dem alten Standby-Fall.
+Ananta-TURN und die nativen Agent-/macOS-Jobs bestanden, Docker und
+Live-Keycloak/TURN wurden übersprungen. Eine neue gemeinsame Abnahme bleibt
+erforderlich; die Szenenfehler sind durch den Standby-Fix nicht behoben.
+
 ## Neuester CI-Befund und aktueller Prüfkandidat
 
 CI `34468539328` auf `e9e8699` ist beendet und fehlgeschlagen. Der getrennte

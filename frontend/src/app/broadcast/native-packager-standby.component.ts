@@ -4,12 +4,13 @@ import { NativePackagerStandbyService } from "./native-packager-standby.service"
 @Component({
   selector: "app-native-packager-standby", standalone: true,
   providers: [NativePackagerStandbyService], changeDetection: ChangeDetectionStrategy.OnPush,
+  // Static disabled protects creation before deferred input bindings settle.
   template: `
     <section class="panel" aria-labelledby="broadcast-standby-heading">
       <h2 id="broadcast-standby-heading">Standby-Geräte vormerken</h2>
       <p>Bis zu zwei eigene, für diesen Raum freigegebene Geräte. Eine Vormerkung startet keine Übertragung,
         vergibt keine Schlüssel und reserviert keine Kapazität. Die Übernahme bleibt ein gesondert bestätigter Packager-Wechsel.</p>
-      <button id="broadcast-standby-load" type="button" class="button secondary"
+      <button id="broadcast-standby-load" type="button" class="button secondary" disabled
         [disabled]="disabled() || standby.busy()" (click)="load()">Auswahl vom Server laden</button>
       @if (standby.control(); as current) {
         <fieldset [disabled]="disabled() || standby.busy()">

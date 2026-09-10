@@ -4,6 +4,7 @@ import test from "node:test";
 import { nativeSceneLiveFixture } from "./helpers/native-scene-live-fixture.mjs";
 import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
 import { nativeAudioOutputObservation } from "./helpers/native-audio-output.mjs";
+import { observeBrowserStartup } from "./helpers/machine-browser-startup.mjs";
 
 async function confirm(page, action, accept = true) {
   const dialog = page.waitForEvent("dialog"), pending = action(), opened = await dialog;
@@ -35,6 +36,7 @@ const resources = async root => (await fs.readdir(root)).filter(name => /^res_[A
 test("rendered source handoff drains the real writer, preserves mono AAC and requires fresh source consent", { timeout: 120000 }, async t => {
   if (process.platform !== "linux") { t.skip("Two native processes require Linux containment and local FFmpeg"); return; }
   const f = await nativeSceneLiveFixture(t, { packagerCount: 2, allowSyntheticAudio: true }), { page } = f;
+  const browserErrors = observeBrowserStartup(page);
   page.setDefaultTimeout(5000);
   let verified = false;
   t.after(() => { if (!verified) t.diagnostic(JSON.stringify({ synthetic: true, observation: f.observation })); });
@@ -58,8 +60,23 @@ test("rendered source handoff drains the real writer, preserves mono AAC and req
   assert.equal(oldResources.length, 1);
   const old = (await f.request("GET", "/api/native-packagers")).body.assignments.find(a => a.packagerId === f.packagerId && a.state === "running");
   assert.ok(old);
+  await page.evaluate(() => {
+    window.__standbyInitialDisabled = [];
+    // Observe insertion, before a later binding/update pass can conceal the
+    // initial native state. Never click, change an attribute or expand policy.
+    for (const method of ["appendChild", "insertBefore"]) {
+      const original = Node.prototype[method];
+      Node.prototype[method] = function(node, ...rest) {
+        if (node instanceof HTMLButtonElement && node.id === "broadcast-standby-load"
+          && window.__standbyInitialDisabled.length < 16) window.__standbyInitialDisabled.push(node.disabled);
+        return original.call(this, node, ...rest);
+      };
+    }
+  });
   await page.locator("#native-source-standbys-open").press("Enter");
   const standby = page.locator("app-native-source-program app-native-packager-standby");
+  await standby.locator("#broadcast-standby-load").waitFor();
+  assert.deepEqual(await page.evaluate(() => window.__standbyInitialDisabled), [true], "new controls start disabled before Angular input binding");
   const standbyRequests = [];
   const observeStandbyRequest = request => {
     const url = new URL(request.url());
@@ -68,12 +85,27 @@ test("rendered source handoff drains the real writer, preserves mono AAC and req
     }
   };
   page.on("request", observeStandbyRequest); t.after(() => page.off("request", observeStandbyRequest));
+  // Private event observation only: Locator.press does not assert that a
+  // native button activation reached the current component after @defer.
+  await page.evaluate(() => {
+    const state = window.__standbyEntry = { attempt: 0, events: [] };
+    const buttons = new WeakMap(); let instances = 0;
+    for (const type of ["focusin", "keydown", "keyup", "click"]) document.addEventListener(type, event => {
+      const button = event.target;
+      if (!(button instanceof HTMLButtonElement) || button.id !== "broadcast-standby-load" || state.events.length >= 16) return;
+      if (!buttons.has(button)) buttons.set(button, ++instances);
+      state.events.push({ type, attempt: state.attempt, instance: buttons.get(button),
+        connected: button.isConnected, disabled: button.disabled, focused: document.activeElement === button, trusted: event.isTrusted });
+    }, true);
+  });
   const loadStandbys = async () => {
+    await page.evaluate(() => { window.__standbyEntry.attempt++; });
     const [loaded] = await Promise.all([
       page.waitForResponse(r => r.url().endsWith(`/api/broadcasts/${old.programId}/native-standby-control`)),
       standby.locator("#broadcast-standby-load:not([disabled])").press("Enter"),
     ]).catch(async error => {
-      t.diagnostic(JSON.stringify({ stage: "standby-load", requests: standbyRequests,
+      t.diagnostic(JSON.stringify({ stage: "standby-load", requests: standbyRequests, browserErrors,
+        interaction: await page.evaluate(() => window.__standbyEntry).catch(() => null),
         ui: await standby.evaluate(element => ({
           loadDisabled: element.querySelector("#broadcast-standby-load")?.matches(":disabled") ?? null,
           hasControl: !!element.querySelector("#broadcast-standby-status"),
@@ -122,6 +154,7 @@ test("rendered source handoff drains the real writer, preserves mono AAC and req
   assert.equal(active[0].programEpoch, old.programEpoch + 1); assert.ok(active[0].fencingRevision > old.fencingRevision);
   await page.locator("#native-source-standbys-open").press("Enter");
   const clearedStandbys = await loadStandbys();
+  assert.deepEqual(await page.evaluate(() => window.__standbyInitialDisabled), [true, true], "replacement controls start disabled too");
   assert.equal(clearedStandbys.programEpoch, old.programEpoch + 1);
   assert.equal(clearedStandbys.standbyRevision, 0); assert.deepEqual(clearedStandbys.standbyPackagerIds, []);
   const silent = await outputAudio(f.output, false), newResources = await resources(f.output);
@@ -133,6 +166,17 @@ test("rendered source handoff drains the real writer, preserves mono AAC and req
   await page.locator("app-native-source-audio").getByText("48 kbit/s Zielrate.", { exact: false }).waitFor();
   await publishOwnMicrophone(page);
   const after = await outputAudio(f.output, true);
+  // Recreate the deferred editor without changing the writer or granting any
+  // source again. Every replacement must wait for its actual enabled binding.
+  for (let cycle = 0; cycle < 2; cycle++) {
+    await page.locator("#mesh-analysis-navigation").press("Enter");
+    await page.locator("#broadcast-navigation").press("Enter");
+    await page.locator("#native-source-program-open").press("Enter");
+    await page.locator("#native-source-standbys-open").press("Enter");
+    assert.deepEqual(await loadStandbys(), clearedStandbys);
+  }
+  assert.deepEqual(await page.evaluate(() => window.__standbyInitialDisabled), [true, true, true, true]);
+  assert.equal(await page.evaluate(() => window.__sceneCaptures), 1);
   await page.locator("#native-source-stop").press("Enter");
   await page.locator("#native-source-status", { hasText: "Sendung gestoppt" }).waitFor({ timeout: 15000 });
   assert.equal(await standby.count(), 0, "stop destroys the standby editor");
