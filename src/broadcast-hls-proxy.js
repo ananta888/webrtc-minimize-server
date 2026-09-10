@@ -7,6 +7,12 @@ const CONTENT_TYPES = new Set([
 ]);
 const MAX_RESPONSE_BYTES = 24 * 1024 * 1024;
 
+function cancelBody(body, reason) {
+  // Cancellation must not retain a viewer slot or cause an unhandled rejection
+  // when an upstream transport throws, rejects or never settles its cleanup.
+  try { void Promise.resolve(body?.cancel(reason)).catch(() => {}); } catch { /* no upstream error content */ }
+}
+
 function boundedResponseBody(body, { idleTimeoutMs, streamTimeoutMs, release }) {
   const reader = body.getReader();
   let finished = false;
@@ -14,54 +20,55 @@ function boundedResponseBody(body, { idleTimeoutMs, streamTimeoutMs, release }) 
   let totalTimer;
   let streamedBytes = 0;
   const finish = () => {
-    if (finished) return;
+    if (finished) return false;
     finished = true;
     clearTimeout(idleTimer);
     clearTimeout(totalTimer);
     release();
+    return true;
+  };
+  const failStream = (controller, code, status) => {
+    if (!finish()) return;
+    cancelBody(reader, code);
+    controller.error(new BroadcastHlsProxyError(code, status));
+  };
+  const resetIdle = controller => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => failStream(controller, "broadcast_gateway_stream_timeout", 504), idleTimeoutMs);
   };
   return new ReadableStream({
     start(controller) {
-      const failStream = () => {
+      totalTimer = setTimeout(() => failStream(controller, "broadcast_gateway_stream_timeout", 504), streamTimeoutMs);
+      resetIdle(controller);
+    },
+    async pull(controller) {
+      if (finished) return;
+      try {
+        const result = await reader.read();
+        // Timeout/cancel may resolve the outstanding read after downstream is
+        // already closed. Never enqueue, close or release that generation twice.
         if (finished) return;
-        finish();
-        void reader.cancel("broadcast_stream_timeout");
-        controller.error(new BroadcastHlsProxyError("broadcast_gateway_stream_timeout", 504));
-      };
-      totalTimer = setTimeout(failStream, streamTimeoutMs);
-      const pump = async () => {
-        if (finished) return;
-        clearTimeout(idleTimer);
-        idleTimer = setTimeout(failStream, idleTimeoutMs);
-        try {
-          const result = await reader.read();
-          clearTimeout(idleTimer);
-          if (result.done) {
-            finish();
-            controller.close();
-            return;
-          }
-          streamedBytes += result.value.byteLength;
-          if (streamedBytes > MAX_RESPONSE_BYTES) {
-            finish();
-            await reader.cancel("broadcast_stream_oversize");
-            controller.error(new BroadcastHlsProxyError("broadcast_gateway_invalid_response", 502));
-            return;
-          }
-          controller.enqueue(result.value);
-          void pump();
-        } catch {
+        if (result.done) {
           finish();
-          controller.error(new BroadcastHlsProxyError("broadcast_gateway_stream_failed", 502));
+          controller.close();
+          return;
         }
-      };
-      void pump();
+        if (!(result.value instanceof Uint8Array)
+          || result.value.byteLength > MAX_RESPONSE_BYTES - streamedBytes) {
+          failStream(controller, "broadcast_gateway_invalid_response", 502);
+          return;
+        }
+        streamedBytes += result.value.byteLength;
+        controller.enqueue(result.value);
+        resetIdle(controller);
+      } catch {
+        failStream(controller, "broadcast_gateway_stream_failed", 502);
+      }
     },
-    async cancel(reason) {
-      finish();
-      await reader.cancel(reason);
+    cancel() {
+      if (finish()) cancelBody(reader, "broadcast_viewer_cancelled");
     },
-  });
+  }, { highWaterMark: 0 });
 }
 
 export class BroadcastHlsProxyError extends Error {
@@ -149,20 +156,24 @@ export class BroadcastHlsProxy {
       fail("broadcast_gateway_unavailable", 502);
     }
     if (response.status === 401 || response.status === 403 || response.status === 404) {
+      cancelBody(response.body, "broadcast_upstream_rejected");
       release();
       fail("broadcast_playback_not_found", 404);
     }
     if (!response.ok && response.status !== 206) {
+      cancelBody(response.body, "broadcast_upstream_rejected");
       release();
       fail("broadcast_gateway_unavailable", 502);
     }
     const contentType = response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() || "";
     if (!CONTENT_TYPES.has(contentType)) {
+      cancelBody(response.body, "broadcast_upstream_rejected");
       release();
       fail("broadcast_gateway_invalid_response", 502);
     }
     const contentLength = response.headers.get("content-length");
     if (contentLength && (!/^\d{1,9}$/.test(contentLength) || Number(contentLength) > MAX_RESPONSE_BYTES)) {
+      cancelBody(response.body, "broadcast_upstream_rejected");
       release();
       fail("broadcast_gateway_invalid_response", 502);
     }
@@ -171,7 +182,10 @@ export class BroadcastHlsProxy {
       streamTimeoutMs: this.#streamTimeoutMs,
       release,
     });
-    if (!body) release();
+    if (!body) {
+      cancelBody(response.body, "broadcast_body_unused");
+      release();
+    }
     return Object.freeze({
       status: response.status,
       headers: Object.freeze({

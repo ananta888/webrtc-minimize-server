@@ -1,9 +1,8 @@
 # Broadcast Admission-Control, Backpressure und Abuse-Schutz
 
-Stand: 2026-09-04. TBP-033 stellt eine gemeinsame, default-deny
-Admission-Grenze sowie begrenzte Queue- und Abuse-Primitiven bereit. Da die
-produktive Program-Orchestrierung noch nicht aktiviert ist, bleibt der Track
-`partial`; die Regeln dürfen erst dort als durchgängig aktiv bezeichnet werden,
+Stand: 2026-09-10. TBP-033 stellt eine gemeinsame, default-deny
+Admission-Grenze sowie begrenzte Queue- und Abuse-Primitiven bereit. Der Track
+bleibt `in_progress`; die Regeln dürfen erst als durchgängig aktiv bezeichnet werden,
 wenn jeder Startpfad die Admission-Lease vor der ersten Medienallokation
 erzwingt.
 
@@ -47,6 +46,37 @@ und gesamte Streamlaufzeit sind begrenzt. Fehler, Cancel, HEAD und normales
 Streamende geben den Slot genau einmal frei. Redirects, fremde Ziele,
 unbekannte MIME-Typen, unzulässige Ranges und Antworten über 24 MiB bleiben
 verboten.
+
+### Nachweis und Korrektur der HLS-Backpressure
+
+Der frühere rekursive Upstream-Pump ignorierte den Downstream-Bedarf. Eine
+Regression auf dem unveränderten Code las alle drei Chunks einer kontrollierten
+Antwort, obwohl der Zuschauer noch kein `read()` aufgerufen hatte. Der Pump
+konnte so die gesamte zulässige Antwort puffern und den Concurrency-Slot schon
+nach Upstream-EOF freigeben. Das war kein wirksamer Schutz langsamer Zuschauer.
+
+Der Proxy verwendet jetzt `pull()` mit `highWaterMark: 0`: kein eigener
+Prefetch-Puffer, höchstens ein Upstream-Read gleichzeitig. Ein erfolgreicher
+Read leitet genau einen Chunk weiter; erst neuer Downstream-Bedarf liest nach.
+Der Slot bleibt bis zum vom Downstream angeforderten EOF, Cancel oder Fehler
+belegt. Fetch-/TCP-/HTTP-Pipeline-Puffer bestehen weiterhin; dies ist keine
+Behauptung über exakt null Speicherverbrauch oder vollständig beim Zuschauer
+angekommene Bytes. Der unveränderte 24-MiB-Gesamtdeckel gilt auch für viele
+kleine Chunks; Nicht-Byte-Chunks werden abgelehnt.
+
+Das Idle-Limit gilt auch für einen nicht weiterlesenden Downstream. Erfolgreich
+weitergegebene Chunks erneuern nur diese Idle-Frist, niemals die gesamte
+Streamfrist. Cancel/Timeout fencen einen noch laufenden Read und geben den Slot
+genau einmal frei. Upstream-Cancel darf werfen, ablehnen oder hängen, ohne die
+Freigabe zu blockieren oder rohe Fehlertexte zu loggen. Abgewiesene Statuscodes,
+Content-Type/-Length sowie unbenötigte HEAD-Bodies werden ausdrücklich gecancelt.
+
+39 gezielte Node-Prüfungen für HLS, Admission, Playback-Rate und Sessionbindung
+bestehen in 0,789 s ohne Skips. Darunter sind echte WHATWG-Streams, kontrollierte
+Timer, ein hängendes Cancel und ein echter lokaler HTTP-Upstream, dessen noch
+offener 401-Body nach Ablehnung transportseitig geschlossen wird. Keine Browser,
+Audioquellen oder öffentlichen Dienste werden dafür gestartet. Dieser Nachweis
+ersetzt weder die vollständige CI noch die noch offene gemeinsame WAN-Lastabnahme.
 
 ## Abuse-Matrix
 

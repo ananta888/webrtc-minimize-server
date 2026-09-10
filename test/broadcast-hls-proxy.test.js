@@ -39,6 +39,7 @@ test("HLS proxy uses only the fixed gateway and keeps bearer data out of its res
     "cross-origin-resource-policy": "same-origin",
   });
   assert.doesNotMatch(JSON.stringify(response.headers), /secret-never-returned/);
+  assert.equal(await new Response(response.body).text(), "#EXTM3U");
 });
 
 test("HLS proxy bounds range, redirects, content type, size and private misses", async () => {
