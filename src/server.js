@@ -2696,6 +2696,7 @@ export function createAppServer(options = {}) {
   const nativePackagerAssignments = options.nativePackagerAssignments
     || new NativePackagerAssignmentRegistry({
       controlRegistry: nativePackagers,
+      resourceLimits: config.broadcastNativeResourceLimits,
       programLeaseDeadline: (scope, now) => broadcastRuntime?.programLeaseDeadline(scope, now) ?? null,
       iceServersForPackager: (packagerId, now) => createNativePackagerIceServers(config, packagerId, now),
       sourceProgramMembership: (owner, roomId, peerId) => {

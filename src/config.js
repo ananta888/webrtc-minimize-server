@@ -11,6 +11,7 @@ import { readMachineTrustFile } from "./machine-trust-file.js";
 import { BROADCAST_HLS_BUDGET_DEFAULTS } from "./broadcast-hls-budget.js";
 import { BROADCAST_PROGRAM_CAPACITY_DEFAULTS } from "./broadcast-program-capacity.js";
 import { BROADCAST_PROGRAM_RUNTIME_DEFAULT_MS } from "./broadcast-program-lifetime.js";
+import { NATIVE_PACKAGER_RESOURCE_DEFAULTS, NATIVE_PACKAGER_RESOURCE_ENV } from "./native-packager-resource-budget.js";
 
 const DEFAULTS = Object.freeze({
   host: "0.0.0.0",
@@ -714,6 +715,9 @@ export function loadConfig(env = process.env) {
     broadcastMaxProgramRuntimeMs: boundedInteger(env.BROADCAST_MAX_PROGRAM_RUNTIME_MS === "" ? NaN : env.BROADCAST_MAX_PROGRAM_RUNTIME_MS,
       BROADCAST_PROGRAM_RUNTIME_DEFAULT_MS,
       { minimum: 60_000, maximum: 86_400_000, name: "BROADCAST_MAX_PROGRAM_RUNTIME_MS" }),
+    broadcastNativeResourceLimits: Object.freeze(Object.fromEntries(Object.entries(NATIVE_PACKAGER_RESOURCE_ENV)
+      .map(([field, name]) => [field, boundedInteger(env[name] === "" ? NaN : env[name], NATIVE_PACKAGER_RESOURCE_DEFAULTS[field],
+        { minimum: 0, maximum: 1_000_000_000, name })]))),
     broadcastProgramCapacity: Object.freeze(Object.fromEntries([
       ["deployment", "BROADCAST_MAX_ACTIVE_PROGRAMS"],
       ["gateway", "BROADCAST_MAX_ACTIVE_PROGRAMS_PER_GATEWAY"],

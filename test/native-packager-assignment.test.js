@@ -53,8 +53,9 @@ function request() {
   };
 }
 
-function registry(candidate = { id: PACKAGER, online: true, capability: capability() }) {
+function registry(candidate = { id: PACKAGER, online: true, capability: capability() }, options = {}) {
   return new NativePackagerAssignmentRegistry({
+    ...options,
     controlRegistry: {
       candidate(owner, packager) {
         if (owner !== OWNER || packager !== PACKAGER) throw new Error("not_found");
@@ -70,6 +71,81 @@ function registry(candidate = { id: PACKAGER, online: true, capability: capabili
     }],
   });
 }
+
+for (const field of ["cpuUnits", "memoryMiB", "encoderSlots", "gpuSlots", "egressBitsPerSecond"]) {
+  test(`operator ${field} limit rejects native admission and direct prepare before assignment allocation`, () => {
+    const candidate = { id: PACKAGER, online: true, capability: capability() };
+    const assignments = registry(candidate, { resourceLimits: { [field]: 0 } });
+    const input = request();
+    const admission = admitNativePackager(candidate.capability, input, NOW);
+    const denied = error => error instanceof NativePackagerAssignmentError
+      && error.code === "broadcast_temporarily_unavailable" && error.status === 429;
+    assert.throws(() => assignments.admit(OWNER, PACKAGER, input, NOW), denied);
+    assert.throws(() => assignments.prepare(OWNER, PACKAGER, admission, {
+      leaseId: "lea_aaaaaaaaaaaaaaaa", fencingRevision: 9, expiresAt: NOW + 60_000,
+    }, PUBLISHER, NOW), denied);
+    assert.equal(assignments.activeForPackager(PACKAGER), null);
+    assert.equal(assignments.list(OWNER).length, 0);
+  });
+}
+
+for (const release of ["stop-ack", "connection-loss"]) test(`aggregate native resource occupancy survives draining and ${release}`, () => {
+  let now = NOW, sequence = 0;
+  const assignments = new NativePackagerAssignmentRegistry({ resourceLimits: { encoderSlots: 1 },
+    controlRegistry: { candidate: (_owner, id) => ({ id, online: true,
+      capability: capability({ agentId: id, observedAt: now, expiresAt: now + 30000 }) }) },
+    idFactory: () => `asn_${String(++sequence).padStart(16, "a")}`,
+    iceServersForPackager: () => [{ urls: ["stun:synthetic.invalid:3478"] }],
+  });
+  const firstId = PACKAGER, secondId = "pkr_bbbbbbbbbbbbbbbb";
+  const firstRequest = { ...request(), requestedRenditions: 1, allowHardwareAcceleration: false };
+  const secondRequest = { ...firstRequest, programId: "prg_bbbbbbbbbbbbbbbb", resourceRef: "res_bbbbbbbbbbbbbbbb" };
+  const firstAdmission = assignments.admit(OWNER, firstId, firstRequest, now);
+  const secondAdmission = assignments.admit(OWNER, secondId, secondRequest, now);
+  const lease = { leaseId: "lea_aaaaaaaaaaaaaaaa", fencingRevision: 9, expiresAt: now + 60000 };
+  const first = assignments.prepare(OWNER, firstId, firstAdmission, lease, PUBLISHER, now);
+  const blocked = () => {
+    assert.throws(() => assignments.admit(OWNER, secondId, secondRequest, now), /broadcast_temporarily_unavailable/);
+    assert.throws(() => assignments.prepare(OWNER, secondId, secondAdmission, { ...lease, expiresAt: now + 60000 }, PUBLISHER, now),
+      /broadcast_temporarily_unavailable/, "pre-admission is not a reservation or permission to bypass commit capacity");
+    assert.equal(assignments.activeForPackager(secondId), null);
+  };
+  const acknowledge = state => assignments.acknowledge(firstId, { version: 1, type: "assignment-status",
+    assignmentId: first.snapshot.assignmentId, programEpoch: first.snapshot.programEpoch,
+    fencingRevision: first.snapshot.fencingRevision, state, reasonCode: "SYNTHETIC_ACK", observedAt: now }, now);
+  blocked();
+  for (const state of ["ready", "starting", "running"]) acknowledge(state);
+  assignments.stop(OWNER, firstId, first.snapshot.assignmentId, "OWNER_STOP", now); blocked();
+  if (release === "stop-ack") acknowledge("stopped");
+  else {
+    assignments.failPackager(firstId, "CONTROL_DISCONNECTED", now); blocked();
+    now = lease.expiresAt - 1; blocked();
+    now = lease.expiresAt;
+  }
+  const current = assignments.admit(OWNER, secondId, secondRequest, now);
+  const second = assignments.prepare(OWNER, secondId, current, { ...lease, expiresAt: now + 60000 }, PUBLISHER, now);
+  assert.equal(second.snapshot.state, "preparing");
+  assert.throws(() => acknowledge("running"), /transition|expired/, "late former writer cannot recover resource authority");
+});
+
+test("reentrant ICE preparation cannot bypass the final resource commit check", () => {
+  let sequence = 0, nested = false, successor;
+  const assignments = new NativePackagerAssignmentRegistry({ resourceLimits: { encoderSlots: 1 },
+    controlRegistry: { candidate: (_owner, id) => ({ id, online: true, capability: capability({ agentId: id }) }) },
+    idFactory: () => `asn_${String(++sequence).padStart(16, "a")}`,
+    iceServersForPackager: () => {
+      if (!nested) { nested = true; successor = prepare("pkr_bbbbbbbbbbbbbbbb", "prg_bbbbbbbbbbbbbbbb"); }
+      return [{ urls: ["stun:synthetic.invalid:3478"] }];
+    },
+  });
+  const prepare = (id, programId) => assignments.prepare(OWNER, id, assignments.admit(OWNER, id,
+    { ...request(), programId, requestedRenditions: 1, allowHardwareAcceleration: false }, NOW),
+  { leaseId: "lea_aaaaaaaaaaaaaaaa", fencingRevision: 9, expiresAt: NOW + 60000 }, PUBLISHER, NOW);
+  assert.throws(() => prepare(PACKAGER, request().programId), /broadcast_temporarily_unavailable/);
+  assert.equal(assignments.activeForPackager(PACKAGER), null);
+  assert.equal(assignments.list(OWNER).length, 1);
+  assert.equal(assignments.activeForPackager(successor.snapshot.packagerId).assignmentId, successor.snapshot.assignmentId);
+});
 
 test("assignment wire carries only the aggregate-budget-admitted rendition prefix", () => {
   const assignments = registry(), admission = assignments.admit(OWNER, PACKAGER, request(), NOW);

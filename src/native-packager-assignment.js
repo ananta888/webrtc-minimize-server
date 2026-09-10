@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { nativeOutputRequestFields } from "./native-source-video-output.js";
+import { NativePackagerResourceBudget } from "./native-packager-resource-budget.js";
 
 import {
   admitNativePackager,
@@ -108,6 +109,7 @@ export class NativePackagerAssignmentRegistry {
   #iceServersForPackager;
   #sourceProgramMembership;
   #programLeaseDeadline;
+  #resourceBudget;
 
   constructor({
     controlRegistry,
@@ -115,6 +117,7 @@ export class NativePackagerAssignmentRegistry {
     iceServersForPackager = () => [],
     sourceProgramMembership = () => 0,
     programLeaseDeadline = () => Number.MAX_SAFE_INTEGER,
+    resourceLimits,
   } = {}) {
     if (!controlRegistry || typeof controlRegistry.candidate !== "function"
       || typeof idFactory !== "function" || typeof iceServersForPackager !== "function"
@@ -126,12 +129,15 @@ export class NativePackagerAssignmentRegistry {
     this.#iceServersForPackager = iceServersForPackager;
     this.#sourceProgramMembership = sourceProgramMembership;
     this.#programLeaseDeadline = programLeaseDeadline;
+    this.#resourceBudget = new NativePackagerResourceBudget(resourceLimits);
   }
 
   admit(ownerPrincipal, packagerId, request, now = Date.now()) {
     const packager = this.#control.candidate(ownerPrincipal, packagerId, now);
     if (!packager.online || !packager.capability) fail("native_packager_offline", 503);
-    return admitNativePackager(packager.capability, request, now);
+    const admission = admitNativePackager(packager.capability, request, now);
+    this.#assertResources(admission, now);
+    return admission;
   }
 
   prepare(ownerPrincipal, packagerId, admissionValue, leaseValue, publisherPeerId, now = Date.now()) {
@@ -221,6 +227,7 @@ export class NativePackagerAssignmentRegistry {
       || (currentForProgram && ACTIVE_STATES.has(currentForProgram.state))) {
       fail("native_packager_assignment_conflict", 409);
     }
+    this.#assertResources(verifiedAdmission, now);
     const assignmentId = this.#idFactory();
     if (!ASSIGNMENT.test(assignmentId || "") || this.#assignments.has(assignmentId)) {
       fail("invalid_native_packager_assignment_identifier", 500);
@@ -250,10 +257,19 @@ export class NativePackagerAssignmentRegistry {
       updatedAt: now,
       expiresAt: lease.expiresAt,
     };
+    this.#assertResources(verifiedAdmission, now);
     this.#assignments.set(assignmentId, record);
     this.#byPackager.set(packagerId, record);
     this.#byProgram.set(admission.programId, record);
     return Object.freeze({ snapshot: snapshot(record), command: this.#prepareCommand(record) });
+  }
+
+  #assertResources(admission, now) {
+    if (!Number.isSafeInteger(now) || now < 1) fail("broadcast_temporarily_unavailable", 429);
+    const occupied = [...this.#assignments.values()]
+      .filter(record => ACTIVE_STATES.has(record.state) || record.state === "failed" && record.expiresAt > now)
+      .map(record => record.admission);
+    if (!this.#resourceBudget.allows(admission, occupied)) fail("broadcast_temporarily_unavailable", 429);
   }
 
   acknowledge(packagerId, value, now = Date.now()) {
