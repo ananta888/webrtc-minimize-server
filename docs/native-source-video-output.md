@@ -13,9 +13,12 @@ neue Sendung. Jede Teilnehmerquelle benötigt weiterhin separate Zustimmung.
 | Bildschirm | 640×360 · 10 FPS · 400 kbit/s | 960×540 · 10 FPS · 800 kbit/s | 1280×720 · 10 FPS · 1400 kbit/s |
 
 Alle Werte sind Encoder-Ziele, keine Datenraten- oder Qualitätsgarantie.
-Die aktuelle native Komposition hat 640×360 Pixel. Größere Ausgaben können
-diese hochskalieren, erzeugen aber keine zusätzlichen Quelldetails. Eine
-höher aufgelöste Komposition und die mobile Qualitätsabnahme bleiben offen.
+Das standardmäßig konfigurierte lokale `compact-v1`-Ressourcenprofil dekodiert
+einzelne Quellen höchstens mit 640×360 Pixeln. `standard-v1` erlaubt dafür
+960×540, `expanded-v1` 1280×720. Die Kompositionsgröße folgt der größten
+zugelassenen Ausgabe. Höhere Ausgaben können somit Quellen hochskalieren,
+erzeugen aber keine zusätzlichen Quelldetails. Die Auswahl ändert nicht das
+lokale Ressourcenprofil; mobile Bildqualität bleibt gesondert abzunehmen.
 
 Die angeforderte Anzahl bestimmt einen Low-first-Präfix. CPU-, Upload- und
 Rendition-Klasse sowie das **summierte** Pixelbudget begrenzen die tatsächlich
@@ -44,7 +47,16 @@ und Standby lesen die gespeicherte Auswahl, nicht neue Client-Overrides.
 Handoff-Checks, vier echte HTTP-/WebSocket-Integrationsfälle sowie die nativen
 Assignment-Parserprüfungen bestehen. Die neuen HTTP-Fälle verwenden echte
 Gerätenachweise und prüfen auch fehlerhafte Auswahl ohne Writerreservierung.
-Drei begrenzte Probe-Checks bestehen. Die echte Angular→Native→HLS-Prüfung
-für jede Strategie, der isolierte Build und die gemeinsame Projektabnahme
-stehen bei diesem Implementierungscheckpoint noch aus. Dies ist kein
-Deployment- oder abgeschlossener TBP-020-Nachweis.
+Drei begrenzte Probe-Checks bestehen. Der isolierte Produktionsbuild auf
+`7fe38f9` besteht in 10,564 s unter dem unveränderten 1,60-MB-Hardlimit
+(1,50-MB-Warnung). Alle drei echten Angular→Native→HLS-Fälle bestehen in
+24,231 s: Die kleinste Stufe liefert 640×360/15, 426×240/10 beziehungsweise
+640×360/10 FPS mit jeweils 30/20/20 tatsächlich dekodierten H.264-Frames.
+Jeder Fall prüft den exakten V3-Request, gesperrte Auswahl nach Start,
+bestätigten Stopp und null menschlichen Capture.
+
+Dies beweist noch nicht die gesamte mehrstufige Ausgabe auf mobilen Geräten,
+Bildqualität oder den weiterhin offenen Zwei-Quellen-Szenenfehler. Der
+nachfolgende gemeinsame Projektcheck wird einmal für die zusammenhängende
+Implementierung gestartet. Öffentliche Dienste, Hub-Trust und das
+Ananta-Repository bleiben unverändert; kein Deployment-/TBP-020-Abschluss.

@@ -25,7 +25,7 @@
       <option value="economy-v1">Sparsam · 240p/10, 360p/15, 540p/15 FPS · 250/500/900 kbit/s</option>
       <option value="screen-v1">Bildschirm · 360p, 540p, 720p mit je 10 FPS · 400/800/1400 kbit/s</option>
     </select>
-    <p>Die Stufen werden von klein nach groß angefordert; das bestätigte Ressourcenbudget kann ihre Anzahl reduzieren. Bitraten sind Zielwerte. Eine höhere Ausgabeauflösung erzeugt keine zusätzlichen Details aus der derzeitigen 640×360-Komposition. Gilt ab Start, bleibt bei Übergaben erhalten; Änderungen benötigen eine neue Sendung. Raumkamera und Bildschirmaufnahme bleiben unverändert.</p>
+    <p>Die Stufen werden von klein nach groß angefordert; das bestätigte Ressourcenbudget kann ihre Anzahl reduzieren. Bitraten sind Zielwerte. Mehr Ausgabepixel erzeugen keine zusätzlichen Quelldetails: Im kompakten Agent-Profil werden einzelne Quellen höchstens mit 640×360 dekodiert. Gilt ab Start, bleibt bei Übergaben erhalten; Änderungen benötigen eine neue Sendung. Raumkamera und Bildschirmaufnahme bleiben unverändert.</p>
     <label class="field" for="native-source-renditions">Ausgabe-Qualitätsstufen</label>
     <select id="native-source-renditions" [value]="renditions()" (change)="setRenditions($any($event.target).value)">
       <option value="1">Eine · geringer Rechenaufwand</option>
