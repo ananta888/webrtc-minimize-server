@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
+import { installMachineWavCapture } from "./machine-wav-capture.mjs";
 
 /** A bounded local synthetic WAV, never a physical microphone or remote URL. */
 export async function startSyntheticAudioPublisher(page, source, file) {
@@ -10,43 +11,7 @@ export async function startSyntheticAudioPublisher(page, source, file) {
   if (bytes.length !== stat.size || bytes.toString("ascii", 0, 4) !== "RIFF"
     || bytes.toString("ascii", 8, 12) !== "WAVE") throw new Error("test_audio_fixture_invalid");
   try {
-    await page.evaluate(({ source, wav }) => {
-      const capture = async () => {
-        const bytes = Uint8Array.from(atob(wav), c => c.charCodeAt(0));
-        const audio = new AudioContext();
-        let stream;
-        try {
-          const decoded = await audio.decodeAudioData(bytes.buffer);
-          if (decoded.duration < 1 || decoded.duration > 8 || decoded.numberOfChannels !== 1) throw new Error("test_audio_fixture_invalid");
-          let player = audio.createBufferSource();
-          const destination = audio.createMediaStreamDestination();
-          player.buffer = decoded; player.connect(destination);
-          stream = destination.stream;
-          if (source === "screen-audio") {
-            const canvas = document.createElement("canvas"); canvas.width = 320; canvas.height = 180;
-            const context = canvas.getContext("2d"); context.fillStyle = "#224466"; context.fillRect(0, 0, 320, 180);
-            const video = canvas.captureStream(1).getVideoTracks()[0]; stream.addTrack(video);
-            video.addEventListener("ended", () => { canvas.width = canvas.height = 0; });
-          }
-          let spoken = 0;
-          window.__startSyntheticReceiveSpeech = () => {
-            if (spoken >= 3 || audio.state === "closed") throw new Error("test_audio_speech_budget_exhausted");
-            if (spoken) { player = audio.createBufferSource(); player.buffer = decoded; player.connect(destination); }
-            const utterance = player;
-            utterance.onended = () => utterance.disconnect();
-            spoken++; utterance.start(audio.currentTime + 1);
-          };
-          for (const track of stream.getTracks()) track.addEventListener("ended", () => {
-            window.__startSyntheticReceiveSpeech = null;
-            if (spoken) player.stop(); void audio.close();
-          });
-          await audio.resume();
-          return stream;
-        } catch (error) { stream?.getTracks().forEach(track => track.stop()); await audio.close(); throw error; }
-      };
-      if (source === "microphone") navigator.mediaDevices.getUserMedia = capture;
-      else navigator.mediaDevices.getDisplayMedia = capture;
-    }, { source, wav: bytes.toString("base64") });
+    await page.evaluate(installMachineWavCapture, { source, wav: bytes.toString("base64") });
   } finally { bytes.fill(0); }
   if (source === "screen-audio") {
     await page.locator(".nav-item", { hasText: "Einstellungen" }).click();
