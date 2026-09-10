@@ -10,6 +10,8 @@ import { MachineAdmissionStatusComponent } from "./machine-admission-status.comp
   template: `<section aria-labelledby="machine-receive-heading">
     <h2 id="machine-receive-heading">Ananta · Freigaben meiner Quellen</h2>
     @defer (on immediate) { <app-machine-admission-status /> }
+    @loading { <p id="machine-admission-loading" role="status">Betreiberstatus wird geladen…</p> }
+    @error { <p id="machine-admission-load-error" role="alert">Betreiberstatus nicht geladen. Der Aufnahmestatus ist unbekannt; deine Quellenfreigaben bleiben unten bedienbar.</p> }
     <p>Ananta verarbeitet freigegebene Inhalte als entschlüsselnder KI-Endpunkt, nicht als blinder Relay.
       Die Freigabe gilt nur für deine eigenen aktuellen Quellen. Aufnahme, Speicherung und externe Modellanbieter sind damit nicht erlaubt.</p>
     @for (peer of controls.activities(); track peer.id) {

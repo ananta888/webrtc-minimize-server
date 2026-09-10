@@ -528,7 +528,19 @@
 
       @if (activeSection() === 'analysis') {
         <app-mesh-analysis />
-        @if (session.joined()) { @defer (on immediate) { <app-machine-permissions-panel /> } }
+        @if (session.joined()) {
+          @defer (on immediate) { <app-machine-permissions-panel /> }
+          @loading { <p id="machine-permissions-loading" role="status">Ananta-Freigaben werden geladen…</p> }
+          @error {
+            <section id="machine-permissions-load-error" class="surface settings-card" aria-labelledby="machine-permissions-error-heading">
+              <h2 id="machine-permissions-error-heading">Ananta-Freigaben nicht geladen</h2>
+              <p role="alert">Die Bedienoberfläche konnte nicht geladen werden. Bestehende Freigaben sind dadurch nicht widerrufen.</p>
+              <p>Du kannst den Raum verlassen, um deine Freigaben zu beenden. Neuladen beendet ebenfalls diese Sitzung; danach musst du selbst erneut beitreten.</p>
+              <button type="button" (click)="leave()">Raum verlassen und Freigaben beenden</button>
+              <button type="button" (click)="reloadPage()">Seite neu laden · Sitzung beenden</button>
+            </section>
+          }
+        }
       }
 
       @if (activeSection() === 'settings' || activeSection() === 'analysis') {

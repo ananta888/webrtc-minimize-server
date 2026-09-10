@@ -53,10 +53,21 @@
   "milestones": [
     {"id": "MDS-M1", "title": "Verträge und Autorisierung", "status": "in_progress", "task_ids": ["MDS-01", "MDS-02"]},
     {"id": "MDS-M2", "title": "Empfang, Chat und Medienquellen", "status": "done", "task_ids": ["MDS-03", "MDS-04", "MDS-05", "MDS-10", "MDS-11", "MDS-12", "MDS-13"]},
-    {"id": "MDS-M3", "title": "Lebenszyklus und sichtbare Kontrolle", "status": "in_progress", "task_ids": ["MDS-06", "MDS-07"]},
+    {"id": "MDS-M3", "title": "Lebenszyklus und sichtbare Kontrolle", "status": "in_progress", "task_ids": ["MDS-06", "MDS-07", "MDS-14"]},
     {"id": "MDS-M4", "title": "Verifikation und kontrollierter Rollout", "status": "in_progress", "task_ids": ["MDS-08", "MDS-09"]}
   ],
   "tasks": [
+    {
+      "id": "MDS-14", "title": "Ladefehler der Ananta-Freigaben sichtbar und sicher bedienbar machen",
+      "status": "in_progress", "progress_percent": 70, "priority": "P1", "risk": "medium", "depends_on": ["MDS-07"],
+      "focused_verification": "2026-09-10: Raum- und Betreiberpanel besitzen jetzt feste @loading/@error-Zustaende. Vier reale Chromium-/Firefox-Fehlerfaelle plus zwei unveraenderte vollstaendige Ananta-Dialoge bestanden gemeinsam in 42.826 s ohne Skip. Gezielter echter Chunk-Ausfall, genau ein Request je Dokument, kein automatischer Capture/Beitritt/Reload, Tastatur-Leave stoppt das zuvor bewusst gestartete synthetische Mikrofon; expliziter Reload erlaubt danach nur bewussten erneuten Beitritt. Bei gescheitertem Betreiberstatus bleiben echte Chatfreigabe und Widerruf bedienbar. 39 Servicechecks und Typpruefung bestanden; isolierter Build 13.603 s unter unveraendertem 1.60MB-Limit. Kein erneuter grosser Gesamtcheck nach diesem kleinen Nachtrag; gemeinsame Abnahme bleibt erforderlich, daher in_progress70. CI34468539328 ist separat fuer e9e8699 noch aktiv und wird nicht abgebrochen. docs/machine-permission-load-recovery.md; keine Ananta-/Trust-/Serving-/Deployment-Aenderung.",
+      "implementation_plan": "CI 34464294664 belegt einen fehlgeschlagenen Panel-Import mit NG0750. Vorhandene Angular @loading/@error-Blöcke ergänzen, einschließlich des getrennten Betreiberstatus. Keine automatischen Retries oder Vorladung, keine Capture-/Token-/Grant-Policy in der UI. Raumseite verwendet ausschließlich vorhandene Leave-/Reload-Aktionen mit sichtbaren Folgen; bestehende Freigaben werden durch einen Ladefehler nicht als widerrufen dargestellt. Tatsächlich fehlschlagenden und verzögerten Chunk-Request in privaten Chromium-/Firefox-Identitäten testen, normale Controls nach explizitem Reload prüfen. Bestehende CI nicht abbrechen; isolierter Build und fokussierte Tests, Gesamtcheck gebündelt. Ananta-Repository, Produktionspolicy und Serving-Build unverändert.",
+      "acceptance_criteria": [
+        "Ein verzögerter oder fehlgeschlagener Import zeigt einen tastaturzugänglichen Lade-/Fehlerzustand statt eines leeren Panels; Fehler enthalten keine rohen Exceptions und behaupten weder fehlende KI-Membership noch erfolgten Widerruf.",
+        "Kein automatischer Reload, Beitritt, Capture, Grant oder Retry. Explizites Verlassen nutzt den bestehenden vollständigen Cleanup; explizites Neuladen benennt die Beendigung der Sitzung und stellt alte Freigaben nicht automatisch wieder her.",
+        "Echte Chromium-/Firefox-Prüfungen blockieren gezielt das passende Produktionschunk, prüfen null unbeabsichtigte Capture-/Rechteaktionen, Leave und Wiederherstellung nach bewusstem Reload. Normaler Freigabepfad, Typprüfung, unverändertes Buildbudget und gemeinsamer Projektcheck bleiben erforderlich."
+      ]
+    },
     {
       "id": "MDS-13", "title": "Separat freigegebenen visuellen Empfang begrenzt bereitstellen",
       "completion_verification": "2026-09-09 source d57096d isolated npm run check EXIT0:844frontend/863NodePASS/0FAIL/2NodeSKIP,Node340.96s; build/static/security/Go gates pass, externalinfra/optionalimagescan remain explicitSKIP. All8actual Chromium/Firefox publisher+receiver camera/screen combinations and prior exactbinding/negative/decoder/revoke tests included. Actual Ananta Hub+packagedWorker native-feature pair66.58s and repeatedgrant/active-revoke pair104.85s pass; extractedfixturecamera57.23s pass. Four scoped MDS13acceptancecriteria met; close only this additive visualport, not remainingtrack/publictrust/AnantaMAP25 or production evidence. docs/machine-visual-receive.md.",
@@ -434,11 +445,11 @@
   ],
   "critical_path_tasks": ["MDS-01", "MDS-02", "MDS-03", "MDS-13", "MDS-07", "MDS-08", "MDS-09"],
   "tasks_status_summary": {
-    "total": 13,
-    "by_status": {"todo": 0, "in_progress": 5, "partial": 0, "blocked": 0, "done": 8},
-    "progress_percent_done": 61.54,
-    "by_priority": {"P0": 3, "P1": 10, "P2": 0, "P3": 0},
-    "by_risk": {"low": 0, "medium": 0, "high": 8, "critical": 5},
+    "total": 14,
+    "by_status": {"todo": 0, "in_progress": 6, "partial": 0, "blocked": 0, "done": 8},
+    "progress_percent_done": 57.14,
+    "by_priority": {"P0": 3, "P1": 11, "P2": 0, "P3": 0},
+    "by_risk": {"low": 0, "medium": 1, "high": 8, "critical": 5},
     "critical_path": {"total": 7, "done": 3, "remaining": 4},
     "milestones": {"total": 4, "todo": 0, "in_progress": 3, "blocked": 0, "done": 1}
   },
