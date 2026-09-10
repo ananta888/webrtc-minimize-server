@@ -2761,7 +2761,7 @@ export function createAppServer(options = {}) {
   if (config.broadcastGatewayAuthEnabled && !mediaMtxExternalAuthService) {
     throw new Error("BROADCAST_GATEWAY_AUTH_ENABLED requires a MediaMTX external auth service");
   }
-  const broadcastMetrics = new BroadcastRuntimeMetrics({ runtime: broadcastRuntime });
+  const broadcastMetrics = new BroadcastRuntimeMetrics({ runtime: broadcastRuntime, hlsProxy: broadcastHlsProxy });
   const broadcastMetricsHttp = new BroadcastMetricsHttp({ config, metrics: broadcastMetrics, verifier: oidcVerifier });
   const services = {
     broadcastMetricsHttp,

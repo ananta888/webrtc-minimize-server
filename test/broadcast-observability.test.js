@@ -11,6 +11,8 @@ import {
 
 test("metric catalog covers the required broadcast signals with closed labels", () => {
   const required = [
+    "broadcast_hls_proxy_active_requests", "broadcast_hls_proxy_active_sessions",
+    "broadcast_hls_proxy_body_bytes_total", "broadcast_hls_proxy_requests_total",
     "broadcast_control_programs",
     "broadcast_program_state", "broadcast_program_transition_seconds", "broadcast_whip_sessions",
     "broadcast_ingest_bits_per_second", "broadcast_egress_bits_per_second", "broadcast_frames_total",

@@ -1,5 +1,5 @@
 import { BroadcastMetricRegistry } from "./broadcast-observability.js";
-import { BROADCAST_PROGRAM_STATES } from "./broadcast-program-model.js";
+import { programMetricSamples, hlsMetricSamples } from "./broadcast-metric-samples.js";
 
 const SAMPLE_INTERVAL_MS = 15_000;
 
@@ -7,14 +7,16 @@ const SAMPLE_INTERVAL_MS = 15_000;
 // media, identities, grants, directories, leases or private room membership.
 export class BroadcastRuntimeMetrics {
   #runtime;
+  #hlsProxy;
   #clock;
   #metrics = new BroadcastMetricRegistry();
   #lastAttempt = null;
   #destroyed = false;
 
-  constructor({ runtime, clock = Date.now }) {
+  constructor({ runtime, hlsProxy, clock = Date.now }) {
     if (typeof clock !== "function") throw new Error("invalid_broadcast_metrics_clock");
     this.#runtime = runtime;
+    this.#hlsProxy = hlsProxy;
     this.#clock = clock;
   }
 
@@ -32,18 +34,13 @@ export class BroadcastRuntimeMetrics {
       if (this.#lastAttempt !== null && now - this.#lastAttempt < SAMPLE_INTERVAL_MS) return;
       this.#lastAttempt = now;
       this.#metrics.clear();
-      if (typeof this.#runtime?.programStateCounts !== "function") return;
-      const counts = this.#runtime.programStateCounts();
-      if (!counts || typeof counts !== "object" || Array.isArray(counts)
-        || Object.keys(counts).length !== BROADCAST_PROGRAM_STATES.length
-        || !BROADCAST_PROGRAM_STATES.every(state => Object.hasOwn(counts, state)
-          && Number.isSafeInteger(counts[state]) && counts[state] >= 0 && counts[state] <= 10_000)
-        || Object.values(counts).reduce((sum, count) => sum + count, 0) > 10_000) {
-        throw new Error("invalid_metric_counts");
+      // Independent sources: absent/bad traffic must not invent zeros or hide
+      // a valid program sample. Each group is fully validated before insertion.
+      for (const [read, source] of [[programMetricSamples, this.#runtime], [hlsMetricSamples, this.#hlsProxy]]) {
+        let samples;
+        try { samples = read(source); } catch { continue; }
+        for (const event of samples) this.#metrics.observe({ ...event, observedAt: now });
       }
-      for (const state of BROADCAST_PROGRAM_STATES) this.#metrics.observe({
-        metric: "broadcast_control_programs", labels: { state }, value: counts[state], observedAt: now,
-      });
     } catch {
       // Observability must not break media/policy or retain a false last-good
       // state. No exception text (potentially containing private data) is logged.
@@ -57,5 +54,6 @@ export class BroadcastRuntimeMetrics {
     this.#destroyed = true;
     this.#metrics.clear();
     this.#runtime = null;
+    this.#hlsProxy = null;
   }
 }

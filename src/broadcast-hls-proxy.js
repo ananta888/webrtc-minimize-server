@@ -1,3 +1,5 @@
+import { BroadcastHlsTraffic } from "./broadcast-hls-traffic.js";
+
 const CONTENT_TYPES = new Set([
   "application/vnd.apple.mpegurl",
   "application/x-mpegurl",
@@ -13,18 +15,18 @@ function cancelBody(body, reason) {
   try { void Promise.resolve(body?.cancel(reason)).catch(() => {}); } catch { /* no upstream error content */ }
 }
 
-function boundedResponseBody(body, { idleTimeoutMs, streamTimeoutMs, release }) {
+function boundedResponseBody(body, { idleTimeoutMs, streamTimeoutMs, release, traffic }) {
   const reader = body.getReader();
   let finished = false;
   let idleTimer;
   let totalTimer;
   let streamedBytes = 0;
-  const finish = () => {
+  const finish = (outcome = "failed") => {
     if (finished) return false;
     finished = true;
     clearTimeout(idleTimer);
     clearTimeout(totalTimer);
-    release();
+    release(outcome);
     return true;
   };
   const failStream = (controller, code, status) => {
@@ -49,7 +51,7 @@ function boundedResponseBody(body, { idleTimeoutMs, streamTimeoutMs, release }) 
         // already closed. Never enqueue, close or release that generation twice.
         if (finished) return;
         if (result.done) {
-          finish();
+          finish("completed");
           controller.close();
           return;
         }
@@ -60,13 +62,14 @@ function boundedResponseBody(body, { idleTimeoutMs, streamTimeoutMs, release }) 
         }
         streamedBytes += result.value.byteLength;
         controller.enqueue(result.value);
+        traffic.bytes(result.value.byteLength);
         resetIdle(controller);
       } catch {
         failStream(controller, "broadcast_gateway_stream_failed", 502);
       }
     },
     cancel() {
-      if (finish()) cancelBody(reader, "broadcast_viewer_cancelled");
+      if (finish("cancelled")) cancelBody(reader, "broadcast_viewer_cancelled");
     },
   }, { highWaterMark: 0 });
 }
@@ -92,6 +95,7 @@ export class BroadcastHlsProxy {
   #streamTimeoutMs;
   #activeRequests = 0;
   #activeBySession = new Map();
+  #traffic = new BroadcastHlsTraffic();
 
   constructor({
     sessions,
@@ -131,6 +135,8 @@ export class BroadcastHlsProxy {
   renewSession(input) { return this.#sessions.renew(input); }
 
   closeSession(input) { return this.#sessions.close(input); }
+
+  trafficCounts() { return this.#traffic.snapshot(this.#activeRequests, this.#activeBySession.size); }
 
   async fetchMedia(input) {
     const range = input.range || "";
@@ -181,10 +187,11 @@ export class BroadcastHlsProxy {
       idleTimeoutMs: this.#idleTimeoutMs,
       streamTimeoutMs: this.#streamTimeoutMs,
       release,
+      traffic: this.#traffic,
     });
     if (!body) {
       cancelBody(response.body, "broadcast_body_unused");
-      release();
+      release("completed");
     }
     return Object.freeze({
       status: response.status,
@@ -209,13 +216,14 @@ export class BroadcastHlsProxy {
     this.#activeRequests += 1;
     this.#activeBySession.set(sessionKey, current + 1);
     let released = false;
-    return () => {
+    return (outcome = "failed") => {
       if (released) return;
       released = true;
       this.#activeRequests -= 1;
       const remaining = (this.#activeBySession.get(sessionKey) || 1) - 1;
       if (remaining > 0) this.#activeBySession.set(sessionKey, remaining);
       else this.#activeBySession.delete(sessionKey);
+      this.#traffic.finished(outcome);
     };
   }
 }

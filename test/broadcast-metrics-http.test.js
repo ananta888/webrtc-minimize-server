@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import { BroadcastMetricsHttp } from "../src/broadcast-metrics-http.js";
+import { BroadcastHlsProxy } from "../src/broadcast-hls-proxy.js";
 import { createOidcVerifier } from "../src/oidc-verifier.js";
 import { createAppServer } from "../src/server.js";
 import { BROADCAST_PROGRAM_STATES } from "../src/broadcast-program-model.js";
@@ -51,7 +52,11 @@ test("only a signed exact realm operator role passes without changing human iden
 
 test("actual HTTP endpoint rejects ordinary or invalid JWTs and exports only fixed counts", async t => {
   const f = await signedFixture();
-  const app = createAppServer({ config, oidcVerifier: f.verifier,
+  const proxy = new BroadcastHlsProxy({ gatewayOrigin: "https://gateway.example", sessions: {
+    create() {}, renew() {}, authorize: async () => ({ sessionId: "private-session-canary", upstreamPath: "/private-path-canary" }),
+  }, fetchImpl: async () => new Response(new Uint8Array(4), { headers: { "content-type": "video/mp4" } }) });
+  await new Response((await proxy.fetchMedia({ method: "GET" })).body).arrayBuffer();
+  const app = createAppServer({ config, oidcVerifier: f.verifier, broadcastHlsProxy: proxy,
     broadcastRuntime: { programStateCounts: () => Object.fromEntries(BROADCAST_PROGRAM_STATES.map(state => [state, state === "live" ? 2 : 0])) } });
   await new Promise(resolve => app.server.listen(0, "127.0.0.1", resolve));
   t.after(() => { app.server.closeAllConnections(); return new Promise(resolve => app.server.close(resolve)); });
@@ -68,7 +73,10 @@ test("actual HTTP endpoint rejects ordinary or invalid JWTs and exports only fix
   assert.equal(response.headers.get("access-control-allow-origin"), null);
   const text = await response.text();
   assert.match(text, /broadcast_control_programs\{state="live"\} 2/);
-  assert.equal(text.trim().split("\n").length, 9);
+  assert.equal(text.trim().split("\n").length, 15);
+  assert.match(text, /broadcast_hls_proxy_body_bytes_total 4\n/);
+  assert.match(text, /broadcast_hls_proxy_requests_total\{outcome="completed"\} 1\n/);
+  assert.doesNotMatch(text, /private-session|private-path|gateway\.example/);
   assert.doesNotMatch(text, /private-operator|Bearer|identity\.example|room|tenant|caption|frames|bitrate/);
   assert.equal((await get()).status, 401);
   assert.equal((await get(await f.token({}))).status, 403);

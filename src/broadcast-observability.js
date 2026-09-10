@@ -9,6 +9,10 @@ const COMPONENTS = Object.freeze([
 const COMPONENT_STATUS = new Set(["disabled", "healthy", "degraded", "unavailable"]);
 
 const DEFINITIONS = Object.freeze({
+  broadcast_hls_proxy_active_requests: { type: "gauge", labels: {} },
+  broadcast_hls_proxy_active_sessions: { type: "gauge", labels: {} },
+  broadcast_hls_proxy_body_bytes_total: { type: "counter", labels: {} },
+  broadcast_hls_proxy_requests_total: { type: "counter", labels: { outcome: ["completed", "cancelled", "failed"] } },
   broadcast_control_programs: { type: "gauge", labels: { state: BROADCAST_PROGRAM_STATES } },
   broadcast_program_state: { type: "gauge", labels: { state: ["idle", "starting", "live", "degraded", "stopping", "stopped", "failed"], profile: ["origin", "cdn"] } },
   broadcast_program_transition_seconds: { type: "histogram", labels: { transition: ["start", "stop", "handoff", "source-change"] } },

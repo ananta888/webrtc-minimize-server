@@ -1,13 +1,13 @@
 # Inhaltsfreie Broadcast-Observability
 
 Stand: 2026-09-10. TBP-034 definiert und testet eine kleine Metrik- und
-Readiness-Grenze sowie einen angeschlossenen Control-Plane-Messport.
+Readiness-Grenze sowie angeschlossene Control-Plane- und HLS-Proxy-Messports.
 Es ist noch kein externer Collector im öffentlichen
 Deployment aktiviert; die SLOs bleiben deshalb `runtimeVerified: false`.
 
 ## Metrikgrenze
 
-`BroadcastMetricRegistry` kennt ausschließlich 19 feste Metriknamen und pro
+`BroadcastMetricRegistry` kennt ausschließlich 23 feste Metriknamen und pro
 Metrik geschlossene Enum-Labels. Der Katalog umfasst Program-State und
 Start/Stop/Handoff, WHIP-Sessions, Ingest-/Egress-Bitrate, encoded/keyframe/
 dropped Frames, Encoderzeit, Segmente/Parts, Viewerklassen, Playerstart,
@@ -47,12 +47,47 @@ diese wird nicht geraten. Auch kurzlebige Zwischenzustände und ihre Dauer lasse
 sich aus 15-s-Stichproben nicht zuverlässig ableiten.
 
 Fehlende Runtime-Capability, unbekannte Felder, ungültige Counts, Abfragefehler
-oder ungültige Uhrwerte leeren den Cache, ohne Ausnahmeinhalte zu loggen oder
-Programmzustände zu ändern. Eine zurückspringende Uhr leert den Cache und setzt
+leeren die jeweilige Messgruppe, ohne Ausnahmeinhalte zu loggen oder
+Programmzustände zu ändern. Eine ungültige oder zurückspringende Uhr leert den gesamten Cache und setzt bei Rücksprung
 die 15-s-Samplinggrenze neu. Ein Fehler erzeugt keine erfundenen Nullmesswerte.
-Der Port hält nur neun aktuelle aggregierte Gauges, keine Einzelereignisse oder
+Der Programm-Port hält nur neun aktuelle aggregierte Gauges, keine Einzelereignisse oder
 Historie. Die übrigen Katalogmetriken sind damit ausdrücklich noch nicht an
 Medien-, Player- oder Hostmessungen angeschlossen.
+
+### Angeschlossene HLS-Proxy-Instrumentierung
+
+Ist ein `BroadcastHlsProxy` vorhanden, liest derselbe 15-Sekunden-Sampler dessen
+inhaltsfreie `trafficCounts()`. Der Proxy besitzt vier feste Prozesszähler;
+er kopiert dafür keine Nutzlasten und legt keine zusätzlichen Sitzungslisten an.
+Vier Metriknamen ergeben sechs zusätzliche Zeitreihen:
+
+| Metrik | Tatsächliche Bedeutung |
+| --- | --- |
+| `broadcast_hls_proxy_active_requests` | Aktuell zugelassene, noch nicht abgeschlossene Upstream-Anfragen |
+| `broadcast_hls_proxy_active_sessions` | Unterschiedliche Cookie-Sitzungen mit mindestens einer solchen Anfrage; keine Zuschauerzahl |
+| `broadcast_hls_proxy_body_bytes_total` | Body-Bytes, die der Proxy in seinen Downstream-Stream übergeben hat |
+| `broadcast_hls_proxy_requests_total{outcome}` | Einmaliger Abschluss als `completed`, `cancelled` oder `failed` |
+
+Bytes zählen erst bei tatsächlicher Nachfrage am Downstream-Stream, nicht beim
+Eingang einer Content-Length oder durch Vorablesen. TLS-/HTTP-Overhead und der
+Nachweis, dass Bytes beim Zuschauer angekommen sind, sind nicht enthalten.
+Der Counter ist daher keine gemessene Netzwerk-Egress-Bitrate und keine
+End-to-glass-Messung. Auch Manifeste und andere erlaubte Bodytypen zählen mit;
+eine Aufteilung in Audio, Video und Bildschirm wird daraus nicht geraten.
+
+EOF und erfolgreiches HEAD beenden eine Anfrage erfolgreich; Client-Abbruch
+zählt `cancelled`, Upstream-/Header-/Streamfehler und Zeitüberschreitung zählen
+`failed`. Ablehnungen vor Autorisierung oder wegen ausgeschöpfter Slots werden
+nicht als zugelassene Anfragen gezählt. Wiederholter Abbruch zählt nicht doppelt.
+Die Summe der abgeschlossenen Anfragen enthält keine noch aktiven Anfragen.
+
+Die Counter laufen über die Prozesslebenszeit und beginnen nach einem Neustart
+neu. Der Pullcache übernimmt jeweils den Gesamtstand und addiert ihn nicht
+erneut. Bei Überlauf über sichere JavaScript-Ganzzahlen wird die Messgruppe
+unverfügbar, ohne den Medienpfad abzubrechen oder unendliche Werte zu exportieren.
+Eine fehlende/ungültige HLS-Messgruppe entfernt nur deren Serien; gültige
+Programmzustände bleiben sichtbar, und umgekehrt. Kein Proxy bedeutet fehlende
+HLS-Serien, nicht erfundene Nullmessungen.
 
 ### Optionaler Operator-HTTP-Export
 
@@ -75,9 +110,11 @@ Pro Prozess gelten höchstens 60 zugelassene Prüfversuche pro 60-Sekunden-Fenst
 und zwei gleichzeitige Prüfungen, auch für ungültige Tokens. Es entstehen keine
 Identitäts- oder IP-Maps. Budgetüberschreitung liefert 429, fehlende/ungültige
 Anmeldung 401, fehlende Operatorrolle 403 und fehlende Messfähigkeit 503.
-Der Export verwendet den gemeinsamen 15-Sekunden-Cache. Er liefert ausschließlich
-die neun tatsächlich erhobenen Control-State-Zähler, keine erfundenen Medienwerte.
+Der Export verwendet den gemeinsamen 15-Sekunden-Cache. Er liefert die tatsächlich
+erhobenen Control-State- und optionalen HLS-Proxy-Messwerte, keine erfundenen Medienwerte.
 
+Bei vorhandener Runtime und HLS-Proxy sind bis zu 15 tatsächlich angeschlossene
+Serien verfügbar. Fehlende Messgruppen werden nicht als Nullzustand ausgegeben.
 Die Implementierung vergibt keine Realm-Rollen und aktiviert keinen Collector.
 Dessen dedizierte Identität, kurzlebige Tokens und Erneuerung müssen ausdrücklich
 provisioniert werden. Ohne Token-Introspektion wird ein Rollenentzug spätestens
@@ -121,6 +158,10 @@ HTTP-Tests verwenden echte signierte ephemere JWTs und prüfen Rollen, falsche
 Signaturen/Issuer/Audience/Algorithmen, fehlende Claims, Ablauf, JWKS-Ausfall,
 Origins, Header, Budgets und Shutdown. Die TLS-/Keycloak-Abnahme auf dem Zielhost
 ist dadurch nicht ersetzt.
+WebStream-Tests prüfen tatsächliche Byte-Nachfrage, gemeinsame Sitzungsslots,
+EOF/HEAD, Abbruch, Upstreamfehler und Timeout, einmalige Zählung, Überlauf und
+unabhängig ausfallende Messgruppen. Der HTTP-Test exportiert auch Zähler eines
+echten Proxys mit synthetischem Upstream; er beweist keine Zuschauerzustellung.
 Offen bleiben Medien-/Player-/Host-Instrumentierung, Übergangslatenzen,
 abgesicherter Prometheus-Collector,
 Dashboard-Import, Alarmzustellung, Zugriffsaudit und Last-/SLO-Messungen auf
