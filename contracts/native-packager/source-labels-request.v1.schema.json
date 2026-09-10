@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/source-labels-request.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "requestVersion",
+    "deviceFingerprint",
+    "expectedProgramRevision",
+    "expectedProgramEpoch",
+    "expectedPackagerId",
+    "expectedAssignmentId",
+    "expectedFencingRevision",
+    "sourceLeaseIds"
+  ],
+  "properties": {
+    "requestVersion": {
+      "const": 1
+    },
+    "deviceFingerprint": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "expectedProgramRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "expectedProgramEpoch": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "expectedPackagerId": {
+      "type": "string",
+      "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$"
+    },
+    "expectedAssignmentId": {
+      "type": "string",
+      "pattern": "^asn_[A-Za-z0-9_-]{16,64}$"
+    },
+    "expectedFencingRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "sourceLeaseIds": {
+      "type": "array",
+      "maxItems": 80,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^sls_[A-Za-z0-9_-]{16,64}$"
+      }
+    }
+  }
+}

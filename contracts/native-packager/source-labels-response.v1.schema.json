@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/source-labels-response.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "programId",
+    "programRevision",
+    "programEpoch",
+    "packagerId",
+    "assignmentId",
+    "fencingRevision",
+    "bindings"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "programId": {
+      "type": "string",
+      "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+    },
+    "programRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "programEpoch": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "packagerId": {
+      "type": "string",
+      "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$"
+    },
+    "assignmentId": {
+      "type": "string",
+      "pattern": "^asn_[A-Za-z0-9_-]{16,64}$"
+    },
+    "fencingRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "bindings": {
+      "type": "array",
+      "maxItems": 80,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sourceLeaseId",
+          "publisherPeerId",
+          "sourceKind"
+        ],
+        "properties": {
+          "sourceLeaseId": {
+            "type": "string",
+            "pattern": "^sls_[A-Za-z0-9_-]{16,64}$"
+          },
+          "publisherPeerId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{16}$"
+          },
+          "sourceKind": {
+            "enum": [
+              "camera",
+              "screen",
+              "microphone",
+              "screen-audio"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

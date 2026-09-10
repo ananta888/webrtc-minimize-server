@@ -1,7 +1,7 @@
 # Publisherzuordnung für die Quellenregie
 
-TBP-030, Stand 2026-09-10. Der interne Zuordnungsport ist implementiert;
-HTTP-Autorisierung und Angular-Namensanzeige sind noch nicht angeschlossen.
+TBP-030, Stand 2026-09-10. Interner Zuordnungsport und geschützte HTTP-Abfrage
+sind implementiert; die Angular-Namensanzeige ist noch nicht angeschlossen.
 Eine Einladung oder eine vom Agenten gelieferte Quellenliste beweist allein
 nicht, welcher aktuelle Raumteilnehmer eine Quellenlease besitzt.
 
@@ -22,11 +22,21 @@ Socket und Ablauf müssen weiterhin bestehen. Deren bestehende Invalidierung
 bleibt wirksam; eine Abfrage verlängert oder erzeugt jedoch keine Lease und
 bestätigt keine Medienwiedergabe. Es entsteht kein zusätzlicher Datenspeicher.
 
-Der Port ist **keine menschliche Autorisierung** und darf nicht direkt als
-öffentlicher Lookup exponiert werden. Der nächste Anschluss benötigt einen
-geschlossenen, größen- und ratenbegrenzten HTTP-Vertrag. Identität, tatsächliche
-Gerätemembership, Programmbesitz und aktueller gefenceter Writer müssen vor der
-Projektion erneut geprüft werden; fehlende Zuordnungen bleiben unbekannt. Die
+Der interne Port ist **keine menschliche Autorisierung**. Der separate
+`POST /api/broadcasts/:programId/native-source-labels` verwendet geschlossene
+v1-Request-/Response-Schemas in `contracts/native-packager/`. Er benötigt
+`AUTH_MODE=required`, aktivierten Packager-Self-Service, gültiges OIDC,
+zulässigen Origin, JSON ohne Queryparameter und höchstens 16 KiB Requestbody.
+Die gemeinsame Human-Director-Policy prüft tatsächliche Gerätemembership,
+Programmbesitz, Live-/Degraded-Zustand, Capability, Socket und gefenceten Writer.
+Erwartete Programmrevision/-epoche, Packager, Assignment und Fencingrevision
+müssen aktuell sein. Die Writerlease wird ausschließlich serverseitig abgeleitet.
+Pro tatsächlichem Membership-Objekt sind 20 Abfragen in zehn Sekunden zulässig;
+das WeakMap-Budget besitzt keinen langlebigen Principal-/Namensspeicher.
+Ablauf, Clockrollback und Shutdown bleiben fail-closed. Es wird kein
+Agentenkommando, Capture oder Apply ausgelöst, und keine Lease erneuert.
+Antworten sind `no-store`; fremde Programme bleiben gemäß bestehender
+Owner-Policy mit 404 verborgen. Fehlende Zuordnungen bleiben unbekannt. Die
 Angular-Anzeige soll Peer-IDs nur gegen ihre aktuelle autorisierte Raummembership
 auflösen, keinen Agentennamen als Identitätsnachweis verwenden und nach
 Kontextverlust keine alten Namen weiteranzeigen. Anzeigenamen bleiben escaped
@@ -40,3 +50,12 @@ Vorbereitung, exakte Scopegrenzen, 80er-Limit, Unknown/Duplicate/Oversize,
 Revoke/Leave/Publikationsstop/Writerverlust/Disconnect/Ablauf/Clockrollback,
 unveränderte Leases und inhaltsarme Ausgabe. Diese synthetischen Prüfungen sind
 kein Produktions-, HTTP-Label- oder UI-Nachweis. TBP-030 bleibt offen.
+
+HTTP-Ergänzung: 53 gezielte Node-, Director-, Broker- und Source-Tests bestanden
+in 4,012 Sekunden (0 Fehler, 0 Skips). Sie prüfen
+zusätzlich den tatsächlichen neuen HTTP-Pfad mit signierten ephemeren JWTs,
+P-256-authentisiertem Agentensocket und realen lokalen Registries. Geprüft sind
+vorbereitete Quelle, Revoke, Unknown, falscher Scope, fremder Publisher,
+ungültiges JWT, Origin/Method/Content-Type/Query, 16-KiB-Limit, geschlossenes
+Schema und wirksames Ratelimit. Native Scene-v1/v2 bleiben unverändert.
+Das ist Metadaten-/Policy-Evidence, kein Medien- oder Produktionsnachweis.

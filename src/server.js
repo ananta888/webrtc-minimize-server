@@ -78,6 +78,7 @@ import { NativePackagerStandbyError } from "./native-packager-standby.js";
 import { NativePackagerPolicyError } from "./native-packager-policy.js";
 import { NativeSourceSceneBroker, NativeSourceSceneError } from "./native-source-scene-broker.js";
 import { directNativeSourceScene } from "./native-source-scene-director.js";
+import { NativeSourceLabels } from "./native-source-labels.js";
 import { NATIVE_SCENE_REPLIES } from "./native-source-scene-wire.js";
 import { NativeSourceAudioBroker, NativeSourceAudioError } from "./native-source-audio-broker.js";
 import { directNativeSourceAudio } from "./native-source-audio-director.js";
@@ -775,6 +776,23 @@ function createHttpHandler(config, registry, services) {
         /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/(native-standby-control|native-standbys)$/,
       );
       const nativeSceneMatch = url.pathname.match(/^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/native-source-scene$/);
+      const nativeLabelsMatch = url.pathname.match(/^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/native-source-labels$/);
+      if (nativeLabelsMatch) {
+        if (!services.nativeSourceLabels || !services.trustedBroadcastSourceControl || !broadcastRuntime
+          || config.authMode !== "required" || !config.nativePackagerSelfServiceEnabled
+          || request.method !== "POST" || url.search || !requestOriginAllowed(request, config)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" }); response.end(); return;
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const ownerPrincipal = principalFor(identity), input = await readJsonBody(request);
+        const result = services.nativeSourceLabels.query({ identity, ownerPrincipal, programId: nativeLabelsMatch[1], input,
+          getMember: () => registry.membersForPrincipal(ownerPrincipal).find(p => p.deviceFingerprint === input.deviceFingerprint),
+          runtime: broadcastRuntime, assignments: nativePackagerAssignments, control: nativePackagers,
+          sources: services.trustedBroadcastSourceControl });
+        sendJson(response, 200, result, securityHeaders(config));
+        return;
+      }
       const nativeAudioMatch = url.pathname.match(/^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/native-source-audio$/);
       if (nativeAudioMatch) {
         if (!nativeSourceAudios || !broadcastRuntime || config.authMode !== "required" || !config.nativePackagerSelfServiceEnabled
@@ -2764,6 +2782,7 @@ export function createAppServer(options = {}) {
   const broadcastMetrics = new BroadcastRuntimeMetrics({ runtime: broadcastRuntime, hlsProxy: broadcastHlsProxy });
   const broadcastMetricsHttp = new BroadcastMetricsHttp({ config, metrics: broadcastMetrics, verifier: oidcVerifier });
   const services = {
+    nativeSourceLabels: new NativeSourceLabels(),
     broadcastMetricsHttp,
     nativeSourceAudios: new NativeSourceAudioBroker({ send: (socket, command) =>
       Number.isSafeInteger(socket?.bufferedAmount) && socket.bufferedAmount >= 0 && socket.bufferedAmount <= 65536
@@ -2798,6 +2817,7 @@ export function createAppServer(options = {}) {
   };
   const server = http.createServer(createHttpHandler(config, registry, services));
   server.on("close", () => broadcastMetrics.destroy());
+  server.on("close", () => services.nativeSourceLabels.destroy());
   server.on("close", () => broadcastMetricsHttp.destroy());
   server.on("close", () => services.nativeSourceScenes.destroy());
   server.on("close", () => services.nativeSourceAudios.destroy());
@@ -2821,6 +2841,7 @@ export function createAppServer(options = {}) {
     services.nativeSourceScenes,
     services.nativeSourceAudios,
   );
+  services.trustedBroadcastSourceControl = signaling.trustedBroadcastSourceControl;
   return {
     server,
     ...signaling,

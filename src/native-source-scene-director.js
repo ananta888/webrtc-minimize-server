@@ -21,12 +21,9 @@ export function normalizeNativeSceneDirectorInput(value) {
     ...(value.action === "apply" && value.requestVersion === 2 ? { sourceFits: Object.freeze([...value.sourceFits]) } : {}) });
 }
 
-/** Human controller adapter; no new policy owner, capture, key or source consent. */
-export async function directNativeSourceScene({ identity, ownerPrincipal, programId, input: raw, getMember,
-  runtime, assignments, control, broker, signal, clock = Date.now }) {
-  const input = normalizeNativeSceneDirectorInput(raw);
-  let observedContext;
-  const authorize = now => {
+/** Shared human director policy; callers must first validate their closed input contract. */
+export function nativeSceneAuthorizer({ identity, ownerPrincipal, programId, input, getMember, runtime, assignments, control }) {
+  return now => {
     const member = getMember();
     if (!member || member.machine || member.principal !== ownerPrincipal || member.deviceFingerprint !== input.deviceFingerprint) {
       fail("native_scene_controller_required", 403);
@@ -50,9 +47,20 @@ export async function directNativeSourceScene({ identity, ownerPrincipal, progra
       assignmentId: assignment.assignmentId, programId, programRevision: writer.programRevision,
       programEpoch: writer.programEpoch, leaseId: writer.leaseId, fencingRevision: writer.fencingRevision,
       expiresAt: Math.min(writer.expiresAt, assignment.expiresAt, candidate.capability.expiresAt) };
-    observedContext = context;
+    if (!Number.isSafeInteger(now) || now <= 0 || !Number.isSafeInteger(context.expiresAt) || context.expiresAt <= now) {
+      fail("native_scene_unavailable");
+    }
     return context;
   };
+}
+
+/** Human controller adapter; no new policy owner, capture, key or source consent. */
+export async function directNativeSourceScene({ identity, ownerPrincipal, programId, input: raw, getMember,
+  runtime, assignments, control, broker, signal, clock = Date.now }) {
+  const input = normalizeNativeSceneDirectorInput(raw);
+  let observedContext;
+  const check = nativeSceneAuthorizer({ identity, ownerPrincipal, programId, input, getMember, runtime, assignments, control });
+  const authorize = now => (observedContext = check(now));
   const selection = input.action === "query" ? null : Object.fromEntries(
     ["expectedSceneRevision", "layout", "sourceLeaseIds", "activeSourceLeaseId", ...(input.requestVersion === 2 ? ["sourceFits"] : [])].map(k => [k, input[k]]));
   const result = await broker.request(selection, authorize, signal);

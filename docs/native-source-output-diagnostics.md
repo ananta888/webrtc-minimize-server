@@ -172,3 +172,13 @@ cases and five Node observation tests pass, as do TypeScript and Angular's
 no-emit template compilation. No native codec, clock, consent, deadline or media
 behavior changes. The coupled CI must still prove correct submission and actual
 source pixels; local reproduction alone is not a production rollout claim.
+
+CI `34504411648` on `ede8926` now completes successfully, including both
+project shards, native/Blind agents, Ananta TURN, macOS lifecycles, Docker and
+Live Keycloak/TURN. The coupled single-source case passes in 35.868 seconds;
+the two-source case passes in 36.733 seconds with both selected source tiles,
+contain/cover changes, encoder replacements, revoked-source slate and continued
+motion from the surviving source. The explicit DOM, actual HTTP submission and
+native scene-state checks all remain enabled. Shard 1 reports 645 passes,
+zero failures and three explicit infrastructure skips. These are synthetic,
+instrumented-binary results, not a deployed Mini-PC or release-binary claim.

@@ -20,6 +20,7 @@ import { parseNativePackagerMessage } from "../src/native-packager-control.js";
 import { TrustedBroadcastSourceActions, parseTrustedSourceAction } from "../src/trusted-broadcast-source-actions.js";
 import { parseClientMessage } from "../src/protocol.js";
 import { steadyFixtureClock } from "./helpers/steady-fixture-clock.mjs";
+import { exerciseNativeSourceLabelsHttp } from "./helpers/native-source-labels-http.mjs";
 
 const validate = new Ajv({ strict: true }).compile(JSON.parse(await fs.readFile(
   new URL("../contracts/trusted-decrypt/wire.v1.schema.json", import.meta.url), "utf8")));
@@ -754,6 +755,11 @@ for (const publicActions of [false, true, "receipt-failure", "backpressure"]) te
   }));
   await until(() => browserMessages.some(message => message.type === "trusted-source-publisher-lease"));
   assert.deepEqual(browserMessages.find(message => message.type === "trusted-source-publisher-lease").lease, lease);
+  const checkRevokedLabels = publicActions === true ? await exerciseNativeSourceLabelsHttp({
+    base, token, config, f, control, lease, peerId: actor.id,
+    publisherToken: await new SignJWT({}).setIssuer(f.identity.issuer).setAudience("human").setSubject(f.identity.subject)
+      .setIssuedAt().setExpirationTime("2m").setProtectedHeader({ alg: "EdDSA" }).sign(keys.privateKey),
+  }) : null;
   for (const message of nativeMessages.filter(message => message.type.startsWith("trusted-source-"))) assert.equal(validateControl(message), true);
   const offer = sourceSignal(lease);
   socket.send(JSON.stringify({ ...offer, description: { type: "offer", sdp: "\n".repeat(16384) } }));
@@ -781,6 +787,7 @@ for (const publicActions of [false, true, "receipt-failure", "backpressure"]) te
     await until(() => browserMessages.some(message => message.type === "trusted-source-publisher-stop"));
     assert.equal(f.rooms.publication(joined.peerId, f.input.publicationId, f.input.roomId)?.publicationId, f.input.publicationId,
       "broadcast revoke does not stop the room's capture");
+    await checkRevokedLabels?.();
   }
   socket.send(JSON.stringify({ type: "media-state", source: "camera", active: false }));
   await until(() => app.trustedBroadcastSources.auditEvents().some(event => event.eventType === "consent-revoked"));
