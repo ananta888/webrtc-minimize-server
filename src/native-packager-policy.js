@@ -205,10 +205,17 @@ export function admitNativePackager(capabilityValue, request, now = Date.now()) 
   const uploadLimit = capability.uploadClass === "over-15mbit" ? 3 : capability.uploadClass === "5-15mbit" ? 2 : 1;
   const cpuLimit = capability.cpuClass === "high" ? 3 : capability.cpuClass === "medium" ? 2 : 1;
   const count = Math.min(request.requestedRenditions, capability.maximumRenditions, uploadLimit, cpuLimit);
-  const selected = RENDITIONS.slice(0, count).filter((rendition) => (
-    rendition.width * rendition.height * rendition.framesPerSecond <= capability.maximumPixelsPerSecond
-  )).map(rendition => audioOutput ? Object.freeze({ ...rendition, audioBitsPerSecond: audioOutput.targetBitsPerSecond,
-    audioChannels: audioOutput.channels }) : rendition);
+  // The agent enforces this budget across the whole encoder ladder. Keep the
+  // ordered low-first prefix; a higher layer must not spend the same pixels again.
+  let remainingPixels = capability.maximumPixelsPerSecond;
+  const selected = [];
+  for (const rendition of RENDITIONS.slice(0, count)) {
+    const pixels = rendition.width * rendition.height * rendition.framesPerSecond;
+    if (pixels > remainingPixels) break;
+    remainingPixels -= pixels;
+    selected.push(audioOutput ? Object.freeze({ ...rendition, audioBitsPerSecond: audioOutput.targetBitsPerSecond,
+      audioChannels: audioOutput.channels }) : rendition);
+  }
   if (selected.length < 1) fail("native_packager_capacity_rejected", 503);
   const hardwareEncoder = request.allowHardwareAcceleration && supportsNativeAssignmentV2(capability.agentVersion)
     ? capability.videoEncoders.find((encoder) => encoder !== "libx264") || null

@@ -5,7 +5,7 @@ import {
   NativePackagerAssignmentError,
   NativePackagerAssignmentRegistry,
 } from "../src/native-packager-assignment.js";
-import { admitNativePackager } from "../src/native-packager-policy.js";
+import { admitNativePackager, NATIVE_BROADCAST_PROFILE } from "../src/native-packager-policy.js";
 
 const NOW = 1_800_000_000_000;
 const OWNER = "https://identity.example/realms/ananta|owner";
@@ -71,8 +71,20 @@ function registry(candidate = { id: PACKAGER, online: true, capability: capabili
   });
 }
 
+test("assignment wire carries only the aggregate-budget-admitted rendition prefix", () => {
+  const assignments = registry(), admission = assignments.admit(OWNER, PACKAGER, request(), NOW);
+  const prepared = assignments.prepare(OWNER, PACKAGER, admission, {
+    leaseId: "lea_aaaaaaaaaaaaaaaa", fencingRevision: 9, expiresAt: NOW + 60_000,
+  }, PUBLISHER, NOW);
+  assert.deepEqual(prepared.snapshot.renditionIds, ["low", "medium"]);
+  assert.deepEqual(prepared.command.profile.renditions.map(r => r.id), prepared.snapshot.renditionIds);
+  assert.ok(prepared.command.profile.renditions.reduce((sum, r) => sum + r.width * r.height * r.framesPerSecond, 0)
+    <= capability().maximumPixelsPerSecond);
+});
+
 test("assignment preparation is owner-, consent-, capability- and lease-fenced", () => {
-  const assignments = registry();
+  const maximumPixelsPerSecond = NATIVE_BROADCAST_PROFILE.renditions.reduce((sum, r) => sum + r.width * r.height * r.framesPerSecond, 0);
+  const assignments = registry({ id: PACKAGER, online: true, capability: capability({ maximumPixelsPerSecond }) });
   const admission = assignments.admit(OWNER, PACKAGER, request(), NOW);
   const prepared = assignments.prepare(OWNER, PACKAGER, admission, {
     leaseId: "lea_aaaaaaaaaaaaaaaa",

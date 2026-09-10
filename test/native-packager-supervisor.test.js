@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { admitNativePackager } from "../src/native-packager-policy.js";
+import { admitNativePackager, NATIVE_BROADCAST_PROFILE } from "../src/native-packager-policy.js";
 import {
   NativePackagerSupervisor,
   NativePackagerSupervisorError,
@@ -19,7 +19,8 @@ const capability = {
   videoEncoders: ["libx264", "h264_nvenc"], audioEncoders: ["aac"],
   hardwareClass: "large", cpuClass: "high", gpuClass: "dedicated",
   uploadClass: "over-15mbit", energyClass: "ac", health: "healthy",
-  maximumRenditions: 3, maximumPixelsPerSecond: 1280 * 720 * 30,
+  maximumRenditions: 3,
+  maximumPixelsPerSecond: NATIVE_BROADCAST_PROFILE.renditions.reduce((sum, r) => sum + r.width * r.height * r.framesPerSecond, 0),
   consentedRoomIds: ["room-alpha"], observedAt: now, expiresAt: now + 30_000,
 };
 const request = {

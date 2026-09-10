@@ -32,11 +32,30 @@ const request = {
   allowHardwareAcceleration: true,
 };
 
+test("the complete admitted ladder, not each individual rendition, fits the native pixel budget", () => {
+  const ladder = NATIVE_BROADCAST_PROFILE.renditions;
+  const charge = rendition => rendition.width * rendition.height * rendition.framesPerSecond;
+  let cumulative = 0;
+  for (let count = 1; count <= ladder.length; count++) {
+    cumulative += charge(ladder[count - 1]);
+    for (const reduction of [0, 1]) {
+      const maximumPixelsPerSecond = cumulative - reduction;
+      if (count === 1 && reduction === 1) {
+        assert.throws(() => admitNativePackager({ ...capability, maximumPixelsPerSecond }, request, now), /native_packager_capacity_rejected/);
+        continue;
+      }
+      const admitted = admitNativePackager({ ...capability, maximumPixelsPerSecond }, request, now);
+      assert.deepEqual(admitted.renditions.map(r => r.id), ladder.slice(0, count - reduction).map(r => r.id));
+      assert.ok(admitted.renditions.reduce((sum, r) => sum + charge(r), 0) <= maximumPixelsPerSecond);
+    }
+  }
+});
+
 test("native packager admission is exact-owner, tenant, room-consent and health bound", () => {
   const admitted = admitNativePackager(capability, request, now);
   assert.equal(admitted.videoEncoder, "h264_nvenc");
   assert.equal(admitted.softwareFallback, "libx264");
-  assert.deepEqual(admitted.renditions.map(({ id }) => id), ["low", "medium", "high"]);
+  assert.deepEqual(admitted.renditions.map(({ id }) => id), ["low", "medium"]);
   for (const mutation of [
     { tenantId: "tn_bbbbbbbbbbbbbbbb" }, { ownerSubjectRef: "sub_bbbbbbbbbbbbbbbb" },
     { roomId: "room-other" }, { trigger: "remote-signal" },
@@ -57,6 +76,22 @@ test("capacity classes reduce ABR without believing a self-reported authority", 
     () => normalizeNativePackagerCapability({ ...capability, ffmpegVersion: "5.1.6" }, now),
     /ffmpeg_6_or_newer_required/,
   );
+});
+
+for (const capabilityVersion of [5, 6]) test(`aggregate pixels preserve selected audio and scope for capability v${capabilityVersion}`, () => {
+  const sourceCapability = { ...capability, capabilityVersion, agentId: "pkr_aaaaaaaaaaaaaaaa", sourcePrograms: true,
+    sourceAudioControlVersion: 3, sourceAudioEncodingVersion: 1,
+    ...(capabilityVersion === 6 ? { sourceSceneControlVersion: 2 } : {}) };
+  const selectedRequest = { ...request, requestVersion: 2,
+    audioOutput: { codec: "aac", sampleRate: 48000, channels: 1, targetBitsPerSecond: 48000 } };
+  const before = JSON.stringify([sourceCapability, selectedRequest]);
+  const result = admitNativePackager(sourceCapability, selectedRequest, now);
+  assert.deepEqual(result.renditions.map(r => r.id), ["low", "medium"]);
+  assert.ok(result.renditions.every(r => r.audioChannels === 1 && r.audioBitsPerSecond === 48000));
+  assert.equal(result.programId, request.programId); assert.equal(result.programEpoch, request.programEpoch);
+  assert.equal(result.profileId, NATIVE_BROADCAST_PROFILE.profileId);
+  assert.equal(JSON.stringify([sourceCapability, selectedRequest]), before);
+  assert.ok(Object.isFrozen(result.renditions));
 });
 
 test("FFmpeg capability parsing enforces the real minimum version", () => {
@@ -108,7 +143,8 @@ test("pilot profile fixes H.264 Main/AAC-LC ladder and aligned two-second GOPs",
 });
 
 test("FFmpeg pipeline uses argv without shell, aligned keyframes and a confined opaque output path", () => {
-  const admitted = admitNativePackager(capability, request, now);
+  const maximumPixelsPerSecond = NATIVE_BROADCAST_PROFILE.renditions.reduce((sum, r) => sum + r.width * r.height * r.framesPerSecond, 0);
+  const admitted = admitNativePackager({ ...capability, maximumPixelsPerSecond }, request, now);
   const pipeline = nativePackagerFfmpegArguments(admitted, "/var/lib/webrtc-packager");
   assert.equal(pipeline.command, "ffmpeg");
   assert.equal(pipeline.outputDirectory, "/var/lib/webrtc-packager/res_aaaaaaaaaaaaaaaa");
