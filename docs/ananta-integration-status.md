@@ -1,11 +1,42 @@
 # Ananta-Hub und Worker: Integration und Aktivierung
 
 Stand: 10. September 2026. Implementierung, lokale Integration und öffentliche
-Aktivierung sind unterschiedliche Zustände. Die öffentliche Meet-Instanz meldet
-bei der aktuellen Prüfung `admissionEnabled: false`: Noch kein produktiver
-KI-Beitritt. Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
+Aktivierung sind unterschiedliche Zustände. Zuletzt war `admissionEnabled: false`;
+bei der Nachprüfung um 10:41 UTC ist der Status wegen HTTP 502 nicht abrufbar.
+Der gesamte aktive Ananta-Track ist nicht abgeschlossen.
+
+## Aktuelle Erreichbarkeitsstörung
+
+`/`, `/healthz` und `/api/machine/integration` liefern aktuell HTTP 502 von
+Caddy. Der Mini-PC ist aus der Laptop-Umgebung per LAN-SSH nicht erreichbar
+(`No route to host`). Auf Oracle laufen die bisherigen Container; Keycloak,
+Rendezvous und PostgreSQL melden gesund. Der konfigurierte Meet-Upstream ist
+weiterhin `https://minipc.ananta.de`; der getrennte Rendezvous-Pfad bleibt erhalten.
+Auch der direkte HTTPS-Verbindungsversuch von Oracle zum Mini-PC scheitert mit
+`No route to host`. Die begrenzte redigierte Caddy-Logauswertung zeigt
+Verbindungszeitüberschreitungen und fehlende Erreichbarkeit, keine TLS-Fehler.
+
+Das grenzt die aktuelle Störung auf die Erreichbarkeit des Mini-PC-Upstreams
+ein, beweist aber nicht, ob Stromversorgung, Heimnetz, Router oder Weiterleitung
+die Ursache sind. Keine Remote-Konfiguration geändert und kein Dienst neu
+gestartet. Vor öffentlicher Aktivierung oder Deployment muss dieser Pfad wieder
+erreichbar sein. Der unten stehende erfolgreiche Rollout ist historische
+Evidenz, keine Aussage über die aktuelle Verfügbarkeit.
 
 ## Aktuell: sechs Grundfunktionen vorhanden, Aktivierung noch ausstehend
+
+Aktuelle lokale Nachprüfung der laufenden Integrationsrunde: Beide echten
+Ananta-Dialoge bestanden, Chromium in 14,673 s und Firefox in 16,067 s.
+Jeweils 16.000 entschlüsselte PCM-Samples, korrelierte Chatantworten,
+agenteneigener Bildschirm, drei Sitzungserneuerungen und wirksamer
+Freigabeentzug wurden geprüft. Der gemeinsame Gesamtcheck bleibt dennoch rot:
+1.286 Frontendtests bestanden; Node meldet 1.239 bestanden, zwei Fehler und
+vier Skips. Eine veraltete Szenen-HTTP-Testerwartung ist korrigiert, der separate
+Chromium-Bootstrapfehler bestand im unveränderten Nachlauf ohne bewiesene
+Ursache. Alle sechs gezielten Nachprüfungen bestanden. Die neue
+[Szenenanpassung](native-source-scene-fit-v2.md) ist lokal durchgängig geprüft,
+aber nicht deployed. Öffentliche Aufnahme, Projektfreigabe und gemeinsame
+Langzeitabnahme bleiben getrennte offene Schritte.
 
 Aktuell ausgeliefert ist `cb2e6e7`: alle acht CI-Jobs erfolgreich, anschließend
 der Drei-Dienste-Rollout und unabhängige öffentliche Prüfungen bestanden.
