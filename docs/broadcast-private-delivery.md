@@ -3,7 +3,7 @@
 ## Grant-zu-Cookie-Austausch
 
 Ein bereits von der Control Plane ausgestellter `broadcast-playback`-Grant wird
-nur einmal per `Authorization: Bearer` an
+beim Sitzungsaufbau per `Authorization: Bearer` an
 `POST /api/broadcast/playback-sessions` gesendet. Body, Origin und
 `res_`-Resource sind geschlossen. Die Antwort enthält ausschließlich eine
 same-origin Manifest-URL und setzt eine zufällige, kurzlebige Cookie-Session
@@ -48,13 +48,35 @@ beliebige Hosts, unbekannte Content-Types, ungültige Range-Header sowie
 Antworten über 24 MiB werden verworfen. Nur notwendige Content-/Range-Header
 werden zurückgegeben; private Antworten tragen `private, no-store`,
 `nosniff` und `Cross-Origin-Resource-Policy: same-origin`. Gateway-Bearer und
-Upstreamantworten gelangen nicht in den Browser.
+interne Fehlerdetails gelangen nicht in den Browser.
 
 `PUT /api/broadcast/playback-sessions/<opaque-id>` verlangt exakten Origin,
 den API-pfadgebundenen Cookie sowie einen frischen scopegleichen Grant und
 erneuert beide Cookie-Pfade. `DELETE` verlangt ebenfalls exakten Origin und
 den API-Cookie, entfernt den serverseitigen Grant-Verweis und löscht beide
 Cookies über ihre jeweiligen Pfade.
+
+Scopegleich bedeutet dieselbe Tenant-, Zuschauer-Prinzipal- (`audienceRef`),
+Geräte-, Raum-, Programm-/Epoche-, Resource- und Policy-Bindung. Eine Erneuerung
+wechselt nur Bearer und Ablaufzeit, niemals den Prinzipal einer vorhandenen
+Cookie-Sitzung. Auch ein gültiger Grant eines anderen Kontos auf demselben
+Gerät kann die Sitzung nicht übernehmen; dafür muss eine neue autorisierte
+Sitzung innerhalb dessen eigener Quoten erstellt werden. Ein abgewiesener
+Wechsel lässt den alten Grant und seine Quote unverändert; er verlängert sie
+nicht. Die per Request geprüfte Widerrufbarkeit bleibt erhalten.
+
+Der vorherige Store verglich `audienceRef` bei Erneuerung nicht und konnte so
+eine bestehende Sitzung in eine bereits ausgeschöpfte andere Zuschauerquote
+verschieben. Ein deterministischer Negativtest scheitert vor der Korrektur an
+der fehlenden Ablehnung. Nach der Korrektur wird der Kontowechsel sowohl bei
+freier als auch belegter Zielquote abgewiesen. Reguläre Tokenrotation und die
+bestehenden Close-/Prune-/Renewal-Races bleiben getrennt getestet.
+Zusätzlich stellt die echte Grant-Authority mit ephemeren Signier- und
+P-256-Geräteschlüsseln gültige Grants für zwei Testnutzer desselben Geräts aus:
+Beide dürfen jeweils eine eigene Sitzung anlegen, aber nicht die Cookie-Sitzung
+des anderen erneuern. Ein frisch signierter Grant desselben Nutzers funktioniert
+weiterhin. Das ist ein kryptografischer Komponentennachweis, kein Live-OIDC-
+oder Safari-Nachweis.
 
 ## Noch offene Produktionsgrenzen
 

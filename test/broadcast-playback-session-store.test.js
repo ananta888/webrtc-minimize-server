@@ -15,10 +15,10 @@ function createStore(overrides = {}) {
   const authority = {
     async authorizeGatewayBearer(header, expectation, calledAt) {
       calls.push({ header, expectation, calledAt });
-      if (!new Set(["Bearer playback-grant", "Bearer renewed-playback-grant", "Bearer wrong-device-grant"]).has(header)
+      if (!new Set(["Bearer playback-grant", "Bearer renewed-playback-grant", "Bearer wrong-device-grant", "Bearer other-principal-grant"]).has(header)
         || revoked) throw new Error("inactive_broadcast_grant");
       return {
-        grantKind: "playback", resourceRef, audienceRef: header === "Bearer renewed-playback-grant"
+        grantKind: "playback", resourceRef, audienceRef: header === "Bearer other-principal-grant"
           ? "sub_bbbbbbbbbbbbbbbb" : "sub_aaaaaaaaaaaaaaaa",
         tenantId: "tn_aaaaaaaaaaaaaaaa", deviceRef: header === "Bearer wrong-device-grant"
           ? "dev_bbbbbbbbbbbbbbbb" : "dev_aaaaaaaaaaaaaaaa",
@@ -68,6 +68,25 @@ function pauseNextAuthorization(context, action) {
   };
   return { ready, release };
 }
+
+for (const occupied of [false, true]) test(`renewal cannot migrate a cookie to another principal (target quota occupied: ${occupied})`, async () => {
+  let sequence = 0;
+  const { store } = createStore({ maximumPerAudience: 1,
+    idFactory: () => `pbs_${String(++sequence).padStart(24, "a")}` });
+  const origin = "https://webrtc.ananta.de";
+  const first = await store.create({ authorizationHeader: "Bearer playback-grant", resourceRef, origin, now });
+  if (occupied) await store.create({ authorizationHeader: "Bearer other-principal-grant", resourceRef, origin, now });
+  const cookieHeader = first.setCookie[0].split(";", 1)[0];
+  await assert.rejects(store.renew({ authorizationHeader: "Bearer other-principal-grant",
+    sessionId: first.playbackSessionId, resourceRef, cookieHeader, origin, now: now + 1000 }), /not_found/);
+  assert.equal(store.size, occupied ? 2 : 1);
+  const old = await store.authorize({ cookieHeader, method: "GET", resourceRef, file: "index.m3u8", origin, now: now + 1001 });
+  assert.equal(old.authorizationHeader, "Bearer playback-grant");
+  if (!occupied) await store.create({ authorizationHeader: "Bearer other-principal-grant", resourceRef, origin, now: now + 1002 });
+  for (const authorizationHeader of ["Bearer playback-grant", "Bearer other-principal-grant"]) {
+    await assert.rejects(store.create({ authorizationHeader, resourceRef, origin, now: now + 1002 }), /quota_reached/);
+  }
+});
 
 for (const ending of ["close", "prune", "replacement", "renewal"]) test(`pending renewal cannot overwrite ${ending}`, async () => {
   const context = createStore(), { store } = context;

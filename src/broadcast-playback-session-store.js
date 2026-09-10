@@ -44,7 +44,7 @@ function cookieEntries(header) {
 
 function sameGrantScope(left, right) {
   return [
-    "tenantId", "deviceRef", "roomId", "programId", "programEpoch", "resourceRef",
+    "tenantId", "audienceRef", "deviceRef", "roomId", "programId", "programEpoch", "resourceRef",
     "policyId", "policyRevision",
   ].every((field) => left[field] === right[field]);
 }
@@ -125,7 +125,7 @@ export class BroadcastPlaybackSessionStore {
     this.#sessions.set(sessionId, Object.freeze({
       sessionId, cookieName, resourceRef, audienceRef: grant.audienceRef,
       authorizationHeader, expiresAt: grant.expiresAt, grantScope: Object.freeze({
-        tenantId: grant.tenantId, deviceRef: grant.deviceRef, roomId: grant.roomId,
+        tenantId: grant.tenantId, audienceRef: grant.audienceRef, deviceRef: grant.deviceRef, roomId: grant.roomId,
         programId: grant.programId, programEpoch: grant.programEpoch, resourceRef: grant.resourceRef,
         policyId: grant.policyId, policyRevision: grant.policyRevision,
       }),
@@ -165,7 +165,7 @@ export class BroadcastPlaybackSessionStore {
       || !sameGrantScope(session.grantScope, grant)
       || this.#sessions.get(sessionId) !== session) notFound();
     const renewed = Object.freeze({
-      ...session, authorizationHeader, audienceRef: grant.audienceRef, expiresAt: grant.expiresAt,
+      ...session, authorizationHeader, expiresAt: grant.expiresAt,
     });
     this.#sessions.set(sessionId, renewed);
     const maxAge = Math.max(1, Math.floor((grant.expiresAt - now) / 1_000));

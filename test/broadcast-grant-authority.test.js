@@ -17,6 +17,7 @@ import {
   oidcPrincipal,
 } from "../src/broadcast-identifiers.js";
 import { deviceFingerprint } from "../src/device-proof.js";
+import { BroadcastPlaybackSessionStore } from "../src/broadcast-playback-session-store.js";
 
 const NOW = 1_800_000_000_000;
 const ISSUER = "https://identity.test/realms/ananta";
@@ -302,6 +303,37 @@ test("playback grant binds policy and authorizes only its path prefix without co
     (error) => error instanceof BroadcastGrantError
       && new Set(["invalid_broadcast_grant", "inactive_broadcast_grant"]).has(error.code),
   );
+});
+
+test("signed playback grants from two users sharing one device cannot transfer a cookie session", async () => {
+  const first = baseFixture({ program: { state: "live" } });
+  const other = baseFixture({ actorDevice: first.actorDevice, identity: { subject: "second-user" },
+    membership: { role: "viewer" }, program: first.program });
+  const policy = { contractVersion: 1, type: "viewer-policy", tenantId: first.tenantId,
+    ownerSubjectRef: first.subjectRef, roomId: ROOM_ID, programId: PROGRAM_ID, policyId: POLICY_ID,
+    revision: 3, programEpoch: first.program.programEpoch, visibility: "private", authentication: "required",
+    directoryListed: false, anonymousAllowed: false, allowedOriginHashes: [], updatedAt: NOW };
+  const grants = authority();
+  const issue = f => grants.issue(attachProof(f, requestFor(f, { kind: "playback",
+    actions: ["playback:manifest", "playback:segment"], pathPrefix: `/broadcast/play/${RESOURCE_REF}`,
+    policyId: POLICY_ID, policyRevision: policy.revision })), authorizationFor(f, { viewerPolicy: policy }), NOW);
+  const a = await issue(first), b = await issue(other), rotated = await issue(first);
+  assert.equal(a.grant.deviceRef, b.grant.deviceRef);
+  assert.notEqual(a.grant.audienceRef, b.grant.audienceRef);
+  const origin = "https://webrtc.test";
+  const store = new BroadcastPlaybackSessionStore({ authority: grants, publicOrigin: origin, maximumPerAudience: 1 });
+  const session = await store.create({ authorizationHeader: `Bearer ${a.token}`, resourceRef: RESOURCE_REF, origin, now: NOW });
+  // Both grants are independently valid for this private resource. Rejection
+  // below must come from immutable session ownership, not an invalid token.
+  await store.create({ authorizationHeader: `Bearer ${b.token}`, resourceRef: RESOURCE_REF, origin, now: NOW });
+  const request = { sessionId: session.playbackSessionId, resourceRef: RESOURCE_REF,
+    cookieHeader: session.setCookie[0].split(";", 1)[0], origin, now: NOW + 1000 };
+  await assert.rejects(store.renew({ ...request, authorizationHeader: `Bearer ${b.token}` }), /not_found/);
+  const renewed = await store.renew({ ...request, authorizationHeader: `Bearer ${rotated.token}` });
+  assert.equal(renewed.playbackSessionId, session.playbackSessionId);
+  const authorized = await store.authorize({ ...request, method: "GET", file: "index.m3u8" });
+  assert.equal(authorized.authorizationHeader, `Bearer ${rotated.token}`);
+  assert.equal(store.size, 2);
 });
 
 test("trusted packager grant requires complete fresh source consent and its registered device", async () => {
