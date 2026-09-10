@@ -9,12 +9,22 @@ Default-aus sendet weiterhin v1. Ein Fähigkeitswechsel entwertet bestehende
 Quellenhandles; Room-Consent und Publisherfreigabe bleiben separat erforderlich.
 Siehe [Aushandlung und Grenzen](../../docs/native-source-control.md).
 
-`assignment-prepare.v4.schema.json` beschreibt separat den noch nicht aktivierten
+`assignment-prepare.v4.schema.json` beschreibt separat den implementierten
 Trusted-Source-Programmauftrag: expliziter Modus, Tenant-/Membership-/Gerätebindung,
-kein Legacy-Einzelpublisher. Native Parser-/Scope-Prüfung und gemeinsame Fixture
-sind vorhanden; bestehender Dispatcher und Versionsauswahl bleiben bis zur
-Runtimeintegration geschlossen. [Vertrag und Anschluss](../../docs/native-source-program-assignment.md)
-benennen die noch fehlenden Autorisierungs- und Lifecycle-Schritte.
+kein Legacy-Einzelpublisher. Parser, Dispatcher, Writer-Lifecycle und lokale
+Ressourcenprüfung sind angeschlossen; die ausdrückliche lokale Quellenprogramm-
+Aktivierung sowie aktuelle Raum- und Quellenfreigaben bleiben erforderlich.
+V5 ergänzt die unabhängige AAC-Auswahl. Capability V5 meldet dafür Audio-Control
+V3 und Audio-Encoding V1; V6 ergänzt Scene-Control V2. Der aktuelle aktivierte
+Agent meldet V6, bei deaktiviertem Quellenprogramm weiterhin V1.
+
+`source-program-start.v3.schema.json` ergänzt den menschlich autorisierten
+HTTP-Start um eine geschlossene Video-Strategie und ausdrücklich nullable
+Audio-Auswahl. Die native V4/V5-Zuordnung überträgt weiterhin die konkreten
+Encoderwerte, nicht neue unbekannte Auswahlfelder. Auswahl, kumulative
+Ressourcenprüfung und Übergabegrenzen stehen unter
+[Video-Ausgabestrategien](../../docs/native-source-video-output.md).
+Ein implementierter Vertrag ist keine öffentliche Betreiberfreigabe.
 
 `assignment-prepare.v3` transportiert zusätzlich ausdrücklich zugewiesene
 ICE-Server einschließlich kurzlebiger TURN-Credentials. Diese sind Infrastruktur-
@@ -34,4 +44,4 @@ Der Agent verbindet sich ausgehend über `/native-packager`, authentisiert eine 
 
 Die Verträge transportieren nur Control-Metadaten. Audio, Video, Bildschirm und Schlüssel dürfen nicht über diese WebSocket-Verbindung gesendet werden.
 
-`assignment-prepare` und `assignment-stop` sind kurzlebig, epoch- und lease-gefencet. Der Agent bestätigt Zustandswechsel mit `assignment-status`. Hardware wird nur nach einem lokalen, begrenzten Test-Encode gemeldet und muss zusätzlich sichtbar angefordert werden. Scheitert sie trotzdem, erlaubt v2 genau den gebundenen `libx264`-Fallback. Diese Steuerverträge enthalten weder SDP/ICE noch OIDC-Tokens, Medienbytes oder Decrypt-Schlüssel; ein `ready` bestätigt daher nur die lokale Capability- und Ressourcenprüfung, noch keinen laufenden Medienpfad.
+`assignment-prepare` und `assignment-stop` sind kurzlebig, epoch- und lease-gefencet. Der Agent bestätigt Zustandswechsel mit `assignment-status`. Hardware wird nur nach einem lokalen, begrenzten Test-Encode gemeldet und muss zusätzlich sichtbar angefordert werden. Scheitert sie trotzdem, erlaubt v2 genau den gebundenen `libx264`-Fallback. V1/V2 enthalten keine ICE-Server; V3 und die Quellenprogrammaufträge können sie ausdrücklich zuweisen. Die Aufträge enthalten keine SDP-, OIDC-Token-, Medien- oder Decrypt-Schlüssel-Nutzlast. Ein `ready` bestätigt lokale Vorbereitung, nicht die tatsächliche Zuschauerwiedergabe.

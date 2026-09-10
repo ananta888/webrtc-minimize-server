@@ -60,3 +60,57 @@ Bildqualität oder den weiterhin offenen Zwei-Quellen-Szenenfehler. Der
 nachfolgende gemeinsame Projektcheck wird einmal für die zusammenhängende
 Implementierung gestartet. Öffentliche Dienste, Hub-Trust und das
 Ananta-Repository bleiben unverändert; kein Deployment-/TBP-020-Abschluss.
+
+## Ergebnis des gemeinsamen Checks auf `7137e85`
+
+Der isolierte `npm run check` in `/tmp/webrtc-video-check.BikMfY` ist mit
+Exit 1 beendet: 1.294 Frontendtests bestanden, Build 13,222 s erfolgreich,
+Typ-, Go- und statische Gates bestanden. Node: 1.266 bestanden, drei Fehler,
+vier ausdrückliche Skips; 650,892 s. Externe Infrastruktur-Gates wurden wegen
+des Fehlers nicht mehr erreicht. Die drei Strategie-Fälle und beide früher
+auffälligen Szenentests bestanden. Fehlgeschlagen sind diesmal:
+
+- Zwei-Quellen-Audio `screen-first+unprocessed`: ein Tonanteil fehlt.
+- Nativer Handoff: erwarteter Mono-Ton nicht bestätigt; kein Beleg für einen
+  erneuten Standby-Ladefehler.
+- Chromium Source-Interop: 200 erfolgreich entschlüsselte/dekodierte VP8-Frames,
+  dann geschlossener Empfänger, Transportfehler 5. Dieser Code bezeichnet
+  `receiver.AliveNow() == false`, nicht einen Codec-/SFrame-Authentifizierungsfehler.
+  Welche Gültigkeitsbedingung verloren ging, ist damit noch nicht belegt.
+
+Diese Fehler bleiben offen; der erfolgreiche Low-Profilnachweis ersetzt die
+Gesamtabnahme nicht. Die separat vorbereitete Mehrstufenprüfung und explizite
+Destroy/Recreate-Wartebedingung sind nicht Bestandteil dieses eingefrorenen
+Checks. Kein zweiter Gesamtcheck pro kleinem Testnachtrag.
+
+## Vollständige lokale Rendition-Leitern
+
+Der getrennte Nachlauf mit erweitertem, ausdrücklich gewähltem Testprofil
+bestand in 59,454 s: drei Ausgabe-Fälle und der tatsächliche Zwei-Packager-
+Handoff. Die unveränderte Anwendung stammt aus dem isolierten `7137e85`-Build.
+Auf diesem Laptop meldet der native Agent tatsächlich CPU-Klasse `high`.
+Damit wurden bei **jeder** Strategie alle drei Stufen gleichzeitig zugelassen
+und aus committed HLS dekodiert: alle neun Auflösungs-/FPS-Kombinationen der
+Tabelle oben stimmen. Die Master-Playlist nennt exakt die jeweils drei
+dekodierten Varianten mit passender Auflösung. Es wurde kein Capture ausgelöst.
+
+Der Test setzt nur die lokale Testprozess-Konfiguration auf drei Renditions,
+43.545.600 Pixel/s und die entsprechende Uploadklasse. Er überschreibt keine
+CPU-Klasse und erhöht keine Produktionsgrenze. Auf schwächeren Rechnern prüft
+er die tatsächlich zugelassene reduzierte Leiter und meldet
+`completeLadder: false`; das zählt nicht als Dreistufennachweis.
+
+Die separate Handoff-Prüfung besteht in 30,695 s einschließlich neuem Consent,
+dekodiertem Mono-Ton und zwei Destroy/Recreate-Zyklen. Nach Navigation wird
+jetzt das tatsächliche Entfernen beider alten Panels abgewartet, bevor die
+neuen geöffnet werden. Das prüft die beabsichtigte Neuerstellung zuverlässiger,
+beweist aber nicht die Ursache des zuvor fehlenden Mono-Tons. Zwölf gezielte
+Fixture-/Probe-/Cleanup-Prüfungen bestehen in 0,133 s. Mobile Wiedergabe,
+Qualitätsbewertung und die drei roten Gesamtcheck-Fälle bleiben offen.
+
+Die CI `34476790152` auf `7137e85` ist ebenfalls terminal: Der Hauptjob
+überschritt laut GitHub-Annotation sein unverändertes 15-Minuten-Limit und
+wurde abgebrochen. Bis dahin bestanden dort beide 401-Frame-Interop-Fälle;
+das widerlegt den lokalen Fehler nicht. Authentisierter Ananta-TURN-Dialog,
+Blind-Media-Agent, nativer Packager und beide macOS-Lifecycle-Jobs bestanden.
+Docker und Live-Keycloak/TURN wurden durch den Hauptjob nicht freigegeben.

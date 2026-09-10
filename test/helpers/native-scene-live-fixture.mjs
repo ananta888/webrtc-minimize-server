@@ -15,6 +15,7 @@ import { nativeSceneProcesses } from "./native-scene-processes.mjs";
 import { machineFixtureAssets } from "./machine-fixture-assets.mjs";
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
 import { recordNativeSceneReply } from "./native-scene-reply-observation.mjs";
+import { nativeSceneOutputProfile } from "./native-scene-output-profile.mjs";
 
 const execute = promisify(execFile);
 async function unusedLoopbackPort() {
@@ -25,7 +26,8 @@ async function unusedLoopbackPort() {
 }
 
 export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, allowSyntheticAudio = false, allowSyntheticScreenAudio = false,
-  packagerCount = 1 } = {}) {
+  packagerCount = 1, outputProfile = "single-v1" } = {}) {
+  const outputEnvironment = nativeSceneOutputProfile(outputProfile);
   assert.ok(packagerCount === 1 || packagerCount === 2);
   assert.equal(typeof allowSyntheticScreen, "boolean");
   assert.equal(typeof allowSyntheticAudio, "boolean");
@@ -98,12 +100,12 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
   const agent = processes.start("packager", { NATIVE_PACKAGER_CONTROL_URL: origin.replace("https:", "wss:") + "/native-packager",
     NATIVE_PACKAGER_ID: packagerId, NATIVE_PACKAGER_IDENTITY_FILE: path.join(directory, "agent.pem"),
     NATIVE_PACKAGER_OUTPUT_ROOT: processes.output, NATIVE_PACKAGER_SOURCE_PROGRAMS: "enabled", NATIVE_PACKAGER_SOURCE_BUDGET: "compact-v1",
-    NATIVE_PACKAGER_MAX_RENDITIONS: "1", NATIVE_PACKAGER_FFMPEG: "ffmpeg" });
+    ...outputEnvironment, NATIVE_PACKAGER_FFMPEG: "ffmpeg" });
   const successorAgent = packagerCount === 2 ? processes.start("packager", {
     NATIVE_PACKAGER_CONTROL_URL: origin.replace("https:", "wss:") + "/native-packager",
     NATIVE_PACKAGER_ID: definitions[1].id, NATIVE_PACKAGER_IDENTITY_FILE: path.join(directory, "successor.pem"),
     NATIVE_PACKAGER_OUTPUT_ROOT: processes.output, NATIVE_PACKAGER_SOURCE_PROGRAMS: "enabled", NATIVE_PACKAGER_SOURCE_BUDGET: "compact-v1",
-    NATIVE_PACKAGER_MAX_RENDITIONS: "1", NATIVE_PACKAGER_FFMPEG: "ffmpeg" }) : null;
+    ...outputEnvironment, NATIVE_PACKAGER_FFMPEG: "ffmpeg" }) : null;
   const spki = createHash("sha256").update(new X509Certificate(certificate).publicKey.export({ type: "spki", format: "der" })).digest("base64");
   browser = await chromium.launch({ headless: true, args: [`--ignore-certificate-errors-spki-list=${spki}`] });
   const token = await new SignJWT({}).setIssuer(issuer).setAudience("human").setSubject("owner").setIssuedAt()

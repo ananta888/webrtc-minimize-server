@@ -15,6 +15,23 @@ export function nativeAudioFragmentNames(text) {
   return { init, segment: media.at(-1), sequence: Number(sequence), segments: media.length };
 }
 
+export function nativeOutputMasterRenditions(text) {
+  if (typeof text !== "string" || Buffer.byteLength(text) > 65536 || !text.startsWith("#EXTM3U\n")) throw new Error("test_output_master_invalid");
+  const lines = text.trimEnd().split("\n"), rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    if (/^#EXT-X-VERSION:[0-9]+$/.test(lines[i]) || lines[i] === "#EXT-X-INDEPENDENT-SEGMENTS") continue;
+    const entry = /^#EXT-X-STREAM-INF:BANDWIDTH=([0-9]+),RESOLUTION=([0-9]+)x([0-9]+)$/.exec(lines[i]);
+    const uri = /^(low|medium|high)\/index\.m3u8$/.exec(lines[++i] ?? "");
+    if (!entry || !uri || rows.length >= 3 || rows.some(r => r.id === uri[1])) throw new Error("test_output_master_invalid");
+    const [bandwidth, width, height] = entry.slice(1).map(Number);
+    if (!Number.isSafeInteger(bandwidth) || bandwidth < 1 || bandwidth > 12000000
+      || width < 160 || width > 1280 || height < 90 || height > 720) throw new Error("test_output_master_invalid");
+    rows.push({ id: uri[1], width, height });
+  }
+  if (!rows.length) throw new Error("test_output_master_invalid");
+  return rows;
+}
+
 async function readRegular(file, maximum) {
   const handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
@@ -60,13 +77,15 @@ function probeEncoding(fragment) {
 }
 
 /** Read only the single resource in this private synthetic fixture. No raw output. */
-export async function nativeAudioOutputObservation(root, { encoding = false, scene = false, video = false } = {}) {
+export async function nativeAudioOutputObservation(root, { encoding = false, scene = false, video = false, renditionId, master = false } = {}) {
+  if (renditionId !== undefined && !["low", "medium", "high"].includes(renditionId)) throw new Error("test_output_rendition_invalid");
   try {
     const resources = (await fs.readdir(root, { withFileTypes: true })).filter(e => e.isDirectory() && /^res_[A-Za-z0-9_-]{16,64}$/.test(e.name));
     if (resources.length !== 1) return { available: false };
     const resource = path.join(root, resources[0].name);
     const rendition = (await fs.readdir(resource, { withFileTypes: true })).filter(e => e.isDirectory() && ["low", "medium", "high"].includes(e.name));
-    if (rendition.length !== 1) return { available: false };
+    if (renditionId === undefined ? rendition.length !== 1 : !rendition.some(row => row.name === renditionId)) return { available: false };
+    const selected = renditionId ?? rendition[0].name;
     const observe = async parts => {
       try {
         let directory = resource;
@@ -86,6 +105,7 @@ export async function nativeAudioOutputObservation(root, { encoding = false, sce
           ...(encoding ? { encoding: await probeEncoding(fragment) } : {}) };
       } catch { return { available: false }; }
     };
-    return { available: true, committed: await observe([rendition[0].name]), producer: await observe([".pending", rendition[0].name]) };
+    return { available: true, committed: await observe([selected]), producer: await observe([".pending", selected]),
+      ...(master ? { master: nativeOutputMasterRenditions((await readRegular(path.join(resource, "index.m3u8"), 65536)).bytes.toString("utf8")) } : {}) };
   } catch { return { available: false }; }
 }

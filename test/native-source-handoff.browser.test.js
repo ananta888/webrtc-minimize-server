@@ -170,6 +170,10 @@ test("rendered source handoff drains the real writer, preserves mono AAC and req
   // source again. Every replacement must wait for its actual enabled binding.
   for (let cycle = 0; cycle < 2; cycle++) {
     await page.locator("#mesh-analysis-navigation").press("Enter");
+    // Navigation events alone do not prove an Angular render occurred between
+    // them. Require actual destruction before testing a fresh deferred editor.
+    await page.locator("app-native-source-program").waitFor({ state: "detached" });
+    await standby.waitFor({ state: "detached" });
     await page.locator("#broadcast-navigation").press("Enter");
     await page.locator("#native-source-program-open").press("Enter");
     await page.locator("#native-source-standbys-open").press("Enter");
