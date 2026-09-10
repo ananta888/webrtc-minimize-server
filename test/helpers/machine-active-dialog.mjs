@@ -50,8 +50,13 @@ export async function startActiveDialog({ sessionId, color }) {
 
 export function activeDialogObservation() {
   const state = window.__activeDialog, api = window.anantaMachine;
+  const audio = api.audio.status();
+  // Only fixed codes from the audio-session port; never serialize raw errors.
+  const known = ["meet_audio_setup_timeout", "meet_audio_decoder_failed", "meet_audio_open_failed",
+    "meet_audio_binding_changed", "meet_audio_queue_or_timeline_invalid", "meet_audio_finish_failed"];
+  const audioError = audio.error === "" ? "none" : known.includes(audio.error) ? audio.error : "unknown";
   return { samples: state.samples, nonzero: state.nonzero, screenFrames: state.screenFrames,
-    failed: state.failed, audioOpen: api.audio.status().open, audioCompleted: api.audio.status().completed, chatOpen: api.chat.status().open,
+    failed: state.failed, audioOpen: audio.open, audioCompleted: audio.completed, audioError, chatOpen: api.chat.status().open,
     screenOpen: api.screen.status().open, audioClosed: state.audioClosed, screenClosed: state.screenClosed };
 }
 

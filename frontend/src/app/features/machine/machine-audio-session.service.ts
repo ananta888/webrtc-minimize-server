@@ -128,9 +128,13 @@ export class MachineAudioSessionService implements OnDestroy {
       this.finishedSample = endSample; this.completed = true;
       for (const chunk of this.queue) wipeMachinePcm(chunk.pcm); this.queue = [];
       this.delivered = this.acknowledged;
-      const graph = this.graph; this.graph = null;
-      try { void graph?.close().catch(() => this.stop("meet_audio_finish_failed")); }
-      catch { this.stop("meet_audio_finish_failed"); throw new Error("meet_audio_finish_failed"); }
+      const graph = this.graph, controller = this.controller; this.graph = null;
+      const failed = () => {
+        // Cleanup belongs to the finished subscription, never its replacement.
+        if (this.controller === controller) this.stop("meet_audio_finish_failed");
+      };
+      try { void graph?.close().catch(failed); }
+      catch { failed(); throw new Error("meet_audio_finish_failed"); }
     }
     return Object.freeze({ schema: "ananta.meet-audio-segment-finished.v1", subscriptionId, endSample });
   }

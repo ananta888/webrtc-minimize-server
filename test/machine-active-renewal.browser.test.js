@@ -43,9 +43,11 @@ for (const humanEngine of ["chromium", "firefox"]) {
       const received = await waitFixtureValue(machine, activeDialogObservation, undefined, {
         timeout: 4000, accept: value => value.samples >= 16000 && value.nonzero > 1000 && value.screenFrames >= 3,
       });
-      assert.equal(received.failed, false);
-      assert.equal(received.audioCompleted, false, "renewal exercises an active decoder, not a completed subscription");
-      assert.equal(received.audioOpen, true); assert.equal(received.chatOpen, true); assert.equal(received.screenOpen, true);
+      const observation = JSON.stringify(received);
+      assert.equal(received.failed, false, observation);
+      assert.equal(received.audioCompleted, false, "renewal exercises an active decoder, not a completed subscription: " + observation);
+      assert.equal(received.audioOpen, true, observation);
+      assert.equal(received.chatOpen, true, observation); assert.equal(received.screenOpen, true, observation);
       await human.getByRole("button", { name: "Chat", exact: true }).click();
       // Live and Chat have different forms with the same input ID. A navigation
       // click is not a render ACK; never fill the outgoing Live form.

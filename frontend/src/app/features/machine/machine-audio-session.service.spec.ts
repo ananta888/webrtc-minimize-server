@@ -20,6 +20,28 @@ function setup() {
   return { service, session, mesh, graphs, close, deny: () => { allowed = false; }, consume: (start: number, pcm = new ArrayBuffer(3200)) => { consume(start, pcm); return pcm; } };
 }
 describe("machine audio subscription", () => {
+  it.each(["reopen", "close", "current"])("fences delayed finish cleanup failure after %s", async lifecycle => {
+    const f = setup(), sub = await f.service.open("audio", 10);
+    for (let i = 0; i < 10; i++) { f.consume(i * 1600); f.service.poll(); f.service.ack(i + 1); }
+    let rejectClose!: (error: Error) => void;
+    f.close.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectClose = reject; }));
+    f.service.finish(sub.subscriptionId, 16000);
+    if (lifecycle === "reopen") await f.service.open("audio", 10);
+    if (lifecycle === "close") f.service.close();
+    const before = f.service.status();
+    rejectClose(new Error("private decoder detail"));
+    await Promise.resolve();
+    if (lifecycle === "current") {
+      expect(f.service.status()).toEqual({ open: false, completed: false, error: "meet_audio_finish_failed" });
+    } else {
+      expect(f.service.status()).toEqual(before);
+      if (lifecycle === "reopen") {
+        f.consume(0); expect(f.service.poll().chunks[0]).toMatchObject({ sequence: 1, startSample: 0 });
+        f.service.ack(1);
+      }
+    }
+    f.service.close();
+  });
   it("probes early segmentation without capturing, opening or authorizing a source", () => {
     const f = setup(); f.deny();
     expect(f.service.segmentProbe()).toEqual({ schema: "ananta.meet-audio-segment-probe.v1", profile: "sample-boundary-v1", supported: true });

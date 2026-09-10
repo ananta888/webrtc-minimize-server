@@ -80,3 +80,45 @@ stimmen bytegenau mit dem Prüfkandidaten überein. Die separaten offenen native
 Audio-Strategieänderungen sind nicht enthalten; der lokale Serving-Index blieb
 unverändert. Keine öffentliche Aktivierung, neuer Rollout oder abgeschlossene
 Langzeitabnahme wird behauptet.
+
+## Audio-Cleanup nach einem Sitzungswechsel
+
+Am 11. September 2026 wurde eine zusätzliche Grenze am Graph-Port geprüft:
+`MachineAudioSessionService.finish()` schließt den Decoder asynchron. Lehnt
+dieses Schließen erst nach `open()` einer Ersatzsitzung ab, darf der alte
+Fehler deren Controller und PCM-Puffer nicht beenden. Dasselbe gilt nach einem
+expliziten `close()`: Ein alter Cleanup darf den abgeschlossenen Status nicht
+nachträglich überschreiben.
+
+Zwei injizierte Graph-Port-Regressionen reproduzierten beide Verletzungen vor
+der Korrektur. Der Cleanup-Fehler ist jetzt an den ursprünglichen Controller
+gebunden. Gehört dieser weiterhin zur aktuellen Sitzung, bleibt der Fehler
+fail-closed (`meet_audio_finish_failed`); eine Ersatzsitzung bleibt dagegen
+offen und kann neue PCM-Chunks ab Sequenz eins quittieren. Die gemeinsame
+Auswahl aus Audio-, Graph-, Lease-, Chat- und Session-Contract-Tests besteht
+mit 63 Fällen. Typprüfung und Todo-Gate bestehen ebenfalls.
+
+Diese Port-Härtung ist **kein nachgewiesener Fix** für den separaten
+Chromium-Offenstatusfehler aus CI 34537434250: Die konkrete GraphFactory
+fängt `AudioContext.close()`-Ablehnungen bereits selbst ab, und jener Browser-
+Dialog verwendet kein `finish()`. Freigaben, Queue-Limits, Fristen, Capture
+und die Erneuerungspolitik ändern sich nicht.
+
+Der isolierte Produktionsbuild unter `/tmp/webrtc-audio-fencing.yockx8`
+bestand in 9,817 Sekunden mit unverändertem Initial-Hardlimit und der
+bestehenden 1,50-MB-Warnung. Die anschließende echte Chromium-/Firefox-
+Erneuerungsregression bestand mit zwei Fällen in 19,168 Sekunden: je vier
+Phasen mit 16.000 PCM-Samples, Chat, dekodiertem Bildschirm, drei Erneuerungen
+und anschließendem Widerruf. Kein produktiver Capture und keine Änderung
+am ausgelieferten lokalen `dist/`. Das ersetzt weder den gemeinsamen
+CI-Gesamtcheck noch die offene Langzeit- und Produktionsabnahme.
+
+Der aktive Dialogtest liefert bei fehlgeschlagenen Offenstatus-Assertionen
+jetzt denselben begrenzten Snapshot von PCM-Zählern und Portstatus sowie
+einen Audiofehler aus einer festen Sechserliste (`none`/`unknown` sonst).
+Er liest den Audiostatus einmal; rohe Ausnahmen, Inhalte und Identitäten
+werden nicht übernommen. Drei Node-Tests prüfen den exakt serialisierten
+Callback einschließlich Secret-Canaries. Der anschließende Zweibrowserlauf
+mit diesem Beobachter bestand ebenfalls (19,217 Sekunden). Erfolgsbedingungen,
+Fristen und native Audiooperationen bleiben unverändert. Eine zukünftige
+Fehlerbeobachtung muss die CI-Ursache erst noch eingrenzen.
