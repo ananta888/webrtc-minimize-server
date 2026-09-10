@@ -5,6 +5,15 @@ const types = ["source-program-scene-state", "source-program-scene-applied", "so
 const revision = value => Number.isSafeInteger(value) && value > 0 ? value : null;
 const count = value => Array.isArray(value) && value.length <= 20 ? value.length : null;
 
+export function observeNativeSceneSubmission(value) {
+  try {
+    if (value?.action !== "apply" || ![1, 2].includes(value.requestVersion) || !layouts.includes(value.layout)) return null;
+    const row = { version: value.requestVersion, revision: revision(value.expectedSceneRevision),
+      layout: value.layout, selected: count(value.sourceLeaseIds) };
+    return row.revision !== null && row.selected !== null ? Object.freeze(row) : null;
+  } catch { return null; }
+}
+
 /** Test-only receipt observation, never command authority or a media assertion. */
 export function observeNativeSceneReply(value) {
   try {

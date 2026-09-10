@@ -1,11 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { observeNativeSceneReply, recordNativeSceneReply, assertFreshNativeSceneApply, assertObservedNativeScene } from "./helpers/native-scene-reply-observation.mjs";
+import { observeNativeSceneReply, recordNativeSceneReply, assertFreshNativeSceneApply, assertObservedNativeScene, observeNativeSceneSubmission } from "./helpers/native-scene-reply-observation.mjs";
 
 const query = { version: 1, type: "source-program-scene-state", sceneRevision: 1, layout: "waiting-slate",
   availableSources: ["PRIVATE-MARKER"], sourceLeaseIds: [] };
 const applied = { version: 1, type: "source-program-scene-applied", sceneRevision: 2 };
 const rejected = { version: 1, type: "source-program-scene-rejected", reasonCode: "SCENE_NOT_APPLIED" };
+
+test("HTTP submission observation exposes only layout, version, revision and selection count", () => {
+  const input = { action: "apply", requestVersion: 2, expectedSceneRevision: 4, layout: "single", sourceLeaseIds: ["private-source"],
+    deviceFingerprint: "private-device", get token() { throw Error("must not inspect token"); } };
+  const row = observeNativeSceneSubmission(input);
+  assert.deepEqual(row, { version: 2, revision: 4, layout: "single", selected: 1 });
+  assert.equal(Object.isFrozen(row), true); assert.doesNotMatch(JSON.stringify(row), /private/);
+  for (const value of [null, {}, { action: "query", requestVersion: 2 },
+    { action: "apply", requestVersion: 3 }, { ...query, action: "apply" }]) assert.equal(observeNativeSceneSubmission(value), null);
+  for (const patch of [{ layout: "private-content" }, { expectedSceneRevision: Infinity }, { sourceLeaseIds: Array(21) }]) {
+    assert.equal(observeNativeSceneSubmission({ action: "apply", requestVersion: 2, expectedSceneRevision: 1,
+      layout: "single", sourceLeaseIds: [], ...patch }), null);
+  }
+});
 
 test("post-apply scene must independently confirm the intended layout and source count", () => {
   const receipt = observeNativeSceneReply(applied);

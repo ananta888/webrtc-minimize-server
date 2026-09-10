@@ -138,3 +138,14 @@ controller cases plus 23 Node scene-contract/broker tests pass without local
 browser or media execution. The next coupled browser CI must establish whether
 this correction also resolves the observed live-fixture mismatch; earlier red
 runs and the broad production acceptance remain red/open.
+
+CI `34501460871` on `27eba11` still fails both native-layout checks: selected
+counts match, but both observed layouts remain `waiting-slate`. The hydration
+boundary correction is therefore **not** a proven fix for those failures.
+The next test boundary checks the DOM layout immediately after selection and
+again after source selection, then observes the actual outgoing HTTP apply.
+Only its version, expected revision, closed layout enum and source count are
+retained; request contents, identities and credentials are never printed.
+Observation is limited to one matching request, 16 KiB and five seconds, with
+no automatic correction. Five pure projection/assertion tests pass; the real
+browser request and native scene/pixel checks remain CI work.

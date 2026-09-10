@@ -3,7 +3,7 @@ import test from "node:test";
 import { nativeSceneLiveFixture } from "./helpers/native-scene-live-fixture.mjs";
 import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
 import { decodedScene, decodedSceneTiles, openSceneViewer, sceneViewerObservation } from "./helpers/native-scene-viewer.mjs";
-import { assertFreshNativeSceneApply, assertObservedNativeScene } from "./helpers/native-scene-reply-observation.mjs";
+import { assertFreshNativeSceneApply, assertObservedNativeScene, observeNativeSceneSubmission } from "./helpers/native-scene-reply-observation.mjs";
 import { nativeAudioOutputObservation } from "./helpers/native-audio-output.mjs";
 
 async function confirm(page, action) {
@@ -70,6 +70,9 @@ for (const multiple of [false, true]) test(multiple
   await page.locator("#native-scene-refresh").click();
   await page.locator("#native-scene-status", { hasText: "Szenenzustand bestätigt" }).waitFor();
   await page.locator("#native-scene-layout").selectOption(multiple ? "side-by-side" : "single");
+  const expectedLayout = multiple ? "side-by-side" : "single";
+  assert.equal(await page.locator("#native-scene-layout").inputValue() === expectedLayout, true,
+    "scene layout DOM differs immediately after selection");
   await page.locator("app-native-source-scene").getByRole("checkbox", { name: /Kamera/ }).check();
   if (multiple) await page.locator("app-native-source-scene").getByRole("checkbox", { name: /Bildschirm/ }).check();
   const fitControls = page.locator("app-native-source-scene select[data-scene-fit]");
@@ -77,7 +80,19 @@ for (const multiple of [false, true]) test(multiple
   const queriedScene = f.observation.scene.at(-1);
   const sourceBeforeApply = await f.agent.observe();
   assert.equal(queriedScene.version, 2);
+  assert.equal(await page.locator("#native-scene-layout").inputValue() === expectedLayout, true,
+    "scene layout DOM changed during source selection");
+  const submitted = page.waitForRequest(request => request.method() === "POST"
+    && new URL(request.url()).pathname.endsWith("/native-source-scene"), { timeout: 5000 }).then(request => {
+    const body = request.postData();
+    if (!body || body.length > 16384) return null;
+    try { return observeNativeSceneSubmission(JSON.parse(body)); } catch { return null; }
+  }, () => null);
   await confirm(page, () => page.locator("#native-scene-apply").click());
+  const submission = await submitted;
+  try { assert.deepEqual(submission, { version: 2, revision: queriedScene.revision, layout: expectedLayout, selected: multiple ? 2 : 1 },
+    "submitted scene presentation differs from the intended DOM selection"); }
+  catch (error) { t.diagnostic(JSON.stringify({ stage: "scene-http-submission", submission })); throw error; }
   await page.locator("#native-scene-status", { hasText: "neu abfragen" }).waitFor();
   try { assertFreshNativeSceneApply(f.observation.scene, queriedScene); }
   catch (error) { t.diagnostic(JSON.stringify({ stage: "scene-application-receipt", scene: f.observation.scene })); throw error; }
