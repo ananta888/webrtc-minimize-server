@@ -1,12 +1,21 @@
 <section aria-labelledby="native-audio-heading">
   <h3 id="native-audio-heading">Programmaudio · Pegel und Priorität</h3>
   <p>Nur bereits freigegebene Audioeingänge. Änderungen betreffen den Broadcast-Ausgang, nicht den Raumton. Mute widerruft keine Freigabe. Keine Aufnahme oder lokale Kontrollwiedergabe wird gestartet.</p>
-  <button id="native-audio-refresh" type="button" (click)="refresh()" [disabled]="audio.view().phase === 'pending'">Audiowerte abfragen</button>
+  <button id="native-audio-refresh" type="button" (click)="refresh()" [disabled]="refreshing() || audio.view().phase === 'pending'">Audiowerte abfragen</button>
   <p id="native-audio-status" role="status" aria-live="polite">{{ status() }}</p>
-  @if (audio.view().phase === 'ready' && !levels().length) { <p>Noch keine gebundenen Audioeingänge. Eine vorbereitete Freigabe allein ist noch kein Eingang.</p> }
-  <fieldset [disabled]="audio.view().phase !== 'ready'">
+  @if (formState(); as state) {
+  @if (dirty()) { <p id="native-audio-draft-status" role="status">Lokaler Audioentwurf, noch nicht angewendet. Eine Abfrage derselben Audiorevision behält deine Änderungen.</p> }
+  @if (draftConflict()) {
+    <p id="native-audio-draft-conflict" role="alert">Audiowerte oder Quellen haben sich geändert. Entwurf ausdrücklich neu prüfen oder verwerfen; neu hinzugekommene Eingänge bleiben unverändert.</p>
+    <button id="native-audio-draft-review" type="button" [disabled]="refreshing() || audio.view().phase !== 'ready'" (click)="reviewDraft(true)">Audioentwurf gegen aktuellen Zustand prüfen…</button>
+  }
+  @if (dirty() || draftConflict()) {
+    <button id="native-audio-draft-discard" type="button" [disabled]="refreshing() || audio.view().phase !== 'ready'" (click)="reviewDraft(false)">Audioentwurf verwerfen…</button>
+  }
+  @if (audio.view().phase === 'ready' && !state.sources.length) { <p>Noch keine gebundenen Audioeingänge. Eine vorbereitete Freigabe allein ist noch kein Eingang.</p> }
+  <fieldset [disabled]="!editable()">
     <legend>Ausgangspegel je Quelle · maximal 100 %</legend>
-    @if ((audio.view().audio?.audioControlVersion ?? 0) >= 2) {
+    @if (state.audioControlVersion >= 2) {
       <label>Native Audio-Strategie
         <select id="native-audio-strategy" [value]="strategy()" (change)="setStrategy($any($event.target).value)">
           @for (preset of strategies; track preset) { <option [value]="preset">{{ strategyLabels[preset] }}</option> }
@@ -17,12 +26,16 @@
     @for (source of levels(); track source.sourceLeaseId; let i = $index) {
       <fieldset>
         <legend>{{ sourceLabel(source.sourceLeaseId) }} {{ i + 1 }}</legend>
-        <label>Links (%) <input type="number" min="0" max="100" step="0.1" [value]="percent(source.leftGainQ15)" (change)="setGain(source.sourceLeaseId, 'leftGainQ15', $any($event.target).value)"></label>
-        <label>Rechts (%) <input type="number" min="0" max="100" step="0.1" [value]="percent(source.rightGainQ15)" (change)="setGain(source.sourceLeaseId, 'rightGainQ15', $any($event.target).value)"></label>
+        @if (sourceUnavailable(source.sourceLeaseId)) {
+          <p>Dieser Eingang ist nicht mehr verfügbar.</p>
+          <button type="button" (click)="removeUnavailable(source.sourceLeaseId)">Nicht verfügbaren Eingang aus Entwurf entfernen</button>
+        }
+        <label>Links (%) <input type="number" min="0" max="100" step="0.1" [value]="percent(source.leftGainQ15)" (change)="$any($event.target).value = setGain(source.sourceLeaseId, 'leftGainQ15', $any($event.target).value)"></label>
+        <label>Rechts (%) <input type="number" min="0" max="100" step="0.1" [value]="percent(source.rightGainQ15)" (change)="$any($event.target).value = setGain(source.sourceLeaseId, 'rightGainQ15', $any($event.target).value)"></label>
         <label><input type="checkbox" [checked]="source.muted" (change)="setMuted(source.sourceLeaseId, $any($event.target).checked)"> Im Broadcast stummschalten</label>
       </fieldset>
     }
-    <button id="native-audio-apply" type="button" [disabled]="!levels().length && (audio.view().audio?.audioControlVersion ?? 0) < 2" (click)="apply()">Audiowerte bewusst anwenden…</button>
+    <button id="native-audio-apply" type="button" [disabled]="!canApply()" (click)="apply()">Audiowerte bewusst anwenden…</button>
   </fieldset>
   @if (audio.view().audio?.mix; as mix) {
     <p id="native-audio-dynamics">Bestätigt: {{ strategyLabels[mix.strategy] }}. Letzter Mischblock: Mikrofonfaktor {{ percent(mix.microphoneGainQ15) }} %, Bildschirmtonfaktor {{ percent(mix.screenAudioGainQ15) }} %, Limiterfaktor {{ percent(mix.limiterGainQ15) }} %, Spitze {{ percent(mix.peakQ15) }} %. Momentaufnahme, keine laufende Messkurve.</p>
@@ -31,5 +44,6 @@
     <p>Aktuelle Encoder-Konfiguration: AAC · {{ encoding.sampleRate }} Hz · {{ encoding.channels }} Kanäle.
       @for (rendition of encoding.renditions; track rendition.id) { {{ rendition.id }}: {{ rendition.targetBitsPerSecond / 1000 }} kbit/s Zielrate. }
       Die tatsächliche Datenrate kann abweichen. Kanalzahl und Codec werden durch diese Live-Mischung nicht geändert; Opus-DTX/FEC sind hier nicht anwendbar.</p>
+  }
   }
 </section>

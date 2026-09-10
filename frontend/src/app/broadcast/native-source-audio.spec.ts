@@ -41,9 +41,9 @@ it("v3 query/apply keeps capability fences and UI mixing for mono output", async
   f.setContext({ key: "session-alpha", program, audioControlVersion: 2 });
   await f.controller.apply({ ...selection, strategy: "balanced" }, "user-action");
   expect(f.request).toHaveBeenCalledTimes(1); expect(f.views.at(-1)?.phase).toBe("stale"); f.controller.destroy();
-  const audio = { view: signal<NativeAudioView>({ phase: "ready", audio: outputState }),
+  const audio = { ownerKey: () => "owner-alpha", view: signal<NativeAudioView>({ phase: "ready", audio: outputState }),
     controller: { refresh: vi.fn(async () => {}), apply: vi.fn(async () => {}) } };
-  const c = new NativeSourceAudioComponent(audio as never); await c.refresh(); c.setStrategy("balanced");
+  const c = new NativeSourceAudioComponent(audio as never, { detectChanges() {} } as never); await c.refresh(); c.setStrategy("balanced");
   vi.spyOn(window, "confirm").mockReturnValue(true); await c.apply();
   expect(audio.controller.apply).toHaveBeenCalledWith(expect.objectContaining({ strategy: "balanced" }), "user-action");
 });
@@ -106,8 +106,8 @@ it("rejects observations which became stale before continuation, and forces requ
   await g.controller.apply(selection, "user-action"); expect(g.request).toHaveBeenCalledTimes(2); g.controller.destroy();
 });
 it("UI changes only staged gains/mute and requires exact confirmation", async () => {
-  const audio = { view: signal<NativeAudioView>({ phase: "ready", audio: state }), controller: { refresh: vi.fn(async () => {}), apply: vi.fn(async () => {}) } };
-  const component = new NativeSourceAudioComponent(audio as never);
+  const audio = { ownerKey: () => "owner-alpha", view: signal<NativeAudioView>({ phase: "ready", audio: state }), controller: { refresh: vi.fn(async () => {}), apply: vi.fn(async () => {}) } };
+  const component = new NativeSourceAudioComponent(audio as never, { detectChanges() {} } as never);
   expect(audio.controller.refresh).not.toHaveBeenCalled(); await component.refresh();
   component.setGain(source, "leftGainQ15", "50"); component.setGain(source, "rightGainQ15", "25"); component.setMuted(source, true);
   expect(component.levels()).toEqual(selection.sources); expect(audio.controller.apply).not.toHaveBeenCalled();
@@ -165,9 +165,9 @@ it("v2 controller binds query and apply to capability version and rejects downgr
 });
 
 it("v2 UI stages strategy alone, rejects unknown presets and cancels changed confirmations", async () => {
-  const audio = { view: signal<NativeAudioView>({ phase: "ready", audio: { ...strategyState, sources: [] } }),
+  const audio = { ownerKey: () => "owner-alpha", view: signal<NativeAudioView>({ phase: "ready", audio: { ...strategyState, sources: [] } }),
     controller: { refresh: vi.fn(async () => {}), apply: vi.fn(async () => {}) } };
-  const c = new NativeSourceAudioComponent(audio as never); await c.refresh();
+  const c = new NativeSourceAudioComponent(audio as never, { detectChanges() {} } as never); await c.refresh();
   expect(c.strategy()).toBe("speech-first"); c.setStrategy("balanced"); c.setStrategy("unsafe"); expect(c.strategy()).toBe("balanced");
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(false); await c.apply(); expect(audio.controller.apply).not.toHaveBeenCalled();
   confirm.mockImplementation(() => { c.setStrategy("screen-first"); return true; });

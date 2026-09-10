@@ -1,16 +1,11 @@
 import { BroadcastBrowserPortError, BroadcastProgramRef } from "./broadcast-ports";
 import { NativeAudioResult, NativeAudioSelection, parseNativeAudioResult, validAudioSelection } from "./native-source-audio-contract";
 
-interface NativeAudioHttpPorts {
-  fingerprint(): string | null;
-  authorizationHeader(): Record<string, string>;
-  readJson(response: Response, code: string, maximumBytes: number): Promise<Record<string, unknown>>;
-  responseError(response: Response, code: string): BroadcastBrowserPortError;
-}
+import type { NativeControlHttpPorts } from "./native-control-http-ports";
 
 /** Loaded only for native program audio; permissions still belong to the server. */
 export async function requestNativeSourceAudio(program: BroadcastProgramRef, selection: NativeAudioSelection | null,
-  signal: AbortSignal, ports: NativeAudioHttpPorts, version: 1 | 2 | 3 = 1): Promise<NativeAudioResult> {
+  signal: AbortSignal, ports: NativeControlHttpPorts, version: 1 | 2 | 3 = 1): Promise<NativeAudioResult> {
   signal.throwIfAborted();
   const fingerprint = ports.fingerprint();
   if (!/^prg_[A-Za-z0-9_-]{16,64}$/.test(program.programId) || !fingerprint) {

@@ -64,8 +64,22 @@
   <p id="native-source-status" role="status" aria-live="polite">{{ statusLabel() }}</p>
   @if (confirmedPackager()) { <p id="native-source-confirmed-packager">Aktuell bestätigter Packager: {{ confirmedPackager() }}</p> }
   @if (programs.requestProgram()) { <p>Jetzt Quellenanfragen öffnen. Die Statusbestätigung ist noch kein Nachweis, dass ein Zuschauer Bild oder Ton empfängt.</p> }
-  @if (programs.requestProgram()) { <app-native-source-scene /> }
-  @if (programs.requestProgram()) { <app-native-source-audio /> }
+  @if (programs.requestProgram()) {
+    @defer (on immediate) {
+      <app-native-source-scene />
+    } @placeholder {
+      <p role="status">Szenenregie wird geladen…</p>
+    } @error {
+      <p role="alert">Szenenregie konnte nicht geladen werden. Die Sendung kann weiterhin oben gestoppt werden. Vor erneutem Laden laufende Freigaben beachten.</p>
+    }
+    @defer (on immediate) {
+      <app-native-source-audio />
+    } @placeholder {
+      <p role="status">Audioregie wird geladen…</p>
+    } @error {
+      <p role="alert">Audioregie konnte nicht geladen werden. Die Sendung kann weiterhin oben gestoppt werden. Vor erneutem Laden laufende Freigaben beachten.</p>
+    }
+  }
   @if (programs.requestProgram(); as program) {
     @defer (on interaction) {
       <app-native-packager-standby [programId]="program.programId" [programEpoch]="program.programEpoch"

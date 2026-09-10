@@ -218,40 +218,22 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
 
   async nativeSourceScene(program: BroadcastProgramRef, selection: NativeSceneSelection | null, signal: AbortSignal): Promise<NativeSceneResult> {
     signal.throwIfAborted();
-    const fingerprint = this.device.fingerprint();
-    if (!PROGRAM.test(program.programId) || !fingerprint) throw new BroadcastBrowserPortError("broadcast_active_device_required");
-    const { parseNativeSceneResult } = await import("./native-source-scene-contract");
+    const { requestNativeSourceScene } = await import("./native-source-scene-http");
     signal.throwIfAborted();
-    const response = await fetch(`/api/broadcasts/${encodeURIComponent(program.programId)}/native-source-scene`, {
-      method: "POST", headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
-      credentials: "same-origin", cache: "no-store", redirect: "error", signal,
-      body: JSON.stringify({ requestVersion: selection === null || selection.sourceFits !== undefined ? 2 : 1, deviceFingerprint: fingerprint, expectedProgramRevision: program.programRevision,
-        expectedProgramEpoch: program.programEpoch, ...(selection === null ? { action: "query" }
-          : { action: "apply", trigger: "user-action", ...selection }) }),
+    return requestNativeSourceScene(program, selection, signal, {
+      fingerprint: () => this.device.fingerprint(), authorizationHeader: () => this.auth.authorizationHeader(),
+      readJson: json, responseError: requestError,
     });
-    if (!response.ok) throw requestError(response, "native_scene_unavailable");
-    const value = await json(response, "invalid_native_scene_response", 16384);
-    signal.throwIfAborted();
-    return parseNativeSceneResult(value, program);
   }
 
   async nativeSourceLabels(scene: NativeSceneState, signal: AbortSignal): Promise<NativeSourceLabels> {
     signal.throwIfAborted();
-    const fingerprint = this.device.fingerprint();
-    if (!PROGRAM.test(scene.programId) || !fingerprint) throw new BroadcastBrowserPortError("broadcast_active_device_required");
-    const { parseNativeSourceLabels } = await import("./native-source-labels-contract");
+    const { requestNativeSourceLabels } = await import("./native-source-labels-http");
     signal.throwIfAborted();
-    const response = await fetch(`/api/broadcasts/${encodeURIComponent(scene.programId)}/native-source-labels`, {
-      method: "POST", headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
-      credentials: "same-origin", cache: "no-store", redirect: "error", signal,
-      body: JSON.stringify({ requestVersion: 1, deviceFingerprint: fingerprint, expectedProgramRevision: scene.programRevision,
-        expectedProgramEpoch: scene.programEpoch, expectedPackagerId: scene.packagerId, expectedAssignmentId: scene.assignmentId,
-        expectedFencingRevision: scene.fencingRevision, sourceLeaseIds: scene.availableSources.map(s => s.sourceLeaseId) }),
+    return requestNativeSourceLabels(scene, signal, {
+      fingerprint: () => this.device.fingerprint(), authorizationHeader: () => this.auth.authorizationHeader(),
+      readJson: json, responseError: requestError,
     });
-    if (!response.ok) throw requestError(response, "native_source_labels_unavailable");
-    const value = await json(response, "invalid_native_source_labels_response", 16384);
-    signal.throwIfAborted();
-    return parseNativeSourceLabels(value, scene);
   }
 
   async nativeSourceAudio(program: BroadcastProgramRef, selection: NativeAudioSelection | null, signal: AbortSignal, version: 1 | 2 | 3 = 1): Promise<NativeAudioResult> {

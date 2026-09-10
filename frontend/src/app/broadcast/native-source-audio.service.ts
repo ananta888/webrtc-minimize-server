@@ -8,10 +8,15 @@ export class NativeSourceAudioService implements OnDestroy {
   readonly view = signal<NativeAudioView>({ phase: "idle", audio: null });
   readonly controller: NativeSourceAudioController;
   private readonly timer: ReturnType<typeof setInterval>;
-  constructor(programs: NativeSourceProgramService, control: BroadcastControlPlaneService) {
+  constructor(private readonly programs: NativeSourceProgramService, control: BroadcastControlPlaneService) {
     this.controller = new NativeSourceAudioController({ context: () => programs.audioContext(),
       request: (program, selection, signal, version) => control.nativeSourceAudio(program, selection, signal, version), changed: value => this.view.set(value) });
     this.timer = setInterval(() => this.controller.tick(), 250);
+  }
+  ownerKey(): string | null {
+    const context = this.programs.audioContext();
+    return context ? JSON.stringify([context.key, context.program.programId,
+      context.program.programRevision, context.program.programEpoch, context.audioControlVersion]) : null;
   }
   ngOnDestroy(): void { clearInterval(this.timer); this.controller.destroy(); }
 }
