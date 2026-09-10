@@ -56,3 +56,46 @@ The grouped handoff snapshot predates these test-only diagnostic additions.
 No production code, permissions, codec policy, retry behavior or browser timeout
 was changed by this diagnostic slice. Production rollout and the wider source
 reliability acceptance remain open.
+
+## Bounded native source snapshot in the two director fixtures
+
+The two `native-scene-director.browser.test.js` cases now explicitly opt into
+an **instrumented test binary**. All other process fixtures and release builds
+keep their existing binary path. The fixture creates an owned, mode-0600 copy
+of `main.go` through Go's build overlay; it inserts one observer registration
+after client construction and appends the test-only implementation from
+`test/helpers/native-scene-observer.go.txt`. Unexpected source shape fails the
+build preparation. No production file, network endpoint, decrypt port or
+operator setting is changed.
+
+The parent can request at most two snapshots by SIGUSR1 on its own child:
+before scene application, and on failed pixel verification. The reader permits
+one outstanding request, 64 KiB and one second; malformed, unknown, oversized,
+late, failed or missing output is unavailable, never a passing media result.
+Only the instrumented child's stdout is connected; stderr is not collected.
+Snapshots use a fixed schema of booleans, source-kind enums and bounded counts:
+
+- Program and lazy decoder closed state, observed input, pending/attached decoder,
+  keyframe and temporary clock wait.
+- Clock binding, accepted-report count, uncertainty and its existing failure code.
+- Video decoder started/closed state and existing input/timestamp queue occupancy.
+- Mixer started/closed state, current-image presence and pending-frame count.
+
+The reader rejects every additional field. No IDs, names, paths, tokens, keys,
+SDP/ICE, absolute timestamps, media or caption values are emitted. Up to the
+existing 80 source handles are copied under `TryLock`; individual busy sections
+report their availability as false. Registry, decoder, clock and mixer locks
+are never nested by the observer. It does not invoke policy, clock-mapping or
+freshness methods. These are sequential observations, not an atomic causal trace.
+
+The tests still require the original decoded image, motion, revocation and
+remaining-source behavior. They label their evidence `instrumentedBinary: true`
+and `productionEvidence: false`; the extra observation does not certify the
+release binary or establish a cause for earlier failures. Codec, consent,
+queue budgets and media deadlines remain unchanged. A successful instrumented
+run alone also cannot rule out scheduling-sensitive failure.
+
+Local verification: the Node parser/overlay/process suite passes all 11 tests,
+and the actual overlay compiles with Go 1.24.13 in a network-disabled, bounded
+container with read-only release sources. No local FFmpeg, audio or browser is
+started. The two real browser cases remain for GitHub CI.

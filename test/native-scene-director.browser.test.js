@@ -15,7 +15,7 @@ for (const multiple of [false, true]) test(multiple
   ? "coupled Angular director preserves a second source through two encoder replacements"
   : "coupled Angular director uses actual native source-program authority", { timeout: 180_000 }, async t => {
   if (process.platform !== "linux") { t.skip("Coupled production-process fixture requires Linux containment and local FFmpeg"); return; }
-  const f = await nativeSceneLiveFixture(t, { allowSyntheticScreen: multiple }), { page } = f;
+  const f = await nativeSceneLiveFixture(t, { allowSyntheticScreen: multiple, observeSourceState: true }), { page } = f;
   await waitFixtureValue(page, async id => {
     const response = await fetch("/api/native-packagers", { headers: {
       authorization: `Bearer ${sessionStorage.getItem("webrtc.oidc.access-token")}` } });
@@ -75,6 +75,7 @@ for (const multiple of [false, true]) test(multiple
   const fitControls = page.locator("app-native-source-scene select[data-scene-fit]");
   assert.deepEqual(await fitControls.evaluateAll(nodes => nodes.map(node => node.value)), multiple ? ["contain", "contain"] : ["contain"]);
   const queriedScene = f.observation.scene.at(-1);
+  const sourceBeforeApply = await f.agent.observe();
   assert.equal(queriedScene.version, 2);
   await confirm(page, () => page.locator("#native-scene-apply").click());
   await page.locator("#native-scene-status", { hasText: "neu abfragen" }).waitFor();
@@ -82,6 +83,7 @@ for (const multiple of [false, true]) test(multiple
   catch (error) { t.diagnostic(JSON.stringify({ stage: "scene-application-receipt", scene: f.observation.scene })); throw error; }
   const red = await (multiple ? decodedSceneTiles(viewer, ["red", "blue"]) : decodedScene(viewer, "red", initial.time + 1)).catch(async error => {
     t.diagnostic(JSON.stringify({ stage: "selected-source-output", initial, viewer: await sceneViewerObservation(viewer),
+      instrumentedBinary: true, sourceBeforeApply, sourceAfterFailure: await f.agent.observe(),
       output: await nativeAudioOutputObservation(f.output, { scene: true }),
       agentAlive: f.agent.alive(), originAlive: f.gateway.alive(), observation: f.observation }));
     throw error;
@@ -136,6 +138,7 @@ for (const multiple of [false, true]) test(multiple
     assert.equal(f.app.registry.participantCount, 1);
   }
   t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, path: "Angular-Node-native-SFrame-HLS-viewer",
+    instrumentedBinary: true, sourceBeforeApply,
     initial, red, fitEvidence, revoked, survivingMovement, finalSlate, roomParticipants: f.app.registry.participantCount }));
   await viewer.close();
   await page.locator("#native-source-stop").click();

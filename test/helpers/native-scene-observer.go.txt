@@ -1,0 +1,100 @@
+
+// TEST OVERLAY ONLY. Never compiled into release binaries. No observation
+// calls policy/timing methods, extends freshness or waits on a runtime lock.
+func observeSceneFixture(ctx context.Context, c *client) {
+	requests := make(chan os.Signal, 1)
+	signal.Notify(requests, syscall.SIGUSR1)
+	go func() {
+		defer signal.Stop(requests)
+		count := 0
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-requests:
+				if count >= 2 { continue }
+				count++
+				_ = writeJSON(os.Stdout, sceneFixtureSnapshot(c))
+			}
+		}
+	}()
+}
+
+type sceneFixtureSource struct {
+	Kind string `json:"kind"`
+	LazyAvailable bool `json:"lazyAvailable"`
+	Closed bool `json:"closed"`
+	Observed bool `json:"observed"`
+	Pending bool `json:"pending"`
+	Decoder bool `json:"decoder"`
+	NeedKey bool `json:"needKey"`
+	WaitingClock bool `json:"waitingClock"`
+	ClockAvailable bool `json:"clockAvailable"`
+	ClockClosed bool `json:"clockClosed"`
+	ClockBound bool `json:"clockBound"`
+	Reports uint32 `json:"reports"`
+	ClockFailure uint8 `json:"clockFailure"`
+	Uncertain bool `json:"uncertain"`
+	DecoderAvailable bool `json:"decoderAvailable"`
+	DecoderClosed bool `json:"decoderClosed"`
+	DecoderStarted bool `json:"decoderStarted"`
+	Queued int `json:"queued"`
+	Timestamps int `json:"timestamps"`
+	MixerAvailable bool `json:"mixerAvailable"`
+	MixerClosed bool `json:"mixerClosed"`
+	MixerStarted bool `json:"mixerStarted"`
+	Current bool `json:"current"`
+	PendingFrames int `json:"pendingFrames"`
+}
+
+type sceneFixtureState struct {
+	Fixture string `json:"fixture"`
+	Available bool `json:"available"`
+	ProgramClosed bool `json:"programClosed"`
+	Sources []sceneFixtureSource `json:"sources"`
+}
+
+func sceneFixtureSnapshot(c *client) sceneFixtureState {
+	out := sceneFixtureState{Fixture: "source-state-v1", Sources: []sceneFixtureSource{}}
+	if !c.assignmentMu.TryLock() { return out }
+	var p *sourceProgramGeneration
+	if a := c.assignment; a != nil && a.sourceProgram != nil { p = a.sourceProgram.generation.Load() }
+	c.assignmentMu.Unlock()
+	if p == nil || !p.mu.TryLock() { return out }
+	if len(p.sources) > 80 { p.mu.Unlock(); return out }
+	sources := make([]*sourceGenerationSource, 0, len(p.sources))
+	for _, s := range p.sources { sources = append(sources, s) }
+	p.mu.Unlock()
+	out.Available, out.ProgramClosed = true, p.closed.Load()
+	for _, s := range sources {
+		r := sceneFixtureSource{Kind: "unknown"}
+		if s == nil { out.Sources = append(out.Sources, r); continue }
+		if oneOf(s.kind, "camera", "screen", "microphone", "screen-audio") { r.Kind = s.kind }
+		l := s.sourceLazyDecoder
+		var d *sourceVideoDecoder
+		if l != nil && l.mu.TryLock() {
+			r.LazyAvailable, r.Closed, r.Observed = true, l.closed.Load(), l.observed
+			r.Pending, r.Decoder, r.NeedKey, r.WaitingClock = l.pending != nil, l.decoder.sink != nil, l.needKey, l.waitingClock
+			d, _ = l.decoder.sink.(*sourceVideoDecoder)
+			l.mu.Unlock()
+		}
+		if l != nil && l.sourceMediaClock.mu.TryLock() {
+			clock := l.sourceMediaClock
+			r.ClockAvailable, r.ClockClosed, r.ClockBound = true, clock.closed, clock.bound
+			r.Reports, r.ClockFailure, r.Uncertain = clock.reports, clock.failure, clock.uncertain
+			clock.mu.Unlock()
+		}
+		if d != nil && d.mu.TryLock() {
+			r.DecoderAvailable, r.DecoderClosed, r.DecoderStarted = true, d.closed, d.started
+			r.Queued, r.Timestamps = len(d.queue), len(d.timestamps)
+			d.mu.Unlock()
+		}
+		if v := s.video; v != nil && v.mixer.mu.TryLock() {
+			r.MixerAvailable, r.MixerClosed, r.MixerStarted = true, v.closed, v.started
+			r.Current, r.PendingFrames = v.current >= 0, len(v.pending)
+			v.mixer.mu.Unlock()
+		}
+		out.Sources = append(out.Sources, r)
+	}
+	return out
+}

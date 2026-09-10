@@ -26,7 +26,7 @@ async function unusedLoopbackPort() {
 }
 
 export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, allowSyntheticAudio = false, allowSyntheticScreenAudio = false,
-  packagerCount = 1, outputProfile = "single-v1" } = {}) {
+  packagerCount = 1, outputProfile = "single-v1", observeSourceState = false } = {}) {
   const outputEnvironment = nativeSceneOutputProfile(outputProfile);
   assert.ok(packagerCount === 1 || packagerCount === 2);
   assert.equal(typeof allowSyntheticScreen, "boolean");
@@ -46,7 +46,7 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
     }
     if (tls?.listening) { tls.closeAllConnections(); await new Promise(resolve => tls.close(resolve)); }
   });
-  const processes = await nativeSceneProcesses(t), directory = processes.directory;
+  const processes = await nativeSceneProcesses(t, { observeSourceState }), directory = processes.directory;
   try {
     await execute("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=127.0.0.1",
       "-addext", "subjectAltName=IP:127.0.0.1", "-keyout", path.join(directory, "key.pem"), "-out", path.join(directory, "cert.pem")],
