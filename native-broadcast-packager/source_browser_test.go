@@ -173,6 +173,10 @@ func TestSourcePublisherBrowserInterop(t *testing.T) {
 	})
 	var output sync.Mutex
 	var transport *trustedSourceTransport
+	var receiver *trustedsframe.SourceReceiver
+	phase, renewals := "prepare", 0
+	acceptedLease := lease
+	parent := c.assignment
 	emit := func(value any) error {
 		output.Lock()
 		defer output.Unlock()
@@ -188,11 +192,15 @@ func TestSourcePublisherBrowserInterop(t *testing.T) {
 			if sink.media != nil {
 				decoded = sink.media.frames.Load()
 			}
-			_ = emit(map[string]any{"fixture": "diagnostic", "frames": sink.frames.Load(), "keyframes": sink.keyframes.Load(), "decoded": decoded, "closed": sink.closed.Load(), "failure": failure})
+			at := time.Now().UnixMilli()
+			// Fixed fixture state only: never serialize leases, clocks, keys or errors.
+			_ = emit(map[string]any{"fixture": "diagnostic", "frames": sink.frames.Load(), "keyframes": sink.keyframes.Load(), "decoded": decoded, "closed": sink.closed.Load(), "failure": failure,
+				"phase": phase, "renewals": renewals, "leaseRemainingMs": max(int64(-35000), min(int64(5000), acceptedLease.ExpiresAt-at)),
+				"parentAllowed": c.trustedSourceAllowed(acceptedLease, parent, at)})
 		}
 	}()
 	c.sendOverride = emit
-	if _, err = c.prepareTrustedSource(sourceBytes(t, lease), now); err != nil {
+	if receiver, err = c.prepareTrustedSource(sourceBytes(t, lease), now); err != nil {
 		t.Fatal(err)
 	}
 	if emit(map[string]any{"fixture": "lease", "lease": lease}) != nil {
@@ -203,20 +211,41 @@ func TestSourcePublisherBrowserInterop(t *testing.T) {
 	deadline := time.NewTimer(25 * time.Second)
 	defer deadline.Stop()
 	for {
+		phase = "waiting"
 		select {
+		case <-receiver.Done():
+			phase = "receiver-ended"
+			if transport != nil {
+				awaitSource(t, transport.done)
+			}
+			t.Fatal("native receiver ended before complete media evidence")
 		case <-deadline.C:
+			phase = "deadline"
 			t.Fatal("real browser source RTP deadline")
 		case <-ticker.C:
+			phase = "renewal"
+			if os.Getenv("TRUSTED_SOURCE_BROWSER_REVOKE") == "1" && sink.frames.Load() >= 20 {
+				// Explicit negative fixture: revoke actual local parent policy only
+				// after authenticated media, then observe the terminal Done path.
+				c.sessionAuthenticated.Store(false)
+				if receiver.AliveNow() {
+					t.Fatal("revoked fixture receiver remained live")
+				}
+				continue
+			}
 			lease.Revision++
 			lease.IssuedAt = time.Now().UnixMilli()
 			lease.ExpiresAt = lease.IssuedAt + 4000
 			if _, err = c.prepareTrustedSource(sourceBytes(t, lease), time.Now()); err != nil {
 				t.Fatal("browser source renewal failed")
 			}
+			acceptedLease = lease
+			renewals++
 			if emit(map[string]any{"fixture": "lease", "lease": lease}) != nil {
 				t.Fatal("fixture output failed")
 			}
 		case raw, open := <-input:
+			phase = "control"
 			if !open {
 				t.Fatal("browser control ended before media")
 			}
@@ -241,6 +270,7 @@ func TestSourcePublisherBrowserInterop(t *testing.T) {
 			}
 			c.sourcesMu.Unlock()
 		case <-sink.observed:
+			phase = "media-validation"
 			if lease.Codec == "video/vp8" && sink.keyframes.Load() < 1 {
 				t.Fatal("no authenticated VP8 keyframe")
 			}

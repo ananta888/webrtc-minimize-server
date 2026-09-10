@@ -10,6 +10,7 @@ import { before, after, test } from "node:test";
 import { build } from "esbuild";
 import { chromium, firefox } from "playwright";
 import { nativeCompilerDiagnostic } from "./helpers/native-compiler-diagnostic.mjs";
+import { nativeSourceInteropDiagnostic } from "./helpers/native-source-interop-diagnostic.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const avClockRuns = process.env.TRUSTED_SOURCE_AV_CLOCK_RUNS ?? "1";
@@ -177,11 +178,12 @@ function nativeCodecFixture(t, testName, timeoutSeconds = 20) {
   assert.equal(result.stdout.includes("SKIP"),false,"opted-in native decode fixture skipped");
 }
 
-async function nativeSource(page, codec, decode) {
+async function nativeSource(page, codec, decode, revoke = false) {
   const source = await page.evaluate(codec => window.createSyntheticSource(codec),codec);
   const flags = ["-test.run=^TestSourcePublisherBrowserInterop$","-test.timeout=30s"];
   const child = spawn(executable,flags,
-    {env:{...process.env,TRUSTED_SOURCE_BROWSER_INTEROP:"1",TRUSTED_SOURCE_BROWSER_DECODE:decode ? "1" : "0"},stdio:["pipe","pipe","pipe"]});
+    {env:{...process.env,TRUSTED_SOURCE_BROWSER_INTEROP:"1",TRUSTED_SOURCE_BROWSER_DECODE:decode ? "1" : "0",
+      TRUSTED_SOURCE_BROWSER_REVOKE:revoke ? "1" : "0"},stdio:["pipe","pipe","pipe"]});
   let buffered="", outputBytes=0, errorBytes=0, firstLease=false, protocolFailed=false, resolveLease, resolveResult, nativeDiagnostic=null;
   const ready = new Promise(resolve => {resolveLease=resolve;}), result = new Promise(resolve => {resolveResult=resolve;});
   let forwarding=Promise.resolve();
@@ -196,7 +198,10 @@ async function nativeSource(page, codec, decode) {
       try {value=JSON.parse(line);} catch {protocolFailed=true; child.kill();return;}
       if(value.fixture==="lease" && !firstLease) {firstLease=true;resolveLease(value.lease);}
       else if(value.fixture==="result") resolveResult(value);
-      else if(value.fixture==="diagnostic") nativeDiagnostic={frames:Number(value.frames||0),keyframes:Number(value.keyframes||0),decoded:Number(value.decoded||0),closed:value.closed===true,failure:Number(value.failure||0)};
+      else if(value.fixture==="diagnostic") {
+        nativeDiagnostic=nativeSourceInteropDiagnostic(value);
+        if(!nativeDiagnostic) {protocolFailed=true;child.kill();return;}
+      }
       else if(value.fixture==="lease" || value.type==="trusted-source-packager-signal") {
         forwarding=forwarding.then(()=>page.evaluate(value=>window.acceptSourceNative(value),value)).catch(()=>{protocolFailed=true;child.kill();});
       } else {protocolFailed=true; child.kill();}
@@ -238,7 +243,7 @@ async function nativeSource(page, codec, decode) {
 }
 
 for(const [name,engine] of [["Chromium",chromium],["Firefox",firefox]]) {
-  test(`${name} actual source publisher sends 401 SFrame VP8/Opus frames to native WebRTC receiver`,{timeout:80000},async t=>{
+  for (const revoke of [false, true]) test(`${name} ${revoke ? "reports bounded native source revocation after authenticated media" : "actual source publisher sends 401 SFrame VP8/Opus frames to native WebRTC receiver"}`,{timeout:80000},async t=>{
     if(dockerRunner && process.platform!=="linux") {t.skip("compiler fallback requires Linux; native Go runner also supported");return;}
     const available=spawnSync("ffmpeg",["-version"],{encoding:"utf8",timeout:3000,maxBuffer:32768});
     const decode=!available.error && available.status===0;
@@ -253,11 +258,25 @@ for(const [name,engine] of [["Chromium",chromium],["Firefox",firefox]]) {
     const browser=await engine.launch({headless:true,...(name==="Chromium" ? {args:["--autoplay-policy=no-user-gesture-required"]}
       : {firefoxUserPrefs:{"media.autoplay.default":0,"media.autoplay.block-webaudio":false}})});
     t.after(()=>browser.close());
-    for(const codec of ["video/vp8","audio/opus"]) {
+    for(const codec of revoke ? [] : ["video/vp8","audio/opus"]) {
       const page=await browser.newPage();
       try {await page.goto(`http://127.0.0.1:${app.address().port}`);await nativeSource(page,codec,decode);}
       finally {await page.close();}
     }
+    if (!revoke) return;
+    const revokedPage = await browser.newPage();
+    try {
+      await revokedPage.goto(`http://127.0.0.1:${app.address().port}`);
+      await assert.rejects(nativeSource(revokedPage,"video/vp8",decode,true), error => {
+        const prefix = "native_source_interop_failed ";
+        if (!error.message.startsWith(prefix)) return false;
+        const diagnostic = JSON.parse(error.message.slice(prefix.length)).native;
+        t.diagnostic(JSON.stringify({ syntheticRevocation: true, native: diagnostic }));
+        return diagnostic?.phase === "receiver-ended" && diagnostic.parentAllowed === false
+          && diagnostic.frames >= 20 && diagnostic.frames < 401 && diagnostic.closed === true;
+      }, "real receiver revocation must produce the bounded failure diagnostic after authenticated media");
+    } finally { await revokedPage.close(); }
+    t.diagnostic("separate synthetic parent revocation observed after authenticated media; positive 401-frame checks remain mandatory");
   });
   test(`${name} aligns decoded paired SFrame audio/video using actual sender reports`,{timeout:45000*Number(avClockRuns)},async t=>{
     if(dockerRunner && process.platform!=="linux") {t.skip("compiler fallback requires Linux; local Go also supported");return;}

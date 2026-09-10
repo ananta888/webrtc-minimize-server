@@ -38,7 +38,8 @@
     "security:leakage": "node scripts/broadcast-leakage-gate.mjs",
     "sbom:production": "npm sbom --omit=dev --sbom-format cyclonedx",
     "workflows:validate": "node scripts/validate-workflows.mjs",
-    "check": "npm run todos:validate && npm run workflows:validate && npm run deployment:validate && npm run broadcast:release:validate && npm run licenses:validate && npm run typecheck:broadcast && npm run test:frontend && npm run build && npm run security:leakage && npm run test:go && npm test && npm run test:infrastructure"
+    "check:prepare": "npm run todos:validate && npm run workflows:validate && npm run deployment:validate && npm run broadcast:release:validate && npm run licenses:validate && npm run typecheck:broadcast && npm run test:frontend && npm run build && npm run security:leakage && npm run test:go",
+    "check": "npm run check:prepare && npm test && npm run test:infrastructure"
   },
   "engines": {
     "node": ">=22.5"
