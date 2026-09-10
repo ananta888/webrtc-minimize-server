@@ -23,13 +23,41 @@ Die Ausgabe eines Grants ist nur nach dieser Reihenfolge möglich:
    Programmquellen und genau sein registriertes Gerät.
 5. Playback benötigt die exakt aktuelle Viewer-Policy samt Revision und
    identischer Programmsichtbarkeit.
-6. Erst danach greifen die aktiven Quoten pro Subject, Tenant und Programm und
-   die Authority signiert einen kurzlebigen ES256-Grant.
+6. Vor der Signatur reserviert die Authority die Grant-ID sowie einen Platz in
+   den Quoten pro Subject, Tenant und Programm. Nach der ES256-Signatur prüft
+   sie Schlüsselgeneration, Programm-Epoch und Widerruf erneut vor der Ausgabe.
 
 OIDC-Issuer und Subject werden für Broadcast-Contracts mit SHA-256 in stabile,
 opaque `tenantId`-/`subjectRef`-Werte überführt. Der Gerätefingerprint wird
 ebenfalls als `deviceRef` pseudonymisiert. Rohe Tokens oder OIDC-Claims sind
 keine Bestandteile der versionierten Broadcast-Contracts.
+
+## Parallelität und Widerruf während der Signatur
+
+Ausstehende Signaturen zählen zusätzlich zu aktiven Grants. Ihre reservierten
+IDs sind eindeutig, aber noch nicht als ausgestellte Grants oder Gatewayrechte
+sichtbar. Auch eine abgebrochene oder inzwischen abgelaufene Signatur belegt
+ihren Platz bis zu ihrem tatsächlichen Ende; Pruning darf keinen weiteren
+Signaturauftrag an diesem Ressourcenlimit vorbeischleusen. Ein Fehler gibt
+genau diese Reservierung frei, ohne einen Grant-Record zu hinterlassen.
+
+Ein einzelner Widerruf kann bereits die reservierte Grant-ID sperren.
+Programm-Epoch-Widerruf oder erfolgreiche Schlüsselrotation während der
+Signatur verhindern ebenso die nachträgliche Ausgabe. Ein ungültiger oder
+doppelter Rotationsauftrag verändert die laufende Schlüsselgeneration nicht.
+Unverändert prüft jeder Gatewayzugriff die Signatur, den aktuellen Record,
+Ablauf und exakten Scope. Diese Reservierungen begrenzen Parallelität; sie
+führen keinen neuen externen Signaturdienst oder eine Garantie seiner Laufzeit
+ein. Der Publisher-Start besitzt zusätzlich seine eigene begrenzte Transaktion.
+
+Sieben Regressionen reproduzierten vor der Korrektur unter anderem zwölf
+gleichzeitig ausgestellte Grants bei einer Quote von eins. Zehn neue Race- und
+Fehlerprüfungen decken die Reservierung, doppelte IDs, Rotation, Widerruf,
+Pruning und Freigabe nach Signaturfehler ab. Ein verspäteter echter JWT bleibt
+am Gateway unbrauchbar, während ein frischer Nachfolger weiterhin funktioniert.
+Die gemeinsame browserfreie P-256-/JWT-/HTTP-/Runtime-/Quoten-/Playback-Matrix
+besteht mit 63 Tests in 0,468 Sekunden. Das ersetzt weder Live-JWKS-/TURN-Prüfung
+noch Produktionsabnahme; TBP-033 bleibt offen.
 
 ## Token- und Pfadbindung
 
@@ -45,9 +73,10 @@ Medienfreigabe. Dazu erzeugt der Browser einen neuen, nicht exportierbaren
 P-256-Gerätebeweis und sendet den neuen Playback-Grant ausschließlich im
 Authorization-Header an `PUT /api/broadcast/playback-sessions/{id}`. Der Server
 akzeptiert die Rotation nur mit dem vorhandenen exakten Cookie und bei
-identischem Tenant, Gerät, Raum, Programm, Program-Epoch, Ressource sowie
-Policy-ID/-Revision. Die anonyme pseudonyme Audience darf sich dabei ändern;
-das nachgewiesene Gerät und alle Autoritätsgrenzen dürfen es nicht. Nach
+identischem Tenant, Audience, Gerät, Raum, Programm, Program-Epoch, Ressource
+sowie Policy-ID/-Revision. Die pseudonyme Audience bleibt auch bei anonymem
+Playback gebunden; dasselbe Gerät allein erlaubt keinen Wechsel des
+Sitzungseigentümers. Nach
 Visibility-/Epoch-Wechsel, Widerruf, Programmende, falschem Cookie oder
 abweichendem Scope schlägt die Erneuerung nicht unterscheidbar mit 404 fehl und
 der Player räumt seine lokale Sitzung auf.

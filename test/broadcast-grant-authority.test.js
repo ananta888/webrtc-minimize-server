@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import test from "node:test";
+import { SignJWT } from "jose";
 
 import {
   BroadcastDeviceProofVerifier,
@@ -195,6 +196,87 @@ function expectation(issued, fixture, overrides = {}) {
     ...overrides,
   };
 }
+
+for (const quota of ["maxActiveGrantsPerSubject", "maxActiveGrantsPerTenant", "maxActiveGrantsPerProgram"]) {
+  test(`pending cryptographic signatures reserve ${quota} before concurrent issuance`, async () => {
+    const f = baseFixture(), grants = authority({ [quota]: 1 });
+    const results = await Promise.allSettled(Array.from({ length: 12 }, () =>
+      grants.issue(attachProof(f, requestFor(f)), authorizationFor(f), NOW)));
+    const accepted = results.filter(r => r.status === "fulfilled");
+    assert.equal(accepted.length, 1, "only the first signature may reserve the last slot");
+    for (const r of results.filter(r => r.status === "rejected")) assert.equal(r.reason.code, "broadcast_grant_quota_reached");
+    grants.revokeGrant(accepted[0].value.grant.grantId, NOW + 1);
+    const next = await grants.issue(attachProof(f, requestFor(f)), authorizationFor(f), NOW + 2);
+    assert.equal(next.grant.status, "issued");
+  });
+}
+
+test("in-flight grant IDs cannot collide or overwrite another issued token", async () => {
+  const f = baseFixture(), grants = authority({ idFactory: () => "grt_aaaaaaaaaaaaaaaa" });
+  const results = await Promise.allSettled(Array.from({ length: 2 }, () =>
+    grants.issue(attachProof(f, requestFor(f)), authorizationFor(f), NOW)));
+  assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
+  assert.equal(results.find(r => r.status === "rejected").reason.code, "invalid_broadcast_grant_id");
+});
+
+for (const change of ["epoch", "rotation", "explicit-revoke"]) {
+  test(`in-flight signing cannot publish a grant after ${change}`, async () => {
+    const f = baseFixture(), grants = authority({ idFactory: () => "grt_aaaaaaaaaaaaaaaa" });
+    const pending = grants.issue(attachProof(f, requestFor(f)), authorizationFor(f), NOW);
+    const rejected = assert.rejects(pending, error => error instanceof BroadcastGrantError);
+    assert.equal(grants.grant("grt_aaaaaaaaaaaaaaaa"), null, "an unfinished signature is not an issued grant");
+    if (change === "epoch") grants.revokeProgramEpoch(f.tenantId, PROGRAM_ID, f.program.programEpoch, NOW + 1);
+    if (change === "rotation") grants.rotateSigningKey(signingKey("replacement"), NOW + 1);
+    if (change === "explicit-revoke") assert.equal(grants.revokeGrant("grt_aaaaaaaaaaaaaaaa", NOW + 1), true);
+    await rejected;
+    assert.equal(grants.grant("grt_aaaaaaaaaaaaaaaa"), null, "no late issued record remains");
+  });
+}
+
+test("failed or duplicate key rotation leaves a legitimate pending grant and inventory unchanged", async () => {
+  const f = baseFixture(), grants = authority(), before = grants.keyInventory();
+  const pending = grants.issue(attachProof(f, requestFor(f)), authorizationFor(f), NOW);
+  assert.throws(() => grants.rotateSigningKey({ kid: "invalid" }, NOW + 1), /invalid_broadcast_signing_key/);
+  assert.throws(() => grants.rotateSigningKey(signingKey("grant-key-1"), NOW + 1), /duplicate_broadcast_signing_key/);
+  assert.deepEqual(grants.keyInventory(), before);
+  const issued = await pending;
+  assert.equal((await grants.authorizeBearer(`Bearer ${issued.token}`, expectation(issued, f), NOW + 2)).status, "consumed");
+});
+
+test("signing failure releases its reservation without publishing a record", async t => {
+  const f = baseFixture(), grants = authority({ maxActiveGrantsPerSubject: 1 });
+  const sign = t.mock.method(SignJWT.prototype, "sign", async () => { throw new Error("synthetic_sign_failure"); });
+  await assert.rejects(grants.issue(attachProof(f, requestFor(f)), authorizationFor(f), NOW), /synthetic_sign_failure/);
+  assert.equal(grants.grant("grt_aaaaaaaaaaaaaaa1"), null);
+  sign.mock.restore();
+  assert.equal((await grants.issue(attachProof(f, requestFor(f)), authorizationFor(f), NOW)).grant.status, "issued");
+});
+
+test("cancelled signing keeps its quota through pruning until actual completion, and its JWT is unusable", { timeout: 5000 }, async t => {
+  const f = baseFixture(), grants = authority({ maxActiveGrantsPerSubject: 1, retentionMs: 0 });
+  const original = SignJWT.prototype.sign;
+  let release, signedToken;
+  const gate = new Promise(resolve => { release = resolve; });
+  t.after(() => release());
+  const sign = t.mock.method(SignJWT.prototype, "sign", async function (...args) {
+    signedToken = await original.apply(this, args);
+    await gate; return signedToken;
+  });
+  const pending = grants.issue(attachProof(f, requestFor(f)), authorizationFor(f), NOW);
+  const rejected = assert.rejects(pending, errorCode("inactive_broadcast_grant"));
+  assert.equal(grants.revokeGrant("grt_aaaaaaaaaaaaaaa1", NOW + 1), true);
+  grants.prune(NOW + 120000);
+  await assert.rejects(grants.issue(attachProof(f, requestFor(f), NOW + 120000), authorizationFor(f), NOW + 120000),
+    errorCode("broadcast_grant_quota_reached"));
+  assert.equal(sign.mock.callCount(), 1, "cancellation and expiry cannot create a second in-flight signer");
+  release(); await rejected; sign.mock.restore();
+  await assert.rejects(grants.authorizeGatewayBearer(`Bearer ${signedToken}`, {
+    action: "whip:create", path: `/broadcast/ingest/${RESOURCE_REF}`, grantKinds: ["publisher"],
+  }, NOW + 2), errorCode("inactive_broadcast_grant"));
+  const next = await grants.issue(attachProof(f, requestFor(f), NOW + 120000), authorizationFor(f), NOW + 120000);
+  assert.equal(next.grant.status, "issued");
+  assert.equal((await grants.authorizeBearer(`Bearer ${next.token}`, expectation(next, f), NOW + 120001)).status, "consumed");
+});
 
 test("publisher grant is OIDC-, membership-, device-, path-, action- and epoch-bound", async () => {
   const fixture = baseFixture();

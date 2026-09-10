@@ -88,6 +88,7 @@ export class BroadcastGrantAuthority {
   #activeKid;
   #keyGeneration = 1;
   #records = new Map();
+  #pendingIssues = new Map();
   #revokedEpochs = new Set();
   #deviceProofVerifier;
   #idFactory;
@@ -155,7 +156,9 @@ export class BroadcastGrantAuthority {
   }
 
   #assertQuota(tenantId, subjectRef, programId, now) {
-    const active = this.#activeRecords(now);
+    // A signature occupies capacity until it settles, even after cancellation
+    // or expiry. Pending grants are never exposed as issued/authorizable records.
+    const active = [...this.#activeRecords(now), ...this.#pendingIssues.values()];
     if (active.filter(({ grant }) => grant.issuerSubjectRef === subjectRef).length >= this.#limits.subject
       || active.filter(({ grant }) => grant.tenantId === tenantId).length >= this.#limits.tenant
       || active.filter(({ grant }) => grant.programId === programId).length >= this.#limits.program) {
@@ -293,7 +296,7 @@ export class BroadcastGrantAuthority {
     }
 
     const grantId = this.#idFactory();
-    if (!GRANT_ID_PATTERN.test(grantId) || this.#records.has(grantId)) {
+    if (!GRANT_ID_PATTERN.test(grantId) || this.#records.has(grantId) || this.#pendingIssues.has(grantId)) {
       fail("invalid_broadcast_grant_id", 500);
     }
     const expiresAt = Math.min(now + this.#ttlMs[request.kind], identity.expiresAt);
@@ -335,15 +338,38 @@ export class BroadcastGrantAuthority {
     }, now);
 
     const key = this.#keys.get(this.#activeKid);
+    const reservation = { grant, cancelled: false };
+    this.#pendingIssues.set(grantId, reservation);
+    try {
+      const token = await this.#signGrant(grant, request.programRevision, key, now);
+      if (this.#revokedEpochs.has(epochKey)) fail("revoked_broadcast_program_epoch");
+      if (reservation.cancelled || this.#keys.get(key.kid) !== key || !key.enabled
+        || this.#activeKid !== key.kid || this.#keyGeneration !== key.generation) {
+        fail("inactive_broadcast_grant", 401);
+      }
+      this.#records.set(grantId, {
+        grant,
+        programRevision: request.programRevision,
+        pathPrefix: request.pathPrefix,
+        kid: key.kid,
+        keyGeneration: key.generation,
+      });
+      return Object.freeze({ grant, token });
+    } finally {
+      this.#pendingIssues.delete(grantId);
+    }
+  }
+
+  async #signGrant(grant, programRevision, key, now) {
     const issuedAtSeconds = Math.floor(now / 1_000);
-    const token = await new SignJWT({
+    return new SignJWT({
       tenant_ref: grant.tenantId,
       actor_ref: grant.issuerSubjectRef,
       audience_ref: grant.audienceRef,
       device_ref: grant.deviceRef,
       room_id: grant.roomId,
       program_id: grant.programId,
-      program_revision: request.programRevision,
+      program_revision: programRevision,
       program_epoch: grant.programEpoch,
       grant_kind: grant.grantKind,
       actions: grant.actions,
@@ -360,17 +386,8 @@ export class BroadcastGrantAuthority {
       .setJti(grant.grantId)
       .setIssuedAt(issuedAtSeconds)
       .setNotBefore(issuedAtSeconds)
-      .setExpirationTime(Math.ceil(expiresAt / 1_000))
+      .setExpirationTime(Math.ceil(grant.expiresAt / 1_000))
       .sign(key.privateKey);
-
-    this.#records.set(grant.grantId, {
-      grant,
-      programRevision: request.programRevision,
-      pathPrefix: request.pathPrefix,
-      kid: key.kid,
-      keyGeneration: key.generation,
-    });
-    return Object.freeze({ grant, token });
   }
 
   async authorizeBearer(authorizationHeader, expectation, now = Date.now()) {
@@ -507,6 +524,8 @@ export class BroadcastGrantAuthority {
   }
 
   revokeGrant(grantId, now = Date.now()) {
+    const pending = this.#pendingIssues.get(grantId);
+    if (pending) { pending.cancelled = true; return true; }
     const record = this.#records.get(grantId);
     if (!record) return false;
     this.#transition(record, "revoked", now);
@@ -529,9 +548,9 @@ export class BroadcastGrantAuthority {
   }
 
   rotateSigningKey(value, now = Date.now()) {
-    this.#keyGeneration += 1;
-    const key = normalizeKey(value, this.#keyGeneration);
+    const key = normalizeKey(value, this.#keyGeneration + 1);
     if (this.#keys.has(key.kid)) fail("duplicate_broadcast_signing_key", 500);
+    this.#keyGeneration = key.generation;
     for (const record of this.#records.values()) this.#transition(record, "revoked", now);
     this.#keys.set(key.kid, key);
     this.#activeKid = key.kid;
