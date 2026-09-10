@@ -27,9 +27,15 @@ test("valid Hub grants cannot exceed the operator ceiling, including legacy comb
   const admission = allowedCapabilities => new MachineAdmission({ issuer, allowedCapabilities,
     publicKey: keys.publicKey.export({ type: "spki", format: "pem" }) });
   const chatOnly = admission(["chat.read", "chat.send"]);
+  assert.equal(chatOnly.enabled, true);
   await assert.rejects(chatOnly.verify("Bearer " + await token(["chat.read", "screen.publish"]), join), /machine_grant_invalid/);
   await assert.rejects(chatOnly.verify("Bearer " + await token([], 1), join), /machine_grant_invalid/);
   const identity = await chatOnly.verify("Bearer " + await token(["chat.read", "chat.send"]), join);
   assert.deepEqual(identity.machineCapabilities, ["chat.read", "chat.send"]);
-  await assert.rejects(admission([]).verify("Bearer " + await token(["chat.send"]), join), /machine_grant_invalid/);
+  const disabled = admission([]);
+  assert.equal(disabled.enabled, false);
+  assert.equal(disabled.current(identity), false);
+  for (const header of ["Bearer " + await token(["chat.send"]), "Bearer malformed", ""]) {
+    await assert.rejects(disabled.verify(header, join), error => error.name === "AuthenticationError" && error.code === "machine_admission_disabled");
+  }
 });
