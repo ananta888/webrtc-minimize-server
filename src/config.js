@@ -66,6 +66,7 @@ const DEFAULTS = Object.freeze({
   nativePackagerEnrollmentTtlMs: 10 * 60 * 1000,
   nativePackagerMaxPerPrincipal: 3,
   broadcastNativeOutputEnabled: false,
+  broadcastMetricsEnabled: false,
   broadcastWhipEndpoint: "",
   broadcastWhipResourceBase: "",
   broadcastWhipProfile: "rfc9725",
@@ -443,6 +444,12 @@ export function loadConfig(env = process.env) {
   const broadcastWhipEndpoint = httpsWhipEndpoint(
     env.BROADCAST_WHIP_ENDPOINT || DEFAULTS.broadcastWhipEndpoint,
   );
+  const broadcastMetricsEnabled = booleanValue(env.BROADCAST_METRICS_ENABLED,
+    DEFAULTS.broadcastMetricsEnabled, "BROADCAST_METRICS_ENABLED");
+  if (broadcastMetricsEnabled && (authMode !== "required"
+    || !publicOrigin || new URL(publicOrigin).protocol !== "https:")) {
+    throw new Error("BROADCAST_METRICS_ENABLED requires required OIDC and an HTTPS PUBLIC_ORIGIN");
+  }
   const broadcastNativeOutputEnabled = booleanValue(
     env.BROADCAST_NATIVE_OUTPUT_ENABLED,
     DEFAULTS.broadcastNativeOutputEnabled,
@@ -652,6 +659,7 @@ export function loadConfig(env = process.env) {
       { minimum: 1, maximum: 5, name: "NATIVE_PACKAGER_MAX_PER_PRINCIPAL" },
     ),
     broadcastNativeOutputEnabled,
+    broadcastMetricsEnabled,
     broadcastWhipEndpoint,
     broadcastWhipResourceBase,
     broadcastWhipProfile,

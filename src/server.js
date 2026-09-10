@@ -49,6 +49,7 @@ import {
 import { BroadcastAbuseGuard } from "./broadcast-admission-control.js";
 import { BroadcastHealthRegistry } from "./broadcast-observability.js";
 import { BroadcastRuntimeMetrics } from "./broadcast-runtime-metrics.js";
+import { BroadcastMetricsHttp } from "./broadcast-metrics-http.js";
 import { BroadcastRuntimeError, BroadcastRuntimeRegistry } from "./broadcast-runtime-registry.js";
 import { BroadcastProgramError } from "./broadcast-program-machine.js";
 import { broadcastSubjectRef, broadcastTenantRef } from "./broadcast-identifiers.js";
@@ -421,6 +422,12 @@ function createHttpHandler(config, registry, services) {
   return async (request, response) => {
     try {
       const url = new URL(request.url, "http://localhost");
+      if (url.pathname === "/api/broadcasts/metrics") {
+        const result = await services.broadcastMetricsHttp.read(request, url);
+        response.writeHead(result.status, { ...securityHeaders(config), ...result.headers });
+        response.end(result.body);
+        return;
+      }
       if (request.method === "GET" && url.pathname === "/healthz") {
         sendJson(response, 200, {
           status: "ok",
@@ -2754,7 +2761,10 @@ export function createAppServer(options = {}) {
   if (config.broadcastGatewayAuthEnabled && !mediaMtxExternalAuthService) {
     throw new Error("BROADCAST_GATEWAY_AUTH_ENABLED requires a MediaMTX external auth service");
   }
+  const broadcastMetrics = new BroadcastRuntimeMetrics({ runtime: broadcastRuntime });
+  const broadcastMetricsHttp = new BroadcastMetricsHttp({ config, metrics: broadcastMetrics, verifier: oidcVerifier });
   const services = {
+    broadcastMetricsHttp,
     nativeSourceAudios: new NativeSourceAudioBroker({ send: (socket, command) =>
       Number.isSafeInteger(socket?.bufferedAmount) && socket.bufferedAmount >= 0 && socket.bufferedAmount <= 65536
       && safeSend(socket, command, 16384) }),
@@ -2787,8 +2797,8 @@ export function createAppServer(options = {}) {
     broadcastPlaybackSessions,
   };
   const server = http.createServer(createHttpHandler(config, registry, services));
-  const broadcastMetrics = new BroadcastRuntimeMetrics({ runtime: broadcastRuntime });
   server.on("close", () => broadcastMetrics.destroy());
+  server.on("close", () => broadcastMetricsHttp.destroy());
   server.on("close", () => services.nativeSourceScenes.destroy());
   server.on("close", () => services.nativeSourceAudios.destroy());
   if (broadcastSourceRequests) {

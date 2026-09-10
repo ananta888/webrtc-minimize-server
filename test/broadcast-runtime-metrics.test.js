@@ -121,7 +121,7 @@ test("clock rollback and invalid clocks clear old samples, then recover within t
   assert.equal(calls, 2);
 });
 
-test("app exposes only the in-process read port and erases it on actual server close", async t => {
+test("default app exposes only the in-process read port and erases it on actual server close", async t => {
   const { runtime, create } = fixture();
   create();
   const app = createAppServer({ config: { authMode: "disabled", pairWorkspaceEnabled: false }, broadcastRuntime: runtime });

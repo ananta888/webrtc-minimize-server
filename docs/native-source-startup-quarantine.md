@@ -62,3 +62,8 @@ Der gezielte Lauf `^TestSource(Lazy|PendingDecoder|VideoClock|Clock)` besteht
 in 0,341 s, einschließlich der neuen Recovery- und sechs terminalen Fälle.
 `go vet .` besteht ebenfalls. Die Go-Container mounten den Quellstand read-only;
 nur der eigene temporäre Build-/Modulcache ist beschreibbar.
+
+CI `34494345258` auf `563561a` besteht im nativen Packager-Job, scheitert jedoch
+weiterhin in beiden Browser-Szenenfällen beim dekodierten Bildnachweis.
+Die Startup-Korrektur bleibt ein nachgewiesener isolierter Lifecycle-Fix,
+keine Lösung oder Ursachenbestätigung des gesamten Szenenfehlers.

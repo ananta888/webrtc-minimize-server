@@ -26,6 +26,9 @@ function displayName(payload) {
 export function createOidcVerifier(config, options = {}) {
   if (config.authMode === "disabled") {
     return Object.freeze({
+      async verifyBroadcastOperator() {
+        throw new AuthenticationError("authentication_disabled");
+      },
       async verify() {
         throw new AuthenticationError("authentication_disabled");
       },
@@ -36,30 +39,41 @@ export function createOidcVerifier(config, options = {}) {
     cooldownDuration: 5_000,
     timeoutDuration: 5_000,
   });
+  async function verified(token) {
+    if (!token) throw new AuthenticationError("authentication_required");
+    try {
+      const { payload, protectedHeader } = await jwtVerify(token, jwks, {
+        issuer: config.oidcIssuer,
+        audience: config.oidcAudience,
+        algorithms: config.oidcAlgorithms,
+        requiredClaims: ["iss", "sub", "aud", "exp"],
+      });
+      if (!payload.sub) throw new AuthenticationError("token_subject_missing");
+      return { payload, identity: Object.freeze({
+        subject: payload.sub,
+        issuer: payload.iss,
+        audience: config.oidcAudience,
+        issuedAt: Number.isSafeInteger(payload.iat) ? payload.iat * 1_000 : 0,
+        expiresAt: payload.exp * 1_000,
+        displayName: displayName(payload),
+        algorithm: protectedHeader.alg,
+      }) };
+    } catch (error) {
+      if (error instanceof AuthenticationError) throw error;
+      throw new AuthenticationError("invalid_access_token");
+    }
+  }
   return Object.freeze({
-    async verify(token) {
-      if (!token) throw new AuthenticationError("authentication_required");
-      try {
-        const { payload, protectedHeader } = await jwtVerify(token, jwks, {
-          issuer: config.oidcIssuer,
-          audience: config.oidcAudience,
-          algorithms: config.oidcAlgorithms,
-          requiredClaims: ["iss", "sub", "aud", "exp"],
-        });
-        if (!payload.sub) throw new AuthenticationError("token_subject_missing");
-        return Object.freeze({
-          subject: payload.sub,
-          issuer: payload.iss,
-          audience: config.oidcAudience,
-          issuedAt: Number.isSafeInteger(payload.iat) ? payload.iat * 1_000 : 0,
-          expiresAt: payload.exp * 1_000,
-          displayName: displayName(payload),
-          algorithm: protectedHeader.alg,
-        });
-      } catch (error) {
-        if (error instanceof AuthenticationError) throw error;
-        throw new AuthenticationError("invalid_access_token");
+    async verify(token) { return (await verified(token)).identity; },
+    async verifyBroadcastOperator(token) {
+      const { payload, identity } = await verified(token);
+      const roles = payload.realm_access?.roles;
+      if (!Array.isArray(roles) || roles.length > 256
+        || !roles.every(role => typeof role === "string" && role.length <= 128)
+        || !roles.includes("broadcast-operator")) {
+        throw new AuthenticationError("broadcast_operator_required");
       }
+      return identity;
     },
   });
 }

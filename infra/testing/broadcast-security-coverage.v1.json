@@ -1,6 +1,7 @@
 {
   "version": 1,
   "suites": [
+    {"area":"operator-metrics-auth-and-budgets","positive":true,"negative":true,"files":["test/broadcast-metrics-http.test.js","test/broadcast-runtime-metrics.test.js","test/oidc-verifier.test.js"]},
     {"area":"schemas-and-fixtures","positive":true,"negative":true,"files":["test/broadcast-contracts.test.js","test/moq-contracts.test.js"]},
     {"area":"state-idempotency-fencing-cleanup","positive":true,"negative":true,"files":["test/broadcast-program-machine.test.js","test/broadcast-failover-coordinator.test.js"]},
     {"area":"grants-scope-expiry-replay","positive":true,"negative":true,"files":["test/broadcast-grant-authority.test.js","test/broadcast-playback-session-store.test.js"]},

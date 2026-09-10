@@ -37,6 +37,7 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.equal(config.mediaAgentMaxPerPrincipal, 3);
   assert.equal(config.nativePackagerSelfServiceEnabled, false);
   assert.equal(config.broadcastNativeOutputEnabled, false);
+  assert.equal(config.broadcastMetricsEnabled, false);
   assert.equal(config.nativePackagerRegistrationDb, "data/native-packager-registrations.sqlite");
   assert.equal(config.nativePackagerArtifactDir, "native-packager-downloads");
   assert.equal(config.nativePackagerEnrollmentTtlMs, 600_000);

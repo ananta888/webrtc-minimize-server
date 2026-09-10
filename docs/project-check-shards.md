@@ -96,3 +96,13 @@ TCP-Fälle bestehen. Native/Blind/macOS-Jobs bestehen. Beide Gesamtläufe bleibe
 rot; Docker und Live-Keycloak/TURN werden nicht ausgeführt. Die Verteilung der
 Testdateien auf Shards ändert sich durch neue Dateien; eine Shardnummer ist
 keine dauerhafte Kategoriezuordnung.
+
+## Decoder-Startfix auf 563561a
+
+`34494345258` ist terminal fehlgeschlagen: Shard 1 enthält 677 Passes, null
+Fehler und einen Skip (344,109 s); Shard 2 enthält 622 Passes, zwei Fehler und
+drei Skips (266,364 s). Sowohl Ein- als auch Zwei-Quellen-Szenentest scheitern
+bei der Prüfung des dekodierten Bildinhalts. Der deterministisch korrigierte
+Startup-Quarantänefall ist damit keine ausreichende Behebung dieser Szenenfehler.
+Native Packager, Blind Media, beide macOS-Jobs und Ananta-TURN bestehen.
+Das Aggregat bleibt rot; Docker und Live-Keycloak/TURN werden übersprungen.
