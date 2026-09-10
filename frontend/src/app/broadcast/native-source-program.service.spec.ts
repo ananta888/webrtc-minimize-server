@@ -20,13 +20,31 @@ function fixture() {
     nativeHandoffControl: vi.fn(async () => ({ controlVersion: 1, programId: program.programId, programRevision: 4, programEpoch: 2,
       state: "live", handoffPending: false, writer: { packagerId, fencingRevision: 4 } })),
     stopProgram: vi.fn(async () => {}), stopNativeAssignment: vi.fn(async () => {}), confirmNativeProgramStopped: vi.fn(async () => {}) };
+  const handoff = vi.fn(async () => { throw new Error("lost handoff response"); });
+  Object.assign(control, { prepareNativeSourceHandoff: handoff });
   const service = new NativeSourceProgramService({ claims } as never, { value: config } as never,
     { fingerprint: () => "a".repeat(43) } as never, room as never, mesh as never, signaling as never,
     { eligible: () => candidates() } as never, control as never);
-  return { service, room, mesh, signaling, config, claims, candidates, control };
+  return { service, room, mesh, signaling, config, claims, candidates, control, handoff };
 }
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+it("pins hardware/rendition choices and checks every assignment after a lost handoff response", async () => {
+  const f = fixture(), next = "pkr_bbbbbbbbbbbbbbbb";
+  try {
+    f.candidates.set([...f.candidates(), { ...f.candidates()[0], id: next }]);
+    await f.service.controller.start(request, "user-action");
+    f.control.confirmNativeProgramStopped.mockRejectedValueOnce(new Error("unknown successor still draining"));
+    await f.service.controller.handoff(next, "user-action");
+    expect(f.handoff).toHaveBeenCalledWith({ ...prepared, programRevision: 4 }, expect.objectContaining({ programRevision: 4 }),
+      next, 1, false, "user-action", expect.any(AbortSignal));
+    expect(f.control.stopNativeAssignment).toHaveBeenCalledWith(assignment, expect.any(AbortSignal));
+    expect(f.control.confirmNativeProgramStopped).toHaveBeenCalledWith(program.programId, expect.any(AbortSignal));
+    expect(f.service.view()).toMatchObject({ active: true, error: "native_source_program_stop_unconfirmed" });
+    await f.service.controller.stop(); expect(f.service.view().active).toBe(false);
+  } finally { f.service.ngOnDestroy(); }
+});
 
 it("carries selected output to HTTP, negotiates audio v3 and stops on capability downgrade", async () => {
   const f = fixture();

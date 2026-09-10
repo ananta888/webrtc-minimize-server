@@ -23,7 +23,6 @@ const RESOURCE = /^res_[A-Za-z0-9_-]{16,64}$/;
 const CHALLENGE = /^bpc_[A-Za-z0-9_-]{24,64}$/;
 const SOURCE = /^src_[A-Za-z0-9_-]{16,64}$/;
 const PACKAGER = /^pkr_[A-Za-z0-9_-]{16,64}$/;
-const ASSIGNMENT = /^asn_[A-Za-z0-9_-]{16,64}$/;
 const TERMINAL_ASSIGNMENT_STATES = new Set(["stopped", "failed"]);
 const NATIVE_STOP_CONFIRMATION_MS = 12_000;
 
@@ -260,24 +259,27 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
     packagerId: string, requestedRenditions: number, signal: AbortSignal,
   ): Promise<Readonly<{ program: BroadcastProgramRef; ownerSubjectRef: string }>> {
     signal.throwIfAborted();
-    const control = parseNativeHandoffControl(snapshot, program.programId);
-    const fingerprint = this.device.fingerprint();
-    if (!fingerprint || typeof packagerId !== "string" || !PACKAGER.test(packagerId) || !control.writer || control.writer.packagerId === packagerId
-      || control.programEpoch !== program.programEpoch || control.handoffPending
-      || !["live", "degraded"].includes(control.state)
-      || !Number.isSafeInteger(requestedRenditions) || requestedRenditions < 1 || requestedRenditions > 3) {
-      throw new BroadcastBrowserPortError("invalid_native_handoff_request");
-    }
-    const response = await fetch(`/api/broadcasts/${encodeURIComponent(program.programId)}/native-handoffs`, {
-      method: "POST", headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
-      credentials: "same-origin", redirect: "error", signal,
-      body: JSON.stringify({ requestVersion: 1, trigger: "user-action", deviceFingerprint: fingerprint, packagerId,
-        expectedProgramRevision: control.programRevision, expectedProgramEpoch: control.programEpoch,
-        expectedFencingRevision: control.writer.fencingRevision, requestedRenditions, allowHardwareAcceleration: true }),
-    });
+    const { requestNativeHandoff } = await import("./native-source-handoff-http");
+    signal.throwIfAborted();
+    const { response, control } = await requestNativeHandoff(program, snapshot, packagerId, requestedRenditions,
+      true, "user-action", signal, this.device.fingerprint(), () => this.auth.authorizationHeader());
     if (!response.ok) throw requestError(response, "native_handoff_failed");
     return this.acceptNativeAssignment(response, { ...program, programRevision: control.programRevision }, packagerId,
-      signal, control.writer.fencingRevision);
+      signal, control.writer!.fencingRevision);
+  }
+
+  async prepareNativeSourceHandoff(program: BroadcastProgramRef, snapshot: NativePackagerHandoffControl,
+    packagerId: string, requestedRenditions: number, allowHardwareAcceleration: boolean, trigger: unknown, signal: AbortSignal,
+  ): Promise<Readonly<{ program: BroadcastProgramRef; assignment: PreparedNativePackagerStart }>> {
+    signal.throwIfAborted();
+    const { requestNativeHandoff } = await import("./native-source-handoff-http");
+    signal.throwIfAborted();
+    const { response, control } = await requestNativeHandoff(program, snapshot, packagerId, requestedRenditions,
+      allowHardwareAcceleration, trigger, signal, this.device.fingerprint(), () => this.auth.authorizationHeader());
+    if (!response.ok) throw requestError(response, "native_handoff_failed");
+    const prepared = await this.acceptNativeAssignment(response, { ...program, programRevision: control.programRevision }, packagerId,
+      signal, control.writer!.fencingRevision, 16384, "trusted-sframe-v1");
+    return Object.freeze({ program: prepared.program, assignment: this.takePreparedNative(prepared.program) });
   }
 
   private async acceptNativeAssignment(
@@ -286,54 +288,11 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
   ): Promise<Readonly<{ program: BroadcastProgramRef; ownerSubjectRef: string }>> {
     const value = await json(response, "invalid_native_packager_assignment_response", maximumBytes);
     signal.throwIfAborted();
-    if (Object.keys(value).length !== 3 || !value["assignment"] || !value["program"]
-      || typeof value["ownerSubjectRef"] !== "string"
-      || !/^sub_[A-Za-z0-9_-]{16,64}$/.test(String(value["ownerSubjectRef"] || ""))) {
-      throw new BroadcastBrowserPortError("invalid_native_packager_assignment_response");
-    }
-    const returnedProgram = programRef(value["program"]);
-    if (returnedProgram.programId !== program.programId || returnedProgram.roomId !== program.roomId
-      || returnedProgram.tenantId !== program.tenantId || returnedProgram.programRevision <= program.programRevision
-      // Empty v4 starts retain the source epoch; legacy starts/handoffs change it.
-      || returnedProgram.programEpoch !== program.programEpoch + (expectedInputMode ? 0 : 1)) {
-      throw new BroadcastBrowserPortError("invalid_native_packager_assignment_response");
-    }
-    const assignment = value["assignment"] as Record<string, unknown>;
-    const assignmentFields = new Set([
-      "assignmentId", "packagerId", "roomId", "programId", "programEpoch", "fencingRevision",
-      "profileId", "renditionIds", "state", "reasonCode", "createdAt", "updatedAt", "expiresAt",
-      ...(expectedInputMode ? ["inputMode"] : []),
-    ]);
-    if (!assignment || typeof assignment !== "object" || Array.isArray(assignment)
-      || Object.keys(assignment).length !== assignmentFields.size
-      || Object.keys(assignment).some((field) => !assignmentFields.has(field))
-      || (expectedInputMode !== undefined && assignment["inputMode"] !== expectedInputMode)
-      || typeof assignment["assignmentId"] !== "string"
-      || !ASSIGNMENT.test(String(assignment["assignmentId"] || ""))
-      || assignment["packagerId"] !== packagerId || assignment["programId"] !== returnedProgram.programId
-      || assignment["roomId"] !== returnedProgram.roomId
-      || assignment["programEpoch"] !== returnedProgram.programEpoch
-      || !Number.isSafeInteger(assignment["fencingRevision"]) || Number(assignment["fencingRevision"]) < 1
-      || (previousFence !== undefined && Number(assignment["fencingRevision"]) <= previousFence)
-      || assignment["profileId"] !== "h264-aac-720p-v1"
-      || !Array.isArray(assignment["renditionIds"]) || assignment["renditionIds"].length < 1
-      || assignment["renditionIds"].length > 3 || new Set(assignment["renditionIds"]).size !== assignment["renditionIds"].length
-      || assignment["renditionIds"].some((id) => typeof id !== "string" || !["low", "medium", "high"].includes(id))
-      || assignment["state"] !== "preparing" || assignment["reasonCode"] !== "AWAITING_AGENT"
-      || !Number.isSafeInteger(assignment["createdAt"]) || Number(assignment["createdAt"]) <= 0
-      || !Number.isSafeInteger(assignment["updatedAt"]) || Number(assignment["updatedAt"]) < Number(assignment["createdAt"])
-      || !Number.isSafeInteger(assignment["expiresAt"]) || Number(assignment["expiresAt"]) <= Date.now()) {
-      throw new BroadcastBrowserPortError("invalid_native_packager_assignment_response");
-    }
-    this.preparedNative.set(returnedProgram.programId, Object.freeze({
-      assignmentId: String(assignment["assignmentId"]),
-      packagerId,
-      programId: returnedProgram.programId,
-      programEpoch: returnedProgram.programEpoch,
-      fencingRevision: Number(assignment["fencingRevision"]),
-      expiresAt: Number(assignment["expiresAt"]),
-    }));
-    return Object.freeze({ program: returnedProgram, ownerSubjectRef: String(value["ownerSubjectRef"]) });
+    const { parseNativeAssignmentResponse } = await import("./native-assignment-response");
+    signal.throwIfAborted();
+    const prepared = parseNativeAssignmentResponse(value, program, packagerId, previousFence, expectedInputMode, programRef);
+    this.preparedNative.set(prepared.program.programId, prepared.assignment);
+    return Object.freeze({ program: prepared.program, ownerSubjectRef: prepared.ownerSubjectRef });
   }
 
   takePreparedNative(program: BroadcastProgramRef): PreparedNativePackagerStart {

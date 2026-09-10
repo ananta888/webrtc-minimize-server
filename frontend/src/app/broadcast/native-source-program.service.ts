@@ -39,12 +39,15 @@ export class NativeSourceProgramService implements OnDestroy {
       prepare: (program, request, abort) => control.prepareNativeSourceStart(program, request.packagerId,
         request.requestedRenditions, request.allowHardwareAcceleration, "user-action", abort, request.audioOutput),
       observe: (programId, abort) => control.nativeHandoffControl(programId, abort),
+      handoff: (program, snapshot, request, abort) => control.prepareNativeSourceHandoff(program, snapshot,
+        request.packagerId, request.requestedRenditions, request.allowHardwareAcceleration, "user-action", abort),
       stop: async (program, assignment) => {
         // Revoke delivery immediately, and independently require real native stop ACK.
         let failed = false;
         try { await control.stopProgram(program.programId, AbortSignal.timeout(12000)); } catch { failed = true; }
         if (assignment) try { await control.stopNativeAssignment(assignment, AbortSignal.timeout(15000)); } catch { failed = true; }
-        else try { await control.confirmNativeProgramStopped(program.programId, AbortSignal.timeout(15000)); } catch { failed = true; }
+        // A lost handoff response may have created a different assignment.
+        try { await control.confirmNativeProgramStopped(program.programId, AbortSignal.timeout(15000)); } catch { failed = true; }
         if (failed) throw new Error("native_source_program_stop_unconfirmed");
       },
       changed: view => this.view.set(view),

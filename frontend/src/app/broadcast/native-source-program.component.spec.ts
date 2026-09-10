@@ -6,12 +6,44 @@ const packagerId = "pkr_aaaaaaaaaaaaaaaa";
 function fixture() {
   const programs = { candidates: signal([{ id: packagerId, label: "Mini-PC", capability: { maximumRenditions: 3 } }]),
     view: signal({ active: false, phase: "idle", program: null, error: "" }), requestProgram: signal(null),
-    controller: { start: vi.fn(async () => {}), stop: vi.fn(async () => {}) } };
+    controller: { start: vi.fn(async () => {}), stop: vi.fn(async () => {}), canHandoff: vi.fn(() => true), handoff: vi.fn(async () => {}),
+      controlledPackagerId: vi.fn((): string | null => null) } };
   const component = runInInjectionContext(Injector.create({ providers: [] }), () => new NativeSourceProgramComponent(programs as never));
   Object.assign(component, { disabled: signal(false), roomId: signal("room-alpha") });
   return { component, programs };
 }
 afterEach(() => vi.restoreAllMocks());
+
+it("names only the currently confirmed writer, not a staged successor", () => {
+  const f = fixture(); f.component.handoffId.set(packagerId); expect(f.component.confirmedPackager()).toBe("");
+  f.programs.controller.controlledPackagerId.mockReturnValue(packagerId);
+  f.programs.view.set({ active: true, phase: "live", program: null, error: "" });
+  expect(f.component.confirmedPackager()).toBe("Mini-PC");
+  f.programs.controller.controlledPackagerId.mockReturnValue(null);
+  f.programs.view.set({ active: true, phase: "handing-over", program: null, error: "" });
+  expect(f.component.confirmedPackager()).toBe("");
+});
+
+it("stages an explicit successor and confirms disruption and renewed participant consent", async () => {
+  const f = fixture(); f.programs.view.set({ active: true, phase: "live", program: null, error: "" });
+  f.component.handoffId.set(packagerId); const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  expect(f.programs.controller.handoff).not.toHaveBeenCalled(); await f.component.handoff();
+  expect(confirm).toHaveBeenCalledWith(expect.stringContaining("erneut die ausdrückliche Zustimmung"));
+  expect(f.programs.controller.handoff).not.toHaveBeenCalled();
+  confirm.mockReturnValue(true); await f.component.handoff();
+  expect(f.programs.controller.handoff).toHaveBeenCalledExactlyOnceWith(packagerId, "user-action");
+});
+for (const change of ["target", "candidates", "program", "disabled"]) it(`rechecks handoff ${change} after confirmation`, async () => {
+  const f = fixture(); f.component.handoffId.set(packagerId);
+  vi.spyOn(window, "confirm").mockImplementation(() => {
+    if (change === "target") f.component.handoffId.set("pkr_bbbbbbbbbbbbbbbb");
+    if (change === "candidates") f.programs.candidates.set([]);
+    if (change === "program") f.programs.view.set({ ...f.programs.view(), program: {} as never });
+    if (change === "disabled") (f.component.disabled as any).set(true);
+    return true;
+  });
+  await f.component.handoff(); expect(f.programs.controller.handoff).not.toHaveBeenCalled();
+});
 
 function audioFixture() {
   const f = fixture();

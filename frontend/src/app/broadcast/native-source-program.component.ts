@@ -33,6 +33,17 @@ export class NativeSourceProgramComponent {
     catch { return null; }
   });
   readonly error = signal("");
+  readonly handoffId = signal("");
+  readonly confirmedPackager = computed(() => {
+    this.programs.view();
+    const id = this.programs.controller.controlledPackagerId();
+    return this.programs.candidates().find(p => p.id === id)?.label ?? "";
+  });
+  readonly handoffCandidates = computed(() => {
+    this.programs.view();
+    return this.programs.candidates().filter(p => this.programs.controller.canHandoff(p.id));
+  });
+  readonly canHandoff = computed(() => !this.disabled() && this.handoffCandidates().some(p => p.id === this.handoffId()));
   readonly selected = computed(() => this.programs.candidates().find(p => p.id === this.packagerId()));
   readonly canStart = computed(() => !this.disabled() && !this.programs.view().active
     && !!this.title().trim() && this.title().length <= 80 && !!this.selected()
@@ -44,6 +55,7 @@ export class NativeSourceProgramComponent {
       case "waiting-output": return "Warte auf bestätigte Packager-Ausgabe";
       case "live": return "Ausgabe vom Packager bestätigt";
       case "degraded": return "Packager-Ausgabe beeinträchtigt";
+      case "handing-over": return "Übergabe läuft · alter Writer wird gestoppt";
       case "stopping": return "Sendung wird gestoppt";
       case "stopped": return "Sendung gestoppt";
       case "failed": return this.programs.view().active ? "Stopp nicht bestätigt – bitte erneut stoppen" : "Sendung fehlgeschlagen";
@@ -79,4 +91,15 @@ export class NativeSourceProgramComponent {
     catch { this.error.set("native_source_program_start_denied"); }
   }
   async stop(): Promise<void> { await this.programs.controller.stop(); }
+  async handoff(): Promise<void> {
+    if (!this.canHandoff()) return;
+    const target = this.handoffCandidates().find(p => p.id === this.handoffId())!, program = this.programs.view().program;
+    if (!window.confirm(`Sendung an „${target.label}“ übergeben? Die Ausgabe wird unterbrochen, bis der bisherige Packager seinen Stopp bestätigt. `
+      + "Der neue Trusted Packager beginnt mit einem Platzhalter. Alle Quellen benötigen erneut die ausdrückliche Zustimmung ihrer Teilnehmer; "
+      + "Audioformat und Qualitätswahl bleiben erhalten. Rechenleistung und Upload des neuen Packagers werden genutzt. Fortfahren?")) return;
+    if (!this.canHandoff() || target.id !== this.handoffId() || program !== this.programs.view().program) return;
+    this.error.set("");
+    try { await this.programs.controller.handoff(target.id, "user-action"); }
+    catch { this.error.set("native_source_handoff_denied"); }
+  }
 }

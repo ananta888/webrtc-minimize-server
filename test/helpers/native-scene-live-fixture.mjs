@@ -24,7 +24,9 @@ async function unusedLoopbackPort() {
   await new Promise(resolve => socket.close(resolve)); return port;
 }
 
-export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, allowSyntheticAudio = false, allowSyntheticScreenAudio = false } = {}) {
+export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, allowSyntheticAudio = false, allowSyntheticScreenAudio = false,
+  packagerCount = 1 } = {}) {
+  assert.ok(packagerCount === 1 || packagerCount === 2);
   assert.equal(typeof allowSyntheticScreen, "boolean");
   assert.equal(typeof allowSyntheticAudio, "boolean");
   assert.equal(typeof allowSyntheticScreenAudio, "boolean");
@@ -60,6 +62,13 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
   const definition = { id: packagerId, ownerPrincipal: principal, label: "Coupled scene fixture", platform: "linux", publicKey,
     keyFingerprint: createHash("sha256").update(`P-256\0${publicKey.x}\0${publicKey.y}`).digest("base64url") };
   await fs.writeFile(path.join(directory, "agent.pem"), agentKeys.privateKey.export({ type: "pkcs8", format: "pem" }), { mode: 0o600, flag: "wx" });
+  const definitions = [definition];
+  if (packagerCount === 2) {
+    const keys = generateKeyPairSync("ec", { namedCurve: "prime256v1" }), key = { ...keys.publicKey.export({ format: "jwk" }), ext: true };
+    definitions.push({ ...definition, id: "pkr_bbbbbbbbbbbbbbbb", label: "Successor scene fixture", publicKey: key,
+      keyFingerprint: createHash("sha256").update(`P-256\0${key.x}\0${key.y}`).digest("base64url") });
+    await fs.writeFile(path.join(directory, "successor.pem"), keys.privateKey.export({ type: "pkcs8", format: "pem" }), { mode: 0o600, flag: "wx" });
+  }
   const gatewayPort = await unusedLoopbackPort();
   const gateway = processes.start("origin", { BROADCAST_ORIGIN_ROOT: processes.output, BROADCAST_ORIGIN_ADDRESS: `127.0.0.1:${gatewayPort}` });
   const config = { publicOrigin: origin, authMode: "required", oidcIssuer: issuer, oidcAudience: "human", oidcClientId: "human-browser",
@@ -68,9 +77,9 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
     broadcastSigningPrivateKey: signingKeys.privateKey.export({ type: "pkcs8", format: "pem" }), broadcastSigningKeyId: "fixture-key" };
   const oidcVerifier = createOidcVerifier(config, { jwks: createLocalJWKSet({ keys: [await exportJWK(identityKeys.publicKey)] }) });
   app = createAppServer({ config, oidcVerifier, publicDir: await machineFixtureAssets(process.env.MEET_TEST_PUBLIC_DIR),
-    nativePackagers: new NativePackagerControlRegistry({ definitions: [definition] }),
-    nativePackagerEnrollmentStore: { definitions: () => [definition], list: owner => owner === principal
-      ? [{ ...definition, createdAt: 1, lastAuthenticatedAt: 1, revokedAt: 0 }] : [] },
+    nativePackagers: new NativePackagerControlRegistry({ definitions }),
+    nativePackagerEnrollmentStore: { definitions: () => definitions, list: owner => owner === principal
+      ? definitions.map(row => ({ ...row, createdAt: 1, lastAuthenticatedAt: 1, revokedAt: 0 })) : [] },
     nativePackagerInstallerService: { availableTargets: () => [] } });
   app.nativePackagerWebSocketServer.on("connection", socket => socket.on("message", bytes => {
     if (bytes.length > 65536) return;
@@ -90,6 +99,11 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
     NATIVE_PACKAGER_ID: packagerId, NATIVE_PACKAGER_IDENTITY_FILE: path.join(directory, "agent.pem"),
     NATIVE_PACKAGER_OUTPUT_ROOT: processes.output, NATIVE_PACKAGER_SOURCE_PROGRAMS: "enabled", NATIVE_PACKAGER_SOURCE_BUDGET: "compact-v1",
     NATIVE_PACKAGER_MAX_RENDITIONS: "1", NATIVE_PACKAGER_FFMPEG: "ffmpeg" });
+  const successorAgent = packagerCount === 2 ? processes.start("packager", {
+    NATIVE_PACKAGER_CONTROL_URL: origin.replace("https:", "wss:") + "/native-packager",
+    NATIVE_PACKAGER_ID: definitions[1].id, NATIVE_PACKAGER_IDENTITY_FILE: path.join(directory, "successor.pem"),
+    NATIVE_PACKAGER_OUTPUT_ROOT: processes.output, NATIVE_PACKAGER_SOURCE_PROGRAMS: "enabled", NATIVE_PACKAGER_SOURCE_BUDGET: "compact-v1",
+    NATIVE_PACKAGER_MAX_RENDITIONS: "1", NATIVE_PACKAGER_FFMPEG: "ffmpeg" }) : null;
   const spki = createHash("sha256").update(new X509Certificate(certificate).publicKey.export({ type: "spki", format: "der" })).digest("base64");
   browser = await chromium.launch({ headless: true, args: [`--ignore-certificate-errors-spki-list=${spki}`] });
   const token = await new SignJWT({}).setIssuer(issuer).setAudience("human").setSubject("owner").setIssuedAt()
@@ -172,5 +186,6 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
   await page.locator("#display-name").fill("Synthetic scene director");
   await page.locator("#join-room:not([disabled])").waitFor(); await page.locator("#join-room").press("Enter");
   await page.locator("#participant-count", { hasText: "1 / 20" }).waitFor({ timeout: 10_000 });
-  return { app, browser, context, page, origin, roomId: room.body.roomId, packagerId, request, agent, gateway, output: processes.output, observation };
+  return { app, browser, context, page, origin, roomId: room.body.roomId, packagerId,
+    packagerIds: definitions.map(row => row.id), request, agent, successorAgent, gateway, output: processes.output, observation };
 }

@@ -9,7 +9,7 @@ export interface NativeSourceProgramRequest {
   readonly audioOutput?: NativeSourceAudioOutput;
 }
 export interface NativeSourceProgramView {
-  readonly phase: "idle" | "preparing" | "waiting-output" | "live" | "degraded" | "stopping" | "stopped" | "failed";
+  readonly phase: "idle" | "preparing" | "waiting-output" | "live" | "degraded" | "handing-over" | "stopping" | "stopped" | "failed";
   readonly active: boolean; readonly program: BroadcastProgramRef | null; readonly error: string;
 }
 export interface NativeSourceProgramPorts {
@@ -20,13 +20,16 @@ export interface NativeSourceProgramPorts {
     program: BroadcastProgramRef; assignment: PreparedNativePackagerStart;
   }>;
   observe(programId: string, signal: AbortSignal): Promise<NativePackagerHandoffControl>;
+  handoff?(program: BroadcastProgramRef, snapshot: NativePackagerHandoffControl, request: NativeSourceProgramRequest,
+    signal: AbortSignal): Promise<{ program: BroadcastProgramRef; assignment: PreparedNativePackagerStart }>;
   stop(program: BroadcastProgramRef, assignment: PreparedNativePackagerStart | undefined): Promise<void>;
   changed(view: NativeSourceProgramView): void;
   clock?: () => number;
 }
 interface ActiveProgram {
-  readonly context: string; readonly request: NativeSourceProgramRequest; readonly controller: AbortController;
-  readonly startedAt: number;
+  readonly context: string; request: NativeSourceProgramRequest; readonly controller: AbortController;
+  startedAt: number; observationGeneration: number;
+  handoff?: { request: NativeSourceProgramRequest; startedAt: number };
   program?: BroadcastProgramRef; assignment?: PreparedNativePackagerStart;
   pending?: Promise<void>; stopping?: Promise<void>; polling: boolean; nextPoll: number; ready: boolean; lastNow: number;
   cancelled?: boolean;
@@ -59,7 +62,8 @@ export class NativeSourceProgramController {
       throw new Error("native_source_program_start_denied");
     }
     const record: ActiveProgram = { context, request,
-      controller: new AbortController(), startedAt: this.now(), lastNow: this.now(), polling: false, nextPoll: 0, ready: false };
+      controller: new AbortController(), startedAt: this.now(), lastNow: this.now(), polling: false, nextPoll: 0, ready: false,
+      observationGeneration: 0 };
     this.active = record; this.phase = "preparing"; this.error = ""; this.emit();
     record.pending = this.prepare(record);
     await record.pending;
@@ -87,19 +91,22 @@ export class NativeSourceProgramController {
 
   private requireCurrent(record: ActiveProgram): void {
     record.controller.signal.throwIfAborted();
+    const request = record.handoff?.request ?? record.request;
     if (this.active !== record || this.destroyed || this.ports.context() !== record.context
-      || !this.ports.eligible(record.request.packagerId, record.request.requestedRenditions, record.request.audioOutput)
+      || !this.ports.eligible(request.packagerId, request.requestedRenditions, request.audioOutput)
       || this.now() < record.lastNow) throw new Error("native_source_program_context_changed");
     record.lastNow = this.now();
   }
 
   private async observe(record: ActiveProgram): Promise<void> {
-    if (!record.program || !record.assignment || record.polling) return;
+    if (!record.program || !record.assignment || record.polling || record.handoff) return;
+    const generation = record.observationGeneration;
     record.polling = true;
     try {
       this.requireCurrent(record);
       const value = await this.ports.observe(record.program.programId,
         AbortSignal.any([record.controller.signal, AbortSignal.timeout(5000)]));
+      if (generation !== record.observationGeneration) return;
       this.requireCurrent(record);
       if (value.programId !== record.program.programId || value.programEpoch !== record.program.programEpoch
         || value.programRevision < record.program.programRevision || value.handoffPending
@@ -114,11 +121,55 @@ export class NativeSourceProgramController {
         : record.ready && value.state === "degraded" ? "degraded" : "waiting-output";
       record.nextPoll = this.now() + 2000; this.emit();
     } catch {
-      if (!record.controller.signal.aborted) {
+      if (generation === record.observationGeneration && !record.controller.signal.aborted) {
         this.error = "native_source_program_confirmation_lost"; record.controller.abort();
         await this.cleanup(record);
       }
-    } finally { record.polling = false; }
+    } finally { if (generation === record.observationGeneration) record.polling = false; }
+  }
+
+  canHandoff(packagerId: string): boolean {
+    const record = this.active;
+    return !!record && !!this.ports.handoff && !this.destroyed && !record.controller.signal.aborted
+      && !record.handoff && record.ready && ["live", "degraded"].includes(this.phase)
+      && record.context === this.ports.context() && /^pkr_[A-Za-z0-9_-]{16,64}$/.test(packagerId)
+      && packagerId !== record.assignment?.packagerId
+      && this.ports.eligible(packagerId, record.request.requestedRenditions, record.request.audioOutput);
+  }
+
+  async handoff(packagerId: string, trigger: unknown): Promise<void> {
+    if (trigger !== "user-action" || !this.canHandoff(packagerId)) throw new Error("native_source_handoff_denied");
+    const record = this.active!;
+    this.requireCurrent(record);
+    record.handoff = { request: Object.freeze({ ...record.request, packagerId }), startedAt: this.now() };
+    ++record.observationGeneration; record.polling = false;
+    this.phase = "handing-over"; this.error = ""; this.emit();
+    record.pending = this.transfer(record);
+    await record.pending;
+  }
+
+  private async transfer(record: ActiveProgram): Promise<void> {
+    const target = record.handoff!.request;
+    const signal = AbortSignal.any([record.controller.signal, AbortSignal.timeout(15000)]);
+    try {
+      const previous = record.program!, assignment = record.assignment!;
+      const snapshot = await this.ports.observe(previous.programId, signal);
+      this.requireCurrent(record); signal.throwIfAborted();
+      if (snapshot.programId !== previous.programId || snapshot.programEpoch !== previous.programEpoch
+        || snapshot.programRevision < previous.programRevision || snapshot.handoffPending
+        || !["live", "degraded"].includes(snapshot.state) || snapshot.writer?.packagerId !== assignment.packagerId
+        || snapshot.writer.fencingRevision !== assignment.fencingRevision) throw new Error("native_source_handoff_stale");
+      const result = await this.ports.handoff!(previous, snapshot, target, signal);
+      // Retain late known assignments for cleanup, not for activation.
+      record.program = result.program; record.assignment = result.assignment;
+      this.requireCurrent(record); signal.throwIfAborted();
+      record.request = target; record.handoff = undefined; record.ready = false; record.startedAt = this.now();
+      this.phase = "waiting-output"; this.emit();
+      await this.observe(record);
+    } catch {
+      if (!record.cancelled) this.error ||= "native_source_handoff_failed";
+      record.controller.abort(); await this.cleanup(record);
+    }
   }
 
   tick(): void {
@@ -127,6 +178,10 @@ export class NativeSourceProgramController {
     if (record.controller.signal.aborted) { this.emit(); return; }
     try {
       this.requireCurrent(record);
+      if (record.handoff) {
+        if (this.now() >= record.handoff.startedAt + 15000) throw new Error();
+        return;
+      }
       if (!record.ready && this.now() >= record.startedAt + 45000) throw new Error();
       if (record.ready && this.now() >= record.nextPoll + 5000) throw new Error();
     } catch {
@@ -141,6 +196,7 @@ export class NativeSourceProgramController {
     const record = this.active;
     if (!record) return;
     record.cancelled = true;
+    ++record.observationGeneration;
     record.controller.abort(); this.phase = "stopping"; this.emit();
     await record.pending;
     // prepare() may have already completed the exact cleanup while aborting.

@@ -16,6 +16,45 @@ const service = () => new BroadcastControlPlaneService({ authorizationHeader: ()
   { fingerprint: () => "a".repeat(43) } as never);
 afterEach(() => vi.restoreAllMocks());
 
+const handoffSnapshot = { controlVersion: 1 as const, programId: program.programId, programRevision: 4, programEpoch: 1,
+  state: "live", handoffPending: false, writer: { packagerId: "pkr_bbbbbbbbbbbbbbbb", fencingRevision: 3 } };
+const sourceHandoff = (control: BroadcastControlPlaneService, snapshot = handoffSnapshot, signal = new AbortController().signal) =>
+  control.prepareNativeSourceHandoff(program, snapshot, packagerId, 2, false, "user-action", signal);
+
+it("accepts a source handoff only at the next epoch with a newer fence and consumes its assignment", async () => {
+  const value = response(); value.program.programRevision = 6; value.program.programEpoch = value.assignment.programEpoch = 2;
+  const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(value)), control = service();
+  const result = await sourceHandoff(control);
+  expect(result.assignment).toMatchObject({ programEpoch: 2, fencingRevision: 4, packagerId });
+  expect(() => control.takePreparedNative(result.program)).toThrow("assignment_required");
+  expect(fetch.mock.calls[0][0]).toBe(`/api/broadcasts/${program.programId}/native-handoffs`);
+  expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual({ requestVersion: 1, trigger: "user-action",
+    deviceFingerprint: "a".repeat(43), packagerId, requestedRenditions: 2, allowHardwareAcceleration: false,
+    expectedProgramRevision: 4, expectedProgramEpoch: 1, expectedFencingRevision: 3 });
+});
+for (const change of ["same-epoch", "skipped-epoch", "stale-revision", "stale-fence", "wrong-mode", "wrong-owner", "wrong-room", "oversize"])
+  it(`denies ${change} source handoff replies`, async () => {
+    const value = response(); value.program.programRevision = 6; value.program.programEpoch = value.assignment.programEpoch = 2;
+    if (change === "same-epoch") value.program.programEpoch = value.assignment.programEpoch = 1;
+    if (change === "skipped-epoch") value.program.programEpoch = value.assignment.programEpoch = 3;
+    if (change === "stale-revision") value.program.programRevision = 4;
+    if (change === "stale-fence") value.assignment.fencingRevision = 3;
+    if (change === "wrong-mode") Reflect.deleteProperty(value.assignment, "inputMode");
+    if (change === "wrong-owner") value.program.tenantId = "tn_bbbbbbbbbbbbbbbb";
+    if (change === "wrong-room") value.program.roomId = "room-other";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(json(change === "oversize" ? { ...value, padding: "x".repeat(16384) } : value));
+    const control = service(); await expect(sourceHandoff(control)).rejects.toThrow();
+    expect(() => control.takePreparedNative(value.program)).toThrow("assignment_required");
+  });
+
+it("denies stale CAS, implicit action and cancellation before dispatch", async () => {
+  const fetch = vi.spyOn(globalThis, "fetch"), control = service();
+  await expect(sourceHandoff(control, { ...handoffSnapshot, programRevision: 0 })).rejects.toThrow();
+  await expect(control.prepareNativeSourceHandoff(program, handoffSnapshot, packagerId, 2, false, "remote", new AbortController().signal)).rejects.toThrow();
+  const abort = new AbortController(), pending = sourceHandoff(control, handoffSnapshot, abort.signal);
+  abort.abort(); await expect(pending).rejects.toThrow(); expect(fetch).not.toHaveBeenCalled();
+});
+
 it("emits the additive v2 output request, without changing the assignment response or legacy schema", async () => {
   const validate = new Ajv2020({ strict: true }).compile(JSON.parse(readFileSync("contracts/native-packager/source-program-start.v2.schema.json", "utf8")));
   const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(response()));
