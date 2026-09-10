@@ -137,6 +137,9 @@ test("native trusted audio mixer combines two decoded sources and removes revoke
 test("native trusted video compositor switches layouts and wipes revoked decoded frames", {timeout:25000}, t => {
   nativeCodecFixture(t, "TestLiveTrustedSourceVideoMixer");
 });
+test("native video decoder survives clock quarantine without resurrecting old frames", {timeout:25000}, t => {
+  nativeCodecFixture(t, "TestLiveVideoDecoderSurvivesClockQuarantine");
+});
 test("native program clock combines four real decoders and propagates individual revoke", {timeout:25000}, t => {
   nativeCodecFixture(t, "TestLiveTrustedSourceProgramClock");
 });

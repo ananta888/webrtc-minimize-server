@@ -53,6 +53,19 @@ the internal SFrame package), as does vet. All eleven changed source/test files
 match the isolated snapshot after **only CRLF/LF normalization**; raw bytes differ
 for tracked files due to checkout line-ending conversion. The serving index hash
 remains unchanged. No new release or deployment is approved by these results.
+
+## Follow-up: automatic live decoder regression
+
+The normal Go unit suite deliberately skips opted-in FFmpeg tests. The existing
+Node codec-fixture runner now explicitly executes the new live video quarantine
+case, retaining its bounded compiled binary, deadline and strict no-skip checks.
+That exact entry point passes in 1.475 s without running the long browser matrix
+again. This test-only follow-up is separate from the `f05a7ff` CI already running.
+
+Two additional private instrumented two-source checks pass (25.318/25.351 s).
+The latter samples source state only after a test failure, so no such snapshot
+was emitted. These runs still provide no failing decoder/program stage to explain
+the original intermittence. Private signal/debug hooks are not release code.
 This fixes the reproduced lifecycle mismatch; it does **not** yet establish the
 cause of the intermittent missing camera/screen in earlier CI or production.
 No deployment or completed long-run source-reliability claim is made.
