@@ -149,3 +149,26 @@ retained; request contents, identities and credentials are never printed.
 Observation is limited to one matching request, 16 KiB and five seconds, with
 no automatic correction. Five pure projection/assertion tests pass; the real
 browser request and native scene/pixel checks remain CI work.
+
+### Visible select value and model diverge before HTTP
+
+CI `34502823315` on `8ab4c70` confirms that both DOM checks pass, yet the actual
+HTTP apply submits `waiting-slate` with the correct version, revision and source
+counts. The native agent is therefore not where these two requests lose their
+intended layout.
+
+The rendered Angular test now reproduces that mismatch without a browser or
+media: start refresh, interact with the still-enabled native select before the
+next render, then finish the request. The DOM displays `grid`, while the model
+still contains `single`. The handler already sees the pending gate and refuses
+the edit; Angular's unchanged binding cache does not restore the altered DOM
+value. A second reproduction during apply produces `end-slate` versus `grid`.
+
+Refresh and apply now synchronously render their pending state through the
+component's actual `ChangeDetectorRef` before returning from the click handler.
+The native fieldset is thus disabled when the handler is gated. The rendered
+test fails before each correction and passes after both; all 28 focused frontend
+cases and five Node observation tests pass, as do TypeScript and Angular's
+no-emit template compilation. No native codec, clock, consent, deadline or media
+behavior changes. The coupled CI must still prove correct submission and actual
+source pixels; local reproduction alone is not a production rollout claim.

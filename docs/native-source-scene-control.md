@@ -92,6 +92,9 @@ abgeschlossen sind. Ein früheres Controller-`ready` allein aktiviert keine
 Bedienelemente. Doppelte Abfragen und Änderungen in diesem Zwischenzustand werden
 nicht ausgeführt; veraltete oder fehlgeschlagene Antworten überschreiben keinen
 Entwurf. Das verlängert weder die fünf Sekunden Gültigkeit noch Quellenrechte.
+Refresh und Apply rendern ihren Pendingzustand noch innerhalb des Klickhandlers
+in die Komponentenview. Damit bleibt kein kurzzeitig bedienbares Auswahlfeld
+sichtbar, dessen Änderung die schon gesperrte Formularlogik verwerfen würde.
 
 ### Lokaler Entwurf und konkurrierende Änderungen
 

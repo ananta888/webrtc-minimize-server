@@ -1,6 +1,6 @@
 import "@angular/compiler";
 import { readFileSync } from "node:fs";
-import { Component, provideZonelessChangeDetection, signal } from "@angular/core";
+import { ChangeDetectorRef, Component, inject, provideZonelessChangeDetection, signal } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterAll, afterEach, expect, it, vi } from "vitest";
@@ -29,7 +29,7 @@ it("renders scoped draft, freshness, conflict and separate review/apply controls
   const template = readFileSync("frontend/src/app/broadcast/native-source-scene.component.html", "utf8");
   TestBed.overrideComponent(NativeSourceSceneComponent, { set: { templateUrl: undefined, template } });
   await TestBed.compileComponents();
-  class RenderedScene extends NativeSourceSceneComponent { constructor() { super(scenes as never); } }
+  class RenderedScene extends NativeSourceSceneComponent { constructor() { super(scenes as never, inject(ChangeDetectorRef)); } }
   Component({ selector: "test-native-scene", standalone: true, template })(RenderedScene);
   await TestBed.configureTestingModule({ imports: [RenderedScene], providers: [provideZonelessChangeDetection()] }).compileComponents();
   const fixture = TestBed.createComponent(RenderedScene), root: HTMLElement = fixture.nativeElement;
@@ -38,6 +38,17 @@ it("renders scoped draft, freshness, conflict and separate review/apply controls
   element<HTMLButtonElement>("#native-scene-refresh").click(); await fixture.whenStable();
   const layout = element<HTMLSelectElement>("#native-scene-layout");
   expect(layout.value).toBe("single");
+  // A refresh begins synchronously, before Angular's next scheduled render.
+  // A native select interaction must not appear accepted while its handler is gated.
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  scenes.controller.refresh.mockImplementationOnce(async () => { await pending; scenes.view.set({ phase: "ready", scene: next }); });
+  element<HTMLButtonElement>("#native-scene-refresh").click();
+  const pendingWasEditable = !element<HTMLFieldSetElement>("fieldset").disabled;
+  if (pendingWasEditable) { layout.value = "grid"; layout.dispatchEvent(new Event("change", { bubbles: true })); }
+  finish(); await fixture.whenStable();
+  expect(layout.value).toBe(fixture.componentInstance.layout());
+  expect(pendingWasEditable).toBe(false);
   layout.value = "grid"; layout.dispatchEvent(new Event("change", { bubbles: true })); await fixture.whenStable();
   expect(root.querySelector("#native-scene-draft-status")).not.toBe(null);
   scenes.view.set({ phase: "stale", scene: null }); await fixture.whenStable();
@@ -53,7 +64,17 @@ it("renders scoped draft, freshness, conflict and separate review/apply controls
   element<HTMLButtonElement>("#native-scene-draft-review").click(); await fixture.whenStable();
   expect(root.querySelector("#native-scene-draft-conflict")).toBe(null);
   expect(scenes.controller.apply).not.toHaveBeenCalled();
-  element<HTMLButtonElement>("#native-scene-apply").click(); await fixture.whenStable();
+  let finishApply!: () => void;
+  const applyPending = new Promise<void>(resolve => { finishApply = resolve; });
+  scenes.controller.apply.mockImplementationOnce(async () => {
+    scenes.view.set({ phase: "pending", scene: null }); await applyPending;
+    scenes.view.set({ phase: "stale", scene: null });
+  });
+  element<HTMLButtonElement>("#native-scene-apply").click();
+  const applyWasEditable = !element<HTMLFieldSetElement>("fieldset").disabled;
+  if (applyWasEditable) { layout.value = "end-slate"; layout.dispatchEvent(new Event("change", { bubbles: true })); }
+  finishApply(); await fixture.whenStable();
+  expect(layout.value).toBe(fixture.componentInstance.layout()); expect(applyWasEditable).toBe(false);
   expect(confirm).toHaveBeenCalledTimes(2);
   expect(scenes.controller.apply).toHaveBeenCalledExactlyOnceWith({ expectedSceneRevision: 2, layout: "grid", sourceLeaseIds: [source],
     sourceFits: ["contain"], activeSourceLeaseId: "" }, "user-action");

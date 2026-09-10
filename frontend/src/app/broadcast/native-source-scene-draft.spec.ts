@@ -38,7 +38,7 @@ async function fixture() {
   const scenes = { ownerKey: () => owner(), view: signal<NativeSceneView>({ phase: "idle", scene: null }), controller: {
     refresh: vi.fn(async () => { scenes.view.set({ phase: "ready", scene: next }); }), apply: vi.fn(async () => {}),
   } };
-  const component = new NativeSourceSceneComponent(scenes as never);
+  const component = new NativeSourceSceneComponent(scenes as never, { detectChanges() {} } as never);
   await component.refresh();
   return { component, scenes, owner, next(value: NativeSceneState) { next = value; } };
 }

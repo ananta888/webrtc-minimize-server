@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from "@angular/core";
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, signal } from "@angular/core";
 import { NativeSourceSceneService } from "./native-source-scene.service";
 import { NativeSceneSelection, NativeSceneState, SCENE_LAYOUTS, SceneLayout, SceneFit, validSceneSelection } from "./native-source-scene-contract";
 import { sameScenePresentation, sameSceneScope, sceneDraftRefresh } from "./native-source-scene-draft";
@@ -36,14 +36,17 @@ export class NativeSourceSceneComponent {
     conflict: "Szene nicht angewendet: Zustand neu abfragen und Auswahl prüfen.",
     unavailable: "Keine verlässliche Bestätigung. Rechte, aktuelle Sendung und Packager ab Version 0.9 prüfen. Nicht automatisch erneut anwenden.",
   })[this.refreshing() ? "pending" : this.scenes.view().phase]);
-  constructor(readonly scenes: NativeSourceSceneService) {}
+  constructor(readonly scenes: NativeSourceSceneService, private readonly changeDetector: ChangeDetectorRef) {}
   async refresh(): Promise<void> {
     if (this.refreshing() || this.scenes.view().phase === "pending") return;
     // Controller-ready precedes this await continuation. Do not enable form
     // edits until its observation and the local draft agree atomically.
     this.refreshing.set(true);
-    const owner = this.scenes.ownerKey();
     try {
+      // Publish disabled controls before this click returns. Otherwise a native
+      // select can display a new value while its already-gated handler rejects it.
+      this.changeDetector.detectChanges();
+      const owner = this.scenes.ownerKey();
       await this.scenes.controller.refresh();
       const { phase, scene: state } = this.scenes.view();
       if (phase === "ready" && state && owner && owner === this.scenes.ownerKey()) {
@@ -117,6 +120,10 @@ export class NativeSourceSceneComponent {
       + "Ein Warte-/Endbild beendet die Sendung nicht. Die Bestätigung des Packagers ist kein Zustellnachweis beim Publikum.")) return;
     if (!this.canApply() || this.scenes.ownerKey() !== owner || this.scenes.view().scene !== observed
       || JSON.stringify(selection) !== JSON.stringify(this.selection())) return;
-    await this.scenes.controller.apply(selection, "user-action");
+    const operation = this.scenes.controller.apply(selection, "user-action");
+    // run() sets pending synchronously; reflect it before the caller can edit
+    // a visually enabled control whose handler would already reject the change.
+    try { this.changeDetector.detectChanges(); }
+    finally { await operation; }
   }
 }
