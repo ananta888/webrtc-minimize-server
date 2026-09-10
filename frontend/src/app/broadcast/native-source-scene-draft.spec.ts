@@ -2,7 +2,7 @@ import "@angular/compiler";
 import { signal } from "@angular/core";
 import { afterEach, expect, it, vi } from "vitest";
 import { NativeSceneSelection, NativeSceneState } from "./native-source-scene-contract";
-import { NativeSceneView } from "./native-source-scene-controller";
+import { NativeSceneView, NativeSourceSceneController } from "./native-source-scene-controller";
 import { NativeSourceSceneComponent } from "./native-source-scene.component";
 import { sameSceneScope, sceneDraftRefresh } from "./native-source-scene-draft";
 
@@ -125,4 +125,33 @@ it("apply confirmation cannot move a draft to another owner or a newly observed 
     await f.component.apply(); expect(f.scenes.controller.apply).not.toHaveBeenCalled();
     vi.restoreAllMocks();
   }
+});
+
+it("a cancelled decision followed by expiry needs a fresh query and a new explicit confirmation", async () => {
+  let now = state.observedAt;
+  const view = signal<NativeSceneView>({ phase: "idle", scene: null });
+  const request = vi.fn(async (_program, selection) => selection === null
+    ? { ...state, observedAt: now }
+    : { ...state, outcome: "applied" as const, appliedAt: now, sceneRevision: 2 });
+  const controller = new NativeSourceSceneController({ clock: () => now,
+    context: () => ({ key: "human-session-alpha", program: state }), request, changed: value => view.set(value) });
+  const scenes = { ownerKey: () => "human-session-alpha", view, controller };
+  const component = new NativeSourceSceneComponent(scenes as never, { detectChanges() {} } as never);
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  try {
+    await component.refresh(); component.setLayout("grid");
+    await component.apply(); expect(confirm).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(1);
+    now += 5000; controller.tick();
+    expect(component.canApply()).toBe(false); expect(component.layout()).toBe("grid");
+    confirm.mockReturnValue(true);
+    await component.apply(); expect(confirm).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(1);
+    await component.refresh(); expect(component.canApply()).toBe(true);
+    expect(component.layout()).toBe("grid"); expect(confirm).toHaveBeenCalledTimes(1);
+    await component.apply(); expect(confirm).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(request.mock.calls[2][1]).toEqual({ ...draft, sourceFits: ["contain"] });
+    expect(view().phase).toBe("stale");
+  } finally { controller.destroy(); }
 });

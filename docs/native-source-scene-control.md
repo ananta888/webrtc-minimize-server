@@ -210,3 +210,21 @@ Browserprozess und keine Audio-/Capture-API; nativer Bildnachweis bleibt separat
 Weitere Handoff-/Standby-/Produktionskriterien bleiben ebenfalls erhalten.
 Kein Deployment und keine öffentliche Freigabe werden aus den Teilprüfungen
 abgeleitet.
+
+## Getrennte Tastaturentscheidungen und Frische
+
+CI `34521897105` scheiterte beim zweiten Apply-Dialog der Keyboardfixture
+(Project 1: 680 bestanden, ein Fehler, ein Skip). Der Ablauf nutzte dieselbe
+fünf Sekunden gültige Beobachtung für mehrere Review-/Apply-Entscheidungen;
+`Locator.press()` beobachtet außerdem nicht automatisch einen aktivierten
+Button. Die genaue Ursache des einzelnen CI-Timeouts ist damit nicht bewiesen.
+Die Fixture fragt jetzt zwischen den getrennten Entscheidungen ausdrücklich
+neu ab und wartet auf die zugehörige HTTP-Antwort und den aktivierten Button.
+Sie wiederholt keine Mutation und verlängert keine produktive Frist.
+
+29 gezielte jsdom-/Controller-/Templateprüfungen bestehen in 0,883 Sekunden.
+Der neue Fall verwendet den echten Szenencontroller mit kontrollierter Uhr:
+Abbrechen, exakt fünf Sekunden Ablauf, kein erneuter Dialog/Apply bei stale,
+frische Query mit erhaltenem Entwurf und separat bestätigtes Apply. Typprüfung
+und Todo-Gate bestehen. Der korrigierte echte Keyboardlauf bleibt bis zum
+CI-Ergebnis unverified; lokal wurden keine Browser oder Audioquellen gestartet.
