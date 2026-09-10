@@ -9,7 +9,8 @@ import {
 import { BroadcastBrowserPortError, BroadcastProgramRef } from "./broadcast-ports";
 import { parseBroadcastDirectoryEntry } from "./broadcast-directory.service";
 import { NativePackagerHandoffControl, parseNativeHandoffControl } from "./native-packager-handoff-control";
-import type { NativeSceneResult, NativeSceneSelection } from "./native-source-scene-contract";
+import type { NativeSceneResult, NativeSceneSelection, NativeSceneState } from "./native-source-scene-contract";
+import type { NativeSourceLabels } from "./native-source-labels-contract";
 import type { NativeAudioResult, NativeAudioSelection } from "./native-source-audio-contract";
 import type { NativeSourceAudioOutput } from "./native-source-audio-output";
 import type { NativeSourceVideoOutput } from "./native-source-video-output";
@@ -232,6 +233,25 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
     const value = await json(response, "invalid_native_scene_response", 16384);
     signal.throwIfAborted();
     return parseNativeSceneResult(value, program);
+  }
+
+  async nativeSourceLabels(scene: NativeSceneState, signal: AbortSignal): Promise<NativeSourceLabels> {
+    signal.throwIfAborted();
+    const fingerprint = this.device.fingerprint();
+    if (!PROGRAM.test(scene.programId) || !fingerprint) throw new BroadcastBrowserPortError("broadcast_active_device_required");
+    const { parseNativeSourceLabels } = await import("./native-source-labels-contract");
+    signal.throwIfAborted();
+    const response = await fetch(`/api/broadcasts/${encodeURIComponent(scene.programId)}/native-source-labels`, {
+      method: "POST", headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
+      credentials: "same-origin", cache: "no-store", redirect: "error", signal,
+      body: JSON.stringify({ requestVersion: 1, deviceFingerprint: fingerprint, expectedProgramRevision: scene.programRevision,
+        expectedProgramEpoch: scene.programEpoch, expectedPackagerId: scene.packagerId, expectedAssignmentId: scene.assignmentId,
+        expectedFencingRevision: scene.fencingRevision, sourceLeaseIds: scene.availableSources.map(s => s.sourceLeaseId) }),
+    });
+    if (!response.ok) throw requestError(response, "native_source_labels_unavailable");
+    const value = await json(response, "invalid_native_source_labels_response", 16384);
+    signal.throwIfAborted();
+    return parseNativeSourceLabels(value, scene);
   }
 
   async nativeSourceAudio(program: BroadcastProgramRef, selection: NativeAudioSelection | null, signal: AbortSignal, version: 1 | 2 | 3 = 1): Promise<NativeAudioResult> {

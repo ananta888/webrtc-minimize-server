@@ -71,6 +71,12 @@ export class NativeSourceProgramService implements OnDestroy {
     const key = this.context(), program = this.requestProgram();
     return key && program ? { key, program } : null;
   }
+  /** Display only, from current server-authored membership; never invitations or agent claims. */
+  publisherName(peerId: string): string | null {
+    if (!this.sceneContext() || !/^[a-f0-9]{16}$/.test(peerId)) return null;
+    const name = peerId === this.room.peerId() ? this.room.displayName() : this.mesh.peerChoices().find(p => p.id === peerId)?.name;
+    return typeof name === "string" && name.trim() ? name.slice(0, 80) : null;
+  }
   audioContext(): { key: string; program: NonNullable<NativeSourceProgramView["program"]>; audioControlVersion: 1 | 2 | 3 } | null {
     const context = this.sceneContext(), id = this.controller.controlledPackagerId();
     const capability = this.candidates().find(p => p.id === id)?.capability;

@@ -20,17 +20,19 @@
     </select>
     @if (formState(); as state) {
       <p>Zuletzt abgefragte Szenenrevision: {{ state.sceneRevision }}. Quellenreihenfolge entspricht der Auswahlreihenfolge, maximal 20. Eine alte Quellenliste ist keine aktuelle Freigabe.</p>
+      <p id="native-scene-label-status" role="status">{{ scenes.labelsStatus() }}</p>
       @for (source of state.availableSources; track source.sourceLeaseId; let index = $index) {
         <label><input type="checkbox" [checked]="selected().includes(source.sourceLeaseId)"
           (change)="select(source.sourceLeaseId, $any($event.target).checked)">
-          {{ source.sourceKind === 'screen' ? 'Bildschirm' : 'Kamera' }} {{ index + 1 }} · {{ source.sourceLeaseId }}</label>
+          {{ source.sourceKind === 'screen' ? 'Bildschirm' : 'Kamera' }} {{ index + 1 }} · {{ scenes.publisherName(source.sourceLeaseId) || 'Teilnehmer nicht zugeordnet' }}
+          · <code>{{ source.sourceLeaseId }}</code></label>
       }
       @if (!state.availableSources.length) { <p>Keine freigegebene Videoquelle verfügbar; der sichere Platzhalter bleibt sichtbar.</p> }
       @for (id of selected(); track id) {
-        <p class="small">Ausgewählter Quellenplatz: {{ id }}. Ein widerrufener Platz zeigt nur einen Platzhalter.
+        <p class="small">Ausgewählter Quellenplatz: {{ scenes.publisherName(id) || 'Teilnehmer nicht zugeordnet' }} · <code>{{ id }}</code>. Ein widerrufener Platz zeigt nur einen Platzhalter.
           <button type="button" (click)="remove(id)">Quellenplatz entfernen</button></p>
         @if (state.sceneControlVersion === 2) {
-          <label>Bildanpassung · {{ id }}
+          <label>Bildanpassung · {{ scenes.publisherName(id) || 'Teilnehmer nicht zugeordnet' }} · {{ id }}
             <select [attr.data-scene-fit]="id" [value]="fits()[id] || 'contain'" (change)="setFit(id, $any($event.target).value)">
               <option value="contain">Vollständig einpassen · gesamte Quelle sichtbar</option>
               <option value="cover">Ausfüllen · Ränder mittig beschneiden</option>
@@ -43,7 +45,7 @@
         <label for="native-scene-active">Bevorzugte ausgewählte Quelle</label>
         <select id="native-scene-active" [value]="active()" (change)="setActive($any($event.target).value)">
           <option value="">Erste Quelle der Auswahl</option>
-          @for (id of selected(); track id) { <option [value]="id">{{ id }}</option> }
+          @for (id of selected(); track id) { <option [value]="id">{{ scenes.publisherName(id) || 'Teilnehmer nicht zugeordnet' }} · {{ id }}</option> }
         </select>
       }
     }

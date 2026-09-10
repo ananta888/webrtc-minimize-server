@@ -20,8 +20,10 @@ it("renders scoped draft, freshness, conflict and separate review/apply controls
     outcome: "observed", observedAt: 1800000000000, sceneRevision: 1, layout: "single", sourceLeaseIds: [source],
     sourceFits: ["contain"], activeSourceLeaseId: "", availableSources: [{ sourceLeaseId: source, sourceKind: "camera" }] };
   const owner = signal<string | null>("human-session-alpha");
+  const publisher = signal<string | null>("<img src=x onerror=alert(1)> Synthetic source");
   let next = state;
-  const scenes = { ownerKey: () => owner(), view: signal<NativeSceneView>({ phase: "idle", scene: null }), controller: {
+  const scenes = { ownerKey: () => owner(), publisherName: () => publisher(), labelsStatus: () => "Synthetic membership fixture",
+    view: signal<NativeSceneView>({ phase: "idle", scene: null }), controller: {
     refresh: vi.fn(async () => { scenes.view.set({ phase: "ready", scene: next }); }), apply: vi.fn(async () => {}),
   } };
   // Only dependency construction is replaced. Template, handlers and signals
@@ -38,6 +40,9 @@ it("renders scoped draft, freshness, conflict and separate review/apply controls
   element<HTMLButtonElement>("#native-scene-refresh").click(); await fixture.whenStable();
   const layout = element<HTMLSelectElement>("#native-scene-layout");
   expect(layout.value).toBe("single");
+  expect(root.textContent).toContain(publisher()); expect(root.querySelector("img")).toBe(null);
+  publisher.set(null); await fixture.whenStable(); expect(root.textContent).not.toContain("onerror");
+  expect(root.textContent).toContain("Teilnehmer nicht zugeordnet");
   // A refresh begins synchronously, before Angular's next scheduled render.
   // A native select interaction must not appear accepted while its handler is gated.
   let finish!: () => void;

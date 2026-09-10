@@ -60,7 +60,7 @@ test("Angular keyboard starts an empty v4 program only after confirmation, waits
     let ownRequests = 0, ownBody;
     const page = await context.newPage();
     const startup = observeBrowserStartup(page);
-    const verifySceneUi = await installNativeSceneUiFixture(page, program.programId);
+    const verifySceneUi = await installNativeSceneUiFixture(page, program.programId, () => app.registry.members(roomId)[0]);
     await page.route("**/api/native-packagers", route => route.fulfill({ json: { packagers: [packager], assignments: [] } }));
     await page.route("**/api/broadcasts", route => {
       if (route.request().method() !== "POST") return route.continue();

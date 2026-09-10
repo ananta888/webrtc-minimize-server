@@ -1,9 +1,21 @@
 import assert from "node:assert/strict";
 
 /** Built Angular keyboard flow. HTTP/native observations are explicitly synthetic in this UI fixture. */
-export async function installNativeSceneUiFixture(page, programId) {
+export async function installNativeSceneUiFixture(page, programId, getPublisher) {
   const source = "sls_aaaaaaaaaaaaaaaa";
   let queries = 0, applies = 0, sceneRevision = 1, layout = "waiting-slate", selected = [], rejectNext = false;
+  let labelQueries = 0, labelsAvailable = true;
+  await page.route(`**/api/broadcasts/${programId}/native-source-labels`, route => {
+    labelQueries++;
+    const input = route.request().postDataJSON(), publisher = getPublisher();
+    assert.equal(route.request().method(), "POST"); assert.ok(publisher);
+    assert.deepEqual(input, { requestVersion: 1, deviceFingerprint: publisher.deviceFingerprint,
+      expectedProgramRevision: 4, expectedProgramEpoch: 1, expectedPackagerId: "pkr_aaaaaaaaaaaaaaaa",
+      expectedAssignmentId: "asn_aaaaaaaaaaaaaaaa", expectedFencingRevision: 4, sourceLeaseIds: [source] });
+    return route.fulfill({ json: { version: 1, programId, programRevision: 4, programEpoch: 1,
+      packagerId: input.expectedPackagerId, assignmentId: input.expectedAssignmentId, fencingRevision: 4,
+      bindings: labelsAvailable ? [{ sourceLeaseId: source, publisherPeerId: publisher.id, sourceKind: "screen" }] : [] } });
+  });
   await page.route(`**/api/broadcasts/${programId}/native-source-scene`, route => {
     const input = route.request().postDataJSON();
     assert.equal(route.request().method(), "POST");
@@ -30,8 +42,13 @@ export async function installNativeSceneUiFixture(page, programId) {
     await page.getByRole("checkbox", { name: /Bildschirm 1/ }).press("Space");
     await page.locator("#native-scene-refresh").press("Enter");
     await page.locator("#native-scene-status", { hasText: "Szenenzustand bestätigt" }).waitFor();
+    await page.getByRole("checkbox", { name: new RegExp(`Bildschirm 1.*${getPublisher().name}`) }).waitFor();
+    assert.equal(labelQueries, 1);
+    labelsAvailable = false; // Next observation has no current binding, never retain the prior name.
     assert.equal(await page.locator("#native-scene-layout").inputValue(), "grid");
     assert.equal(await page.getByRole("checkbox", { name: /Bildschirm 1/ }).isChecked(), true);
+    await page.getByRole("checkbox", { name: /Bildschirm 1.*Teilnehmer nicht zugeordnet/ }).waitFor();
+    assert.equal(await page.getByRole("checkbox", { name: new RegExp(`Bildschirm 1.*${getPublisher().name}`) }).count(), 0);
     assert.equal(applies, 0, "refresh preserves the local draft without applying it");
     // Explicitly synthetic concurrent director change; never a native media claim.
     sceneRevision++; layout = "end-slate";
