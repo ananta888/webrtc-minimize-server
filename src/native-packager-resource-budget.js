@@ -55,18 +55,24 @@ export function nativePackagerResourceDemand(admission) {
 export class NativePackagerResourceBudget {
   #limits;
   constructor(limits) { this.#limits = normalizeNativePackagerResources(limits); }
+  snapshot(occupied) {
+    if (!Array.isArray(occupied) || occupied.length > 20_000) throw new TypeError("invalid_native_packager_resource_inventory");
+    const used = Object.fromEntries(FIELDS.map(field => [field, 0]));
+    for (const admission of occupied) {
+      const demand = nativePackagerResourceDemand(admission);
+      for (const field of FIELDS) {
+        used[field] += demand[field];
+        if (!Number.isSafeInteger(used[field])) throw new TypeError("invalid_native_packager_resource_inventory");
+      }
+    }
+    return Object.freeze({ used: Object.freeze(used), limits: this.#limits });
+  }
   allows(candidate, occupied) {
     if (!Array.isArray(occupied) || occupied.length > 20_000) return false;
-    const used = Object.fromEntries(FIELDS.map(field => [field, 0]));
     try {
-      for (const admission of [...occupied, candidate]) {
-        const demand = nativePackagerResourceDemand(admission);
-        for (const field of FIELDS) {
-          used[field] += demand[field];
-          if (!Number.isSafeInteger(used[field]) || used[field] > this.#limits[field]) return false;
-        }
-      }
-      return true;
+      const { used } = this.snapshot(occupied), demand = nativePackagerResourceDemand(candidate);
+      return FIELDS.every(field => Number.isSafeInteger(used[field] + demand[field])
+        && used[field] + demand[field] <= this.#limits[field]);
     } catch { return false; }
   }
 }

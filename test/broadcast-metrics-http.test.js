@@ -56,7 +56,8 @@ test("actual HTTP endpoint rejects ordinary or invalid JWTs and exports only fix
     create() {}, renew() {}, authorize: async () => ({ sessionId: "private-session-canary", upstreamPath: "/private-path-canary" }),
   }, fetchImpl: async () => new Response(new Uint8Array(4), { headers: { "content-type": "video/mp4" } }) });
   await new Response((await proxy.fetchMedia({ method: "GET" })).body).arrayBuffer();
-  const app = createAppServer({ config, oidcVerifier: f.verifier, broadcastHlsProxy: proxy,
+  const app = createAppServer({ config: { ...config, broadcastNativeResourceLimits: { encoderSlots: 0, cpuUnits: 123 } },
+    oidcVerifier: f.verifier, broadcastHlsProxy: proxy,
     broadcastRuntime: { programStateCounts: () => Object.fromEntries(BROADCAST_PROGRAM_STATES.map(state => [state, state === "live" ? 2 : 0])) } });
   await new Promise(resolve => app.server.listen(0, "127.0.0.1", resolve));
   t.after(() => { app.server.closeAllConnections(); return new Promise(resolve => app.server.close(resolve)); });
@@ -73,7 +74,10 @@ test("actual HTTP endpoint rejects ordinary or invalid JWTs and exports only fix
   assert.equal(response.headers.get("access-control-allow-origin"), null);
   const text = await response.text();
   assert.match(text, /broadcast_control_programs\{state="live"\} 2/);
-  assert.equal(text.trim().split("\n").length, 15);
+  assert.equal(text.trim().split("\n").length, 25);
+  assert.match(text, /broadcast_native_planning_encoder_slots\{kind="limit"\} 0\n/);
+  assert.match(text, /broadcast_native_planning_cpu_units\{kind="limit"\} 123\n/);
+  assert.match(text, /broadcast_native_planning_cpu_units\{kind="reserved"\} 0\n/);
   assert.match(text, /broadcast_hls_proxy_body_bytes_total 4\n/);
   assert.match(text, /broadcast_hls_proxy_requests_total\{outcome="completed"\} 1\n/);
   assert.doesNotMatch(text, /private-session|private-path|gateway\.example/);

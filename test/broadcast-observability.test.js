@@ -11,6 +11,9 @@ import {
 
 test("metric catalog covers the required broadcast signals with closed labels", () => {
   const required = [
+    "broadcast_native_planning_cpu_units", "broadcast_native_planning_memory_mib",
+    "broadcast_native_planning_encoder_slots", "broadcast_native_planning_gpu_slots",
+    "broadcast_native_planning_egress_bits_per_second",
     "broadcast_hls_proxy_active_requests", "broadcast_hls_proxy_active_sessions",
     "broadcast_hls_proxy_body_bytes_total", "broadcast_hls_proxy_requests_total",
     "broadcast_control_programs",
@@ -24,6 +27,12 @@ test("metric catalog covers the required broadcast signals with closed labels", 
   ];
   assert.deepEqual(Object.keys(BROADCAST_METRIC_DEFINITIONS), required);
   const registry = new BroadcastMetricRegistry();
+  for (const metric of required.filter(name => name.startsWith("broadcast_native_planning_"))) {
+    for (const kind of ["reserved", "limit"]) registry.observe({ metric, labels: { kind }, value: 0, observedAt: 1000 });
+    for (const labels of [{ kind: "private-owner" }, { kind: "limit", room: "private-room" }, {}]) {
+      assert.throws(() => registry.observe({ metric, labels, value: 1, observedAt: 1001 }), /invalid_broadcast_metric_labels/);
+    }
+  }
   registry.observe({
     metric: "broadcast_ingest_bits_per_second", value: 1_500_000,
     labels: { media: "video" }, observedAt: 1_000,

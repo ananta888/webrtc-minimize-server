@@ -19,7 +19,7 @@
     { "id": "ingest-and-encoding", "metrics": ["broadcast_whip_sessions", "broadcast_ingest_bits_per_second", "broadcast_frames_total", "broadcast_encoder_seconds_total"] },
     { "id": "delivery", "metrics": ["broadcast_delivery_objects_total", "broadcast_egress_bits_per_second", "broadcast_viewers", "broadcast_hls_proxy_active_requests", "broadcast_hls_proxy_active_sessions", "broadcast_hls_proxy_body_bytes_total", "broadcast_hls_proxy_requests_total"] },
     { "id": "viewer-experience", "metrics": ["broadcast_player_start_seconds", "broadcast_end_to_glass_seconds", "broadcast_rebuffer_ratio", "broadcast_av_sync_offset_seconds", "broadcast_caption_delay_seconds"] },
-    { "id": "capacity-and-cost", "metrics": ["broadcast_resource_utilization_ratio", "broadcast_quota_ratio"] },
+    { "id": "capacity-and-cost", "metrics": ["broadcast_resource_utilization_ratio", "broadcast_quota_ratio", "broadcast_native_planning_cpu_units", "broadcast_native_planning_memory_mib", "broadcast_native_planning_encoder_slots", "broadcast_native_planning_gpu_slots", "broadcast_native_planning_egress_bits_per_second"] },
     { "id": "recovery-and-budget", "metrics": ["broadcast_failovers_total", "broadcast_error_budget_remaining_ratio"] }
   ],
   "alerts": [

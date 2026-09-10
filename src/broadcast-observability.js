@@ -9,6 +9,11 @@ const COMPONENTS = Object.freeze([
 const COMPONENT_STATUS = new Set(["disabled", "healthy", "degraded", "unavailable"]);
 
 const DEFINITIONS = Object.freeze({
+  broadcast_native_planning_cpu_units: { type: "gauge", labels: { kind: ["reserved", "limit"] } },
+  broadcast_native_planning_memory_mib: { type: "gauge", labels: { kind: ["reserved", "limit"] } },
+  broadcast_native_planning_encoder_slots: { type: "gauge", labels: { kind: ["reserved", "limit"] } },
+  broadcast_native_planning_gpu_slots: { type: "gauge", labels: { kind: ["reserved", "limit"] } },
+  broadcast_native_planning_egress_bits_per_second: { type: "gauge", labels: { kind: ["reserved", "limit"] } },
   broadcast_hls_proxy_active_requests: { type: "gauge", labels: {} },
   broadcast_hls_proxy_active_sessions: { type: "gauge", labels: {} },
   broadcast_hls_proxy_body_bytes_total: { type: "counter", labels: {} },

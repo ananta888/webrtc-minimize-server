@@ -6,6 +6,7 @@ import {
   NativePackagerAssignmentRegistry,
 } from "../src/native-packager-assignment.js";
 import { admitNativePackager, NATIVE_BROADCAST_PROFILE } from "../src/native-packager-policy.js";
+import { nativePackagerResourceDemand } from "../src/native-packager-resource-budget.js";
 
 const NOW = 1_800_000_000_000;
 const OWNER = "https://identity.example/realms/ananta|owner";
@@ -101,10 +102,25 @@ for (const release of ["stop-ack", "connection-loss"]) test(`aggregate native re
   const firstRequest = { ...request(), requestedRenditions: 1, allowHardwareAcceleration: false };
   const secondRequest = { ...firstRequest, programId: "prg_bbbbbbbbbbbbbbbb", resourceRef: "res_bbbbbbbbbbbbbbbb" };
   const firstAdmission = assignments.admit(OWNER, firstId, firstRequest, now);
+  const demand = nativePackagerResourceDemand(firstAdmission);
+  const counts = () => assignments.resourceCounts(now);
+  const zero = Object.fromEntries(Object.keys(demand).map(field => [field, 0]));
+  assert.deepEqual(counts().used, zero, "admission previews do not reserve capacity");
   const secondAdmission = assignments.admit(OWNER, secondId, secondRequest, now);
   const lease = { leaseId: "lea_aaaaaaaaaaaaaaaa", fencingRevision: 9, expiresAt: now + 60000 };
   const first = assignments.prepare(OWNER, firstId, firstAdmission, lease, PUBLISHER, now);
+  assert.deepEqual(counts().used, demand);
+  const beforeRead = assignments.list(OWNER);
+  for (let i = 0; i < 5; i++) counts();
+  assert.deepEqual(assignments.list(OWNER), beforeRead, "observability never mutates assignments");
+  assert.equal(counts().limits.encoderSlots, 1);
+  assert.throws(() => { counts().used.encoderSlots = 99; }, TypeError);
+  assert.throws(() => { counts().limits.encoderSlots = 99; }, TypeError);
+  for (const canary of [OWNER, firstId, first.snapshot.assignmentId, firstRequest.roomId, firstRequest.programId]) {
+    assert.equal(JSON.stringify(counts()).includes(canary), false);
+  }
   const blocked = () => {
+    assert.deepEqual(counts().used, demand, "pending stop or disconnect retains the actual reservation");
     assert.throws(() => assignments.admit(OWNER, secondId, secondRequest, now), /broadcast_temporarily_unavailable/);
     assert.throws(() => assignments.prepare(OWNER, secondId, secondAdmission, { ...lease, expiresAt: now + 60000 }, PUBLISHER, now),
       /broadcast_temporarily_unavailable/, "pre-admission is not a reservation or permission to bypass commit capacity");
@@ -122,10 +138,27 @@ for (const release of ["stop-ack", "connection-loss"]) test(`aggregate native re
     now = lease.expiresAt - 1; blocked();
     now = lease.expiresAt;
   }
+  assert.deepEqual(counts().used, zero, "only stop ACK or failed lease expiry releases reservation");
   const current = assignments.admit(OWNER, secondId, secondRequest, now);
   const second = assignments.prepare(OWNER, secondId, current, { ...lease, expiresAt: now + 60000 }, PUBLISHER, now);
   assert.equal(second.snapshot.state, "preparing");
+  assert.deepEqual(counts().used, demand);
   assert.throws(() => acknowledge("running"), /transition|expired/, "late former writer cannot recover resource authority");
+});
+
+test("resource observation never prunes expired active assignments and rejects invalid time", () => {
+  const assignments = registry();
+  const admission = assignments.admit(OWNER, PACKAGER, request(), NOW);
+  const prepared = assignments.prepare(OWNER, PACKAGER, admission, {
+    leaseId: "lea_aaaaaaaaaaaaaaaa", fencingRevision: 9, expiresAt: NOW + 60000,
+  }, PUBLISHER, NOW);
+  const before = assignments.list(OWNER);
+  assert.deepEqual(assignments.resourceCounts(NOW + 60000).used, nativePackagerResourceDemand(admission));
+  assert.deepEqual(assignments.list(OWNER), before);
+  assert.equal(assignments.activeForPackager(PACKAGER).assignmentId, prepared.snapshot.assignmentId);
+  for (const now of [NaN, Infinity, -1, 0, 0.5, "later"]) {
+    assert.throws(() => assignments.resourceCounts(now), /broadcast_temporarily_unavailable/);
+  }
 });
 
 test("reentrant ICE preparation cannot bypass the final resource commit check", () => {

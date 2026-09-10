@@ -55,3 +55,16 @@ test("ENV and Compose pass each explicit native resource limit without masking z
     }
   }
 });
+
+test("resource snapshots sum immutable planning vectors without concealing over-budget inventory", () => {
+  const budget = new NativePackagerResourceBudget({ encoderSlots: 0 });
+  const demand = nativePackagerResourceDemand(admission);
+  const result = budget.snapshot([admission, admission]);
+  assert.deepEqual(result.used, Object.fromEntries(Object.entries(demand).map(([key, value]) => [key, value * 2])));
+  assert.equal(result.limits.encoderSlots, 0);
+  for (const value of [result, result.used, result.limits]) assert.ok(Object.isFrozen(value));
+  assert.deepEqual(budget.snapshot([]).used, Object.fromEntries(Object.keys(demand).map(key => [key, 0])));
+  for (const bad of [null, {}, [null], Array(20001).fill(admission)]) {
+    assert.throws(() => budget.snapshot(bad), /invalid_native_packager_resource/);
+  }
+});

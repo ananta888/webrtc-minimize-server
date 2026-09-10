@@ -1,13 +1,13 @@
 # Inhaltsfreie Broadcast-Observability
 
-Stand: 2026-09-10. TBP-034 definiert und testet eine kleine Metrik- und
-Readiness-Grenze sowie angeschlossene Control-Plane- und HLS-Proxy-Messports.
+Stand: 2026-09-11. TBP-034 definiert und testet eine kleine Metrik- und
+Readiness-Grenze sowie angeschlossene Control-Plane-, Native-Budget- und HLS-Proxy-Messports.
 Es ist noch kein externer Collector im öffentlichen
 Deployment aktiviert; die SLOs bleiben deshalb `runtimeVerified: false`.
 
 ## Metrikgrenze
 
-`BroadcastMetricRegistry` kennt ausschließlich 23 feste Metriknamen und pro
+`BroadcastMetricRegistry` kennt ausschließlich 28 feste Metriknamen und pro
 Metrik geschlossene Enum-Labels. Der Katalog umfasst Program-State und
 Start/Stop/Handoff, WHIP-Sessions, Ingest-/Egress-Bitrate, encoded/keyframe/
 dropped Frames, Encoderzeit, Segmente/Parts, Viewerklassen, Playerstart,
@@ -89,6 +89,38 @@ Eine fehlende/ungültige HLS-Messgruppe entfernt nur deren Serien; gültige
 Programmzustände bleiben sichtbar, und umgekehrt. Kein Proxy bedeutet fehlende
 HLS-Serien, nicht erfundene Nullmessungen.
 
+### Angeschlossene Native-Planungsbudgets
+
+Der Server verbindet denselben Sampler mit
+`NativePackagerAssignmentRegistry.resourceCounts(now)`. Dieser liest die
+tatsächlichen Assignment-Records mit derselben Belegungsregel wie die Admission:
+`preparing`, `ready`, `starting`, `running`, `degraded`, `draining` sowie
+`failed` bis zum Ablauf der bisherigen Lease. Ein angeforderter Stop gibt noch
+nichts frei; eine gültige Stop-Quittung dagegen schon. Aktive abgelaufene Records
+bleiben konservativ belegt, bis der normale Lifecycle sie verarbeitet. Der
+Messaufruf selbst führt weder Prune noch Stop aus und reserviert nichts.
+
+Fünf Gaugefamilien mit ausschließlich `kind="reserved"` beziehungsweise
+`kind="limit"` ergeben zehn weitere Zeitreihen:
+
+| Metrik | Planungseinheit |
+| --- | --- |
+| `broadcast_native_planning_cpu_units` | Aufgerundete Millionen Ausgabe-Pixel/s, einschließlich Software-Fallback |
+| `broadcast_native_planning_memory_mib` | Planungsbudget in MiB |
+| `broadcast_native_planning_encoder_slots` | Ausgewählte Rendition-Encoder |
+| `broadcast_native_planning_gpu_slots` | Für Hardware-Encoding eingeplante Renditions |
+| `broadcast_native_planning_egress_bits_per_second` | Ausgewählte Ausgabe-Bitraten plus Planungsaufschlag |
+
+`reserved` summiert die tatsächlich belegten Zulassungsbudgets; `limit` stammt
+aus der wirksamen Operator-Konfiguration. Das sind **keine Messungen** von
+physischer CPU-/RAM-/GPU-Last, verfügbarem Speicher, tatsächlichem Netzwerkverkehr,
+Zuschauer-Fanout oder Kosten. Die Berechnung steht in
+[Codec- und Ressourcenadmission](broadcast-codec-admission.md).
+Nullbudgets werden ohne Division explizit exportiert. Es gibt keine zusätzlichen
+Tenant-/Owner-/Agent-/Raumlabels, Reservierungslisten oder Einzelrecord-Exporte.
+Die Aggregate sind unveränderlich. Ungültige oder fehlende Ressourcenaggregate
+entfernen nur diese Messgruppe; sie erzeugen keine vermeintlich freien Slots.
+
 ### Optionaler Operator-HTTP-Export
 
 `BROADCAST_METRICS_ENABLED=true` aktiviert `GET /api/broadcasts/metrics`.
@@ -111,9 +143,10 @@ und zwei gleichzeitige Prüfungen, auch für ungültige Tokens. Es entstehen kei
 Identitäts- oder IP-Maps. Budgetüberschreitung liefert 429, fehlende/ungültige
 Anmeldung 401, fehlende Operatorrolle 403 und fehlende Messfähigkeit 503.
 Der Export verwendet den gemeinsamen 15-Sekunden-Cache. Er liefert die tatsächlich
-erhobenen Control-State- und optionalen HLS-Proxy-Messwerte, keine erfundenen Medienwerte.
+erhobenen Control-State-, Native-Planungsbudget- und optionalen HLS-Proxy-Messwerte,
+keine erfundenen Medienwerte.
 
-Bei vorhandener Runtime und HLS-Proxy sind bis zu 15 tatsächlich angeschlossene
+Bei vorhandener Runtime, Native-Assignment-Registry und HLS-Proxy sind bis zu 25 tatsächlich angeschlossene
 Serien verfügbar. Fehlende Messgruppen werden nicht als Nullzustand ausgegeben.
 Die Implementierung vergibt keine Realm-Rollen und aktiviert keinen Collector.
 Dessen dedizierte Identität, kurzlebige Tokens und Erneuerung müssen ausdrücklich
@@ -162,6 +195,9 @@ WebStream-Tests prüfen tatsächliche Byte-Nachfrage, gemeinsame Sitzungsslots,
 EOF/HEAD, Abbruch, Upstreamfehler und Timeout, einmalige Zählung, Überlauf und
 unabhängig ausfallende Messgruppen. Der HTTP-Test exportiert auch Zähler eines
 echten Proxys mit synthetischem Upstream; er beweist keine Zuschauerzustellung.
+Native-Tests prüfen echte Prepare-/Stop-/Disconnect-/Lease-Übergänge, unveränderte
+Records beim Lesen, geschlossene Aggregate, Nullbudgets, Fehlerisolation und
+die tatsächliche Serververdrahtung bis zum JWT-geschützten HTTP-Export.
 Offen bleiben Medien-/Player-/Host-Instrumentierung, Übergangslatenzen,
 abgesicherter Prometheus-Collector,
 Dashboard-Import, Alarmzustellung, Zugriffsaudit und Last-/SLO-Messungen auf

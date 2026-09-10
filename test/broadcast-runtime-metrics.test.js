@@ -8,7 +8,8 @@ import { createAppServer } from "../src/server.js";
 
 const NOW = 1_800_000_000_000;
 const empty = () => Object.fromEntries(BROADCAST_PROGRAM_STATES.map(state => [state, 0]));
-const values = metrics => Object.fromEntries(metrics.snapshot().map(row => [row.labels.state, row.value]));
+const values = metrics => Object.fromEntries(metrics.snapshot().filter(row => row.metric === "broadcast_control_programs")
+  .map(row => [row.labels.state, row.value]));
 function fixture() {
   const owner = { issuer: "https://identity.example/realms/ananta", subject: "private-owner-canary",
     displayName: "private-name-canary" };
@@ -128,6 +129,7 @@ test("default app exposes only the in-process read port and erases it on actual 
   await new Promise(resolve => app.server.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise(resolve => app.server.close(resolve)));
   assert.deepEqual(values(app.broadcastMetrics), { ...empty(), draft: 1 });
+  assert.match(app.broadcastMetrics.prometheus(), /broadcast_native_planning_encoder_slots\{kind="reserved"\} 0\n/);
   const url = `http://127.0.0.1:${app.server.address().port}`;
   for (const path of ["/metrics", "/api/broadcasts/metrics"]) {
     const response = await fetch(url + path);
@@ -136,4 +138,53 @@ test("default app exposes only the in-process read port and erases it on actual 
   await new Promise(resolve => app.server.close(resolve));
   assert.deepEqual(app.broadcastMetrics.snapshot(), []);
   assert.equal(app.broadcastMetrics.prometheus(), "");
+});
+
+test("native budget source shares the bounded cache and isolates failures without invented zero capacity", () => {
+  let now = NOW, calls = 0, broken = false;
+  const zero = { cpuUnits: 0, memoryMiB: 0, encoderSlots: 0, gpuSlots: 0, egressBitsPerSecond: 0 };
+  const metrics = new BroadcastRuntimeMetrics({ clock: () => now, runtime: { programStateCounts: empty },
+    assignments: { resourceCounts(observedAt) {
+      calls++; assert.equal(observedAt, now);
+      if (broken) throw new Error("private-token-canary");
+      return { used: { ...zero, encoderSlots: 1 }, limits: zero };
+    } } });
+  assert.equal(metrics.snapshot().length, 19);
+  assert.match(metrics.prometheus(), /broadcast_native_planning_encoder_slots\{kind="reserved"\} 1\n/);
+  assert.match(metrics.prometheus(), /broadcast_native_planning_encoder_slots\{kind="limit"\} 0\n/);
+  now += 14999; broken = true;
+  metrics.snapshot(); metrics.prometheus(); assert.equal(calls, 1);
+  now++;
+  assert.equal(metrics.snapshot().length, 9);
+  assert.doesNotMatch(metrics.prometheus(), /native|private-token/);
+  assert.equal(calls, 2);
+  now += 15000; broken = false;
+  assert.equal(metrics.snapshot().length, 19);
+  now--; assert.deepEqual(metrics.snapshot(), []);
+  now += 15000; assert.equal(metrics.snapshot().length, 19);
+  metrics.destroy(); now += 15000;
+  assert.deepEqual(metrics.snapshot(), []);
+  assert.equal(calls, 4);
+});
+
+test("native resource samples reject malformed groups atomically and allow only fixed resource labels", () => {
+  const zero = { cpuUnits: 0, memoryMiB: 0, encoderSlots: 0, gpuSlots: 0, egressBitsPerSecond: 0 };
+  const valid = { used: zero, limits: zero };
+  const bad = [null, [], {}, { ...valid, room: "private" }];
+  for (const group of ["used", "limits"]) {
+    bad.push({ ...valid, [group]: {} }, { ...valid, [group]: { ...zero, extra: 1 } });
+    for (const field of Object.keys(zero)) for (const value of [-1, 0.5, NaN, Infinity, "1", Number.MAX_SAFE_INTEGER + 1]) {
+      bad.push({ ...valid, [group]: { ...zero, [field]: value } });
+    }
+  }
+  bad.push({ ...valid, limits: { ...zero, cpuUnits: 1000000001 } });
+  for (const counts of bad) {
+    const metrics = new BroadcastRuntimeMetrics({ clock: () => NOW, runtime: { programStateCounts: empty },
+      assignments: { resourceCounts: () => counts } });
+    assert.equal(metrics.snapshot().length, 9);
+    assert.doesNotMatch(metrics.prometheus(), /native/);
+  }
+  for (const assignments of [undefined, null, {}]) {
+    assert.deepEqual(new BroadcastRuntimeMetrics({ assignments, clock: () => NOW }).snapshot(), []);
+  }
 });

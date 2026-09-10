@@ -289,13 +289,22 @@ export class NativePackagerAssignmentRegistry {
     return Object.freeze({ snapshot: snapshot(record), command: this.#prepareCommand(record) });
   }
 
-  #assertResources(admission, now, replacement = null) {
+  #occupiedResources(now, replacement = null) {
     if (!Number.isSafeInteger(now) || now < 1) fail("broadcast_temporarily_unavailable", 429);
-    const occupied = [...this.#assignments.values()]
+    return [...this.#assignments.values()]
       .filter(record => record !== replacement
         && (ACTIVE_STATES.has(record.state) || record.state === "failed" && record.expiresAt > now))
       .map(record => record.admission);
-    if (!this.#resourceBudget.allows(admission, occupied)) fail("broadcast_temporarily_unavailable", 429);
+  }
+
+  resourceCounts(now = Date.now()) {
+    return this.#resourceBudget.snapshot(this.#occupiedResources(now));
+  }
+
+  #assertResources(admission, now, replacement = null) {
+    if (!this.#resourceBudget.allows(admission, this.#occupiedResources(now, replacement))) {
+      fail("broadcast_temporarily_unavailable", 429);
+    }
   }
 
   acknowledge(packagerId, value, now = Date.now()) {
