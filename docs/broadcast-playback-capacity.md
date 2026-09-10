@@ -39,6 +39,10 @@ Widerrufene, noch nicht abgelaufene Sitzungen können konservativ weiter zählen
 ihre Medienanfragen müssen trotzdem jedes Mal die aktuelle Grantprüfung bestehen.
 Es gibt keine zweite Reservierungsliste oder Quoten-TTL neben den echten Records.
 
+Die [Prüfung des Ablaufs nach asynchroner Autorisierung](broadcast-playback-expiry.md)
+verhindert zusätzlich, dass eine während der Grantprüfung abgelaufene Sitzung
+noch einen Cookie-Commit oder eine neue Medienfreigabe erhält.
+
 ## Aussagegrenzen und Tests
 
 Gezählt werden Cookie-Sitzungen, **nicht Menschen oder aktive Zuschauer**.

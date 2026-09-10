@@ -20,6 +20,28 @@ export class BroadcastPlaybackSessionError extends Error {
 function fail(code, status) { throw new BroadcastPlaybackSessionError(code, status); }
 function notFound() { fail("broadcast_playback_not_found", 404); }
 
+// Keep the supplied epoch anchor (also used by deterministic fixtures), but
+// never reuse pre-await time after asynchronous authorization has elapsed.
+function playbackCheckTime(epoch, clock) {
+  const read = () => {
+    let value;
+    try { value = clock(); } catch { notFound(); }
+    if (!Number.isFinite(value) || value < 0 || value > Number.MAX_SAFE_INTEGER) notFound();
+    return value;
+  };
+  if (!Number.isSafeInteger(epoch) || epoch < 0) notFound();
+  const start = read();
+  let previous = start;
+  return () => {
+    const current = read();
+    if (current < previous) notFound();
+    previous = current;
+    const now = epoch + Math.ceil(current - start);
+    if (!Number.isSafeInteger(now)) notFound();
+    return now;
+  };
+}
+
 function parseQuery(value, manifest) {
   if (typeof value !== "string" || value.length > 512 || /[\u0000-\u001f\u007f]/.test(value)) notFound();
   const query = new URLSearchParams(value.startsWith("?") ? value.slice(1) : value);
@@ -65,6 +87,7 @@ export class BroadcastPlaybackSessionStore {
   #sessions = new Map();
   #idFactory;
   #capacity;
+  #clock;
 
   constructor(options) {
     if (!options?.authority || typeof options.authority.authorizeGatewayBearer !== "function") {
@@ -77,6 +100,8 @@ export class BroadcastPlaybackSessionStore {
       fail("invalid_broadcast_playback_session_configuration", 500);
     }
     this.#authority = options.authority;
+    this.#clock = options.monotonicClock === undefined ? (() => performance.now()) : options.monotonicClock;
+    if (typeof this.#clock !== "function") fail("invalid_broadcast_playback_session_configuration", 500);
     this.#origin = origin.origin;
     this.#idFactory = options.idFactory || (() => `pbs_${crypto.randomBytes(24).toString("base64url")}`);
     try {
@@ -93,23 +118,30 @@ export class BroadcastPlaybackSessionStore {
     for (const [id, value] of this.#sessions) if (value.expiresAt <= now) this.#sessions.delete(id);
   }
 
+  async #authorizePlayback(authorizationHeader, resourceRef, time) {
+    const path = `/broadcast/play/${resourceRef}`;
+    try {
+      const grant = await this.#authority.authorizeGatewayBearer(authorizationHeader, {
+        action: "playback:manifest", path, grantKinds: ["playback"],
+      }, time());
+      const now = time();
+      if (!grant || !Number.isSafeInteger(grant.expiresAt) || grant.expiresAt <= now) notFound();
+      await this.#authority.authorizeGatewayBearer(authorizationHeader, {
+        action: "playback:segment", path, grantKinds: ["playback"],
+      }, now);
+      return grant;
+    } catch { notFound(); }
+  }
+
   async create({ authorizationHeader, resourceRef, origin, now = Date.now() }) {
     if (!RESOURCE.test(resourceRef || "") || origin !== this.#origin || !Number.isSafeInteger(now)) {
       notFound();
     }
+    const time = playbackCheckTime(now, this.#clock);
     this.#prune(now);
-    const path = `/broadcast/play/${resourceRef}`;
-    let grant;
-    try {
-      grant = await this.#authority.authorizeGatewayBearer(authorizationHeader, {
-        action: "playback:manifest", path, grantKinds: ["playback"],
-      }, now);
-      await this.#authority.authorizeGatewayBearer(authorizationHeader, {
-        action: "playback:segment", path, grantKinds: ["playback"],
-      }, now);
-    } catch {
-      notFound();
-    }
+    const grant = await this.#authorizePlayback(authorizationHeader, resourceRef, time);
+    now = time();
+    this.#prune(now);
     if (!grant || grant.grantKind !== "playback" || grant.resourceRef !== resourceRef
       || !Number.isSafeInteger(grant.expiresAt) || grant.expiresAt <= now
       || typeof grant.audienceRef !== "string") notFound();
@@ -125,6 +157,8 @@ export class BroadcastPlaybackSessionStore {
     const suffix = crypto.createHash("sha256").update(sessionId).digest("base64url").slice(0, 12);
     const cookieName = `__Secure-webrtc-broadcast-${suffix}`;
     const pathScope = `/broadcast/play/${resourceRef}/`;
+    now = time();
+    if (grant.expiresAt <= now) notFound();
     this.#sessions.set(sessionId, Object.freeze({
       sessionId, cookieName, resourceRef, audienceRef: grant.audienceRef,
       authorizationHeader, expiresAt: grant.expiresAt, grantScope: Object.freeze({
@@ -145,26 +179,19 @@ export class BroadcastPlaybackSessionStore {
   async renew({ authorizationHeader, sessionId, resourceRef, cookieHeader, origin, now = Date.now() }) {
     if (!SESSION.test(sessionId || "") || !RESOURCE.test(resourceRef || "")
       || origin !== this.#origin || !Number.isSafeInteger(now)) notFound();
+    const time = playbackCheckTime(now, this.#clock);
     this.#prune(now);
     const session = this.#sessions.get(sessionId);
     const ownsCookie = cookieEntries(cookieHeader).some(([name, value]) => (
       name === session?.cookieName && value === sessionId
     ));
     if (!session || !ownsCookie || session.resourceRef !== resourceRef) notFound();
-    const path = `/broadcast/play/${session.resourceRef}`;
-    let grant;
-    try {
-      grant = await this.#authority.authorizeGatewayBearer(authorizationHeader, {
-        action: "playback:manifest", path, grantKinds: ["playback"],
-      }, now);
-      await this.#authority.authorizeGatewayBearer(authorizationHeader, {
-        action: "playback:segment", path, grantKinds: ["playback"],
-      }, now);
-    } catch {
-      notFound();
-    }
+    const grant = await this.#authorizePlayback(authorizationHeader, session.resourceRef, time);
+    now = time();
+    this.#prune(now);
     if (!grant || grant.grantKind !== "playback" || grant.resourceRef !== session.resourceRef
       || !Number.isSafeInteger(grant.expiresAt) || grant.expiresAt <= now
+      || session.expiresAt <= now
       || !sameGrantScope(session.grantScope, grant)
       || this.#sessions.get(sessionId) !== session) notFound();
     const renewed = Object.freeze({
@@ -204,17 +231,20 @@ export class BroadcastPlaybackSessionStore {
 
   async authorize(input) {
     const { session, manifest, normalizedQuery, path, resourceRef, file, now } = this.#requestSession(input);
+    const time = playbackCheckTime(now, this.#clock);
     try {
       await this.#authority.authorizeGatewayBearer(session.authorizationHeader, {
         action: manifest ? "playback:manifest" : "playback:segment",
         path, grantKinds: ["playback"],
-      }, now);
+      }, time());
     } catch {
       notFound();
     }
     // A close/prune during async authorization must not release another media request.
     // A normal renewal preserves the immutable grantScope object and remains compatible.
-    if (this.#sessions.get(session.sessionId)?.grantScope !== session.grantScope) notFound();
+    const currentTime = time();
+    this.#prune(currentTime);
+    if (session.expiresAt <= currentTime || this.#sessions.get(session.sessionId)?.grantScope !== session.grantScope) notFound();
     return Object.freeze({
       sessionId: session.sessionId,
       upstreamPath: `/${resourceRef}/${file}${normalizedQuery ? `?${normalizedQuery}` : ""}`,

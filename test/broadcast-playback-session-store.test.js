@@ -32,7 +32,7 @@ function createStore(overrides = {}) {
     authority,
     revoke: () => { revoked = true; },
     store: new BroadcastPlaybackSessionStore({
-      authority, publicOrigin: "https://webrtc.ananta.de",
+      authority, publicOrigin: "https://webrtc.ananta.de", monotonicClock: () => 0,
       idFactory: () => "pbs_aaaaaaaaaaaaaaaaaaaaaaaa", ...overrides,
     }),
   };
