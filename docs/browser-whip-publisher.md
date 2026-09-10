@@ -45,6 +45,51 @@ UI oder im Transport nachgebaut.
 
 ## Grenzen und Redirects
 
+### Atomare serverseitige Startbestätigung
+
+Der Registry-Start prüft seit dem Nachtrag vom 10. September 2026 den
+Programmzustand **auch nach** der asynchronen Grant-Ausstellung. Pro Programm
+darf höchstens eine Publisher-Autorisierung gleichzeitig ausstehen. Nach
+maximal fünf Sekunden oder früherem Challenge-Ablauf endet die Transaktion;
+eine zweite parallele Autorisierung erhält 409, ohne eine weitere Signatur
+anzustoßen. Die Challenge bleibt auch bei Ablehnung einmalig verbraucht.
+
+Owner-Stop und der bestehende serverseitige Room-Leave-Hook widerrufen die
+passende laufende Transaktion. Leave entfernt außerdem noch nicht eingelöste
+Publisher-Challenges desselben Principal-/Raum-/Geräte-/Peer-Kontexts.
+Ein anderer Peer oder ein anderes Gerät kann diesen Widerruf nicht auslösen.
+Vor dem Commit müssen derselbe Registry-Record, frische Challenge, Identität
+und Grant sowie eine gültige, nicht rückläufige Uhr weiterhin vorliegen.
+Ein zwischenzeitlich installierter nativer Writer darf daher nicht durch das
+alte Browser-Ergebnis überschrieben werden.
+
+Ein nach Stop, Timeout oder Zustandswechsel ausgestellter Grant wird einzeln
+widerrufen, auch wenn der ursprüngliche Aufrufer bereits zurückgekehrt ist.
+Ein neuer erfolgreicher Start wird dadurch nicht widerrufen. Ein
+nicht-kooperativer Signaturadapter kann intern weiterlaufen; seine Antwort
+darf weder einen Token zurückgeben noch den alten Programmzustand aktivieren.
+Es wird keine automatische Startwiederholung eingeführt.
+
+Vier Regressionen reproduzierten das vorherige Fehlverhalten mit echten
+P-256-Gerätenachweisen und signierten JWTs. Die Tests prüfen den wirklichen
+Grant-Widerruf am Gateway-Autorisierungspfad, nicht nur eine Fehlermeldung.
+Zusätzlich sind Uhrfehler, unbekannte/alte Membership, Parallelität und ein
+verspäteter Grant nach Timeout mit inzwischen erfolgreichem Nachfolger geprüft.
+79 gezielte browserfreie Node-/HTTP-/Grant-/Assignment-/Handoff-Tests bestehen
+in 2,010 Sekunden. Die Start-Kapazitätsreservierung für Encoder, Viewer und
+Tenant-/Gatewaybudgets ist dadurch **noch nicht angeschlossen**.
+
+Die erste erweiterte lokale Testauswahl enthielt versehentlich auch einen
+Chromium-Fall in der gemischten `broadcast-source-requests.test.js`; auch der
+nachfolgende Namensfilter schloss ihn nicht aus. Beide Läufe endeten mit
+je 89 bestandenen Tests und einem UI-Timeout auf dem unveränderten alten
+lokalen Auslieferungsbuild. Die Fixture sperrte Capture; beide Browserprozesse
+wurden anschließend als beendet verifiziert. Der erfolgreiche browserfreie
+Nachlauf lässt diese gesamte gemischte Datei weg. Diese Fehler werden nicht
+als erfolgreiche Browserabnahme dieses Nachtrags umgedeutet.
+
+### Transportgrenzen
+
 Endpunkt und Redirect-Allowlist akzeptieren im Produkt ausschließlich HTTPS,
 keine URL-Credentials, Query-Tokens oder Fragmente. Relative und gefolgte
 same-origin Resources sind erlaubt. Ein finaler Redirect-Zielorigin muss in

@@ -132,6 +132,7 @@ export class BroadcastRuntimeRegistry {
   #authority;
   #records = new Map();
   #challenges = new Map();
+  #pendingPublishers = new Map();
   #challengeTtlMs;
   #clock;
   #idFactory;
@@ -356,6 +357,14 @@ export class BroadcastRuntimeRegistry {
   stopProgramsForMember(member, now = this.#clock()) {
     if (!member || typeof member.principal !== "string"
       || !/^[A-Za-z0-9_-]{43}$/.test(member.deviceFingerprint || "")) return 0;
+    const matches = challenge => challenge.kind === "publisher"
+      && challenge.refs.principal === member.principal && challenge.proofContext.roomId === member.roomId
+      && challenge.memberFingerprint === member.deviceFingerprint
+      && (!challenge.memberPeerId || challenge.memberPeerId === member.id);
+    for (const [id, challenge] of this.#challenges) if (matches(challenge)) this.#challenges.delete(id);
+    for (const transaction of this.#pendingPublishers.values()) {
+      if (matches(transaction.challenge)) transaction.abort.abort();
+    }
     let stopped = 0;
     for (const [key, record] of [...this.#records.entries()]) {
       if (record.publisherPrincipal !== member.principal
@@ -369,6 +378,7 @@ export class BroadcastRuntimeRegistry {
   }
 
   #stopRecord(key, record, reasonCode, now) {
+    this.#pendingPublishers.get(key)?.abort.abort();
     let machine = record.snapshot.machine;
     if (machine.program.state !== "stopped") {
       machine = applyBroadcastProgramCommand(machine, command(machine, "stop", {
@@ -591,7 +601,8 @@ export class BroadcastRuntimeRegistry {
     if (expiresAt <= now) fail("broadcast_authentication_required", 401);
     this.#challenges.set(challengeId, Object.freeze({
       kind: "publisher", action: input.action, challengeId, refs, identity, record,
-      candidate, memberFingerprint: member.deviceFingerprint, proofContext, pathPrefix, expiresAt,
+      candidate, memberFingerprint: member.deviceFingerprint, memberPeerId: member.id || null,
+      proofContext, pathPrefix, expiresAt,
     }));
     return Object.freeze({ challengeVersion: 1, challengeId, proofContext, expiresAt });
   }
@@ -618,7 +629,7 @@ export class BroadcastRuntimeRegistry {
       fail("invalid_broadcast_device_public_key");
     }
     if (fingerprint !== challenge.memberFingerprint) fail("broadcast_grant_device_mismatch", 403);
-    const issued = await this.#authority.issue({
+    return this.#publisherTransaction(key, challenge, identity.expiresAt, now, () => this.#authority.issue({
       grantVersion: 1,
       kind: "publisher",
       roomId: challenge.proofContext.roomId,
@@ -651,34 +662,73 @@ export class BroadcastRuntimeRegistry {
       program: challenge.candidate.program,
       consents: null,
       viewerPolicy: null,
-    }, now);
-    let activeRecord = current;
-    if (challenge.candidate !== current.snapshot.machine) {
-      try { activeRecord = this.#synchronizeRecord(key, current, challenge.candidate, now); } catch (error) {
-        this.#authority.revokeGrant(issued.grant.grantId, now);
-        throw error;
+    }, now), (issued, committedAt) => {
+      let activeRecord = current;
+      if (challenge.candidate !== current.snapshot.machine) {
+        activeRecord = this.#synchronizeRecord(key, current, challenge.candidate, committedAt);
       }
+      activeRecord = Object.freeze({ ...activeRecord, publisherPrincipal: refs.principal,
+        publisherFingerprint: fingerprint, publisherPeerId: challenge.memberPeerId });
+      this.#records.set(key, activeRecord);
+      return Object.freeze({
+        authorizationVersion: 1,
+        action: challenge.action,
+        accessToken: issued.token,
+        expiresAt: issued.grant.expiresAt,
+        program: Object.freeze({
+          tenantId: challenge.candidate.scope.tenantId,
+          roomId: challenge.candidate.scope.roomId,
+          programId: challenge.candidate.scope.programId,
+          programRevision: challenge.candidate.program.revision,
+          programEpoch: challenge.candidate.program.programEpoch,
+        }),
+        resourceRef: current.resourceRef,
+      });
+    });
+  }
+
+  async #publisherTransaction(key, challenge, identityExpiresAt, now, issue, commit) {
+    if (this.#pendingPublishers.has(key)) fail("broadcast_publisher_authorization_pending", 409);
+    if (this.#pendingPublishers.size >= MAX_CHALLENGES) fail("broadcast_challenge_capacity_reached", 429);
+    const transaction = { challenge, abort: new AbortController() };
+    this.#pendingPublishers.set(key, transaction);
+    const timeout = setTimeout(() => transaction.abort.abort(), Math.min(5000, challenge.expiresAt - now));
+    let onAbort;
+    const cancelled = new Promise((_, reject) => {
+      onAbort = () => reject(new BroadcastRuntimeError("broadcast_not_available", 404));
+      transaction.abort.signal.addEventListener("abort", onAbort, { once: true });
+    });
+    const readClock = () => { try { return this.#clock(); } catch { return NaN; } };
+    const revoke = result => {
+      const observed = readClock();
+      this.#authority.revokeGrant(result.grant.grantId, Number.isSafeInteger(observed) && observed >= now ? observed : now);
+    };
+    let issued;
+    try {
+      const issuance = Promise.resolve().then(() => {
+        if (transaction.abort.signal.aborted) unavailable();
+        return issue();
+      }).then(result => {
+        // Non-cooperative late issuance must not outlive a cancelled caller.
+        if (transaction.abort.signal.aborted) { revoke(result); unavailable(); }
+        return result;
+      });
+      issued = await Promise.race([issuance, cancelled]);
+      const committedAt = readClock();
+      if (transaction.abort.signal.aborted || this.#records.get(key) !== challenge.record
+        || !Number.isSafeInteger(committedAt) || committedAt < now
+        || committedAt >= challenge.expiresAt || committedAt >= identityExpiresAt
+        || committedAt >= issued.grant.expiresAt) unavailable();
+      return commit(issued, committedAt);
+    } catch (error) {
+      if (issued) revoke(issued);
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      transaction.abort.signal.removeEventListener("abort", onAbort);
+      transaction.abort.abort();
+      if (this.#pendingPublishers.get(key) === transaction) this.#pendingPublishers.delete(key);
     }
-    activeRecord = Object.freeze({
-      ...activeRecord,
-      publisherPrincipal: refs.principal,
-      publisherFingerprint: fingerprint,
-    });
-    this.#records.set(key, activeRecord);
-    return Object.freeze({
-      authorizationVersion: 1,
-      action: challenge.action,
-      accessToken: issued.token,
-      expiresAt: issued.grant.expiresAt,
-      program: Object.freeze({
-        tenantId: challenge.candidate.scope.tenantId,
-        roomId: challenge.candidate.scope.roomId,
-        programId: challenge.candidate.scope.programId,
-        programRevision: challenge.candidate.program.revision,
-        programEpoch: challenge.candidate.program.programEpoch,
-      }),
-      resourceRef: current.resourceRef,
-    });
   }
 
   prepareNativePublisher(identity, member, programId, value, admit, now = this.#clock()) {

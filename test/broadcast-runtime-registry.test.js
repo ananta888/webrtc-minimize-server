@@ -363,6 +363,122 @@ test("publisher device departure stops only programs bound to that room device",
   assert.equal(runtime.stopProgramsForMember(member, NOW + 2), 0);
 });
 
+for (const change of ["stop", "leave", "native-start", "expiry", "clock-rollback", "clock-invalid", "clock-failed"]) {
+  test(`pending publisher grant cannot commit across ${change}`, { timeout: 5000 }, async () => {
+    const owner = identity("owner", "Ada"), grants = authority();
+    let now = NOW, release;
+    const issued = [];
+    const gate = new Promise(resolve => { release = resolve; });
+    const runtime = new BroadcastRuntimeRegistry({ clock: () => {
+      if (now === "throw") throw new Error("synthetic_clock_failure");
+      return now;
+    }, grantAuthority: {
+      issue: async (...args) => { const result = await grants.issue(...args); issued.push(result); await gate; return result; },
+      issueAnonymousPlayback: (...args) => grants.issueAnonymousPlayback(...args),
+      revokeGrant: (...args) => grants.revokeGrant(...args),
+      revokeProgramEpoch: (...args) => grants.revokeProgramEpoch(...args),
+    } });
+    const device = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+    const member = { principal: `${owner.issuer}|${owner.subject}`, roomId: "room-alpha", creator: true,
+      deviceFingerprint: deviceFingerprint(device.publicKey.export({ format: "jwk" })) };
+    const created = runtime.createProgram(owner, member, { requestVersion: 1, roomId: member.roomId,
+      title: "Synthetic transaction", visibility: "private" });
+    const programId = created.control.programId;
+    const challenge = runtime.createPublisherChallenge(owner, member, programId, {
+      requestVersion: 1, action: "whip:create", sourceIds: ["src_aaaaaaaaaaaaaaaa"] });
+    const pending = runtime.authorizePublisher(owner, { requestVersion: 1, challengeId: challenge.challengeId,
+      deviceProof: proof(device, challenge.proofContext) });
+    // The real crypto authority has issued a JWT before its delivery is delayed.
+    while (!issued.length) await new Promise(resolve => setImmediate(resolve));
+    if (change === "stop") runtime.stopProgram(owner, programId);
+    if (change === "leave") runtime.stopProgramsForMember(member);
+    if (change === "expiry") now = challenge.expiresAt;
+    if (change === "clock-rollback") now--;
+    if (change === "clock-invalid") now = NaN;
+    if (change === "clock-failed") now = "throw";
+    let native;
+    if (change === "native-start") native = runtime.prepareNativeSourceProgram(owner, member, programId, {
+      requestVersion: 1, trigger: "user-action", inputMode: "trusted-sframe-v1",
+      packagerId: "pkr_aaaaaaaaaaaaaaaa", requestedRenditions: 1, allowHardwareAcceleration: false,
+    }, () => ({ admissionVersion: 1 }));
+    release();
+    await assert.rejects(pending, error => error.code === "broadcast_not_available");
+    assert.equal(runtime.programStateCounts().preparing, native ? 1 : 0);
+    if (change === "stop") assert.equal(runtime.listMine(owner).owned[0].availability, "ended");
+    await assert.rejects(grants.authorizeGatewayBearer(`Bearer ${issued[0].token}`, {
+      action: "whip:create", grantKinds: ["publisher"], path: `/broadcast/ingest/${issued[0].grant.resourceRef}`,
+    }, NOW + 1), error => error.code === "inactive_broadcast_grant" || error.code === "revoked_broadcast_program_epoch");
+  });
+}
+
+test("pending publisher timeout releases its transaction, rejects concurrent signing and revokes a late JWT", { timeout: 5000 }, async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const owner = identity("owner", "Ada"), grants = authority();
+  let release, notifyIssued, calls = 0;
+  const delayed = new Promise(resolve => { release = resolve; });
+  const ready = new Promise(resolve => { notifyIssued = resolve; });
+  const runtime = new BroadcastRuntimeRegistry({ clock: () => NOW, grantAuthority: {
+    issue: async (...args) => {
+      calls++; const issued = await grants.issue(...args);
+      if (calls === 1) { notifyIssued(issued); await delayed; }
+      return issued;
+    },
+    issueAnonymousPlayback: (...args) => grants.issueAnonymousPlayback(...args),
+    revokeGrant: (...args) => grants.revokeGrant(...args),
+    revokeProgramEpoch: (...args) => grants.revokeProgramEpoch(...args),
+  } });
+  const device = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const member = { id: "aaaaaaaaaaaaaaaa", principal: `${owner.issuer}|${owner.subject}`,
+    roomId: "room-alpha", creator: true, deviceFingerprint: deviceFingerprint(device.publicKey.export({ format: "jwk" })) };
+  const programId = runtime.createProgram(owner, member, { requestVersion: 1, roomId: member.roomId,
+    title: "Synthetic timeout", visibility: "private" }).control.programId;
+  const start = () => {
+    const challenge = runtime.createPublisherChallenge(owner, member, programId, {
+      requestVersion: 1, action: "whip:create", sourceIds: ["src_aaaaaaaaaaaaaaaa"] });
+    return runtime.authorizePublisher(owner, { requestVersion: 1, challengeId: challenge.challengeId,
+      deviceProof: proof(device, challenge.proofContext) });
+  };
+  const pending = start(), late = await ready;
+  await assert.rejects(start(), error => error.code === "broadcast_publisher_authorization_pending" && error.status === 409);
+  assert.equal(calls, 1);
+  // Another device/room/peer departure is not this transaction's membership.
+  for (const patch of [{ deviceFingerprint: "z".repeat(43) }, { roomId: "room-other" }, { id: "bbbbbbbbbbbbbbbb" }]) {
+    runtime.stopProgramsForMember({ ...member, ...patch });
+  }
+  t.mock.timers.tick(4999);
+  await assert.rejects(start(), error => error.code === "broadcast_publisher_authorization_pending");
+  const rejected = assert.rejects(pending, error => error.code === "broadcast_not_available");
+  t.mock.timers.tick(1); await rejected;
+  assert.equal(runtime.programStateCounts().preparing, 0);
+  // Reuse the released slot before the obsolete issuer cooperates.
+  const successor = await start(); assert.equal(calls, 2);
+  assert.equal(runtime.programStateCounts().preparing, 1);
+  release(); await new Promise(resolve => setImmediate(resolve));
+  await assert.rejects(grants.authorizeGatewayBearer(`Bearer ${late.token}`, { action: "whip:create",
+    grantKinds: ["publisher"], path: `/broadcast/ingest/${late.grant.resourceRef}` }, NOW + 1),
+  error => error.code === "inactive_broadcast_grant");
+  const allowed = await grants.authorizeGatewayBearer(`Bearer ${successor.accessToken}`, { action: "whip:create",
+    grantKinds: ["publisher"], path: `/broadcast/ingest/${successor.resourceRef}` }, NOW + 1);
+  assert.equal(allowed.status, "consumed");
+});
+
+test("departure invalidates an unredeemed publisher challenge before crypto issuance", async () => {
+  const owner = identity("owner", "Ada"), grants = authority();
+  const runtime = new BroadcastRuntimeRegistry({ grantAuthority: grants, clock: () => NOW });
+  const device = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const member = { principal: `${owner.issuer}|${owner.subject}`, roomId: "room-alpha", creator: true,
+    deviceFingerprint: deviceFingerprint(device.publicKey.export({ format: "jwk" })) };
+  const programId = runtime.createProgram(owner, member, { requestVersion: 1, roomId: member.roomId,
+    title: "Synthetic departure", visibility: "private" }).control.programId;
+  const challenge = runtime.createPublisherChallenge(owner, member, programId, {
+    requestVersion: 1, action: "whip:create", sourceIds: ["src_aaaaaaaaaaaaaaaa"] });
+  runtime.stopProgramsForMember(member);
+  assert.equal(runtime.challengeCount, 0);
+  await assert.rejects(runtime.authorizePublisher(owner, { requestVersion: 1, challengeId: challenge.challengeId,
+    deviceProof: proof(device, challenge.proofContext) }), error => error.code === "broadcast_not_available");
+  assert.equal(runtime.programStateCounts().preparing, 0);
+});
+
 test("native publisher preparation commits only after bounded admission and installs the real packager lease", () => {
   const owner = identity("owner", "Ada");
   const runtime = new BroadcastRuntimeRegistry({
