@@ -1,11 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { observeNativeSceneReply, recordNativeSceneReply, assertFreshNativeSceneApply } from "./helpers/native-scene-reply-observation.mjs";
+import { observeNativeSceneReply, recordNativeSceneReply, assertFreshNativeSceneApply, assertObservedNativeScene } from "./helpers/native-scene-reply-observation.mjs";
 
 const query = { version: 1, type: "source-program-scene-state", sceneRevision: 1, layout: "waiting-slate",
   availableSources: ["PRIVATE-MARKER"], sourceLeaseIds: [] };
 const applied = { version: 1, type: "source-program-scene-applied", sceneRevision: 2 };
 const rejected = { version: 1, type: "source-program-scene-rejected", reasonCode: "SCENE_NOT_APPLIED" };
+
+test("post-apply scene must independently confirm the intended layout and source count", () => {
+  const receipt = observeNativeSceneReply(applied);
+  const state = observeNativeSceneReply({ ...query, sceneRevision: 2, layout: "side-by-side",
+    availableSources: ["private-camera", "private-screen"], sourceLeaseIds: ["private-camera", "private-screen"] });
+  const expected = { layout: "side-by-side", selected: 2 };
+  assertObservedNativeScene([receipt, state], receipt, expected);
+  assert.throws(() => assertObservedNativeScene([receipt], receipt, expected), /no new native scene state/);
+  for (const [patch, message] of [[{ type: "source-program-scene-applied" }, /observed scene/],
+    [{ version: 2 }, /version changed/], [{ revision: 3 }, /revision differs/],
+    [{ layout: "waiting-slate" }, /layout differs/], [{ selected: 1 }, /selection count differs/]]) {
+    assert.throws(() => assertObservedNativeScene([receipt, { ...state, ...patch }], receipt, expected), message);
+  }
+  assert.equal(JSON.stringify(state).includes("private-"), false);
+});
 
 test("scene receipt projection retains only bounded fixed metadata, not identities or source content", () => {
   const row = observeNativeSceneReply({ ...query, commandId: "PRIVATE-MARKER", leaseId: "PRIVATE-MARKER",

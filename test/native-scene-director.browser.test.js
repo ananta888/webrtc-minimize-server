@@ -3,7 +3,7 @@ import test from "node:test";
 import { nativeSceneLiveFixture } from "./helpers/native-scene-live-fixture.mjs";
 import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
 import { decodedScene, decodedSceneTiles, openSceneViewer, sceneViewerObservation } from "./helpers/native-scene-viewer.mjs";
-import { assertFreshNativeSceneApply } from "./helpers/native-scene-reply-observation.mjs";
+import { assertFreshNativeSceneApply, assertObservedNativeScene } from "./helpers/native-scene-reply-observation.mjs";
 import { nativeAudioOutputObservation } from "./helpers/native-audio-output.mjs";
 
 async function confirm(page, action) {
@@ -81,6 +81,13 @@ for (const multiple of [false, true]) test(multiple
   await page.locator("#native-scene-status", { hasText: "neu abfragen" }).waitFor();
   try { assertFreshNativeSceneApply(f.observation.scene, queriedScene); }
   catch (error) { t.diagnostic(JSON.stringify({ stage: "scene-application-receipt", scene: f.observation.scene })); throw error; }
+  const appliedScene = f.observation.scene.at(-1);
+  await page.locator("#native-scene-refresh").click();
+  await page.locator("#native-scene-status", { hasText: "Szenenzustand bestätigt" }).waitFor();
+  try { assertObservedNativeScene(f.observation.scene, appliedScene,
+    { layout: multiple ? "side-by-side" : "single", selected: multiple ? 2 : 1 }); }
+  catch (error) { t.diagnostic(JSON.stringify({ stage: "scene-application-state", instrumentedBinary: true,
+    scene: f.observation.scene, sourceBeforeApply, sourceAfterFailure: await f.agent.observe() })); throw error; }
   const red = await (multiple ? decodedSceneTiles(viewer, ["red", "blue"]) : decodedScene(viewer, "red", initial.time + 1)).catch(async error => {
     t.diagnostic(JSON.stringify({ stage: "selected-source-output", initial, viewer: await sceneViewerObservation(viewer),
       instrumentedBinary: true, sourceBeforeApply, sourceAfterFailure: await f.agent.observe(),

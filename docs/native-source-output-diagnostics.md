@@ -99,3 +99,21 @@ Local verification: the Node parser/overlay/process suite passes all 11 tests,
 and the actual overlay compiles with Go 1.24.13 in a network-disabled, bounded
 container with read-only release sources. No local FFmpeg, audio or browser is
 started. The two real browser cases remain for GitHub CI.
+
+### First instrumented CI result and presentation check
+
+CI `34497462247` on `79f55fc` completes with a passing single-source case and
+a failing two-source case. At the latter failure, both sources have running
+decoders, 21 accepted sender reports, no clock failure or uncertainty, and
+started mixers with current images plus one pending frame each. Both producer
+and committed HLS still contain two slate tiles while the viewer keeps decoding.
+This snapshot contradicts a permanently closed decoder/clock as the explanation
+for this particular failure; it does not identify a cause across all earlier runs.
+
+The applied receipt currently proves a revision increment, not which layout
+and source selection the director actually submitted. The two fixtures now query
+the native scene again after that receipt and require the intended layout,
+selected-source count, negotiated version and applied revision before checking
+pixels. A mismatch fails at `scene-application-state`; it is not automatically
+reapplied or corrected. This separates presentation-state mistakes from the
+remaining render/encoder handoff. No extra media wait or retry is introduced.
