@@ -70,8 +70,11 @@ describe("NativePackagerBroadcastRuntimeService", () => {
       tracks: [{ track: {} as MediaStreamTrack }],
     })), setCaptionOverlay: vi.fn(() => true) };
     let captionListener: ((value: Record<string, unknown>) => void) | null = null;
+    let captionStopListener: ((source: "microphone" | "screen-audio", epoch: number) => void) | null = null;
+    const unregisterStops = vi.fn();
     const captions = {
       registerEmissionListener: vi.fn((listener) => { captionListener = listener; return vi.fn(); }),
+      registerSourceStopListener: vi.fn((listener) => { captionStopListener = listener; return unregisterStops; }),
     };
     const captionConsent: BroadcastCaptionConsent = { policyVersion: 1, localOverlay: false, shareWithRoom: false,
       broadcastTextTrack: true, broadcastBurnIn: true };
@@ -125,9 +128,31 @@ describe("NativePackagerBroadcastRuntimeService", () => {
       expect.objectContaining({ compositionId: "composition-test" }),
       "geteilte präsentation", "high-contrast", 88,
     );
+    const beforeQueuedCaption = pc.dataChannel.send.mock.calls.length;
+    pc.dataChannel.bufferedAmount = 128 * 1024 + 1;
+    captionListener?.({ source: "screen-audio", sourceEpoch: 1, utteranceId: "0000000000000001",
+      revision: 0, language: "de-DE", text: "queued before stop", final: true, capturedAtMs: Date.now() });
+    captionStopListener?.("screen-audio", 2);
+    expect(pc.dataChannel.send).toHaveBeenCalledTimes(beforeQueuedCaption);
+    expect(composition.setCaptionOverlay).toHaveBeenLastCalledWith(
+      expect.objectContaining({ compositionId: "composition-test" }), "", "high-contrast", 88);
+    pc.dataChannel.bufferedAmount = 0; pc.dataChannel.onbufferedamountlow?.();
+    expect(JSON.parse(String(pc.dataChannel.send.mock.calls.at(-1)?.[0]))).toMatchObject({ operation: "revoke", discontinuitySequence: 1 });
+    expect(String(pc.dataChannel.send.mock.calls.at(-1)?.[0])).not.toContain("queued before stop");
+    const stoppedCount = pc.dataChannel.send.mock.calls.length;
+    for (const sourceEpoch of [1, 2]) captionListener?.({ source: "screen-audio", sourceEpoch, utteranceId: "fedcba9876543210",
+      revision: 1, language: "de-DE", text: "late revoked text", final: true, capturedAtMs: Date.now() });
+    expect(pc.dataChannel.send).toHaveBeenCalledTimes(stoppedCount);
+    captionListener?.({ source: "screen-audio", sourceEpoch: 3, utteranceId: "fedcba9876543210",
+      revision: 0, language: "de-DE", text: "fresh source", final: true, capturedAtMs: Date.now() });
+    expect(JSON.parse(String(pc.dataChannel.send.mock.calls.at(-1)?.[0]))).toMatchObject({ operation: "update", cueCount: 1 });
+    expect(String(pc.dataChannel.send.mock.calls.at(-1)?.[0])).not.toContain("geteilte präsentation");
+    const resumedCount = pc.dataChannel.send.mock.calls.length;
+    captionStopListener?.("screen-audio", 2); // A delayed stop cannot retire the restarted source.
+    expect(pc.dataChannel.send).toHaveBeenCalledTimes(resumedCount);
     captionSettingsListener?.({ ...captionConsent, broadcastTextTrack: false, broadcastBurnIn: false }, currentCaptionSettings);
     expect(JSON.parse(String(pc.dataChannel.send.mock.calls.at(-1)?.[0]))).toMatchObject({
-      operation: "revoke", discontinuitySequence: 1,
+      operation: "revoke", discontinuitySequence: 2,
     });
     expect(composition.setCaptionOverlay).toHaveBeenCalledWith(
       expect.objectContaining({ compositionId: "composition-test" }), "", "high-contrast", 88,
@@ -148,6 +173,10 @@ describe("NativePackagerBroadcastRuntimeService", () => {
     await runtime.stop(session, new AbortController().signal);
     expect(pc.closed).toBe(true);
     expect(pc.dataChannel.close).toHaveBeenCalledOnce();
+    expect(unregisterStops).toHaveBeenCalledOnce();
+    const closedCount = pc.dataChannel.send.mock.calls.length;
+    captionStopListener?.("screen-audio", 4);
+    expect(pc.dataChannel.send).toHaveBeenCalledTimes(closedCount);
     expect(control.stopNativeAssignment).toHaveBeenCalledWith(assignment, expect.any(AbortSignal));
   });
 });

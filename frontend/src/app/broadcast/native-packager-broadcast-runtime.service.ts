@@ -314,6 +314,11 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
       throw new BroadcastBrowserPortError("invalid_broadcast_caption_settings");
     }
     native.captionPackager = packager;
+    const unregisterStops = this.captions.registerSourceStopListener((source, nextEpoch) => {
+      if (native.stopped || native.captionPackager !== packager || nextEpoch < native.captionSourceEpochs[source]) return;
+      native.captionSourceEpochs[source] = nextEpoch;
+      packager.revokeSource(native.captionSourceIds[source]);
+    });
     const unregisterEmissions = this.captions.registerEmissionListener((emission) => {
       if (native.stopped || native.captionPackager !== packager) return;
       const previousEpoch = native.captionSourceEpochs[emission.source];
@@ -334,7 +339,7 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
         packager.reconfigure(nextConsent, nextSettings);
       }
     });
-    native.unregisterCaptions = () => { unregisterSettings(); unregisterEmissions(); };
+    native.unregisterCaptions = () => { unregisterSettings(); unregisterStops(); unregisterEmissions(); };
   }
 
   private queueCaptionSegment(native: NativeSession, segment: BroadcastCaptionSegment): void {

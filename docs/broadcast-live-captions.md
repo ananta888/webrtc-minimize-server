@@ -68,6 +68,41 @@ Revisionsledger geleert. Ein Late Join erhält nur das begrenzte 30-Sekunden-
 Livefenster. Nach Source-Widerruf akzeptiert der Packager die alte Epoch nicht
 mehr und weist den Player an, seinen bisherigen TextTrack zu entfernen.
 
+Ergänzung vom 10. September 2026: Der lokale `LiveCaptionService` meldet
+Quellenstop und dessen nächste Epoch jetzt über einen getrennten Stop-Port
+an den nativen Broadcast-Runtimeadapter. Bisher hörte dieser ausschließlich
+Textemissionen; deshalb konnte eine beendete Erkennung ihre letzten
+Broadcast-Untertitel stehen lassen. Der Stop wird vor der bisherigen finalen
+Raumtext-Emission gemeldet: Der interaktive Raum behält sein bestehendes
+Abschlussverhalten, der Broadcast verwirft dieses alte Ergebnis bereits.
+
+Der Adapter widerruft die konkrete Captionquelle, leert die Burn-in-Einblendung
+und stellt einen epochgebundenen TextTrack-Widerruf in den vorhandenen
+DataChannel. Bei Backpressure ersetzt dieser eine noch wartende Textnachricht.
+Bereits gesendete beziehungsweise beim Zuschauer gepufferte Daten sind dadurch
+nicht rückwirkend gelöscht. Mikrofon und Bildschirmton bleiben getrennte
+Quellen. Ergebnisse unterhalb oder gleich der Stop-Epoch werden nicht erneut
+autorisiert; erst ein bewusster Neustart mit höherer Epoch erlaubt neue Texte.
+Ein verspäteter älterer Stop darf umgekehrt die neue Quelle nicht widerrufen.
+
+Auch ein noch startender Audio-Graph erhält die Stop-Grenze. Eine später
+zurückkehrende Graphverbindung wird geschlossen, ohne einen Recognizer zu
+aktivieren. Fehler optionaler Stop-Abnehmer verhindern den lokalen Cleanup
+nicht. Broadcast-Stop entfernt alle drei Registrierungen für Einstellungen,
+Text und Quellenstop; verspätete Callbacks einer geschlossenen Session sind
+wirkungslos. Der lokale Port enthält nur Quellart und Epoch, keinen Text,
+Token oder neuen Netzwerkcontract. Es entstehen keine Capture-, Modelllade-
+oder zusätzlichen Freigabeaktionen.
+
+Verifikation: Die Runtime-Fixture reproduzierte zunächst `update` statt
+`revoke` beim Quellenstop. Nach Anschluss bestehen sämtliche 1.384
+Frontendtests in 15,430 s, einschließlich Quellenstop/Restart,
+Sendepuffer-Widerruf, verspäteter Graphverbindung, Listener-Fehlerisolation
+und Playergenerationen. Diese Prüfung nutzt synthetische Graph-, Medien-
+und DataChannel-Ports; sie beweist weder reale Spracherkennung noch die
+Widerrufslatenz eines öffentlichen Streams. Physische Sprach-, Netzwerk-
+und Produktionsgates bleiben erforderlich.
+
 ## Einstellbare Darstellung
 
 Der Preflight bietet den fest gepinnten 13-Modell-Vosk-Katalog und lädt ein
@@ -88,6 +123,6 @@ eigenes, mit `aria-pressed` ausgezeichnetes Bedienelement ein- und ausschalten.
   End-to-caption-Delay, A/V-Sync, CPU, RAM und Mobile-Degradation,
 - Tastatur-, Kontrast-, Screenreader- und 60-Minuten-Handoff-/Resync-Test.
 
-Bis diese Gates grün sind, bleibt TBP-032 `partial`; die native
+TBP-032 wird weiter als `in_progress` bearbeitet; die native
 Caption-Auslieferung ist implementiert, aber noch keine plattformübergreifende
 Qualitätsgarantie.

@@ -9,7 +9,7 @@ const next = "/broadcast/play/res_bbbbbbbbbbbbbbbb/index.m3u8";
 const instances: BroadcastPlayerComponent[] = [];
 function fixture() {
   const opened = vi.spyOn(BroadcastHlsPlayer.prototype, "open").mockImplementation(async function () {
-    Reflect.set(this, "hls", { currentLevel: -1 });
+    Reflect.set(this, "hls", { currentLevel: -1, stopLoad: vi.fn() });
     Reflect.get(this, "update").call(this, { lifecycle: "playing", engine: "hls-js",
       qualities: [{ index: 0, height: 360, bitrate: 500_000, label: "360p" }, { index: 1, height: 720, bitrate: 2_400_000, label: "720p" }] });
   });
@@ -131,6 +131,12 @@ describe("Explicit player continuation across output generations", () => {
     Reflect.get(engine, "update").call(engine, { lifecycle: "failed", errorCode: "broadcast_player_rate_limited" });
     await Promise.resolve(); expect(f.interrupted).not.toHaveBeenCalled();
     for (let index = 0; index < 2; index++) Reflect.get(engine, "update").call(engine, { lifecycle: "ended", errorCode: "broadcast_ended" });
+    await Promise.resolve(); expect(f.interrupted).not.toHaveBeenCalled();
+    expect(f.component.state().errorCode).toBe("broadcast_player_rate_limited");
+    f.session.set("pbs_bbbbbbbbbbbbbbbbbbbbbbbb"); f.component.ngOnChanges({});
+    await vi.waitFor(() => expect(f.opened).toHaveBeenCalledTimes(2));
+    const successor = f.opened.mock.instances[1];
+    for (let index = 0; index < 2; index++) Reflect.get(successor, "update").call(successor, { lifecycle: "ended", errorCode: "broadcast_ended" });
     await Promise.resolve();
     expect(f.interrupted).toHaveBeenCalledExactlyOnceWith(url);
   });

@@ -24,7 +24,6 @@ const PROGRAM = /^prg_[A-Za-z0-9_-]{16,64}$/;
 const RESOURCE = /^res_[A-Za-z0-9_-]{16,64}$/;
 const CHALLENGE = /^bpc_[A-Za-z0-9_-]{24,64}$/;
 const SOURCE = /^src_[A-Za-z0-9_-]{16,64}$/;
-const PACKAGER = /^pkr_[A-Za-z0-9_-]{16,64}$/;
 const TERMINAL_ASSIGNMENT_STATES = new Set(["stopped", "failed"]);
 const NATIVE_STOP_CONFIRMATION_MS = 12_000;
 
@@ -174,28 +173,13 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
     requestedRenditions: number,
     signal: AbortSignal,
   ): Promise<Readonly<{ program: BroadcastProgramRef; ownerSubjectRef: string }>> {
-    const fingerprint = this.device.fingerprint();
-    if (!PROGRAM.test(program.programId) || !PACKAGER.test(packagerId) || !fingerprint
-      || !Array.isArray(sourceIds) || sourceIds.length < 1 || sourceIds.length > 4
-      || new Set(sourceIds).size !== sourceIds.length || sourceIds.some((sourceId) => !SOURCE.test(sourceId))
-      || !Number.isSafeInteger(requestedRenditions) || requestedRenditions < 1 || requestedRenditions > 3) {
-      throw new BroadcastBrowserPortError("invalid_native_packager_publication_request");
-    }
-    const response = await fetch(`/api/broadcasts/${encodeURIComponent(program.programId)}/native-assignments`, {
-      method: "POST",
-      headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
-      credentials: "same-origin",
-      redirect: "error",
-      signal,
-      body: JSON.stringify({
-        requestVersion: 1,
-        trigger: "user-action",
-        packagerId,
-        sourceIds,
-        requestedRenditions,
-        allowHardwareAcceleration: true,
-        deviceFingerprint: fingerprint,
-      }),
+    signal.throwIfAborted();
+    program = { ...program };
+    sourceIds = Array.isArray(sourceIds) ? [...sourceIds] : sourceIds;
+    const { requestNativePublicationStart } = await import("./native-publication-start-http");
+    signal.throwIfAborted();
+    const response = await requestNativePublicationStart(program, sourceIds, packagerId, requestedRenditions, signal, {
+      fingerprint: () => this.device.fingerprint(), authorizationHeader: () => this.auth.authorizationHeader(),
     });
     if (!response.ok) throw requestError(response, "native_packager_assignment_failed");
     return this.acceptNativeAssignment(response, program, packagerId, signal);

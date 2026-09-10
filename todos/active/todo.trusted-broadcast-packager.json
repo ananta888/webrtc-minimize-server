@@ -981,7 +981,7 @@
     {
       "id": "TBP-032",
       "title": "Vosk-Live-Captions als synchronisierte, consentierte Broadcast-Untertitel ausliefern",
-      "status": "partial",
+      "status": "in_progress",
       "priority": "P0",
       "risk": "critical",
       "progress_percent": 90,
@@ -1170,7 +1170,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 0, "in_progress": 11, "partial": 8, "blocked": 0, "done": 21 },
+    "by_status": { "todo": 0, "in_progress": 12, "partial": 7, "blocked": 0, "done": 21 },
     "progress_percent_done": 52.5,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -1180,12 +1180,16 @@
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 11,
-    "partial": 8,
+    "in_progress": 12,
+    "partial": 7,
     "blocked": 0,
     "done": 21
   },
   "summary_notes": [
+    "2026-09-10 TBP-032 Quellenstop durchgängigangeschlossen: LiveCaptionService gibt textfreienSource-/NextEpoch-Stop vorRaumfinalisierung aus, Runtime widerruftCaptionquelle/Burn-in/queuedTextTrack undfencetalte/gleicheErgebnisse. HöhererbewussterRestartgeht, verspäteterStop/Callbacks nachClosebleibenwirkungslos. StopbeistartendemFakeGraph schliesstspäteVerbindung, FehleroptionalemListenerblockierenCleanupnicht. Gesamte153Frontenddateien/1384Tests PASS15.430s, nachNative-Start-HTTP-Auslagerung45gezielteTests PASS1.100s inkl.originalRequestSnapshot/AbortvorIdentity/Admissiongrenzen. Typecheck/ngc/28TodoPASS, isolierterProductionbuild PASS10.807s, Hardcapunverändert/Warnbudgetoffen, servingdistHashunverändert. CI34512071455 vorherterminalFAIL3unvollständigePlayerfixtures; diesejetztvervollständigt und429terminalstattUminterpretationzuneuerGenerationgetestet. NeuerGesamtCI/echterCaption-/Sprach-/Handoff-/Produktionsnachweisbleibtoffen, keineAnanta-/Trust-/Deployänderung. TBP03290in_progress/TBP03375 unverändert.",
+    "2026-09-10 TBP-032 Zwischenstand: Stopport/Quellenfence/Queuewiderruf implementiert, alterRuntimefall reproduziert update statt revoke, danach gesamte153Dateien/1384Frontendtests PASS15.430s ohneBrowser/Audio. Stop vorRaumfinalisierung, getrennteMic/Screen, PendingGraph/Fehlerisolation/Unsubscribe undRestart geprüft; Typ/ngcPASS. IsolierterBuild199Bytesüber1.6MB: vorhandenen Legacy-Native-Assignment-HTTP-Pfad analogdenanderenAdaptern bedarfsladen, unveränderteIDs/1..4Quellen/1..3Renditions/Fehler/Autorisierung, RequestdatenvorAwaitkopieren/AbortvorIdentitätszugriff. KeineBudgetanhebung; statischesHLSbleibt. GezielteAdapter-/Snapshot-/NegativtestsundneuerisolierterBuild folgen, keineerneuteStundenmatrixlokal.",
+    "2026-09-10 TBP-022/038 CI34512071455 aufe4efa2f terminalFAIL inFrontend-Vorbereitung:1379PASS/3FAIL, alle3 im Playergeneration-Helper mit unvollständigem HLS-Mock ohne stopLoad. Zusätzlich simuliert letzterTest429gefolgtvonEndeinder selben jetztterminalenEngine; dies widerspricht der neuen Endzustandsregel. Fixture um vorhandenenHLS-Port vervollständigen, 429bleibtterminal/nullRecovery, separatenneuenautorisiertenCookie-Scope fürEnded-EinmalRecovery prüfen. KeineRuntime-Stoppolicy/Assertionsabschaltung. Blind/native/macOS/AnantaTURNgrün, Browserpartition/Docker/Live nichtabgenommen. KorrekturzusammenmitCaption-Stoprunde gezieltprüfen, dannneueGesamtCI.",
+    "2026-09-10 TBP-032 aufin_progress90 übernommen: Echter NativePackagerBroadcastRuntime hört nur Vosk-Textemissionen, nicht Quellenstop; dadurch bleiben Broadcast-Cues/Burn-in nachStop der Erkennung bestehen. VorFix Runtime-Fixture mitStopCallback und erwarteterRevoke reproduzieren, dann schmalen lokalen Source-/Epoch-Stopport vomLiveCaptionService vor finalerRaumabschluss-Emission zumnativenCaptionPackager verbinden. Stopfence verhindert alte/gleicheEpoch; erst ausdrücklichneugestartetehöhereQuelle darfwiederemitieren. Microphone/Screen getrennt, Unsubscribe/Destroy/verspäteteCallbacks/Backpressure prüfen; Raumfinaltext bleibtunverändert, keineCapture/Consent-/Netzcontractänderung. Revisionsledger-/Begin-Reuse-Grenzen zusätzlich beiTBP033 nochzuprüfen, nicht alsbehoben behauptet. Summencaches12in_progress/7partial; lokaleTests nurFakeGraph/DOM, BrowserCI separat.",
     "2026-09-10 CI34510508106 auf5ba5784 jetzt vollständig terminalSUCCESS: beideProject-Shards, Browseraggregat, Blind/nativePackager, beidemacOS, AnantaDialogTURN, DockerOCI undLiveKeycloakTURN bestanden. Damit ist der vorherige gebündelte Snapshot abgenommen, nicht die neueren lokalen Commits3359e5e/Captionloader. Diese werden erst jetzt gemeinsam gepusht und benötigen eigeneCI. KeinProduktionsdeployment/AnantaTrustclaim; MiniPC-Erreichbarkeit bleibt Voraussetzung fürLiveRollout.",
     "2026-09-10 TBP-033 Caption-Einlesen abgesichert: vorher beide realeWebStream-Fixtures oversized/hanging nach5s ohneCancel, danach streamweise64KiB vorStringakkumulation, striktesSplitUTF8, same-origin/path-only, Headers+Body gemeinsames5sBudget, Abort/Readerfreigabe auchbeihängendemCancelHook, wirkungsloseLateResponses. KeinzusätzlicherRetry/Consent/Grant/Intervallwechsel; Captionfehler stoppen keineMedien. 54gezielteFrontendtests PASS1.530s ohneBrowser/Audio, Typecheck undisolierterBuild PASS11.033s; servingdistHash unverändert, 1.5MBWarnung bleibt. TBP03375 weiterin_progress; realeVosk-/Sprachen-/Sync-/Providerabnahme weiterhin offen.",
     "2026-09-10 CI34510508106 auf5ba5784: beideProject-Shards terminalSUCCESS, 681PASS/0FAIL/1SKIP391.130s und651PASS/0FAIL/3SKIP341.586s. KorrigierterAngular-Namens-/Draft-Keyboardflow sowie beidegekoppeltenechtenAngular/nativeSzenenausgängePASS. Blind/native/macOS/AnantaTURN undDockerOCI/Artefaktgleichheit/LeakagePASS; LiveKeycloakTURNnochläuft, Gesamtstatusnochin_progress. NeuereHLS-Endzustands-/Captionänderungen sindnichtindiesemSnapshotenthalten. KeinAbbruch/Restart/Deploy, nächsterPusherstnachGesamtterminal.",

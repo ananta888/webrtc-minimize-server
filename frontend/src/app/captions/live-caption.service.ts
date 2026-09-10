@@ -35,6 +35,7 @@ export interface LiveCaptionEmission {
 }
 
 export type LiveCaptionEmissionListener = (emission: LiveCaptionEmission) => void;
+export type LiveCaptionSourceStopListener = (source: CaptionAudioSource, nextEpoch: number) => void;
 
 function storedBoolean(key: string, defaultValue: boolean): boolean {
   try {
@@ -81,6 +82,7 @@ export class LiveCaptionService {
   private readonly pipelines = new Map<CaptionAudioSource, CaptionPipeline>();
   private readonly generations = new Map<CaptionAudioSource, number>();
   private readonly emissionListeners = new Set<LiveCaptionEmissionListener>();
+  private readonly sourceStopListeners = new Set<LiveCaptionSourceStopListener>();
   private readonly unregisterMicrophoneListener: () => void;
   private readonly unregisterScreenAudioListener: () => void;
 
@@ -230,6 +232,11 @@ export class LiveCaptionService {
     return () => this.emissionListeners.delete(listener);
   }
 
+  registerSourceStopListener(listener: LiveCaptionSourceStopListener): () => void {
+    this.sourceStopListeners.add(listener);
+    return () => this.sourceStopListeners.delete(listener);
+  }
+
   destroy(): void {
     this.stop();
     this.unregisterMicrophoneListener();
@@ -237,10 +244,14 @@ export class LiveCaptionService {
     this.models.destroy();
     this.mesh.clearCaptions();
     this.emissionListeners.clear();
+    this.sourceStopListeners.clear();
   }
 
   private stopSource(source: CaptionAudioSource): void {
-    this.nextGeneration(source);
+    const nextEpoch = this.nextGeneration(source);
+    for (const listener of this.sourceStopListeners) {
+      try { listener(source, nextEpoch); } catch { /* Optional consumers cannot prevent local cleanup. */ }
+    }
     this.updateSourceSignal(this.startingSources, source, false);
     const pipeline = this.pipelines.get(source);
     if (!pipeline) {

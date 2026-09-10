@@ -201,6 +201,42 @@ describe("BroadcastControlPlaneService", () => {
       { fingerprint: () => "f".repeat(43) } as never);
   }
 
+  it("snapshots native publication scope and source IDs before lazy loading", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockReset().mockResolvedValue(json({}, 409));
+    const scope = { ...program }, sources = ["src_aaaaaaaaaaaaaaaa"];
+    const pending = nativeService().prepareNativeStart(scope, sources, "pkr_aaaaaaaaaaaaaaaa", 2, new AbortController().signal);
+    scope.programId = "prg_cccccccccccccccc"; sources[0] = "src_cccccccccccccccc";
+    await expect(pending).rejects.toMatchObject({ code: "broadcast_state_conflict" });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][0]).toBe(`/api/broadcasts/${program.programId}/native-assignments`);
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ requestVersion: 1, trigger: "user-action",
+      packagerId: "pkr_aaaaaaaaaaaaaaaa", sourceIds: ["src_aaaaaaaaaaaaaaaa"], requestedRenditions: 2,
+      allowHardwareAcceleration: true, deviceFingerprint: "f".repeat(43) });
+  });
+
+  it("never starts the lazy native publication after abort", async () => {
+    const fingerprint = vi.fn(() => "f".repeat(43)), authorizationHeader = vi.fn(() => ({}));
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockReset();
+    const service = new BroadcastControlPlaneService({ authorizationHeader } as never, { fingerprint } as never);
+    const controller = new AbortController(), pending = service.prepareNativeStart(program, ["src_aaaaaaaaaaaaaaaa"], "pkr_aaaaaaaaaaaaaaaa", 1, controller.signal);
+    controller.abort(); await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).not.toHaveBeenCalled(); expect(fingerprint).not.toHaveBeenCalled(); expect(authorizationHeader).not.toHaveBeenCalled();
+  });
+
+  it("preserves native publication admission bounds before sending HTTP", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockReset();
+    const service = nativeService(), source = "src_aaaaaaaaaaaaaaaa";
+    for (const ids of [[], [source, source], ["unknown"], Array.from({ length: 5 }, (_, i) => `src_${String(i).repeat(16)}`)]) {
+      await expect(service.prepareNativeStart(program, ids, "pkr_aaaaaaaaaaaaaaaa", 1, new AbortController().signal))
+        .rejects.toMatchObject({ code: "invalid_native_packager_publication_request" });
+    }
+    for (const count of [0, 4, 1.5]) {
+      await expect(service.prepareNativeStart(program, [source], "pkr_aaaaaaaaaaaaaaaa", count, new AbortController().signal))
+        .rejects.toMatchObject({ code: "invalid_native_packager_publication_request" });
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("does not read identity or send a handoff query when cancelled during adapter loading", async () => {
     const fingerprint = vi.fn(() => "f".repeat(43)), authorizationHeader = vi.fn(() => ({ Authorization: "Bearer oidc" }));
     const fetchMock = vi.spyOn(globalThis, "fetch").mockReset();

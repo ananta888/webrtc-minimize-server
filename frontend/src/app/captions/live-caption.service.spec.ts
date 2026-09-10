@@ -178,6 +178,7 @@ describe("LiveCaptionService", () => {
 
   it("runs both audio sources and stops only the publication that ended", async () => {
     const test = fixture();
+    const stopped = vi.fn(); test.service.registerSourceStopListener(stopped);
     expect(await test.service.start("microphone")).toBe(true);
     expect(await test.service.start("screen-audio")).toBe(true);
     expect(test.service.activeSources()).toEqual(["microphone", "screen-audio"]);
@@ -185,6 +186,7 @@ describe("LiveCaptionService", () => {
     const screenRecognizer = test.recognizers[1];
 
     test.stopScreenAudio();
+    expect(stopped).toHaveBeenCalledExactlyOnceWith("screen-audio", 2);
 
     expect(screenRecognizer.remove).toHaveBeenCalledOnce();
     expect(test.closeFor("screen-audio")).toHaveBeenCalledOnce();
@@ -194,10 +196,32 @@ describe("LiveCaptionService", () => {
     expect(test.service.activeSources()).toEqual(["microphone"]);
 
     test.stopMicrophone();
+    expect(stopped).toHaveBeenLastCalledWith("microphone", 2);
     expect(microphoneRecognizer.remove).toHaveBeenCalledOnce();
     expect(test.closeFor("microphone")).toHaveBeenCalledOnce();
     expect(test.models.unload).toHaveBeenCalledOnce();
     expect(test.service.active()).toBe(false);
+  });
+
+  it("fences optional broadcast consumers before final room text and isolates failing stop listeners", async () => {
+    const test = fixture(), events: string[] = [];
+    test.service.registerSourceStopListener(() => { throw new Error("synthetic optional consumer"); });
+    const unregister = test.service.registerSourceStopListener((source, epoch) => events.push(`stop:${source}:${epoch}`));
+    test.service.registerEmissionListener(value => events.push(`${value.final ? "final" : "partial"}:${value.sourceEpoch}`));
+    expect(await test.service.start("microphone")).toBe(true);
+    test.recognizerFor("microphone").listeners.get("partialresult")?.({ result: { partial: "synthetic pending text" } });
+    test.stopMicrophone();
+    expect(events).toEqual(["partial:1", "stop:microphone:2", "final:1"]);
+    expect(test.recognizers[0].remove).toHaveBeenCalledOnce(); expect(test.closeFor("microphone")).toHaveBeenCalledOnce();
+    expect(test.sendCaption).toHaveBeenLastCalledWith(expect.objectContaining({ final: true, text: "synthetic pending text" }), false);
+    expect(await test.service.start("microphone")).toBe(true);
+    test.recognizers[1].listeners.get("result")?.({ result: { text: "fresh text" } });
+    expect(events.at(-1)).toBe("final:3");
+    unregister(); test.service.stop("microphone");
+    expect(events.filter(value => value.startsWith("stop:"))).toEqual(["stop:microphone:2"]);
+    const afterDestroy = vi.fn(); test.service.registerSourceStopListener(afterDestroy);
+    test.service.destroy(); const calls = afterDestroy.mock.calls.length;
+    test.service.stop(); expect(afterDestroy).toHaveBeenCalledTimes(calls);
   });
 
   it("rejects screen transcription when display capture supplied no audio track", async () => {
@@ -209,5 +233,21 @@ describe("LiveCaptionService", () => {
     expect(test.service.error()).toContain("Bildschirm oder Tab mit Ton");
     expect(test.audio.connect).not.toHaveBeenCalled();
     expect(getDisplayMedia).not.toHaveBeenCalled();
+  });
+
+  it("reports the stop fence while a graph is still starting and never emits from the late graph", async () => {
+    const test = fixture(), stopped = vi.fn(), emitted = vi.fn(), close = vi.fn(async () => undefined);
+    test.service.registerSourceStopListener(stopped); test.service.registerEmissionListener(emitted);
+    let release!: (graph: { sampleRate: number; close: typeof close }) => void;
+    test.audio.connect.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const pending = test.service.start("screen-audio");
+    expect(test.service.isSourceStarting("screen-audio")).toBe(true);
+    test.service.stop("screen-audio");
+    expect(stopped).toHaveBeenCalledExactlyOnceWith("screen-audio", 2);
+    release({ sampleRate: 48000, close });
+    await expect(pending).resolves.toBe(false);
+    expect(close).toHaveBeenCalledOnce(); expect(emitted).not.toHaveBeenCalled();
+    expect(test.models.createRecognizer).not.toHaveBeenCalled(); expect(test.service.active()).toBe(false);
+    test.service.destroy();
   });
 });
