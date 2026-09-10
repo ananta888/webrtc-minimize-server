@@ -13,6 +13,26 @@ var sourceProgramAssignmentFixture []byte
 
 func sourceProgramAssignmentTestClock() time.Time { return time.UnixMilli(1900000040000) }
 
+func TestSourceProgramSelectedVideoValuesUseExistingWire(t *testing.T) {
+	for _, values := range [][4]int{{426, 240, 10, 250000}, {640, 360, 15, 500000}, {960, 540, 15, 900000},
+		{640, 360, 10, 400000}, {960, 540, 10, 800000}, {1280, 720, 10, 1400000}} {
+		a, err := parseSourceProgramAssignment(sourceProgramAssignmentFixture, sourceProgramAssignmentTestClock())
+		if err != nil {
+			t.Fatal(err)
+		}
+		a.Profile.Renditions = []assignmentRendition{{ID: "low", Width: values[0], Height: values[1],
+			FramesPerSecond: values[2], VideoBitsPerSecond: values[3], AudioBitsPerSecond: 64000}}
+		raw, err := json.Marshal(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parsed, err := parseSourceProgramAssignment(raw, sourceProgramAssignmentTestClock())
+		if err != nil || parsed.Profile.Renditions[0] != a.Profile.Renditions[0] {
+			t.Fatalf("explicit bounded output changed or rejected: %v", err)
+		}
+	}
+}
+
 func TestSourceProgramAssignmentStrictFieldSpellingAndDuplicates(t *testing.T) {
 	raw := string(sourceProgramAssignmentFixture)
 	for _, field := range []string{"version", "tenantId", "profileId", "width", "urls"} {

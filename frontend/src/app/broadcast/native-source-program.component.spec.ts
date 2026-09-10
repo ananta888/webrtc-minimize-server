@@ -15,6 +15,20 @@ function fixture() {
 }
 afterEach(() => vi.restoreAllMocks());
 
+it.each(["balanced-v1", "economy-v1", "screen-v1"])("stages %s without capture or implicit start", async profile => {
+  const f = fixture(); f.component.packagerId.set(packagerId); f.component.setVideoPreset(profile);
+  expect(f.programs.controller.start).not.toHaveBeenCalled();
+  vi.spyOn(window, "confirm").mockReturnValue(true); await f.component.start();
+  expect(f.programs.controller.start).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ videoOutput: { profile } }), "user-action");
+  f.component.setVideoPreset("arbitrary"); expect(f.component.videoPreset()).toBe(profile);
+});
+
+it("does not start if the video choice changes during confirmation", async () => {
+  const f = fixture(); f.component.packagerId.set(packagerId); f.component.setVideoPreset("screen-v1");
+  vi.spyOn(window, "confirm").mockImplementation(() => { f.component.setVideoPreset("economy-v1"); return true; });
+  await f.component.start(); expect(f.programs.controller.start).not.toHaveBeenCalled();
+});
+
 it("reads standby policy from the controlled program instead of unsubmitted form values", () => {
   const f = fixture(); f.component.renditions.set(3); f.component.hardware.set(true);
   expect(f.component.standbyOutput()).toBeNull();

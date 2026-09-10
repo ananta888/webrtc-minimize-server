@@ -920,7 +920,8 @@ function createHttpHandler(config, registry, services) {
         assertAllowedKeys(input, new Set([
           "requestVersion", "trigger", "packagerId", sourceProgram ? "inputMode" : "sourceIds", "requestedRenditions",
           "allowHardwareAcceleration", "deviceFingerprint",
-          ...(sourceProgram && input.requestVersion === 2 ? ["audioOutput"] : []),
+          ...(sourceProgram && [2, 3].includes(input.requestVersion) ? ["audioOutput"] : []),
+          ...(sourceProgram && input.requestVersion === 3 ? ["videoOutput"] : []),
         ]));
         if (!/^[A-Za-z0-9_-]{43}$/.test(input.deviceFingerprint || "")) {
           throw new BroadcastRuntimeError("invalid_broadcast_device_fingerprint");
@@ -938,7 +939,8 @@ function createHttpHandler(config, registry, services) {
             trigger: input.trigger,
             packagerId: input.packagerId,
             ...(sourceProgram ? { inputMode: input.inputMode } : { sourceIds: input.sourceIds }),
-            ...(sourceProgram && input.requestVersion === 2 ? { audioOutput: input.audioOutput } : {}),
+            ...(sourceProgram && [2, 3].includes(input.requestVersion) ? { audioOutput: input.audioOutput } : {}),
+            ...(sourceProgram && input.requestVersion === 3 ? { videoOutput: input.videoOutput } : {}),
             requestedRenditions: input.requestedRenditions,
             allowHardwareAcceleration: input.allowHardwareAcceleration,
           },

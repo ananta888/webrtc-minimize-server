@@ -37,7 +37,7 @@ export class NativeSourceProgramService implements OnDestroy {
         return control.createProgram(request.roomId, request.title, request.visibility, abort);
       },
       prepare: (program, request, abort) => control.prepareNativeSourceStart(program, request.packagerId,
-        request.requestedRenditions, request.allowHardwareAcceleration, "user-action", abort, request.audioOutput),
+        request.requestedRenditions, request.allowHardwareAcceleration, "user-action", abort, request.audioOutput, request.videoOutput),
       observe: (programId, abort) => control.nativeHandoffControl(programId, abort),
       handoff: (program, snapshot, request, abort) => control.prepareNativeSourceHandoff(program, snapshot,
         request.packagerId, request.requestedRenditions, request.allowHardwareAcceleration, "user-action", abort),

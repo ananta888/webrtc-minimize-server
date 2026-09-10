@@ -56,7 +56,7 @@ for (const capabilityVersion of [5, 6]) it(`carries selected output to HTTP with
     expect(f.control.createProgram).not.toHaveBeenCalled();
     f.candidates.set([{ id: packagerId, capability }]);
     await f.service.controller.start({ ...request, audioOutput }, "user-action");
-    expect(f.control.prepareNativeSourceStart).toHaveBeenCalledWith(program, packagerId, 1, false, "user-action", expect.any(AbortSignal), audioOutput);
+    expect(f.control.prepareNativeSourceStart).toHaveBeenCalledWith(program, packagerId, 1, false, "user-action", expect.any(AbortSignal), audioOutput, undefined);
     expect(f.service.audioContext()?.audioControlVersion).toBe(3);
     f.candidates.set([{ id: packagerId, capability: { ...capability, sourceAudioEncodingVersion: 2 } }]);
     expect(f.service.audioContext()).toBeNull(); await vi.advanceTimersByTimeAsync(250);
@@ -90,7 +90,7 @@ it("composes bounded HTTP control only, exposes the confirmed source reference, 
     expect(f.control.createProgram).not.toHaveBeenCalled(); expect(f.service.requestProgram()).toBeNull();
     await f.service.controller.start(request, "user-action");
     expect(f.control.createProgram).toHaveBeenCalledWith("room-alpha", "Studio", "private", expect.any(AbortSignal));
-    expect(f.control.prepareNativeSourceStart).toHaveBeenCalledWith(program, packagerId, 1, false, "user-action", expect.any(AbortSignal), undefined);
+    expect(f.control.prepareNativeSourceStart).toHaveBeenCalledWith(program, packagerId, 1, false, "user-action", expect.any(AbortSignal), undefined, undefined);
     expect(f.service.requestProgram()).toEqual({ ...prepared, programRevision: 4 });
     f.control.stopProgram.mockRejectedValueOnce(new Error("revocation unavailable")); await f.service.controller.stop();
     expect(f.control.stopNativeAssignment).toHaveBeenCalledWith(assignment, expect.any(AbortSignal));

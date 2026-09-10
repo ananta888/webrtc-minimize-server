@@ -18,6 +18,14 @@
       <option value="unlisted">Nicht gelistet · mit Link</option>
       <option value="public">Öffentlich · im Verzeichnis</option>
     </select>
+    <label class="field" for="native-source-video-preset">Video-Ausgabestrategie</label>
+    <select id="native-source-video-preset" [value]="videoPreset()" (change)="setVideoPreset($any($event.target).value)">
+      <option value="legacy">Bisheriger Standard · 360p/15, 540p/24, 720p/30 FPS</option>
+      <option value="balanced-v1">Ausgewogen · 360p/15, 540p/24, 720p/30 FPS · 500/1100/2400 kbit/s</option>
+      <option value="economy-v1">Sparsam · 240p/10, 360p/15, 540p/15 FPS · 250/500/900 kbit/s</option>
+      <option value="screen-v1">Bildschirm · 360p, 540p, 720p mit je 10 FPS · 400/800/1400 kbit/s</option>
+    </select>
+    <p>Die Stufen werden von klein nach groß angefordert; das bestätigte Ressourcenbudget kann ihre Anzahl reduzieren. Bitraten sind Zielwerte. Eine höhere Ausgabeauflösung erzeugt keine zusätzlichen Details aus der derzeitigen 640×360-Komposition. Gilt ab Start, bleibt bei Übergaben erhalten; Änderungen benötigen eine neue Sendung. Raumkamera und Bildschirmaufnahme bleiben unverändert.</p>
     <label class="field" for="native-source-renditions">Ausgabe-Qualitätsstufen</label>
     <select id="native-source-renditions" [value]="renditions()" (change)="setRenditions($any($event.target).value)">
       <option value="1">Eine · geringer Rechenaufwand</option>

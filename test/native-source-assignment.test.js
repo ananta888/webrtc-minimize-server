@@ -8,7 +8,7 @@ const NOW = 1_800_000_000_000, OWNER = "synthetic-owner", PEER = "0123456789abcd
 const report = JSON.parse(fs.readFileSync(new URL("./fixtures/native-source-capability.v2.json", import.meta.url))).capability;
 const schema = JSON.parse(fs.readFileSync(new URL("../contracts/native-packager/assignment-prepare.v4.schema.json", import.meta.url)));
 const validate = new Ajv({ strict: true }).compile(schema);
-function setup(audioOutput) {
+function setup(audioOutput, videoOutput) {
   const state = { capability: structuredClone(report), generation: Object.freeze({}), epoch: 4, member: true, ice: [] };
   if (audioOutput) Object.assign(state.capability, { capabilityVersion: 5, sourceAudioControlVersion: 3, sourceAudioEncodingVersion: 1 });
   const packager = report.agentId;
@@ -22,7 +22,8 @@ function setup(audioOutput) {
       assert.equal(owner, OWNER); assert.equal(room, report.consentedRoomIds[0]); assert.equal(peer, PEER);
       return state.member ? state.epoch : 0;
     }, iceServersForPackager: () => state.ice, idFactory: () => "asn_aaaaaaaaaaaaaaaa" });
-  const request = { requestVersion: audioOutput ? 2 : 1, ...(audioOutput ? { audioOutput } : {}), trigger: "user-action", tenantId: report.tenantId,
+  const request = { requestVersion: videoOutput ? 3 : audioOutput ? 2 : 1,
+    ...(videoOutput ? { videoOutput, audioOutput: audioOutput ?? null } : audioOutput ? { audioOutput } : {}), trigger: "user-action", tenantId: report.tenantId,
     ownerSubjectRef: report.ownerSubjectRef, roomId: report.consentedRoomIds[0], programId: "prg_aaaaaaaaaaaaaaaa",
     programEpoch: 2, resourceRef: "res_aaaaaaaaaaaaaaaa", requestedRenditions: 1, allowHardwareAcceleration: false };
   const admission = registry.admit(OWNER, packager, request, NOW);
@@ -36,6 +37,23 @@ function setup(audioOutput) {
     return result;
   };
   return { state, registry, packager, request, admission, lease, prepare, running };
+}
+
+for (const audio of [undefined, { codec: "aac", sampleRate: 48000, channels: 1, targetBitsPerSecond: 48000 }]) {
+  test(`selected screen output is readmitted and projects to closed v${audio ? 5 : 4} wire`, () => {
+    const f = setup(audio, { profile: "screen-v1" });
+    const tampered = structuredClone(f.admission); tampered.videoOutput.profile = "economy-v1";
+    assert.throws(() => f.registry.prepareSourceProgram(OWNER, f.packager, tampered, f.lease, PEER, NOW), /admission_mismatch/);
+    assert.throws(() => f.registry.prepare(OWNER, f.packager, f.admission, f.lease, PEER, NOW), /invalid_native_packager_assignment/);
+    const result = f.running();
+    const schema = JSON.parse(fs.readFileSync(new URL(`../contracts/native-packager/assignment-prepare.v${audio ? 5 : 4}.schema.json`, import.meta.url)));
+    const check = new Ajv({ strict: true }).compile(schema);
+    assert.equal(check(result.command), true, JSON.stringify(check.errors));
+    assert.equal("videoOutput" in result.command, false, "existing wire already carries exact encoder values");
+    assert.equal(result.command.profile.renditions[0].framesPerSecond, 10);
+    assert.equal(result.command.profile.renditions[0].videoBitsPerSecond, 400000);
+    assert.equal(result.command.version, audio ? 5 : 4);
+  });
 }
 
 test("explicit source program emits a closed v4 assignment without legacy publisher signaling", () => {

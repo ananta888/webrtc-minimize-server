@@ -2,11 +2,13 @@ import type { BroadcastProgramRef } from "./broadcast-ports";
 import type { PreparedNativePackagerStart } from "./broadcast-control-plane.service";
 import type { NativePackagerHandoffControl } from "./native-packager-handoff-control";
 import type { NativeSourceAudioOutput } from "./native-source-audio-output";
+import type { NativeSourceVideoOutput } from "./native-source-video-output";
 
 export interface NativeSourceProgramRequest {
   readonly roomId: string; readonly title: string; readonly visibility: "private" | "unlisted" | "public";
   readonly packagerId: string; readonly requestedRenditions: number; readonly allowHardwareAcceleration: boolean;
   readonly audioOutput?: NativeSourceAudioOutput;
+  readonly videoOutput?: NativeSourceVideoOutput;
 }
 export interface NativeSourceProgramView {
   readonly phase: "idle" | "preparing" | "waiting-output" | "live" | "degraded" | "handing-over" | "stopping" | "stopped" | "failed";
@@ -61,7 +63,8 @@ export class NativeSourceProgramController {
     if (this.destroyed || this.active || !context || trigger !== "user-action") throw new Error("native_source_program_start_denied");
     const generation = ++this.startGeneration;
     // Detach the click's choice before module loading yields to other events.
-    const snapshot = { ...input, ...(input?.audioOutput ? { audioOutput: { ...input.audioOutput } } : {}) };
+    const snapshot = { ...input, ...(input?.audioOutput ? { audioOutput: { ...input.audioOutput } } : {}),
+      ...(input?.videoOutput ? { videoOutput: { ...input.videoOutput } } : {}) };
     const request = (await import("./native-source-program-request")).normalizeSourceProgramRequest(snapshot);
     if (this.destroyed || this.active || generation !== this.startGeneration || context !== this.ports.context()
       || !this.ports.eligible(request.packagerId, request.requestedRenditions, request.audioOutput)) {

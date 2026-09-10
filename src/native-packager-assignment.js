@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { nativeOutputRequestFields } from "./native-source-video-output.js";
 
 import {
   admitNativePackager,
@@ -140,7 +141,7 @@ export class NativePackagerAssignmentRegistry {
 
   admitSourceProgram(ownerPrincipal, packagerId, request, controllerPeerId, now = Date.now()) {
     const admission = this.admit(ownerPrincipal, packagerId, request, now);
-    this.#sourceAuthority(ownerPrincipal, packagerId, admission.roomId, controllerPeerId, now, admission.admissionVersion === 2);
+    this.#sourceAuthority(ownerPrincipal, packagerId, admission.roomId, controllerPeerId, now, !!admission.audioOutput);
     if (this.activeForPackager(packagerId)) fail("native_packager_assignment_conflict", 409);
     return admission;
   }
@@ -167,7 +168,7 @@ export class NativePackagerAssignmentRegistry {
   }
 
   #sourceCurrent(record, now) {
-    const current = this.#sourceAuthority(record.ownerPrincipal, record.packagerId, record.roomId, record.controllerPeerId, now, record.admission.admissionVersion === 2);
+    const current = this.#sourceAuthority(record.ownerPrincipal, record.packagerId, record.roomId, record.controllerPeerId, now, !!record.admission.audioOutput);
     if (current.sourceGeneration !== record.sourceGeneration
       || JSON.stringify(current.sourceContext) !== JSON.stringify(record.sourceContext)) {
       fail("stale_native_source_program", 409);
@@ -188,7 +189,7 @@ export class NativePackagerAssignmentRegistry {
     const packager = this.#control.candidate(ownerPrincipal, packagerId, now);
     if (!packager.online || !packager.capability) fail("native_packager_offline", 503);
     const verifiedAdmission = admitNativePackager(packager.capability, {
-      requestVersion: admission.admissionVersion === 2 ? 2 : 1,
+      ...nativeOutputRequestFields(admission.audioOutput, admission.videoOutput),
       trigger: "user-action",
       tenantId: packager.capability.tenantId,
       ownerSubjectRef: packager.capability.ownerSubjectRef,
@@ -198,13 +199,12 @@ export class NativePackagerAssignmentRegistry {
       resourceRef: admission.resourceRef,
       requestedRenditions: admission.renditions?.length,
       allowHardwareAcceleration: admission.videoEncoder !== "libx264",
-      ...(admission.admissionVersion === 2 ? { audioOutput: admission.audioOutput } : {}),
     }, now);
     if (JSON.stringify(verifiedAdmission) !== JSON.stringify(admission)) {
       fail("native_packager_admission_mismatch", 409);
     }
     const sourceAuthority = sourceProgram
-      ? this.#sourceAuthority(ownerPrincipal, packagerId, admission.roomId, peerId, now, admission.admissionVersion === 2) : null;
+      ? this.#sourceAuthority(ownerPrincipal, packagerId, admission.roomId, peerId, now, !!admission.audioOutput) : null;
     if (sourceAuthority && sourceAuthority.sourceContext.tenantId !== packager.capability.tenantId) {
       fail("native_source_program_unavailable", 409);
     }
@@ -232,7 +232,7 @@ export class NativePackagerAssignmentRegistry {
       leaseId: lease.leaseId,
       fencingRevision: lease.fencingRevision,
       admission: verifiedAdmission,
-      assignmentProtocolVersion: sourceProgram ? (admission.admissionVersion === 2 ? 5 : 4) : supportsNativeAssignmentV3(packager.capability.agentVersion)
+      assignmentProtocolVersion: sourceProgram ? (admission.audioOutput ? 5 : 4) : supportsNativeAssignmentV3(packager.capability.agentVersion)
         ? 3 : (supportsNativeAssignmentV2(packager.capability.agentVersion) ? 2 : 1),
       iceServers: sourceProgram || supportsNativeAssignmentV3(packager.capability.agentVersion)
         ? normalizeIceServers(this.#iceServersForPackager(packagerId, now), sourceProgram) : null,

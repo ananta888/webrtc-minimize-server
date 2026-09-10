@@ -6,6 +6,7 @@ import { NativeSourceAudioComponent } from "./native-source-audio.component";
 import { NativeSourceAudioOutput, normalizeSourceAudioOutput } from "./native-source-audio-output";
 import { supportsSourceAudioOutput } from "./native-source-audio-capability";
 import { NativePackagerStandbyComponent } from "./native-packager-standby.component";
+import { NativeSourceVideoOutput, normalizeSourceVideoOutput } from "./native-source-video-output";
 
 @Component({
   selector: "app-native-source-program", standalone: true,
@@ -21,6 +22,11 @@ export class NativeSourceProgramComponent {
   readonly packagerId = signal("");
   readonly renditions = signal(1);
   readonly hardware = signal(false);
+  readonly videoPreset = signal<"legacy" | NativeSourceVideoOutput["profile"]>("legacy");
+  readonly videoOutput = computed(() => {
+    const profile = this.videoPreset();
+    return profile === "legacy" ? null : normalizeSourceVideoOutput({ profile });
+  });
   readonly audioPreset = signal<"legacy" | "speech" | "balanced" | "music" | "custom">("legacy");
   readonly audioChannels = signal(2);
   readonly audioKbps = signal(96);
@@ -75,9 +81,13 @@ export class NativeSourceProgramComponent {
   setAudioPreset(value: string): void {
     if (value === "legacy" || value === "speech" || value === "balanced" || value === "music" || value === "custom") this.audioPreset.set(value);
   }
+  setVideoPreset(value: string): void {
+    if (value === "legacy" || value === "balanced-v1" || value === "economy-v1" || value === "screen-v1") this.videoPreset.set(value);
+  }
   private request(): NativeSourceProgramRequest {
     return { roomId: this.roomId(), title: this.title().trim(), visibility: this.visibility(), packagerId: this.packagerId(),
       requestedRenditions: this.renditions(), allowHardwareAcceleration: this.hardware(),
+      ...(this.videoOutput() ? { videoOutput: this.videoOutput()! } : {}),
       ...(this.audioOutput() ? { audioOutput: this.audioOutput()! } : {}) };
   }
   async start(): Promise<void> {

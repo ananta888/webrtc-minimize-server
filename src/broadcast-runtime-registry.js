@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { normalizeNativeSourceAudioOutput } from "./native-source-audio-output.js";
+import { normalizeNativeSourceVideoOutput, nativeOutputRequestFields } from "./native-source-video-output.js";
 import { normalizeNativeStandbySelection, nativeStandbyProjection } from "./native-packager-standby.js";
 
 import { BroadcastAudienceRegistry } from "./broadcast-audience-registry.js";
@@ -693,9 +694,10 @@ export class BroadcastRuntimeRegistry {
     const input = clone(value, "invalid_native_packager_publication_request");
     closed(input, new Set([
       "requestVersion", "trigger", "packagerId", sourceProgram ? "inputMode" : "sourceIds", "requestedRenditions", "allowHardwareAcceleration",
-      ...(sourceProgram && input.requestVersion === 2 ? ["audioOutput"] : []),
+      ...(sourceProgram && [2, 3].includes(input.requestVersion) ? ["audioOutput"] : []),
+      ...(sourceProgram && input.requestVersion === 3 ? ["videoOutput"] : []),
     ]), "invalid_native_packager_publication_request");
-    if (!(input.requestVersion === 1 || sourceProgram && input.requestVersion === 2) || input.trigger !== "user-action"
+    if (!(input.requestVersion === 1 || sourceProgram && [2, 3].includes(input.requestVersion)) || input.trigger !== "user-action"
       || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(input.packagerId || "")
       || (sourceProgram ? input.inputMode !== "trusted-sframe-v1" : (!Array.isArray(input.sourceIds) || input.sourceIds.length < 1 || input.sourceIds.length > 4
       || new Set(input.sourceIds).size !== input.sourceIds.length
@@ -705,7 +707,11 @@ export class BroadcastRuntimeRegistry {
       || typeof admit !== "function" || !PROGRAM.test(programId || "")) {
       fail("invalid_native_packager_publication_request");
     }
-    if (input.requestVersion === 2) {
+    if (input.requestVersion === 3) {
+      try { input.videoOutput = normalizeNativeSourceVideoOutput(input.videoOutput); }
+      catch { fail("invalid_native_packager_publication_request"); }
+    }
+    if (input.requestVersion === 2 || input.requestVersion === 3 && input.audioOutput !== null) {
       try { input.audioOutput = normalizeNativeSourceAudioOutput(input.audioOutput); }
       catch { fail("invalid_native_packager_publication_request"); }
     }
@@ -730,8 +736,9 @@ export class BroadcastRuntimeRegistry {
   #installNativeWriter(key, record, candidate, input, admit, member, now) {
     const programId = candidate.scope.programId;
     const audioOutput = record.nativeAudioOutput ?? input.audioOutput;
+    const videoOutput = record.nativeVideoOutput ?? input.videoOutput;
     const admission = admit(Object.freeze({
-      requestVersion: audioOutput ? 2 : 1,
+      ...nativeOutputRequestFields(audioOutput, videoOutput),
       trigger: "user-action",
       tenantId: candidate.scope.tenantId,
       ownerSubjectRef: candidate.scope.ownerSubjectRef,
@@ -741,7 +748,6 @@ export class BroadcastRuntimeRegistry {
       resourceRef: record.resourceRef,
       requestedRenditions: input.requestedRenditions,
       allowHardwareAcceleration: input.allowHardwareAcceleration,
-      ...(audioOutput ? { audioOutput } : {}),
     }));
     const leaseId = this.#leaseIdFactory();
     if (!/^lea_[A-Za-z0-9_-]{16,64}$/.test(leaseId || "")) {
@@ -771,6 +777,7 @@ export class BroadcastRuntimeRegistry {
     this.#synchronizeRecord(key, {
       ...record, pendingHandoff: null,
       ...(audioOutput ? { nativeAudioOutput: audioOutput } : {}),
+      ...(videoOutput ? { nativeVideoOutput: videoOutput } : {}),
       publisherPrincipal: member.principal, publisherFingerprint: member.deviceFingerprint,
       publisherPeerId: member.id,
     }, candidate, now);
@@ -864,12 +871,12 @@ export class BroadcastRuntimeRegistry {
     }
     // Validate every candidate before committing any metadata. No prepare/send calls.
     for (const packagerId of input.standbyPackagerIds) {
-      admit(packagerId, Object.freeze({ requestVersion: record.nativeAudioOutput ? 2 : 1, trigger: "user-action",
+      admit(packagerId, Object.freeze({ ...nativeOutputRequestFields(record.nativeAudioOutput, record.nativeVideoOutput), trigger: "user-action",
         tenantId: machine.scope.tenantId, ownerSubjectRef: machine.scope.ownerSubjectRef,
         roomId: machine.scope.roomId, programId, programEpoch: machine.program.programEpoch,
         resourceRef: record.resourceRef, requestedRenditions: input.requestedRenditions,
         allowHardwareAcceleration: input.allowHardwareAcceleration,
-        ...(record.nativeAudioOutput ? { audioOutput: record.nativeAudioOutput } : {}) }));
+      }));
     }
     const standbyPlan = Object.freeze({ programEpoch: current.programEpoch,
       revision: current.standbyRevision + 1, packagerIds: input.standbyPackagerIds });
@@ -903,11 +910,11 @@ export class BroadcastRuntimeRegistry {
     const candidate = applyBroadcastProgramCommand(machine, command(machine, "output-restart", {
       expectedLeaseEpoch: machine.epochs.lease, reasonCode: "PACKAGER_HANDOFF",
     }), now).state;
-    admit(Object.freeze({ requestVersion: record.nativeAudioOutput ? 2 : 1, trigger: "user-action", tenantId: candidate.scope.tenantId,
+    admit(Object.freeze({ ...nativeOutputRequestFields(record.nativeAudioOutput, record.nativeVideoOutput), trigger: "user-action", tenantId: candidate.scope.tenantId,
       ownerSubjectRef: candidate.scope.ownerSubjectRef, roomId: candidate.scope.roomId, programId,
       programEpoch: candidate.program.programEpoch, resourceRef,
       requestedRenditions: input.requestedRenditions, allowHardwareAcceleration: input.allowHardwareAcceleration,
-      ...(record.nativeAudioOutput ? { audioOutput: record.nativeAudioOutput } : {}) }));
+    }));
     const pending = Object.freeze({ ...input, programId, previousPackagerId: writer.holderRef,
       previousProgramEpoch: machine.program.programEpoch, previousFencingRevision: writer.fencingRevision,
       nextProgramRevision: candidate.program.revision, nextProgramEpoch: candidate.program.programEpoch, resourceRef,

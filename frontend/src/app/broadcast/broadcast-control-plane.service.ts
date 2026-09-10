@@ -12,6 +12,7 @@ import { NativePackagerHandoffControl, parseNativeHandoffControl } from "./nativ
 import type { NativeSceneResult, NativeSceneSelection } from "./native-source-scene-contract";
 import type { NativeAudioResult, NativeAudioSelection } from "./native-source-audio-contract";
 import type { NativeSourceAudioOutput } from "./native-source-audio-output";
+import type { NativeSourceVideoOutput } from "./native-source-video-output";
 import {
   WhipAuthorization,
   WhipAuthorizationPort,
@@ -245,12 +246,12 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
 
   /** Explicit source entry: no local media, legacy ingress or source consent is implied. */
   async prepareNativeSourceStart(program: BroadcastProgramRef, packagerId: string, requestedRenditions: number,
-    allowHardwareAcceleration: boolean, trigger: unknown, signal: AbortSignal, audioOutput?: NativeSourceAudioOutput,
+    allowHardwareAcceleration: boolean, trigger: unknown, signal: AbortSignal, audioOutput?: NativeSourceAudioOutput, videoOutput?: NativeSourceVideoOutput,
   ): Promise<Readonly<{ program: BroadcastProgramRef; assignment: PreparedNativePackagerStart }>> {
     signal.throwIfAborted();
     const { requestNativeSourceStart } = await import("./native-source-program-http");
     const response = await requestNativeSourceStart(program, packagerId, requestedRenditions, allowHardwareAcceleration,
-      trigger, signal, audioOutput, { fingerprint: () => this.device.fingerprint(), authorizationHeader: () => this.auth.authorizationHeader() });
+      trigger, signal, audioOutput, { fingerprint: () => this.device.fingerprint(), authorizationHeader: () => this.auth.authorizationHeader() }, videoOutput);
     if (!response.ok) throw requestError(response, "native_source_program_start_failed");
     const prepared = await this.acceptNativeAssignment(response, program, packagerId, signal, undefined, 16384, "trusted-sframe-v1");
     return Object.freeze({ program: prepared.program, assignment: this.takePreparedNative(prepared.program) });

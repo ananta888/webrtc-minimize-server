@@ -9,7 +9,7 @@ import { broadcastSubjectRef, broadcastTenantRef } from "../src/broadcast-identi
 const FIRST = "pkr_aaaaaaaaaaaaaaaa", SECOND = "pkr_bbbbbbbbbbbbbbbb";
 const NOW = 1_800_000_000_000;
 
-function fixture(sourceProgram = false, audioOutput = null) {
+function fixture(sourceProgram = false, audioOutput = null, videoOutput = null) {
   let now = NOW;
   let resourceSequence = 0, forcedResource = null;
   const identity = { issuer: "https://identity.example/realms/ananta", subject: "owner", displayName: "Owner" };
@@ -47,7 +47,8 @@ function fixture(sourceProgram = false, audioOutput = null) {
   const programId = created.control.programId;
   const sourceIds = ["src_aaaaaaaaaaaaaaaa"];
   const prepareProgram = sourceProgram ? runtime.prepareNativeSourceProgram.bind(runtime) : runtime.prepareNativePublisher.bind(runtime);
-  const prepared = prepareProgram(identity, member, programId, { requestVersion: audioOutput ? 2 : 1, ...(audioOutput ? { audioOutput } : {}),
+  const prepared = prepareProgram(identity, member, programId, { requestVersion: videoOutput ? 3 : audioOutput ? 2 : 1,
+    ...(videoOutput ? { videoOutput, audioOutput } : audioOutput ? { audioOutput } : {}),
     trigger: "user-action", packagerId: FIRST, ...(sourceProgram ? { inputMode: "trusted-sframe-v1" } : { sourceIds }),
     requestedRenditions: 2, allowHardwareAcceleration: false,
   }, request => assignments.admit(ownerPrincipal, FIRST, request, now), now);
@@ -81,6 +82,23 @@ function standbyRequest(control, standbyPackagerIds = [SECOND]) {
 }
 
 const monoOutput = Object.freeze({ codec: "aac", sampleRate: 48000, channels: 1, targetBitsPerSecond: 48000 });
+for (const audioOutput of [null, monoOutput]) test("selected video survives standby and real stop-ACK handoff without client override", async () => {
+  const videoOutput = { profile: "screen-v1" }, f = fixture(true, audioOutput, videoOutput);
+  videoOutput.profile = "economy-v1";
+  const control = f.runtime.nativeStandbyControl(f.identity, f.member, f.programId);
+  f.runtime.selectNativeStandbys(f.identity, f.member, f.programId, standbyRequest(control), (id, request) => {
+    assert.equal(request.requestVersion, 3); assert.deepEqual(request.videoOutput, { profile: "screen-v1" });
+    assert.deepEqual(request.audioOutput, audioOutput);
+    return f.assignments.admit(f.ownerPrincipal, id, request, NOW);
+  }, NOW);
+  await assert.rejects(handoffNativePackager({ ...f.args, input: { ...f.input, videoOutput: { profile: "economy-v1" } } }), /invalid_native_packager_handoff/);
+  const task = handoffNativePackager(f.args);
+  assert.equal(f.sent.length, 1); assert.equal(f.sent[0].message.type, "assignment-stop");
+  f.status(f.first.snapshot, "stopped", "ASSIGNMENT_STOPPED");
+  await task;
+  assert.deepEqual(f.sent[1].message.profile, f.first.command.profile);
+  assert.equal(f.sent[1].message.version, audioOutput ? 5 : 4);
+});
 function downgradeAudio(f) {
   const capability = f.capabilities.get(SECOND);
   capability.capabilityVersion = 4; capability.sourceAudioControlVersion = 2; delete capability.sourceAudioEncodingVersion;

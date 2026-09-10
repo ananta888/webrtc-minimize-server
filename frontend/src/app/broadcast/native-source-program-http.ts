@@ -1,5 +1,6 @@
 import { BroadcastBrowserPortError, BroadcastProgramRef } from "./broadcast-ports";
 import { NativeSourceAudioOutput, normalizeSourceAudioOutput } from "./native-source-audio-output";
+import { NativeSourceVideoOutput, normalizeSourceVideoOutput } from "./native-source-video-output";
 
 interface Ports {
   fingerprint(): string | null;
@@ -8,9 +9,10 @@ interface Ports {
 /** Lazy, bounded source-only start. No implicit capture, consent or legacy ingress. */
 export async function requestNativeSourceStart(program: BroadcastProgramRef, packagerId: string,
   requestedRenditions: number, allowHardwareAcceleration: boolean, trigger: unknown, signal: AbortSignal,
-  audioOutput: NativeSourceAudioOutput | undefined, ports: Ports): Promise<Response> {
+  audioOutput: NativeSourceAudioOutput | undefined, ports: Ports, videoOutput?: NativeSourceVideoOutput): Promise<Response> {
   signal.throwIfAborted();
   const output = audioOutput === undefined ? undefined : normalizeSourceAudioOutput(audioOutput);
+  const video = videoOutput === undefined ? undefined : normalizeSourceVideoOutput(videoOutput);
   const fingerprint = ports.fingerprint();
   if (trigger !== "user-action" || !/^prg_[A-Za-z0-9_-]{16,64}$/.test(program.programId)
     || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(packagerId)
@@ -20,7 +22,8 @@ export async function requestNativeSourceStart(program: BroadcastProgramRef, pac
   return fetch(`/api/broadcasts/${encodeURIComponent(program.programId)}/native-source-programs`, {
     method: "POST", headers: { "content-type": "application/json", ...ports.authorizationHeader() },
     credentials: "same-origin", cache: "no-store", redirect: "error", signal,
-    body: JSON.stringify({ requestVersion: output ? 2 : 1, trigger, inputMode: "trusted-sframe-v1", packagerId,
-      requestedRenditions, allowHardwareAcceleration, deviceFingerprint: fingerprint, ...(output ? { audioOutput: output } : {}) }),
+    body: JSON.stringify({ requestVersion: video ? 3 : output ? 2 : 1, trigger, inputMode: "trusted-sframe-v1", packagerId,
+      requestedRenditions, allowHardwareAcceleration, deviceFingerprint: fingerprint,
+      ...(video ? { videoOutput: video, audioOutput: output ?? null } : output ? { audioOutput: output } : {}) }),
   });
 }

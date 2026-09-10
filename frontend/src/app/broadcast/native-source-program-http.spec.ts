@@ -16,6 +16,28 @@ const service = () => new BroadcastControlPlaneService({ authorizationHeader: ()
   { fingerprint: () => "a".repeat(43) } as never);
 afterEach(() => vi.restoreAllMocks());
 
+it.each([undefined, { codec: "aac" as const, sampleRate: 48000 as const, channels: 1 as const, targetBitsPerSecond: 48000 }])(
+  "sends a closed v3 video choice with explicit nullable audio", async audioOutput => {
+    const validate = new Ajv2020({ strict: true }).compile(JSON.parse(readFileSync("contracts/native-packager/source-program-start.v3.schema.json", "utf8")));
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(response()));
+    await service().prepareNativeSourceStart(program, packagerId, 2, false, "user-action", new AbortController().signal,
+      audioOutput, { profile: "screen-v1" });
+    const body = JSON.parse(String(fetch.mock.calls[0][1]!.body));
+    expect(validate(body), JSON.stringify(validate.errors)).toBe(true);
+    expect(body.videoOutput).toEqual({ profile: "screen-v1" }); expect(body.audioOutput).toEqual(audioOutput ?? null);
+  });
+
+it("rejects malformed video before identity or network access", async () => {
+  const fingerprint = vi.fn(() => "a".repeat(43)), authorizationHeader = vi.fn(() => ({}));
+  const control = new BroadcastControlPlaneService({ authorizationHeader } as never, { fingerprint } as never);
+  const fetch = vi.spyOn(globalThis, "fetch");
+  for (const video of [null, {}, { profile: "screen-v2" }, { profile: "screen-v1", fps: 60 }]) {
+    await expect(control.prepareNativeSourceStart(program, packagerId, 1, false, "user-action", new AbortController().signal,
+      undefined, video as never)).rejects.toThrow();
+  }
+  expect(fingerprint).not.toHaveBeenCalled(); expect(authorizationHeader).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+});
+
 const handoffSnapshot = { controlVersion: 1 as const, programId: program.programId, programRevision: 4, programEpoch: 1,
   state: "live", handoffPending: false, writer: { packagerId: "pkr_bbbbbbbbbbbbbbbb", fencingRevision: 3 } };
 const sourceHandoff = (control: BroadcastControlPlaneService, snapshot = handoffSnapshot, signal = new AbortController().signal) =>

@@ -25,6 +25,19 @@ function fixture() {
 }
 
 describe("native source program control-only lifecycle", () => {
+  it("pins video before the lazy import and denies unknown or absent choices", async () => {
+    const f = fixture();
+    const videoOutput = { profile: "screen-v1" as "screen-v1" | "economy-v1" };
+    const pending = f.controller.start({ ...request, videoOutput }, "user-action");
+    videoOutput.profile = "economy-v1"; await pending;
+    expect(f.ports.prepare).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ videoOutput: { profile: "screen-v1" } }), expect.any(AbortSignal));
+    await f.controller.stop();
+    const g = fixture();
+    for (const videoOutput of [undefined, null, {}, { profile: "unknown" }, { profile: "screen-v1", fps: 60 }]) {
+      await expect(g.controller.start({ ...request, videoOutput } as never, "user-action")).rejects.toThrow();
+    }
+    expect(g.ports.create).not.toHaveBeenCalled();
+  });
   it("exposes only the pinned live output for keyless standby admission", async () => {
     const f = fixture();
     expect(f.controller.standbyOutput()).toBeNull();

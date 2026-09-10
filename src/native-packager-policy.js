@@ -1,5 +1,6 @@
 import path from "node:path";
 import { normalizeNativeSourceAudioOutput } from "./native-source-audio-output.js";
+import { normalizeNativeSourceVideoOutput, nativeSourceVideoRenditions } from "./native-source-video-output.js";
 
 const ID = /^(?:pkr_[A-Za-z0-9_-]{16,64}|[a-z0-9][a-z0-9-]{0,31})$/;
 const TENANT = /^tn_[A-Za-z0-9_-]{16,64}$/;
@@ -181,18 +182,24 @@ export function admitNativePackager(capabilityValue, request, now = Date.now()) 
     "requestVersion", "trigger", "tenantId", "ownerSubjectRef", "roomId", "programId", "programEpoch",
     "resourceRef", "requestedRenditions", "allowHardwareAcceleration",
   ]);
-  if (request?.requestVersion === 2) fields.add("audioOutput");
+  if ([2, 3].includes(request?.requestVersion)) fields.add("audioOutput");
+  if (request?.requestVersion === 3) fields.add("videoOutput");
   if (!request || typeof request !== "object" || Array.isArray(request)
     || Object.keys(request).length !== fields.size || Object.keys(request).some((key) => !fields.has(key))
-    || ![1, 2].includes(request.requestVersion) || request.trigger !== "user-action"
+    || ![1, 2, 3].includes(request.requestVersion) || request.trigger !== "user-action"
     || request.tenantId !== capability.tenantId || request.ownerSubjectRef !== capability.ownerSubjectRef
     || !ROOM.test(request.roomId || "") || !PROGRAM.test(request.programId || "")
     || !Number.isSafeInteger(request.programEpoch) || request.programEpoch < 1
     || !RESOURCE.test(request.resourceRef || "")
     || !Number.isSafeInteger(request.requestedRenditions) || request.requestedRenditions < 1 || request.requestedRenditions > 3
     || typeof request.allowHardwareAcceleration !== "boolean") fail("invalid_native_packager_request");
-  let audioOutput;
-  if (request.requestVersion === 2) {
+  let audioOutput, videoOutput;
+  if (request.requestVersion === 3) {
+    try { videoOutput = normalizeNativeSourceVideoOutput(request.videoOutput); }
+    catch { fail("invalid_native_packager_request"); }
+    if (!supportsNativeSourceSignalV1(capability)) fail("native_source_video_output_unsupported", 409);
+  }
+  if (request.requestVersion === 2 || request.requestVersion === 3 && request.audioOutput !== null) {
     try { audioOutput = normalizeNativeSourceAudioOutput(request.audioOutput); }
     catch { fail("invalid_native_packager_request"); }
     if (!supportsNativeSourceAudioV3(capability)) fail("native_source_audio_output_unsupported", 409);
@@ -209,7 +216,8 @@ export function admitNativePackager(capabilityValue, request, now = Date.now()) 
   // ordered low-first prefix; a higher layer must not spend the same pixels again.
   let remainingPixels = capability.maximumPixelsPerSecond;
   const selected = [];
-  for (const rendition of RENDITIONS.slice(0, count)) {
+  const ladder = videoOutput ? nativeSourceVideoRenditions(videoOutput, RENDITIONS) : RENDITIONS;
+  for (const rendition of ladder.slice(0, count)) {
     const pixels = rendition.width * rendition.height * rendition.framesPerSecond;
     if (pixels > remainingPixels) break;
     remainingPixels -= pixels;
@@ -221,7 +229,7 @@ export function admitNativePackager(capabilityValue, request, now = Date.now()) 
     ? capability.videoEncoders.find((encoder) => encoder !== "libx264") || null
     : null;
   return Object.freeze({
-    admissionVersion: audioOutput ? 2 : 1,
+    admissionVersion: videoOutput ? 3 : audioOutput ? 2 : 1,
     agentId: capability.agentId,
     roomId: request.roomId,
     programId: request.programId,
@@ -235,11 +243,12 @@ export function admitNativePackager(capabilityValue, request, now = Date.now()) 
     maximumQueueFrames: 60,
     keyframeIntervalSeconds: 2,
     ...(audioOutput ? { audioOutput } : {}),
+    ...(videoOutput ? { videoOutput } : {}),
   });
 }
 
 export function nativePackagerFfmpegArguments(admission, outputRoot) {
-  if (!admission || ![1, 2].includes(admission.admissionVersion) || !Array.isArray(admission.renditions)
+  if (!admission || ![1, 2, 3].includes(admission.admissionVersion) || !Array.isArray(admission.renditions)
     || admission.renditions.length < 1 || admission.renditions.length > 3
     || typeof outputRoot !== "string" || !path.isAbsolute(outputRoot)) fail("invalid_native_packager_pipeline");
   const output = path.resolve(outputRoot, admission.resourceRef);

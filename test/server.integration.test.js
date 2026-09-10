@@ -1803,7 +1803,9 @@ test("authorized sessions keep Edge-TURN credentials in the second ICE tier", as
   assert.equal(JSON.stringify(authorization.body).includes("0123456789abcdef0123456789abcdef"), false);
 });
 
-for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "source-program", "source-program-audio"]) test(variant === "source-program-audio"
+for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "source-program", "source-program-audio", "source-program-video", "source-program-video-audio"]) test(variant.startsWith("source-program-video")
+  ? `native source program HTTP v3 selects video strategy (${variant})`
+  : variant === "source-program-audio"
   ? "native source program HTTP v5 selects mono output and fences v3 control across capability loss"
   : variant === "source-program"
   ? "native source program HTTP start emits a membership-bound v4 slate assignment without legacy ingress"
@@ -1814,7 +1816,8 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "sou
   : "native packager assignment is owner-, room-, device- and fence-bound end to end", async (context) => {
   const rejectOutput = variant === "reject";
   const sourceProgram = variant.startsWith("source-program");
-  const audioOutput = variant === "source-program-audio"
+  const videoOutput = variant.startsWith("source-program-video") ? { profile: "screen-v1" } : null;
+  const audioOutput = variant.endsWith("-audio")
     ? { codec: "aac", sampleRate: 48000, channels: 1, targetBitsPerSecond: 48000 } : null;
   const issuer = "https://identity.test/realms/ananta";
   const identity = { issuer, subject: "owner", displayName: "Owner" };
@@ -1989,6 +1992,13 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "sou
         assert.equal(app.nativePackagerAssignments.activeForProgram(program.control.programId), null);
       }
     }
+    if (videoOutput) {
+      for (const patch of [{ videoOutput: null }, { videoOutput: { profile: "screen-v2" } },
+        { videoOutput: { profile: "screen-v1", framesPerSecond: 60 } }, { audioOutput: undefined }]) {
+        assert.equal((await post({ ...start, requestVersion: 3, videoOutput, audioOutput, ...patch })).status, 400);
+        assert.equal(app.nativePackagerAssignments.activeForProgram(program.control.programId), null);
+      }
+    }
   }
   const assignmentResponse = await fetch(
     `${app.httpUrl}/api/broadcasts/${program.control.programId}/${sourceProgram ? "native-source-programs" : "native-assignments"}`,
@@ -1996,8 +2006,8 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "sou
       method: "POST",
       headers: { "content-type": "application/json", origin: publicOrigin, authorization: "Bearer owner-token" },
       body: JSON.stringify({
-        requestVersion: audioOutput ? 2 : 1,
-        ...(audioOutput ? { audioOutput } : {}),
+        requestVersion: videoOutput ? 3 : audioOutput ? 2 : 1,
+        ...(videoOutput ? { videoOutput, audioOutput } : audioOutput ? { audioOutput } : {}),
         trigger: "user-action",
         packagerId,
         ...(sourceProgram ? { inputMode: "trusted-sframe-v1" } : { sourceIds: ["src_0123456789abcdef"] }),
@@ -2018,6 +2028,11 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "sou
   assert.deepEqual(prepare.iceServers, [{ urls: ["stun:stun.test:3478"] }]);
   assert.equal(Object.hasOwn(prepare, "accessToken"), false);
   assert.equal(Object.hasOwn(prepare, "sdp"), false);
+  if (videoOutput) {
+    assert.deepEqual(prepare.profile.renditions.map(r => [r.width, r.height, r.framesPerSecond, r.videoBitsPerSecond]),
+      [[640, 360, 10, 400000], [960, 540, 10, 800000]]);
+    assert.equal(Object.hasOwn(prepare, "videoOutput"), false);
+  }
 
   if (sourceProgram) {
     const validate = new Ajv2020({ strict: true }).compile(JSON.parse(fs.readFileSync(
