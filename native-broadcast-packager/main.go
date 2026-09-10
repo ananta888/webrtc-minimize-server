@@ -38,7 +38,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-const agentVersion = "0.11.0"
+const agentVersion = "0.12.0"
 
 var buildRevision = "unknown"
 var buildTimestamp = "unknown"
@@ -569,9 +569,10 @@ func (c *client) capabilityMessage() map[string]any {
 		"consentedRoomIds": rooms, "observedAt": now, "expiresAt": now + 30000,
 	}
 	if c.cfg.sourcePrograms {
-		report["capabilityVersion"] = 4
+		report["capabilityVersion"] = 5
 		report["sourcePrograms"] = true
-		report["sourceAudioControlVersion"] = 2
+		report["sourceAudioControlVersion"] = 3
+		report["sourceAudioEncodingVersion"] = 1
 		if rooms == nil {
 			report["consentedRoomIds"] = []string{}
 		}
@@ -728,7 +729,7 @@ func (c *client) connectUsingDialer(ctx context.Context, enroll bool, dialer *we
 			}
 		case "capability-accepted":
 		case "assignment-prepare":
-			if message.Version == 4 {
+			if message.Version == 4 || message.Version == 5 {
 				err = sourceQueue.Enqueue(message)
 			} else {
 				err = c.prepareAssignment(message, time.Now())

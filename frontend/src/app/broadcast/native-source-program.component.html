@@ -25,6 +25,32 @@
       <option value="3" [disabled]="(selected()?.capability?.maximumRenditions || 0) < 3">Drei · höchster Rechenaufwand</option>
     </select>
     <label><input id="native-source-hardware" type="checkbox" [checked]="hardware()" (change)="hardware.set($any($event.target).checked)"> Hardwarebeschleunigung erlauben, wenn der Packager sie unterstützt</label>
+    <fieldset>
+      <legend>Audio-Ausgabe · unabhängig von der Videoqualität</legend>
+      <label for="native-source-audio-preset">Qualitätsstrategie</label>
+      <select id="native-source-audio-preset" [value]="audioPreset()" (change)="setAudioPreset($any($event.target).value)">
+        <option value="legacy">Bisheriger Profilstandard · Stereo, Bitrate je Videostufe</option>
+        <option value="speech" [disabled]="!audioSupported()">Sprachsparsam · Mono, 48 kbit/s</option>
+        <option value="balanced" [disabled]="!audioSupported()">Ausgewogen · Stereo, 96 kbit/s</option>
+        <option value="music" [disabled]="!audioSupported()">Musik · Stereo, 192 kbit/s</option>
+        <option value="custom" [disabled]="!audioSupported()">Eigene Einstellung</option>
+      </select>
+      @if (audioPreset() === 'custom') {
+        <label for="native-source-audio-channels">Kanäle</label>
+        <select id="native-source-audio-channels" [value]="audioChannels()" (change)="audioChannels.set(+$any($event.target).value)">
+          <option value="1">Mono</option><option value="2">Stereo</option>
+        </select>
+        <label for="native-source-audio-kbps">Zielbitrate (kbit/s)</label>
+        <input id="native-source-audio-kbps" type="number" min="16" [max]="audioChannels() === 1 ? 192 : 320" step="1"
+          [value]="audioKbps()" (input)="audioKbps.set(+$any($event.target).value)">
+      }
+      @if (audioOutput(); as output) {
+        <p>AAC · 48 kHz · {{ output.channels === 1 ? 'Mono' : 'Stereo' }} · {{ output.targetBitsPerSecond / 1000 }} kbit/s Zielrate pro Videostufe. Die tatsächliche Datenrate kann abweichen.</p>
+      }
+      @if (!audioSupported()) { <p>Dieser Packager bestätigt keine unabhängige Audio-Auswahl. Für eigene Einstellungen wird ein aktualisierter Agent benötigt; kein automatischer Profilwechsel.</p> }
+      @if (audioPreset() !== 'legacy' && !audioOutput()) { <p role="alert">Ungültige Audio-Auswahl: Mono erlaubt 16–192 kbit/s, Stereo 16–320 kbit/s.</p> }
+      <p>Gilt ab Sendungsstart und bleibt bei Übergaben erhalten. Eine Änderung benötigt eine neue Sendung. Mischpegel und Prioritäten sind danach separat live einstellbar. Raumton, Quellenfreigaben und Echounterdrückung bleiben unverändert.</p>
+    </fieldset>
     <button id="native-source-start" class="button primary" type="button" [disabled]="!canStart()" (click)="start()">Leere Sendung bewusst starten…</button>
   </fieldset>
   <p id="native-source-status" role="status" aria-live="polite">{{ statusLabel() }}</p>

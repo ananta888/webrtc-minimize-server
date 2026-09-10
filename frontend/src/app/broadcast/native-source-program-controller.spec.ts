@@ -25,6 +25,47 @@ function fixture() {
 }
 
 describe("native source program control-only lifecycle", () => {
+  for (const reason of ["stop", "destroy", "context", "replacement"]) {
+    it(`fences ${reason} during lazy request loading before any creation`, async () => {
+      const f = fixture(), pending = f.controller.start(request, "user-action");
+      const rejected = expect(pending).rejects.toThrow("start_denied");
+      if (reason === "stop") await f.controller.stop();
+      if (reason === "destroy") f.controller.destroy();
+      if (reason === "context") f.context("other-room");
+      const replacement = reason === "replacement" ? f.controller.start({ ...request, title: "New explicit choice" }, "user-action") : null;
+      await rejected;
+      if (replacement) {
+        await replacement;
+        expect(f.ports.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ title: "New explicit choice" }), expect.any(AbortSignal));
+        await f.controller.stop();
+      } else {
+        expect(f.ports.create).not.toHaveBeenCalled(); expect(f.ports.prepare).not.toHaveBeenCalled();
+      }
+    });
+  }
+  it("pins a deep immutable output choice before asynchronous creation and rechecks support before prepare", async () => {
+    const f = fixture(), pending = deferred<typeof program>();
+    f.ports.create.mockReturnValue(pending.promise);
+    const audioOutput = { codec: "aac" as const, sampleRate: 48000 as const, channels: 1 as 1 | 2, targetBitsPerSecond: 48000 };
+    const start = f.controller.start({ ...request, audioOutput }, "user-action");
+    audioOutput.channels = 2; audioOutput.targetBitsPerSecond = 192000;
+    pending.resolve(program); await start;
+    const passed = (f.ports.prepare.mock.calls as unknown as [unknown, { audioOutput: unknown }][])[0][1].audioOutput;
+    expect(passed).toEqual({ codec: "aac", sampleRate: 48000, channels: 1, targetBitsPerSecond: 48000 });
+    expect(Object.isFrozen(passed)).toBe(true); await f.controller.stop();
+    const g = fixture(), creation = deferred<typeof program>(), created = deferred<void>();
+    g.ports.create.mockImplementation(() => { created.resolve(); return creation.promise; });
+    const next = g.controller.start({ ...request, audioOutput }, "user-action");
+    await created.promise; g.eligible(false); creation.resolve(program); await next;
+    expect(g.ports.prepare).not.toHaveBeenCalled(); expect(g.ports.stop).toHaveBeenCalledOnce();
+  });
+  it("rejects present undefined/null/invalid output before creating any program", async () => {
+    const f = fixture();
+    for (const audioOutput of [undefined, null, {}, { codec: "opus", sampleRate: 48000, channels: 1, targetBitsPerSecond: 48000 }]) {
+      await expect(f.controller.start({ ...request, audioOutput } as never, "user-action")).rejects.toThrow();
+    }
+    expect(f.ports.create).not.toHaveBeenCalled();
+  });
   it("does nothing on construction and accepts only an explicit closed request", async () => {
     const f = fixture(); f.controller.tick(); expect(f.ports.create).not.toHaveBeenCalled();
     for (const bad of [{ ...request, sourceIds: [] }, { ...request, roomId: "../bad" }, { ...request, requestedRenditions: 4 },

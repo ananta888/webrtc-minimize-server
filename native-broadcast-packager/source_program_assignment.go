@@ -25,6 +25,7 @@ type sourceProgramAssignment struct {
 	ICEServers      []assignmentICEServer          `json:"iceServers"`
 	ExpiresAt       int64                          `json:"expiresAt"`
 	SourceContext   sourceProgramAssignmentContext `json:"sourceContext"`
+	AudioOutput     *sourceAudioEncodingSelection  `json:"audioOutput,omitempty"`
 }
 
 type sourceProgramAssignmentContext struct {
@@ -58,7 +59,8 @@ func parseSourceProgramAssignment(raw []byte, now time.Time) (sourceProgramAssig
 func validSourceProgramAssignment(a sourceProgramAssignment, now time.Time) bool {
 	s := a.SourceContext
 	p := a.Profile
-	if a.Version != 4 || a.Type != "assignment-prepare" || a.InputMode != "trusted-sframe-v1" ||
+	if (a.Version != 4 && a.Version != 5) || a.Version == 4 && a.AudioOutput != nil || a.Version == 5 && !validSourceAudioOutput(a.AudioOutput) ||
+		a.Type != "assignment-prepare" || a.InputMode != "trusted-sframe-v1" ||
 		!assignmentIDPattern.MatchString(a.AssignmentID) || !roomIDPattern.MatchString(a.RoomID) || !programIDPattern.MatchString(a.ProgramID) ||
 		!leaseIDPattern.MatchString(a.LeaseID) || !resourceIDPattern.MatchString(a.ResourceRef) ||
 		a.ProgramEpoch < 1 || a.ProgramEpoch > sourceVideoSceneMaxRevision || a.FencingRevision < 1 || a.FencingRevision > sourceVideoSceneMaxRevision ||
@@ -74,7 +76,7 @@ func validSourceProgramAssignment(a sourceProgramAssignment, now time.Time) bool
 	for _, r := range p.Renditions {
 		if !oneOf(r.ID, "low", "medium", "high") || seen[r.ID] || !validSourceVideoSize(r.Width, r.Height) || r.Width < 160 || r.Height < 90 ||
 			r.FramesPerSecond < 1 || r.FramesPerSecond > 60 || r.VideoBitsPerSecond < 100000 || r.VideoBitsPerSecond > 10000000 ||
-			r.AudioBitsPerSecond < 16000 || r.AudioBitsPerSecond > 320000 {
+			r.AudioBitsPerSecond < 16000 || r.AudioBitsPerSecond > 320000 || a.AudioOutput != nil && r.AudioBitsPerSecond != a.AudioOutput.TargetBitsPerSecond {
 			return false
 		}
 		seen[r.ID] = true

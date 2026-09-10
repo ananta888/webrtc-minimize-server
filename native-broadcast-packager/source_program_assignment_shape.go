@@ -13,10 +13,25 @@ func validSourceProgramAssignmentShape(raw []byte) bool {
 	if len(raw) == 0 || len(raw) > maximumSourceProgramAssignmentBytes || !utf8.Valid(raw) {
 		return false
 	}
-	top, ok := sourceProgramExactObject(raw, "version", "type", "inputMode", "assignmentId", "roomId", "programId",
-		"programEpoch", "leaseId", "fencingRevision", "resourceRef", "profile", "iceServers", "expiresAt", "sourceContext")
+	var header struct {
+		Version int `json:"version"`
+	}
+	if json.Unmarshal(raw, &header) != nil || (header.Version != 4 && header.Version != 5) {
+		return false
+	}
+	fields := []string{"version", "type", "inputMode", "assignmentId", "roomId", "programId",
+		"programEpoch", "leaseId", "fencingRevision", "resourceRef", "profile", "iceServers", "expiresAt", "sourceContext"}
+	if header.Version == 5 {
+		fields = append(fields, "audioOutput")
+	}
+	top, ok := sourceProgramExactObject(raw, fields...)
 	if !ok {
 		return false
+	}
+	if header.Version == 5 {
+		if _, ok = sourceProgramExactObject(top["audioOutput"], "codec", "sampleRate", "channels", "targetBitsPerSecond"); !ok {
+			return false
+		}
 	}
 	if _, ok = sourceProgramExactObject(top["sourceContext"], "schema", "tenantId", "roomEpoch", "granteeDeviceRef", "frameEnvelope"); !ok {
 		return false

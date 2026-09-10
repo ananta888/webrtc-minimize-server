@@ -1,0 +1,22 @@
+{
+  "version": 3,
+  "type": "source-program-audio",
+  "commandId": "aud_aaaaaaaaaaaaaaaa",
+  "assignmentId": "asn_aaaaaaaaaaaaaaaa",
+  "programId": "prg_aaaaaaaaaaaaaaaa",
+  "programEpoch": 1,
+  "leaseId": "lea_aaaaaaaaaaaaaaaa",
+  "fencingRevision": 1,
+  "issuedAt": 1800000000000,
+  "expiresAt": 1800000004000,
+  "expectedAudioRevision": 2,
+  "sources": [
+    {
+      "sourceLeaseId": "sls_aaaaaaaaaaaaaaaa",
+      "leftGainQ15": 16384,
+      "rightGainQ15": 8192,
+      "muted": true
+    }
+  ],
+  "strategy": "speech-first"
+}

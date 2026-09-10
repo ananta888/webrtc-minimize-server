@@ -22,7 +22,7 @@ export interface OwnedNativePackager {
   readonly consentedRoomIds: readonly string[];
   readonly confirmedRoomIds: readonly string[];
   readonly capability: Readonly<{ ffmpegVersion: string; health: string; maximumRenditions: number;
-    capabilityVersion?: number; sourcePrograms?: boolean; sourceAudioControlVersion?: number }> | null;
+    capabilityVersion?: number; sourcePrograms?: boolean; sourceAudioControlVersion?: number; sourceAudioEncodingVersion?: number }> | null;
   readonly heartbeat: Readonly<{ state: string; observedAt: number }> | null;
 }
 

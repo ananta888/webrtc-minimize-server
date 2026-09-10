@@ -28,6 +28,24 @@ function fixture() {
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
+it("carries selected output to HTTP, negotiates audio v3 and stops on capability downgrade", async () => {
+  const f = fixture();
+  const capability = { ...f.candidates()[0].capability, capabilityVersion: 5, sourceAudioControlVersion: 3, sourceAudioEncodingVersion: 1 };
+  const audioOutput = { codec: "aac" as const, sampleRate: 48000 as const, channels: 1 as const, targetBitsPerSecond: 48000 };
+  try {
+    await expect(f.service.controller.start({ ...request, audioOutput }, "user-action")).rejects.toThrow();
+    expect(f.control.createProgram).not.toHaveBeenCalled();
+    f.candidates.set([{ id: packagerId, capability }]);
+    await f.service.controller.start({ ...request, audioOutput }, "user-action");
+    expect(f.control.prepareNativeSourceStart).toHaveBeenCalledWith(program, packagerId, 1, false, "user-action", expect.any(AbortSignal), audioOutput);
+    expect(f.service.audioContext()?.audioControlVersion).toBe(3);
+    f.candidates.set([{ id: packagerId, capability: { ...capability, sourceAudioEncodingVersion: 2 } }]);
+    expect(f.service.audioContext()).toBeNull(); await vi.advanceTimersByTimeAsync(250);
+    expect(f.control.stopProgram).toHaveBeenCalledOnce(); expect(f.control.stopNativeAssignment).toHaveBeenCalledOnce();
+    expect(f.service.view().active).toBe(false);
+  } finally { f.service.ngOnDestroy(); }
+});
+
 it("audio context requires the current controlled packager's explicit v3 capability", async () => {
   const f = fixture();
   try {
@@ -53,7 +71,7 @@ it("composes bounded HTTP control only, exposes the confirmed source reference, 
     expect(f.control.createProgram).not.toHaveBeenCalled(); expect(f.service.requestProgram()).toBeNull();
     await f.service.controller.start(request, "user-action");
     expect(f.control.createProgram).toHaveBeenCalledWith("room-alpha", "Studio", "private", expect.any(AbortSignal));
-    expect(f.control.prepareNativeSourceStart).toHaveBeenCalledWith(program, packagerId, 1, false, "user-action", expect.any(AbortSignal));
+    expect(f.control.prepareNativeSourceStart).toHaveBeenCalledWith(program, packagerId, 1, false, "user-action", expect.any(AbortSignal), undefined);
     expect(f.service.requestProgram()).toEqual({ ...prepared, programRevision: 4 });
     f.control.stopProgram.mockRejectedValueOnce(new Error("revocation unavailable")); await f.service.controller.stop();
     expect(f.control.stopNativeAssignment).toHaveBeenCalledWith(assignment, expect.any(AbortSignal));

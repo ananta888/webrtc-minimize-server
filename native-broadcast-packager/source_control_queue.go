@@ -48,7 +48,7 @@ func newSourceControlQueue(c *client, prepare func(serverMessage, time.Time) err
 // Ownership of SourceProgram transfers only on success. Caller is the single
 // socket reader; Close is its deferred finalizer, after no further Enqueue.
 func (q *sourceControlQueue) Enqueue(m serverMessage) error {
-	if !q.client.cfg.sourcePrograms || !q.client.sessionAuthenticated.Load() || m.Version != 4 || m.Type != "assignment-prepare" ||
+	if !q.client.cfg.sourcePrograms || !q.client.sessionAuthenticated.Load() || (m.Version != 4 && m.Version != 5) || m.Type != "assignment-prepare" ||
 		len(m.SourceProgram) == 0 || len(m.SourceProgram) > maximumSourceProgramAssignmentBytes {
 		return errors.New("source control queue admission denied")
 	}

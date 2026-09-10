@@ -3,6 +3,8 @@ import { NativeSourceProgramService } from "./native-source-program.service";
 import type { NativeSourceProgramRequest } from "./native-source-program-controller";
 import { NativeSourceSceneComponent } from "./native-source-scene.component";
 import { NativeSourceAudioComponent } from "./native-source-audio.component";
+import { NativeSourceAudioOutput, normalizeSourceAudioOutput } from "./native-source-audio-output";
+import { supportsSourceAudioOutput } from "./native-source-audio-capability";
 
 @Component({
   selector: "app-native-source-program", standalone: true,
@@ -18,10 +20,23 @@ export class NativeSourceProgramComponent {
   readonly packagerId = signal("");
   readonly renditions = signal(1);
   readonly hardware = signal(false);
+  readonly audioPreset = signal<"legacy" | "speech" | "balanced" | "music" | "custom">("legacy");
+  readonly audioChannels = signal(2);
+  readonly audioKbps = signal(96);
+  readonly audioSupported = computed(() => supportsSourceAudioOutput(this.selected()?.capability));
+  readonly audioOutput = computed<NativeSourceAudioOutput | null>(() => {
+    const preset = this.audioPreset();
+    if (preset === "legacy") return null;
+    const [channels, kbps] = preset === "speech" ? [1, 48] : preset === "balanced" ? [2, 96]
+      : preset === "music" ? [2, 192] : [this.audioChannels(), this.audioKbps()];
+    try { return normalizeSourceAudioOutput({ codec: "aac", sampleRate: 48000, channels, targetBitsPerSecond: kbps * 1000 }); }
+    catch { return null; }
+  });
   readonly error = signal("");
   readonly selected = computed(() => this.programs.candidates().find(p => p.id === this.packagerId()));
   readonly canStart = computed(() => !this.disabled() && !this.programs.view().active
     && !!this.title().trim() && this.title().length <= 80 && !!this.selected()
+    && (this.audioPreset() === "legacy" || this.audioSupported() && !!this.audioOutput())
     && this.renditions() >= 1 && this.renditions() <= (this.selected()?.capability?.maximumRenditions ?? 0));
   readonly statusLabel = computed(() => {
     switch (this.programs.view().phase) {
@@ -43,9 +58,13 @@ export class NativeSourceProgramComponent {
   setRenditions(value: string): void {
     if (/^[123]$/.test(value)) this.renditions.set(Number(value));
   }
+  setAudioPreset(value: string): void {
+    if (value === "legacy" || value === "speech" || value === "balanced" || value === "music" || value === "custom") this.audioPreset.set(value);
+  }
   private request(): NativeSourceProgramRequest {
     return { roomId: this.roomId(), title: this.title().trim(), visibility: this.visibility(), packagerId: this.packagerId(),
-      requestedRenditions: this.renditions(), allowHardwareAcceleration: this.hardware() };
+      requestedRenditions: this.renditions(), allowHardwareAcceleration: this.hardware(),
+      ...(this.audioOutput() ? { audioOutput: this.audioOutput()! } : {}) };
   }
   async start(): Promise<void> {
     if (!this.canStart()) return;

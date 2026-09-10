@@ -1,0 +1,12 @@
+{
+  "version": 3,
+  "type": "source-program-audio-query",
+  "commandId": "aud_aaaaaaaaaaaaaaaa",
+  "assignmentId": "asn_aaaaaaaaaaaaaaaa",
+  "programId": "prg_aaaaaaaaaaaaaaaa",
+  "programEpoch": 1,
+  "leaseId": "lea_aaaaaaaaaaaaaaaa",
+  "fencingRevision": 1,
+  "issuedAt": 1800000000000,
+  "expiresAt": 1800000004000
+}

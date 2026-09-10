@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -43,10 +45,52 @@ func TestLiveTrustedSourceProgramEncoder(t *testing.T) {
 }
 
 func liveTrustedSourceProgramEpoch(t *testing.T, ffmpeg string, epoch sourceHLSEpoch) [][]byte {
+	return liveTrustedSourceProgramAudioEpoch(t, ffmpeg, epoch, nil)
+}
+
+func TestLiveTrustedSourceProgramAudioOutputs(t *testing.T) {
+	if os.Getenv("RUN_LIVE_TRUSTED_SOURCE_DECODE") != "1" {
+		t.Skip("set RUN_LIVE_TRUSTED_SOURCE_DECODE=1 with local FFmpeg/ffprobe")
+	}
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Fatal("explicit audio output gate needs FFmpeg")
+	}
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		t.Fatal("explicit audio output gate needs ffprobe")
+	}
+	for _, output := range []sourceAudioEncodingSelection{
+		{"aac", 48000, 1, 16000}, {"aac", 48000, 1, 48000}, {"aac", 48000, 1, 192000},
+		{"aac", 48000, 2, 96000}, {"aac", 48000, 2, 192000}, {"aac", 48000, 2, 320000},
+	} {
+		t.Run(fmt.Sprintf("%dch-%d", output.Channels, output.TargetBitsPerSecond), func(t *testing.T) {
+			initial := liveTrustedSourceProgramAudioEpoch(t, ffmpeg, 0, &output)
+			if output.Channels == 1 && output.TargetBitsPerSecond == 48000 {
+				next := liveTrustedSourceProgramAudioEpoch(t, ffmpeg, 127, &output)
+				for i := range initial {
+					if !bytes.Equal(initial[i], next[i]) {
+						t.Fatal("same mono format changed init across rollover")
+					}
+				}
+			}
+		})
+	}
+}
+
+func liveTrustedSourceProgramAudioEpoch(t *testing.T, ffmpeg string, epoch sourceHLSEpoch, output *sourceAudioEncodingSelection) [][]byte {
 	t.Helper()
 	c := sourceEncoderTestConfig(t.TempDir())
 	c.ffmpegPath = ffmpeg
 	c.hlsEpoch = epoch
+	if output != nil {
+		if !validSourceAudioOutput(output) {
+			t.Fatal("invalid synthetic output profile")
+		}
+		c.audioChannels = output.Channels
+		for i := range c.profile.Renditions {
+			c.profile.Renditions[i].AudioBitsPerSecond = output.TargetBitsPerSecond
+		}
+	}
 	p, err := newSourceProgramEncoder(c)
 	if err != nil {
 		t.Fatal(err)
@@ -117,6 +161,9 @@ func liveTrustedSourceProgramEpoch(t *testing.T, ffmpeg string, epoch sourceHLSE
 			t.Fatal(err)
 		}
 		fragment := append(init, segment...)
+		if output != nil {
+			probeSourceProgramAudioOutput(t, fragment, *output)
+		}
 		video := sourceDecodeEncodedFragment(t, ffmpeg, fragment, r.FramesPerSecond)
 		frameBytes := r.Width * r.Height * 4
 		if len(video) != 2*r.FramesPerSecond*frameBytes {
@@ -151,7 +198,11 @@ func liveTrustedSourceProgramEpoch(t *testing.T, ffmpeg string, epoch sourceHLSE
 		}
 		var tone audioMixToneProbe
 		tone.inspect(0, audio)
-		if amplitude := tone.amplitude(0); amplitude < 0.10 || amplitude > 0.20 {
+		maximumAmplitude := 0.20
+		if output != nil && output.Channels == 1 {
+			maximumAmplitude = 0.23
+		} // Stereo-to-mono matrix can sum identical inputs at +3 dB.
+		if amplitude := tone.amplitude(0); amplitude < 0.10 || amplitude > maximumAmplitude {
 			t.Fatal("encoded AAC lost 700Hz tone", amplitude)
 		}
 		clear(fragment)
@@ -176,6 +227,35 @@ func liveTrustedSourceProgramEpoch(t *testing.T, ffmpeg string, epoch sourceHLSE
 		t.Fatal("confirmed source revoke lost its clean recovery classification")
 	}
 	return initializations
+}
+
+func probeSourceProgramAudioOutput(t *testing.T, fragment []byte, want sourceAudioEncodingSelection) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_name,sample_rate,channels,bit_rate", "-of", "json", "-i", "pipe:0")
+	cmd.Stdin = bytes.NewReader(fragment)
+	raw, err := cmd.Output()
+	if err != nil || len(raw) > 4096 {
+		t.Fatal("bounded actual AAC metadata unavailable")
+	}
+	var observed struct {
+		Streams []struct {
+			Codec      string `json:"codec_name"`
+			SampleRate string `json:"sample_rate"`
+			Channels   int    `json:"channels"`
+			BitRate    string `json:"bit_rate"`
+		} `json:"streams"`
+	}
+	if json.Unmarshal(raw, &observed) != nil || len(observed.Streams) != 1 {
+		t.Fatal("actual audio stream metadata invalid")
+	}
+	s := observed.Streams[0]
+	rate, rateErr := strconv.Atoi(s.BitRate)
+	if s.Codec != want.Codec || s.SampleRate != "48000" || s.Channels != want.Channels || rateErr != nil || rate <= 0 || rate > want.TargetBitsPerSecond*3/2+10000 {
+		t.Fatal("actual AAC output differs from bounded selection")
+	}
+	t.Logf("synthetic AAC channels=%d sampleRate=48000 targetBitsPerSecond=%d measuredBitsPerSecond=%d", s.Channels, want.TargetBitsPerSecond, rate)
 }
 
 func sourceDecodeEncodedFragment(t *testing.T, ffmpeg string, fragment []byte, videoFPS int) []byte {

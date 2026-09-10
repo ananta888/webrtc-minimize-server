@@ -16,7 +16,48 @@ const state: NativeAudioState = { audioControlVersion: 1, programId: program.pro
 const selection = { expectedAudioRevision: 2, sources: [{ sourceLeaseId: source, leftGainQ15: 16384, rightGainQ15: 8192, muted: true }] };
 const v2Fixture = JSON.parse(readFileSync("native-broadcast-packager/testdata/source-audio-state.v2.json", "utf8"));
 const strategyState: NativeAudioState = { ...state, audioControlVersion: 2, mix: v2Fixture.mix, encoding: v2Fixture.encoding };
+const v3Fixture = JSON.parse(readFileSync("native-broadcast-packager/testdata/source-audio-state.v3.json", "utf8"));
+const outputState: NativeAudioState = { ...state, audioControlVersion: 3, mix: v3Fixture.mix, encoding: v3Fixture.encoding };
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+
+it("v3 reports real mono/stereo metadata but does not weaken v2 or permit output mutation via mixing", () => {
+  const observed = parseNativeAudioResult(outputState, program, now, 3);
+  if (observed.outcome !== "observed" || observed.audioControlVersion !== 3) throw new Error();
+  expect(observed.encoding.channels).toBe(1); expect(Object.isFrozen(observed.encoding.renditions[0])).toBe(true);
+  expect(() => parseNativeAudioResult(outputState, program, now, 2)).toThrow();
+  expect(() => parseNativeAudioResult({ ...outputState, audioControlVersion: 2 }, program, now, 2)).toThrow();
+  for (const channels of [0, 3, true]) expect(() => parseNativeAudioResult({ ...outputState,
+    encoding: { ...outputState.encoding, channels } }, program, now, 3)).toThrow();
+  const high = { ...outputState.encoding, channels: 1, renditions: [{ id: "low", targetBitsPerSecond: 192001 }] };
+  expect(() => parseNativeAudioResult({ ...outputState, encoding: high }, program, now, 3)).toThrow();
+  expect(() => parseNativeAudioResult({ ...outputState, encoding: { ...high, channels: 2 } }, program, now, 3)).not.toThrow();
+  expect(validAudioSelection({ expectedAudioRevision: 2, sources: [], strategy: "balanced" }, 3)).toBe(true);
+  expect(validAudioSelection({ ...selection, strategy: "balanced", encoding: high } as never, 3)).toBe(false);
+});
+
+it("v3 query/apply keeps capability fences and UI mixing for mono output", async () => {
+  const f = fixture(); f.setContext({ key: "session-alpha", program, audioControlVersion: 3 });
+  f.request.mockResolvedValue(outputState); await f.controller.refresh(); expect(f.views.at(-1)?.phase).toBe("ready");
+  f.setContext({ key: "session-alpha", program, audioControlVersion: 2 });
+  await f.controller.apply({ ...selection, strategy: "balanced" }, "user-action");
+  expect(f.request).toHaveBeenCalledTimes(1); expect(f.views.at(-1)?.phase).toBe("stale"); f.controller.destroy();
+  const audio = { view: signal<NativeAudioView>({ phase: "ready", audio: outputState }),
+    controller: { refresh: vi.fn(async () => {}), apply: vi.fn(async () => {}) } };
+  const c = new NativeSourceAudioComponent(audio as never); await c.refresh(); c.setStrategy("balanced");
+  vi.spyOn(window, "confirm").mockReturnValue(true); await c.apply();
+  expect(audio.controller.apply).toHaveBeenCalledWith(expect.objectContaining({ strategy: "balanced" }), "user-action");
+});
+
+it("v3 HTTP negotiates the closed contract and rejects older replies", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(now);
+  const validate = new Ajv2020({ strict: true }).compile(JSON.parse(readFileSync("contracts/native-packager/source-audio-director-request.v3.schema.json", "utf8")));
+  const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify(outputState), { headers: { "content-type": "application/json" } }));
+  const control = new BroadcastControlPlaneService({ authorizationHeader: () => ({}) } as never, { fingerprint: () => "a".repeat(43) } as never);
+  const result = await control.nativeSourceAudio(program, null, new AbortController().signal, 3);
+  expect(result.audioControlVersion).toBe(3); expect(validate(JSON.parse(String(fetch.mock.calls[0][1]!.body)))).toBe(true);
+  fetch.mockImplementationOnce(async () => new Response(JSON.stringify(strategyState), { headers: { "content-type": "application/json" } }));
+  await expect(control.nativeSourceAudio(program, null, new AbortController().signal, 3)).rejects.toThrow();
+});
 function fixture() {
   let clock = now, context: NativeAudioContext | null = { key: "session-alpha", program };
   const views: NativeAudioView[] = [], request = vi.fn(async () => state as any);

@@ -86,7 +86,7 @@ func TestSourceAudioStrategyV2ClosedSelectionAndAtomicCAS(t *testing.T) {
 		}
 	}
 	for _, patch := range []map[string]any{{"strategy": nil}, {"strategy": "automatic-capture"}, {"strategy": true},
-		{"version": 1}, {"version": 3}, {"sources": nil}, {"mix": map[string]any{}}, {"expiresAt": now.UnixMilli()}, {"expectedAudioRevision": 0}} {
+		{"version": 1}, {"version": 4}, {"sources": nil}, {"mix": map[string]any{}}, {"expiresAt": now.UnixMilli()}, {"expectedAudioRevision": 0}} {
 		var value map[string]any
 		_ = json.Unmarshal(raw, &value)
 		for k, v := range patch {

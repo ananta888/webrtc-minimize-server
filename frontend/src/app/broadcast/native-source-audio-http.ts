@@ -10,13 +10,13 @@ interface NativeAudioHttpPorts {
 
 /** Loaded only for native program audio; permissions still belong to the server. */
 export async function requestNativeSourceAudio(program: BroadcastProgramRef, selection: NativeAudioSelection | null,
-  signal: AbortSignal, ports: NativeAudioHttpPorts, version: 1 | 2 = 1): Promise<NativeAudioResult> {
+  signal: AbortSignal, ports: NativeAudioHttpPorts, version: 1 | 2 | 3 = 1): Promise<NativeAudioResult> {
   signal.throwIfAborted();
   const fingerprint = ports.fingerprint();
   if (!/^prg_[A-Za-z0-9_-]{16,64}$/.test(program.programId) || !fingerprint) {
     throw new BroadcastBrowserPortError("broadcast_active_device_required");
   }
-  if (![1, 2].includes(version) || selection !== null && !validAudioSelection(selection, version)) throw new BroadcastBrowserPortError("invalid_native_audio_selection");
+  if (![1, 2, 3].includes(version) || selection !== null && !validAudioSelection(selection, version)) throw new BroadcastBrowserPortError("invalid_native_audio_selection");
   const response = await fetch(`/api/broadcasts/${encodeURIComponent(program.programId)}/native-source-audio`, {
     method: "POST", headers: { "content-type": "application/json", ...ports.authorizationHeader() },
     credentials: "same-origin", cache: "no-store", redirect: "error", signal,

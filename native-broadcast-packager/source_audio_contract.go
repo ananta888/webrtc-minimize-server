@@ -71,7 +71,7 @@ func audioControlFields() []string {
 func validAudioQuery(q sourceAudioQuery, kind string, now time.Time) bool {
 	const maximum int64 = 9007199254740991
 	n := now.UnixMilli()
-	return (q.Version == 1 || q.Version == 2) && q.Type == kind && sourceAudioCommandID.MatchString(q.CommandID) &&
+	return (q.Version == 1 || q.Version == 2 || q.Version == 3) && q.Type == kind && sourceAudioCommandID.MatchString(q.CommandID) &&
 		assignmentIDPattern.MatchString(q.AssignmentID) && programIDPattern.MatchString(q.ProgramID) && leaseIDPattern.MatchString(q.LeaseID) &&
 		q.ProgramEpoch >= 1 && q.ProgramEpoch <= maximum && q.FencingRevision >= 1 && q.FencingRevision <= maximum &&
 		q.IssuedAt >= 1 && q.IssuedAt <= maximum && q.ExpiresAt >= 1 && q.ExpiresAt <= maximum && n >= 1 && n <= maximum &&
@@ -103,12 +103,12 @@ func parseSourceAudioCommand(raw []byte, now time.Time) (sourceAudioCommand, err
 		return fail()
 	}
 	keys := append(audioControlFields(), "expectedAudioRevision", "sources")
-	if c.Version == 2 {
+	if c.Version == 2 || c.Version == 3 {
 		keys = append(keys, "strategy")
 	}
 	fields, exact := exactAudioObjectBounded(raw, keys...)
 	if !exact || !validAudioQuery(c.sourceAudioQuery, "source-program-audio", now) ||
-		c.Version == 2 && (c.Strategy == nil || !validSourceAudioStrategy(*c.Strategy)) ||
+		(c.Version == 2 || c.Version == 3) && (c.Strategy == nil || !validSourceAudioStrategy(*c.Strategy)) ||
 		c.ExpectedAudioRevision < 1 || c.ExpectedAudioRevision >= sourceAudioLevelMaxRevision || c.Version == 1 && len(c.Sources) < 1 || len(c.Sources) > 80 {
 		return fail()
 	}

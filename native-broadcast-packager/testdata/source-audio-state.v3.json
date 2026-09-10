@@ -1,0 +1,39 @@
+{
+  "version": 3,
+  "type": "source-program-audio-state",
+  "commandId": "aud_aaaaaaaaaaaaaaaa",
+  "assignmentId": "asn_aaaaaaaaaaaaaaaa",
+  "programId": "prg_aaaaaaaaaaaaaaaa",
+  "programEpoch": 1,
+  "leaseId": "lea_aaaaaaaaaaaaaaaa",
+  "fencingRevision": 1,
+  "audioRevision": 3,
+  "observedAt": 1800000000000,
+  "sources": [
+    {
+      "sourceLeaseId": "sls_aaaaaaaaaaaaaaaa",
+      "leftGainQ15": 16384,
+      "rightGainQ15": 8192,
+      "muted": true,
+      "sourceKind": "microphone"
+    }
+  ],
+  "mix": {
+    "strategy": "speech-first",
+    "microphoneGainQ15": 32768,
+    "screenAudioGainQ15": 32768,
+    "limiterGainQ15": 32768,
+    "peakQ15": 0
+  },
+  "encoding": {
+    "codec": "aac",
+    "sampleRate": 48000,
+    "channels": 1,
+    "renditions": [
+      {
+        "id": "low",
+        "targetBitsPerSecond": 48000
+      }
+    ]
+  }
+}

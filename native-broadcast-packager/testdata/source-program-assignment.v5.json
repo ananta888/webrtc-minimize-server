@@ -1,0 +1,58 @@
+{
+  "version": 5,
+  "type": "assignment-prepare",
+  "inputMode": "trusted-sframe-v1",
+  "assignmentId": "asn_aaaaaaaaaaaaaaaa",
+  "roomId": "room-aaaaaaaaaaaaaaaaaa",
+  "programId": "prg_aaaaaaaaaaaaaaaa",
+  "programEpoch": 2,
+  "leaseId": "lea_aaaaaaaaaaaaaaaa",
+  "fencingRevision": 3,
+  "resourceRef": "res_aaaaaaaaaaaaaaaa",
+  "profile": {
+    "profileId": "h264-aac-720p-v1",
+    "videoEncoder": "libx264",
+    "softwareFallback": "libx264",
+    "maximumQueueFrames": 30,
+    "keyframeIntervalSeconds": 2,
+    "renditions": [
+      {
+        "id": "low",
+        "width": 320,
+        "height": 180,
+        "framesPerSecond": 10,
+        "videoBitsPerSecond": 200000,
+        "audioBitsPerSecond": 48000
+      }
+    ]
+  },
+  "iceServers": [
+    {
+      "urls": [
+        "stun:stun.example.test:3478"
+      ]
+    },
+    {
+      "urls": [
+        "turns:turn.example.test:5349?transport=tcp"
+      ],
+      "username": "1900000100:synthetic",
+      "credential": "synthetic-fixture-only",
+      "credentialType": "password"
+    }
+  ],
+  "expiresAt": 1900000100000,
+  "sourceContext": {
+    "schema": "ananta.trusted-source-program-context.v1",
+    "tenantId": "tn_aaaaaaaaaaaaaaaa",
+    "roomEpoch": 4,
+    "granteeDeviceRef": "dev_bbbbbbbbbbbbbbbb",
+    "frameEnvelope": "codec-prefix-v1"
+  },
+  "audioOutput": {
+    "codec": "aac",
+    "sampleRate": 48000,
+    "channels": 1,
+    "targetBitsPerSecond": 48000
+  }
+}

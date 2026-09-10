@@ -14,6 +14,7 @@ import (
 type sourceProgramEncoderConfig struct {
 	ffmpegPath, outputRoot, packagerID, resourceRef string
 	width, height, fps                              int
+	audioChannels                                   int
 	startSample                                     int64
 	hlsEpoch                                        sourceHLSEpoch
 	profile                                         assignmentProfile
@@ -38,7 +39,7 @@ type sourceProgramEncoder struct {
 }
 
 func validSourceEncoderConfig(c sourceProgramEncoderConfig) bool {
-	if !c.hlsEpoch.valid() || c.ffmpegPath == "" || !validOutputRoot(c.outputRoot) || !packagerIDPattern.MatchString(c.packagerID) || !resourceIDPattern.MatchString(c.resourceRef) ||
+	if !c.hlsEpoch.valid() || c.audioChannels < 0 || c.audioChannels > 2 || c.ffmpegPath == "" || !validOutputRoot(c.outputRoot) || !packagerIDPattern.MatchString(c.packagerID) || !resourceIDPattern.MatchString(c.resourceRef) ||
 		!validSourceVideoSize(c.width, c.height) || c.fps < 1 || c.fps > 60 || c.startSample < 0 || c.startSample > sourceAudioMixMaxTime-48000 || c.authorized == nil || c.revoked == nil ||
 		c.profile.MaximumQueueFrames < 2 || c.profile.MaximumQueueFrames > 120 || c.maxRawBytes < min(16, c.profile.MaximumQueueFrames)*3840+min(8, c.profile.MaximumQueueFrames)*c.width*c.height*4 || c.maxRawBytes > 128*1024*1024 || c.maxOutputBytes < 1 || c.maxOutputBytes > 128*1024*1024 ||
 		c.profile.ProfileID != "h264-aac-720p-v1" || c.profile.KeyframeIntervalSeconds < 1 || c.profile.KeyframeIntervalSeconds > 10 ||
@@ -48,7 +49,7 @@ func validSourceEncoderConfig(c sourceProgramEncoderConfig) bool {
 	seen := map[string]bool{}
 	for _, r := range c.profile.Renditions {
 		if !oneOf(r.ID, "low", "medium", "high") || seen[r.ID] || !validSourceVideoSize(r.Width, r.Height) || r.Width < 160 || r.Height < 90 || r.FramesPerSecond < 1 || r.FramesPerSecond > 60 ||
-			r.VideoBitsPerSecond < 100000 || r.VideoBitsPerSecond > 10000000 || r.AudioBitsPerSecond < 16000 || r.AudioBitsPerSecond > 320000 {
+			r.VideoBitsPerSecond < 100000 || r.VideoBitsPerSecond > 10000000 || r.AudioBitsPerSecond < 16000 || r.AudioBitsPerSecond > 320000 || c.audioChannels == 1 && r.AudioBitsPerSecond > 192000 {
 			return false
 		}
 		seen[r.ID] = true
@@ -78,8 +79,8 @@ func sourceProgramEncoderArguments(c sourceProgramEncoderConfig, output, videoUR
 		audioOutputs[i] = fmt.Sprintf("[a%dout]", i)
 	}
 	filters = append(filters, fmt.Sprintf("[1:a]asplit=%d%s", len(audioOutputs), strings.Join(audioOutputs, "")))
-	outputs := ffmpegTranscodeOutputForMappedFilterGraph(&packagerAssignment{Profile: c.profile}, output, selectedVideoEncoder(c.profile), filters,
-		func(index int) string { return audioOutputs[index] })
+	outputs := ffmpegTranscodeOutputForAudioChannels(&packagerAssignment{Profile: c.profile}, output, selectedVideoEncoder(c.profile), filters,
+		func(index int) string { return audioOutputs[index] }, c.outputAudioChannels())
 	if c.hlsEpoch > 0 {
 		target := outputs[len(outputs)-1]
 		outputs = append(outputs[:len(outputs)-1], "-start_number", fmt.Sprint(c.hlsEpoch.start()), target)

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { normalizeNativeSourceAudioOutput } from "./native-source-audio-output.js";
 
 const ID = /^(?:pkr_[A-Za-z0-9_-]{16,64}|[a-z0-9][a-z0-9-]{0,31})$/;
 const TENANT = /^tn_[A-Za-z0-9_-]{16,64}$/;
@@ -81,11 +82,16 @@ export function supportsNativeSourceSignalV1(capability) {
 
 export function supportsNativeSourceAudioV1(capability) {
   return capability?.capabilityVersion === 3 && capability.sourcePrograms === true && capability.sourceAudioControlVersion === 1
-    || supportsNativeSourceAudioV2(capability);
+    || supportsNativeSourceAudioV2(capability) || supportsNativeSourceAudioV3(capability);
 }
 
 export function supportsNativeSourceAudioV2(capability) {
   return capability?.capabilityVersion === 4 && capability.sourcePrograms === true && capability.sourceAudioControlVersion === 2;
+}
+
+export function supportsNativeSourceAudioV3(capability) {
+  return capability?.capabilityVersion === 5 && capability.sourcePrograms === true
+    && capability.sourceAudioControlVersion === 3 && capability.sourceAudioEncodingVersion === 1;
 }
 
 // Released protocol generation plus explicit local source-program opt-in.
@@ -102,12 +108,14 @@ export function normalizeNativePackagerCapability(value, now = Date.now()) {
     "uploadClass", "energyClass", "health", "maximumRenditions", "maximumPixelsPerSecond",
     "consentedRoomIds", "observedAt", "expiresAt",
   ]);
-  if ([2, 3, 4].includes(value?.capabilityVersion)) fields.add("sourcePrograms");
-  if ([3, 4].includes(value?.capabilityVersion)) fields.add("sourceAudioControlVersion");
+  if ([2, 3, 4, 5].includes(value?.capabilityVersion)) fields.add("sourcePrograms");
+  if ([3, 4, 5].includes(value?.capabilityVersion)) fields.add("sourceAudioControlVersion");
+  if (value?.capabilityVersion === 5) fields.add("sourceAudioEncodingVersion");
   if (!value || typeof value !== "object" || Array.isArray(value)
     || Object.keys(value).length !== fields.size || Object.keys(value).some((key) => !fields.has(key))
-    || ![1, 2, 3, 4].includes(value.capabilityVersion) || [2, 3, 4].includes(value.capabilityVersion) && typeof value.sourcePrograms !== "boolean"
-    || [3, 4].includes(value.capabilityVersion) && (value.sourcePrograms !== true || value.sourceAudioControlVersion !== value.capabilityVersion - 2)
+    || ![1, 2, 3, 4, 5].includes(value.capabilityVersion) || [2, 3, 4, 5].includes(value.capabilityVersion) && typeof value.sourcePrograms !== "boolean"
+    || [3, 4, 5].includes(value.capabilityVersion) && (value.sourcePrograms !== true || value.sourceAudioControlVersion !== value.capabilityVersion - 2)
+    || value.capabilityVersion === 5 && value.sourceAudioEncodingVersion !== 1
     || !ID.test(value.agentId || "") || !TENANT.test(value.tenantId || "")
     || !SUBJECT.test(value.ownerSubjectRef || "") || !/^dev_[A-Za-z0-9_-]{16,64}$/.test(value.deviceRef || "")
     || !VERSION.test(value.agentVersion || "") || !VERSION.test(value.ffmpegVersion || "")
@@ -131,7 +139,7 @@ export function normalizeNativePackagerCapability(value, now = Date.now()) {
     || value.observedAt > now + 5_000 || value.expiresAt <= now || value.expiresAt > value.observedAt + 60_000) {
     fail("invalid_native_packager_capability");
   }
-  if ([2, 3, 4].includes(value.capabilityVersion) && (!/^pkr_[A-Za-z0-9_-]{16,64}$/.test(value.agentId)
+  if ([2, 3, 4, 5].includes(value.capabilityVersion) && (!/^pkr_[A-Za-z0-9_-]{16,64}$/.test(value.agentId)
     || value.observedAt < 1 || value.expiresAt < 1
     || !value.videoEncoders.length || new Set(value.videoEncoders).size !== value.videoEncoders.length
     || !value.audioEncoders.length || new Set(value.audioEncoders).size !== value.audioEncoders.length)) {
@@ -164,15 +172,22 @@ export function admitNativePackager(capabilityValue, request, now = Date.now()) 
     "requestVersion", "trigger", "tenantId", "ownerSubjectRef", "roomId", "programId", "programEpoch",
     "resourceRef", "requestedRenditions", "allowHardwareAcceleration",
   ]);
+  if (request?.requestVersion === 2) fields.add("audioOutput");
   if (!request || typeof request !== "object" || Array.isArray(request)
     || Object.keys(request).length !== fields.size || Object.keys(request).some((key) => !fields.has(key))
-    || request.requestVersion !== 1 || request.trigger !== "user-action"
+    || ![1, 2].includes(request.requestVersion) || request.trigger !== "user-action"
     || request.tenantId !== capability.tenantId || request.ownerSubjectRef !== capability.ownerSubjectRef
     || !ROOM.test(request.roomId || "") || !PROGRAM.test(request.programId || "")
     || !Number.isSafeInteger(request.programEpoch) || request.programEpoch < 1
     || !RESOURCE.test(request.resourceRef || "")
     || !Number.isSafeInteger(request.requestedRenditions) || request.requestedRenditions < 1 || request.requestedRenditions > 3
     || typeof request.allowHardwareAcceleration !== "boolean") fail("invalid_native_packager_request");
+  let audioOutput;
+  if (request.requestVersion === 2) {
+    try { audioOutput = normalizeNativeSourceAudioOutput(request.audioOutput); }
+    catch { fail("invalid_native_packager_request"); }
+    if (!supportsNativeSourceAudioV3(capability)) fail("native_source_audio_output_unsupported", 409);
+  }
   if (!capability.consentedRoomIds.includes(request.roomId)) fail("native_packager_room_consent_required", 403);
   if (capability.health !== "healthy" || capability.energyClass === "battery") fail("native_packager_unavailable", 503);
   if (!capability.audioEncoders.includes("aac") || !capability.videoEncoders.includes("libx264")) {
@@ -183,13 +198,14 @@ export function admitNativePackager(capabilityValue, request, now = Date.now()) 
   const count = Math.min(request.requestedRenditions, capability.maximumRenditions, uploadLimit, cpuLimit);
   const selected = RENDITIONS.slice(0, count).filter((rendition) => (
     rendition.width * rendition.height * rendition.framesPerSecond <= capability.maximumPixelsPerSecond
-  ));
+  )).map(rendition => audioOutput ? Object.freeze({ ...rendition, audioBitsPerSecond: audioOutput.targetBitsPerSecond,
+    audioChannels: audioOutput.channels }) : rendition);
   if (selected.length < 1) fail("native_packager_capacity_rejected", 503);
   const hardwareEncoder = request.allowHardwareAcceleration && supportsNativeAssignmentV2(capability.agentVersion)
     ? capability.videoEncoders.find((encoder) => encoder !== "libx264") || null
     : null;
   return Object.freeze({
-    admissionVersion: 1,
+    admissionVersion: audioOutput ? 2 : 1,
     agentId: capability.agentId,
     roomId: request.roomId,
     programId: request.programId,
@@ -202,11 +218,12 @@ export function admitNativePackager(capabilityValue, request, now = Date.now()) 
     renditions: Object.freeze(selected),
     maximumQueueFrames: 60,
     keyframeIntervalSeconds: 2,
+    ...(audioOutput ? { audioOutput } : {}),
   });
 }
 
 export function nativePackagerFfmpegArguments(admission, outputRoot) {
-  if (!admission || admission.admissionVersion !== 1 || !Array.isArray(admission.renditions)
+  if (!admission || ![1, 2].includes(admission.admissionVersion) || !Array.isArray(admission.renditions)
     || admission.renditions.length < 1 || admission.renditions.length > 3
     || typeof outputRoot !== "string" || !path.isAbsolute(outputRoot)) fail("invalid_native_packager_pipeline");
   const output = path.resolve(outputRoot, admission.resourceRef);

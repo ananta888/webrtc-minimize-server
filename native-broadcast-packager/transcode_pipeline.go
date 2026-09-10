@@ -156,6 +156,10 @@ func ffmpegTranscodeOutputForFilterGraph(assignment *packagerAssignment, output,
 // Input mapping is selected by the format-specific builder; legacy compressed
 // ingress keeps its original direct audio map byte-for-byte.
 func ffmpegTranscodeOutputForMappedFilterGraph(assignment *packagerAssignment, output, encoder string, filters []string, audioMap func(int) string) []string {
+	return ffmpegTranscodeOutputForAudioChannels(assignment, output, encoder, filters, audioMap, 2)
+}
+
+func ffmpegTranscodeOutputForAudioChannels(assignment *packagerAssignment, output, encoder string, filters []string, audioMap func(int) string, channels int) []string {
 	args := []string{"-filter_complex", strings.Join(filters, ";")}
 	variants := make([]string, 0, len(assignment.Profile.Renditions))
 	for index, rendition := range assignment.Profile.Renditions {
@@ -177,7 +181,7 @@ func ffmpegTranscodeOutputForMappedFilterGraph(assignment *packagerAssignment, o
 			fmt.Sprintf("-c:a:%d", index), "aac",
 			fmt.Sprintf("-b:a:%d", index), fmt.Sprint(rendition.AudioBitsPerSecond),
 			fmt.Sprintf("-ar:a:%d", index), "48000",
-			fmt.Sprintf("-ac:a:%d", index), "2",
+			fmt.Sprintf("-ac:a:%d", index), fmt.Sprint(channels),
 		)
 		variants = append(variants, fmt.Sprintf("v:%d,a:%d,name:%s", index, index, rendition.ID))
 	}

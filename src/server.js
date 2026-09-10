@@ -73,6 +73,7 @@ import {
 } from "./native-packager-assignment.js";
 import { handoffNativePackager } from "./native-packager-handoff.js";
 import { NativePackagerStandbyError } from "./native-packager-standby.js";
+import { NativePackagerPolicyError } from "./native-packager-policy.js";
 import { NativeSourceSceneBroker, NativeSourceSceneError } from "./native-source-scene-broker.js";
 import { directNativeSourceScene } from "./native-source-scene-director.js";
 import { NATIVE_SCENE_REPLIES } from "./native-source-scene-wire.js";
@@ -375,6 +376,7 @@ function errorStatus(error) {
   if (error instanceof PairWorkspaceError) return error.status;
   if (error instanceof MediaAgentEnrollmentError || error instanceof MediaAgentInstallerError) return error.status;
   if (error instanceof NativePackagerEnrollmentError || error instanceof NativePackagerControlError
+    || error instanceof NativePackagerPolicyError
     || error instanceof NativePackagerAssignmentError
     || error instanceof NativePackagerStandbyError
     || error instanceof NativePackagerInstallerError) return error.status;
@@ -918,6 +920,7 @@ function createHttpHandler(config, registry, services) {
         assertAllowedKeys(input, new Set([
           "requestVersion", "trigger", "packagerId", sourceProgram ? "inputMode" : "sourceIds", "requestedRenditions",
           "allowHardwareAcceleration", "deviceFingerprint",
+          ...(sourceProgram && input.requestVersion === 2 ? ["audioOutput"] : []),
         ]));
         if (!/^[A-Za-z0-9_-]{43}$/.test(input.deviceFingerprint || "")) {
           throw new BroadcastRuntimeError("invalid_broadcast_device_fingerprint");
@@ -935,6 +938,7 @@ function createHttpHandler(config, registry, services) {
             trigger: input.trigger,
             packagerId: input.packagerId,
             ...(sourceProgram ? { inputMode: input.inputMode } : { sourceIds: input.sourceIds }),
+            ...(sourceProgram && input.requestVersion === 2 ? { audioOutput: input.audioOutput } : {}),
             requestedRenditions: input.requestedRenditions,
             allowHardwareAcceleration: input.allowHardwareAcceleration,
           },

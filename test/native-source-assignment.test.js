@@ -8,8 +8,9 @@ const NOW = 1_800_000_000_000, OWNER = "synthetic-owner", PEER = "0123456789abcd
 const report = JSON.parse(fs.readFileSync(new URL("./fixtures/native-source-capability.v2.json", import.meta.url))).capability;
 const schema = JSON.parse(fs.readFileSync(new URL("../contracts/native-packager/assignment-prepare.v4.schema.json", import.meta.url)));
 const validate = new Ajv({ strict: true }).compile(schema);
-function setup() {
+function setup(audioOutput) {
   const state = { capability: structuredClone(report), generation: Object.freeze({}), epoch: 4, member: true, ice: [] };
+  if (audioOutput) Object.assign(state.capability, { capabilityVersion: 5, sourceAudioControlVersion: 3, sourceAudioEncodingVersion: 1 });
   const packager = report.agentId;
   const candidate = (owner, id) => {
     assert.equal(owner, OWNER); assert.equal(id, packager);
@@ -21,7 +22,7 @@ function setup() {
       assert.equal(owner, OWNER); assert.equal(room, report.consentedRoomIds[0]); assert.equal(peer, PEER);
       return state.member ? state.epoch : 0;
     }, iceServersForPackager: () => state.ice, idFactory: () => "asn_aaaaaaaaaaaaaaaa" });
-  const request = { requestVersion: 1, trigger: "user-action", tenantId: report.tenantId,
+  const request = { requestVersion: audioOutput ? 2 : 1, ...(audioOutput ? { audioOutput } : {}), trigger: "user-action", tenantId: report.tenantId,
     ownerSubjectRef: report.ownerSubjectRef, roomId: report.consentedRoomIds[0], programId: "prg_aaaaaaaaaaaaaaaa",
     programEpoch: 2, resourceRef: "res_aaaaaaaaaaaaaaaa", requestedRenditions: 1, allowHardwareAcceleration: false };
   const admission = registry.admit(OWNER, packager, request, NOW);
@@ -55,6 +56,37 @@ test("explicit source program emits a closed v4 assignment without legacy publis
   assert.equal(f.registry.sourceContext(f.packager, NOW).leaseId, f.lease.leaseId);
   assert.equal(f.registry.renew(f.packager, NOW + 1000).command.expiresAt, NOW + 61000);
   assert.throws(f.prepare, /native_packager_assignment_conflict/);
+});
+
+test("explicit output emits immutable v5, forbids legacy signaling and fences capability downgrade", () => {
+  const selected = { codec: "aac", sampleRate: 48000, channels: 1, targetBitsPerSecond: 48000 };
+  const f = setup(selected), result = f.running();
+  const v5 = new Ajv({ strict: true }).compile(JSON.parse(fs.readFileSync(new URL("../contracts/native-packager/assignment-prepare.v5.schema.json", import.meta.url))));
+  assert.equal(v5(result.command), true, JSON.stringify(v5.errors));
+  assert.equal(validate(result.command), false);
+  assert.deepEqual(result.command.audioOutput, selected);
+  assert.ok(Object.isFrozen(result.command.audioOutput));
+  selected.channels = 2;
+  assert.equal(result.command.audioOutput.channels, 1, "caller cannot mutate the owned selection");
+  assert.equal(result.snapshot.inputMode, "trusted-sframe-v1");
+  const signal = { ...result.snapshot, packagerId: f.packager };
+  assert.throws(() => f.registry.authorizeBrowserSignal({ id: PEER, principal: OWNER, roomId: f.request.roomId }, signal, NOW), /stale_native_packager_signal/);
+  assert.throws(() => f.registry.authorizePackagerSignal(f.packager, signal, NOW), /stale_native_packager_signal/);
+  assert.equal(f.registry.sourceContext(f.packager, NOW).leaseId, f.lease.leaseId);
+  f.state.capability.capabilityVersion = 4;
+  f.state.capability.sourceAudioControlVersion = 2;
+  delete f.state.capability.sourceAudioEncodingVersion;
+  assert.equal(f.registry.sourceContext(f.packager, NOW), null);
+  assert.throws(() => f.registry.renew(f.packager, NOW + 1000));
+});
+
+test("v5 cannot enter legacy prepare or survive output mutation between admission and prepare", () => {
+  const selected = { codec: "aac", sampleRate: 48000, channels: 2, targetBitsPerSecond: 192000 };
+  const f = setup(selected);
+  assert.throws(() => f.registry.prepare(OWNER, f.packager, f.admission, f.lease, PEER, NOW), /invalid_native_packager_assignment/);
+  const changed = structuredClone(f.admission); changed.audioOutput.targetBitsPerSecond = 96000;
+  assert.throws(() => f.registry.prepareSourceProgram(OWNER, f.packager, changed, f.lease, PEER, NOW), /native_packager_admission_mismatch/);
+  assert.equal(f.registry.activeForPackager(f.packager), null);
 });
 
 test("capability opt-in never upgrades an explicit legacy publisher request", () => {

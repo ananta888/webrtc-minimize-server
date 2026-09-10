@@ -51,7 +51,7 @@ func (p *sourceProgramGeneration) AudioLevels() (sourceProgramAudioState, error)
 func (p *sourceProgramGeneration) audioLevels(version int) (sourceProgramAudioState, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if !p.permitted() {
+	if !p.permitted() || version < 1 || version > 3 || version == 2 && p.cfg.encoder.outputAudioChannels() != 2 {
 		return sourceProgramAudioState{}, errors.New("source program audio unavailable")
 	}
 	levels, err := p.audio.Levels()
@@ -59,10 +59,10 @@ func (p *sourceProgramGeneration) audioLevels(version int) (sourceProgramAudioSt
 		return sourceProgramAudioState{}, err
 	}
 	state := sourceProgramAudioState{Revision: levels.revision, Sources: []sourceProgramAudioSource{}}
-	if version == 2 {
+	if version == 2 || version == 3 {
 		q15 := func(v float64) int { return max(0, min(32768, int(math.Round(v*32768)))) }
 		state.Mix = &sourceProgramAudioMix{levels.strategy, q15(levels.dynamics.microphone), q15(levels.dynamics.screen), q15(levels.dynamics.limiter), levels.dynamics.peak}
-		state.Encoding = &sourceProgramAudioEncoding{Codec: "aac", SampleRate: 48000, Channels: 2, Renditions: []sourceProgramAudioRendition{}}
+		state.Encoding = &sourceProgramAudioEncoding{Codec: "aac", SampleRate: 48000, Channels: p.cfg.encoder.outputAudioChannels(), Renditions: []sourceProgramAudioRendition{}}
 		for _, rendition := range p.cfg.encoder.profile.Renditions {
 			state.Encoding.Renditions = append(state.Encoding.Renditions, sourceProgramAudioRendition{rendition.ID, rendition.AudioBitsPerSecond})
 		}

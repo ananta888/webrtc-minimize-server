@@ -11,6 +11,7 @@ import { parseBroadcastDirectoryEntry } from "./broadcast-directory.service";
 import { NativePackagerHandoffControl, parseNativeHandoffControl } from "./native-packager-handoff-control";
 import { NativeSceneResult, NativeSceneSelection, parseNativeSceneResult } from "./native-source-scene-contract";
 import type { NativeAudioResult, NativeAudioSelection } from "./native-source-audio-contract";
+import type { NativeSourceAudioOutput } from "./native-source-audio-output";
 import {
   WhipAuthorization,
   WhipAuthorizationPort,
@@ -231,7 +232,7 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
     return parseNativeSceneResult(value, program);
   }
 
-  async nativeSourceAudio(program: BroadcastProgramRef, selection: NativeAudioSelection | null, signal: AbortSignal, version: 1 | 2 = 1): Promise<NativeAudioResult> {
+  async nativeSourceAudio(program: BroadcastProgramRef, selection: NativeAudioSelection | null, signal: AbortSignal, version: 1 | 2 | 3 = 1): Promise<NativeAudioResult> {
     signal.throwIfAborted();
     const { requestNativeSourceAudio } = await import("./native-source-audio-http");
     signal.throwIfAborted();
@@ -241,22 +242,14 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
     }, version);
   }
 
-  /** Explicit v4 entry: no local media, legacy ingress or source consent is implied. */
+  /** Explicit source entry: no local media, legacy ingress or source consent is implied. */
   async prepareNativeSourceStart(program: BroadcastProgramRef, packagerId: string, requestedRenditions: number,
-    allowHardwareAcceleration: boolean, trigger: unknown, signal: AbortSignal,
+    allowHardwareAcceleration: boolean, trigger: unknown, signal: AbortSignal, audioOutput?: NativeSourceAudioOutput,
   ): Promise<Readonly<{ program: BroadcastProgramRef; assignment: PreparedNativePackagerStart }>> {
     signal.throwIfAborted();
-    const fingerprint = this.device.fingerprint();
-    if (trigger !== "user-action" || !PROGRAM.test(program.programId) || !PACKAGER.test(packagerId)
-      || typeof fingerprint !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(fingerprint)
-      || !Number.isSafeInteger(requestedRenditions) || requestedRenditions < 1 || requestedRenditions > 3
-      || typeof allowHardwareAcceleration !== "boolean") throw new BroadcastBrowserPortError("invalid_native_source_program_start");
-    const response = await fetch(`/api/broadcasts/${encodeURIComponent(program.programId)}/native-source-programs`, {
-      method: "POST", headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
-      credentials: "same-origin", redirect: "error", signal,
-      body: JSON.stringify({ requestVersion: 1, trigger, inputMode: "trusted-sframe-v1", packagerId,
-        requestedRenditions, allowHardwareAcceleration, deviceFingerprint: fingerprint }),
-    });
+    const { requestNativeSourceStart } = await import("./native-source-program-http");
+    const response = await requestNativeSourceStart(program, packagerId, requestedRenditions, allowHardwareAcceleration,
+      trigger, signal, audioOutput, { fingerprint: () => this.device.fingerprint(), authorizationHeader: () => this.auth.authorizationHeader() });
     if (!response.ok) throw requestError(response, "native_source_program_start_failed");
     const prepared = await this.acceptNativeAssignment(response, program, packagerId, signal, undefined, 16384, "trusted-sframe-v1");
     return Object.freeze({ program: prepared.program, assignment: this.takePreparedNative(prepared.program) });

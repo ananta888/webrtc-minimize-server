@@ -27,7 +27,7 @@ test("native audio requests reject unknown/null fields, duplicate leases and inv
       assert.throws(() => normalize(absent, now));
       assert.throws(() => normalize({ ...value, [key]: null }, now));
     }
-    for (const extra of [{ extra: true }, { version: 3 }, { commandId: "scn_aaaaaaaaaaaaaaaa" },
+    for (const extra of [{ extra: true }, { version: 4 }, { commandId: "scn_aaaaaaaaaaaaaaaa" },
       { programEpoch: 0 }, { fencingRevision: 1.5 }, { expiresAt: now + 4001 }]) assert.throws(() => normalize({ ...value, ...extra }, now));
     for (const time of [0, NaN, Infinity, now - 1001, value.expiresAt]) assert.throws(() => normalize(value, time));
   }

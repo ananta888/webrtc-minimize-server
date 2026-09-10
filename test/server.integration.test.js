@@ -7,7 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import Ajv2020 from "ajv/dist/2020.js";
 import { exerciseNativeSceneHttp } from "./helpers/native-scene-http.mjs";
-import { exerciseNativeAudioHttp } from "./helpers/native-audio-http.mjs";
+import { exerciseNativeAudioHttp, exerciseNativeAudioOutputHttp } from "./helpers/native-audio-http.mjs";
 import { WebSocket } from "ws";
 
 import { createAppServer } from "../src/server.js";
@@ -1803,7 +1803,9 @@ test("authorized sessions keep Edge-TURN credentials in the second ICE tier", as
   assert.equal(JSON.stringify(authorization.body).includes("0123456789abcdef0123456789abcdef"), false);
 });
 
-for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "source-program"]) test(variant === "source-program"
+for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "source-program", "source-program-audio"]) test(variant === "source-program-audio"
+  ? "native source program HTTP v5 selects mono output and fences v3 control across capability loss"
+  : variant === "source-program"
   ? "native source program HTTP start emits a membership-bound v4 slate assignment without legacy ingress"
   : variant === "reject"
   ? "native output rejected by program authority is never advertised ready to the publisher"
@@ -1811,7 +1813,9 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "sou
   : variant === "handoff" ? "two authenticated native packagers hand off one program only after the old stop ACK"
   : "native packager assignment is owner-, room-, device- and fence-bound end to end", async (context) => {
   const rejectOutput = variant === "reject";
-  const sourceProgram = variant === "source-program";
+  const sourceProgram = variant.startsWith("source-program");
+  const audioOutput = variant === "source-program-audio"
+    ? { codec: "aac", sampleRate: 48000, channels: 1, targetBitsPerSecond: 48000 } : null;
   const issuer = "https://identity.test/realms/ananta";
   const identity = { issuer, subject: "owner", displayName: "Owner" };
   const ownerPrincipal = `${issuer}|owner`;
@@ -1974,6 +1978,17 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "sou
     assert.equal(app.nativePackagerAssignments.activeForProgram(program.control.programId), null);
     agent.socket.send(JSON.stringify({ version: 1, type: "capability", capability: { ...capability, sourcePrograms: true } }));
     await agent.next(message => message.type === "capability-accepted");
+    if (audioOutput) {
+      assert.equal((await post({ ...start, requestVersion: 2, audioOutput })).status, 409, "output requires explicit capability before allocating writer");
+      assert.equal(app.nativePackagerAssignments.activeForProgram(program.control.programId), null);
+      agent.socket.send(JSON.stringify({ version: 1, type: "capability", capability: { ...capability,
+        capabilityVersion: 5, sourcePrograms: true, sourceAudioControlVersion: 3, sourceAudioEncodingVersion: 1 } }));
+      await agent.next(message => message.type === "capability-accepted");
+      for (const bad of [null, { ...audioOutput, channels: 3 }, { ...audioOutput, targetBitsPerSecond: 192001 }, { ...audioOutput, extra: true }]) {
+        assert.equal((await post({ ...start, requestVersion: 2, audioOutput: bad })).status, 400);
+        assert.equal(app.nativePackagerAssignments.activeForProgram(program.control.programId), null);
+      }
+    }
   }
   const assignmentResponse = await fetch(
     `${app.httpUrl}/api/broadcasts/${program.control.programId}/${sourceProgram ? "native-source-programs" : "native-assignments"}`,
@@ -1981,7 +1996,8 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "sou
       method: "POST",
       headers: { "content-type": "application/json", origin: publicOrigin, authorization: "Bearer owner-token" },
       body: JSON.stringify({
-        requestVersion: 1,
+        requestVersion: audioOutput ? 2 : 1,
+        ...(audioOutput ? { audioOutput } : {}),
         trigger: "user-action",
         packagerId,
         ...(sourceProgram ? { inputMode: "trusted-sframe-v1" } : { sourceIds: ["src_0123456789abcdef"] }),
@@ -1998,14 +2014,14 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "sou
   assert.equal(prepare.roomId, room.roomId);
   assert.equal(prepare.programId, program.control.programId);
   assert.equal(prepare.publisherPeerId, sourceProgram ? undefined : welcome.peerId);
-  assert.equal(prepare.version, sourceProgram ? 4 : 3);
+  assert.equal(prepare.version, audioOutput ? 5 : sourceProgram ? 4 : 3);
   assert.deepEqual(prepare.iceServers, [{ urls: ["stun:stun.test:3478"] }]);
   assert.equal(Object.hasOwn(prepare, "accessToken"), false);
   assert.equal(Object.hasOwn(prepare, "sdp"), false);
 
   if (sourceProgram) {
     const validate = new Ajv2020({ strict: true }).compile(JSON.parse(fs.readFileSync(
-      new URL("../contracts/native-packager/assignment-prepare.v4.schema.json", import.meta.url), "utf8")));
+      new URL(`../contracts/native-packager/assignment-prepare.v${audioOutput ? 5 : 4}.schema.json`, import.meta.url), "utf8")));
     assert.equal(validate(prepare), true, JSON.stringify(validate.errors));
     assert.equal(prepare.inputMode, "trusted-sframe-v1");
     assert.equal(prepare.sourceContext.roomEpoch, app.membershipEpoch(room.roomId));
@@ -2019,10 +2035,17 @@ for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "sou
       await browser.next(message => message.type === "native-packager-status" && message.state === state);
     }
     // Legacy ingress cannot be activated for this source-program assignment.
+    if (audioOutput) {
+      assert.deepEqual(prepare.audioOutput, audioOutput);
+      assert.ok(prepare.profile.renditions.every(r => r.audioBitsPerSecond === audioOutput.targetBitsPerSecond));
+      await exerciseNativeAudioOutputHttp({ app, agent, identity, ownerPrincipal, publicOrigin, packagerId,
+        programId: program.control.programId, fingerprint, nativePackagers, broadcastRuntime, audioOutput });
+    } else {
     await exerciseNativeSceneHttp({ app, agent, identity, ownerPrincipal, publicOrigin, packagerId,
       programId: program.control.programId, fingerprint, nativePackagers, broadcastRuntime });
     await exerciseNativeAudioHttp({ app, agent, identity, ownerPrincipal, publicOrigin, packagerId,
       programId: program.control.programId, fingerprint, nativePackagers, broadcastRuntime });
+    }
     agent.socket.send(JSON.stringify({ version: 1, type: "assignment-signal", assignmentId: prepare.assignmentId,
       programEpoch: prepare.programEpoch, fencingRevision: prepare.fencingRevision,
       description: { type: "answer", sdp: "v=0\r\n" } }));

@@ -49,7 +49,7 @@ func localSourceProgramConfig(c config, a sourceProgramAssignment, now time.Time
 	// The owner supplies the trusted scope, lifecycle and local executable/path.
 	// Renditions are neither rewritten nor downgraded when admission fails.
 	return sourceProgramGenerationConfig{
-		encoder:       sourceProgramEncoderConfig{width: w, height: h, fps: fps, maxRawBytes: raw, maxOutputBytes: b.outputBytes},
+		encoder:       sourceProgramEncoderConfig{width: w, height: h, fps: fps, audioChannels: a.outputAudioChannels(), maxRawBytes: raw, maxOutputBytes: b.outputBytes},
 		maxPublishers: 20, maxSources: 80, maxDecoders: b.decoders, maxDecodeBytes: b.decodeBytes,
 		maxPCMBytes: b.pcmBytes, maxRGBABytes: b.rgbaBytes,
 		sourceWidth: min(w, b.width), sourceHeight: min(h, b.height), delaySamples: 14400,

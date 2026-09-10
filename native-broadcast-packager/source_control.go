@@ -60,20 +60,20 @@ func decodePackagerControlMessage(raw []byte, now time.Time, sources bool) (serv
 		}
 		return serverMessage{Version: 1, Type: header.Type, SourceScene: append(json.RawMessage(nil), raw...)}, nil
 	}
-	if header.Version == 4 && header.Type == "assignment-prepare" {
+	if (header.Version == 4 || header.Version == 5) && header.Type == "assignment-prepare" {
 		if !sources {
 			return serverMessage{}, errors.New("source programs disabled")
 		}
 		if _, err := parseSourceProgramAssignment(raw, now); err != nil {
 			return serverMessage{}, err
 		}
-		return serverMessage{Version: 4, Type: "assignment-prepare", SourceProgram: append(json.RawMessage(nil), raw...)}, nil
+		return serverMessage{Version: header.Version, Type: "assignment-prepare", SourceProgram: append(json.RawMessage(nil), raw...)}, nil
 	}
 	return decodeServerMessage(raw)
 }
 
 func (c *client) prepareControlAssignment(m serverMessage, now time.Time) error {
-	if m.Version != 4 {
+	if m.Version != 4 && m.Version != 5 {
 		return c.prepareAssignment(m, now)
 	}
 	if !c.cfg.sourcePrograms || !c.sessionAuthenticated.Load() || len(m.SourceProgram) == 0 {

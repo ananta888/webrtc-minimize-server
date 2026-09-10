@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/source-audio-output.v1.schema.json",
+  "title": "Explicit AAC output for a new native program generation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "codec",
+    "sampleRate",
+    "channels",
+    "targetBitsPerSecond"
+  ],
+  "properties": {
+    "codec": {
+      "const": "aac"
+    },
+    "sampleRate": {
+      "const": 48000
+    },
+    "channels": {
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "targetBitsPerSecond": {
+      "type": "integer",
+      "minimum": 16000,
+      "maximum": 320000
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "channels": {
+            "const": 1
+          }
+        },
+        "required": [
+          "channels"
+        ]
+      },
+      "then": {
+        "properties": {
+          "targetBitsPerSecond": {
+            "type": "integer",
+            "maximum": 192000
+          }
+        }
+      }
+    }
+  ]
+}

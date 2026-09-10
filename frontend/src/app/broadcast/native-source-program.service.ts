@@ -8,6 +8,7 @@ import { SignalingService } from "../webrtc/signaling.service";
 import { BroadcastControlPlaneService } from "./broadcast-control-plane.service";
 import { NativePackagerOnboardingService } from "./native-packager-onboarding.service";
 import { NativeSourceProgramController, NativeSourceProgramView } from "./native-source-program-controller";
+import { supportsSourceAudioOutput } from "./native-source-audio-capability";
 
 /** Root lifetime, but exact human room/session ownership; never owns source media. */
 @Injectable({ providedIn: "root" })
@@ -15,7 +16,7 @@ export class NativeSourceProgramService implements OnDestroy {
   readonly view = signal<NativeSourceProgramView>({ phase: "idle", active: false, program: null, error: "" });
   readonly candidates = computed(() => this.packagers.eligible(this.room.roomId())
     .filter(p => (p.capability?.capabilityVersion === 2 || [3, 4].includes(p.capability?.capabilityVersion ?? 0)
-      && p.capability?.sourceAudioControlVersion === p.capability!.capabilityVersion! - 2)
+      && p.capability?.sourceAudioControlVersion === p.capability!.capabilityVersion! - 2 || supportsSourceAudioOutput(p.capability))
       && p.capability?.sourcePrograms === true
       && Number.isSafeInteger(p.capability.maximumRenditions) && p.capability.maximumRenditions >= 1
       && p.capability.maximumRenditions <= 3));
@@ -29,13 +30,14 @@ export class NativeSourceProgramService implements OnDestroy {
     private readonly packagers: NativePackagerOnboardingService, private readonly control: BroadcastControlPlaneService) {
     this.controller = new NativeSourceProgramController({
       context: () => this.context(),
-      eligible: (id, count) => this.candidates().some(p => p.id === id && p.capability!.maximumRenditions >= count),
+      eligible: (id, count, output) => this.candidates().some(p => p.id === id && p.capability!.maximumRenditions >= count
+        && (!output || supportsSourceAudioOutput(p.capability))),
       create: (request, abort) => {
         if (request.roomId !== this.room.roomId()) throw new Error("native_source_program_room_changed");
         return control.createProgram(request.roomId, request.title, request.visibility, abort);
       },
       prepare: (program, request, abort) => control.prepareNativeSourceStart(program, request.packagerId,
-        request.requestedRenditions, request.allowHardwareAcceleration, "user-action", abort),
+        request.requestedRenditions, request.allowHardwareAcceleration, "user-action", abort, request.audioOutput),
       observe: (programId, abort) => control.nativeHandoffControl(programId, abort),
       stop: async (program, assignment) => {
         // Revoke delivery immediately, and independently require real native stop ACK.
@@ -66,11 +68,11 @@ export class NativeSourceProgramService implements OnDestroy {
     const key = this.context(), program = this.requestProgram();
     return key && program ? { key, program } : null;
   }
-  audioContext(): { key: string; program: NonNullable<NativeSourceProgramView["program"]>; audioControlVersion: 1 | 2 } | null {
+  audioContext(): { key: string; program: NonNullable<NativeSourceProgramView["program"]>; audioControlVersion: 1 | 2 | 3 } | null {
     const context = this.sceneContext(), id = this.controller.controlledPackagerId();
     const capability = this.candidates().find(p => p.id === id)?.capability;
     const version = capability?.sourceAudioControlVersion;
-    return context && (version === 1 || version === 2) && capability?.capabilityVersion === version + 2
+    return context && (version === 1 || version === 2 || version === 3 && supportsSourceAudioOutput(capability)) && capability?.capabilityVersion === version + 2
       ? { ...context, key: JSON.stringify([context.key, id]), audioControlVersion: version } : null;
   }
   ngOnDestroy(): void { clearInterval(this.timer); this.controller.destroy(); }

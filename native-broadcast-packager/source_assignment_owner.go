@@ -92,6 +92,7 @@ func (c *client) prepareSourceProgramAssignment(raw []byte, now time.Time, local
 	local.scope, local.now = scope, time.Now
 	local.encoder.ffmpegPath, local.encoder.outputRoot = c.cfg.ffmpegPath, c.cfg.outputRoot
 	local.encoder.packagerID, local.encoder.resourceRef, local.encoder.profile = c.cfg.packagerID, r.ResourceRef, r.Profile
+	local.encoder.audioChannels = r.outputAudioChannels()
 	local.encoder.authorized, local.encoder.revoked = o.permitted, o.done
 	o.localConfig = local
 	if !validSourceProgramGeneration(local) {

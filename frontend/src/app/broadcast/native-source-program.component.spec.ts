@@ -13,6 +13,42 @@ function fixture() {
 }
 afterEach(() => vi.restoreAllMocks());
 
+function audioFixture() {
+  const f = fixture();
+  f.programs.candidates.set([{ ...f.programs.candidates()[0], capability: Object.assign({ maximumRenditions: 3 },
+    { capabilityVersion: 5, sourcePrograms: true, sourceAudioControlVersion: 3, sourceAudioEncodingVersion: 1 }) }]);
+  f.component.packagerId.set(packagerId); return f;
+}
+it.each([["speech", 1, 48000], ["balanced", 2, 96000], ["music", 2, 192000]] as const)("stages %s without starting media and sends the confirmed choice", async (preset, channels, targetBitsPerSecond) => {
+  const f = audioFixture(); f.component.setAudioPreset(preset);
+  expect(f.programs.controller.start).not.toHaveBeenCalled(); expect(f.component.canStart()).toBe(true);
+  vi.spyOn(window, "confirm").mockReturnValue(true); await f.component.start();
+  expect(f.programs.controller.start).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    audioOutput: { codec: "aac", sampleRate: 48000, channels, targetBitsPerSecond } }), "user-action");
+});
+it("bounds custom choices and never silently downgrades when agent support disappears", async () => {
+  const f = audioFixture(); f.component.setAudioPreset("custom"); f.component.audioChannels.set(1); f.component.audioKbps.set(193);
+  expect(f.component.canStart()).toBe(false); f.component.audioKbps.set(192); expect(f.component.canStart()).toBe(true);
+  f.component.audioChannels.set(2); f.component.audioKbps.set(320); expect(f.component.canStart()).toBe(true);
+  f.component.audioKbps.set(321); expect(f.component.canStart()).toBe(false);
+  f.component.audioKbps.set(96); f.component.setAudioPreset("unsafe"); expect(f.component.audioPreset()).toBe("custom");
+  f.programs.candidates.set([{ id: packagerId, label: "Older", capability: { maximumRenditions: 3 } }]);
+  expect(f.component.audioPreset()).toBe("custom"); expect(f.component.canStart()).toBe(false);
+  await f.component.start(); expect(f.programs.controller.start).not.toHaveBeenCalled();
+  f.component.setAudioPreset("legacy"); expect(f.component.canStart()).toBe(true);
+});
+it.each(["preset", "rate", "channels", "capability"])("rechecks audio %s after confirmation", async change => {
+  const f = audioFixture(); f.component.setAudioPreset("custom");
+  vi.spyOn(window, "confirm").mockImplementation(() => {
+    if (change === "preset") f.component.setAudioPreset("speech");
+    if (change === "rate") f.component.audioKbps.set(48);
+    if (change === "channels") f.component.audioChannels.set(1);
+    if (change === "capability") f.programs.candidates.set([{ id: packagerId, label: "Older", capability: { maximumRenditions: 3 } }]);
+    return true;
+  });
+  await f.component.start(); expect(f.programs.controller.start).not.toHaveBeenCalled();
+});
+
 it("does nothing on open or selection, defaults private/software and confirms only the exact selected start", async () => {
   const f = fixture(), confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
   expect(f.component.canStart()).toBe(false); f.component.packagerId.set(packagerId);

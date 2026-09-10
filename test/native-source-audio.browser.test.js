@@ -49,7 +49,7 @@ for (const strategies of [null, ["balanced", "speech-first"], ["screen-first", "
     const response = await fetch("/api/native-packagers", { headers: {
       authorization: `Bearer ${sessionStorage.getItem("webrtc.oidc.access-token")}` } });
     return (await response.json()).packagers?.some(p => p.id === id && p.online
-      && p.capability?.capabilityVersion === 4 && p.capability.sourceAudioControlVersion === 2);
+      && p.capability?.capabilityVersion === 5 && p.capability.sourceAudioControlVersion === 3 && p.capability.sourceAudioEncodingVersion === 1);
   }, f.packagerId, { timeout: 15_000 });
   assert.equal((await f.request("PUT", `/api/native-packagers/${f.packagerId}/room-consents/${f.roomId}`, { enabled: true })).status, 200);
   // Explicit local setting before program start; setting alone never captures.
@@ -79,7 +79,7 @@ for (const strategies of [null, ["balanced", "speech-first"], ["screen-first", "
   };
   assert.deepEqual((await query()).sources, []);
   assert.equal(await page.evaluate(() => window.__sceneCaptures), 0);
-  assert.equal(await audio.locator("#native-audio-apply").isDisabled(), false, "v2 can set a strategy before inputs arrive");
+  assert.equal(await audio.locator("#native-audio-apply").isDisabled(), false, "negotiated strategy control can apply before inputs arrive");
   const viewer = await openSceneViewer(f);
   await startNativeAudioProbe(viewer);
   const measure = async (mode, baseline = null) => {

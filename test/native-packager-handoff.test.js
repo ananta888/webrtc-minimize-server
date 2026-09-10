@@ -9,7 +9,7 @@ import { broadcastSubjectRef, broadcastTenantRef } from "../src/broadcast-identi
 const FIRST = "pkr_aaaaaaaaaaaaaaaa", SECOND = "pkr_bbbbbbbbbbbbbbbb";
 const NOW = 1_800_000_000_000;
 
-function fixture(sourceProgram = false) {
+function fixture(sourceProgram = false, audioOutput = null) {
   let now = NOW;
   let resourceSequence = 0, forcedResource = null;
   const identity = { issuer: "https://identity.example/realms/ananta", subject: "owner", displayName: "Owner" };
@@ -30,6 +30,8 @@ function fixture(sourceProgram = false) {
     maximumPixelsPerSecond: 1280 * 720 * 30, consentedRoomIds: [member.roomId], observedAt: NOW, expiresAt: NOW + 30_000,
   }]));
   const generations = new Map([FIRST, SECOND].map(id => [id, Object.freeze({})]));
+  if (audioOutput) for (const capability of capabilities.values()) Object.assign(capability,
+    { capabilityVersion: 5, sourceAudioControlVersion: 3, sourceAudioEncodingVersion: 1 });
   const assignments = new NativePackagerAssignmentRegistry({ controlRegistry: {
     candidate(owner, id) {
       assert.equal(owner, ownerPrincipal);
@@ -45,7 +47,7 @@ function fixture(sourceProgram = false) {
   const programId = created.control.programId;
   const sourceIds = ["src_aaaaaaaaaaaaaaaa"];
   const prepareProgram = sourceProgram ? runtime.prepareNativeSourceProgram.bind(runtime) : runtime.prepareNativePublisher.bind(runtime);
-  const prepared = prepareProgram(identity, member, programId, { requestVersion: 1,
+  const prepared = prepareProgram(identity, member, programId, { requestVersion: audioOutput ? 2 : 1, ...(audioOutput ? { audioOutput } : {}),
     trigger: "user-action", packagerId: FIRST, ...(sourceProgram ? { inputMode: "trusted-sframe-v1" } : { sourceIds }),
     requestedRenditions: 2, allowHardwareAcceleration: false,
   }, request => assignments.admit(ownerPrincipal, FIRST, request, now), now);
@@ -77,6 +79,59 @@ function standbyRequest(control, standbyPackagerIds = [SECOND]) {
     expectedProgramEpoch: control.programEpoch, expectedStandbyRevision: control.standbyRevision,
     standbyPackagerIds, requestedRenditions: 2, allowHardwareAcceleration: false };
 }
+
+const monoOutput = Object.freeze({ codec: "aac", sampleRate: 48000, channels: 1, targetBitsPerSecond: 48000 });
+function downgradeAudio(f) {
+  const capability = f.capabilities.get(SECOND);
+  capability.capabilityVersion = 4; capability.sourceAudioControlVersion = 2; delete capability.sourceAudioEncodingVersion;
+}
+
+test("v5 standby and both handoff phases preserve server-owned output selection", async () => {
+  const selected = { ...monoOutput }, f = fixture(true, selected);
+  selected.channels = 2;
+  const control = f.runtime.nativeStandbyControl(f.identity, f.member, f.programId);
+  const requests = [];
+  f.runtime.selectNativeStandbys(f.identity, f.member, f.programId, standbyRequest(control), (id, request) => {
+    requests.push(request); return f.assignments.admit(f.ownerPrincipal, id, request, NOW);
+  }, NOW);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].requestVersion, 2);
+  assert.deepEqual(requests[0].audioOutput, monoOutput);
+  assert.ok(Object.isFrozen(requests[0].audioOutput));
+  const task = handoffNativePackager(f.args);
+  assert.equal(f.sent.length, 1); assert.equal(f.sent[0].message.type, "assignment-stop");
+  f.status(f.first.snapshot, "stopped", "ASSIGNMENT_STOPPED");
+  const next = await task;
+  const command = f.sent[1].message;
+  assert.equal(command.version, 5); assert.deepEqual(command.audioOutput, monoOutput);
+  assert.ok(command.profile.renditions.every(r => r.audioBitsPerSecond === 48000));
+  assert.equal(next.assignment.inputMode, "trusted-sframe-v1");
+  assert.notEqual(command.resourceRef, f.first.command.resourceRef);
+});
+
+test("v5 rejects unsupported standby/handoff before stopping the original writer", async () => {
+  const f = fixture(true, monoOutput); downgradeAudio(f);
+  const control = f.runtime.nativeStandbyControl(f.identity, f.member, f.programId);
+  assert.throws(() => f.runtime.selectNativeStandbys(f.identity, f.member, f.programId, standbyRequest(control),
+    (id, request) => f.assignments.admit(f.ownerPrincipal, id, request, NOW), NOW), /native_source_audio_output_unsupported/);
+  await assert.rejects(handoffNativePackager(f.args), /native_source_audio_output_unsupported/);
+  assert.deepEqual(f.sent, []);
+  assert.equal(f.assignments.activeForPackager(FIRST).state, "running");
+  assert.equal(f.runtime.nativeControl(f.identity, f.member, f.programId).handoffPending, false);
+});
+
+test("v5 rechecks output support after drain and rejects client format mutation", async () => {
+  const f = fixture(true, monoOutput);
+  await assert.rejects(handoffNativePackager({ ...f.args, input: { ...f.input, audioOutput: { ...monoOutput, channels: 2 } } }), /invalid_native_packager_handoff/);
+  assert.deepEqual(f.sent, []);
+  const task = handoffNativePackager(f.args);
+  const rejected = assert.rejects(task, /native_source_audio_output_unsupported/);
+  downgradeAudio(f); f.status(f.first.snapshot, "stopped", "ASSIGNMENT_STOPPED");
+  await rejected;
+  assert.equal(f.sent.length, 1, "no unsupported successor prepare after stop");
+  assert.equal(f.assignments.activeForPackager(SECOND), null);
+  assert.equal(f.runtime.listMine(f.identity).owned[0].availability, "ended");
+});
 
 test("standby selection is keyless, versioned metadata and never changes the live writer", () => {
   const f = fixture();

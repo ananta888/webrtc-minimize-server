@@ -16,7 +16,7 @@ export async function exerciseNativeAudioHttp({ app, agent, identity, ownerPrinc
   };
   const capability = { ...previous, capabilityVersion: 3, sourceAudioControlVersion: 1, agentVersion: "0.10.0" };
   await report(capability);
-  for (const patch of [{ extra: true }, { requestVersion: 3 }, { deviceFingerprint: "bad" }, { expectedProgramRevision: 0 }]) assert.equal((await post({ ...input, ...patch })).status, 400);
+  for (const patch of [{ extra: true }, { requestVersion: 4 }, { deviceFingerprint: "bad" }, { expectedProgramRevision: 0 }]) assert.equal((await post({ ...input, ...patch })).status, 400);
   assert.equal((await post({ ...input, requestVersion: 2 })).status, 409, "v1 audio capability does not authorize v2 strategy control");
   assert.equal((await post({ ...input, deviceFingerprint: "z".repeat(43) })).status, 403);
   assert.equal((await post(input, { headers: { ...headers, authorization: "Bearer handoff-foreign-token" } })).status, 403);
@@ -73,4 +73,47 @@ export async function exerciseNativeAudioHttp({ app, agent, identity, ownerPrinc
   assert.equal((await post(v2)).status, 409);
   await report(previous);
   assert.equal(app.nativePackagerAssignments.activeForProgram(programId).state, "running");
+}
+
+/** V5 selected-output assignment, still synthetic native replies over authenticated control. */
+export async function exerciseNativeAudioOutputHttp({ app, agent, identity, ownerPrincipal, publicOrigin,
+  packagerId, programId, fingerprint, nativePackagers, broadcastRuntime, audioOutput }) {
+  const member = app.registry.membersForPrincipal(ownerPrincipal).find(p => p.deviceFingerprint === fingerprint);
+  const control = broadcastRuntime.nativeControl(identity, member, programId);
+  const input = { requestVersion: 3, deviceFingerprint: fingerprint, action: "query",
+    expectedProgramRevision: control.programRevision, expectedProgramEpoch: control.programEpoch };
+  const headers = { "content-type": "application/json", origin: publicOrigin, authorization: "Bearer owner-token" };
+  const post = (body = input, auth = headers) => fetch(`${app.httpUrl}/api/broadcasts/${programId}/native-source-audio`, {
+    method: "POST", headers: auth, body: JSON.stringify(body), signal: AbortSignal.timeout(6000) });
+  for (const patch of [{ requestVersion: 4 }, { audioOutput }, { extra: true }]) assert.equal((await post({ ...input, ...patch })).status, 400);
+  assert.equal((await post({ ...input, requestVersion: 2 })).status, 409);
+  assert.equal((await post({ ...input, deviceFingerprint: "z".repeat(43) })).status, 403);
+  assert.equal((await post(input, { ...headers, authorization: "Bearer handoff-foreign-token" })).status, 403);
+  assert.equal((await post({ ...input, expectedProgramRevision: control.programRevision + 1 })).status, 409);
+  const respond = (command, type, fields) => agent.socket.send(JSON.stringify({ version: 3, type,
+    ...Object.fromEntries(["commandId", "assignmentId", "programId", "programEpoch", "leaseId", "fencingRevision"].map(k => [k, command[k]])), ...fields }));
+  const mix = { strategy: "balanced", microphoneGainQ15: 32768, screenAudioGainQ15: 16384, limiterGainQ15: 32768, peakQ15: 10000 };
+  const encoding = { codec: "aac", sampleRate: 48000, channels: audioOutput.channels,
+    renditions: ["low", "medium"].map(id => ({ id, targetBitsPerSecond: audioOutput.targetBitsPerSecond })) };
+  const pending = post(), query = await agent.next(m => m.type === "source-program-audio-query");
+  assert.equal(query.version, 3); assert.equal((await post()).status, 429);
+  respond(query, "source-program-audio-state", { observedAt: Date.now(), audioRevision: 2, sources: [], mix, encoding });
+  const response = await pending; assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store");
+  const state = await response.json(); assert.equal(state.audioControlVersion, 3); assert.deepEqual(state.encoding, encoding);
+  for (const field of ["leaseId", "commandId", "deviceFingerprint", "socket"]) assert.equal(Object.hasOwn(state, field), false);
+  const selection = { ...input, action: "apply", trigger: "user-action", expectedAudioRevision: 2, sources: [], strategy: "speech-first" };
+  for (const patch of [{ trigger: "remote" }, { audioOutput }, { encoding }]) assert.equal((await post({ ...selection, ...patch })).status, 400);
+  const update = post(selection), command = await agent.next(m => m.type === "source-program-audio");
+  assert.equal(command.version, 3); assert.equal(command.strategy, "speech-first");
+  respond(command, "source-program-audio-applied", { appliedAt: Date.now(), audioRevision: 3 });
+  const updated = await update, updatedBody = await updated.json();
+  assert.equal(updated.status, 200, JSON.stringify(updatedBody)); assert.equal(updatedBody.outcome, "applied");
+  const pendingQuery = post(), old = await agent.next(m => m.type === "source-program-audio-query");
+  const capability = { ...nativePackagers.candidate(ownerPrincipal, packagerId).capability, capabilityVersion: 4, sourceAudioControlVersion: 2 };
+  delete capability.sourceAudioEncodingVersion;
+  agent.socket.send(JSON.stringify({ version: 1, type: "capability", capability }));
+  await agent.next(m => m.type === "capability-accepted");
+  assert.equal((await pendingQuery).status, 409);
+  respond(old, "source-program-audio-state", { observedAt: Date.now(), audioRevision: 3, sources: [], mix, encoding });
+  assert.equal((await post()).status, 409, "late reply cannot restore v5 authority");
 }

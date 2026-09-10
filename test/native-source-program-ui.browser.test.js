@@ -8,6 +8,7 @@ import { createAppServer } from "../src/server.js";
 import { createOidcVerifier } from "../src/oidc-verifier.js";
 import { BroadcastRuntimeRegistry } from "../src/broadcast-runtime-registry.js";
 import { machineFixtureAssets } from "./helpers/machine-fixture-assets.mjs";
+import { observeBrowserStartup } from "./helpers/machine-browser-startup.mjs";
 import { installNativeSceneUiFixture } from "./helpers/native-scene-ui.mjs";
 
 // Real built Angular + OIDC verification/P-256 room admission. Native HTTP is
@@ -58,6 +59,7 @@ test("Angular keyboard starts an empty v4 program only after confirmation, waits
     let outputReady = false, creates = 0, starts = 0, programStops = 0, assignmentStops = 0, startBody;
     let ownRequests = 0, ownBody;
     const page = await context.newPage();
+    const startup = observeBrowserStartup(page);
     const verifySceneUi = await installNativeSceneUiFixture(page, program.programId);
     await page.route("**/api/native-packagers", route => route.fulfill({ json: { packagers: [packager], assignments: [] } }));
     await page.route("**/api/broadcasts", route => {
@@ -90,8 +92,13 @@ test("Angular keyboard starts an empty v4 program only after confirmation, waits
     await page.route(`**/api/native-packagers/${packagerId}/assignments/${assignment.assignmentId}`, route => {
       assert.equal(route.request().method(), "DELETE"); assignmentStops++; return route.fulfill({ json: { assignment: { ...assignment, state: "stopped" } } });
     });
-    await page.goto(origin + "/?room=" + roomId);
-    await page.locator("#display-name").fill("Synthetic source director");
+    try {
+      await page.goto(origin + "/?room=" + roomId);
+      await page.locator("#display-name").fill("Synthetic source director");
+    } catch (error) {
+      t.diagnostic(JSON.stringify({ phase: "join-form", startup }));
+      throw error;
+    }
     await page.locator("#join-room:not([disabled])").waitFor(); await page.locator("#join-room").press("Enter");
     await page.locator("#participant-count", { hasText: "1 / 20" }).waitFor({ timeout: 10000 });
     const initialConnections = await page.evaluate(() => window.__nativeSourceUiConnections);

@@ -23,6 +23,7 @@ type sourceAudioControlState struct {
 func (p *sourceProgramGeneration) audioScopeCurrent(q sourceAudioQuery, now int64) bool {
 	s := p.cfg.scope
 	return p.permitted() && now >= p.audioControl.lastNow && now < q.ExpiresAt &&
+		(q.Version != 2 || p.cfg.encoder.outputAudioChannels() == 2) &&
 		q.AssignmentID == s.assignmentID && q.ProgramID == s.programID && q.ProgramEpoch == s.programEpoch &&
 		q.LeaseID == s.writerLeaseID && q.FencingRevision == s.fencingRevision
 }

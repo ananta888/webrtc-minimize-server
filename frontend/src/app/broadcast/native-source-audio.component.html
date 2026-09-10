@@ -6,7 +6,7 @@
   @if (audio.view().phase === 'ready' && !levels().length) { <p>Noch keine gebundenen Audioeingänge. Eine vorbereitete Freigabe allein ist noch kein Eingang.</p> }
   <fieldset [disabled]="audio.view().phase !== 'ready'">
     <legend>Ausgangspegel je Quelle · maximal 100 %</legend>
-    @if (audio.view().audio?.audioControlVersion === 2) {
+    @if ((audio.view().audio?.audioControlVersion ?? 0) >= 2) {
       <label>Native Audio-Strategie
         <select id="native-audio-strategy" [value]="strategy()" (change)="setStrategy($any($event.target).value)">
           @for (preset of strategies; track preset) { <option [value]="preset">{{ strategyLabels[preset] }}</option> }
@@ -22,7 +22,7 @@
         <label><input type="checkbox" [checked]="source.muted" (change)="setMuted(source.sourceLeaseId, $any($event.target).checked)"> Im Broadcast stummschalten</label>
       </fieldset>
     }
-    <button id="native-audio-apply" type="button" [disabled]="!levels().length && audio.view().audio?.audioControlVersion !== 2" (click)="apply()">Audiowerte bewusst anwenden…</button>
+    <button id="native-audio-apply" type="button" [disabled]="!levels().length && (audio.view().audio?.audioControlVersion ?? 0) < 2" (click)="apply()">Audiowerte bewusst anwenden…</button>
   </fieldset>
   @if (audio.view().audio?.mix; as mix) {
     <p id="native-audio-dynamics">Bestätigt: {{ strategyLabels[mix.strategy] }}. Letzter Mischblock: Mikrofonfaktor {{ percent(mix.microphoneGainQ15) }} %, Bildschirmtonfaktor {{ percent(mix.screenAudioGainQ15) }} %, Limiterfaktor {{ percent(mix.limiterGainQ15) }} %, Spitze {{ percent(mix.peakQ15) }} %. Momentaufnahme, keine laufende Messkurve.</p>

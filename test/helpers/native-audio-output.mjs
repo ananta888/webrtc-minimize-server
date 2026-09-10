@@ -38,8 +38,27 @@ function decodeLevels(fragment) {
   });
 }
 
+function probeEncoding(fragment) {
+  return new Promise(resolve => {
+    const child = execFile("ffprobe", ["-v", "error", "-protocol_whitelist", "pipe", "-f", "mp4", "-i", "pipe:0",
+      "-select_streams", "a:0", "-show_entries", "stream=codec_name,sample_rate,channels,bit_rate", "-of", "json"],
+    { timeout: 5000, maxBuffer: 4096, encoding: "utf8" }, (error, text) => {
+      try {
+        if (error) throw error;
+        const streams = JSON.parse(text).streams;
+        if (!Array.isArray(streams) || streams.length !== 1) throw new Error();
+        const stream = streams[0], rate = Number(stream.bit_rate);
+        if (stream.codec_name !== "aac" || stream.sample_rate !== "48000" || ![1, 2].includes(stream.channels)
+          || !Number.isSafeInteger(rate) || rate < 1 || rate > 500000) throw new Error();
+        resolve({ codec: "aac", sampleRate: 48000, channels: stream.channels, measuredBitsPerSecond: rate });
+      } catch { resolve(null); }
+    });
+    child.stdin.on("error", () => {}); child.stdin.end(fragment);
+  });
+}
+
 /** Read only the single resource in this private synthetic fixture. No raw output. */
-export async function nativeAudioOutputObservation(root) {
+export async function nativeAudioOutputObservation(root, { encoding = false } = {}) {
   try {
     const resources = (await fs.readdir(root, { withFileTypes: true })).filter(e => e.isDirectory() && /^res_[A-Za-z0-9_-]{16,64}$/.test(e.name));
     if (resources.length !== 1) return { available: false };
@@ -57,8 +76,10 @@ export async function nativeAudioOutputObservation(root) {
         const names = nativeAudioFragmentNames(manifest.bytes.toString("utf8"));
         const init = await readRegular(path.join(directory, names.init), 65536);
         const segment = await readRegular(path.join(directory, names.segment), 4 * 1024 * 1024);
+        const fragment = Buffer.concat([init.bytes, segment.bytes]);
         return { available: true, sequence: names.sequence, segments: names.segments, ageMs: manifest.ageMs,
-          segmentBytes: segment.bytes.length, audio: await decodeLevels(Buffer.concat([init.bytes, segment.bytes])) };
+          segmentBytes: segment.bytes.length, audio: await decodeLevels(fragment),
+          ...(encoding ? { encoding: await probeEncoding(fragment) } : {}) };
       } catch { return { available: false }; }
     };
     return { available: true, committed: await observe([rendition[0].name]), producer: await observe([".pending", rendition[0].name]) };

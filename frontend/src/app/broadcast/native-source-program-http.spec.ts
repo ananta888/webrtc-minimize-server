@@ -16,6 +16,30 @@ const service = () => new BroadcastControlPlaneService({ authorizationHeader: ()
   { fingerprint: () => "a".repeat(43) } as never);
 afterEach(() => vi.restoreAllMocks());
 
+it("emits the additive v2 output request, without changing the assignment response or legacy schema", async () => {
+  const validate = new Ajv2020({ strict: true }).compile(JSON.parse(readFileSync("contracts/native-packager/source-program-start.v2.schema.json", "utf8")));
+  const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(response()));
+  const audioOutput = { codec: "aac" as const, sampleRate: 48000 as const, channels: 1 as const, targetBitsPerSecond: 48000 };
+  const result = await service().prepareNativeSourceStart(program, packagerId, 2, false, "user-action", new AbortController().signal, audioOutput);
+  const body = JSON.parse(String(fetch.mock.calls[0][1]!.body));
+  expect(validate(body), JSON.stringify(validate.errors)).toBe(true);
+  expect(contract(body)).toBe(false); expect(body.audioOutput).toEqual(audioOutput); expect(body.requestVersion).toBe(2);
+  expect(result.assignment.packagerId).toBe(packagerId);
+});
+
+it("rejects invalid output and cancellation during module loading before identity or network access", async () => {
+  const fingerprint = vi.fn(() => "a".repeat(43)), authorizationHeader = vi.fn(() => ({}));
+  const control = new BroadcastControlPlaneService({ authorizationHeader } as never, { fingerprint } as never);
+  const fetch = vi.spyOn(globalThis, "fetch");
+  for (const output of [null, {}, { codec: "aac", sampleRate: 48000, channels: 1, targetBitsPerSecond: 320000 }]) {
+    await expect(control.prepareNativeSourceStart(program, packagerId, 1, false, "user-action", new AbortController().signal, output as never)).rejects.toThrow();
+  }
+  const abort = new AbortController();
+  const pending = control.prepareNativeSourceStart(program, packagerId, 1, false, "user-action", abort.signal);
+  abort.abort(); await expect(pending).rejects.toThrow();
+  expect(fingerprint).not.toHaveBeenCalled(); expect(authorizationHeader).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+});
+
 it("sends precisely the source-start schema without legacy sources, and consumes the assignment without a media adapter", async () => {
   const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(response())), control = service();
   const started = await control.prepareNativeSourceStart(program, packagerId, 1, false, "user-action", new AbortController().signal);

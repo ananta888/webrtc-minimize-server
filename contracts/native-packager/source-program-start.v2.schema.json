@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/source-program-start.v2.schema.json",
+  "title": "Explicit trusted source program start with independent AAC output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "requestVersion",
+    "trigger",
+    "inputMode",
+    "packagerId",
+    "requestedRenditions",
+    "allowHardwareAcceleration",
+    "deviceFingerprint",
+    "audioOutput"
+  ],
+  "properties": {
+    "requestVersion": {
+      "const": 2
+    },
+    "trigger": {
+      "const": "user-action"
+    },
+    "inputMode": {
+      "const": "trusted-sframe-v1"
+    },
+    "packagerId": {
+      "type": "string",
+      "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$"
+    },
+    "requestedRenditions": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "allowHardwareAcceleration": {
+      "type": "boolean"
+    },
+    "deviceFingerprint": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "audioOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "codec",
+        "sampleRate",
+        "channels",
+        "targetBitsPerSecond"
+      ],
+      "properties": {
+        "codec": {
+          "const": "aac"
+        },
+        "sampleRate": {
+          "const": 48000
+        },
+        "channels": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "targetBitsPerSecond": {
+          "type": "integer",
+          "minimum": 16000,
+          "maximum": 320000
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "channels": {
+                "const": 1
+              }
+            },
+            "required": [
+              "channels"
+            ]
+          },
+          "then": {
+            "properties": {
+              "targetBitsPerSecond": {
+                "type": "integer",
+                "maximum": 192000
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -24,7 +24,7 @@ export class NativeSourceAudioComponent {
     this.strategy.set(this.audio.view().audio?.mix?.strategy ?? "unprocessed");
   }
   setStrategy(value: string): void {
-    if (this.audio.view().phase === "ready" && this.audio.view().audio?.audioControlVersion === 2
+    if (this.audio.view().phase === "ready" && (this.audio.view().audio?.audioControlVersion ?? 0) >= 2
       && this.strategies.includes(value as NativeAudioStrategy)) this.strategy.set(value as NativeAudioStrategy);
   }
   setGain(id: string, channel: "leftGainQ15" | "rightGainQ15", text: string): void {
@@ -41,7 +41,7 @@ export class NativeSourceAudioComponent {
   private selection(): NativeAudioSelection | null {
     const audio = this.audio.view().audio;
     return audio ? { expectedAudioRevision: audio.audioRevision, sources: this.levels().map(s => ({ ...s })),
-      ...(audio.audioControlVersion === 2 ? { strategy: this.strategy() } : {}) } : null;
+      ...(audio.audioControlVersion >= 2 ? { strategy: this.strategy() } : {}) } : null;
   }
   async apply(): Promise<void> {
     const selected = this.selection();

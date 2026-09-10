@@ -1,11 +1,11 @@
 import { NativeAudioResult, NativeAudioSelection, NativeAudioState, validAudioSelection } from "./native-source-audio-contract";
 import { BroadcastProgramRef } from "./broadcast-ports";
 
-export interface NativeAudioContext { readonly key: string; readonly program: BroadcastProgramRef; readonly audioControlVersion?: 1 | 2 }
+export interface NativeAudioContext { readonly key: string; readonly program: BroadcastProgramRef; readonly audioControlVersion?: 1 | 2 | 3 }
 export interface NativeAudioView { readonly phase: "idle" | "pending" | "ready" | "stale" | "conflict" | "unavailable"; readonly audio: NativeAudioState | null }
 interface Ports {
   context(): NativeAudioContext | null;
-  request(program: BroadcastProgramRef, selection: NativeAudioSelection | null, signal: AbortSignal, version: 1 | 2): Promise<NativeAudioResult>;
+  request(program: BroadcastProgramRef, selection: NativeAudioSelection | null, signal: AbortSignal, version: 1 | 2 | 3): Promise<NativeAudioResult>;
   changed(value: NativeAudioView): void;
   clock?: () => number;
 }

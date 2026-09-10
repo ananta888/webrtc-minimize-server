@@ -15,17 +15,18 @@ function mix(value) {
   return Object.freeze({ ...value });
 }
 
-function encoding(value) {
-  if (!closed(value, ["codec", "sampleRate", "channels", "renditions"]) || value.codec !== "aac" || value.sampleRate !== 48000 || value.channels !== 2
+function encoding(value, version) {
+  if (!closed(value, ["codec", "sampleRate", "channels", "renditions"]) || value.codec !== "aac" || value.sampleRate !== 48000
+    || !(version === 3 ? [1, 2].includes(value.channels) : value.channels === 2)
     || !Array.isArray(value.renditions) || value.renditions.length < 1 || value.renditions.length > 3
     || value.renditions.some(r => !closed(r, ["id", "targetBitsPerSecond"]) || !["low", "medium", "high"].includes(r.id)
-      || !Number.isSafeInteger(r.targetBitsPerSecond) || r.targetBitsPerSecond < 16000 || r.targetBitsPerSecond > 320000)
+      || !Number.isSafeInteger(r.targetBitsPerSecond) || r.targetBitsPerSecond < 16000 || r.targetBitsPerSecond > (value.channels === 1 ? 192000 : 320000))
     || new Set(value.renditions.map(r => r.id)).size !== value.renditions.length) fail();
   return Object.freeze({ ...value, renditions: Object.freeze(value.renditions.map(r => Object.freeze({ ...r }))) });
 }
 
 function base(value, type, fields, now) {
-  if (!closed(value, [...baseFields, "issuedAt", "expiresAt", ...fields]) || ![1, 2].includes(value.version) || value.type !== type
+  if (!closed(value, [...baseFields, "issuedAt", "expiresAt", ...fields]) || ![1, 2, 3].includes(value.version) || value.type !== type
     || !ref(value.commandId, "aud") || !ref(value.assignmentId, "asn") || !ref(value.programId, "prg") || !ref(value.leaseId, "lea")
     || !positive(value.programEpoch) || !positive(value.fencingRevision) || !positive(now)
     || !positive(value.issuedAt) || !positive(value.expiresAt) || value.issuedAt > now + 1000
@@ -43,16 +44,16 @@ function sources(value, observed, allowEmpty = observed) {
 
 /** Presentation metadata only, never director/source/socket authority. */
 export function normalizeNativeAudioSelection(value, version = 1) {
-  if (![1, 2].includes(version) || !closed(value, ["expectedAudioRevision", "sources", ...(version === 2 ? ["strategy"] : [])])
+  if (![1, 2, 3].includes(version) || !closed(value, ["expectedAudioRevision", "sources", ...(version >= 2 ? ["strategy"] : [])])
     || !positive(value.expectedAudioRevision) || value.expectedAudioRevision === Number.MAX_SAFE_INTEGER
-    || version === 2 && !NATIVE_AUDIO_STRATEGIES.includes(value.strategy)) fail();
-  return Object.freeze({ ...value, sources: sources(value.sources, false, version === 2) });
+    || version >= 2 && !NATIVE_AUDIO_STRATEGIES.includes(value.strategy)) fail();
+  return Object.freeze({ ...value, sources: sources(value.sources, false, version >= 2) });
 }
 
 export function normalizeNativeSourceAudio(value, now = Date.now()) {
-  base(value, "source-program-audio", ["expectedAudioRevision", "sources", ...(value?.version === 2 ? ["strategy"] : [])], now);
+  base(value, "source-program-audio", ["expectedAudioRevision", "sources", ...(value?.version >= 2 ? ["strategy"] : [])], now);
   const selection = normalizeNativeAudioSelection({ expectedAudioRevision: value.expectedAudioRevision, sources: value.sources,
-    ...(value.version === 2 ? { strategy: value.strategy } : {}) }, value.version);
+    ...(value.version >= 2 ? { strategy: value.strategy } : {}) }, value.version);
   return Object.freeze({ ...value, ...selection });
 }
 
@@ -69,12 +70,12 @@ export function normalizeNativeSourceAudioReply(value, request, now = Date.now()
   const type = query ? "source-program-audio-state" : applied ? "source-program-audio-applied" : "source-program-audio-rejected";
   const at = applied ? "appliedAt" : "observedAt";
   const extra = query ? ["audioRevision", "sources"] : applied ? ["audioRevision"] : ["reasonCode"];
-  if (query && command.version === 2) extra.push("mix", "encoding");
+  if (query && command.version >= 2) extra.push("mix", "encoding");
   if (!closed(value, [...baseFields, at, ...extra]) || value.version !== command.version || value.type !== type
     || scope.some(key => value[key] !== command[key]) || !positive(value[at])
     || value[at] < command.issuedAt - 1000 || value[at] > now + 1000 || value[at] >= command.expiresAt) fail();
   if (query && !positive(value.audioRevision) || applied && value.audioRevision !== command.expectedAudioRevision + 1
     || !query && !applied && value.reasonCode !== "AUDIO_NOT_APPLIED") fail();
   return Object.freeze({ ...value, ...(query ? { sources: sources(value.sources, true) } : {}),
-    ...(query && command.version === 2 ? { mix: mix(value.mix), encoding: encoding(value.encoding) } : {}) });
+    ...(query && command.version >= 2 ? { mix: mix(value.mix), encoding: encoding(value.encoding, command.version) } : {}) });
 }

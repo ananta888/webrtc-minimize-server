@@ -1,10 +1,12 @@
 import type { BroadcastProgramRef } from "./broadcast-ports";
 import type { PreparedNativePackagerStart } from "./broadcast-control-plane.service";
 import type { NativePackagerHandoffControl } from "./native-packager-handoff-control";
+import type { NativeSourceAudioOutput } from "./native-source-audio-output";
 
 export interface NativeSourceProgramRequest {
   readonly roomId: string; readonly title: string; readonly visibility: "private" | "unlisted" | "public";
   readonly packagerId: string; readonly requestedRenditions: number; readonly allowHardwareAcceleration: boolean;
+  readonly audioOutput?: NativeSourceAudioOutput;
 }
 export interface NativeSourceProgramView {
   readonly phase: "idle" | "preparing" | "waiting-output" | "live" | "degraded" | "stopping" | "stopped" | "failed";
@@ -12,7 +14,7 @@ export interface NativeSourceProgramView {
 }
 export interface NativeSourceProgramPorts {
   context(): string | null;
-  eligible(packagerId: string, requestedRenditions: number): boolean;
+  eligible(packagerId: string, requestedRenditions: number, audioOutput?: NativeSourceAudioOutput): boolean;
   create(request: NativeSourceProgramRequest, signal: AbortSignal): Promise<BroadcastProgramRef>;
   prepare(program: BroadcastProgramRef, request: NativeSourceProgramRequest, signal: AbortSignal): Promise<{
     program: BroadcastProgramRef; assignment: PreparedNativePackagerStart;
@@ -41,21 +43,22 @@ export class NativeSourceProgramController {
   private phase: NativeSourceProgramView["phase"] = "idle";
   private error = "";
   private destroyed = false;
+  private startGeneration = 0;
   private readonly now: () => number;
   constructor(private readonly ports: NativeSourceProgramPorts) { this.now = ports.clock ?? Date.now; }
 
   async start(input: NativeSourceProgramRequest, trigger: unknown): Promise<void> {
     const context = this.ports.context();
-    if (this.destroyed || this.active || !context || trigger !== "user-action" || !input || typeof input !== "object"
-      || Object.keys(input).sort().join() !== "allowHardwareAcceleration,packagerId,requestedRenditions,roomId,title,visibility"
-      || !/^[a-z0-9][a-z0-9-]{5,47}$/.test(input.roomId) || !/^pkr_[A-Za-z0-9_-]{16,64}$/.test(input.packagerId)
-      || typeof input.title !== "string" || !input.title.trim() || input.title.length > 80
-      || /[\u0000-\u001f\u007f]/.test(input.title) || !["private", "unlisted", "public"].includes(input.visibility)
-      || !Number.isSafeInteger(input.requestedRenditions) || input.requestedRenditions < 1 || input.requestedRenditions > 3
-      || typeof input.allowHardwareAcceleration !== "boolean" || !this.ports.eligible(input.packagerId, input.requestedRenditions)) {
+    if (this.destroyed || this.active || !context || trigger !== "user-action") throw new Error("native_source_program_start_denied");
+    const generation = ++this.startGeneration;
+    // Detach the click's choice before module loading yields to other events.
+    const snapshot = { ...input, ...(input?.audioOutput ? { audioOutput: { ...input.audioOutput } } : {}) };
+    const request = (await import("./native-source-program-request")).normalizeSourceProgramRequest(snapshot);
+    if (this.destroyed || this.active || generation !== this.startGeneration || context !== this.ports.context()
+      || !this.ports.eligible(request.packagerId, request.requestedRenditions, request.audioOutput)) {
       throw new Error("native_source_program_start_denied");
     }
-    const record: ActiveProgram = { context, request: Object.freeze({ ...input, title: input.title.trim() }),
+    const record: ActiveProgram = { context, request,
       controller: new AbortController(), startedAt: this.now(), lastNow: this.now(), polling: false, nextPoll: 0, ready: false };
     this.active = record; this.phase = "preparing"; this.error = ""; this.emit();
     record.pending = this.prepare(record);
@@ -85,7 +88,7 @@ export class NativeSourceProgramController {
   private requireCurrent(record: ActiveProgram): void {
     record.controller.signal.throwIfAborted();
     if (this.active !== record || this.destroyed || this.ports.context() !== record.context
-      || !this.ports.eligible(record.request.packagerId, record.request.requestedRenditions)
+      || !this.ports.eligible(record.request.packagerId, record.request.requestedRenditions, record.request.audioOutput)
       || this.now() < record.lastNow) throw new Error("native_source_program_context_changed");
     record.lastNow = this.now();
   }
@@ -134,6 +137,7 @@ export class NativeSourceProgramController {
   }
 
   async stop(): Promise<void> {
+    ++this.startGeneration;
     const record = this.active;
     if (!record) return;
     record.cancelled = true;
