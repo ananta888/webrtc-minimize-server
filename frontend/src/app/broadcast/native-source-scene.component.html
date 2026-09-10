@@ -20,7 +20,16 @@
       @for (id of selected(); track id) {
         <p class="small">Ausgewählter Quellenplatz: {{ id }}. Ein widerrufener Platz zeigt nur einen Platzhalter.
           <button type="button" (click)="remove(id)">Quellenplatz entfernen</button></p>
+        @if (state.sceneControlVersion === 2) {
+          <label>Bildanpassung · {{ id }}
+            <select [attr.data-scene-fit]="id" [value]="fits()[id] || 'contain'" (change)="setFit(id, $any($event.target).value)">
+              <option value="contain">Vollständig einpassen · gesamte Quelle sichtbar</option>
+              <option value="cover">Ausfüllen · Ränder mittig beschneiden</option>
+            </select>
+          </label>
+        }
       }
+      @if (state.sceneControlVersion === 1) { <p>Dieser Packager bestätigt nur Layoutsteuerung. Bildanpassung pro Quelle erfordert einen aktualisierten Agenten mit Szenensteuerung v2.</p> }
       @if (layout() === 'single' || layout() === 'active-speaker') {
         <label for="native-scene-active">Bevorzugte ausgewählte Quelle</label>
         <select id="native-scene-active" [value]="active()" (change)="active.set($any($event.target).value)">

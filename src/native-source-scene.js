@@ -9,9 +9,10 @@ const fail = () => { throw new Error("invalid_native_source_scene"); };
 
 /** Metadata only. A parsed command is not director, source or socket authority. */
 export function normalizeNativeSourceScene(value, now = Date.now()) {
+  const keys = value?.version === 2 ? [...fields, "sourceFits"] : fields;
   if (!value || typeof value !== "object" || Array.isArray(value)
-    || Object.keys(value).length !== fields.length || Object.keys(value).some(key => !fields.includes(key))
-    || value.version !== 1 || value.type !== "source-program-scene"
+    || Object.keys(value).length !== keys.length || Object.keys(value).some(key => !keys.includes(key))
+    || ![1, 2].includes(value.version) || value.type !== "source-program-scene"
     || !ref(value.commandId, "scn") || !ref(value.assignmentId, "asn") || !ref(value.programId, "prg")
     || !ref(value.leaseId, "lea") || !positive(value.programEpoch) || !positive(value.fencingRevision)
     || !positive(value.expectedSceneRevision) || value.expectedSceneRevision === Number.MAX_SAFE_INTEGER
@@ -24,7 +25,10 @@ export function normalizeNativeSourceScene(value, now = Date.now()) {
     || !positive(now) || !positive(value.issuedAt) || !positive(value.expiresAt)
     || value.issuedAt > now + 1000 || value.expiresAt <= now || value.expiresAt <= value.issuedAt
     || value.expiresAt - value.issuedAt > 4000) fail();
-  return Object.freeze({ ...value, sourceLeaseIds: Object.freeze([...value.sourceLeaseIds]) });
+  if (value.version === 2 && (!Array.isArray(value.sourceFits) || value.sourceFits.length !== value.sourceLeaseIds.length
+    || value.sourceFits.some(fit => !["contain", "cover"].includes(fit)))) fail();
+  return Object.freeze({ ...value, sourceLeaseIds: Object.freeze([...value.sourceLeaseIds]),
+    ...(value.version === 2 ? { sourceFits: Object.freeze([...value.sourceFits]) } : {}) });
 }
 
 /** Correlates a native application receipt, not current output or viewer delivery. */
@@ -34,7 +38,7 @@ export function normalizeNativeSourceSceneReceipt(value, request, now = Date.now
   const receiptFields = ["version", "type", ...scope, "sceneRevision", "appliedAt"];
   if (!value || typeof value !== "object" || Array.isArray(value)
     || Object.keys(value).length !== receiptFields.length || Object.keys(value).some(key => !receiptFields.includes(key))
-    || value.version !== 1 || value.type !== "source-program-scene-applied"
+    || value.version !== command.version || value.type !== "source-program-scene-applied"
     || scope.some(key => value[key] !== command[key]) || value.sceneRevision !== command.expectedSceneRevision + 1
     || !positive(value.appliedAt) || value.appliedAt < command.issuedAt - 1000
     || value.appliedAt > now + 1000 || value.appliedAt >= command.expiresAt) fail();

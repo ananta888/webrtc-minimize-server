@@ -41,7 +41,7 @@ test("rendered source handoff drains the real writer, preserves mono AAC and req
   await waitFixtureValue(page, async ids => {
     const r = await fetch("/api/native-packagers", { headers: { authorization: `Bearer ${sessionStorage.getItem("webrtc.oidc.access-token")}` } });
     const rows = (await r.json()).packagers;
-    return ids.every(id => rows?.some(p => p.id === id && p.online && p.capability?.capabilityVersion === 5));
+    return ids.every(id => rows?.some(p => p.id === id && p.online && p.capability?.capabilityVersion === 6 && p.capability.sourceSceneControlVersion === 2));
   }, f.packagerIds, { timeout: 15000 });
   for (const id of f.packagerIds) assert.equal((await f.request("PUT", `/api/native-packagers/${id}/room-consents/${f.roomId}`, { enabled: true })).status, 200);
   await page.locator("#mesh-analysis-navigation").press("Enter");

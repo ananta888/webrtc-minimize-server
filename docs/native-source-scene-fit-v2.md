@@ -1,8 +1,9 @@
-# Szenenanpassung pro Quelle: nativer v2-Baustein
+# Szenenanpassung pro Quelle: versionierter v2-Pfad
 
-Implementierungsstand: nativer Steuer- und Renderpfad vorhanden; explizite
-Capability-Aushandlung, Node-Director/Broker und Angular-Auswahl folgen.
-Dies ist noch keine öffentlich bedienbare oder deployte Funktion. TBP-015
+Implementierungsstand: nativer Steuer- und Renderpfad, explizite
+Capability-Aushandlung, Node-Director/Broker und Angular-Auswahl verbunden.
+Der reale durchgängige Szenentest besteht; der Gesamtcheck ist noch rot.
+Noch nicht deployed. TBP-015
 bleibt offen; Zielauflösung/FPS, weitere Profile und die 60-Minuten-Abnahme
 sind dadurch nicht erledigt.
 
@@ -37,7 +38,31 @@ Ein erst nach Warten auf die Render-Sperre abgelaufener Auftrag verändert die
 bestehende Szene nicht. Antworten bleiben historische Anwendungsbelege, keine
 Bestätigung der Zustellung beim Publikum.
 
-## Bisherige Verifikation und nächste Integration
+## Capability und Angular-Bedienung
+
+Der Agent 0.13.0 meldet nur bei ausdrücklich aktivierten Source-Programs
+Capability v6: `sourceSceneControlVersion: 2`, weiterhin Audio-Steuerung v3
+und Audio-Encoding v1. Ohne Source-Programs bleibt der Bericht v1. Die neuen
+Fähigkeiten werden aus dem authentisierten, zeitlich gültigen Bericht geprüft,
+nicht aus einer Versionsnummer geraten. Die bisherigen Audio-Funktionen
+bleiben auch mit Capability v6 verfügbar.
+
+Die Angular-Abfrage verwendet Director-Request v2. Der Server darf eine
+v1- oder v2-Beobachtung zurückgeben, je nach aktueller Agent-Capability;
+beide Antwortschemas bleiben getrennt. Ein **Schreibauftrag** mit expliziten
+v2-Fits wird dagegen niemals auf v1 zurückgestuft. Broker und Director binden
+die Antwortversion an die frisch geprüfte Autorisierung; Capability-Wechsel
+während einer ausstehenden Operation machen die Antwort ungültig.
+
+Unter der Sendeszene erscheinen die Fits nur bei bestätigtem v2-Zustand,
+positionsgleich zur bewussten Quellenauswahl. Neue Quellen starten in der UI
+mit sichtbarem `contain`, ohne automatischen Schreibauftrag. Nach einer frischen
+Abfrage sind Änderungen höchstens fünf Sekunden anwendbar und benötigen die
+lokale Bestätigung. Änderungen während des Bestätigungsdialogs werden nicht
+unbemerkt mitgesendet. Keine erneute Capture-Anfrage oder zusätzliche
+Entschlüsselungsfreigabe wird dadurch ausgelöst.
+
+## Verifikation
 
 Die fokussierten nativen Scene-/Mixer-Racetests bestehen, einschließlich der
 unveränderten v1-Fixtures. Neue Tests prüfen echte RGBA-Pixel bei
@@ -51,9 +76,42 @@ Auch der vollständige native Go-Racelauf besteht (48,750 s; internes
 SFrame-Paket 2,193 s), ebenso Go Vet. Diese lokalen nativen Prüfungen ersetzen
 weder den noch folgenden gemeinsamen Projektcheck noch eine UI-Abnahme.
 
-Zehn Node-Schema-/v1-Vertragstests bestehen ohne Skip (0,397 s). Der bestehende
-Node-v1-Adapter weist v2 weiterhin explizit ab; dessen Integration darf später
-nur nach frischer Capability-Prüfung und mit passender Antwortversion erfolgen.
-Es wird jetzt noch keine neue Agent-Capability beworben. Der gemeinsame
-Projektcheck und reale Angular-/Native-Abnahme folgen nach dieser durchgängigen
-Integration, nicht erneut nach jedem kleinen Baustein.
+Der native Zwischenstand bestand zehn Node-Schema-/v1-Vertragstests (0,397 s).
+Nach der Node-/Angular-Integration bestehen 33 fokussierte Node-Tests,
+52 Frontendtests und die Typprüfung. Die neuen Negativfälle prüfen insbesondere
+fehlende/falsche Fits, unbekannte Capability-Felder, Versionswechsel,
+Capability-Downgrade und abweichende Antwortversionen.
+
+Die erweiterte reale Angular-/Node-/Native-/HLS-Prüfung fordert zwei
+unterschiedliche Quellen: zunächst beide mit sichtbaren Slate-Rändern, danach
+nur die Kamera gefüllt und schließlich beide Quellen gefüllt. Sie prüft die
+tatsächlich dekodierten Kachelpixel, fortschreitende Frames und unveränderte
+Capture-Zähler; native ACKs allein genügen nicht. Beide Fälle bestanden im
+isolierten Gesamtcheck: Einzelquelle 30,865 s, zwei Quellen 41,348 s. Die
+Kachelpixel wechselten tatsächlich von Slate/Slate über Rot/Slate zu Rot/Blau;
+Widerruf, weiterbewegte zweite Quelle und anschließender Stop bestanden.
+
+Der neue native Racelauf bestand in 45,299 s, das interne SFrame-Paket in
+2,024 s. Der erste Projektcheck stoppte nach 1.283 bestandenen Frontendtests
+am unveränderten 1,60-MB-Startbudget (475 Byte darüber). Der Szenen-Parser wird
+jetzt erst bei der expliziten HTTP-Bedienung geladen; Abbruch während des
+Imports verhindert den Request. Das Budget wurde nicht erhöht.
+
+Der anschließende isolierte `npm run check` bestand 1.286 Frontendtests,
+Build, Typprüfung, Go-Unit/Vet und statische Gates. Node beendete den Lauf
+mit 1.239 bestandenen, zwei fehlgeschlagenen und vier ausdrücklich
+übersprungenen Prüfungen (644,345 s):
+
+- Eine HTTP-Fixture behandelte die jetzt unterstützte Query-Version 2 noch
+  als unbekannt. Sie prüft jetzt Version 3 sowie echte HTTP-Aushandlung mit
+  einem älteren Agenten und das Verbot, v2-Schreibaufträge herunterzustufen.
+- Chromium überschritt beim verzögerten Bootstrap die unveränderte
+  Fünfsekundenfrist für den Login-Button. Der unveränderte Nachlauf bestand;
+  damit ist die Ursache nicht bewiesen oder behoben.
+
+Alle sechs gezielten HTTP-/Bootstrap-Nachprüfungen bestanden (6,992 s).
+Der Gesamtcheck bleibt dennoch rot. Die 14 externen Infrastruktur-Gates
+wurden anschließend separat ausgeführt und ausdrücklich übersprungen;
+auch der optionale Image-Scan war übersprungen. Prüfprotokolle liegen in
+`/tmp/webrtc-scene-fit-check.fwIAq9/`. Kein Release- oder Produktionsnachweis
+wird daraus abgeleitet; der vorhandene Serving-Build blieb bytegleich.

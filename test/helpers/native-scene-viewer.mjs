@@ -49,22 +49,23 @@ export async function sceneViewerObservation(page) {
   });
 }
 
-export async function decodedSceneTiles(page, colors, differentBlueFrom = null) {
+export async function decodedSceneTiles(page, colors, differentBlueFrom = null, verticalPosition = .5) {
   assert.equal(colors.length, 2);
   assert.ok(colors.every(color => ["red", "blue", "slate"].includes(color)));
   assert.ok(differentBlueFrom === null || Number.isInteger(differentBlueFrom) && differentBlueFrom >= 0 && differentBlueFrom <= 255);
-  return waitFixtureValue(page, ({ colors, differentBlueFrom }) => {
+  assert.ok([.1, .5].includes(verticalPosition));
+  return waitFixtureValue(page, ({ colors, differentBlueFrom, verticalPosition }) => {
     const v = document.querySelector('video[aria-label="Live-Broadcast"]');
     if (!v || v.readyState < 2 || v.videoWidth < 100 || v.getVideoPlaybackQuality().totalVideoFrames < 3) return null;
     const c = document.createElement("canvas"); c.width = c.height = 1;
     const ctx = c.getContext("2d");
     const pixels = [.25, .75].map(x => {
-      ctx.drawImage(v, Math.floor(v.videoWidth * x), Math.floor(v.videoHeight / 2), 1, 1, 0, 0, 1, 1);
+      ctx.drawImage(v, Math.floor(v.videoWidth * x), Math.floor(v.videoHeight * verticalPosition), 1, 1, 0, 0, 1, 1);
       return [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3);
     });
     const matches = pixels.every(([r, g, b], i) => colors[i] === "red" ? r > 150 && g < 90 && b < 90
       : colors[i] === "blue" ? b > 150 && r < 90 && g < 90 : r < 90 && g < 90 && b < 90);
     return matches && (differentBlueFrom === null || Math.abs(pixels[1][2] - differentBlueFrom) > 15)
       ? { time: v.currentTime, decodedFrames: v.getVideoPlaybackQuality().totalVideoFrames, pixels } : null;
-  }, { colors, differentBlueFrom }, { timeout: 20_000, accept: value => value !== null });
+  }, { colors, differentBlueFrom, verticalPosition }, { timeout: 20_000, accept: value => value !== null });
 }

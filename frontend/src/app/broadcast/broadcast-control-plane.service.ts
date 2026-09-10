@@ -9,7 +9,7 @@ import {
 import { BroadcastBrowserPortError, BroadcastProgramRef } from "./broadcast-ports";
 import { parseBroadcastDirectoryEntry } from "./broadcast-directory.service";
 import { NativePackagerHandoffControl, parseNativeHandoffControl } from "./native-packager-handoff-control";
-import { NativeSceneResult, NativeSceneSelection, parseNativeSceneResult } from "./native-source-scene-contract";
+import type { NativeSceneResult, NativeSceneSelection } from "./native-source-scene-contract";
 import type { NativeAudioResult, NativeAudioSelection } from "./native-source-audio-contract";
 import type { NativeSourceAudioOutput } from "./native-source-audio-output";
 import {
@@ -218,10 +218,12 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
     signal.throwIfAborted();
     const fingerprint = this.device.fingerprint();
     if (!PROGRAM.test(program.programId) || !fingerprint) throw new BroadcastBrowserPortError("broadcast_active_device_required");
+    const { parseNativeSceneResult } = await import("./native-source-scene-contract");
+    signal.throwIfAborted();
     const response = await fetch(`/api/broadcasts/${encodeURIComponent(program.programId)}/native-source-scene`, {
       method: "POST", headers: { "content-type": "application/json", ...this.auth.authorizationHeader() },
       credentials: "same-origin", cache: "no-store", redirect: "error", signal,
-      body: JSON.stringify({ requestVersion: 1, deviceFingerprint: fingerprint, expectedProgramRevision: program.programRevision,
+      body: JSON.stringify({ requestVersion: selection === null || selection.sourceFits !== undefined ? 2 : 1, deviceFingerprint: fingerprint, expectedProgramRevision: program.programRevision,
         expectedProgramEpoch: program.programEpoch, ...(selection === null ? { action: "query" }
           : { action: "apply", trigger: "user-action", ...selection }) }),
     });

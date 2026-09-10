@@ -38,7 +38,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-const agentVersion = "0.12.0"
+const agentVersion = "0.13.0"
 
 var buildRevision = "unknown"
 var buildTimestamp = "unknown"
@@ -569,10 +569,11 @@ func (c *client) capabilityMessage() map[string]any {
 		"consentedRoomIds": rooms, "observedAt": now, "expiresAt": now + 30000,
 	}
 	if c.cfg.sourcePrograms {
-		report["capabilityVersion"] = 5
+		report["capabilityVersion"] = 6
 		report["sourcePrograms"] = true
 		report["sourceAudioControlVersion"] = 3
 		report["sourceAudioEncodingVersion"] = 1
+		report["sourceSceneControlVersion"] = 2
 		if rooms == nil {
 			report["consentedRoomIds"] = []string{}
 		}

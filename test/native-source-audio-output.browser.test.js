@@ -15,7 +15,7 @@ for (const preset of ["speech", "music"]) test(`rendered ${preset} selection rea
   await waitFixtureValue(page, async id => {
     const response = await fetch("/api/native-packagers", { headers: {
       authorization: `Bearer ${sessionStorage.getItem("webrtc.oidc.access-token")}` } });
-    return (await response.json()).packagers?.some(p => p.id === id && p.online && p.capability?.capabilityVersion === 5
+    return (await response.json()).packagers?.some(p => p.id === id && p.online && p.capability?.capabilityVersion === 6 && p.capability.sourceSceneControlVersion === 2
       && p.capability.sourceAudioControlVersion === 3 && p.capability.sourceAudioEncodingVersion === 1);
   }, f.packagerId, { timeout: 15000 });
   assert.equal((await f.request("PUT", `/api/native-packagers/${f.packagerId}/room-consents/${f.roomId}`, { enabled: true })).status, 200);

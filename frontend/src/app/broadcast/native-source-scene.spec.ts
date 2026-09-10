@@ -15,6 +15,41 @@ const state: NativeSceneState = { sceneControlVersion: 1, ...{ programId: progra
 const selection = { expectedSceneRevision: 1, layout: "grid" as const, sourceLeaseIds: [source], activeSourceLeaseId: "" };
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
+it("v2 observations retain exact frozen fits without adding fields to v1", () => {
+  const v2 = { ...state, sceneControlVersion: 2, sourceFits: ["cover"] };
+  const parsed = parseNativeSceneResult(v2, program, now);
+  expect(parsed).toHaveProperty("sourceFits", ["cover"]);
+  if (parsed.outcome !== "observed") throw new Error();
+  expect(Object.isFrozen(parsed.sourceFits)).toBe(true);
+  for (const fits of [undefined, null, [], ["contain", "cover"], ["stretch"]]) {
+    expect(() => parseNativeSceneResult({ ...v2, sourceFits: fits }, program, now)).toThrow();
+  }
+  expect(() => parseNativeSceneResult({ ...v2, sceneControlVersion: 1 }, program, now)).toThrow();
+});
+
+it("v2 apply requires explicit fits and rejects a downgraded native receipt", async () => {
+  const f = fixture(); f.request.mockResolvedValue({ ...state, sceneControlVersion: 2, sourceFits: ["contain"] });
+  await f.controller.refresh();
+  await f.controller.apply(selection, "user-action"); expect(f.request).toHaveBeenCalledTimes(1);
+  f.request.mockResolvedValue({ sceneControlVersion: 1, outcome: "applied", sceneRevision: 2 });
+  await f.controller.apply({ ...selection, sourceFits: ["cover"] }, "user-action");
+  expect(f.views.at(-1)?.phase).toBe("unavailable"); f.controller.destroy();
+});
+
+it("v2 UI copies the observed fit and confirms the exact ordered presentation before applying", async () => {
+  const scenes = { view: signal<NativeSceneView>({ phase: "ready", scene: { ...state, sceneControlVersion: 2, sourceFits: ["cover"] } }),
+    controller: { refresh: vi.fn(async () => {}), apply: vi.fn(async () => {}) } };
+  const component = new NativeSourceSceneComponent(scenes as never);
+  await component.refresh(); expect(component.fits()[source]).toBe("cover");
+  component.setFit(source, "stretch"); expect(component.fits()[source]).toBe("cover");
+  component.setFit("sls_bbbbbbbbbbbbbbbb", "contain"); expect(Object.keys(component.fits())).toEqual([source]);
+  const confirm = vi.spyOn(window, "confirm").mockImplementation(() => { component.setFit(source, "contain"); return true; });
+  await component.apply(); expect(scenes.controller.apply).not.toHaveBeenCalled();
+  confirm.mockReturnValue(true); await component.apply();
+  expect(scenes.controller.apply).toHaveBeenCalledExactlyOnceWith({ expectedSceneRevision: 1, layout: "single",
+    sourceLeaseIds: [source], activeSourceLeaseId: source, sourceFits: ["contain"] }, "user-action");
+});
+
 it("parses closed frozen scene observations and separates configured revoked slots from available sources", () => {
   const observed = parseNativeSceneResult({ ...state, availableSources: [] }, program, now);
   expect(observed.outcome).toBe("observed");
@@ -50,14 +85,14 @@ it("never queries on construction and requires a fresh observation plus explicit
   await f.controller.apply(selection, "user-action"); expect(f.request).not.toHaveBeenCalled();
   await f.controller.refresh(); expect(f.views.at(-1)?.phase).toBe("ready");
   await f.controller.apply(selection, "remote"); expect(f.request).toHaveBeenCalledTimes(1);
-  f.request.mockResolvedValue({ outcome: "applied", sceneRevision: 2 });
+  f.request.mockResolvedValue({ sceneControlVersion: 1, outcome: "applied", sceneRevision: 2 });
   await f.controller.apply(selection, "user-action");
   expect(f.views.at(-1)).toEqual({ phase: "stale", scene: null });
   await f.controller.apply(selection, "user-action"); expect(f.request).toHaveBeenCalledTimes(2);
   f.controller.destroy();
 });
 it("conflict requires a new query, never an automatic changed-revision retry", async () => {
-  const f = fixture(); await f.controller.refresh(); f.request.mockResolvedValue({ outcome: "rejected" });
+  const f = fixture(); await f.controller.refresh(); f.request.mockResolvedValue({ sceneControlVersion: 1, outcome: "rejected" });
   await f.controller.apply(selection, "user-action"); expect(f.views.at(-1)?.phase).toBe("conflict");
   await f.controller.apply(selection, "user-action"); expect(f.request).toHaveBeenCalledTimes(2); f.controller.destroy();
 });

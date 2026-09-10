@@ -8,6 +8,7 @@ export class NativeSourceSceneError extends Error {
 const error = (code, status) => new NativeSourceSceneError(code, status);
 const scopeKeys = ["packagerId", "assignmentId", "programId", "programRevision", "programEpoch", "leaseId", "fencingRevision"];
 export const sameNativeSceneContext = (a, b) => a && b && a.socket === b.socket && a.generation === b.generation
+  && (a.sceneControlVersion ?? 1) === (b.sceneControlVersion ?? 1)
   && a.member === b.member && scopeKeys.every(k => a[k] === b[k]);
 
 /** Bounded correlation only; the caller supplies a fresh authoritative controller context. */
@@ -24,6 +25,9 @@ export class NativeSourceSceneBroker {
     try {
       now = this.clock(); current = authorize(now);
       const fields = ["expectedSceneRevision", "layout", "sourceLeaseIds", "activeSourceLeaseId"];
+      const version = current.sceneControlVersion ?? 1;
+      if (![1, 2].includes(version)) throw error("native_scene_unsupported");
+      if (version === 2) fields.push("sourceFits");
       if (selection !== null && (!selection || typeof selection !== "object" || Array.isArray(selection)
         || Object.keys(selection).length !== fields.length || Object.keys(selection).some(k => !fields.includes(k)))) {
         throw error("invalid_native_scene_selection", 400);
@@ -32,7 +36,7 @@ export class NativeSourceSceneBroker {
       if (this.#pending.size >= 128 || [...this.#pending.values()].some(p => p.context.packagerId === current.packagerId)) {
         throw error("native_scene_busy", 429);
       }
-      const base = { version: 1, commandId: `scn_${randomBytes(18).toString("base64url")}`,
+      const base = { version, commandId: `scn_${randomBytes(18).toString("base64url")}`,
         ...Object.fromEntries(scopeKeys.filter(k => !["packagerId", "programRevision"].includes(k)).map(k => [k, current[k]])),
         issuedAt: now, expiresAt: Math.min(now + 4000, current.expiresAt) };
       try {

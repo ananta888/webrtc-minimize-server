@@ -25,7 +25,7 @@ export async function exerciseNativeSceneHttp({ app, agent, identity, ownerPrinc
     try { assert.equal((await post()).status, 503, "backpressure must not queue another scene command"); }
     finally { delete serverSocket.bufferedAmount; }
   }
-  for (const patch of [{ extra: true }, { requestVersion: 2 }, { deviceFingerprint: "bad" }, { action: "anything" }]) {
+  for (const patch of [{ extra: true }, { requestVersion: 3 }, { deviceFingerprint: "bad" }, { action: "anything" }]) {
     assert.equal((await post({ ...input, ...patch })).status, 400);
   }
   assert.equal((await post({ ...input, deviceFingerprint: "z".repeat(43) })).status, 403);
@@ -39,6 +39,15 @@ export async function exerciseNativeSceneHttp({ app, agent, identity, ownerPrinc
     ...fields }));
   const state = (command, revision = 1, layout = "waiting-slate") => respond(command, "source-program-scene-state", {
     observedAt: Date.now(), sceneRevision: revision, layout, sourceLeaseIds: [], activeSourceLeaseId: "", availableSources: [] });
+  const negotiated = post({ ...input, requestVersion: 2 }), legacyQuery = await agent.next(m => m.type === "source-program-scene-query");
+  assert.equal(legacyQuery.version, 1, "v2 discovery retains exact v1 for an older authenticated agent");
+  state(legacyQuery);
+  const negotiatedResponse = await negotiated;
+  assert.equal(negotiatedResponse.status, 200);
+  const negotiatedBody = await negotiatedResponse.json();
+  assert.equal(negotiatedBody.sceneControlVersion, 1); assert.equal(Object.hasOwn(negotiatedBody, "sourceFits"), false);
+  assert.equal((await post({ ...input, requestVersion: 2, action: "apply", trigger: "user-action", expectedSceneRevision: 1,
+    layout: "grid", sourceLeaseIds: [], activeSourceLeaseId: "", sourceFits: [] })).status, 409, "explicit v2 apply cannot downgrade");
   const pending = post(), query = await agent.next(m => m.type === "source-program-scene-query");
   assert.equal(query.programId, programId); assert.equal(query.expiresAt - query.issuedAt <= 4000, true);
   assert.equal((await post()).status, 429, "one pending operation per actual packager");

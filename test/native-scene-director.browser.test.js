@@ -20,7 +20,8 @@ for (const multiple of [false, true]) test(multiple
     const response = await fetch("/api/native-packagers", { headers: {
       authorization: `Bearer ${sessionStorage.getItem("webrtc.oidc.access-token")}` } });
     const value = await response.json();
-    return value.packagers?.some(p => p.id === id && p.online && p.capability?.sourcePrograms === true);
+    return value.packagers?.some(p => p.id === id && p.online && p.capability?.sourcePrograms === true
+      && p.capability.capabilityVersion === 6 && p.capability.sourceSceneControlVersion === 2);
   }, f.packagerId, { timeout: 15_000 });
   assert.equal(f.agent.alive(), true); assert.equal(f.gateway.alive(), true);
   assert.equal((await f.request("PUT", `/api/native-packagers/${f.packagerId}/room-consents/${f.roomId}`, { enabled: true })).status, 200);
@@ -71,7 +72,10 @@ for (const multiple of [false, true]) test(multiple
   await page.locator("#native-scene-layout").selectOption(multiple ? "side-by-side" : "single");
   await page.locator("app-native-source-scene").getByRole("checkbox", { name: /Kamera/ }).check();
   if (multiple) await page.locator("app-native-source-scene").getByRole("checkbox", { name: /Bildschirm/ }).check();
+  const fitControls = page.locator("app-native-source-scene select[data-scene-fit]");
+  assert.deepEqual(await fitControls.evaluateAll(nodes => nodes.map(node => node.value)), multiple ? ["contain", "contain"] : ["contain"]);
   const queriedScene = f.observation.scene.at(-1);
+  assert.equal(queriedScene.version, 2);
   await confirm(page, () => page.locator("#native-scene-apply").click());
   await page.locator("#native-scene-status", { hasText: "neu abfragen" }).waitFor();
   try { assertFreshNativeSceneApply(f.observation.scene, queriedScene); }
@@ -82,6 +86,33 @@ for (const multiple of [false, true]) test(multiple
       agentAlive: f.agent.alive(), originAlive: f.gateway.alive(), observation: f.observation }));
     throw error;
   });
+  let fitEvidence;
+  if (multiple) {
+    const letterbox = await decodedSceneTiles(viewer, ["slate", "slate"], null, .1);
+    await page.locator("#native-scene-refresh").click();
+    await page.locator("#native-scene-status", { hasText: "Szenenzustand bestätigt" }).waitFor();
+    assert.deepEqual(await fitControls.evaluateAll(nodes => nodes.map(node => node.value)), ["contain", "contain"]);
+    // Different choices must remain attached to their own source, not become a global crop switch.
+    await fitControls.nth(0).selectOption("cover");
+    const beforeFit = f.observation.scene.at(-1);
+    await confirm(page, () => page.locator("#native-scene-apply").click());
+    await page.locator("#native-scene-status", { hasText: "neu abfragen" }).waitFor();
+    assertFreshNativeSceneApply(f.observation.scene, beforeFit);
+    const mixed = await decodedSceneTiles(viewer, ["red", "slate"], null, .1);
+    await decodedSceneTiles(viewer, ["red", "blue"]);
+    await page.locator("#native-scene-refresh").click();
+    await page.locator("#native-scene-status", { hasText: "Szenenzustand bestätigt" }).waitFor();
+    assert.deepEqual(await fitControls.evaluateAll(nodes => nodes.map(node => node.value)), ["cover", "contain"]);
+    await fitControls.nth(1).selectOption("cover");
+    const beforeSecondFit = f.observation.scene.at(-1);
+    await confirm(page, () => page.locator("#native-scene-apply").click());
+    await page.locator("#native-scene-status", { hasText: "neu abfragen" }).waitFor();
+    assertFreshNativeSceneApply(f.observation.scene, beforeSecondFit);
+    const filled = await decodedSceneTiles(viewer, ["red", "blue"], null, .1);
+    assert.ok(filled.decodedFrames > mixed.decodedFrames && mixed.decodedFrames > letterbox.decodedFrames);
+    assert.equal(await page.evaluate(() => window.__sceneCaptures), 2, "presentation changes never reopen capture");
+    fitEvidence = { letterbox, mixed, filled };
+  }
   await sources.locator("li", { hasText: "Sender aktiv" }).filter({ hasText: "Kamera" })
     .getByRole("button", { name: "Broadcast-Quelle sofort stoppen", exact: true }).click();
   const revoked = await (multiple ? decodedSceneTiles(viewer, ["slate", "blue"]) : decodedScene(viewer, "slate", red.time + 1)).catch(async error => {
@@ -105,7 +136,7 @@ for (const multiple of [false, true]) test(multiple
     assert.equal(f.app.registry.participantCount, 1);
   }
   t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, path: "Angular-Node-native-SFrame-HLS-viewer",
-    initial, red, revoked, survivingMovement, finalSlate, roomParticipants: f.app.registry.participantCount }));
+    initial, red, fitEvidence, revoked, survivingMovement, finalSlate, roomParticipants: f.app.registry.participantCount }));
   await viewer.close();
   await page.locator("#native-source-stop").click();
   await page.locator("#native-source-status", { hasText: "Sendung gestoppt" }).waitFor({ timeout: 15_000 });

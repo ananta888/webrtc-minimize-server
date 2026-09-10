@@ -46,9 +46,10 @@ it("pins hardware/rendition choices and checks every assignment after a lost han
   } finally { f.service.ngOnDestroy(); }
 });
 
-it("carries selected output to HTTP, negotiates audio v3 and stops on capability downgrade", async () => {
+for (const capabilityVersion of [5, 6]) it(`carries selected output to HTTP with capability v${capabilityVersion}, audio v3 and stops on downgrade`, async () => {
   const f = fixture();
-  const capability = { ...f.candidates()[0].capability, capabilityVersion: 5, sourceAudioControlVersion: 3, sourceAudioEncodingVersion: 1 };
+  const capability = { ...f.candidates()[0].capability, capabilityVersion, sourceAudioControlVersion: 3, sourceAudioEncodingVersion: 1,
+    ...(capabilityVersion === 6 ? { sourceSceneControlVersion: 2 } : {}) };
   const audioOutput = { codec: "aac" as const, sampleRate: 48000 as const, channels: 1 as const, targetBitsPerSecond: 48000 };
   try {
     await expect(f.service.controller.start({ ...request, audioOutput }, "user-action")).rejects.toThrow();

@@ -8,9 +8,9 @@ const count = value => Array.isArray(value) && value.length <= 20 ? value.length
 /** Test-only receipt observation, never command authority or a media assertion. */
 export function observeNativeSceneReply(value) {
   try {
-    if (value?.version !== 1 || !types.includes(value.type)) return null;
+    if (![1, 2].includes(value?.version) || !types.includes(value.type)) return null;
     const state = value.type === types[0], rejected = value.type === types[2];
-    const row = { type: value.type, revision: rejected ? null : revision(value.sceneRevision),
+    const row = { version: value.version, type: value.type, revision: rejected ? null : revision(value.sceneRevision),
       layout: state && layouts.includes(value.layout) ? value.layout : null,
       available: state ? count(value.availableSources) : null,
       selected: state ? count(value.sourceLeaseIds) : null,
@@ -30,5 +30,6 @@ export function assertFreshNativeSceneApply(rows, previous) {
   const current = rows.at(-1);
   assert.notEqual(current, previous, "scene action produced no new native receipt");
   assert.equal(current?.type, "source-program-scene-applied", "refresh-needed UI text is not an applied receipt");
+  assert.equal(current.version, previous?.version, "native receipt must retain the negotiated scene version");
   assert.equal(current.revision, previous?.revision + 1, "native application must advance the queried scene revision");
 }

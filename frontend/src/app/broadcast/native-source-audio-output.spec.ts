@@ -22,6 +22,8 @@ it("copies exact output choices and bounds mono separately from stereo", () => {
 it("requires all negotiated capability fields; no inference from agent version", () => {
   const capability = { capabilityVersion: 5, sourcePrograms: true, sourceAudioControlVersion: 3, sourceAudioEncodingVersion: 1 };
   expect(supportsSourceAudioOutput(capability)).toBe(true);
+  expect(supportsSourceAudioOutput({ ...capability, capabilityVersion: 6, sourceSceneControlVersion: 2 })).toBe(true);
+  expect(supportsSourceAudioOutput({ ...capability, capabilityVersion: 6, sourceSceneControlVersion: 1 })).toBe(false);
   for (const key of Object.keys(capability)) {
     const value = { ...capability }; Reflect.deleteProperty(value, key);
     expect(supportsSourceAudioOutput(value)).toBe(false);

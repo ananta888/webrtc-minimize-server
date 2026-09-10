@@ -16,9 +16,9 @@ export function parseNativeSourceSceneReply(raw) {
     const time = value.type === "source-program-scene-applied" ? value.appliedAt : value.observedAt;
     const scope = Object.fromEntries(["commandId", "assignmentId", "programId", "programEpoch", "leaseId", "fencingRevision"]
       .map(key => [key, value[key]]));
-    const query = { version: 1, type: "source-program-scene-query", ...scope, issuedAt: time, expiresAt: time + 1 };
+    const query = { version: value.version, type: "source-program-scene-query", ...scope, issuedAt: time, expiresAt: time + 1 };
     const command = { ...query, type: "source-program-scene", expectedSceneRevision: value.sceneRevision - 1,
-      layout: "waiting-slate", sourceLeaseIds: [], activeSourceLeaseId: "" };
+      layout: "waiting-slate", sourceLeaseIds: [], activeSourceLeaseId: "", ...(value.version === 2 ? { sourceFits: [] } : {}) };
     if (value.type === "source-program-scene-state") return normalizeNativeSourceSceneState(value, query, time);
     if (value.type === "source-program-scene-applied") return normalizeNativeSourceSceneReceipt(value, command, time);
     if (value.type === "source-program-scene-rejected") {

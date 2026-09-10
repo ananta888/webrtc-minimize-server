@@ -75,7 +75,8 @@ export class NativeSourceProgramService implements OnDestroy {
     const context = this.sceneContext(), id = this.controller.controlledPackagerId();
     const capability = this.candidates().find(p => p.id === id)?.capability;
     const version = capability?.sourceAudioControlVersion;
-    return context && (version === 1 || version === 2 || version === 3 && supportsSourceAudioOutput(capability)) && capability?.capabilityVersion === version + 2
+    return context && (version === 1 || version === 2 || version === 3) && (version === 3 ? supportsSourceAudioOutput(capability)
+      : (version === 1 || version === 2) && capability?.capabilityVersion === version + 2)
       ? { ...context, key: JSON.stringify([context.key, id]), audioControlVersion: version } : null;
   }
   ngOnDestroy(): void { clearInterval(this.timer); this.controller.destroy(); }

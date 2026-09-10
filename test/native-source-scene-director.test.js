@@ -26,6 +26,43 @@ function fixture() {
   return { args, writer, assignment, capability, reply, setAfter: v => { after = v; }, leave: () => { member = null; } };
 }
 
+test("v2 query negotiates explicitly supported scene state without disabling old agents", async () => {
+  for (const modern of [false, true]) {
+    const f = fixture(); f.args.input = { ...input, requestVersion: 2 };
+    if (modern) {
+      Object.assign(f.capability, { capabilityVersion: 6, sourceAudioControlVersion: 3, sourceAudioEncodingVersion: 1, sourceSceneControlVersion: 2 });
+      Object.assign(f.reply, { version: 2, sourceFits: [] });
+    }
+    const result = await directNativeSourceScene(f.args);
+    assert.equal(result.sceneControlVersion, modern ? 2 : 1);
+    assert.equal(Object.hasOwn(result, "sourceFits"), modern);
+    const validate = new Ajv2020({ strict: true }).compile(JSON.parse(fs.readFileSync(
+      new URL(`../contracts/native-packager/source-scene-director-response.v${modern ? 2 : 1}.schema.json`, import.meta.url))));
+    assert.ok(validate(result));
+  }
+});
+
+test("requested v2 apply cannot silently downgrade and negotiated capability changes invalidate replies", async () => {
+  const f = fixture();
+  f.args.input = { ...input, requestVersion: 2, action: "apply", trigger: "user-action", expectedSceneRevision: 1,
+    layout: "grid", sourceLeaseIds: [], activeSourceLeaseId: "", sourceFits: [] };
+  const validate = new Ajv2020({ strict: true }).compile(JSON.parse(fs.readFileSync(
+    new URL("../contracts/native-packager/source-scene-director-request.v2.schema.json", import.meta.url))));
+  assert.ok(validate(f.args.input)); assert.ok(validate({ ...input, requestVersion: 2 }));
+  for (const patch of [{ sourceFits: null }, { sourceFits: ["unknown"] }, { sourceFits: undefined }, { extra: true }]) {
+    assert.equal(validate({ ...f.args.input, ...patch }), false);
+    assert.throws(() => normalizeNativeSceneDirectorInput({ ...f.args.input, ...patch }));
+  }
+  assert.throws(() => normalizeNativeSceneDirectorInput({ ...f.args.input, sourceFits: ["cover"] }), /invalid_native_scene_request/);
+  await assert.rejects(directNativeSourceScene(f.args), /native_scene_unsupported/);
+  Object.assign(f.capability, { capabilityVersion: 6, sourceAudioControlVersion: 3, sourceAudioEncodingVersion: 1, sourceSceneControlVersion: 2 });
+  await assert.rejects(directNativeSourceScene(f.args), /native_scene_reply_invalid/);
+  const q = fixture(); q.args.input = { ...input, requestVersion: 2 };
+  Object.assign(q.capability, f.capability); Object.assign(q.reply, { version: 2, sourceFits: [] });
+  q.setAfter(() => { q.capability.capabilityVersion = 5; delete q.capability.sourceSceneControlVersion; });
+  await assert.rejects(directNativeSourceScene(q.args), /native_scene_authority_changed/);
+});
+
 test("HTTP schemas agree with closed query/apply requests and projected observations", async () => {
   for (const value of [input, { ...input, action: "apply", trigger: "user-action", expectedSceneRevision: 1, layout: "grid",
     sourceLeaseIds: [], activeSourceLeaseId: "" }]) {

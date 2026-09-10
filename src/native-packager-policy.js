@@ -90,15 +90,22 @@ export function supportsNativeSourceAudioV2(capability) {
 }
 
 export function supportsNativeSourceAudioV3(capability) {
-  return capability?.capabilityVersion === 5 && capability.sourcePrograms === true
+  return (capability?.capabilityVersion === 5 || capability?.capabilityVersion === 6 && capability.sourceSceneControlVersion === 2)
+    && capability.sourcePrograms === true
     && capability.sourceAudioControlVersion === 3 && capability.sourceAudioEncodingVersion === 1;
 }
 
 // Released protocol generation plus explicit local source-program opt-in.
 // Do not infer scene commands from 0.8's sourcePrograms flag alone.
 export function supportsNativeSourceSceneV1(capability) {
+  if (supportsNativeSourceSceneV2(capability)) return true;
   const match = typeof capability?.agentVersion === "string" && capability.agentVersion.match(/^(\d+)\.(\d+)\.(\d+)$/);
   return supportsNativeSourceSignalV1(capability) && Boolean(match && (Number(match[1]) > 0 || Number(match[2]) >= 9));
+}
+
+export function supportsNativeSourceSceneV2(capability) {
+  return capability?.capabilityVersion === 6 && supportsNativeSourceAudioV3(capability)
+    && capability.sourceSceneControlVersion === 2;
 }
 
 export function normalizeNativePackagerCapability(value, now = Date.now()) {
@@ -108,14 +115,16 @@ export function normalizeNativePackagerCapability(value, now = Date.now()) {
     "uploadClass", "energyClass", "health", "maximumRenditions", "maximumPixelsPerSecond",
     "consentedRoomIds", "observedAt", "expiresAt",
   ]);
-  if ([2, 3, 4, 5].includes(value?.capabilityVersion)) fields.add("sourcePrograms");
-  if ([3, 4, 5].includes(value?.capabilityVersion)) fields.add("sourceAudioControlVersion");
-  if (value?.capabilityVersion === 5) fields.add("sourceAudioEncodingVersion");
+  if ([2, 3, 4, 5, 6].includes(value?.capabilityVersion)) fields.add("sourcePrograms");
+  if ([3, 4, 5, 6].includes(value?.capabilityVersion)) fields.add("sourceAudioControlVersion");
+  if ([5, 6].includes(value?.capabilityVersion)) fields.add("sourceAudioEncodingVersion");
+  if (value?.capabilityVersion === 6) fields.add("sourceSceneControlVersion");
   if (!value || typeof value !== "object" || Array.isArray(value)
     || Object.keys(value).length !== fields.size || Object.keys(value).some((key) => !fields.has(key))
-    || ![1, 2, 3, 4, 5].includes(value.capabilityVersion) || [2, 3, 4, 5].includes(value.capabilityVersion) && typeof value.sourcePrograms !== "boolean"
-    || [3, 4, 5].includes(value.capabilityVersion) && (value.sourcePrograms !== true || value.sourceAudioControlVersion !== value.capabilityVersion - 2)
-    || value.capabilityVersion === 5 && value.sourceAudioEncodingVersion !== 1
+    || ![1, 2, 3, 4, 5, 6].includes(value.capabilityVersion) || [2, 3, 4, 5, 6].includes(value.capabilityVersion) && typeof value.sourcePrograms !== "boolean"
+    || [3, 4, 5, 6].includes(value.capabilityVersion) && (value.sourcePrograms !== true || value.sourceAudioControlVersion !== Math.min(3, value.capabilityVersion - 2))
+    || [5, 6].includes(value.capabilityVersion) && value.sourceAudioEncodingVersion !== 1
+    || value.capabilityVersion === 6 && value.sourceSceneControlVersion !== 2
     || !ID.test(value.agentId || "") || !TENANT.test(value.tenantId || "")
     || !SUBJECT.test(value.ownerSubjectRef || "") || !/^dev_[A-Za-z0-9_-]{16,64}$/.test(value.deviceRef || "")
     || !VERSION.test(value.agentVersion || "") || !VERSION.test(value.ffmpegVersion || "")
@@ -139,7 +148,7 @@ export function normalizeNativePackagerCapability(value, now = Date.now()) {
     || value.observedAt > now + 5_000 || value.expiresAt <= now || value.expiresAt > value.observedAt + 60_000) {
     fail("invalid_native_packager_capability");
   }
-  if ([2, 3, 4, 5].includes(value.capabilityVersion) && (!/^pkr_[A-Za-z0-9_-]{16,64}$/.test(value.agentId)
+  if ([2, 3, 4, 5, 6].includes(value.capabilityVersion) && (!/^pkr_[A-Za-z0-9_-]{16,64}$/.test(value.agentId)
     || value.observedAt < 1 || value.expiresAt < 1
     || !value.videoEncoders.length || new Set(value.videoEncoders).size !== value.videoEncoders.length
     || !value.audioEncoders.length || new Set(value.audioEncoders).size !== value.audioEncoders.length)) {

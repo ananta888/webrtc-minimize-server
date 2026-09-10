@@ -27,6 +27,41 @@ function reply(command, outcome = "state") {
     .map(k => [k, command[k]])) };
 }
 
+test("v2 broker preserves fits, exact reply version and capability-context fencing", async () => {
+  for (const outcome of ["success", "old-reply", "capability-change"]) {
+    const f = setup(); f.context.sceneControlVersion = 2;
+    const fits = ["cover"], update = { ...selection, sourceLeaseIds: ["sls_aaaaaaaaaaaaaaaa"], sourceFits: fits };
+    const pending = f.request(update), command = f.sent[0].command;
+    fits[0] = "contain";
+    assert.equal(command.version, 2); assert.deepEqual(command.sourceFits, ["cover"]);
+    const response = { ...reply(command, "applied"), version: outcome === "old-reply" ? 1 : 2 };
+    assert.deepEqual(parseNativePackagerMessage(Buffer.from(JSON.stringify(response))), response);
+    if (outcome === "capability-change") f.set({ ...f.context, sceneControlVersion: 1 });
+    f.broker.acknowledge(f.context.socket, response);
+    if (outcome === "success") assert.equal((await pending).version, 2);
+    else await assert.rejects(pending, /native_scene_(reply_invalid|authority_changed)/);
+    assert.equal(f.timers.size, 0); assert.equal(f.sent.length, 1); f.broker.destroy();
+  }
+});
+
+test("v2 query observes actual fits, while invalid or downgraded selections never send", async () => {
+  const f = setup(); f.context.sceneControlVersion = 2;
+  for (const sourceFits of [undefined, null, ["cover"], ["invalid"]]) {
+    await assert.rejects(f.request({ ...selection, sourceFits }), /invalid_native_scene_selection/);
+  }
+  assert.equal(f.sent.length, 0);
+  const pending = f.request(), command = f.sent[0].command;
+  const response = { ...reply(command), version: 2, sourceFits: [] };
+  assert.deepEqual(parseNativePackagerMessage(JSON.stringify(response)), response);
+  f.broker.acknowledge(f.context.socket, response);
+  assert.ok(Object.isFrozen((await pending).sourceFits));
+  f.context.sceneControlVersion = 1;
+  await assert.rejects(f.request({ ...selection, sourceFits: [] }), /invalid_native_scene_selection/);
+  f.context.sceneControlVersion = 3;
+  await assert.rejects(f.request(), /native_scene_unsupported/);
+  assert.equal(f.sent.length, 1); f.broker.destroy();
+});
+
 test("scene reply wire is closed, bounded, UTF8/duplicate strict and shared with the native fixtures", () => {
   for (const name of ["state", "applied", "rejected"]) {
     const value = fixture(name), raw = JSON.stringify(value);

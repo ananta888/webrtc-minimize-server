@@ -38,6 +38,7 @@ export class NativeSourceSceneController {
     this.tick();
     if (trigger !== "user-action" || !this.scene || !this.current() || !validSceneSelection(selection)
       || selection.expectedSceneRevision !== this.scene.sceneRevision
+      || (this.scene.sceneControlVersion === 2) !== (selection.sourceFits !== undefined)
       || selection.sourceLeaseIds.some(id => !this.scene!.availableSources.some(s => s.sourceLeaseId === id))) return;
     await this.run(selection);
   }
@@ -60,8 +61,10 @@ export class NativeSourceSceneController {
         if (result.outcome !== "observed") throw new Error();
         this.scene = result; this.emit("ready");
       } else {
+        if (result.sceneControlVersion !== (selection.sourceFits === undefined ? 1 : 2)) throw new Error();
         if (result.outcome === "rejected") this.emit("conflict");
-        else if (result.outcome !== "applied" || result.sceneRevision !== selection.expectedSceneRevision + 1) throw new Error();
+        else if (result.outcome !== "applied" || result.sceneRevision !== selection.expectedSceneRevision + 1
+          || result.sceneControlVersion !== (selection.sourceFits === undefined ? 1 : 2)) throw new Error();
         else this.emit("stale"); // Applied receipt is historical, not a current scene snapshot.
       }
     } catch { if (!this.closed && this.pending === abort) { this.scene = null; this.emit("unavailable"); } }

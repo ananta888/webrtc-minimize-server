@@ -10,9 +10,9 @@ const rejected = { version: 1, type: "source-program-scene-rejected", reasonCode
 test("scene receipt projection retains only bounded fixed metadata, not identities or source content", () => {
   const row = observeNativeSceneReply({ ...query, commandId: "PRIVATE-MARKER", leaseId: "PRIVATE-MARKER",
     get media() { throw Error("must not inspect media"); }, get key() { throw Error("must not inspect keys"); } });
-  assert.deepEqual(row, { type: query.type, revision: 1, layout: "waiting-slate", available: 1, selected: 0, reason: null });
+  assert.deepEqual(row, { version: 1, type: query.type, revision: 1, layout: "waiting-slate", available: 1, selected: 0, reason: null });
   assert.equal(Object.isFrozen(row), true); assert.equal(JSON.stringify(row).includes("PRIVATE-MARKER"), false);
-  for (const value of [null, {}, { ...query, version: 2 }, { ...query, type: "PRIVATE-MARKER" },
+  for (const value of [null, {}, { ...query, version: 3 }, { ...query, type: "PRIVATE-MARKER" },
     { ...query, sceneRevision: NaN }, { ...query, sceneRevision: 0 }, { ...query, layout: "PRIVATE-MARKER" },
     { ...query, availableSources: Array(21) }, { ...query, sourceLeaseIds: {} },
     { ...rejected, reasonCode: "PRIVATE-MARKER" }, { get version() { throw Error("private"); } }]) {
@@ -36,4 +36,8 @@ test("only a new applied revision is a delivery precondition; conflict, expiry a
   recordNativeSceneReply(rows, { ...applied, sceneRevision: 3 });
   assert.throws(() => assertFreshNativeSceneApply(rows, previous), /queried scene revision/);
   recordNativeSceneReply(rows, applied); assertFreshNativeSceneApply(rows, previous);
+  recordNativeSceneReply(rows, { ...applied, version: 2 });
+  assert.throws(() => assertFreshNativeSceneApply(rows, previous), /negotiated scene version/);
+  recordNativeSceneReply(rows, { ...query, version: 2 }); const v2Previous = rows.at(-1);
+  recordNativeSceneReply(rows, { ...applied, version: 2 }); assertFreshNativeSceneApply(rows, v2Previous);
 });

@@ -28,7 +28,7 @@ test("query/state/rejection share native fixtures and closed schemas", () => {
 });
 
 test("query shares exact reference and deadline bounds without mutating a scene", () => {
-  for (const change of [{ version: 2 }, { type: "source-program-scene" }, { commandId: "scn_short" },
+  for (const change of [{ version: 3 }, { type: "source-program-scene" }, { commandId: "scn_short" },
     { programEpoch: 0 }, { fencingRevision: Number.MAX_SAFE_INTEGER + 1 }, { expiresAt: now },
     { expiresAt: now + 4001 }, { issuedAt: now + 1001 }, { expectedSceneRevision: 1 }])
     assert.throws(() => normalizeNativeSourceSceneQuery({ ...query, ...change }, now));

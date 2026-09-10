@@ -33,6 +33,37 @@ const json = (value: unknown, status = 201) => new Response(JSON.stringify(value
 const handoffContract = new Ajv2020().compile(JSON.parse(readFileSync("contracts/native-packager/handoff.v1.schema.json", "utf8")));
 
 describe("BroadcastControlPlaneService", () => {
+  for (const version of [1, 2]) it(`queries scene v2 but preserves negotiated v${version} on explicit apply`, async () => {
+    const scope = { sceneControlVersion: version, programId: program.programId, programRevision: 1, programEpoch: 1,
+      packagerId: "pkr_aaaaaaaaaaaaaaaa", assignmentId: "asn_aaaaaaaaaaaaaaaa", fencingRevision: 1 };
+    const selection = { expectedSceneRevision: 1, layout: "grid" as const, sourceLeaseIds: [], activeSourceLeaseId: "",
+      ...(version === 2 ? { sourceFits: [] } : {}) };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json({ ...scope, outcome: "observed", observedAt: Date.now(),
+      sceneRevision: 1, layout: "grid", sourceLeaseIds: [], activeSourceLeaseId: "", availableSources: [],
+      ...(version === 2 ? { sourceFits: [] } : {}) })).mockResolvedValueOnce(json({ ...scope, outcome: "applied", appliedAt: Date.now(), sceneRevision: 2 }));
+    const service = new BroadcastControlPlaneService({ authorizationHeader: () => ({ Authorization: "Bearer oidc" }) } as never,
+      { fingerprint: () => "f".repeat(43) } as never);
+    try {
+      await expect(service.nativeSourceScene(program, null, new AbortController().signal)).resolves.toMatchObject({ outcome: "observed", sceneControlVersion: version });
+      await expect(service.nativeSourceScene(program, selection, new AbortController().signal)).resolves.toMatchObject({ outcome: "applied", sceneControlVersion: version });
+      const bodies = fetchMock.mock.calls.map(([, options]) => JSON.parse(String(options?.body)));
+      expect(bodies[0]).toMatchObject({ requestVersion: 2, action: "query" });
+      expect(bodies[1]).toMatchObject({ requestVersion: version, action: "apply", trigger: "user-action", ...selection });
+      for (const [, options] of fetchMock.mock.calls) expect(options).toMatchObject({ cache: "no-store", redirect: "error", credentials: "same-origin" });
+    } finally { fetchMock.mockRestore(); }
+  });
+
+  it("does not send a scene operation cancelled while its deferred parser is loading", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const service = new BroadcastControlPlaneService({ authorizationHeader: () => ({}) } as never,
+      { fingerprint: () => "f".repeat(43) } as never), abort = new AbortController();
+    try {
+      const pending = service.nativeSourceScene(program, null, abort.signal); abort.abort();
+      await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally { fetchMock.mockRestore(); }
+  });
+
   it("creates a program and returns only its bounded control reference", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(json({
       program: { directoryVersion: 1 },

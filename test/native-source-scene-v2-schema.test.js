@@ -26,7 +26,12 @@ for (const name of ["source-scene", "source-scene-query", "source-scene-state", 
   });
 }
 
-test("native-only intermediate v2 is not silently forwarded by the existing Node v1 adapter", () => {
+test("Node v2 normalization retains explicit fits and rejects absent, mismatched or unknown entries", () => {
   const value = json("../native-broadcast-packager/testdata/source-scene.v2.json");
-  assert.throws(() => normalizeNativeSourceScene(value, value.issuedAt), /invalid_native_source_scene/);
+  const result = normalizeNativeSourceScene(value, value.issuedAt);
+  assert.deepEqual(result, value); assert.ok(Object.isFrozen(result.sourceFits));
+  assert.notEqual(result.sourceFits, value.sourceFits);
+  for (const sourceFits of [undefined, null, [], ["cover", "contain"], ["stretch"]]) {
+    assert.throws(() => normalizeNativeSourceScene({ ...value, sourceFits }, value.issuedAt), /invalid_native_source_scene/);
+  }
 });

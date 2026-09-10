@@ -7,7 +7,7 @@ export async function installNativeSceneUiFixture(page, programId) {
   await page.route(`**/api/broadcasts/${programId}/native-source-scene`, route => {
     const input = route.request().postDataJSON();
     assert.equal(route.request().method(), "POST");
-    assert.equal(input.requestVersion, 1); assert.equal(input.expectedProgramRevision, 4); assert.equal(input.expectedProgramEpoch, 1);
+    assert.equal(input.requestVersion, input.action === "query" ? 2 : 1); assert.equal(input.expectedProgramRevision, 4); assert.equal(input.expectedProgramEpoch, 1);
     assert.match(input.deviceFingerprint, /^[A-Za-z0-9_-]{43}$/);
     const scope = { sceneControlVersion: 1, programId, programRevision: 4, programEpoch: 1,
       packagerId: "pkr_aaaaaaaaaaaaaaaa", assignmentId: "asn_aaaaaaaaaaaaaaaa", fencingRevision: 4 };

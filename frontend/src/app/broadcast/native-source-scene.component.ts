@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from "@angular/core";
 import { NativeSourceSceneService } from "./native-source-scene.service";
-import { NativeSceneSelection, SCENE_LAYOUTS, SceneLayout } from "./native-source-scene-contract";
+import { NativeSceneSelection, SCENE_LAYOUTS, SceneLayout, SceneFit } from "./native-source-scene-contract";
 
 @Component({ selector: "app-native-source-scene", standalone: true, providers: [NativeSourceSceneService],
   templateUrl: "./native-source-scene.component.html", changeDetection: ChangeDetectionStrategy.OnPush })
@@ -8,6 +8,7 @@ export class NativeSourceSceneComponent {
   readonly layout = signal<SceneLayout>("waiting-slate");
   readonly selected = signal<readonly string[]>([]);
   readonly active = signal("");
+  readonly fits = signal<Readonly<Record<string, SceneFit>>>({});
   readonly layouts: ReadonlyArray<{ value: SceneLayout; label: string }> = [
     { value: "single", label: "Einzelquelle" }, { value: "screen-presenter", label: "Bildschirm mit Präsentation" },
     { value: "side-by-side", label: "Nebeneinander" }, { value: "active-speaker", label: "Ausgewählter Sprecher" },
@@ -22,7 +23,10 @@ export class NativeSourceSceneComponent {
   async refresh(): Promise<void> {
     await this.scenes.controller.refresh();
     const state = this.scenes.view().scene;
-    if (state) { this.layout.set(state.layout); this.selected.set(state.sourceLeaseIds); this.active.set(state.activeSourceLeaseId); }
+    if (state) {
+      this.layout.set(state.layout); this.selected.set(state.sourceLeaseIds); this.active.set(state.activeSourceLeaseId);
+      this.fits.set(Object.fromEntries(state.sourceLeaseIds.map((id, i) => [id, state.sourceFits?.[i] ?? "contain"])));
+    }
   }
   setLayout(value: string): void {
     if (!SCENE_LAYOUTS.includes(value as SceneLayout)) return;
@@ -35,6 +39,7 @@ export class NativeSourceSceneComponent {
     if (checked) next.push(id);
     if (next.length > 20) return;
     this.selected.set(next);
+    if (checked && !this.fits()[id]) this.fits.set({ ...this.fits(), [id]: "contain" });
     if (!next.includes(this.active())) this.active.set("");
   }
   remove(id: string): void {
@@ -43,7 +48,13 @@ export class NativeSourceSceneComponent {
   }
   private selection(): NativeSceneSelection | null {
     const scene = this.scenes.view().scene;
-    return scene ? { expectedSceneRevision: scene.sceneRevision, layout: this.layout(), sourceLeaseIds: [...this.selected()], activeSourceLeaseId: this.active() } : null;
+    return scene ? { expectedSceneRevision: scene.sceneRevision, layout: this.layout(), sourceLeaseIds: [...this.selected()], activeSourceLeaseId: this.active(),
+      ...(scene.sceneControlVersion === 2 ? { sourceFits: this.selected().map(id => this.fits()[id] ?? "contain") } : {}) } : null;
+  }
+  setFit(id: string, value: string): void {
+    if (this.scenes.view().phase !== "ready" || this.scenes.view().scene?.sceneControlVersion !== 2
+      || !this.selected().includes(id) || !["contain", "cover"].includes(value)) return;
+    this.fits.set({ ...this.fits(), [id]: value as SceneFit });
   }
   async apply(): Promise<void> {
     const selection = this.selection();
