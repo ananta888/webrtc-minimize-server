@@ -94,6 +94,21 @@ noch Produktionsabnahme; TBP-033 bleibt offen.
 
 ## Token- und Pfadbindung
 
+Die Programm-ID aus `POST /api/broadcasts/{programId}/playback` ist an der
+Runtimegrenze verpflichtend. Sie muss zur Challenge passen, bevor diese
+verbraucht oder ein Grant signiert wird. Auch der ursprüngliche authentisierte
+Principal muss passen; eine anonyme Challenge kann ausschließlich im anonymen
+Pfad eingelöst werden. Eine falsche Programm-URL oder Identität lässt die
+legitime Challenge unberührt. Ein ungültiger Gerätebeweis bei korrekt gebundenem
+Scope verbraucht dagegen weiterhin den einmaligen Versuch.
+
+`test/broadcast-playback-path-http.test.js` prüft diese Grenze über echtes HTTP,
+ephemere kryptografisch verifizierte OIDC-Identitäten sowie echte P-256-Beweise
+und JWT-Grants für private und anonym öffentliche Programme. Vor der Korrektur
+stellten vier URL-Negativfälle trotz HTTP 404 einen Grant aus; zwei
+Identitäts-Negativfälle verbrauchten unberechtigt die Challenge. Die Fixtures
+setzen ausschließlich Control-Plane-Zustände, ohne Medien oder Packagerprozess.
+
 Publisher- und Packager-Grants laufen standardmäßig nach 60 Sekunden ab und
 sind genau einmal verwendbar. Playback-Grants laufen standardmäßig nach 120
 Sekunden ab und können innerhalb ihrer kurzen Laufzeit für die erlaubten

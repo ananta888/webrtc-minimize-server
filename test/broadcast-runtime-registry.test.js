@@ -123,7 +123,7 @@ for (const anonymous of [false, true]) test(`runtime caps ${anonymous ? "anonymo
   const device = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const authorize = async () => {
     const challenge = await runtime.createPlaybackChallenge(viewer, registered.programId, now, context);
-    return runtime.authorizePlayback(viewer, { requestVersion: 1, challengeId: challenge.challengeId,
+    return runtime.authorizePlayback(viewer, registered.programId, { requestVersion: 1, challengeId: challenge.challengeId,
       deviceProof: proof(device, challenge.proofContext, now) }, now);
   };
   const active = await authorize(); assert.equal(active.expiresAt, NOW + 60_000);
@@ -182,7 +182,7 @@ test("playback uses a one-time device-bound challenge and does not create room m
   ), NOW);
   const challenge = await runtime.createPlaybackChallenge(viewer, registered.programId, NOW);
   const device = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-  const bootstrap = await runtime.authorizePlayback(viewer, {
+  const bootstrap = await runtime.authorizePlayback(viewer, registered.programId, {
     requestVersion: 1,
     challengeId: challenge.challengeId,
     deviceProof: proof(device, challenge.proofContext),
@@ -193,7 +193,7 @@ test("playback uses a one-time device-bound challenge and does not create room m
   assert.match(bootstrap.playbackGrant, /^[^.]+\.[^.]+\.[^.]+$/);
   assert.equal(runtime.challengeCount, 0);
   await assert.rejects(
-    () => runtime.authorizePlayback(viewer, {
+    () => runtime.authorizePlayback(viewer, registered.programId, {
       requestVersion: 1,
       challengeId: challenge.challengeId,
       deviceProof: proof(device, challenge.proofContext),
@@ -217,7 +217,7 @@ test("public anonymous playback remains device-, policy- and epoch-bound without
   });
   assert.equal(challenge.proofContext.subjectRef, `sub_${"z".repeat(24)}`);
   const device = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-  const bootstrap = await runtime.authorizePlayback(null, {
+  const bootstrap = await runtime.authorizePlayback(null, registered.programId, {
     requestVersion: 1,
     challengeId: challenge.challengeId,
     deviceProof: proof(device, challenge.proofContext),
@@ -226,7 +226,7 @@ test("public anonymous playback remains device-, policy- and epoch-bound without
   assert.match(bootstrap.playbackGrant, /^[^.]+\.[^.]+\.[^.]+$/);
   assert.equal(runtime.challengeCount, 0);
   await assert.rejects(
-    () => runtime.authorizePlayback(null, {
+    () => runtime.authorizePlayback(null, registered.programId, {
       requestVersion: 1,
       challengeId: challenge.challengeId,
       deviceProof: proof(device, challenge.proofContext),
@@ -720,7 +720,7 @@ test("same-program native output restart invalidates a real signed playback gran
     allowHardwareAcceleration: false }, request => request, NOW);
   runtime.markNativeOutputReady(prepared.admission.resourceRef, packagerId, prepared.lease.fencingRevision, NOW);
   const challenge = await runtime.createPlaybackChallenge(owner, programId, NOW);
-  const bootstrap = await runtime.authorizePlayback(owner, { requestVersion: 1, challengeId: challenge.challengeId,
+  const bootstrap = await runtime.authorizePlayback(owner, programId, { requestVersion: 1, challengeId: challenge.challengeId,
     deviceProof: proof(device, challenge.proofContext) }, NOW);
   const grant = issued.grant;
   const expectation = { audience: grant.tokenAudience, action: "playback:manifest", tenantId: grant.tenantId,

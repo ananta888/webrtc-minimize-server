@@ -1035,10 +1035,7 @@ function createHttpHandler(config, registry, services) {
         }
         const identity = await authenticateOptionalRequest(request, config, oidcVerifier);
         const input = await readJsonBody(request);
-        const bootstrap = await broadcastRuntime.authorizePlayback(identity, input);
-        if (bootstrap.program.programId !== broadcastPlaybackMatch[1]) {
-          throw new BroadcastRuntimeError("broadcast_not_available", 404);
-        }
+        const bootstrap = await broadcastRuntime.authorizePlayback(identity, broadcastPlaybackMatch[1], input);
         sendJson(response, 201, bootstrap, securityHeaders(config));
         return;
       }

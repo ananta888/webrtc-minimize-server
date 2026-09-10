@@ -488,7 +488,8 @@ export class BroadcastRuntimeRegistry {
     });
   }
 
-  async authorizePlayback(identity, value, now = this.#clock()) {
+  async authorizePlayback(identity, programId, value, now = this.#clock()) {
+    if (typeof programId !== "string" || !PROGRAM.test(programId)) unavailable();
     const input = clone(value, "invalid_broadcast_playback_authorization");
     closed(input, new Set(["requestVersion", "challengeId", "deviceProof"]),
       "invalid_broadcast_playback_authorization");
@@ -498,8 +499,8 @@ export class BroadcastRuntimeRegistry {
     }
     this.prune(now);
     const challenge = this.#challenges.get(input.challengeId);
-    this.#challenges.delete(input.challengeId);
-    if (!challenge || challenge.kind !== "playback" || challenge.expiresAt <= now) unavailable();
+    if (!challenge || challenge.kind !== "playback" || challenge.expiresAt <= now
+      || challenge.proofContext.programId !== programId) unavailable();
     let refs;
     if (challenge.anonymous) {
       if (identity !== null) unavailable();
@@ -508,6 +509,7 @@ export class BroadcastRuntimeRegistry {
       refs = identityRefs(identity);
       if (challenge.refs.principal !== refs.principal) unavailable();
     }
+    this.#challenges.delete(input.challengeId);
     const current = this.#records.get(`${refs.tenantId}\0${challenge.proofContext.programId}`);
     if (current !== challenge.record
       || current.snapshot.machine.program.revision !== challenge.proofContext.programRevision

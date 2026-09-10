@@ -592,8 +592,9 @@ test("broadcast directory and device challenge APIs are default-deny and use ver
       calls.push(["challenge", actual, programId]);
       return { challengeVersion: 1, challengeId: `bpc_${"a".repeat(24)}`, proofContext: {}, expiresAt: Date.now() + 30_000 };
     },
-    async authorizePlayback(actual, input) {
-      calls.push(["playback", actual, input]);
+    async authorizePlayback(actual, programId, input) {
+      assert.equal(programId, program.programId);
+      calls.push(["playback", actual, programId, input]);
       return {
         bootstrapVersion: 1, program, resourceRef: "res_aaaaaaaaaaaaaaaa",
         playbackGrant: "test-grant-not-logged", expiresAt: Date.now() + 30_000,
