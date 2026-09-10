@@ -22,10 +22,15 @@ type sourceSceneQuery struct {
 }
 
 func (q sourceSceneQuery) command() sourceSceneCommand {
-	return sourceSceneCommand{Version: q.Version, Type: "source-program-scene", CommandID: q.CommandID,
+	c := sourceSceneCommand{Version: q.Version, Type: "source-program-scene", CommandID: q.CommandID,
 		AssignmentID: q.AssignmentID, ProgramID: q.ProgramID, ProgramEpoch: q.ProgramEpoch, LeaseID: q.LeaseID,
 		FencingRevision: q.FencingRevision, IssuedAt: q.IssuedAt, ExpiresAt: q.ExpiresAt,
 		ExpectedSceneRevision: 1, Layout: "waiting-slate", SourceLeaseIDs: []string{}}
+	if q.Version == 2 {
+		fits := []string{}
+		c.SourceFits = &fits
+	}
+	return c
 }
 
 func parseSourceSceneQuery(raw []byte, now time.Time) (sourceSceneQuery, error) {
@@ -52,7 +57,7 @@ type sourceSceneAvailable struct {
 }
 
 func sourceSceneReply(c sourceSceneCommand, kind string, now int64) map[string]any {
-	return map[string]any{"version": 1, "type": kind, "commandId": c.CommandID, "assignmentId": c.AssignmentID,
+	return map[string]any{"version": c.Version, "type": kind, "commandId": c.CommandID, "assignmentId": c.AssignmentID,
 		"programId": c.ProgramID, "programEpoch": c.ProgramEpoch, "leaseId": c.LeaseID, "fencingRevision": c.FencingRevision, "observedAt": now}
 }
 
@@ -97,5 +102,11 @@ func (p *sourceProgramGeneration) QueryScene(raw []byte) (map[string]any, error)
 	reply := sourceSceneReply(q.command(), "source-program-scene-state", now)
 	reply["sceneRevision"], reply["layout"] = p.video.revision, p.video.layout
 	reply["sourceLeaseIds"], reply["activeSourceLeaseId"], reply["availableSources"] = selected, p.sceneSelectedActive, available
+	if q.Version == 2 {
+		if len(p.video.sceneFits) != len(selected) {
+			return nil, errors.New("source scene presentation unavailable")
+		}
+		reply["sourceFits"] = append([]string{}, p.video.sceneFits...)
+	}
 	return reply, nil
 }

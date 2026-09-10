@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/source-scene.v2.schema.json",
+  "title": "Source program scene command; authenticated control and current source authority required",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "type",
+    "commandId",
+    "assignmentId",
+    "programId",
+    "programEpoch",
+    "leaseId",
+    "fencingRevision",
+    "expectedSceneRevision",
+    "layout",
+    "sourceLeaseIds",
+    "activeSourceLeaseId",
+    "issuedAt",
+    "expiresAt",
+    "sourceFits"
+  ],
+  "properties": {
+    "version": {
+      "const": 2
+    },
+    "type": {
+      "const": "source-program-scene"
+    },
+    "commandId": {
+      "type": "string",
+      "pattern": "^scn_[A-Za-z0-9_-]{16,64}$"
+    },
+    "assignmentId": {
+      "type": "string",
+      "pattern": "^asn_[A-Za-z0-9_-]{16,64}$"
+    },
+    "programId": {
+      "type": "string",
+      "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+    },
+    "leaseId": {
+      "type": "string",
+      "pattern": "^lea_[A-Za-z0-9_-]{16,64}$"
+    },
+    "programEpoch": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "fencingRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "expectedSceneRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740990
+    },
+    "layout": {
+      "enum": [
+        "single",
+        "screen-presenter",
+        "side-by-side",
+        "active-speaker",
+        "grid",
+        "waiting-slate",
+        "end-slate"
+      ]
+    },
+    "sourceLeaseIds": {
+      "type": "array",
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^sls_[A-Za-z0-9_-]{16,64}$"
+      }
+    },
+    "activeSourceLeaseId": {
+      "type": "string",
+      "pattern": "^(|sls_[A-Za-z0-9_-]{16,64})$"
+    },
+    "issuedAt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "expiresAt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "sourceFits": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "enum": [
+          "contain",
+          "cover"
+        ]
+      },
+      "description": "One explicit fit per sourceLeaseIds entry, in identical order. Runtime validation requires equal lengths; no partial/default entries."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "layout": {
+            "enum": [
+              "screen-presenter",
+              "side-by-side",
+              "grid",
+              "waiting-slate",
+              "end-slate"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "activeSourceLeaseId": {
+            "const": ""
+          }
+        }
+      }
+    }
+  ]
+}

@@ -16,20 +16,21 @@ var sourceSceneCommandID = regexp.MustCompile(`^scn_[A-Za-z0-9_-]{16,64}$`)
 var sourceSceneLeaseID = regexp.MustCompile(`^sls_[A-Za-z0-9_-]{16,64}$`)
 
 type sourceSceneCommand struct {
-	Version               int      `json:"version"`
-	Type                  string   `json:"type"`
-	CommandID             string   `json:"commandId"`
-	AssignmentID          string   `json:"assignmentId"`
-	ProgramID             string   `json:"programId"`
-	ProgramEpoch          int64    `json:"programEpoch"`
-	LeaseID               string   `json:"leaseId"`
-	FencingRevision       int64    `json:"fencingRevision"`
-	ExpectedSceneRevision uint64   `json:"expectedSceneRevision"`
-	Layout                string   `json:"layout"`
-	SourceLeaseIDs        []string `json:"sourceLeaseIds"`
-	ActiveSourceLeaseID   string   `json:"activeSourceLeaseId"`
-	IssuedAt              int64    `json:"issuedAt"`
-	ExpiresAt             int64    `json:"expiresAt"`
+	Version               int       `json:"version"`
+	Type                  string    `json:"type"`
+	CommandID             string    `json:"commandId"`
+	AssignmentID          string    `json:"assignmentId"`
+	ProgramID             string    `json:"programId"`
+	ProgramEpoch          int64     `json:"programEpoch"`
+	LeaseID               string    `json:"leaseId"`
+	FencingRevision       int64     `json:"fencingRevision"`
+	ExpectedSceneRevision uint64    `json:"expectedSceneRevision"`
+	Layout                string    `json:"layout"`
+	SourceLeaseIDs        []string  `json:"sourceLeaseIds"`
+	ActiveSourceLeaseID   string    `json:"activeSourceLeaseId"`
+	SourceFits            *[]string `json:"sourceFits,omitempty"` // v2 only; exact positional binding to sourceLeaseIds.
+	IssuedAt              int64     `json:"issuedAt"`
+	ExpiresAt             int64     `json:"expiresAt"`
 }
 
 type sourceSceneReceipt struct {
@@ -59,8 +60,15 @@ func parseSourceSceneCommand(raw []byte, now time.Time) (sourceSceneCommand, err
 	if len(raw) == 0 || len(raw) > maximumSourceSceneBytes || !utf8.Valid(raw) {
 		return fail()
 	}
-	fields, ok := sourceProgramExactObject(raw, "version", "type", "commandId", "assignmentId", "programId", "programEpoch", "leaseId",
-		"fencingRevision", "expectedSceneRevision", "layout", "sourceLeaseIds", "activeSourceLeaseId", "issuedAt", "expiresAt")
+	if json.Unmarshal(raw, &c) != nil {
+		return fail()
+	}
+	keys := []string{"version", "type", "commandId", "assignmentId", "programId", "programEpoch", "leaseId",
+		"fencingRevision", "expectedSceneRevision", "layout", "sourceLeaseIds", "activeSourceLeaseId", "issuedAt", "expiresAt"}
+	if c.Version == 2 {
+		keys = append(keys, "sourceFits")
+	}
+	fields, ok := sourceProgramExactObject(raw, keys...)
 	if !ok {
 		return fail()
 	}
@@ -68,7 +76,7 @@ func parseSourceSceneCommand(raw []byte, now time.Time) (sourceSceneCommand, err
 	if json.Unmarshal(fields["activeSourceLeaseId"], &active) != nil || active == nil {
 		return fail()
 	}
-	if json.Unmarshal(raw, &c) != nil || c.Version != 1 || c.Type != "source-program-scene" || !sourceSceneCommandID.MatchString(c.CommandID) ||
+	if (c.Version != 1 && c.Version != 2) || c.Type != "source-program-scene" || !sourceSceneCommandID.MatchString(c.CommandID) ||
 		!assignmentIDPattern.MatchString(c.AssignmentID) || !programIDPattern.MatchString(c.ProgramID) || !leaseIDPattern.MatchString(c.LeaseID) ||
 		c.ProgramEpoch < 1 || c.ProgramEpoch > sourceVideoSceneMaxRevision || c.FencingRevision < 1 || c.FencingRevision > sourceVideoSceneMaxRevision ||
 		c.ExpectedSceneRevision < 1 || c.ExpectedSceneRevision >= sourceVideoSceneMaxRevision ||
@@ -87,6 +95,16 @@ func parseSourceSceneCommand(raw []byte, now time.Time) (sourceSceneCommand, err
 	}
 	if c.ActiveSourceLeaseID != "" && (!oneOf(c.Layout, "single", "active-speaker") || !seen[c.ActiveSourceLeaseID]) {
 		return fail()
+	}
+	if c.Version == 2 {
+		if c.SourceFits == nil || len(*c.SourceFits) != len(c.SourceLeaseIDs) {
+			return fail()
+		}
+		for _, fit := range *c.SourceFits {
+			if !oneOf(fit, "contain", "cover") {
+				return fail()
+			}
+		}
 	}
 	return c, nil
 }
@@ -127,14 +145,18 @@ func (p *sourceProgramGeneration) ApplySceneCommand(raw []byte) (sourceSceneRece
 		return sourceSceneReceipt{}, errors.New("source scene capacity")
 	}
 	appliedAt := now.UnixMilli()
-	revision, err := p.setSceneGuarded(c.ExpectedSceneRevision, c.Layout, c.SourceLeaseIDs, c.ActiveSourceLeaseID, func() bool {
+	var fits []string
+	if c.SourceFits != nil {
+		fits = *c.SourceFits
+	}
+	revision, err := p.setScenePresentationGuarded(c.ExpectedSceneRevision, c.Layout, c.SourceLeaseIDs, c.ActiveSourceLeaseID, fits, func() bool {
 		appliedAt = p.cfg.now().UnixMilli()
 		return appliedAt >= now.UnixMilli() && appliedAt < c.ExpiresAt
 	})
 	if err != nil {
 		return sourceSceneReceipt{}, errors.New("source scene rejected")
 	}
-	r := sourceSceneReceipt{Version: 1, Type: "source-program-scene-applied", CommandID: c.CommandID, AssignmentID: c.AssignmentID,
+	r := sourceSceneReceipt{Version: c.Version, Type: "source-program-scene-applied", CommandID: c.CommandID, AssignmentID: c.AssignmentID,
 		ProgramID: c.ProgramID, ProgramEpoch: c.ProgramEpoch, LeaseID: c.LeaseID, FencingRevision: c.FencingRevision,
 		SceneRevision: revision, AppliedAt: appliedAt}
 	p.sceneLastNow = appliedAt

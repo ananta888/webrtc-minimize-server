@@ -46,6 +46,7 @@ type sourceVideoMixer struct {
 	revision     uint64
 	layout       string
 	scene        []*sourceVideoMixInput
+	sceneFits    []string // Scene-owned presentation; never mutates source admission.
 	rects        []sourceVideoRect
 }
 
@@ -169,17 +170,22 @@ func (m *sourceVideoMixer) SetScene(expected uint64, layout string, inputs []*so
 }
 
 func (m *sourceVideoMixer) setSceneGuarded(expected uint64, layout string, inputs []*sourceVideoMixInput, active *sourceVideoMixInput, current func() bool) (uint64, error) {
+	return m.setScenePresentationGuarded(expected, layout, inputs, active, nil, current)
+}
+
+func (m *sourceVideoMixer) setScenePresentationGuarded(expected uint64, layout string, inputs []*sourceVideoMixInput, active *sourceVideoMixInput, fits []string, current func() bool) (uint64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed || !m.cfg.authorized() {
 		m.closeLocked()
 		return m.revision, errors.New("source video mixer closed")
 	}
-	if expected != m.revision || m.revision >= sourceVideoSceneMaxRevision || len(inputs) > 20 ||
+	if expected != m.revision || m.revision >= sourceVideoSceneMaxRevision || len(inputs) > 20 || (fits != nil && len(fits) != len(inputs)) ||
 		(active != nil && layout != "single" && layout != "active-speaker") {
 		return m.revision, errors.New("source video scene conflict")
 	}
 	kinds := make([]string, len(inputs))
+	presentation := make([]string, len(inputs))
 	selected := -1
 	seen := make(map[*sourceVideoMixInput]bool, len(inputs))
 	for i, s := range inputs {
@@ -194,6 +200,13 @@ func (m *sourceVideoMixer) setSceneGuarded(expected uint64, layout string, input
 			return m.revision, errors.New("source video scene input denied")
 		}
 		seen[s], kinds[i] = true, s.cfg.kind
+		presentation[i] = s.cfg.fit
+		if fits != nil {
+			if !oneOf(fits[i], "contain", "cover") {
+				return m.revision, errors.New("source video scene fit denied")
+			}
+			presentation[i] = fits[i]
+		}
 		if s == active {
 			selected = i
 		}
@@ -211,6 +224,7 @@ func (m *sourceVideoMixer) setSceneGuarded(expected uint64, layout string, input
 		return m.revision, errors.New("source scene command expired")
 	}
 	m.scene, m.rects, m.layout = append([]*sourceVideoMixInput(nil), inputs...), rects, layout
+	m.sceneFits = presentation
 	m.revision++
 	return m.revision, nil
 }
@@ -253,7 +267,7 @@ func (m *sourceVideoMixer) RenderGuarded(at int64, consume func(int64, uint64, [
 		fillSourceVideoSlate(m.output, m.cfg.width, rect.x, rect.y, rect.width, rect.height)
 		if s != nil && !s.closed && s.current >= 0 {
 			guard.add(s.fence)
-			blitSourceVideo(m.output, m.cfg.width, rect, s.cfg.width, s.cfg.height, s.cfg.fit, s.frames[s.current].pixels)
+			blitSourceVideo(m.output, m.cfg.width, rect, s.cfg.width, s.cfg.height, m.sceneFits[rect.source], s.frames[s.current].pixels)
 		}
 	}
 	for _, s := range m.scene {
@@ -342,6 +356,7 @@ func (m *sourceVideoMixer) closeLocked() {
 	}
 	clear(m.output)
 	m.output, m.scene, m.rects = nil, nil, nil
+	m.sceneFits = nil
 	m.usedBytes = 0
 }
 

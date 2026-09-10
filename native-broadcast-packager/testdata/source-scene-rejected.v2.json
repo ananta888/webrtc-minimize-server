@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "type": "source-program-scene-rejected",
+  "commandId": "scn_aaaaaaaaaaaaaaaa",
+  "assignmentId": "asn_aaaaaaaaaaaaaaaa",
+  "programId": "prg_aaaaaaaaaaaaaaaa",
+  "programEpoch": 1,
+  "leaseId": "lea_aaaaaaaaaaaaaaaa",
+  "fencingRevision": 1,
+  "observedAt": 1788958800000,
+  "reasonCode": "SCENE_NOT_APPLIED"
+}

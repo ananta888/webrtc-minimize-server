@@ -58,7 +58,7 @@ func decodePackagerControlMessage(raw []byte, now time.Time, sources bool) (serv
 		if err != nil {
 			return serverMessage{}, err
 		}
-		return serverMessage{Version: 1, Type: header.Type, SourceScene: append(json.RawMessage(nil), raw...)}, nil
+		return serverMessage{Version: header.Version, Type: header.Type, SourceScene: append(json.RawMessage(nil), raw...)}, nil
 	}
 	if (header.Version == 4 || header.Version == 5) && header.Type == "assignment-prepare" {
 		if !sources {

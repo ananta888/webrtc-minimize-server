@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/source-scene-applied.v2.schema.json",
+  "title": "Receipt of native scene application; not current delivery or source authority",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "type",
+    "commandId",
+    "assignmentId",
+    "programId",
+    "programEpoch",
+    "leaseId",
+    "fencingRevision",
+    "sceneRevision",
+    "appliedAt"
+  ],
+  "properties": {
+    "version": {
+      "const": 2
+    },
+    "type": {
+      "const": "source-program-scene-applied"
+    },
+    "commandId": {
+      "type": "string",
+      "pattern": "^scn_[A-Za-z0-9_-]{16,64}$"
+    },
+    "assignmentId": {
+      "type": "string",
+      "pattern": "^asn_[A-Za-z0-9_-]{16,64}$"
+    },
+    "programId": {
+      "type": "string",
+      "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+    },
+    "leaseId": {
+      "type": "string",
+      "pattern": "^lea_[A-Za-z0-9_-]{16,64}$"
+    },
+    "programEpoch": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "fencingRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "sceneRevision": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 9007199254740991
+    },
+    "appliedAt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    }
+  }
+}

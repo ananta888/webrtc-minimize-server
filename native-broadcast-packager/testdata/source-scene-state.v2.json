@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "type": "source-program-scene-state",
+  "commandId": "scn_aaaaaaaaaaaaaaaa",
+  "assignmentId": "asn_aaaaaaaaaaaaaaaa",
+  "programId": "prg_aaaaaaaaaaaaaaaa",
+  "programEpoch": 1,
+  "leaseId": "lea_aaaaaaaaaaaaaaaa",
+  "fencingRevision": 1,
+  "observedAt": 1788958800000,
+  "sceneRevision": 1,
+  "layout": "waiting-slate",
+  "sourceLeaseIds": [],
+  "activeSourceLeaseId": "",
+  "availableSources": [],
+  "sourceFits": []
+}

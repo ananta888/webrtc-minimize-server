@@ -106,6 +106,10 @@ func (p *sourceProgramGeneration) SetScene(expected uint64, layout string, ids [
 }
 
 func (p *sourceProgramGeneration) setSceneGuarded(expected uint64, layout string, ids []string, active string, current func() bool) (uint64, error) {
+	return p.setScenePresentationGuarded(expected, layout, ids, active, nil, current)
+}
+
+func (p *sourceProgramGeneration) setScenePresentationGuarded(expected uint64, layout string, ids []string, active string, fits []string, current func() bool) (uint64, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.permitted() || len(ids) > 20 {
@@ -126,7 +130,7 @@ func (p *sourceProgramGeneration) setSceneGuarded(expected uint64, layout string
 	if active != "" && selected == nil {
 		return 0, errors.New("source program active source denied")
 	}
-	revision, err := p.video.setSceneGuarded(expected, layout, inputs, selected, current)
+	revision, err := p.video.setScenePresentationGuarded(expected, layout, inputs, selected, fits, current)
 	if err == nil {
 		p.sceneSelection = append([]string(nil), ids...)
 		p.sceneSelectedActive, p.sceneSelectionRevision = active, revision

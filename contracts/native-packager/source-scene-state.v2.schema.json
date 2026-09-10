@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/source-scene-state.v2.schema.json",
+  "title": "Native scene metadata; requires exact current authenticated owner",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "type",
+    "commandId",
+    "assignmentId",
+    "programId",
+    "programEpoch",
+    "leaseId",
+    "fencingRevision",
+    "observedAt",
+    "sceneRevision",
+    "layout",
+    "sourceLeaseIds",
+    "activeSourceLeaseId",
+    "availableSources",
+    "sourceFits"
+  ],
+  "properties": {
+    "version": {
+      "const": 2
+    },
+    "type": {
+      "const": "source-program-scene-state"
+    },
+    "commandId": {
+      "type": "string",
+      "pattern": "^scn_[A-Za-z0-9_-]{16,64}$"
+    },
+    "assignmentId": {
+      "type": "string",
+      "pattern": "^asn_[A-Za-z0-9_-]{16,64}$"
+    },
+    "programId": {
+      "type": "string",
+      "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+    },
+    "programEpoch": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "leaseId": {
+      "type": "string",
+      "pattern": "^lea_[A-Za-z0-9_-]{16,64}$"
+    },
+    "fencingRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "observedAt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "sceneRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "layout": {
+      "enum": [
+        "single",
+        "screen-presenter",
+        "side-by-side",
+        "active-speaker",
+        "grid",
+        "waiting-slate",
+        "end-slate"
+      ]
+    },
+    "sourceLeaseIds": {
+      "type": "array",
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^sls_[A-Za-z0-9_-]{16,64}$"
+      }
+    },
+    "activeSourceLeaseId": {
+      "type": "string",
+      "pattern": "^(|sls_[A-Za-z0-9_-]{16,64})$"
+    },
+    "availableSources": {
+      "type": "array",
+      "maxItems": 80,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sourceLeaseId",
+          "sourceKind"
+        ],
+        "properties": {
+          "sourceLeaseId": {
+            "type": "string",
+            "pattern": "^sls_[A-Za-z0-9_-]{16,64}$"
+          },
+          "sourceKind": {
+            "enum": [
+              "camera",
+              "screen"
+            ]
+          }
+        }
+      }
+    },
+    "sourceFits": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "enum": [
+          "contain",
+          "cover"
+        ]
+      },
+      "description": "One explicit fit per sourceLeaseIds entry, in identical order. Runtime validation requires equal lengths; no partial/default entries."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "layout": {
+            "enum": [
+              "screen-presenter",
+              "side-by-side",
+              "grid",
+              "waiting-slate",
+              "end-slate"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "activeSourceLeaseId": {
+            "const": ""
+          }
+        }
+      }
+    }
+  ]
+}
