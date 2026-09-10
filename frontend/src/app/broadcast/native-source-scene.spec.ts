@@ -15,6 +15,62 @@ const state: NativeSceneState = { sceneControlVersion: 1, ...{ programId: progra
 const selection = { expectedSceneRevision: 1, layout: "grid" as const, sourceLeaseIds: [source], activeSourceLeaseId: "" };
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
+it("does not expose an editable ready scene before refresh has hydrated the form", async () => {
+  let finish!: () => void;
+  const gate = new Promise<void>(resolve => { finish = resolve; });
+  const scenes = { view: signal<NativeSceneView>({ phase: "idle", scene: null }),
+    controller: { refresh: vi.fn(async () => {
+      scenes.view.set({ phase: "ready", scene: { ...state, layout: "waiting-slate", sourceLeaseIds: [], activeSourceLeaseId: "" } });
+      await gate;
+    }), apply: vi.fn(async () => {}) } };
+  const component = new NativeSourceSceneComponent(scenes as never);
+  const refreshing = component.refresh();
+  try {
+    expect(component.status()).toContain("Warte auf");
+    expect(component.editable()).toBe(false);
+    component.setLayout("single"); component.select(source, true);
+    expect(component.layout()).toBe("waiting-slate"); expect(component.selected()).toEqual([]);
+    await component.apply(); expect(scenes.controller.apply).not.toHaveBeenCalled();
+    await component.refresh(); expect(scenes.controller.refresh).toHaveBeenCalledTimes(1);
+  } finally { finish(); await refreshing; }
+  expect(component.status()).toContain("Szenenzustand bestätigt");
+  expect(component.editable()).toBe(true);
+  component.setLayout("single"); component.select(source, true);
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  await component.apply();
+  expect(scenes.controller.apply).toHaveBeenCalledExactlyOnceWith({ expectedSceneRevision: 1, layout: "single",
+    sourceLeaseIds: [source], activeSourceLeaseId: "" }, "user-action");
+});
+
+it.each(["pending", "stale", "conflict", "unavailable"] as const)("keeps all draft controls inert in %s", async phase => {
+  const scenes = { view: signal<NativeSceneView>({ phase: "ready", scene: { ...state, sceneControlVersion: 2, sourceFits: ["cover"] } }),
+    controller: { refresh: vi.fn(async () => {}), apply: vi.fn(async () => {}) } };
+  const component = new NativeSourceSceneComponent(scenes as never);
+  await component.refresh();
+  scenes.view.set({ ...scenes.view(), phase });
+  component.setLayout("grid"); component.select(source, false); component.remove(source);
+  component.setFit(source, "contain"); component.setActive(""); await component.apply();
+  expect(component.editable()).toBe(false);
+  expect(component.layout()).toBe("single"); expect(component.selected()).toEqual([source]);
+  expect(component.fits()).toEqual({ [source]: "cover" }); expect(component.active()).toBe(source);
+  expect(scenes.controller.apply).not.toHaveBeenCalled();
+});
+
+it("does not hydrate stale observations and releases the local refresh gate after failure", async () => {
+  const scenes = { view: signal<NativeSceneView>({ phase: "stale", scene: state }),
+    controller: { refresh: vi.fn(async () => {}), apply: vi.fn(async () => {}) } };
+  const component = new NativeSourceSceneComponent(scenes as never);
+  await component.refresh(); expect(component.layout()).toBe("waiting-slate");
+  expect(component.selected()).toEqual([]); expect(component.refreshing()).toBe(false);
+  scenes.controller.refresh.mockRejectedValueOnce(new Error("fixture-unavailable"));
+  await expect(component.refresh()).rejects.toThrow("fixture-unavailable");
+  expect(component.refreshing()).toBe(false); expect(component.editable()).toBe(false);
+  scenes.view.set({ phase: "ready", scene: state });
+  await component.refresh(); expect(component.layout()).toBe("single");
+  component.setActive("sls_bbbbbbbbbbbbbbbb"); expect(component.active()).toBe(source);
+  component.setActive(""); expect(component.active()).toBe("");
+});
+
 it("v2 observations retain exact frozen fits without adding fields to v1", () => {
   const v2 = { ...state, sceneControlVersion: 2, sourceFits: ["cover"] };
   const parsed = parseNativeSceneResult(v2, program, now);

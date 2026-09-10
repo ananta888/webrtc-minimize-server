@@ -117,3 +117,24 @@ selected-source count, negotiated version and applied revision before checking
 pixels. A mismatch fails at `scene-application-state`; it is not automatically
 reapplied or corrected. This separates presentation-state mistakes from the
 remaining render/encoder handoff. No extra media wait or retry is introduced.
+
+### Native layout mismatch and Angular hydration boundary
+
+CI `34499845766` on `a4325b8` fails the single-source case at the new
+`scene-application-state` check: revision 2 contains one selected source, but
+the native layout is `waiting-slate`, not the intended `single`. The two-source
+case in that same run passes both fit changes and source revocation, including
+continuing movement of the remaining source. This is evidence of an incorrect
+applied presentation in the failing case, not a stalled decoder.
+
+The component previously advertised controller-ready before its own async
+refresh continuation had copied the observation into the form. A deterministic
+component test fails on that prematurely ready state. The component now holds
+its own pending gate through hydration: status, fieldset, refresh and every edit
+handler agree on that boundary. Duplicate refreshes and apply in that window do
+nothing; stale responses do not hydrate the draft. No retry, codec/clock change,
+capture or longer deadline is introduced. Eighteen focused jsdom component and
+controller cases plus 23 Node scene-contract/broker tests pass without local
+browser or media execution. The next coupled browser CI must establish whether
+this correction also resolves the observed live-fixture mismatch; earlier red
+runs and the broad production acceptance remain red/open.

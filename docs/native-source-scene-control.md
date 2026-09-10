@@ -86,6 +86,13 @@ anzeige enthält Quellart und opaque Quellenreferenz, noch keine Publishernamen.
 Ein lokaler Bestätigungsdialog prüft die unveränderte Auswahl nochmals.
 Abfragen lösen keinen Capture, Consent oder Sendestart aus.
 
+Während einer Abfrage bleibt die Regie gesperrt, bis sowohl die Controllerantwort
+als auch ihre Übernahme in Layout, Quellenauswahl, aktive Quelle und Bildanpassung
+abgeschlossen sind. Ein früheres Controller-`ready` allein aktiviert keine
+Bedienelemente. Doppelte Abfragen und Änderungen in diesem Zwischenzustand werden
+nicht ausgeführt; veraltete oder fehlgeschlagene Antworten überschreiben keinen
+Entwurf. Das verlängert weder die fünf Sekunden Gültigkeit noch Quellenrechte.
+
 Ein Snapshot ist höchstens fünf Sekunden frisch. Nach Apply, Konflikt oder
 verlorener Antwort muss neu abgefragt werden: keine geratene Revision und kein
 automatischer Apply-Retry. Auch das Endbild ist kein Stop der Sendung; dafür

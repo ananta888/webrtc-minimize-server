@@ -2,8 +2,8 @@
   <h3 id="native-scene-heading">Sendeszene · Quellen und Layout</h3>
   <p>Nur aktuell freigegebene Videoquellen dieser Sendung sind auswählbar. Diese Bedienung startet keine Aufnahme und erteilt keine Decrypt-Freigabe. Audio bleibt unabhängig vom Videolayout.</p>
   <p id="native-scene-status" role="status" aria-live="polite">{{ status() }}</p>
-  <button id="native-scene-refresh" type="button" [disabled]="scenes.view().phase === 'pending'" (click)="refresh()">Szenenzustand abfragen</button>
-  <fieldset [disabled]="scenes.view().phase !== 'ready'">
+  <button id="native-scene-refresh" type="button" [disabled]="refreshing() || scenes.view().phase === 'pending'" (click)="refresh()">Szenenzustand abfragen</button>
+  <fieldset [disabled]="!editable()">
     <legend>Szene bewusst ändern</legend>
     <label for="native-scene-layout">Videolayout</label>
     <select id="native-scene-layout" [value]="layout()" (change)="setLayout($any($event.target).value)">
@@ -32,7 +32,7 @@
       @if (state.sceneControlVersion === 1) { <p>Dieser Packager bestätigt nur Layoutsteuerung. Bildanpassung pro Quelle erfordert einen aktualisierten Agenten mit Szenensteuerung v2.</p> }
       @if (layout() === 'single' || layout() === 'active-speaker') {
         <label for="native-scene-active">Bevorzugte ausgewählte Quelle</label>
-        <select id="native-scene-active" [value]="active()" (change)="active.set($any($event.target).value)">
+        <select id="native-scene-active" [value]="active()" (change)="setActive($any($event.target).value)">
           <option value="">Erste Quelle der Auswahl</option>
           @for (id of selected(); track id) { <option [value]="id">{{ id }}</option> }
         </select>
