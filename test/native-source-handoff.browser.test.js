@@ -58,6 +58,56 @@ test("rendered source handoff drains the real writer, preserves mono AAC and req
   assert.equal(oldResources.length, 1);
   const old = (await f.request("GET", "/api/native-packagers")).body.assignments.find(a => a.packagerId === f.packagerId && a.state === "running");
   assert.ok(old);
+  await page.locator("#native-source-standbys-open").press("Enter");
+  const standby = page.locator("app-native-source-program app-native-packager-standby");
+  const standbyRequests = [];
+  const observeStandbyRequest = request => {
+    const url = new URL(request.url());
+    if (standbyRequests.length < 16 && /\/native-standb(?:y-control|ys)$/.test(url.pathname)) {
+      standbyRequests.push({ write: request.method() === "PUT", sameProgram: url.pathname.includes(`/${old.programId}/`) });
+    }
+  };
+  page.on("request", observeStandbyRequest); t.after(() => page.off("request", observeStandbyRequest));
+  const loadStandbys = async () => {
+    const [loaded] = await Promise.all([
+      page.waitForResponse(r => r.url().endsWith(`/api/broadcasts/${old.programId}/native-standby-control`)),
+      standby.locator("#broadcast-standby-load:not([disabled])").press("Enter"),
+    ]).catch(async error => {
+      t.diagnostic(JSON.stringify({ stage: "standby-load", requests: standbyRequests,
+        ui: await standby.evaluate(element => ({
+          loadDisabled: element.querySelector("#broadcast-standby-load")?.matches(":disabled") ?? null,
+          hasControl: !!element.querySelector("#broadcast-standby-status"),
+          hasError: !!element.querySelector("#broadcast-standby-error"),
+        })).catch(() => null) }));
+      throw error;
+    });
+    assert.equal(loaded.status(), 200);
+    // HTTP headers are not an Angular render receipt. Do not edit a selection
+    // until the service has installed the body and released its busy state.
+    await standby.locator("#broadcast-standby-load:not([disabled])").waitFor();
+    return loaded.json();
+  };
+  const initialStandbys = await loadStandbys();
+  assert.deepEqual(initialStandbys.standbyPackagerIds, []);
+  assert.equal(initialStandbys.standbyRevision, 0);
+  await standby.locator("#broadcast-standby-pinned-output", { hasText: "1 Qualitätsstufe(n) · Hardwarebeschleunigung nicht erlaubt" }).waitFor();
+  assert.equal(await standby.locator("#broadcast-standby-renditions").count(), 0);
+  assert.equal(await standby.getByRole("checkbox").count(), 1);
+  assert.equal(await standby.locator(`[data-standby-id="${f.packagerId}"]`).count(), 0);
+  await standby.locator(`[data-standby-id="${f.packagerIds[1]}"]`).press("Space");
+  await confirm(page, () => standby.locator("#broadcast-standby-save:not([disabled])").press("Enter"), false);
+  assert.deepEqual(await loadStandbys(), initialStandbys, "cancel must leave server metadata unchanged");
+  await standby.locator(`[data-standby-id="${f.packagerIds[1]}"]`).check();
+  const [saved] = await Promise.all([
+    page.waitForResponse(r => r.url().endsWith(`/api/broadcasts/${old.programId}/native-standbys`)),
+    confirm(page, () => standby.locator("#broadcast-standby-save:not([disabled])").press("Enter")),
+  ]);
+  assert.equal(saved.status(), 200);
+  assert.equal(saved.request().postDataJSON().allowHardwareAcceleration, false);
+  assert.equal(saved.request().postDataJSON().requestedRenditions, 1);
+  assert.deepEqual(await saved.json(), { ...initialStandbys, standbyRevision: 1, standbyPackagerIds: [f.packagerIds[1]] });
+  assert.equal((await f.request("GET", "/api/native-packagers")).body.assignments.length, 1, "standby cannot create a media assignment");
+  assert.equal(await page.evaluate(() => window.__sceneCaptures), 1, "standby cannot capture");
   await page.locator("#native-source-handoff-packager").selectOption(f.packagerIds[1]);
   await confirm(page, () => page.locator("#native-source-handoff").press("Enter"), false);
   assert.equal((await f.request("GET", "/api/native-packagers")).body.assignments.filter(a => a.state === "running").length, 1);
@@ -70,6 +120,10 @@ test("rendered source handoff drains the real writer, preserves mono AAC and req
   const active = rows.filter(a => !["stopped", "failed"].includes(a.state));
   assert.equal(active.length, 1); assert.equal(active[0].packagerId, f.packagerIds[1]);
   assert.equal(active[0].programEpoch, old.programEpoch + 1); assert.ok(active[0].fencingRevision > old.fencingRevision);
+  await page.locator("#native-source-standbys-open").press("Enter");
+  const clearedStandbys = await loadStandbys();
+  assert.equal(clearedStandbys.programEpoch, old.programEpoch + 1);
+  assert.equal(clearedStandbys.standbyRevision, 0); assert.deepEqual(clearedStandbys.standbyPackagerIds, []);
   const silent = await outputAudio(f.output, false), newResources = await resources(f.output);
   assert.equal(newResources.length, 1); assert.notEqual(newResources[0], oldResources[0]);
   assert.equal(await page.evaluate(() => window.__sceneCaptures), 1, "handoff cannot capture or restart a room source");
@@ -81,10 +135,12 @@ test("rendered source handoff drains the real writer, preserves mono AAC and req
   const after = await outputAudio(f.output, true);
   await page.locator("#native-source-stop").press("Enter");
   await page.locator("#native-source-status", { hasText: "Sendung gestoppt" }).waitFor({ timeout: 15000 });
+  assert.equal(await standby.count(), 0, "stop destroys the standby editor");
   assert.equal((await f.request("GET", "/api/native-packagers")).body.assignments.every(a => a.state === "stopped"), true);
   assert.deepEqual(await resources(f.output), []); assert.equal(f.agent.alive(), true); assert.equal(f.successorAgent.alive(), true);
   assert.equal(await page.evaluate(() => window.__sceneCaptures), 1); await page.locator("#toggle-microphone").click();
   t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, nativeProcesses: 2, oldWriterStopped: true,
-    epochAdvanced: true, newConsentRequired: true, before: before.encoding, silent: silent.encoding, after: after.encoding }));
+    epochAdvanced: true, standbyMetadataOnly: true, standbyClearedOnHandoff: true,
+    newConsentRequired: true, before: before.encoding, silent: silent.encoding, after: after.encoding }));
   verified = true;
 });

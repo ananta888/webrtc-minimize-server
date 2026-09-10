@@ -64,16 +64,17 @@ export class NativePackagerStandbyService {
   }
 
   async load(trigger: unknown): Promise<void> { await this.request(false, 1, trigger); }
-  async save(requestedRenditions: number, trigger: unknown): Promise<void> {
-    await this.request(true, requestedRenditions, trigger);
+  async save(requestedRenditions: number, trigger: unknown, allowHardwareAcceleration = true): Promise<void> {
+    await this.request(true, requestedRenditions, trigger, allowHardwareAcceleration);
   }
 
-  private async request(write: boolean, requestedRenditions: number, trigger: unknown): Promise<void> {
+  private async request(write: boolean, requestedRenditions: number, trigger: unknown, allowHardwareAcceleration = true): Promise<void> {
     if (trigger !== "user-action") return fail("explicit_native_standby_action_required");
     const scope = this.scope, previous = this.control(), selected = [...this.selected()];
     const fingerprint = this.device.fingerprint();
     if (this.busy() || !scope || !fingerprint || (write && (!previous
-      || !Number.isSafeInteger(requestedRenditions) || requestedRenditions < 1 || requestedRenditions > 3))) {
+      || !Number.isSafeInteger(requestedRenditions) || requestedRenditions < 1 || requestedRenditions > 3
+      || typeof allowHardwareAcceleration !== "boolean"))) {
       return fail("invalid_native_standby_selection");
     }
     const headers = this.auth.authorizationHeader();
@@ -88,7 +89,7 @@ export class NativePackagerStandbyService {
         body: JSON.stringify({ requestVersion: 1, deviceFingerprint: fingerprint, ...(write && previous ? {
           trigger: "user-action", expectedProgramRevision: previous.programRevision, expectedProgramEpoch: scope.epoch,
           expectedStandbyRevision: previous.standbyRevision, standbyPackagerIds: selected,
-          requestedRenditions, allowHardwareAcceleration: true,
+          requestedRenditions, allowHardwareAcceleration,
         } : {}) }),
       });
       if (!response.ok) fail(response.status === 409 ? "stale_native_standby_selection" : "native_standby_request_failed");

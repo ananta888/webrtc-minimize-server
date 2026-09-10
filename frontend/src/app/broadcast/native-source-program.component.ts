@@ -5,10 +5,11 @@ import { NativeSourceSceneComponent } from "./native-source-scene.component";
 import { NativeSourceAudioComponent } from "./native-source-audio.component";
 import { NativeSourceAudioOutput, normalizeSourceAudioOutput } from "./native-source-audio-output";
 import { supportsSourceAudioOutput } from "./native-source-audio-capability";
+import { NativePackagerStandbyComponent } from "./native-packager-standby.component";
 
 @Component({
   selector: "app-native-source-program", standalone: true,
-  imports: [NativeSourceSceneComponent, NativeSourceAudioComponent],
+  imports: [NativeSourceSceneComponent, NativeSourceAudioComponent, NativePackagerStandbyComponent],
   templateUrl: "./native-source-program.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -34,6 +35,7 @@ export class NativeSourceProgramComponent {
   });
   readonly error = signal("");
   readonly handoffId = signal("");
+  readonly standbyOutput = computed(() => { this.programs.view(); return this.programs.controller.standbyOutput(); });
   readonly confirmedPackager = computed(() => {
     this.programs.view();
     const id = this.programs.controller.controlledPackagerId();

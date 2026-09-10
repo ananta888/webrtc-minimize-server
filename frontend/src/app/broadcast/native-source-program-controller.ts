@@ -37,6 +37,12 @@ interface ActiveProgram {
 
 /** Control only. No capture, keys, PeerConnection, automatic consent or source restart. */
 export class NativeSourceProgramController {
+  standbyOutput(): Readonly<Pick<NativeSourceProgramRequest, "requestedRenditions" | "allowHardwareAcceleration">> | null {
+    const active = this.active;
+    if (!active?.ready || active.controller.signal.aborted || !this.controlledPackagerId()) return null;
+    return Object.freeze({ requestedRenditions: active.request.requestedRenditions,
+      allowHardwareAcceleration: active.request.allowHardwareAcceleration });
+  }
   controlledPackagerId(): string | null {
     const active = this.active;
     return !this.destroyed && active && !active.cancelled && active.context === this.ports.context()

@@ -32,6 +32,7 @@ async function fixture() {
 
 it("uses a fresh matching CAS snapshot, pins output choices and waits for successor output", async () => {
   const f = await fixture(); expect(f.controller.canHandoff(next)).toBe(true);
+  expect(f.controller.standbyOutput()).toEqual({ requestedRenditions: 2, allowHardwareAcceleration: false });
   await expect(f.controller.handoff(first, "user-action")).rejects.toThrow("denied");
   await expect(f.controller.handoff(next, "remote")).rejects.toThrow("denied");
   f.ports.observe.mockResolvedValueOnce({ ...snapshot, programRevision: 6 }).mockResolvedValue(nextSnapshot);
@@ -40,9 +41,12 @@ it("uses a fresh matching CAS snapshot, pins output choices and waits for succes
     { ...snapshot, programRevision: 6 }, { ...request, packagerId: next }, expect.any(AbortSignal));
   expect(f.view()).toMatchObject({ phase: "waiting-output", active: true, program: { programEpoch: 2 } });
   expect(f.controller.controlledPackagerId()).toBeNull(); expect(f.controller.canHandoff(first)).toBe(false);
+  expect(f.controller.standbyOutput()).toBeNull();
   f.ports.observe.mockResolvedValue({ ...nextSnapshot, state: "live" }); f.time(2000); f.controller.tick(); await flush();
   expect(f.controller.controlledPackagerId()).toBe(next); expect(f.controller.canHandoff(first)).toBe(true);
+  expect(f.controller.standbyOutput()).toEqual({ requestedRenditions: 2, allowHardwareAcceleration: false });
   await f.controller.stop(); expect(f.ports.stop).toHaveBeenCalledWith({ ...successor.program, programRevision: 8 }, successor.assignment);
+  expect(f.controller.standbyOutput()).toBeNull();
 });
 
 for (const outcome of ["late-live", "late-error"]) it(`discards an old poll's ${outcome} during the explicit handoff`, async () => {
@@ -59,6 +63,7 @@ for (const reason of ["stop", "destroy", "context", "capability", "deadline"]) i
   const f = await fixture(), late = deferred<typeof successor>(); f.ports.handoff.mockReturnValue(late.promise);
   const pending = f.controller.handoff(next, "user-action"); await flush();
   expect(f.view().phase).toBe("handing-over"); expect(f.controller.controlledPackagerId()).toBeNull();
+  expect(f.controller.standbyOutput()).toBeNull();
   await expect(f.controller.handoff(next, "user-action")).rejects.toThrow("denied");
   const stopping = reason === "stop" ? f.controller.stop() : undefined;
   if (reason === "destroy") f.controller.destroy();

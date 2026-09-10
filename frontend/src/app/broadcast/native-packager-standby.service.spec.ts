@@ -14,6 +14,15 @@ function fixture() {
 }
 
 describe("keyless standby metadata port", () => {
+  it("preserves an explicit software-only output and refuses malformed hardware selection", async () => {
+    const f = fixture(); await f.service.load("user-action"); f.service.select(FIRST, true);
+    await expect(f.service.save(2, "user-action", "false" as never)).rejects.toThrow("invalid_native_standby_selection");
+    expect(f.fetch).toHaveBeenCalledOnce();
+    f.fetch.mockResolvedValue(Response.json(control(1, [FIRST])));
+    await f.service.save(2, "user-action", false);
+    const init = (f.fetch.mock.calls as unknown as [string, RequestInit][])[1][1];
+    expect(JSON.parse(String(init.body))).toMatchObject({ requestedRenditions: 2, allowHardwareAcceleration: false });
+  });
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
   it("never fetches on scope changes and requires explicit local load/save actions", async () => {
     const f = fixture();

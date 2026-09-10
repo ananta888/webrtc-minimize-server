@@ -58,6 +58,14 @@
   @if (programs.requestProgram()) { <p>Jetzt Quellenanfragen öffnen. Die Statusbestätigung ist noch kein Nachweis, dass ein Zuschauer Bild oder Ton empfängt.</p> }
   @if (programs.requestProgram()) { <app-native-source-scene /> }
   @if (programs.requestProgram()) { <app-native-source-audio /> }
+  @if (programs.requestProgram(); as program) {
+    @defer (on interaction) {
+      <app-native-packager-standby [programId]="program.programId" [programEpoch]="program.programEpoch"
+        [disabled]="disabled() || !standbyOutput()" [candidates]="handoffCandidates()" [outputPolicy]="standbyOutput()" />
+    } @placeholder {
+      <button id="native-source-standbys-open" class="button secondary" type="button">Standby-Geräte für diese Sendung vormerken</button>
+    }
+  }
   @if (programs.view().active) {
     <fieldset [disabled]="disabled() || !handoffCandidates().length">
       <legend>Packager kontrolliert wechseln</legend>

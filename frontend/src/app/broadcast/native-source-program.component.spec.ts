@@ -7,12 +7,21 @@ function fixture() {
   const programs = { candidates: signal([{ id: packagerId, label: "Mini-PC", capability: { maximumRenditions: 3 } }]),
     view: signal({ active: false, phase: "idle", program: null, error: "" }), requestProgram: signal(null),
     controller: { start: vi.fn(async () => {}), stop: vi.fn(async () => {}), canHandoff: vi.fn(() => true), handoff: vi.fn(async () => {}),
+      standbyOutput: vi.fn((): Readonly<{ requestedRenditions: number; allowHardwareAcceleration: boolean }> | null => null),
       controlledPackagerId: vi.fn((): string | null => null) } };
   const component = runInInjectionContext(Injector.create({ providers: [] }), () => new NativeSourceProgramComponent(programs as never));
   Object.assign(component, { disabled: signal(false), roomId: signal("room-alpha") });
   return { component, programs };
 }
 afterEach(() => vi.restoreAllMocks());
+
+it("reads standby policy from the controlled program instead of unsubmitted form values", () => {
+  const f = fixture(); f.component.renditions.set(3); f.component.hardware.set(true);
+  expect(f.component.standbyOutput()).toBeNull();
+  f.programs.controller.standbyOutput.mockReturnValue({ requestedRenditions: 1, allowHardwareAcceleration: false });
+  f.programs.view.set({ active: true, phase: "live", program: null, error: "" });
+  expect(f.component.standbyOutput()).toEqual({ requestedRenditions: 1, allowHardwareAcceleration: false });
+});
 
 it("names only the currently confirmed writer, not a staged successor", () => {
   const f = fixture(); f.component.handoffId.set(packagerId); expect(f.component.confirmedPackager()).toBe("");

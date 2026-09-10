@@ -16,6 +16,24 @@ function fixture() {
 }
 
 describe("Standby selection local UI", () => {
+  it("pins the source program output and never substitutes reset form defaults", async () => {
+    const f = fixture(), policy = signal({ requestedRenditions: 2, allowHardwareAcceleration: false });
+    Object.assign(f.component, { outputPolicy: policy });
+    f.component.setRenditions("3"); expect(f.component.renditions()).toBe(1);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    await f.component.save();
+    expect(f.standby.save).toHaveBeenCalledExactlyOnceWith(2, "user-action", false);
+  });
+  it("rejects changed or invalid pinned output before a standby mutation", async () => {
+    const f = fixture(), policy = signal({ requestedRenditions: 2, allowHardwareAcceleration: false });
+    Object.assign(f.component, { outputPolicy: policy });
+    vi.spyOn(window, "confirm").mockImplementation(() => { policy.set({ requestedRenditions: 2, allowHardwareAcceleration: true }); return true; });
+    await f.component.save(); expect(f.standby.save).not.toHaveBeenCalled();
+    for (const value of [{ requestedRenditions: 0, allowHardwareAcceleration: false }, { requestedRenditions: 4, allowHardwareAcceleration: false },
+      { requestedRenditions: 1, allowHardwareAcceleration: "true" }]) {
+      policy.set(value as never); expect(f.component.canSave()).toBe(false);
+    }
+  });
   afterEach(() => vi.restoreAllMocks());
   it("does not load on construction or input change and confirms saving explicitly", async () => {
     const f = fixture(); f.component.ngOnChanges();

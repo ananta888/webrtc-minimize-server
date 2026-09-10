@@ -25,6 +25,19 @@ function fixture() {
 }
 
 describe("native source program control-only lifecycle", () => {
+  it("exposes only the pinned live output for keyless standby admission", async () => {
+    const f = fixture();
+    expect(f.controller.standbyOutput()).toBeNull();
+    f.ports.observe.mockResolvedValue({ ...snapshot, state: "live" });
+    const input = { ...request, requestedRenditions: 2 };
+    await f.controller.start(input, "user-action");
+    input.requestedRenditions = 3; input.allowHardwareAcceleration = true;
+    const output = f.controller.standbyOutput();
+    expect(output).toEqual({ requestedRenditions: 2, allowHardwareAcceleration: false });
+    expect(Object.isFrozen(output)).toBe(true);
+    f.context("other-owner"); expect(f.controller.standbyOutput()).toBeNull();
+    await f.controller.stop(); expect(f.controller.standbyOutput()).toBeNull();
+  });
   for (const reason of ["stop", "destroy", "context", "replacement"]) {
     it(`fences ${reason} during lazy request loading before any creation`, async () => {
       const f = fixture(), pending = f.controller.start(request, "user-action");
