@@ -116,6 +116,25 @@ pausiert. Die erweiterte reale Angular-/Native-/HLS-Abnahme ist noch durch CI zu
 bestätigen; die vermutete Ursache des ursprünglichen Timeouts ist damit noch
 nicht abschließend bewiesen. Keine neue Deploymentfreigabe.
 
+Der nachfolgende CI-Lauf `34527707396` schlug in beiden erweiterten
+Zwischennachweisen fehl. Im ersten Fall war der gewünschte Mikrofonton bereits
+korrekt vorhanden (0,25085), der Bildschirmton verschwunden (0,000035).
+Die neue HLS-Ausgabe zeigte jedoch erst 22,76 Sekunden/346 Frames gegenüber
+27,93 Sekunden/424 Frames vor dem Wechsel. Der Test hatte fälschlich
+generationsübergreifend steigende Elementzähler verlangt.
+
+Eine neue browserfreie Regression reproduziert diesen Testfehler. Die private
+Frequenzprobe zählt jetzt `currentSrc`-Wechsel als begrenzte numerische
+Mediengeneration; die eigentlichen URLs verlassen die Probe nicht. Eine neue
+Generation darf niedrigere Zeit-/Framezähler haben. Die stabile Messsekunde
+mit steigendem Framezähler muss vollständig innerhalb derselben Generation
+liegen; Quellenwechsel oder Zählerrücksprünge setzen dieses Fenster zurück.
+Ton-, Stille-, Consent- und Zeitgrenzen bleiben unverändert. Fünf gezielte
+Messprüfungen bestehen; der echte erweiterte Audiopfad benötigt erneut CI.
+Der fehlgeschlagene Lauf bleibt mit 1.365 bestandenen Tests, zwei Fehlern und
+vier Skips dokumentiert; Ananta-TURN, Native, Blind und macOS bestanden,
+Live-Keycloak/TURN und Docker wurden nach dem roten Projektgate übersprungen.
+
 ## Historische v1-Abnahme
 
 Die nachfolgende CI `34404162155` auf `406f95d` bestand den neuen nativen
