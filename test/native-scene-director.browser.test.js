@@ -4,6 +4,7 @@ import { nativeSceneLiveFixture } from "./helpers/native-scene-live-fixture.mjs"
 import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
 import { decodedScene, decodedSceneTiles, openSceneViewer, sceneViewerObservation } from "./helpers/native-scene-viewer.mjs";
 import { assertFreshNativeSceneApply } from "./helpers/native-scene-reply-observation.mjs";
+import { nativeAudioOutputObservation } from "./helpers/native-audio-output.mjs";
 
 async function confirm(page, action) {
   const dialog = page.waitForEvent("dialog"), pending = action();
@@ -77,6 +78,7 @@ for (const multiple of [false, true]) test(multiple
   catch (error) { t.diagnostic(JSON.stringify({ stage: "scene-application-receipt", scene: f.observation.scene })); throw error; }
   const red = await (multiple ? decodedSceneTiles(viewer, ["red", "blue"]) : decodedScene(viewer, "red", initial.time + 1)).catch(async error => {
     t.diagnostic(JSON.stringify({ stage: "selected-source-output", initial, viewer: await sceneViewerObservation(viewer),
+      output: await nativeAudioOutputObservation(f.output, { scene: true }),
       agentAlive: f.agent.alive(), originAlive: f.gateway.alive(), observation: f.observation }));
     throw error;
   });

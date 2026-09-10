@@ -55,6 +55,7 @@ type sourceMediaClock struct {
 	uncertain                    bool
 	outliers, recovery           uint8
 	uncertainAt                  time.Time
+	videoEpoch                   uint64 // Local quarantine fence; never a wire identity.
 	adaptive                     bool
 	fit                          sourceClockFit
 }
@@ -215,6 +216,11 @@ func (c *sourceMediaClock) SourceSenderReport(report sourceSenderReport) error {
 			// Rejected measurements never extend freshness or advance RTP state.
 			if !invalidShape && skew >= -4800 && skew <= 4800 && c.outliers < 2 {
 				if !c.uncertain {
+					if c.videoEpoch == ^uint64(0) {
+						c.failLocked(5)
+						return errors.New("source clock epoch exhausted")
+					}
+					c.videoEpoch++
 					c.uncertainAt = observedAt
 				}
 				c.uncertain, c.recovery = true, 0

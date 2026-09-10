@@ -20,6 +20,7 @@ type sourceVideoMixInputConfig struct {
 	kind, fit          string // camera/screen; contain/cover.
 	maxFrameAgeSamples int64  // Shared 48-kHz program clock, not arrival time.
 	mapTimestamp       func(uint32) (int64, bool)
+	timeline           sourceVideoTimeline // Exclusive with the fixed mapping adapter.
 	authorized         func() bool
 }
 
@@ -49,15 +50,17 @@ type sourceVideoMixer struct {
 }
 
 type sourceVideoMixInput struct {
-	fence   *sourceRenderFence
-	mixer   *sourceVideoMixer
-	cfg     sourceVideoMixInputConfig
-	frames  []sourceVideoMixFrame
-	pending []int
-	current int
-	last    int64
-	started bool
-	closed  bool
+	fence     *sourceRenderFence
+	mixer     *sourceVideoMixer
+	cfg       sourceVideoMixInputConfig
+	frames    []sourceVideoMixFrame
+	pending   []int
+	current   int
+	last      int64
+	started   bool
+	closed    bool
+	timeBound bool
+	timeEpoch uint64
 }
 
 func validSourceVideoSize(width, height int) bool {
@@ -84,7 +87,7 @@ func (m *sourceVideoMixer) Add(cfg sourceVideoMixInputConfig) (*sourceVideoMixIn
 		return nil, errors.New("source video mixer closed")
 	}
 	if !validSourceVideoSize(cfg.width, cfg.height) || !oneOf(cfg.kind, "camera", "screen") || !oneOf(cfg.fit, "contain", "cover") ||
-		cfg.maxFrameAgeSamples < 4800 || cfg.maxFrameAgeSamples > 1440000 || cfg.authorized == nil || cfg.mapTimestamp == nil || !cfg.authorized() ||
+		cfg.maxFrameAgeSamples < 4800 || cfg.maxFrameAgeSamples > 1440000 || cfg.authorized == nil || (cfg.mapTimestamp == nil) == (cfg.timeline == nil) || !cfg.authorized() ||
 		len(m.sources) >= m.cfg.maxSources || cfg.width*cfg.height*4*m.cfg.queueFrames > m.cfg.maxRGBABytes-m.usedBytes {
 		return nil, errors.New("source video mixer admission denied")
 	}
@@ -110,7 +113,18 @@ func (s *sourceVideoMixInput) WriteRGBA(width, height int, timestamp uint32, pix
 		s.closeLocked()
 		return errors.New("source video mixer input denied")
 	}
-	at, ok := s.cfg.mapTimestamp(timestamp)
+	var at int64
+	var ok bool
+	if s.cfg.timeline != nil {
+		var snapshot sourceVideoTime
+		at, snapshot = s.cfg.timeline.MapVideo(timestamp)
+		ok = s.acceptVideoTime(snapshot)
+		if !ok && !s.closed {
+			return nil
+		}
+	} else {
+		at, ok = s.cfg.mapTimestamp(timestamp)
+	}
 	if !ok || at < 0 || at > sourceVideoMixMaxTime || (s.started && at <= s.last) || at > m.cursor+m.cfg.lookAheadSamples {
 		s.closeLocked()
 		return errors.New("source video mixer clock denied")
@@ -226,6 +240,9 @@ func (m *sourceVideoMixer) RenderGuarded(at int64, consume func(int64, uint64, [
 			s.closeLocked()
 			continue
 		}
+		if s.cfg.timeline != nil && !s.acceptVideoTime(s.cfg.timeline.VideoTime()) {
+			continue
+		}
 		s.advance(at)
 	}
 	fillSourceVideoSlate(m.output, m.cfg.width, 0, 0, m.cfg.width, m.cfg.height)
@@ -250,6 +267,10 @@ func (m *sourceVideoMixer) RenderGuarded(at int64, consume func(int64, uint64, [
 	if !m.cfg.authorized() {
 		m.closeLocked()
 		return errors.New("source video mixer output denied")
+	}
+	if !guard.Valid() {
+		fillSourceVideoSlate(m.output, m.cfg.width, 0, 0, m.cfg.width, m.cfg.height)
+		guard = sourceRenderGuard{}
 	}
 	if err := consume(at, m.revision, m.output, guard); err != nil {
 		m.closeLocked()
@@ -296,6 +317,7 @@ func (s *sourceVideoMixInput) closeLocked() {
 	}
 	s.frames, s.pending, s.current = nil, nil, -1
 	s.cfg.mapTimestamp, s.cfg.authorized = nil, nil
+	s.cfg.timeline = nil
 	for i, input := range s.mixer.scene {
 		if input == s {
 			s.mixer.scene[i] = nil

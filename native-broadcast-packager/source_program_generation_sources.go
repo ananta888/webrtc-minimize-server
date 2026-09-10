@@ -84,7 +84,7 @@ func (p *sourceProgramGeneration) AddSource(lease trustedsframe.SourceLease, rec
 			return nil, err
 		}
 	} else {
-		s.video, err = p.video.Add(sourceVideoMixInputConfig{width: p.cfg.sourceWidth, height: p.cfg.sourceHeight, kind: lease.Consent.SourceKind, fit: "contain", maxFrameAgeSamples: 24000, mapTimestamp: clock.Map, authorized: allowed})
+		s.video, err = p.video.Add(sourceVideoMixInputConfig{width: p.cfg.sourceWidth, height: p.cfg.sourceHeight, kind: lease.Consent.SourceKind, fit: "contain", maxFrameAgeSamples: 24000, timeline: clock, authorized: allowed})
 		if err != nil {
 			return nil, err
 		}

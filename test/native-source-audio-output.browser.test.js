@@ -56,6 +56,7 @@ for (const preset of ["speech", "music"]) test(`rendered ${preset} selection rea
     if (confirmed) break;
     await new Promise(resolve => setTimeout(resolve, 100));
   } while (performance.now() < deadline);
+  if (!confirmed) t.diagnostic(JSON.stringify({ stage: "audio-output", preset, output, observation: f.observation }));
   assert.equal(confirmed, true, "committed AAC must contain the selected channel format and decoded non-silent tone");
   assert.ok(output.committed.encoding.measuredBitsPerSecond <= rate * 1.5 + 10000, "AAC target is not a CBR guarantee");
   t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, preset, targetBitsPerSecond: rate, output: output.committed }));

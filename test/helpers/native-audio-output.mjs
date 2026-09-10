@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
+import { probeSceneFragment } from "./native-scene-fragment-probe.mjs";
 
 export function nativeAudioFragmentNames(text) {
   if (typeof text !== "string" || Buffer.byteLength(text) > 65536) throw new Error("test_audio_manifest_invalid");
@@ -58,7 +59,7 @@ function probeEncoding(fragment) {
 }
 
 /** Read only the single resource in this private synthetic fixture. No raw output. */
-export async function nativeAudioOutputObservation(root, { encoding = false } = {}) {
+export async function nativeAudioOutputObservation(root, { encoding = false, scene = false } = {}) {
   try {
     const resources = (await fs.readdir(root, { withFileTypes: true })).filter(e => e.isDirectory() && /^res_[A-Za-z0-9_-]{16,64}$/.test(e.name));
     if (resources.length !== 1) return { available: false };
@@ -79,6 +80,7 @@ export async function nativeAudioOutputObservation(root, { encoding = false } = 
         const fragment = Buffer.concat([init.bytes, segment.bytes]);
         return { available: true, sequence: names.sequence, segments: names.segments, ageMs: manifest.ageMs,
           segmentBytes: segment.bytes.length, audio: await decodeLevels(fragment),
+          ...(scene ? { scene: await probeSceneFragment(fragment) } : {}),
           ...(encoding ? { encoding: await probeEncoding(fragment) } : {}) };
       } catch { return { available: false }; }
     };
