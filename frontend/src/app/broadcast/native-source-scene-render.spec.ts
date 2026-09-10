@@ -1,0 +1,61 @@
+import "@angular/compiler";
+import { readFileSync } from "node:fs";
+import { Component, provideZonelessChangeDetection, signal } from "@angular/core";
+import { TestBed } from "@angular/core/testing";
+import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
+import { afterAll, afterEach, expect, it, vi } from "vitest";
+import { NativeSceneState } from "./native-source-scene-contract";
+import { NativeSceneView } from "./native-source-scene-controller";
+import { NativeSourceSceneComponent } from "./native-source-scene.component";
+
+const platform = platformBrowserTesting();
+TestBed.initTestEnvironment(BrowserTestingModule, platform);
+afterEach(() => { TestBed.resetTestingModule(); vi.restoreAllMocks(); });
+afterAll(() => { TestBed.resetTestEnvironment(); platform.destroy(); });
+
+it("renders scoped draft, freshness, conflict and separate review/apply controls from the real template", async () => {
+  const source = "sls_aaaaaaaaaaaaaaaa";
+  const state: NativeSceneState = { sceneControlVersion: 2, programId: "prg_aaaaaaaaaaaaaaaa", programRevision: 1, programEpoch: 1,
+    packagerId: "pkr_aaaaaaaaaaaaaaaa", assignmentId: "asn_aaaaaaaaaaaaaaaa", fencingRevision: 1,
+    outcome: "observed", observedAt: 1800000000000, sceneRevision: 1, layout: "single", sourceLeaseIds: [source],
+    sourceFits: ["contain"], activeSourceLeaseId: "", availableSources: [{ sourceLeaseId: source, sourceKind: "camera" }] };
+  const owner = signal<string | null>("human-session-alpha");
+  let next = state;
+  const scenes = { ownerKey: () => owner(), view: signal<NativeSceneView>({ phase: "idle", scene: null }), controller: {
+    refresh: vi.fn(async () => { scenes.view.set({ phase: "ready", scene: next }); }), apply: vi.fn(async () => {}),
+  } };
+  // Only dependency construction is replaced. Template, handlers and signals
+  // are the production component; the port makes no HTTP or media requests.
+  const template = readFileSync("frontend/src/app/broadcast/native-source-scene.component.html", "utf8");
+  TestBed.overrideComponent(NativeSourceSceneComponent, { set: { templateUrl: undefined, template } });
+  await TestBed.compileComponents();
+  class RenderedScene extends NativeSourceSceneComponent { constructor() { super(scenes as never); } }
+  Component({ selector: "test-native-scene", standalone: true, template })(RenderedScene);
+  await TestBed.configureTestingModule({ imports: [RenderedScene], providers: [provideZonelessChangeDetection()] }).compileComponents();
+  const fixture = TestBed.createComponent(RenderedScene), root: HTMLElement = fixture.nativeElement;
+  const element = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
+  fixture.detectChanges(); expect(root.querySelector("fieldset")).toBe(null);
+  element<HTMLButtonElement>("#native-scene-refresh").click(); await fixture.whenStable();
+  const layout = element<HTMLSelectElement>("#native-scene-layout");
+  expect(layout.value).toBe("single");
+  layout.value = "grid"; layout.dispatchEvent(new Event("change", { bubbles: true })); await fixture.whenStable();
+  expect(root.querySelector("#native-scene-draft-status")).not.toBe(null);
+  scenes.view.set({ phase: "stale", scene: null }); await fixture.whenStable();
+  expect(element<HTMLFieldSetElement>("fieldset").disabled).toBe(false);
+  expect(element<HTMLButtonElement>("#native-scene-apply").disabled).toBe(true);
+  element<HTMLButtonElement>("#native-scene-refresh").click(); await fixture.whenStable();
+  expect(layout.value).toBe("grid"); expect(element<HTMLButtonElement>("#native-scene-apply").disabled).toBe(false);
+  next = { ...state, sceneRevision: 2, layout: "side-by-side" };
+  element<HTMLButtonElement>("#native-scene-refresh").click(); await fixture.whenStable();
+  expect(root.querySelector("#native-scene-draft-conflict")).not.toBe(null);
+  expect(element<HTMLButtonElement>("#native-scene-apply").disabled).toBe(true);
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  element<HTMLButtonElement>("#native-scene-draft-review").click(); await fixture.whenStable();
+  expect(root.querySelector("#native-scene-draft-conflict")).toBe(null);
+  expect(scenes.controller.apply).not.toHaveBeenCalled();
+  element<HTMLButtonElement>("#native-scene-apply").click(); await fixture.whenStable();
+  expect(confirm).toHaveBeenCalledTimes(2);
+  expect(scenes.controller.apply).toHaveBeenCalledExactlyOnceWith({ expectedSceneRevision: 2, layout: "grid", sourceLeaseIds: [source],
+    sourceFits: ["contain"], activeSourceLeaseId: "" }, "user-action");
+  owner.set(null); await fixture.whenStable(); expect(root.querySelector("fieldset")).toBe(null);
+});

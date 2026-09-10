@@ -196,6 +196,14 @@ implementierte Entwurf besitzt 27 gezielte jsdom-/Controller-/Vergleichstests;
 Typ- und Angular-Templateprüfung ohne Emit bestehen. Die erweiterte echte
 Tastaturprüfung mit explizit simulierten HTTP-Antworten folgt in CI und ersetzt
 keinen nativen Medien- oder Produktionsnachweis.
+
+Ein zusätzlicher Angular-TestBed-Test rendert nun das unveränderte reale Template
+mit den geerbten Produktionshandlern und einem synthetischen Szenenport. Er prüft
+DOM-Auswahl, Entwurfsanzeige, Ablauf ohne Apply, erhaltenden Refresh, sichtbaren
+Konflikt, gesperrten Apply, getrennte Review-/Applydialoge und Ausblenden bei
+Kontextverlust. Zusammen bestehen 28 gezielte Tests in 0,878 Sekunden. Die
+Testplattform und Fixtures werden vollständig zerstört. Es läuft dabei kein
+Browserprozess und keine Audio-/Capture-API; nativer Bildnachweis bleibt separat.
 Weitere Handoff-/Standby-/Produktionskriterien bleiben ebenfalls erhalten.
 Kein Deployment und keine öffentliche Freigabe werden aus den Teilprüfungen
 abgeleitet.
