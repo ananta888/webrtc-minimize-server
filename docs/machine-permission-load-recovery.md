@@ -48,3 +48,27 @@ die gemeinsame Abnahme offen; der Gesamtcheck ist nicht grün. CI `34468539328`
 ist ebenfalls fehlgeschlagen und betrifft ausschließlich den vorherigen Stand
 `e9e8699`; die konkreten Befunde stehen im [Integrationsstatus](ananta-integration-status.md).
 Keine Änderung am Ananta-Repository, Serving-Build oder öffentlichen Hub-Trust.
+
+## Abnahme MDS-14 am 11. September 2026
+
+Der zuvor fehlende gemeinsame Nachweis liegt im vollständig erfolgreichen
+[CI-Lauf 34534962211](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34534962211)
+auf `bcb426d` vor. Job `103064322073` enthält beide normalen Dialogtests
+(255/256) und alle vier realen Chromium-/Firefox-Ladefehlerfälle (291–294).
+Auch Typprüfung, Frontendtests, Build unter dem unveränderten 1,60-MB-Hardlimit,
+beide vollständigen Node-Testpartitionen und die nachgelagerten CI-Gates
+bestanden. Der Initial-Build lag bei 1.595,30 kB; die 1,50-MB-Warnschwelle
+wurde überschritten, nicht das Hardlimit.
+
+Die betroffenen Room-/Machine-Komponenten, der Ladefehlertest samt Browserfixture
+und das Angular-Buildbudget sind zwischen `bcb426d` und `8e8c69d` unverändert.
+Der neuere Lauf `34537434250` bestätigt dieselben vier Ladefehlerfälle und beide
+normalen Dialoge erneut. Sein separater Active-Renewal-Test ist fehlgeschlagen;
+das bleibt ein offener Befund von MDS-06/MDS-08 und macht diesen neueren
+Gesamtlauf ausdrücklich nicht grün.
+
+Die drei Akzeptanzkriterien von MDS-14 sind damit erfüllt: Der Task ist
+`done`, der übergeordnete Track bleibt aktiv. Diese Abnahme aktiviert keinen
+Hub-Trust, ersetzt kein Deployment und schließt die übrigen Integrations-,
+Langzeit- oder Produktionsgates nicht ab. Dafür wurden keine weiteren lokalen
+Browser- oder Audiotests gestartet.
