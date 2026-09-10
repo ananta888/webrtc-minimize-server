@@ -43,3 +43,27 @@ erfolgt ausschließlich in CI und ist bis dahin nicht erbracht.
 
 Die gemeinsame browserfreie Prüfung mit Polling- und synthetischen
 Capture-Lifecycle-Fixtures besteht mit 57 Tests in 2,813 Sekunden ohne Skip.
+
+## Noch ungeklärtes Kalibrierungsfenster
+
+Im CI-Lauf `34536336514` bestand die Folge Ausgewogen/Sprache zuerst bis zum
+Stop. Die Folge Bildschirm zuerst/Unverarbeitet scheiterte dagegen bereits
+bei der Kalibrierung: Der letzte Sample enthielt ungefähr 0,2464/0,2483,
+aber keinen Nachweis einer vollständigen stabilen Sekunde. Aus diesem einzelnen
+Sample lassen sich weder die Ursache noch zu enge Toleranzen ableiten.
+
+Die Fehlerdiagnose enthält deshalb jetzt `windowEvidence`: acht feste,
+bei 1000 saturierende Grundzähler und die letzten acht projizierten Samples.
+Sie trennt nicht spielende Ausgabe, verfehlten Zielpegel, Generationswechsel,
+Zeit-/Frame-Rücksprünge und Pegeldrift. Dazu kommen die längste beobachtete
+gültige Fensterspanne und der größte Framefortschritt; diese Maxima müssen
+nicht aus demselben Fenster stammen. `deadline` unterscheidet ein abgelaufenes
+Pollingbudget von `observation-failed`, ohne fremde Exceptiontexte auszugeben.
+
+Auch der letzte Sample wird ausschließlich auf vier feste Tonamplituden,
+numerische Zeit-/Frame-/Generations-/Readywerte und zwei Boolean-Zustände
+projiziert. Keine PCM-Wertefolgen, URLs, Namen, Tokens oder unbekannten Felder
+werden behalten. Ältere Snapshots bleiben unveränderlich. Die bestehende
+Akzeptanzlogik, Zweiprozentgrenze, einsekündige Medienzeit und das Gesamtlimit
+von 20 Sekunden bleiben unverändert. Der konkrete Fehler ist dadurch noch
+nicht behoben; neue reale CI-Evidence ist erforderlich.

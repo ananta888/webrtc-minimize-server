@@ -1,4 +1,5 @@
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
+import { NativeAudioWindowEvidence, nativeAudioMeasurementSummary } from "./native-audio-window-evidence.mjs";
 
 /** Only two fixed synthetic fixture tones; never retain or return PCM. */
 export function nativeAudioFrequencyObservation() {
@@ -78,14 +79,25 @@ export async function waitNativeMicrophoneAfterScreenRevoke(page, baseline, prev
 
 async function waitFrequencyMatch(page, matches, diagnostic, requireStableLevels = false) {
   let first = null, previous = null, latest = null;
+  const evidence = new NativeAudioWindowEvidence();
   const result = await waitFixtureValue(page, nativeAudioFrequencyObservation, undefined, { timeout: 20000, accept: value => {
     latest = value;
-    if (!matches(value)) { first = null; previous = null; return false; }
-    if (previous && (value.mediaEpoch !== previous.mediaEpoch || value.time < previous.time || value.frames < previous.frames)
-      || first && requireStableLevels && !stableLevels(first, value)) first = null;
+    if (!matches(value)) {
+      evidence.record(value, playing(value) ? "target-mismatch" : "not-playing", null);
+      first = null; previous = null; return false;
+    }
+    const reset = previous && value.mediaEpoch !== previous.mediaEpoch ? "generation"
+      : previous && value.time < previous.time ? "time-rollback"
+      : previous && value.frames < previous.frames ? "frame-rollback"
+      : first && requireStableLevels && !stableLevels(first, value) ? "level-drift" : null;
+    if (reset) first = null;
+    const reason = reset || (first ? "continue" : "start");
     previous = value;
     first ??= value;
+    evidence.record(value, reason, first);
     return value.time - first.time >= 1 && value.frames > first.frames;
-  } }).catch(() => { throw new Error(JSON.stringify({ ...diagnostic, latest })); });
+  } }).catch(error => { throw new Error(JSON.stringify({ ...diagnostic, latest: nativeAudioMeasurementSummary(latest),
+    failure: error?.message === "test_fixture_wait_deadline" ? "deadline" : "observation-failed",
+    windowEvidence: evidence.snapshot() })); });
   return { channels: result.channels, mediaEpoch: result.mediaEpoch, time: result.time, frames: result.frames };
 }
