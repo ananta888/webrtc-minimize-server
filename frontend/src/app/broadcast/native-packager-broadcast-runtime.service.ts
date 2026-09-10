@@ -9,8 +9,8 @@ import { BroadcastOwnSourceCompositionService } from "./broadcast-own-source-com
 import {
   BroadcastCaptionOutputPort,
   BroadcastCaptionSegment,
-  BrowserBroadcastCaptionPackager,
 } from "./broadcast-caption-packager";
+import type { BrowserBroadcastCaptionPackager } from "./broadcast-caption-program";
 import { BroadcastCaptionSettingsService } from "./broadcast-caption-settings.service";
 import { NativePackagerOnboardingService } from "./native-packager-onboarding.service";
 import {
@@ -89,6 +89,7 @@ function exactStatus(message: ServerMessage, assignment: PreparedNativePackagerS
 @Injectable({ providedIn: "root" })
 export class NativePackagerBroadcastRuntimeService implements BroadcastPublicationPort, BroadcastStatsPort {
   private readonly sessions = new Map<string, NativeSession>();
+  private readonly loadCaptionProgram = () => import("./broadcast-caption-program");
 
   constructor(
     private readonly control: BroadcastControlPlaneService,
@@ -118,6 +119,11 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
   }
 
   async start(request: BroadcastPublicationRequest, signal: AbortSignal): Promise<BroadcastPublicationSession> {
+    signal.throwIfAborted();
+    if (!this.capability.available) throw new BroadcastBrowserPortError("native-bridge-not-ready");
+    const loading = this.loadCaptionProgram().catch(() => { throw new BroadcastBrowserPortError("native-packager-caption-loader-failed"); });
+    const { BrowserBroadcastCaptionPackager: CaptionProgram } = await this.waitFor(loading, signal,
+      5000, "native-packager-caption-loader-timeout");
     signal.throwIfAborted();
     if (!this.capability.available) throw new BroadcastBrowserPortError("native-bridge-not-ready");
     const policy = this.room.icePolicy();
@@ -157,7 +163,7 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
       throw error;
     };
     try {
-      this.startCaptions(native, request);
+      this.startCaptions(native, request, CaptionProgram);
       for (const descriptor of media.tracks) pc.addTrack(descriptor.track, media.stream);
       pc.onicecandidate = ({ candidate }) => {
         if (!native.stopped) this.sendSignal(assignment, { candidate: candidate?.toJSON() ?? null });
@@ -168,7 +174,7 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
       if (!pc.localDescription) throw new BroadcastBrowserPortError("native-packager-offer_failed");
       this.sendSignal(assignment, { description: pc.localDescription.toJSON() });
       await connected;
-      await this.waitForOutput(native, signal);
+      await this.waitFor(native.outputReady, signal, 30_000, "native-packager-output-timeout");
       signal.throwIfAborted();
       return publicSession;
     } catch (error) {
@@ -266,16 +272,17 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
     }).catch(() => { void this.close(native, true); });
   }
 
-  private async waitForOutput(native: NativeSession, signal: AbortSignal): Promise<void> {
+  private async waitFor<T>(pending: Promise<T>, signal: AbortSignal, timeoutMs: number, code: string): Promise<T> {
+    signal.throwIfAborted();
     let timeout: ReturnType<typeof setTimeout> | undefined;
     let abort: (() => void) | undefined;
-    const boundary = new Promise<void>((_, reject) => {
-      timeout = setTimeout(() => reject(new BroadcastBrowserPortError("native-packager-output-timeout")), 30_000);
+    const boundary = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => reject(new BroadcastBrowserPortError(code)), timeoutMs);
       abort = () => reject(abortError());
       signal.addEventListener("abort", abort, { once: true });
     });
     try {
-      await Promise.race([native.outputReady, boundary]);
+      return await Promise.race([pending, boundary]);
     } finally {
       if (timeout) clearTimeout(timeout);
       if (abort) signal.removeEventListener("abort", abort);
@@ -290,7 +297,7 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
     });
   }
 
-  private startCaptions(native: NativeSession, request: BroadcastPublicationRequest): void {
+  private startCaptions(native: NativeSession, request: BroadcastPublicationRequest, CaptionProgram: typeof BrowserBroadcastCaptionPackager): void {
     const consent = this.captionSettings.consent();
     const channel = native.pc.createDataChannel("broadcast-captions-v1", { ordered: true });
     channel.bufferedAmountLowThreshold = MAX_CAPTION_CHANNEL_BUFFER / 2;
@@ -309,7 +316,7 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
         operation: "revoke", discontinuitySequence,
       }),
     };
-    const packager = new BrowserBroadcastCaptionPackager(output);
+    const packager = new CaptionProgram(output);
     if (!packager.begin(Date.now(), consent, this.captionSettings.settings())) {
       throw new BroadcastBrowserPortError("invalid_broadcast_caption_settings");
     }

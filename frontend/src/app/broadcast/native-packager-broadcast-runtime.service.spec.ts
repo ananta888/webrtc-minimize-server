@@ -39,6 +39,37 @@ class FakePeerConnection extends EventTarget {
 describe("NativePackagerBroadcastRuntimeService", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it.each(["abort", "timeout", "unavailable", "failure"])("does not consume an assignment or resolve media after a caption-loader %s", async scenario => {
+    vi.useFakeTimers();
+    const take = vi.fn(), resolve = vi.fn(), peer = vi.fn();
+    vi.stubGlobal("RTCPeerConnection", peer);
+    let available = true, release!: (value: unknown) => void;
+    const runtime = new NativePackagerBroadcastRuntimeService({ takePreparedNative: take } as never,
+      { resolve } as never, {} as never, {} as never,
+      { selectedPackagerId: () => "pkr_aaaaaaaaaaaaaaaa", eligible: () => available ? [{ id: "pkr_aaaaaaaaaaaaaaaa" }] : [] } as never,
+      { joined: () => true, roomId: () => "room-alpha" } as never, {} as never);
+    const loader = vi.fn(() => scenario === "failure" ? Promise.reject(new Error("synthetic private loader detail"))
+      : new Promise(resolve => { release = resolve; }));
+    Reflect.set(runtime, "loadCaptionProgram", loader);
+    const controller = new AbortController();
+    let settled = false;
+    const pending = runtime.start({ program: { roomId: "room-alpha" } } as never, controller.signal)
+      .catch(error => { settled = true; return error; });
+    try {
+      if (scenario === "abort") controller.abort();
+      if (scenario === "unavailable") { available = false; release({ BrowserBroadcastCaptionPackager: class {} }); }
+      await vi.advanceTimersByTimeAsync(scenario === "timeout" ? 5000 : 0);
+      expect(settled).toBe(true);
+      expect(await pending).toMatchObject(scenario === "abort" ? { name: "AbortError" }
+        : { code: scenario === "timeout" ? "native-packager-caption-loader-timeout"
+          : scenario === "failure" ? "native-packager-caption-loader-failed" : "native-bridge-not-ready" });
+      if (scenario !== "failure") release({ BrowserBroadcastCaptionPackager: class {} });
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(take).not.toHaveBeenCalled(); expect(resolve).not.toHaveBeenCalled(); expect(peer).not.toHaveBeenCalled();
+      expect(loader).toHaveBeenCalledOnce(); expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
   it("sends an assignment-bound offer and stops both media and the remote lease", async () => {
     const pc = new FakePeerConnection();
     vi.stubGlobal("RTCPeerConnection", vi.fn(() => pc));

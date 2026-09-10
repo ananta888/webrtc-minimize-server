@@ -37,6 +37,51 @@ Livefenster aufgenommen. Ein Segment enthält höchstens 32 Cues und 64 KiB.
 Es wird weder in Local Storage noch in einer Transkriptdatenbank abgelegt und
 darf nicht in allgemeine Logs oder Metriken gelangen.
 
+Die ausführbare Klasse liegt in `broadcast-caption-program.ts`; Typen,
+Consent-Defaults und Einstellungsvalidierung bleiben im synchron verfügbaren
+`broadcast-caption-packager.ts`. Der Native-Start lädt die Klasse mit einem
+Fünfsekundenbudget, bevor er die vorbereitete Assignment-Zuordnung verbraucht,
+die Komposition auflöst oder eine PeerConnection anlegt. Abort, Ladefehler,
+Timeout und inzwischen fehlende Agenteneignung brechen sichtbar ab; eine
+späte Modulantwort aktiviert nichts. Die Fehler enthalten nur feste Codes.
+Es gibt keinen automatischen Import-Retry. Dies verändert nicht die bewusst
+statische HLS-Player-Engine.
+
+## Begrenzter Caption-Zustand
+
+Ein aktiver Packager erlaubt höchstens 80 ausdrücklich autorisierte Quellen
+und 1.024 gleichzeitig frische Äußerungsrevisionen. Bestehende Revisionen
+können bei voller Kapazität weiterhin aktualisiert werden; neue Äußerungen
+werden mit `capacity-exceeded` verworfen, ohne Audio oder Video zu stoppen.
+Das begrenzt den Zustand und ist kein Durchsatz- oder Verfügbarkeitsversprechen.
+
+Revisionseinträge verfallen erst, wenn ihre letzte akzeptierte Capture-Zeit
+außerhalb des maximal erlaubten Achtsekunden-Synchronitätsfensters liegt.
+Dadurch entfernt ein kleineres aktuell gewähltes Sync-Budget nicht vorzeitig
+den Wiederholungsschutz. Ein volles Ledger verdrängt keine noch frischen
+Einträge. Rückläufige Beobachtungszeit wird abgewiesen; ein bereits gealtertes
+Original kann nach dem Aufräumen nicht durch Zurückdrehen der Zeit wieder
+angenommen werden. Dies schützt Wiederholungen der lokalen Emissionsdaten,
+nicht vor einem bösartigen autorisierten Publisher, der Identitäten oder
+Capture-Zeiten neu erfindet.
+
+`begin()` beginnt mit leeren Quellen, Cues und Revisionen. `close()` setzt
+Consent und Einstellungen zurück; anschließendes Konfigurieren, Autorisieren
+oder Resume kann das Programm nicht wieder öffnen. Ein neues `begin()` samt
+erneuter Quellenautorisierung ist erforderlich. Eine ausdrücklich höhere
+Quellenepoch entfernt vorherige Cues und Revisionen; niedrigere Epochen werden
+abgewiesen. Falsche Final-Flags und unbekannte Discontinuity-Gründe werden
+ebenfalls abgewiesen.
+
+Verifikation vom 10. September 2026: Drei Ausgangsfehler (alte Cues nach
+Neubeginn, Reaktivierung nach Close und unbegrenztes Revisionsledger) wurden
+zunächst reproduziert. Ein deterministischer Test mit 7.200 Äußerungen über
+zwei simulierte Stunden hält bei einer Äußerung pro Sekunde höchstens neun
+Revisionseinträge. Das ist kein zweistündiger Browser-/Vosk-Soak. Alle 1.397
+Frontendtests bestehen in 14,640 s, ebenso Typprüfung, Angular-no-emit,
+Todo-Gate und isolierter Produktionsbuild (20,244 s). Browser-, Sprachen-,
+Handoff- und Produktionsabnahme bleiben getrennt erforderlich.
+
 Der Agent akzeptiert höchstens einen Caption-DataChannel, 70 KiB pro Nachricht,
 64 KiB WebVTT und exakt geschlossene Update-/Revoke-Felder. Falsche Assignment-
 oder Epochwerte, unbekannte Felder, Binärnachrichten, alte Sequenzen und
