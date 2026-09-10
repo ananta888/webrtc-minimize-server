@@ -76,8 +76,9 @@ Grant-Widerruf am Gateway-Autorisierungspfad, nicht nur eine Fehlermeldung.
 Zusätzlich sind Uhrfehler, unbekannte/alte Membership, Parallelität und ein
 verspäteter Grant nach Timeout mit inzwischen erfolgreichem Nachfolger geprüft.
 79 gezielte browserfreie Node-/HTTP-/Grant-/Assignment-/Handoff-Tests bestehen
-in 2,010 Sekunden. Die Start-Kapazitätsreservierung für Encoder, Viewer und
-Tenant-/Gatewaybudgets ist dadurch **noch nicht angeschlossen**.
+in 2,010 Sekunden. Ein nachfolgender Abschnitt verbindet inzwischen die
+[logischen Tenant-/Gateway-/Programmquoten](broadcast-admission-and-abuse-control.md#produktiv-angeschlossene-programm-slots).
+Die vollständige Ressourcenreservierung für Encoder, Viewer und Laufzeit bleibt offen.
 
 Die erste erweiterte lokale Testauswahl enthielt versehentlich auch einen
 Chromium-Fall in der gemischten `broadcast-source-requests.test.js`; auch der

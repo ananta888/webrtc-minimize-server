@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { BroadcastProgramCapacity } from "./broadcast-program-capacity.js";
 import { normalizeNativeSourceAudioOutput } from "./native-source-audio-output.js";
 import { normalizeNativeSourceVideoOutput, nativeOutputRequestFields } from "./native-source-video-output.js";
 import { normalizeNativeStandbySelection, nativeStandbyProjection } from "./native-packager-standby.js";
@@ -31,6 +32,9 @@ const ACTIVE = new Set(["live", "degraded"]);
 const WHIP_ACTIONS = new Set(["whip:create", "whip:update", "whip:delete"]);
 const MAX_PROGRAMS = 10_000;
 const MAX_CHALLENGES = 10_000;
+const INACTIVE_PROGRAM_STATES = new Set(["draft", "stopped", "failed"]);
+const capacityScope = machine => ({ tenantId: machine.scope.tenantId,
+  principalRef: machine.scope.ownerSubjectRef, programId: machine.scope.programId });
 
 export class BroadcastRuntimeError extends Error {
   constructor(code, status = 400) {
@@ -133,6 +137,7 @@ export class BroadcastRuntimeRegistry {
   #records = new Map();
   #challenges = new Map();
   #pendingPublishers = new Map();
+  #programCapacity;
   #challengeTtlMs;
   #clock;
   #idFactory;
@@ -146,6 +151,7 @@ export class BroadcastRuntimeRegistry {
   constructor({
     grantAuthority,
     audienceRegistry,
+    programCapacityLimits,
     challengeTtlMs = 60_000,
     clock = Date.now,
     idFactory = () => `bpc_${crypto.randomBytes(24).toString("base64url")}`,
@@ -165,6 +171,7 @@ export class BroadcastRuntimeRegistry {
       fail("invalid_broadcast_runtime_configuration", 500);
     }
     this.#authority = grantAuthority;
+    this.#programCapacity = new BroadcastProgramCapacity(programCapacityLimits);
     this.#audience = audienceRegistry || new BroadcastAudienceRegistry({
       revokeProgramEpoch: (...args) => this.#authority.revokeProgramEpoch(...args),
     });
@@ -257,6 +264,7 @@ export class BroadcastRuntimeRegistry {
     const key = `${machine.scope.tenantId}\0${machine.scope.programId}`;
     if (this.#records.has(key)) fail("broadcast_program_already_registered", 409);
     if (this.#resourceRefs.has(input.resourceRef)) fail("broadcast_resource_already_registered", 409);
+    this.#assertProgramCapacity(machine);
     const snapshot = this.#audience.register({
       machine,
       policy: input.policy,
@@ -690,6 +698,7 @@ export class BroadcastRuntimeRegistry {
   async #publisherTransaction(key, challenge, identityExpiresAt, now, issue, commit) {
     if (this.#pendingPublishers.has(key)) fail("broadcast_publisher_authorization_pending", 409);
     if (this.#pendingPublishers.size >= MAX_CHALLENGES) fail("broadcast_challenge_capacity_reached", 429);
+    this.#assertProgramCapacity(challenge.candidate);
     const transaction = { challenge, abort: new AbortController() };
     this.#pendingPublishers.set(key, transaction);
     const timeout = setTimeout(() => transaction.abort.abort(), Math.min(5000, challenge.expiresAt - now));
@@ -719,6 +728,7 @@ export class BroadcastRuntimeRegistry {
         || !Number.isSafeInteger(committedAt) || committedAt < now
         || committedAt >= challenge.expiresAt || committedAt >= identityExpiresAt
         || committedAt >= issued.grant.expiresAt) unavailable();
+      this.#assertProgramCapacity(challenge.candidate);
       return commit(issued, committedAt);
     } catch (error) {
       if (issued) revoke(issued);
@@ -784,6 +794,7 @@ export class BroadcastRuntimeRegistry {
   }
 
   #installNativeWriter(key, record, candidate, input, admit, member, now) {
+    this.#assertProgramCapacity(candidate);
     const programId = candidate.scope.programId;
     const audioOutput = record.nativeAudioOutput ?? input.audioOutput;
     const videoOutput = record.nativeVideoOutput ?? input.videoOutput;
@@ -1120,6 +1131,7 @@ export class BroadcastRuntimeRegistry {
   }
 
   #synchronizeRecord(key, record, machine, now, outputAvailabilityOnly = false) {
+    this.#assertProgramCapacity(machine);
     let policy = record.snapshot.policy;
     if (policy.programEpoch !== machine.program.programEpoch
       || policy.visibility !== machine.program.visibility) {
@@ -1164,6 +1176,20 @@ export class BroadcastRuntimeRegistry {
       if (challenge.expiresAt <= now) this.#challenges.delete(id);
     }
     this.#authority.prune?.(now);
+  }
+
+  #assertProgramCapacity(candidate) {
+    if (INACTIVE_PROGRAM_STATES.has(candidate.program.state)) return;
+    const occupied = [];
+    for (const record of this.#records.values()) {
+      if (!INACTIVE_PROGRAM_STATES.has(record.snapshot.machine.program.state)) occupied.push(capacityScope(record.snapshot.machine));
+    }
+    for (const transaction of this.#pendingPublishers.values()) {
+      // Keep the reservation until finally releases it, even after abort. A new
+      // start cannot steal capacity during terminal cleanup of the old caller.
+      occupied.push(capacityScope(transaction.challenge.candidate));
+    }
+    if (!this.#programCapacity.allows(capacityScope(candidate), occupied)) fail("broadcast_temporarily_unavailable", 429);
   }
 
   get programCount() { return this.#records.size; }

@@ -18,6 +18,7 @@ function fixture(sourceProgram = false, audioOutput = null, videoOutput = null) 
     deviceFingerprint: "a".repeat(43), id: "0123456789abcdef" };
   const revoked = [], sent = [], unavailableDelivery = new Set();
   const runtime = new BroadcastRuntimeRegistry({ clock: () => now,
+    programCapacityLimits: { deployment: 1, gateway: 1, tenant: 1, principal: 1 },
     resourceIdFactory: () => forcedResource || `res_${String(++resourceSequence).padStart(16, "0")}`, grantAuthority: {
     issue() {}, issueAnonymousPlayback() {}, revokeProgramEpoch(...args) { revoked.push(args); },
   } });

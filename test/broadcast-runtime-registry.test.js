@@ -126,6 +126,18 @@ test("runtime projects public, owned and explicitly authorized programs without 
   assert.equal(JSON.stringify(runtime.listPublic(broadcastTenantRef(ISSUER))).includes("roomId"), false);
 });
 
+test("active internal registrations cannot bypass runtime capacity or retain a denied resource", () => {
+  const owner = identity("owner", "Ada");
+  const runtime = new BroadcastRuntimeRegistry({ grantAuthority: authority(), clock: () => NOW,
+    programCapacityLimits: { deployment: 1, gateway: 1, tenant: 1, principal: 1 } });
+  runtime.register(registration(owner, "a"));
+  assert.throws(() => runtime.register(registration(owner, "b")), error => error.code === "broadcast_temporarily_unavailable");
+  assert.equal(runtime.programCount, 1);
+  runtime.stopProgram(owner, "prg_aaaaaaaaaaaaaaaa");
+  assert.doesNotThrow(() => runtime.register(registration(owner, "b")));
+  assert.equal(runtime.programStateCounts().live, 1);
+});
+
 test("playback uses a one-time device-bound challenge and does not create room membership", async () => {
   const owner = identity("owner", "Ada");
   const viewer = identity("viewer", "Grace");

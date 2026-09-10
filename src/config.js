@@ -9,6 +9,7 @@ import { machineCapabilityEnvironment } from "./machine-capabilities.js";
 import { parseMachineTrustProfile } from "./machine-trust-profile.js";
 import { readMachineTrustFile } from "./machine-trust-file.js";
 import { BROADCAST_HLS_BUDGET_DEFAULTS } from "./broadcast-hls-budget.js";
+import { BROADCAST_PROGRAM_CAPACITY_DEFAULTS } from "./broadcast-program-capacity.js";
 
 const DEFAULTS = Object.freeze({
   host: "0.0.0.0",
@@ -709,6 +710,13 @@ export function loadConfig(env = process.env) {
       DEFAULTS.broadcastGatewayAuthAddresses,
     )),
     broadcastGatewayOrigin,
+    broadcastProgramCapacity: Object.freeze(Object.fromEntries([
+      ["deployment", "BROADCAST_MAX_ACTIVE_PROGRAMS"],
+      ["gateway", "BROADCAST_MAX_ACTIVE_PROGRAMS_PER_GATEWAY"],
+      ["tenant", "BROADCAST_MAX_ACTIVE_PROGRAMS_PER_TENANT"],
+      ["principal", "BROADCAST_MAX_ACTIVE_PROGRAMS_PER_PRINCIPAL"],
+    ].map(([scope, name]) => [scope, boundedInteger(env[name], BROADCAST_PROGRAM_CAPACITY_DEFAULTS[scope],
+      { minimum: 1, maximum: 10_000, name })]))),
     broadcastHlsMaximumRequestsPerSecond: boundedInteger(env.BROADCAST_HLS_MAX_REQUESTS_PER_SECOND,
       BROADCAST_HLS_BUDGET_DEFAULTS.maximumRequestsPerSecond,
       { minimum: 1, maximum: 10_000, name: "BROADCAST_HLS_MAX_REQUESTS_PER_SECOND" }),

@@ -2747,7 +2747,8 @@ export function createAppServer(options = {}) {
     });
   }
   const broadcastRuntime = options.broadcastRuntime || (broadcastGrantAuthority
-    ? new BroadcastRuntimeRegistry({ grantAuthority: broadcastGrantAuthority }) : null);
+    ? new BroadcastRuntimeRegistry({ grantAuthority: broadcastGrantAuthority,
+      programCapacityLimits: config.broadcastProgramCapacity }) : null);
   const broadcastSourceRequests = broadcastRuntime ? new BroadcastSourceRequests({
     members: roomId => registry.members(roomId),
     program: (...args) => broadcastRuntime.nativeSourceRequestContext(...args),

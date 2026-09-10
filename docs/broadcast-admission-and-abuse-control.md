@@ -8,6 +8,65 @@ erzwingt.
 
 ## Pre-Allocation-Grenzen
 
+### Produktiv angeschlossene Programm-Slots
+
+Der Registry-Composition-Root erzwingt jetzt dieselben logischen Programmquoten
+für native Sendungen, Browser-WHIP-Starts und interne aktive Registrierungen:
+
+| Operatorvariable | Default |
+| --- | ---: |
+| `BROADCAST_MAX_ACTIVE_PROGRAMS` | 32 |
+| `BROADCAST_MAX_ACTIVE_PROGRAMS_PER_GATEWAY` | 16 |
+| `BROADCAST_MAX_ACTIVE_PROGRAMS_PER_TENANT` | 8 |
+| `BROADCAST_MAX_ACTIVE_PROGRAMS_PER_PRINCIPAL` | 3 |
+
+Alle Werte sind ganzzahlig zwischen 1 und 10.000; null, unbegrenzt und unbekannte
+Policyfelder werden abgewiesen. ENV, Compose und der echte Serverkonstruktor
+sind verbunden. Der aktuelle Composition-Root besitzt einen Gateway-Origin:
+Instanz- und Gatewayquote betreffen deshalb denselben lokalen Bestand. Es ist
+**keine clusterweite Deploymentquote**; mehrere Prozesse haben eigene Budgets.
+
+Die reine `BroadcastProgramCapacity`-Policy zählt aktuelle aktive Programme
+zusammen mit ausstehenden Publisher-Transaktionen. Quelle der Belegung bleibt
+die Registry, keine zweite Lease-Datenbank. `draft`, `stopped` und `failed`
+belegen keinen laufenden Programmplatz; alle anderen Zustände einschließlich
+`awaiting_consent` und `stopping` zählen. Ein noch nicht im `finally` bereinigter
+abgebrochener Start zählt konservativ weiter. Dedupliziert wird ausschließlich
+nach Tenant und Programm; ein widersprüchlicher Owner derselben Referenz wird
+abgewiesen. Update, Output-ACK, Lease-Erneuerung und Handoff desselben Programms
+verbrauchen keinen zweiten Platz.
+
+Die Grenze wird vor Grant-Ausstellung, erneut vor dem asynchronen Commit,
+vor nativer Admission/Assignment und vor jeder Aktivierung in der Registry
+geprüft. Überlast liefert ein einheitliches 429
+`broadcast_temporarily_unavailable`, keine Tenant-/Principal-/Gatewaydetails.
+Sie ersetzt weder die vorhandene native Capability-/Encoderprüfung noch die
+noch ausstehende gemeinsame Ressourcenreservierung für CPU, Encoder, Viewer,
+Laufzeit oder Kosten. Die endgültige physische Freigabe eines Encoders bleibt
+Aufgabe des vorhandenen gefenceten nativen Stop-/Lease-Lifecycles.
+
+Normale WebRTC-Räume werden dabei nicht gezählt. Ein Test am echten
+Serverkonstruktor konfiguriert nur einen Programmplatz, weist 100 weitere
+Startversuche vor der nativen Admission zurück und nimmt trotzdem 20 Teilnehmer
+im ersten sowie einen Teilnehmer in einem zweiten Raum auf. Der 21. Teilnehmer
+im ersten Raum bleibt verboten; `/healthz` bleibt 200. Das ist ein deterministischer
+Kontrollpfadnachweis, keine WAN-/Medienlastmessung.
+
+Vier Grenzfälle scheiterten nach Korrektur eines fehlenden Test-Anzeigenamens
+am alten Code wegen der fehlenden Quotenablehnung. Die neue Matrix deckt
+zusätzlich parallele WHIP-/Native-Starts, tatsächliche P-256/JWT-Ausstellung,
+Stop, Timeout, Issuerfehler, aktive interne Registrierung und die fehlende
+Doppelzählung beim nativen Handoff ab. Der vorhandene Handoff-Testlauf verwendet
+dafür nun ausdrücklich einen einzigen erlaubten Programmplatz.
+
+Der zusammengefasste lokale Nachweis umfasst 122 bestandene browserfreie
+Node-/HTTP-/P-256-/JWT-/Assignment-/Handoff-/Room-/Configprüfungen in
+2,249 Sekunden ohne Skip. Deployment-, Workflow-, Release- und Todo-Gates
+bestehen; der lokale Angular-Auslieferungsbuild bleibt unverändert. Die
+vollständige CI und das Deployment dieser Programmquoten stehen noch aus.
+
+### Weitere Ressourcen-Admission
+
 `BroadcastAdmissionController` prüft einen geschlossenen, idempotenten
 Startplan, bevor eine Lease angelegt wird. Standardmäßig gelten:
 
@@ -158,8 +217,8 @@ Lasttest erzeugt 1.000 abgewiesene Broadcast-Starts und belegt parallel, dass
 RoomRegistry weiter exakt 20 Teilnehmer aufnimmt und Coturn-REST-Credentials
 ausgibt.
 
-Noch offen sind die Verdrahtung der Admission-Lease in den echten
-Program-Composition-Root, native Encoder-/Providerqueues, transaktionale
+Noch offen sind die Verdrahtung der vollständigen Ressourcen-Admission-Lease
+zusätzlich zu den jetzt angeschlossenen Programm-Slots, native Encoder-/Providerqueues, transaktionale
 clusterweite Quoten, reale Bot-/WAN-/Slowloris-Tests und ein gemessener
 gemeinsamer Lastlauf gegen Signaling, SFrame-Medien, TURN und MediaMTX. Bis
 dahin schützt die neue Grenze vorhandene Playbackpfade und kommende Adapter,
