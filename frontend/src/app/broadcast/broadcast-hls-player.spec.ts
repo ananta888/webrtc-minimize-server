@@ -61,6 +61,68 @@ const fakeModule = {
 };
 
 describe("BroadcastHlsPlayer", () => {
+  it("bounds a non-cooperative engine load without fetching media or silently choosing native HLS", async () => {
+    vi.useFakeTimers();
+    FakeHls.instances = [];
+    const loader = vi.fn(() => new Promise<never>(() => {})), element = video(true);
+    const player = new BroadcastHlsPlayer(() => undefined, loader);
+    let settled = false, failure: unknown;
+    const pending = player.open(element, "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8", { muted: true, volume: 1 }, new AbortController().signal)
+      .catch(error => { settled = true; failure = error; });
+    try {
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(settled).toBe(true);
+      await pending; expect(failure).toMatchObject({ code: "broadcast_player_engine_unavailable" });
+      expect(player.snapshot()).toMatchObject({ lifecycle: "failed", engine: null });
+      expect(loader).toHaveBeenCalledTimes(1); expect(FakeHls.instances).toHaveLength(0);
+      expect(element.getAttribute("src")).toBe(null); expect(element.play).not.toHaveBeenCalled();
+    } finally { await player.destroy(); vi.useRealTimers(); }
+  });
+  it.each(["abort", "destroy"])("settles a hung loader immediately on %s and ignores its late completion", async action => {
+    vi.useFakeTimers(); FakeHls.instances = [];
+    let release!: (module: unknown) => void;
+    const loader = vi.fn((_signal?: AbortSignal) => new Promise<never>(resolve => { release = resolve as never; }));
+    const controller = new AbortController(), element = video(), player = new BroadcastHlsPlayer(() => undefined, loader);
+    let settled = false;
+    const pending = player.open(element, "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8", { muted: true, volume: 1 }, controller.signal)
+      .catch(error => { settled = true; expect(error).toMatchObject({ name: "AbortError" }); });
+    try {
+      if (action === "abort") controller.abort(); else await player.destroy();
+      await vi.advanceTimersByTimeAsync(0); expect(settled).toBe(true); await pending;
+      expect(loader.mock.calls[0][0]?.aborted).toBe(true); expect(vi.getTimerCount()).toBe(0);
+      release(fakeModule); await vi.advanceTimersByTimeAsync(6000);
+      expect(FakeHls.instances).toHaveLength(0); expect(element.play).not.toHaveBeenCalled();
+      expect(player.snapshot().lifecycle).toBe("idle"); expect(loader).toHaveBeenCalledTimes(1);
+    } finally { await player.destroy(); vi.useRealTimers(); }
+  });
+  it.each([1000, 4900])("keeps retries inside one five-second budget when the first attempt fails at %i ms", async failAt => {
+    vi.useFakeTimers();
+    let rejectFirst!: (reason: unknown) => void;
+    const loader = vi.fn().mockImplementationOnce(() => new Promise((_, reject) => { rejectFirst = reject; }))
+      .mockImplementation(() => new Promise(() => {}));
+    const player = new BroadcastHlsPlayer(() => undefined, loader);
+    let settled = false;
+    const pending = player.open(video(), "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8", { muted: true, volume: 1 }, new AbortController().signal)
+      .catch(error => { settled = true; expect(error).toMatchObject({ code: "broadcast_player_engine_unavailable" }); });
+    try {
+      await vi.advanceTimersByTimeAsync(failAt); rejectFirst(new Error("synthetic-private-detail"));
+      await vi.advanceTimersByTimeAsync(4999 - failAt); expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1); expect(settled).toBe(true); await pending;
+      expect(loader).toHaveBeenCalledTimes(failAt === 1000 ? 2 : 1);
+      expect(player.snapshot().errorCode).toBe("broadcast_player_engine_unavailable"); expect(vi.getTimerCount()).toBe(0);
+    } finally { await player.destroy(); vi.useRealTimers(); }
+  });
+  it("does not retry an obsolete generation during the retry delay", async () => {
+    vi.useFakeTimers();
+    const loader = vi.fn().mockRejectedValue(new Error("synthetic-private-detail"));
+    const player = new BroadcastHlsPlayer(() => undefined, loader);
+    const pending = player.open(video(), "/broadcast/play/res_aaaaaaaaaaaaaaaa/index.m3u8", { muted: true, volume: 1 }, new AbortController().signal)
+      .catch(error => expect(error).toMatchObject({ name: "AbortError" }));
+    try {
+      await vi.advanceTimersByTimeAsync(100); await player.destroy(); await pending;
+      await vi.advanceTimersByTimeAsync(10000); expect(loader).toHaveBeenCalledTimes(1); expect(vi.getTimerCount()).toBe(0);
+    } finally { await player.destroy(); vi.useRealTimers(); }
+  });
   it("does not let old abort signals or old HLS events terminate a newer output", async () => {
     FakeHls.instances = [];
     const controller = new AbortController(), element = video();

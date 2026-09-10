@@ -31,7 +31,7 @@ export interface BroadcastPlayerSnapshot {
 }
 
 type HlsModule = Readonly<{ default: typeof Hls; Events: typeof Events }>;
-type HlsLoader = () => Promise<HlsModule>;
+type HlsLoader = (signal?: AbortSignal) => Promise<HlsModule>;
 
 const initialSnapshot = (): BroadcastPlayerSnapshot => Object.freeze({
   lifecycle: "idle",
@@ -47,6 +47,7 @@ const initialSnapshot = (): BroadcastPlayerSnapshot => Object.freeze({
 
 const HLS_STARTUP_TIMEOUT_MS = 20_000;
 const HLS_MODULE_RETRY_DELAY_MS = 250;
+const HLS_MODULE_TIMEOUT_MS = 5000;
 
 function validateManifestUrl(value: string): string {
   let parsed: URL;
@@ -84,6 +85,7 @@ export class BroadcastHlsPlayer {
   private recoveries: number[] = [];
   private abortListener: (() => void) | null = null;
   private abortSignal: AbortSignal | null = null;
+  private engineLoadAbort: AbortController | null = null;
   private generation = 0;
   private listeners: Array<readonly [keyof HTMLMediaElementEventMap, EventListener]> = [];
   private captionPoll: ReturnType<typeof setInterval> | null = null;
@@ -243,6 +245,7 @@ export class BroadcastHlsPlayer {
 
   async destroy(): Promise<void> {
     ++this.generation;
+    this.engineLoadAbort?.abort(new DOMException("player-superseded", "AbortError"));
     if (this.abortListener) this.abortSignal?.removeEventListener("abort", this.abortListener);
     this.abortSignal = null;
     this.abortListener = null;
@@ -426,8 +429,32 @@ export class BroadcastHlsPlayer {
   }
 
   private async loadHlsModule(signal: AbortSignal): Promise<HlsModule> {
+    const controller = new AbortController();
+    this.engineLoadAbort = controller;
+    const abort = () => controller.abort(new DOMException("player-aborted", "AbortError"));
+    signal.addEventListener("abort", abort, { once: true });
+    let rejectLoad: () => void = () => {};
+    const cancelled = new Promise<never>((_, reject) => {
+      rejectLoad = () => reject(controller.signal.reason);
+      controller.signal.addEventListener("abort", rejectLoad, { once: true });
+    });
+    const timeout = setTimeout(() => controller.abort(new BroadcastBrowserPortError("broadcast_player_engine_unavailable")), HLS_MODULE_TIMEOUT_MS);
+    if (signal.aborted) abort();
     try {
-      return await this.loadHls();
+      return await Promise.race([this.retryHlsModule(controller.signal), cancelled]);
+    } finally {
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", abort);
+      controller.signal.removeEventListener("abort", rejectLoad);
+      if (this.engineLoadAbort === controller) this.engineLoadAbort = null;
+      controller.abort(); // Retire a losing/non-cooperative attempt; never attach its late result.
+    }
+  }
+
+  private async retryHlsModule(signal: AbortSignal): Promise<HlsModule> {
+    try {
+      signal.throwIfAborted();
+      return await this.loadHls(signal);
     } catch {
       signal.throwIfAborted();
       await new Promise<void>((resolve, reject) => {
@@ -444,7 +471,8 @@ export class BroadcastHlsPlayer {
         if (signal.aborted) abort();
       });
       try {
-        return await this.loadHls();
+        signal.throwIfAborted();
+        return await this.loadHls(signal);
       } catch {
         signal.throwIfAborted();
         throw new BroadcastBrowserPortError("broadcast_player_engine_unavailable");

@@ -1,16 +1,40 @@
 # Capability-gesteuerter Broadcast-Player
 
 `BroadcastHlsPlayer` wählt pro konkretem `HTMLVideoElement` genau eine Engine:
-natives HLS, wenn der Browser `application/vnd.apple.mpegurl` meldet, sonst die
-exakt gepinnte stabile `hls.js`-Version 1.7.2 über Media Source Extensions.
+bevorzugt die exakt gepinnte `hls.js`-Version 1.7.2 über Media Source Extensions,
+sofern diese tatsächlich unterstützt wird. Erst ohne diese Capability wird
+natives HLS anhand von `application/vnd.apple.mpegurl` gewählt. Eine unvollständige
+native HLS-Ankündigung verdrängt somit nicht die funktionsfähige hls.js-Engine.
 Die primäre Engine ist statisch in den atomaren Angular-Build eingebunden. Das
 vergrößert den komprimierten Initialtransfer gemessen von rund 213 auf 361 KiB,
 verhindert aber, dass ein erst beim Zuschauer-Klick nachgeladener ES-Modulchunk
 bei einem Browser-Netzwechsel dauerhaft als fehlgeschlagen gecacht wird. Das
-Produktionsbudget bleibt mit 1,5 MiB Warn- und 1,6 MiB Fehlergrenze eng oberhalb
-des gemessenen 1,51-MiB-Rohbundles.
+Produktionsbudget bleibt mit 1,5 MB Warn- und 1,6 MB Fehlergrenze eng.
 Fehlt beides, wird sichtbar `broadcast_hls_unsupported` gemeldet. MoQ und WHEP
 werden dadurch nicht implizit aktiviert.
+
+Der austauschbare Engine-Loader besitzt ein gemeinsames Fünfsekundenbudget
+für beide maximalen Versuche einschließlich der bestehenden 250-ms-Pause.
+Eine fehlgeschlagene oder hängende Engine-Auflösung endet mit dem festen Code
+`broadcast_player_engine_unavailable`; sie startet keine Medienrequests,
+erneuert keine Grants und wechselt nicht still auf natives HLS. `destroy()`
+oder externer Abort beendet das Warten sofort. Ein an den Loader gereichtes
+AbortSignal erlaubt kooperativen Adaptern den Abbruch; eine nicht kooperative
+Promise lässt sich dadurch nicht selbst beenden, ihr verspätetes Ergebnis
+wird jedoch nicht mehr benutzt. Alte Versuche dürfen weder erneut starten
+noch eine neuere Playergeneration anhängen oder schließen. Der separate
+20-Sekunden-Manifest-Timeout bleibt unverändert. Dies ist keine Umstellung
+der gepinnten primären Engine auf nachgeladene ES-Module.
+
+Verifikation am 10. September 2026: Der zuvor unbegrenzt wartende Loader ist
+mit einer Fake-Timer-Reproduktion nachgewiesen; nach Korrektur bestehen alle
+17 gezielten Player-/Komponententests in 1,340 Sekunden. Abgedeckt sind
+Timeout, externer Abort, Destroy, späte Antworten, überholte Generationen,
+Retry innerhalb desselben Budgets und native-HLS-/Manifest-/Caption-
+Regressionen. Video-, MSE- und Netzwerkports sind dabei synthetisch; es läuft
+keine lokale Wiedergabe. TypeScript, Todo-Gate und ein isolierter realer
+Produktionsbuild (9,245 s) bestehen. Reale Browser-/Netzwerkgates und Rollout
+bleiben gesondert erforderlich; die 1,5-MB-Warnschwelle bleibt überschritten.
 
 Die Oberfläche nennt den [aktuellen MoQ-Vertragsstand](moq-contracts-and-negotiation.md)
 explizit als experimentell und deaktiviert. Sie zeigt MOQT draft-20, LOC

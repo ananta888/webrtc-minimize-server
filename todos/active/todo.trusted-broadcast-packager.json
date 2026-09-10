@@ -748,7 +748,7 @@
     {
       "id": "TBP-027",
       "title": "MoQ-Playerpfad mit automatischem LL-HLS-Fallback verifizieren",
-      "status": "partial",
+      "status": "in_progress",
       "priority": "P1",
       "risk": "high",
       "progress_percent": 70,
@@ -1170,7 +1170,7 @@
   ],
   "tasks_status_summary": {
     "total": 40,
-    "by_status": { "todo": 0, "in_progress": 10, "partial": 9, "blocked": 0, "done": 21 },
+    "by_status": { "todo": 0, "in_progress": 11, "partial": 8, "blocked": 0, "done": 21 },
     "progress_percent_done": 52.5,
     "by_priority": { "P0": 30, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 0, "medium": 0, "high": 19, "critical": 21 },
@@ -1180,12 +1180,14 @@
   "progress_summary": {
     "state": "in_progress",
     "todo_remaining": 0,
-    "in_progress": 10,
-    "partial": 9,
+    "in_progress": 11,
+    "partial": 8,
     "blocked": 0,
     "done": 21
   },
   "summary_notes": [
+    "2026-09-10 TBP-027: Unbegrenzten HLS-Engine-Loader reproduziert (nach 5 s noch pending), danach gemeinsames 5-s-Budget für höchstens zwei Versuche samt 250-ms-Pause ergänzt. Destroy/externer Abort beendet das Warten sofort; kooperativer Adapter erhält Signal, nicht kooperative späte Ergebnisse bleiben wirkungslos. Keine Medien-/Grant-Wiederholung oder stiller Native-HLS-Wechsel; statische primäre Engine und 20-s-Manifestfrist unverändert. 17 gezielte Player-/Komponententests bestanden in 1,340 s, ohne Audio/Browser; Typecheck/Todo und isolierter Produktionsbuild 9,245 s bestanden. 1,5-MB-Warnung bleibt offen. Dokumentation korrigiert bestehende Engine-Reihenfolge (hls.js vor nativem HLS). TBP-027 bleibt in_progress/70, reale MoQ-/Browser-/Provider-Abnahmen fehlen weiterhin. Mini-PC auch aus Windows im korrekten LAN auf TCP22/443 nicht erreichbar; keine Netz-/Firewalländerung.",
+    "2026-09-10 TBP02770 nachin_progressuebernommen: HLSFallbackEngine-Loaderawaitderzeitunbegrenzt, DestroybeendetwaiterstnachRueckkehrdesAdapters. VorFixfakeTimer-Reproduktionfuer5sGesamtEnginebudget/Abort/Destroy, danachboundedLoaderScope mitgenaueinemvorhandenenRetryinnerhalbGesamtbudget, keineMedien/Grants/CaptureWiederholung/EngineFallback. GepinnterHLSInitialimportbleibtbewusstwegenhistorischemERR_NETWORK_CHANGED/LazyESMCachefehler; Buildstat586407BytesHLSistkeinGrunddieseStabilitaetsentscheidungstillzuloeschen. LaptopWindowsWLAN192.168.178.88Gateway178.1,Mini103TCP22/443auchvonWindowsnicht erreichbar; keinWSL-onlyBlocker, keineNetz/Firewallaenderung. BreiteMoQ/Provider/Produktionsabnahmebleibtoffen, Summencaches11in_progress/8partialaktualisiert.",
     "2026-09-10 TBP014/030 Audioentwuerfeimplementiert: gleicherRevision/SettingshaeltlokaleGain/Mute/Strategie; LaufpegelkeineSettingsaenderung, fremdeRevision/QuellenkonfliktbrauchtseparatesReview, Revokeeingangexplizitentfernen, Scope/Ownerneuladen, staleeditabernichtapply, Dialogrecheck, synchronousPending/Hydrationgate, ungueltige0..100EingabenaufstagedWertzurueck. 70gezielteFrontendtestsPASS1.090s inkl12Draft/2gerenderteTemplates/v1v2v3/HTTP/Labels, Typecheck/ngc/TodoPASS. DeferderRegiealleinliessInitialgroesseunveraendert (Parentbereitslazy); Szene/LabelHTTPwieAudioindemandAdapterausgelagert, keineGrenzenangehoben. EchterisolierterProductionbuildPASS9.377smitStatsJSON, 1.5MBWarnungweiteroffen, ServingdistHashunveraendert, keineBrowser/Audio. Detailsdocs/native-source-audio-drafts.md. CI34507390777terminalFAILBuild155Bytesover/keineBrowserabnahme; neuergebuendelterCIundDeploynochnoetig. TBP01490/TBP03082in_progressoffen.",
     "2026-09-10 TBP-030 CI34507390777 aufa6e5ddd terminalFAIL bereitsAngularBuild: initial1.60MB um155Bytes ueber1.6MBMaximum, keinegekoppeltenBrowsergateserreicht. Native/Blind/macOSgruen; Docker/LiveSKIP. BehebungvorPush: Audio/SceneRegie nurbeiaktiverSendungperAngularDeferladen, sichtbareLade/Fehlerzustaende, keinBudgetanheben/Stopverstecken/neuerConsent. ProduktionsbuildinfrischemtempOutputmitStatsJSON stattservingdist, keineBrowser/Audio. AudioDraftlokal30TestsPASS0.879s plusTypecheck/ngc/Todo; einvergessenerV3-Testconstructor nachneuerCDRDependency korrigiert, keinfunktionalerV3Regressionclaim. TBP03082/TBP01490offen.",
     "2026-09-10 TBP-014/030 Audioentwurfs-Lifecycle begonnen: Audio-Refresh ueberschreibt derzeit lokale Pegel/Strategie, Formular besitzt keine lokale Ownerbindung und keine Hydration/Pending-Rendergrenze. AnalogSzene gebundenenEntwurfmit5sFreshness/ausdruecklicherKonfliktpruefung/Verwerfen, getrenntemApplyconsent undSource/Scope/Ownerpruefung ergaenzen; gleicheRevisionhaeltEntwurf, andereWriter/SessionladenneuenState. PendingvorHandlerende sichtbar, Mutations-/Dialog-/LateReplytests undgerendertesHTML ohneBrowser/Audio. NativeAudio-v1/v2/v3, Mixing,Codecs,Consent,Leasesunveraendert; keineEcho-Produktionsbehauptung. TBP01490/TBP03082in_progress.",
