@@ -7,10 +7,11 @@ import { NativeSourceAudioOutput, normalizeSourceAudioOutput } from "./native-so
 import { supportsSourceAudioOutput } from "./native-source-audio-capability";
 import { NativePackagerStandbyComponent } from "./native-packager-standby.component";
 import { NativeSourceVideoOutput, normalizeSourceVideoOutput } from "./native-source-video-output";
+import { NativeCapacityPreviewComponent } from "./native-capacity-preview.component";
 
 @Component({
   selector: "app-native-source-program", standalone: true,
-  imports: [NativeSourceSceneComponent, NativeSourceAudioComponent, NativePackagerStandbyComponent],
+  imports: [NativeSourceSceneComponent, NativeSourceAudioComponent, NativePackagerStandbyComponent, NativeCapacityPreviewComponent],
   templateUrl: "./native-source-program.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -70,6 +71,7 @@ export class NativeSourceProgramComponent {
       default: return "Noch nicht gestartet";
     }
   });
+  readonly previewRequest = computed(() => this.canStart() ? this.request() : null);
   constructor(readonly programs: NativeSourceProgramService) {}
 
   setVisibility(value: string): void {

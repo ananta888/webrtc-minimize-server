@@ -77,6 +77,7 @@ import {
 import { handoffNativePackager } from "./native-packager-handoff.js";
 import { NativePackagerStandbyError } from "./native-packager-standby.js";
 import { NativePackagerPolicyError } from "./native-packager-policy.js";
+import { previewNativeSourceCapacity } from "./native-source-capacity-preview.js";
 import { NativeSourceSceneBroker, NativeSourceSceneError } from "./native-source-scene-broker.js";
 import { directNativeSourceScene } from "./native-source-scene-director.js";
 import { NativeSourceLabels } from "./native-source-labels.js";
@@ -417,6 +418,7 @@ function createHttpHandler(config, registry, services) {
     mediaMtxExternalAuthService,
     broadcastHlsProxy,
     broadcastAbuseGuard,
+    nativeCapacityPreviewGuard,
     broadcastHealthRegistry,
     broadcastRuntime,
     broadcastSourceRequests,
@@ -926,6 +928,24 @@ function createHttpHandler(config, registry, services) {
           publication: "mp4-v1", sessionLease: "ananta.meet-session-lease.v1",
           chatEvents: false, audioSubscription: false, screenPublication: false,
         }, { ...securityHeaders(config), "cache-control": "no-store" });
+        return;
+      }
+      if (url.pathname === "/api/broadcasts/native-capacity-preview") {
+        if (!broadcastRuntime || !config.nativePackagerSelfServiceEnabled || request.method !== "POST"
+          || url.search || !requestOriginAllowed(request, config)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" }); response.end(); return;
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        if (!identity) throw new NativePackagerPolicyError("broadcast_authentication_required", 401);
+        if (!nativeCapacityPreviewGuard?.allow({ action: "native-capacity-preview", actorRef: broadcastSubjectRef(identity) })) {
+          throw new NativePackagerPolicyError("broadcast_temporarily_unavailable", 429);
+        }
+        const input = await readJsonBody(request);
+        const member = registry.membersForPrincipal(principalFor(identity)).find(candidate =>
+          candidate.roomId === input.roomId && candidate.deviceFingerprint === input.deviceFingerprint);
+        sendJson(response, 200, previewNativeSourceCapacity(identity, member, input, nativePackagerAssignments),
+          { ...securityHeaders(config), "cache-control": "no-store" });
         return;
       }
       if (broadcastNativeAssignmentMatch) {
@@ -2792,6 +2812,8 @@ export function createAppServer(options = {}) {
   const ownsBroadcastAbuseGuard = !options.broadcastAbuseGuard && Boolean(broadcastHlsProxy || mediaMtxExternalAuthService);
   const broadcastAbuseGuard = options.broadcastAbuseGuard || (ownsBroadcastAbuseGuard
     ? new BroadcastAbuseGuard({ key: crypto.randomBytes(32) }) : null);
+  const nativeCapacityPreviewGuard = broadcastRuntime && config.nativePackagerSelfServiceEnabled
+    ? new BroadcastAbuseGuard({ key: crypto.randomBytes(32) }) : null;
   const broadcastHealthRegistry = options.broadcastHealthRegistry || new BroadcastHealthRegistry();
   if (config.broadcastGatewayAuthEnabled && !mediaMtxExternalAuthService) {
     throw new Error("BROADCAST_GATEWAY_AUTH_ENABLED requires a MediaMTX external auth service");
@@ -2800,6 +2822,7 @@ export function createAppServer(options = {}) {
     assignments: nativePackagerAssignments });
   const broadcastMetricsHttp = new BroadcastMetricsHttp({ config, metrics: broadcastMetrics, verifier: oidcVerifier });
   const services = {
+    nativeCapacityPreviewGuard,
     nativeSourceLabels: new NativeSourceLabels(),
     broadcastMetricsHttp,
     nativeSourceAudios: new NativeSourceAudioBroker({ send: (socket, command) =>
@@ -2855,6 +2878,7 @@ export function createAppServer(options = {}) {
     server.on("close", () => nativePackagerEnrollmentStore.close());
   }
   if (ownsBroadcastAbuseGuard) server.on("close", () => broadcastAbuseGuard.destroy());
+  if (nativeCapacityPreviewGuard) server.on("close", () => nativeCapacityPreviewGuard.destroy());
   const signaling = configureSignaling(
     server, config, registry, ticketStore, directory, mediaAgents, mediaAgentEvents, broadcastRuntime,
     nativePackagers, nativePackagerAssignments, machineSessions, broadcastSourceRequests,

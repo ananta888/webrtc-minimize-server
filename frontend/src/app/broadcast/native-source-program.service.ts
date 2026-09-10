@@ -23,6 +23,7 @@ export class NativeSourceProgramService implements OnDestroy {
   readonly requestProgram = computed(() => ["live", "degraded"].includes(this.view().phase) ? this.view().program : null);
   readonly controller: NativeSourceProgramController;
   private readonly timer: ReturnType<typeof setInterval>;
+  private destroyed = false;
 
   constructor(private readonly auth: OidcAuthService, private readonly runtime: RuntimeConfigService,
     private readonly device: DeviceIdentityService, private readonly room: RoomSessionService,
@@ -57,7 +58,7 @@ export class NativeSourceProgramService implements OnDestroy {
 
   private context(): string | null {
     const claims = this.auth.claims(), fingerprint = this.device.fingerprint(), config = this.runtime.value();
-    if (!config?.nativePackagers.publicationEnabled || !this.room.joined() || !this.room.roomCreator()
+    if (this.destroyed || !config?.nativePackagers.publicationEnabled || !this.room.joined() || !this.room.roomCreator()
       || this.room.machineExpiresAt() || this.signaling.status() !== "connected"
       || this.mesh.ownPeerId() !== this.room.peerId() || this.mesh.membershipEpoch() < 1
       || typeof claims?.["iss"] !== "string" || !claims["iss"] || claims["iss"].length > 1024
@@ -66,6 +67,19 @@ export class NativeSourceProgramService implements OnDestroy {
       || typeof claims["exp"] !== "number" || !Number.isFinite(claims["exp"]) || claims["exp"] * 1000 <= Date.now()
       || !/^[A-Za-z0-9_-]{43}$/.test(fingerprint)) return null;
     return JSON.stringify([this.room.roomId(), this.room.peerId(), this.mesh.membershipEpoch(), fingerprint, claims["iss"], claims["sub"]]);
+  }
+  capacityContext(request: import("./native-source-program-controller").NativeSourceProgramRequest): string | null {
+    const key = this.context(), candidate = this.candidates().find(p => p.id === request.packagerId);
+    return key && candidate && !this.view().active && request.roomId === this.room.roomId()
+      ? JSON.stringify([key, request, candidate.capability]) : null;
+  }
+  async previewCapacity(request: import("./native-source-program-controller").NativeSourceProgramRequest, signal: AbortSignal) {
+    const key = this.capacityContext(request);
+    if (!key) throw new Error("native_capacity_preview_unavailable");
+    const result = await this.control.nativeCapacityPreview(request, signal);
+    signal.throwIfAborted();
+    if (key !== this.capacityContext(request)) throw new Error("native_capacity_preview_stale");
+    return result;
   }
   sceneContext(): { key: string; program: NonNullable<NativeSourceProgramView["program"]> } | null {
     const key = this.context(), program = this.requestProgram();
@@ -85,5 +99,5 @@ export class NativeSourceProgramService implements OnDestroy {
       : (version === 1 || version === 2) && capability?.capabilityVersion === version + 2)
       ? { ...context, key: JSON.stringify([context.key, id]), audioControlVersion: version } : null;
   }
-  ngOnDestroy(): void { clearInterval(this.timer); this.controller.destroy(); }
+  ngOnDestroy(): void { this.destroyed = true; clearInterval(this.timer); this.controller.destroy(); }
 }

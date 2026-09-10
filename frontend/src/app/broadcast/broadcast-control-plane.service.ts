@@ -226,6 +226,15 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
   }
 
   /** Explicit source entry: no local media, legacy ingress or source consent is implied. */
+  async nativeCapacityPreview(request: import("./native-source-program-controller").NativeSourceProgramRequest, signal: AbortSignal) {
+    signal.throwIfAborted();
+    const { requestNativeCapacityPreview } = await import("./native-capacity-preview");
+    return requestNativeCapacityPreview(request, signal, {
+      fingerprint: () => this.device.fingerprint(), authorizationHeader: () => this.auth.authorizationHeader(),
+      readJson: json, responseError: requestError,
+    });
+  }
+
   async prepareNativeSourceStart(program: BroadcastProgramRef, packagerId: string, requestedRenditions: number,
     allowHardwareAcceleration: boolean, trigger: unknown, signal: AbortSignal, audioOutput?: NativeSourceAudioOutput, videoOutput?: NativeSourceVideoOutput,
   ): Promise<Readonly<{ program: BroadcastProgramRef; assignment: PreparedNativePackagerStart }>> {

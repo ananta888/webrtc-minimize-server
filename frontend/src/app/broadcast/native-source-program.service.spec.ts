@@ -30,6 +30,39 @@ function fixture() {
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
+it.each(["room", "epoch", "identity", "capability", "disconnect", "expiry", "destroy"])("fences a capacity reply after %s changes", async change => {
+  const f = fixture(); let resolve!: (value: unknown) => void;
+  const preview = vi.fn(() => new Promise(done => { resolve = done; }));
+  Object.assign(f.control, { nativeCapacityPreview: preview });
+  try {
+    expect(f.service.capacityContext(request)).not.toBeNull();
+    const pending = f.service.previewCapacity(request, new AbortController().signal);
+    if (change === "room") f.room.roomId.set("room-other");
+    if (change === "epoch") f.mesh.membershipEpoch.set(3);
+    if (change === "identity") f.claims.set({ ...f.claims(), sub: "other" });
+    if (change === "capability") f.candidates.set([]);
+    if (change === "disconnect") f.signaling.status.set("closed");
+    if (change === "expiry") vi.setSystemTime(NOW + 301000);
+    if (change === "destroy") f.service.ngOnDestroy();
+    resolve({ syntheticObservation: true });
+    await expect(pending).rejects.toThrow("native_capacity_preview_stale");
+    expect(f.control.createProgram).not.toHaveBeenCalled();
+    expect(f.control.prepareNativeSourceStart).not.toHaveBeenCalled();
+  } finally { f.service.ngOnDestroy(); }
+});
+
+it("passes a current capacity observation without creating a program and refuses a foreign room before HTTP", async () => {
+  const f = fixture(), result = { syntheticObservation: true }, preview = vi.fn(async () => result);
+  Object.assign(f.control, { nativeCapacityPreview: preview });
+  try {
+    const abort = new AbortController();
+    expect(await f.service.previewCapacity(request, abort.signal)).toBe(result);
+    expect(preview).toHaveBeenCalledExactlyOnceWith(request, abort.signal);
+    await expect(f.service.previewCapacity({ ...request, roomId: "room-other" }, abort.signal)).rejects.toThrow();
+    expect(preview).toHaveBeenCalledTimes(1); expect(f.control.createProgram).not.toHaveBeenCalled();
+  } finally { f.service.ngOnDestroy(); }
+});
+
 it("pins hardware/rendition choices and checks every assignment after a lost handoff response", async () => {
   const f = fixture(), next = "pkr_bbbbbbbbbbbbbbbb";
   try {

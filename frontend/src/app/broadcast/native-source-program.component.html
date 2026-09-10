@@ -59,6 +59,13 @@
       @if (audioPreset() !== 'legacy' && !audioOutput()) { <p role="alert">Ungültige Audio-Auswahl: Mono erlaubt 16–192 kbit/s, Stereo 16–320 kbit/s.</p> }
       <p>Gilt ab Sendungsstart und bleibt bei Übergaben erhalten. Eine Änderung benötigt eine neue Sendung. Mischpegel und Prioritäten sind danach separat live einstellbar. Raumton, Quellenfreigaben und Echounterdrückung bleiben unverändert.</p>
     </fieldset>
+    @defer (on immediate) {
+      <app-native-capacity-preview [request]="previewRequest()" />
+    } @placeholder {
+      <p role="status">Kapazitätsvorschau wird geladen…</p>
+    } @error {
+      <p role="alert">Kapazitätsvorschau nicht verfügbar. Es liegt keine Kapazitätsbestätigung vor; der Server prüft beim Start erneut.</p>
+    }
     <button id="native-source-start" class="button primary" type="button" [disabled]="!canStart()" (click)="start()">Leere Sendung bewusst starten…</button>
   </fieldset>
   <p id="native-source-status" role="status" aria-live="polite">{{ statusLabel() }}</p>
