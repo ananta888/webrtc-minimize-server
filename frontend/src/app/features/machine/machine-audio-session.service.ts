@@ -16,8 +16,7 @@ export class MachineAudioSessionService implements OnDestroy {
   private source: ReturnType<PeerMeshService["machineAudioSource"]> | null = null;
   private publicationId = "";
   private serial = 0; private delivered = 0; private acknowledged = 0; private maxChunks = 100;
-  private deadline = 0; private completed = false; private error = "";
-  private lastNow = 0;
+  private deadline = 0; private localUntil = 0; private completed = false; private error = "";
   private subscriptionId = ""; private replied = false;
   private finishedSample: number | null = null;
   constructor(private readonly session: RoomSessionService, private readonly mesh: PeerMeshService,
@@ -42,11 +41,11 @@ export class MachineAudioSessionService implements OnDestroy {
     this.publicationId = publicationId; this.maxChunks = seconds * 10;
     this.subscriptionId = crypto.randomUUID().replaceAll("-", ""); this.replied = false;
     const controller = new AbortController(); this.controller = controller;
-    this.lastNow = Date.now();
     try {
       this.source = this.mesh.machineAudioSource(publicationId);
-      const binding = this.currentBinding(); this.binding = JSON.stringify(binding);
-      this.deadline = Math.min(Date.now() + 30_000, binding.deadline_ms);
+      const binding = this.currentBinding(); this.binding = this.identity(binding);
+      this.deadline = binding.deadline_ms;
+      this.localUntil = performance.now() + 30_000;
       this.timer = setInterval(() => { try { this.check(); } catch { /* Already stopped. */ } }, 100);
       const setup = setTimeout(() => { if (this.controller === controller && !this.graph) this.stop("meet_audio_setup_timeout"); }, 5000);
       try {
@@ -81,12 +80,16 @@ export class MachineAudioSessionService implements OnDestroy {
       receive_revision: revision, source: source.source === "screen-audio" ? "screen_audio" : "microphone",
       deadline_ms: Math.min(lease.expiresAt, grant.expiresAt) });
   }
+  private identity(binding: ReturnType<MachineAudioSessionService["currentBinding"]>) {
+    const { deadline_ms: _deadline, ...identity } = binding;
+    return JSON.stringify(identity);
+  }
   private check(): void {
     try {
-      const now = Date.now();
-      if (!this.controller || this.controller.signal.aborted || now < this.lastNow || now >= this.deadline
-        || JSON.stringify(this.currentBinding()) !== this.binding) throw new Error("meet_audio_binding_changed");
-      this.lastNow = now;
+      const now = Date.now(), local = performance.now();
+      if (!this.controller || this.controller.signal.aborted || !Number.isSafeInteger(now) || now >= this.deadline
+        || !Number.isFinite(local) || local >= this.localUntil
+        || this.identity(this.currentBinding()) !== this.binding) throw new Error("meet_audio_binding_changed");
     } catch { this.stop("meet_audio_binding_changed"); throw new Error("meet_audio_binding_changed"); }
   }
   private accept(startSample: number, pcm: ArrayBuffer): void {
@@ -148,9 +151,12 @@ export class MachineAudioSessionService implements OnDestroy {
   }
   private stop(code: string): void { this.error = code; this.close(); }
   close(): void {
-    this.controller?.abort(); this.controller = null;
+    const graph = this.graph, controller = this.controller;
+    this.controller = null; this.graph = null;
+    controller?.abort();
     if (this.timer) clearInterval(this.timer); this.timer = null;
-    void this.graph?.close(); this.graph = null;
+    try { void graph?.close().catch(() => { /* Replacement sessions own media; close errors stay here. */ }); }
+    catch { /* Never revive a closed graph or write the successor's error. */ }
     for (const chunk of this.queue) wipeMachinePcm(chunk.pcm); this.queue = [];
     this.source = null; this.binding = ""; this.publicationId = "";
     this.subscriptionId = ""; this.replied = false;

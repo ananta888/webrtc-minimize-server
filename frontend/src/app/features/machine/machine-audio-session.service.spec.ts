@@ -117,6 +117,25 @@ describe("machine audio subscription", () => {
     await f.service.open("audio"); f.session.machineLease.update(v => ({ ...v, generation: 2 }));
     expect(() => f.service.poll()).toThrow();
   });
+  it("keeps a live decoder across a backward wall-clock jump and fences late close after replacement", async () => {
+    const f = setup(); await f.service.open("audio");
+    f.consume(0); expect(f.service.poll().chunks).toHaveLength(1);
+    vi.setSystemTime(now - 5_000);
+    expect(f.service.status().open).toBe(true);
+    expect(f.service.poll().chunks[0].sequence).toBe(1);
+    let rejectClose!: (error: Error) => void;
+    f.close.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectClose = reject; }));
+    await f.service.open("audio");
+    const before = f.service.status();
+    rejectClose(new Error("private decoder detail"));
+    await Promise.resolve();
+    expect(f.service.status()).toEqual(before);
+    expect(f.service.status().open).toBe(true);
+    f.consume(0); expect(f.service.poll().chunks[0]).toMatchObject({ sequence: 1, startSample: 0 });
+    vi.setSystemTime(now + 61_000);
+    expect(() => f.service.poll()).toThrow("meet_audio_binding_changed");
+    expect(f.service.status().open).toBe(false);
+  });
   it("finishes at the sample budget, retains only bounded drainable chunks, then expires", async () => {
     const f = setup(); await f.service.open("audio", 1);
     for (let i = 0; i < 10; i++) f.consume(i * 1600);
