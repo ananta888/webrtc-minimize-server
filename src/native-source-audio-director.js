@@ -1,6 +1,7 @@
 import { NativeSourceAudioError, sameNativeAudioContext } from "./native-source-audio-broker.js";
 import { normalizeNativeAudioSelection } from "./native-source-audio.js";
 import { supportsNativeSourceAudioV1, supportsNativeSourceAudioV2, supportsNativeSourceAudioV3 } from "./native-packager-policy.js";
+import { observeNativeDirectorApply } from "./native-director-history.js";
 
 const fail = (code, status = 409) => { throw new NativeSourceAudioError(code, status); };
 const positive = n => Number.isSafeInteger(n) && n > 0;
@@ -50,13 +51,16 @@ export async function directNativeSourceAudio({ identity, ownerPrincipal, progra
   const selection = input.action === "query" ? null : { expectedAudioRevision: input.expectedAudioRevision, sources: input.sources,
     ...(input.requestVersion >= 2 ? { strategy: input.strategy } : {}) };
   const result = await broker.request(selection, authorize, signal, input.requestVersion);
-  const previous = observedContext;
-  if (signal?.aborted || !sameNativeAudioContext(previous, authorize(clock()))) fail("native_audio_authority_changed");
+  const previous = observedContext, checkedAt = clock();
+  if (signal?.aborted || !sameNativeAudioContext(previous, authorize(checkedAt))) fail("native_audio_authority_changed");
   const common = { audioControlVersion: result.version, programId, programRevision: observedContext.programRevision, programEpoch: result.programEpoch,
     packagerId: observedContext.packagerId, assignmentId: result.assignmentId, fencingRevision: result.fencingRevision };
   // No writer lease, wire command ID, membership authority or audio payload leaves this projection.
   if (result.type === "source-program-audio-state") return Object.freeze({ ...common, outcome: "observed", observedAt: result.observedAt,
     audioRevision: result.audioRevision, sources: result.sources, ...(result.version >= 2 ? { mix: result.mix, encoding: result.encoding } : {}) });
-  if (result.type === "source-program-audio-applied") return Object.freeze({ ...common, outcome: "applied", appliedAt: result.appliedAt, audioRevision: result.audioRevision });
+  if (result.type === "source-program-audio-applied") {
+    observeNativeDirectorApply(runtime, identity, observedContext, "audio-applied", result.audioRevision, checkedAt);
+    return Object.freeze({ ...common, outcome: "applied", appliedAt: result.appliedAt, audioRevision: result.audioRevision });
+  }
   return Object.freeze({ ...common, outcome: "rejected", observedAt: result.observedAt, reasonCode: result.reasonCode });
 }

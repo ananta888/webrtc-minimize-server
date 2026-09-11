@@ -2,6 +2,8 @@ import { BROADCAST_PROGRAM_STATES } from "./broadcast-program-model.js";
 
 const MAX_EVENTS = 256, MAX_VISIBLE = 32, RETENTION_MS = 15 * 60 * 1000;
 const kinds = new Set(["registered", "state-changed", "standby-changed", "handoff-begun", "handoff-assigned", "handoff-stopped"]);
+const actions = new Set(["source-consented", "source-revoked", "scene-applied", "audio-applied"]);
+const reasons = new Set(["user-revoked", "program-owner-removed", "expired", "lease-lost", "destroyed"]);
 const positive = n => Number.isSafeInteger(n) && n > 0;
 function projection(record) {
   const machine = record?.snapshot?.machine, p = machine?.program, scope = machine?.scope;
@@ -42,13 +44,32 @@ export class BroadcastProgramHistory {
     if (this.#events.length > MAX_EVENTS) this.#events.splice(0, this.#events.length - MAX_EVENTS);
     return true;
   }
-  list(tenantId, programId, now) {
+  action(record, event, now) {
+    if (!this.#time(now)) return false;
+    const p = projection(record);
+    if (!p || !Number.isSafeInteger(p.standbyCount) || p.standbyCount < 0 || p.standbyCount > 2
+      || !event || Object.keys(event).length !== 4
+      || Object.keys(event).some(k => !["kind", "sourceKind", "reason", "controlRevision"].includes(k))
+      || !actions.has(event.kind)) return false;
+    const source = event.kind.startsWith("source-");
+    if (source ? !["camera", "microphone", "screen", "screen-audio"].includes(event.sourceKind)
+      || event.controlRevision !== null || (event.kind === "source-revoked" ? !reasons.has(event.reason) : event.reason !== null)
+      : event.sourceKind !== null || event.reason !== null || !positive(event.controlRevision)) return false;
+    this.#events.push(Object.freeze({ key: p.key, ...event, occurredAt: now, programRevision: p.programRevision,
+      programEpoch: p.programEpoch, state: p.state, standbyCount: p.standbyCount }));
+    if (this.#events.length > MAX_EVENTS) this.#events.splice(0, this.#events.length - MAX_EVENTS);
+    return true;
+  }
+  list(tenantId, programId, now, version = 1) {
     if (!this.#time(now)) return null;
+    if (![1, 2].includes(version)) return null;
     const key = `${tenantId}\0${programId}`;
-    return Object.freeze(this.#events.filter(e => e.key === key).slice(-MAX_VISIBLE).reverse()
-      .map(({ key: _key, ...event }) => Object.freeze(event)));
+    return Object.freeze(this.#events.filter(e => e.key === key && (version === 2 || kinds.has(e.kind))).slice(-MAX_VISIBLE).reverse()
+      .map(({ key: _key, ...event }) => Object.freeze(version === 1 ? event
+        : { sourceKind: null, reason: null, controlRevision: null, ...event })));
   }
   destroy() { this.#closed = true; this.#events = []; }
+  prune(now) { return this.#time(now); }
 }
 
 export const BROADCAST_PROGRAM_HISTORY_KINDS = Object.freeze([...kinds]);

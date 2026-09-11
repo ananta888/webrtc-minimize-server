@@ -18,9 +18,11 @@ export const PROGRAM_HISTORY_TEMPLATE = `
         } @empty { <li>Keine gespeicherten Schritte in diesem begrenzten Zeitfenster.</li> }
       </ol>
     }
-    <p>Maximal 32 letzte Schritte, höchstens 15 Minuten im Serverspeicher; kein vollständiges oder dauerhaftes Audit.
+    <p>Maximal 32 letzte Schritte aus einem 15-Minuten-Zeitfenster; nur flüchtig im Serverspeicher,
+      kein vollständiges oder dauerhaftes Audit.
       Andere Programmaktivität kann ältere Einträge verdrängen. Die Momentaufnahme gilt höchstens fünf Sekunden.
-      Keine Medien, Namen oder Untertiteltexte. Quellen-, Audio- und Szenenaktionen sind hier noch nicht enthalten.
+      Keine Medien, Namen oder Untertiteltexte. Quellenfreigabe bedeutet noch keinen Medienempfang;
+      Widerruf ist eine Control-Plane-Entscheidung, keine bestätigte Löschung auf einem fremden Rechner.
       Eine bestätigte Ausgabe ist kein Nachweis, dass Zuschauer Bild oder Ton empfangen.</p>
   </section>`;
 @Component({ selector: "app-program-history", standalone: true, changeDetection: ChangeDetectionStrategy.OnPush, template: PROGRAM_HISTORY_TEMPLATE })
@@ -42,8 +44,15 @@ export class ProgramHistoryComponent implements OnDestroy {
       "standby-changed": `Standby-Vormerkung aktualisiert: ${e.standbyCount} Geräte (ohne Medienschlüssel)`,
       "handoff-begun": "Übergabe eingeleitet – bisherige Ausgabe gefencet",
       "handoff-assigned": "Nachfolger-Writer zugeordnet – noch keine Ausgabebestätigung",
-      "handoff-stopped": "Übergabe beendet, Programm gestoppt" }[e.kind];
+      "handoff-stopped": "Übergabe beendet, Programm gestoppt",
+      "source-consented": `${this.sourceText(e)}: Broadcast-Zustimmung erteilt (noch kein Empfangsnachweis)`,
+      "source-revoked": `${this.sourceText(e)}: Freigabe widerrufen – ${this.reasonText(e)}`,
+      "scene-applied": `Layoutänderung vom Agenten bestätigt, Szenenrevision ${e.controlRevision}`,
+      "audio-applied": `Audioänderung vom Agenten bestätigt, Audiorevision ${e.controlRevision}` }[e.kind];
   }
+  sourceText(e: ProgramHistoryEvent): string { return e.sourceKind ? { camera: "Kamera", microphone: "Mikrofon", screen: "Bildschirm", "screen-audio": "Bildschirmton" }[e.sourceKind] : "Quelle"; }
+  reasonText(e: ProgramHistoryEvent): string { return e.reason ? { "user-revoked": "durch Publisher", "program-owner-removed": "durch Sendungsinhaber",
+    expired: "abgelaufen", "lease-lost": "Berechtigung oder Verbindung entfallen", destroyed: "Quellensteuerung beendet" }[e.reason] : ""; }
   stateText(s: ProgramHistoryEvent["state"]): string { return { draft: "Entwurf", preparing: "Vorbereitung", awaiting_consent: "Zustimmung ausstehend",
     publishing: "Publikation läuft an", live: "Ausgabe bestätigt", degraded: "Ausgabe beeinträchtigt", stopping: "Wird gestoppt",
     stopped: "Gestoppt", failed: "Fehlgeschlagen" }[s]; }

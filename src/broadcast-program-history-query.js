@@ -3,7 +3,7 @@ import { BroadcastPlaybackSessionError } from "./broadcast-playback-session-stor
 const fail = (code, status) => { throw new BroadcastPlaybackSessionError(code, status); };
 export function normalizeProgramHistoryQuery(value) {
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length !== 2
-    || Object.keys(value).some(k => !["requestVersion", "deviceFingerprint"].includes(k)) || value.requestVersion !== 1
+    || Object.keys(value).some(k => !["requestVersion", "deviceFingerprint"].includes(k)) || ![1, 2].includes(value.requestVersion)
     || typeof value.deviceFingerprint !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(value.deviceFingerprint)) {
     fail("invalid_program_history_request", 400);
   }
@@ -27,8 +27,8 @@ export class BroadcastProgramHistoryQuery {
       if (budget.count >= 12) fail("program_history_rate_limited", 429);
       budget.count++;
     } else this.#budgets.set(member, { start: now, last: now, count: 1 });
-    const result = runtime.nativeProgramHistory(identity, member, programId, now);
-    return Object.freeze({ version: 1, ...result, observedAt: now, expiresAt: Math.min(now + 5000, identity.expiresAt),
+    const result = runtime.nativeProgramHistory(identity, member, programId, now, input.requestVersion);
+    return Object.freeze({ version: input.requestVersion, ...result, observedAt: now, expiresAt: Math.min(now + 5000, identity.expiresAt),
       complete: false, retentionMs: 900000 });
   }
   destroy() { this.#closed = true; this.#budgets = new WeakMap(); }

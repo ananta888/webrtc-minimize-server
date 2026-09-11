@@ -63,10 +63,11 @@ test("Angular keyboard starts an empty v4 program only after confirmation, waits
       historyReads++;
       assert.deepEqual(Object.keys(route.request().postDataJSON()).sort(), ["deviceFingerprint", "requestVersion"]);
       const now = Date.now();
-      return route.fulfill({ json: { version: 1, programId: program.programId, programEpoch: 1,
+      assert.equal(route.request().postDataJSON().requestVersion, 2);
+      return route.fulfill({ json: { version: 2, programId: program.programId, programEpoch: 1,
         programRevision: programStops ? 5 : 4, observedAt: now, expiresAt: now + 5000, complete: false, retentionMs: 900000,
         events: [{ kind: "state-changed", state: programStops ? "stopped" : "live", programRevision: programStops ? 5 : 4,
-          programEpoch: 1, occurredAt: now - 1, standbyCount: 0 }] } });
+          programEpoch: 1, occurredAt: now - 1, standbyCount: 0, sourceKind: null, reason: null, controlRevision: null }] } });
     });
     const startup = observeBrowserStartup(page);
     const verifySceneUi = await installNativeSceneUiFixture(page, program.programId, () => app.registry.members(roomId)[0]);

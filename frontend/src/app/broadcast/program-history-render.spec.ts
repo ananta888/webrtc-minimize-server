@@ -11,9 +11,9 @@ it("renders actual Angular controls with focus, explicit load, handoff distincti
   const program = { programId: "prg_aaaaaaaaaaaaaaaa", programEpoch: 2, programRevision: 4 };
   const session = signal<string | null>("session"); let now = 10; vi.spyOn(performance, "now").mockImplementation(() => now);
   const programs = { historyContext: () => session() ? { key: session(), program } : null };
-  const api = { programHistory: vi.fn(async () => ({ version: 1, ...program, observedAt: 1800000000000, expiresAt: 1800000005000,
+  const api = { programHistory: vi.fn(async () => ({ version: 2, ...program, observedAt: 1800000000000, expiresAt: 1800000005000,
     complete: false, retentionMs: 900000, events: [{ kind: "handoff-assigned", state: "preparing", programEpoch: 2,
-      programRevision: 4, occurredAt: 1799999999000, standbyCount: 0 }] })) };
+      programRevision: 4, occurredAt: 1799999999000, standbyCount: 0, sourceKind: null, reason: null, controlRevision: null }] })) };
   class Rendered extends ProgramHistoryComponent { constructor() { super(programs as never, api as never); } }
   Component({ selector: "test-program-history", standalone: true, template: PROGRAM_HISTORY_TEMPLATE })(Rendered);
   await TestBed.configureTestingModule({ imports: [Rendered], providers: [provideZonelessChangeDetection()] }).compileComponents();
@@ -23,6 +23,13 @@ it("renders actual Angular controls with focus, explicit load, handoff distincti
   expect(button.disabled).toBe(false); button.focus(); expect(document.activeElement).toBe(button);
   button.click(); await fixture.whenStable();
   expect(root.querySelector("ol")?.textContent).toContain("noch keine Ausgabebestätigung");
+  const base = fixture.componentInstance.view().value!.events[0];
+  for (const [patch, expected] of [
+    [{ kind: "source-consented", sourceKind: "screen-audio" }, "Bildschirmton: Broadcast-Zustimmung erteilt"],
+    [{ kind: "source-revoked", sourceKind: "microphone", reason: "user-revoked" }, "Mikrofon: Freigabe widerrufen – durch Publisher"],
+    [{ kind: "scene-applied", controlRevision: 7 }, "Szenenrevision 7"],
+    [{ kind: "audio-applied", controlRevision: 8 }, "Audiorevision 8"],
+  ] as const) expect(fixture.componentInstance.eventText({ ...base, ...patch })).toContain(expected);
   expect(root.textContent).toContain("kein vollständiges oder dauerhaftes Audit");
   now = 5010; fixture.componentInstance.controller.tick(); await fixture.whenStable();
   expect(root.querySelector("ol")).toBeNull(); expect(root.textContent).toContain("Momentaufnahme veraltet");

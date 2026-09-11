@@ -1,5 +1,6 @@
 import { NativeSourceSceneError, sameNativeSceneContext } from "./native-source-scene-broker.js";
 import { supportsNativeSourceSceneV1, supportsNativeSourceSceneV2 } from "./native-packager-policy.js";
+import { observeNativeDirectorApply } from "./native-director-history.js";
 
 const fail = (code, status = 409) => { throw new NativeSourceSceneError(code, status); };
 const positive = n => Number.isSafeInteger(n) && n > 0;
@@ -64,8 +65,8 @@ export async function directNativeSourceScene({ identity, ownerPrincipal, progra
   const selection = input.action === "query" ? null : Object.fromEntries(
     ["expectedSceneRevision", "layout", "sourceLeaseIds", "activeSourceLeaseId", ...(input.requestVersion === 2 ? ["sourceFits"] : [])].map(k => [k, input[k]]));
   const result = await broker.request(selection, authorize, signal);
-  const previous = observedContext;
-  if (signal?.aborted || !sameNativeSceneContext(previous, authorize(clock()))) fail("native_scene_authority_changed");
+  const previous = observedContext, checkedAt = clock();
+  if (signal?.aborted || !sameNativeSceneContext(previous, authorize(checkedAt))) fail("native_scene_authority_changed");
   if (result.version !== observedContext.sceneControlVersion) fail("native_scene_reply_invalid");
   // Native scope and reply have been checked. Do not expose writer leases or wire command IDs to the UI.
   const common = { sceneControlVersion: result.version, programId, programRevision: observedContext.programRevision,
@@ -75,7 +76,9 @@ export async function directNativeSourceScene({ identity, ownerPrincipal, progra
     observedAt: result.observedAt, sceneRevision: result.sceneRevision, layout: result.layout,
     sourceLeaseIds: result.sourceLeaseIds, activeSourceLeaseId: result.activeSourceLeaseId, availableSources: result.availableSources,
     ...(result.version === 2 ? { sourceFits: result.sourceFits } : {}) });
-  if (result.type === "source-program-scene-applied") return Object.freeze({ ...common, outcome: "applied",
-    appliedAt: result.appliedAt, sceneRevision: result.sceneRevision });
+  if (result.type === "source-program-scene-applied") {
+    observeNativeDirectorApply(runtime, identity, observedContext, "scene-applied", result.sceneRevision, checkedAt);
+    return Object.freeze({ ...common, outcome: "applied", appliedAt: result.appliedAt, sceneRevision: result.sceneRevision });
+  }
   return Object.freeze({ ...common, outcome: "rejected", observedAt: result.observedAt, reasonCode: result.reasonCode });
 }

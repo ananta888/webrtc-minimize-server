@@ -57,6 +57,27 @@ test("bad clock clears advisory history without authorizing or reordering anythi
   assert.equal(history.list(tenant, program, NOW + 1), null);
 });
 
+test("v2 action history is closed, bounded and never changes the v1 event contract", () => {
+  const history = new BroadcastProgramHistory(); history.observe(null, record(), NOW);
+  const event = { kind: "source-consented", sourceKind: "camera", reason: null, controlRevision: null };
+  for (let i = 0; i < 40; i++) assert.equal(history.action(record(), event, NOW), true);
+  assert.equal(history.list(tenant, program, NOW).length, 1, "filter unsupported events before the visible limit");
+  assert.equal(history.list(tenant, program, NOW, 2).length, 32);
+  for (const patch of [{ extra: true }, { kind: "unknown" }, { sourceKind: "secret" }, { reason: "user-revoked" },
+    { controlRevision: 1 }, { kind: "source-revoked" }, { kind: "scene-applied" }]) {
+    assert.equal(history.action(record(), { ...event, ...patch }, NOW), false);
+  }
+  assert.equal(history.action(record(), { ...event, kind: "source-revoked", reason: "user-revoked" }, NOW), true);
+  assert.equal(history.action(record(), { kind: "scene-applied", sourceKind: null, reason: null, controlRevision: 7 }, NOW), true);
+  const response = { version: 2, programId: program, programRevision: 4, programEpoch: 2,
+    complete: false, retentionMs: 900000, observedAt: NOW, expiresAt: NOW + 5000, events: history.list(tenant, program, NOW, 2) };
+  const validate = new Ajv({ strict: true }).compile(JSON.parse(fs.readFileSync(
+    new URL("../contracts/native-packager/program-history-response.v2.schema.json", import.meta.url))));
+  assert.equal(validate(response), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...response, events: [{ ...response.events[0], sourceKind: "camera" }] }), false);
+  assert.equal(schema.response(response), false); assert.equal(history.list(tenant, program, NOW, 3), null);
+});
+
 test("query is closed, human/current-device gated, short-lived and bounded by membership rate", () => {
   let now = NOW, reads = 0;
   const input = { requestVersion: 1, deviceFingerprint: "a".repeat(43) };
@@ -67,7 +88,12 @@ test("query is closed, human/current-device gated, short-lived and bounded by me
       assert.equal(time, now); return { programId: program, programRevision: 4, programEpoch: 2, events: [] }; } } };
   const query = new BroadcastProgramHistoryQuery({ clock: () => now });
   assert.ok(schema.request(input)); assert.ok(Object.isFrozen(normalizeProgramHistoryQuery(input)));
-  for (const bad of [null, [], {}, { ...input, extra: 1 }, { ...input, requestVersion: 2 }, { ...input, deviceFingerprint: "bad" }]) {
+  const requestV2 = new Ajv({ strict: true }).compile(JSON.parse(fs.readFileSync(
+    new URL("../contracts/native-packager/program-history-request.v2.schema.json", import.meta.url))));
+  assert.equal(requestV2({ ...input, requestVersion: 2 }), true);
+  assert.equal(normalizeProgramHistoryQuery({ ...input, requestVersion: 2 }).requestVersion, 2);
+  assert.equal(requestV2(input), false);
+  for (const bad of [null, [], {}, { ...input, extra: 1 }, { ...input, requestVersion: 3 }, { ...input, deviceFingerprint: "bad" }]) {
     assert.equal(schema.request(bad), false); assert.throws(() => normalizeProgramHistoryQuery(bad));
   }
   for (const patch of [{ authenticated: false }, { creator: false }, { machine: true }, { principal: "other" }, { deviceFingerprint: "z".repeat(43) }]) {

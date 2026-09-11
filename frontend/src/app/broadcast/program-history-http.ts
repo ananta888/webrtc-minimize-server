@@ -8,7 +8,7 @@ export async function requestProgramHistory(program: PlaybackCapacityScope, sign
   const response = await fetch(`/api/broadcasts/${encodeURIComponent(program.programId)}/native-program-history`, {
     method: "POST", headers: { "content-type": "application/json", ...ports.authorizationHeader() },
     credentials: "same-origin", redirect: "error", cache: "no-store", signal,
-    body: JSON.stringify({ requestVersion: 1, deviceFingerprint: fingerprint }),
+    body: JSON.stringify({ requestVersion: 2, deviceFingerprint: fingerprint }),
   });
   if (!response.ok) throw ports.responseError(response, "program_history_unavailable");
   const value = await ports.readJson(response, "invalid_program_history_response", 16384);

@@ -1223,10 +1223,20 @@ export class BroadcastRuntimeRegistry {
     return next;
   }
 
-  nativeProgramHistory(identity, member, programId, now = this.#clock()) {
+  // Internal post-commit observation only. Never reads/prunes policy or grants authority.
+  observeProgramAction(scope, event, now = this.#clock()) {
+    try {
+      const record = this.#records.get(`${scope.tenantId}\0${scope.programId}`), machine = record?.snapshot.machine;
+      if (!machine || ["tenantId", "roomId", "programId", "ownerSubjectRef"].some(k => machine.scope[k] !== scope[k])
+        || machine.program.programEpoch !== scope.programEpoch) return false;
+      return this.#history.action(record, event, now);
+    } catch { return false; } // Advisory observation must never prevent a security transition.
+  }
+
+  nativeProgramHistory(identity, member, programId, now = this.#clock(), version = 1) {
     const { record } = this.#nativeOwned(identity, member, programId, now);
     const { machine } = record.snapshot;
-    const events = this.#history.list(machine.scope.tenantId, programId, now);
+    const events = this.#history.list(machine.scope.tenantId, programId, now, version);
     if (!events) fail("broadcast_program_history_unavailable", 503);
     return Object.freeze({ programId, programRevision: machine.program.revision,
       programEpoch: machine.program.programEpoch, events });
@@ -1235,6 +1245,7 @@ export class BroadcastRuntimeRegistry {
   closeProgramHistory() { this.#history.destroy(); }
 
   prune(now = this.#clock()) {
+    this.#history.prune(now);
     for (const key of this.#records.keys()) this.#currentRecord(key, now);
     for (const [id, challenge] of this.#challenges) {
       if (challenge.expiresAt <= now) this.#challenges.delete(id);

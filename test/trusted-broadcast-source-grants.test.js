@@ -102,7 +102,8 @@ function fixture(start = 1800000000000, sourceProgram = false, liveClock = null)
   const request = invite("camera");
   const ports = { members: roomId => rooms.members(roomId), publication: (...args) => rooms.publication(...args),
     membershipEpoch: () => epoch, invitation: (...args) => requests.resolveForPublisher(...args),
-    writer: (...args) => runtime.nativeSourceWriterContext(...args), packager: (...args) => packagers.sourceContext(...args), clock };
+    writer: (...args) => runtime.nativeSourceWriterContext(...args), packager: (...args) => packagers.sourceContext(...args), clock,
+    observe: (...args) => runtime.observeProgramAction(...args) };
   const grants = new TrustedBroadcastSourceGrants(ports);
   const input = { requestVersion: 1, trigger: "user-action", requestId: request.requestId, roomId: owner.roomId,
     deviceFingerprint: publisher.deviceFingerprint, publicationId: "track-camera", expectedPublicationEpoch: 1, ttlMs: 60000 };
@@ -131,6 +132,41 @@ const moderationQuery = f => ({ version: 1, type: "broadcast-source-moderation-q
 const moderationRevoke = (f, state, consentId) => ({ ...moderationQuery(f), type: "broadcast-source-moderation-revoke",
   consentId, programRevision: state.programRevision, fencingRevision: state.fencingRevision });
 
+test("source decisions enter the real scoped journal once, and observer failure cannot block revocation", () => {
+  const f = fixture(), history = () => f.runtime.nativeProgramHistory(f.ownerIdentity, f.owner, f.programId, f.now(), 2).events;
+  assert.throws(() => f.grants.approve(f.identity, { ...f.input, deviceFingerprint: "z".repeat(43) }, f.publisher));
+  assert.equal(history().some(e => e.kind === "source-consented"), false);
+  const consent = f.approve(); f.approve();
+  assert.equal(history().filter(e => e.kind === "source-consented").length, 1);
+  f.grants.revoke(f.identity, f.input.deviceFingerprint, consent.consentId);
+  f.grants.revoke(f.identity, f.input.deviceFingerprint, consent.consentId);
+  assert.equal(history().filter(e => e.kind === "source-revoked").length, 1);
+  assert.equal(history()[0].reason, "user-revoked"); assert.equal(history()[0].sourceKind, "camera");
+  const scope = { tenantId: broadcastTenantRef(f.ownerIdentity.issuer), ownerSubjectRef: broadcastSubjectRef(f.ownerIdentity),
+    roomId: f.owner.roomId, programId: f.programId, programEpoch: f.runtime.nativeControl(f.ownerIdentity, f.owner, f.programId).programEpoch };
+  const event = { kind: "audio-applied", sourceKind: null, reason: null, controlRevision: 5 };
+  for (const patch of [{ tenantId: "tn_" + "z".repeat(16) }, { ownerSubjectRef: "sub_" + "z".repeat(16) },
+    { programId: "prg_" + "z".repeat(16) }, { roomId: "other-room" }, { programEpoch: scope.programEpoch + 1 }]) {
+    assert.equal(f.runtime.observeProgramAction({ ...scope, ...patch }, event, f.now()), false);
+  }
+  assert.equal(f.runtime.observeProgramAction(scope, event, f.now()), true);
+  assert.equal(history()[0].controlRevision, 5);
+  const g = fixture(), broken = new TrustedBroadcastSourceGrants({ ...g.ports, observe() { throw new Error("private observer error"); } });
+  const c = broken.approve(g.identity, g.input, g.publisher);
+  broken.revoke(g.identity, g.input.deviceFingerprint, c.consentId);
+  assert.equal(broken.forPackager(c.consentId, g.packagerId, c.granteeDeviceRef), null);
+});
+
+for (const reason of ["expired", "lease-lost", "destroyed"]) test(`passive source invalidation is recorded as ${reason}, without retained source identifiers`, () => {
+  const f = fixture(); f.input.ttlMs = 5000; f.approve();
+  if (reason === "expired") { f.advance(5001); f.grants.prune(); }
+  if (reason === "lease-lost") { f.epoch(); f.grants.prune(); }
+  if (reason === "destroyed") f.grants.destroy();
+  const event = f.runtime.nativeProgramHistory(f.ownerIdentity, f.owner, f.programId, f.now(), 2).events[0];
+  assert.equal(event.kind, "source-revoked"); assert.equal(event.reason, reason);
+  assert.doesNotMatch(JSON.stringify(event), /consentId|sourceId|publisher|packager|token|roomId/);
+});
+
 test("owner moderation lists metadata and stops only the chosen source at receiver and publisher", () => {
   const f = sourceControlFixture(), camera = f.prepare();
   f.broker.acknowledge(f.socket, f.ack(camera));
@@ -154,6 +190,7 @@ test("owner moderation lists metadata and stops only the chosen source at receiv
   assert.deepEqual(execute(request), receipt, "same-scope duplicate removal cannot resurrect or extend consent");
   assert.deepEqual(execute(moderationQuery(f)).sources.map(s => s.consentId), [screen.consentId]);
   assert.equal(f.grants.auditEvents().at(-1).reasonCode, "program-owner-removed");
+  assert.equal(f.runtime.nativeProgramHistory(f.ownerIdentity, f.owner, f.programId, f.now(), 2).events[0].reason, "program-owner-removed");
   assert.ok(f.rooms.publication(f.publisher.id, "track-camera", f.owner.roomId), "room publication is independent");
   f.broker.destroy();
 });
@@ -777,7 +814,17 @@ test("program history HTTP requires actual signed owner identity and current dev
   assert.ok(validateHistory(history)); assert.equal(history.complete, false); assert.equal(history.events[0].state, "live");
   assert.equal(history.programId, f.programId); assert.ok(history.expiresAt - history.observedAt <= 5000);
   assert.doesNotMatch(JSON.stringify(history), /Synthetic|tenantId|ownerSubject|token|sourceId|resourceRef|publisherId/);
-  for (const patch of [{ extra: true }, { requestVersion: 2 }, { deviceFingerprint: "wrong" }]) {
+  const consent = f.approve();
+  const modern = await (await post({ ...input, requestVersion: 2 })).json();
+  const validateModern = new Ajv({ strict: true }).compile(JSON.parse(await fs.readFile(
+    new URL("../contracts/native-packager/program-history-response.v2.schema.json", import.meta.url), "utf8")));
+  assert.equal(validateModern(modern), true, JSON.stringify(validateModern.errors));
+  assert.equal(modern.events[0].kind, "source-consented"); assert.equal(modern.events[0].sourceKind, "camera");
+  assert.equal((await (await post()).json()).events.some(e => e.kind === "source-consented"), false);
+  f.grants.revoke(f.identity, f.input.deviceFingerprint, consent.consentId);
+  const revoked = await (await post({ ...input, requestVersion: 2 })).json();
+  assert.equal(validateModern(revoked), true); assert.equal(revoked.events[0].reason, "user-revoked");
+  for (const patch of [{ extra: true }, { requestVersion: 3 }, { deviceFingerprint: "wrong" }]) {
     assert.equal((await post({ ...input, ...patch })).status, 400);
   }
   assert.equal((await post({ ...input, deviceFingerprint: "z".repeat(43) })).status, 403);

@@ -41,8 +41,8 @@ export class TrustedBroadcastSourceGrants {
   #lastNow = 0;
   #closed = false;
   constructor({ members, publication, membershipEpoch, invitation, writer, packager, clock = Date.now,
-    sourceId = () => `src_${crypto.randomBytes(18).toString("base64url")}` }) {
-    const ports = { members, publication, membershipEpoch, invitation, writer, packager, clock, sourceId };
+    sourceId = () => `src_${crypto.randomBytes(18).toString("base64url")}`, observe = () => {} }) {
+    const ports = { members, publication, membershipEpoch, invitation, writer, packager, clock, sourceId, observe };
     if (Object.values(ports).some(port => typeof port !== "function")) fail("invalid_trusted_source_ports", 500);
     this.#ports = Object.freeze(ports);
   }
@@ -110,6 +110,7 @@ export class TrustedBroadcastSourceGrants {
       sourceAuthorityRevision: writer.sourceAuthorityRevision,
       generation, retainUntil: Math.max(invite.expiresAt, consent.expiresAt) });
     this.#records.set(consent.consentId, record); this.#byRequest.set(input.requestId, record);
+    this.#observe(record, "source-consented", null, now);
     return consent;
   }
 
@@ -231,6 +232,14 @@ export class TrustedBroadcastSourceGrants {
     if (!record.active) return;
     record.active = false;
     record.consent = this.#authority.revoke(record.consent.consentId, record.consent.grantorSubjectRef, reason, now);
+    this.#observe(record, "source-revoked", reason, now);
+  }
+  #observe(record, kind, reason, now) {
+    try {
+      this.#ports.observe(Object.freeze({ tenantId: record.consent.tenantId, ownerSubjectRef: broadcastSubjectRef(record.ownerIdentity),
+        roomId: record.roomId, programId: record.programId, programEpoch: record.programEpoch }),
+      Object.freeze({ kind, sourceKind: record.sourceKind, reason, controlRevision: null }), now);
+    } catch { /* Advisory metadata cannot undo consent or prevent revocation. */ }
   }
   #prune(now) {
     const revoked = [];

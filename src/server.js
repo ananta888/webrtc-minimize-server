@@ -1701,6 +1701,7 @@ function configureSignaling(
     invitation: (...args) => broadcastSourceRequests.resolveForPublisher(...args),
     writer: (...args) => broadcastRuntime.nativeSourceWriterContext(...args),
     packager: (...args) => nativePackagers.sourceContext(...args),
+    observe: (...args) => broadcastRuntime.observeProgramAction(...args),
   }) : null;
   const trustedBroadcastSourceControl = trustedBroadcastSources ? new TrustedBroadcastSourceControl({
     grants: trustedBroadcastSources, assignments: nativePackagerAssignments, control: nativePackagers,
