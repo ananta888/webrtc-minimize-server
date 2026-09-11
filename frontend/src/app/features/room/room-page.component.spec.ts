@@ -84,9 +84,19 @@ describe("Room page information architecture", () => {
     expect(template).toContain('id="mesh-analysis-navigation"');
     expect(template).toContain("activeSection() === 'analysis'");
     expect(template).toContain("<app-mesh-analysis />");
-    expect(component).toContain('"rooms" | "live" | "broadcast" | "captions" | "analysis" | "chat" | "settings"');
+    expect(component).toContain('"rooms" | "live" | "broadcast" | "captions" | "analysis" | "chat" | "settings" | "whiteboard"');
     expect(component).not.toContain("getUserMedia");
     expect(component).not.toContain("getDisplayMedia");
+  });
+
+  it("offers prominent whiteboard navigation, stage switching and empty-room direct access", () => {
+    expect(template).toContain('id="whiteboard-navigation"');
+    expect(template).toContain("activeSection() === 'whiteboard'");
+    expect(template).toContain('id="stage-view-whiteboard-btn"');
+    expect(template).toContain('id="stage-whiteboard-container"');
+    expect(template).toContain('id="open-stage-whiteboard-btn"');
+    expect(template).toContain("Tafel auf Bühne öffnen");
+    expect(component).toContain("stageViewMode = signal");
   });
 
   it("offers an explicit own-source broadcast preflight without owning capture policy in UI", () => {

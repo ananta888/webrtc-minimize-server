@@ -71,7 +71,7 @@ import { PresentationStageService } from "../../webrtc/presentation-stage.servic
 import { MeshAnalysisComponent } from "../../mesh-analysis/mesh-analysis.component";
 import { MachinePermissionsPanelComponent } from "../machine/machine-permissions-panel.component";
 
-type AppSection = "rooms" | "live" | "broadcast" | "captions" | "analysis" | "chat" | "settings";
+type AppSection = "rooms" | "live" | "broadcast" | "captions" | "analysis" | "chat" | "settings" | "whiteboard";
 
 @Component({
   selector: "app-room-page",
@@ -119,6 +119,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   readonly pageError = signal("");
   readonly notice = signal("");
   readonly activeSection = signal<AppSection>("rooms");
+  readonly stageViewMode = signal<"media" | "whiteboard">("media");
   readonly roomInput = signal("");
   readonly nameInput = signal(sessionStorage.getItem("webrtc-display-name") || "");
   readonly selectedMode = signal<RoomMode>("room");
@@ -232,7 +233,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
       this.stage.setFullscreen(Boolean(document.fullscreenElement));
     });
     const params = new URLSearchParams(location.search);
-    if (new Set<AppSection>(["rooms", "live", "broadcast", "captions", "analysis", "chat", "settings"]).has(params.get("section") as AppSection)) {
+    if (new Set<AppSection>(["rooms", "live", "broadcast", "captions", "analysis", "chat", "settings", "whiteboard"]).has(params.get("section") as AppSection)) {
       this.activeSection.set(params.get("section") as AppSection);
     }
     this.roomInput.set(params.get("room") || "");

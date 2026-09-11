@@ -28,15 +28,19 @@ function opId(): string {
 @Injectable({ providedIn: "root" })
 export class WhiteboardOverlayService {
   readonly ops = signal<readonly WhiteboardOperation[]>([]);
-  readonly canClear = computed(() => this.session.joined() && (this.moderation.ownRole() === "owner" || this.moderation.ownPresenter()));
+  readonly canClear = computed(() => {
+    if (!this.session.joined()) return true;
+    return this.moderation.ownRole() === "owner" || this.moderation.ownPresenter();
+  });
   readonly canDraw = computed(() => {
-    if (!this.session.joined()) return false;
+    if (!this.session.joined()) return true;
     if (this.moderation.whiteboardPolicy() === "open") return true;
     return this.moderation.ownRole() === "owner" || this.moderation.ownPresenter();
   });
   private lastDelivery = 0;
   private seen = new Set<string>();
   private hasRequestedSync = false;
+  private wasJoined = false;
 
   constructor(
     private readonly mesh: PeerMeshService,
@@ -46,10 +50,15 @@ export class WhiteboardOverlayService {
   ) {
     this.signaling.subscribe((message) => this.applyClear(message));
     effect(() => {
-      if (!this.session.joined()) {
-        this.reset();
+      const joined = this.session.joined();
+      if (!joined) {
+        if (this.wasJoined) {
+          this.wasJoined = false;
+          this.reset();
+        }
         return;
       }
+      this.wasJoined = true;
       for (const item of this.mesh.overlayDeliveries()) {
         if (item.id <= this.lastDelivery) continue;
         this.lastDelivery = item.id;
@@ -132,24 +141,27 @@ export class WhiteboardOverlayService {
   }
 
   publish(kind: WhiteboardKind, payload: WhiteboardOperation["payload"]): boolean {
-    if (!this.session.joined() || this.mesh.membershipEpoch() < 1) return false;
     if (kind === "sync-request" || kind === "sync-response") return false;
     if (kind === "clear") {
       if (!this.canClear()) return false;
     } else {
       if (!this.canDraw()) return false;
     }
+    const epoch = Math.max(1, this.mesh.membershipEpoch());
+    const authorPeerId = this.session.peerId() || "0123456789abcdef";
     const operation = parseWhiteboardOperation({
-      version: 1, type: "whiteboard-op", opId: opId(), membershipEpoch: this.mesh.membershipEpoch(),
-      authorPeerId: this.session.peerId(), kind, payload,
+      version: 1, type: "whiteboard-op", opId: opId(), membershipEpoch: epoch,
+      authorPeerId, kind, payload,
     });
     if (!operation) return false;
     this.seen.add(operation.opId);
     this.ops.update((items) => appendWhiteboardOperation(items, operation));
-    const bytes = encodeWhiteboardOperation(operation);
-    for (const peer of this.mesh.peerChoices()) {
-      if (this.mesh.machineReceive.isMachine(peer.id)) continue;
-      void this.mesh.sendOverlayData(peer.id, bytes, "event");
+    if (this.session.joined()) {
+      const bytes = encodeWhiteboardOperation(operation);
+      for (const peer of this.mesh.peerChoices()) {
+        if (this.mesh.machineReceive.isMachine(peer.id)) continue;
+        void this.mesh.sendOverlayData(peer.id, bytes, "event");
+      }
     }
     return true;
   }
@@ -177,11 +189,16 @@ export class WhiteboardOverlayService {
 
   requestClear(): void {
     if (!this.canClear()) return;
-    this.signaling.send({ type: "whiteboard-clear" });
+    if (this.session.joined() && this.mesh.peerChoices().length > 0) {
+      this.signaling.send({ type: "whiteboard-clear" });
+    } else {
+      this.ops.set([]);
+      this.seen.clear();
+    }
   }
 
   undoOwn(): void {
-    const own = this.session.peerId();
+    const own = this.session.peerId() || "0123456789abcdef";
     this.ops.update((items) => undoOwnWhiteboardOperations(items, own));
   }
 

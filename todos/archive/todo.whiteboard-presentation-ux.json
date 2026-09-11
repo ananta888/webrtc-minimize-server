@@ -1,0 +1,266 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "whiteboard-presentation-ux",
+  "purpose": "Prominente Whiteboard-Bühne (auch für Einzelbenutzer), Bild-Import, PNG/PDF-Export, lokale Folienpräsentation (BBB-UX-031) und Tastatur-Barrierefreiheit (BBB-UX-006) ohne Server-Konvertierung oder Inhaltsabnahme.",
+  "goal": "Whiteboard direkt auf der Hauptbühne und im Hauptmenü erreichbar machen, Einzelnutzer-Zeichnen ermöglichen, Härtung & Export umsetzen, lokale PDF-Folienpräsentation synchronisieren und Barrierefreiheit mit Tastatursteuerung integrieren.",
+  "status": "done",
+  "created": "2026-09-11",
+  "updated": "2026-09-11",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "user_verification_last": true,
+  "related_tracks": [
+    {
+      "repository": "webrtc-minimize-server",
+      "path": "todos/backlog/todo.bigbluebutton-collaboration-ux.json",
+      "relationship": "Promoviert BBB-UX-024 (Whiteboard-Härtung), BBB-UX-025 (Export), BBB-UX-031 (Folienpräsentation) und BBB-UX-006 (Barrierefreiheit & Tastatursteuerung)."
+    }
+  ],
+  "milestones": [
+    {
+      "id": "WPU-M1",
+      "title": "Prominente Tafel-Bühne, Standalone-Nutzung & Navigation",
+      "task_ids": [
+        "WPU-001",
+        "WPU-002"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "WPU-M2",
+      "title": "Whiteboard-Härtung, Bild-Import und PNG/PDF-Export (BBB-UX-024, BBB-UX-025)",
+      "task_ids": [
+        "WPU-003",
+        "WPU-004"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "WPU-M3",
+      "title": "Lokale Folienpräsentation (PDF/Bilderdeck) & Annotation (BBB-UX-031)",
+      "task_ids": [
+        "WPU-005",
+        "WPU-006"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "WPU-M4",
+      "title": "Barrierefreiheit, Tastatur-Shortcuts & Multi-Browser-Verifikation (BBB-UX-006)",
+      "task_ids": [
+        "WPU-007",
+        "WPU-008"
+      ],
+      "status": "done"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "WPU-001",
+      "title": "Whiteboard als vollwertige Hauptansicht in Navigation und umschaltbare Bühnenansicht (Stage) im Live-Raum integrieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Das Hauptmenü (Side-Nav) bietet einen direkten Menüpunkt \"Tafel\" zur ganzflächigen Ansicht des Whiteboards.",
+        "Im Live-Raum lässt sich die Hauptbühne (Stage) zwischen Video-Raster und Tafel/Präsentation umschalten, sodass das Whiteboard groß und zentral sichtbar ist.",
+        "Wenn man alleine im Raum ist oder keine Kameras aktiv sind, ist die Tafel direkt im Blickfeld und nicht am Ende der Sidebar versteckt."
+      ]
+    },
+    {
+      "id": "WPU-002",
+      "title": "Standalone- und Einzelbenutzer-Nutzung der Tafel ermöglichen (auch alleine im Raum oder vor Beitritt sofort nutzbar)",
+      "status": "done",
+      "priority": "P0",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": [
+        "WPU-001"
+      ],
+      "acceptance_criteria": [
+        "Auch wenn ein Nutzer alleine in einem Raum ist, können alle Zeichenwerkzeuge uneingeschränkt genutzt werden; Zeichnungen bleiben flüchtig erhalten.",
+        "Im Standalone-/Pre-Join-Modus kann die Tafel als lokales Skizzenpad genutzt werden, ohne dass Capture-APIs oder Netzwerkverbindungen erzwungen werden.",
+        "Beim späteren Hinzukommen weiterer Teilnehmer werden die vorhandenen Tafel-Operationen synchronisiert."
+      ]
+    },
+    {
+      "id": "WPU-003",
+      "title": "Tafel-Export (PNG/PDF) per Klick und geschlossener Bild-Import (PNG/JPEG/WebP, max. 2MB)",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [
+        "WPU-001"
+      ],
+      "acceptance_criteria": [
+        "Tafel lässt sich per sichtbarem Klick lokal als PNG-Datei oder PDF-Dokument herunterladen.",
+        "Bilder (PNG, JPEG, WebP) können per Datei-Picker lokal auf die Tafel geladen werden (max. 2 MB, Skalierung auf Canvas-Auflösung).",
+        "Kein raw SVG, HTML, JavaScript oder externe Bild-URLs; XSS und Script-Execution bleiben strikt fail-closed."
+      ]
+    },
+    {
+      "id": "WPU-004",
+      "title": "Replay-/Payload-Härtung und sichere Bild-Synchronisation über Data-Overlay",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [
+        "WPU-003"
+      ],
+      "acceptance_criteria": [
+        "Bild-Operationen werden über den opaque Data-Overlay mit strengen Chunking- und Größenlimits übertragen.",
+        "Ungültige Bildformate, Byte-Overflows oder manipulierte Payloads werden fail-closed verworfen.",
+        "Late-Joiner erhalten importierte Hintergrundbilder deterministisch im Synchronisations-Snapshot."
+      ]
+    },
+    {
+      "id": "WPU-005",
+      "title": "Geschlossener Folienpräsentations-Contract und lokaler Foliendeck-Reader ohne Server (BBB-UX-031)",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [
+        "WPU-001"
+      ],
+      "acceptance_criteria": [
+        "Der Presenter kann ein PDF oder Bilderset lokal im Browser als Foliendeck öffnen (rein clientseitig gerendert, kein Konvertierungsserver).",
+        "Der Vertrag definiert closed Events für Folienwechsel (`presentation-slide`, Seitenindex 1..N, Gesamtseiten).",
+        "Ungültige Seitenzahlen oder unberechtigte Steuerversuche von Nicht-Presentern werden fail-closed abgewiesen."
+      ]
+    },
+    {
+      "id": "WPU-006",
+      "title": "Foliensynchronisation über Data-Overlay mit direktem Whiteboard-Annotation-Layer",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": [
+        "WPU-005"
+      ],
+      "acceptance_criteria": [
+        "Teilnehmer folgen dem Folienwechsel des Presenters synchron über den Data-Overlay.",
+        "Whiteboard-Zeichenoperationen legen sich als transparenter Annotations-Layer über die aktive Folie.",
+        "Folienwechsel bewahrt Annotationen seitenbezogen oder erlaubt seitenweises Leeren."
+      ]
+    },
+    {
+      "id": "WPU-007",
+      "title": "Tastatur-Shortcuts (1-7 Tools, Undo/Redo, Clear), ARIA-Live-Regionen & Fokusmanagement (BBB-UX-006)",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": [
+        "WPU-001"
+      ],
+      "acceptance_criteria": [
+        "Zifferntasten 1-7 wählen direkt die Zeichenwerkzeuge; Ctrl+Z/Cmd+Z löst Undo aus.",
+        "Tastaturfokus und ARIA-Labels für alle Werkzeuge, Farben und Export-Aktionen sind vollständig zugänglich.",
+        "Statusänderungen (Lese-Modus, Folienwechsel, Umfrage-Start) werden über aria-live barrierefrei gemeldet."
+      ]
+    },
+    {
+      "id": "WPU-008",
+      "title": "Nutzer-, Mehrbrowser- und Gerätegates für Tafel, Folien und Accessibility",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": [
+        "WPU-002",
+        "WPU-004",
+        "WPU-006",
+        "WPU-007"
+      ],
+      "acceptance_criteria": [
+        "Echte Chromium- und Firefox-Kontexte belegen synchrone Tafel- und Folienanzeige sowie Tastaturbedienung ohne Capture-Aufrufe.",
+        "Safari/iOS und Live-Verifikation auf https://webrtc.ananta.de bestätigen die Nutzbarkeit für Einzelbenutzer und Runden."
+      ]
+    }
+  ],
+  "critical_path_tasks": [
+    "WPU-001",
+    "WPU-002",
+    "WPU-003",
+    "WPU-004",
+    "WPU-005",
+    "WPU-006",
+    "WPU-007",
+    "WPU-008"
+  ],
+  "tasks_status_summary": {
+    "total": 8,
+    "by_status": {
+      "todo": 0,
+      "in_progress": 0,
+      "partial": 0,
+      "blocked": 0,
+      "done": 8
+    },
+    "progress_percent_done": 100.0,
+    "by_priority": {
+      "P0": 2,
+      "P1": 6,
+      "P2": 0,
+      "P3": 0
+    },
+    "by_risk": {
+      "low": 0,
+      "medium": 5,
+      "high": 3,
+      "critical": 0
+    },
+    "critical_path": {
+      "total": 8,
+      "done": 8,
+      "remaining": 0
+    },
+    "milestones": {
+      "total": 4,
+      "todo": 0,
+      "in_progress": 0,
+      "blocked": 0,
+      "done": 4
+    }
+  },
+  "progress_summary": {
+    "state": "done",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 8
+  },
+  "summary_notes": [
+    "2026-09-11 Track whiteboard-presentation-ux initialisiert: Prominente Tafel-Bühne, Standalone-Nutzung, Bild-Import/Export (BBB-UX-024/025), Folienpräsentation (BBB-UX-031) und Barrierefreiheit/Tastatursteuerung (BBB-UX-006).",
+    "2026-09-11 WPU-001 & WPU-002: Prominente Tafel-Bühne im Live-Raum, Umschalter zwischen Video und Whiteboard, prominenter Button 'Tafel auf Bühne öffnen' bei leerem Raum und uneingeschränkte Standalone-Nutzung vor Beitritt/alleine im Raum implementiert und mit Unit-/Browser-Tests belegt. Meilenstein WPU-M1 abgeschlossen.",
+    "2026-09-11 WPU-003 & WPU-004: Clientseitiger PNG- und PDF-Export (reines TypeScript PDF-1.4 ohne Fremdbibliothek), sichere Bild-/Foliendatei-Validierung (max. 2MB, magische Bytes für PNG/JPEG/WebP/PDF, kein SVG/HTML) und chunkierte Replay-gehärtete Übertragung über Data-Overlay umgesetzt. Meilenstein WPU-M2 abgeschlossen.",
+    "2026-09-11 WPU-005 & WPU-006: Geschlossener Folienpräsentations-Contract, lokaler Foliendeck-Reader, seitenbezogene Speicherung von Tafel-Annotationen und synchronisierter Folienwechsel über Data-Overlay umgesetzt. Meilenstein WPU-M3 abgeschlossen.",
+    "2026-09-11 WPU-007 & WPU-008: Tastatur-Shortcuts 1-7 für Werkzeuge, Ctrl+Z für Undo, Pfeiltasten für Folienwechsel, ARIA-Labels und Screenreader-Live-Regionen umgesetzt. Vollständige Chromium- und Firefox-Ende-zu-Ende-Gates sowie Live-Rollout auf https://webrtc.ananta.de erfolgreich verifiziert. Meilenstein WPU-M4 und Track vollständig abgeschlossen."
+  ]
+}
