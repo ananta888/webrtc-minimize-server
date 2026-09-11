@@ -8,6 +8,7 @@ const zero = { activeRequests: 0, activeSessions: 0, bodyBytes: 0, completed: 0,
 const request = { method: "GET", resourceRef: "private-resource-canary" };
 const options = fetchImpl => ({ sessions: { create() {}, renew() {},
   async authorize(input) { if (input.denied) throw new Error("denied"); return { sessionId: input.session || "private-session-canary",
+    budgetScope: { tenantId: "tn_aaaaaaaaaaaaaaaa", audienceRef: "sub_aaaaaaaaaaaaaaaa" },
     upstreamPath: "/private-path-canary", authorizationHeader: "Bearer private-token-canary" }; } },
   gatewayOrigin: "https://gateway.example", fetchImpl, maximumConcurrentRequests: 2, maximumConcurrentPerSession: 2,
   idleTimeoutMs: 100, streamTimeoutMs: 1000 });

@@ -247,6 +247,7 @@ export class BroadcastPlaybackSessionStore {
     if (session.expiresAt <= currentTime || this.#sessions.get(session.sessionId)?.grantScope !== session.grantScope) notFound();
     return Object.freeze({
       sessionId: session.sessionId,
+      budgetScope: Object.freeze({ tenantId: session.grantScope.tenantId, audienceRef: session.grantScope.audienceRef }),
       upstreamPath: `/${resourceRef}/${file}${normalizedQuery ? `?${normalizedQuery}` : ""}`,
       authorizationHeader: session.authorizationHeader,
       cacheControl: "private, no-store, max-age=0",

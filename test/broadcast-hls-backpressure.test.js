@@ -15,6 +15,7 @@ function fixture(source, options = {}) {
     headers: { "content-type": "video/mp4", ...options.headers } });
   const proxy = new BroadcastHlsProxy({ sessions: {
     create() {}, renew() {}, authorize: async () => ({ sessionId: "synthetic",
+      budgetScope: { tenantId: "tn_aaaaaaaaaaaaaaaa", audienceRef: "sub_aaaaaaaaaaaaaaaa" },
       upstreamPath: "/res_aaaaaaaaaaaaaaaa/live.m4s", authorizationHeader: "Bearer synthetic-private",
       cacheControl: "private, no-store" }),
   }, gatewayOrigin: "http://gateway.example", fetchImpl: async () => response,
@@ -161,6 +162,7 @@ test("rejecting a real loopback upstream response closes its unfinished transpor
   t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
   const proxy = new BroadcastHlsProxy({ sessions: {
     create() {}, renew() {}, authorize: async () => ({ sessionId: "synthetic",
+      budgetScope: { tenantId: "tn_aaaaaaaaaaaaaaaa", audienceRef: "sub_aaaaaaaaaaaaaaaa" },
       upstreamPath: "/synthetic", authorizationHeader: "Bearer synthetic-only", cacheControl: "private, no-store" }),
   }, gatewayOrigin: `http://127.0.0.1:${server.address().port}` });
   await assert.rejects(proxy.fetchMedia(input), /broadcast_playback_not_found/);

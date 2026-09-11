@@ -42,7 +42,8 @@ async function startTestServer(overrides = {}, serverOptions = {}) {
     pairWorkspaceEnabled: false,
     ...overrides,
   };
-  const app = createAppServer({ config, ...serverOptions });
+  const app = createAppServer({ config,
+    ...(process.env.MEET_TEST_PUBLIC_DIR ? { publicDir: process.env.MEET_TEST_PUBLIC_DIR } : {}), ...serverOptions });
   await new Promise((resolve, reject) => {
     app.server.once("error", reject);
     app.server.listen(0, "127.0.0.1", resolve);

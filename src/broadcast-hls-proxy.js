@@ -1,5 +1,5 @@
 import { BroadcastHlsTraffic } from "./broadcast-hls-traffic.js";
-import { BroadcastHlsBudget } from "./broadcast-hls-budget.js";
+import { BroadcastHlsScopedBudget } from "./broadcast-hls-scoped-budget.js";
 
 const CONTENT_TYPES = new Set([
   "application/vnd.apple.mpegurl",
@@ -114,6 +114,7 @@ export class BroadcastHlsProxy {
     maximumRequestsPerSecond,
     maximumEgressBitsPerSecond,
     egressBurstBytes,
+    scopedBudgets,
     clock,
   }) {
     if (!sessions || typeof sessions.create !== "function" || typeof sessions.renew !== "function"
@@ -138,7 +139,14 @@ export class BroadcastHlsProxy {
     this.#maximumConcurrentPerSession = maximumConcurrentPerSession;
     this.#idleTimeoutMs = idleTimeoutMs;
     this.#streamTimeoutMs = streamTimeoutMs;
-    this.#budget = new BroadcastHlsBudget({ maximumRequestsPerSecond, maximumEgressBitsPerSecond, egressBurstBytes, clock });
+    if (scopedBudgets !== undefined && (!scopedBudgets || typeof scopedBudgets !== "object" || Array.isArray(scopedBudgets)
+      || Object.keys(scopedBudgets).some(key => !["tenant", "audience"].includes(key)))) {
+      fail("invalid_broadcast_hls_proxy_configuration", 500);
+    }
+    this.#budget = new BroadcastHlsScopedBudget({
+      deployment: { maximumRequestsPerSecond, maximumEgressBitsPerSecond, egressBurstBytes },
+      tenant: scopedBudgets?.tenant, audience: scopedBudgets?.audience, clock,
+    });
   }
 
   createSession(input) { return this.#sessions.create(input); }
@@ -155,7 +163,8 @@ export class BroadcastHlsProxy {
       fail("broadcast_playback_not_found", 404);
     }
     const authorization = await this.#sessions.authorize(input);
-    if (!this.#budget.request()) fail("broadcast_playback_temporarily_unavailable", 429);
+    const budget = this.#budget.forScope(authorization.budgetScope);
+    if (!budget || !budget.request()) fail("broadcast_playback_temporarily_unavailable", 429);
     const sessionKey = authorization.sessionId || input.resourceRef || "invalid";
     const release = this.#acquire(sessionKey);
     let response;
@@ -200,7 +209,7 @@ export class BroadcastHlsProxy {
       streamTimeoutMs: this.#streamTimeoutMs,
       release,
       traffic: this.#traffic,
-      budget: this.#budget,
+      budget,
     });
     if (!body) {
       cancelBody(response.body, "broadcast_body_unused");

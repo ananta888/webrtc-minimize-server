@@ -7,6 +7,7 @@ import { loadConfig } from "../src/config.js";
 function fixture(limits = {}) {
   let now = 0, requests = 0, cancelled = 0;
   const sessions = { create() {}, renew() {}, authorize: async input => ({ sessionId: input.session,
+    budgetScope: { tenantId: "tn_aaaaaaaaaaaaaaaa", audienceRef: "sub_aaaaaaaaaaaaaaaa" },
     upstreamPath: "/res_aaaaaaaaaaaaaaaa/live.m4s", authorizationHeader: "Bearer synthetic",
     cacheControl: "private, no-store" }) };
   const proxy = new BroadcastHlsProxy({ sessions, gatewayOrigin: "http://fixture.invalid", clock: () => now,

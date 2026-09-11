@@ -11,6 +11,7 @@ function proxy(status = 200, contentType = "application/vnd.apple.mpegurl") {
     close: () => null,
     authorize: async () => ({
       sessionId: "pbs_aaaaaaaaaaaaaaaaaaaaaaaa",
+      budgetScope: { tenantId: "tn_aaaaaaaaaaaaaaaa", audienceRef: "sub_aaaaaaaaaaaaaaaa" },
       upstreamPath: "/res_aaaaaaaaaaaaaaaa/index.m3u8?_HLS_msn=2",
       authorizationHeader: "Bearer secret-never-returned",
       cacheControl: "private, no-store, max-age=0",
@@ -56,6 +57,7 @@ test("HLS proxy bounds concurrent slow viewers and releases capacity on cancella
     close: () => null,
     authorize: async () => ({
       sessionId: "pbs_aaaaaaaaaaaaaaaaaaaaaaaa",
+      budgetScope: { tenantId: "tn_aaaaaaaaaaaaaaaa", audienceRef: "sub_aaaaaaaaaaaaaaaa" },
       upstreamPath: "/res_aaaaaaaaaaaaaaaa/live.m4s",
       authorizationHeader: "Bearer secret-never-returned",
       cacheControl: "private, no-store, max-age=0",

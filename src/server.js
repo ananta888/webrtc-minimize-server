@@ -2809,6 +2809,7 @@ export function createAppServer(options = {}) {
         maximumRequestsPerSecond: config.broadcastHlsMaximumRequestsPerSecond,
         maximumEgressBitsPerSecond: config.broadcastHlsMaximumEgressBitsPerSecond,
         egressBurstBytes: config.broadcastHlsEgressBurstBytes,
+        scopedBudgets: config.broadcastHlsScopedBudgets,
       }) : null);
   const ownsBroadcastAbuseGuard = !options.broadcastAbuseGuard && Boolean(broadcastHlsProxy || mediaMtxExternalAuthService);
   const broadcastAbuseGuard = options.broadcastAbuseGuard || (ownsBroadcastAbuseGuard

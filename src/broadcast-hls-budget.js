@@ -54,6 +54,16 @@ export class BroadcastHlsBudget {
     return true;
   }
 
+  // Non-consuming checks for a transaction owned by the scoped budget. That
+  // owner freezes the clock across all checks and debits; no await or callbacks.
+  allowsRequest() { return this.#refill() && this.#requests >= 1; }
+
+  allowsBytes(amount) {
+    return Number.isSafeInteger(amount) && amount >= 0 && this.#refill() && amount <= this.#bytes;
+  }
+
+  full() { return this.#refill() && this.#requests === this.#requestRate && this.#bytes === this.#burst; }
+
   bytes(amount) {
     if (!Number.isSafeInteger(amount) || amount < 0 || !this.#refill() || amount > this.#bytes) return false;
     this.#bytes -= amount;

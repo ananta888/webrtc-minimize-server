@@ -53,7 +53,8 @@ test("only a signed exact realm operator role passes without changing human iden
 test("actual HTTP endpoint rejects ordinary or invalid JWTs and exports only fixed counts", async t => {
   const f = await signedFixture();
   const proxy = new BroadcastHlsProxy({ gatewayOrigin: "https://gateway.example", sessions: {
-    create() {}, renew() {}, authorize: async () => ({ sessionId: "private-session-canary", upstreamPath: "/private-path-canary" }),
+    create() {}, renew() {}, authorize: async () => ({ sessionId: "private-session-canary", upstreamPath: "/private-path-canary",
+      budgetScope: { tenantId: "tn_aaaaaaaaaaaaaaaa", audienceRef: "sub_aaaaaaaaaaaaaaaa" } }),
   }, fetchImpl: async () => new Response(new Uint8Array(4), { headers: { "content-type": "video/mp4" } }) });
   await new Response((await proxy.fetchMedia({ method: "GET" })).body).arrayBuffer();
   const app = createAppServer({ config: { ...config, broadcastNativeResourceLimits: { encoderSlots: 0, cpuUnits: 123 } },
