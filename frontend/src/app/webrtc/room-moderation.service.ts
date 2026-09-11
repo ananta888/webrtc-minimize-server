@@ -6,7 +6,8 @@ import { ServerMessage, SignalingService } from "./signaling.service";
 export type RoomRole = "owner" | "participant";
 export type HandState = "none" | "raised";
 export type ModerationAction = "hand-raise" | "hand-lower" | "hand-clear" | "peer-remove" | "peer-remove-cancel"
-  | "publication-stop" | "presenter-assign";
+  | "publication-stop" | "presenter-assign" | "whiteboard-policy-set";
+export type WhiteboardPolicy = "open" | "presenter-only";
 
 export interface ModerationParticipant {
   readonly peerId: string;
@@ -21,12 +22,13 @@ export interface ModerationAuditEntry {
   readonly actorPeerId: string;
   readonly action: ModerationAction;
   readonly targetPeerId: string;
-  readonly source: "" | LocalMediaSource;
+  readonly source: "" | LocalMediaSource | WhiteboardPolicy;
 }
 
 const PEER_ID = /^[a-f0-9]{16}$/;
 const ACTIONS = new Set<ModerationAction>([
-  "hand-raise", "hand-lower", "hand-clear", "peer-remove", "peer-remove-cancel", "publication-stop", "presenter-assign",
+  "hand-raise", "hand-lower", "hand-clear", "peer-remove", "peer-remove-cancel", "publication-stop",
+  "presenter-assign", "whiteboard-policy-set",
 ]);
 const SOURCES = new Set<LocalMediaSource>(["microphone", "camera", "screen"]);
 
@@ -49,6 +51,8 @@ function parseAudit(value: unknown): readonly ModerationAuditEntry[] | null {
     const source = row["source"];
     if (action === "publication-stop") {
       if (typeof source !== "string" || !SOURCES.has(source as LocalMediaSource)) return null;
+    } else if (action === "whiteboard-policy-set") {
+      if (source !== "open" && source !== "presenter-only") return null;
     } else if (source !== "") return null;
     last = Number(row["sequence"]);
     entries.push({
@@ -57,7 +61,9 @@ function parseAudit(value: unknown): readonly ModerationAuditEntry[] | null {
       actorPeerId: row["actorPeerId"],
       action,
       targetPeerId: row["targetPeerId"],
-      source: action === "publication-stop" ? source as LocalMediaSource : "",
+      source: action === "publication-stop"
+        ? source as LocalMediaSource
+        : (action === "whiteboard-policy-set" ? source as WhiteboardPolicy : ""),
     });
   }
   return Object.freeze(entries);
@@ -87,11 +93,12 @@ function parseSnapshot(message: ServerMessage): {
   audit: readonly ModerationAuditEntry[];
   presenterPeerId: string;
   pendingRemove: PendingRemove | null;
+  whiteboardPolicy: WhiteboardPolicy;
 } | null {
   if (message.type !== "moderation-state") return null;
   if (!Number.isSafeInteger(message["membershipEpoch"]) || Number(message["membershipEpoch"]) < 1) return null;
   if (!Array.isArray(message["participants"]) || !Array.isArray(message["queue"])) return null;
-  if (Object.keys(message).some((field) => !["version", "type", "membershipEpoch", "participants", "queue", "audit", "presenterPeerId", "pendingRemove"].includes(field))) {
+  if (Object.keys(message).some((field) => !["version", "type", "membershipEpoch", "participants", "queue", "audit", "presenterPeerId", "pendingRemove", "whiteboardPolicy"].includes(field))) {
     return null;
   }
   const participants: ModerationParticipant[] = [];
@@ -139,6 +146,11 @@ function parseSnapshot(message: ServerMessage): {
   }
   const pending = parsePendingRemove(message["pendingRemove"], participantIds);
   if (pending === null) return null;
+  let whiteboardPolicy: WhiteboardPolicy = "open";
+  if (Object.hasOwn(message, "whiteboardPolicy")) {
+    if (message["whiteboardPolicy"] !== "open" && message["whiteboardPolicy"] !== "presenter-only") return null;
+    whiteboardPolicy = message["whiteboardPolicy"] as WhiteboardPolicy;
+  }
   return {
     membershipEpoch: Number(message["membershipEpoch"]),
     participants: Object.freeze(participants),
@@ -146,6 +158,7 @@ function parseSnapshot(message: ServerMessage): {
     audit,
     presenterPeerId,
     pendingRemove: pending || null,
+    whiteboardPolicy,
   };
 }
 
@@ -172,10 +185,12 @@ export class RoomModerationService {
   readonly audit = signal<readonly ModerationAuditEntry[]>([]);
   readonly presenterPeerId = signal("");
   readonly pendingRemove = signal<PendingRemove | null>(null);
+  readonly whiteboardPolicy = signal<WhiteboardPolicy>("open");
   readonly ownPeerId = signal("");
   readonly ownPresenter = computed(() => this.presenterPeerId() !== "" && this.presenterPeerId() === this.ownPeerId());
   readonly ownHand = computed(() => this.participants().find((item) => item.peerId === this.ownPeerId())?.hand === "raised");
   readonly ownRole = computed(() => this.participants().find((item) => item.peerId === this.ownPeerId())?.role || "participant");
+  readonly canControlWhiteboard = computed(() => this.ownRole() === "owner" || this.ownPresenter());
   readonly queuePosition = computed(() => {
     const index = this.queue().indexOf(this.ownPeerId());
     return index < 0 ? 0 : index + 1;
@@ -202,6 +217,7 @@ export class RoomModerationService {
     this.audit.set(snapshot.audit);
     this.presenterPeerId.set(snapshot.presenterPeerId);
     this.pendingRemove.set(snapshot.pendingRemove);
+    this.whiteboardPolicy.set(snapshot.whiteboardPolicy);
   }
 
   bind(peerId: string): void {
@@ -215,6 +231,7 @@ export class RoomModerationService {
     this.audit.set([]);
     this.presenterPeerId.set("");
     this.pendingRemove.set(null);
+    this.whiteboardPolicy.set("open");
     this.ownPeerId.set("");
   }
 
@@ -245,5 +262,11 @@ export class RoomModerationService {
   cancelRemove(): void {
     if (this.ownRole() !== "owner" || !this.pendingRemove()) return;
     this.signaling.send({ type: "peer-remove-cancel" });
+  }
+
+  setWhiteboardPolicy(policy: WhiteboardPolicy): void {
+    if (!this.canControlWhiteboard()) return;
+    if (policy !== "open" && policy !== "presenter-only") return;
+    this.signaling.send({ type: "whiteboard-policy-set", policy });
   }
 }

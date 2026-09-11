@@ -76,3 +76,28 @@ export function boundSyncOps(
 export function ownerPeerIds(participants: readonly { peerId: string; role: string }[]): ReadonlySet<string> {
   return new Set(participants.filter((item) => item.role === "owner").map((item) => item.peerId));
 }
+
+export function authorizedDrawerPeerIds(
+  participants: readonly { peerId: string; role: string }[],
+  presenterPeerId: string,
+  policy: "open" | "presenter-only",
+  knownPeerIds: ReadonlySet<string>,
+): ReadonlySet<string> {
+  if (policy === "open") return knownPeerIds;
+  const set = new Set<string>();
+  for (const p of participants) {
+    if (p.role === "owner") set.add(p.peerId);
+  }
+  if (presenterPeerId && knownPeerIds.has(presenterPeerId)) set.add(presenterPeerId);
+  return set;
+}
+
+export function authorizedClearPeerIds(
+  participants: readonly { peerId: string; role: string }[],
+  presenterPeerId: string,
+): ReadonlySet<string> {
+  const set = new Set(participants.filter((item) => item.role === "owner").map((item) => item.peerId));
+  if (presenterPeerId) set.add(presenterPeerId);
+  return set;
+}
+

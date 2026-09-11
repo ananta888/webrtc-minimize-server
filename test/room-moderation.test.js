@@ -174,3 +174,41 @@ test("scheduled remove expires only after the undo window", () => {
   assert.equal(registry.hasPendingRemove("room-mod"), false);
   assert.equal(guest.hand, "none");
 });
+
+test("whiteboard policy is owner/presenter controlled and reflected in snapshot and audit", () => {
+  const registry = new RoomRegistry();
+  const owner = registry.join("room-mod", {}, "Ada", 1, { principal: "owner" }).peer;
+  const guest = registry.join("room-mod", {}, "Grace", 2, { principal: "guest" }).peer;
+  
+  // Default is "open"
+  assert.equal(registry.moderationSnapshot("room-mod", 1).whiteboardPolicy, "open");
+
+  // Participant cannot set policy
+  assert.throws(() => registry.setWhiteboardPolicy(guest, "presenter-only", 10), errorCode("moderation_forbidden"));
+
+  // Owner can set policy to "presenter-only"
+  assert.equal(registry.setWhiteboardPolicy(owner, "presenter-only", 20), true);
+  let snapshot = registry.moderationSnapshot("room-mod", 1, { audit: true });
+  assert.equal(snapshot.whiteboardPolicy, "presenter-only");
+  assert.equal(snapshot.audit.length, 1);
+  assert.equal(snapshot.audit[0].action, "whiteboard-policy-set");
+  assert.equal(snapshot.audit[0].source, "presenter-only");
+
+  // Presenter can set policy back to "open"
+  registry.assignPresenter(owner, guest.id, 30);
+  assert.equal(registry.setWhiteboardPolicy(guest, "open", 40), true);
+  snapshot = registry.moderationSnapshot("room-mod", 1, { audit: true });
+  assert.equal(snapshot.whiteboardPolicy, "open");
+
+  // Invalid policy fails
+  assert.throws(() => registry.setWhiteboardPolicy(owner, "anyone", 50), errorCode("invalid_whiteboard_policy"));
+
+  // Protocol validation
+  assert.deepEqual(
+    parseClientMessage(JSON.stringify({ type: "whiteboard-policy-set", policy: "presenter-only" })),
+    { type: "whiteboard-policy-set", policy: "presenter-only" }
+  );
+  assert.throws(() => parseClientMessage(JSON.stringify({ type: "whiteboard-policy-set", policy: "invalid" })), (err) => err instanceof ProtocolError);
+  assert.throws(() => parseClientMessage(JSON.stringify({ type: "whiteboard-policy-set", policy: "open", extra: 1 })), (err) => err instanceof ProtocolError);
+});
+

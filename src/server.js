@@ -2124,6 +2124,11 @@ function configureSignaling(
           broadcastModeration(peer.roomId);
           return;
         }
+        if (message.type === "whiteboard-policy-set") {
+          registry.setWhiteboardPolicy(peer, message.policy);
+          broadcastModeration(peer.roomId);
+          return;
+        }
         if (message.type === "breakout-open") {
           const snapshot = registry.openBreakouts(peer, {
             childCount: message.childCount,

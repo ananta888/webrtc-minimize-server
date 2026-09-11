@@ -12,6 +12,8 @@ import {
 } from "./whiteboard-contract";
 import {
   appendWhiteboardOperation,
+  authorizedClearPeerIds,
+  authorizedDrawerPeerIds,
   boundSyncOps,
   ingestWhiteboardDelivery,
   ownerPeerIds,
@@ -26,7 +28,12 @@ function opId(): string {
 @Injectable({ providedIn: "root" })
 export class WhiteboardOverlayService {
   readonly ops = signal<readonly WhiteboardOperation[]>([]);
-  readonly canClear = computed(() => this.session.joined() && this.moderation.ownRole() === "owner");
+  readonly canClear = computed(() => this.session.joined() && (this.moderation.ownRole() === "owner" || this.moderation.ownPresenter()));
+  readonly canDraw = computed(() => {
+    if (!this.session.joined()) return false;
+    if (this.moderation.whiteboardPolicy() === "open") return true;
+    return this.moderation.ownRole() === "owner" || this.moderation.ownPresenter();
+  });
   private lastDelivery = 0;
   private seen = new Set<string>();
   private hasRequestedSync = false;
@@ -64,6 +71,18 @@ export class WhiteboardOverlayService {
     });
     if (!operation) return false;
 
+    const policy = this.moderation.whiteboardPolicy();
+    const authorized = authorizedDrawerPeerIds(
+      this.moderation.participants(),
+      this.moderation.presenterPeerId(),
+      policy,
+      known,
+    );
+    const authorizedClear = authorizedClearPeerIds(
+      this.moderation.participants(),
+      this.moderation.presenterPeerId(),
+    );
+
     if (operation.kind === "sync-request") {
       this.seen.add(operation.opId);
       if (this.shouldRespondToSync()) {
@@ -93,14 +112,18 @@ export class WhiteboardOverlayService {
       for (const item of incomingOps) {
         if (this.seen.has(item.opId)) continue;
         if (item.kind === "sync-request" || item.kind === "sync-response") continue;
-        if (item.kind === "clear" && !ownerPeerIds(this.moderation.participants()).has(item.authorPeerId)) continue;
+        if (item.kind === "clear" && !authorizedClear.has(item.authorPeerId)) continue;
+        if (item.kind !== "clear" && !authorized.has(item.authorPeerId)) continue;
         this.seen.add(item.opId);
         this.ops.update((items) => appendWhiteboardOperation(items, item));
       }
       return true;
     }
 
-    if (operation.kind === "clear" && !ownerPeerIds(this.moderation.participants()).has(operation.authorPeerId)) {
+    if (operation.kind === "clear" && !authorizedClear.has(operation.authorPeerId)) {
+      return false;
+    }
+    if (operation.kind !== "clear" && !authorized.has(operation.authorPeerId)) {
       return false;
     }
     this.seen.add(operation.opId);
@@ -111,7 +134,11 @@ export class WhiteboardOverlayService {
   publish(kind: WhiteboardKind, payload: WhiteboardOperation["payload"]): boolean {
     if (!this.session.joined() || this.mesh.membershipEpoch() < 1) return false;
     if (kind === "sync-request" || kind === "sync-response") return false;
-    if (kind === "clear" && this.moderation.ownRole() !== "owner") return false;
+    if (kind === "clear") {
+      if (!this.canClear()) return false;
+    } else {
+      if (!this.canDraw()) return false;
+    }
     const operation = parseWhiteboardOperation({
       version: 1, type: "whiteboard-op", opId: opId(), membershipEpoch: this.mesh.membershipEpoch(),
       authorPeerId: this.session.peerId(), kind, payload,
@@ -177,7 +204,7 @@ export class WhiteboardOverlayService {
     if (message.type !== "whiteboard-cleared") return;
     if (Object.keys(message).some((field) => !["version", "type", "membershipEpoch", "actorPeerId"].includes(field))) return;
     if (!Number.isSafeInteger(message["membershipEpoch"]) || Number(message["membershipEpoch"]) !== this.mesh.membershipEpoch()) return;
-    if (typeof message["actorPeerId"] !== "string" || !ownerPeerIds(this.moderation.participants()).has(message["actorPeerId"])) return;
+    if (typeof message["actorPeerId"] !== "string" || !authorizedClearPeerIds(this.moderation.participants(), this.moderation.presenterPeerId()).has(message["actorPeerId"])) return;
     this.ops.set([]);
     this.seen.clear();
   }

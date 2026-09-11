@@ -53,6 +53,18 @@ describe("Room page information architecture", () => {
     expect(component).not.toContain("getUserMedia");
   });
 
+  it("hosts the ephemeral shared notes in the live sidebar without capture", () => {
+    expect(template).toContain("<app-shared-notes-panel");
+    expect(component).toContain("SharedNotesPanelComponent");
+    expect(component).not.toContain("getUserMedia");
+  });
+
+  it("hosts ephemeral in-meeting polls in the live sidebar without capture", () => {
+    expect(template).toContain("<app-poll-panel");
+    expect(component).toContain("PollPanelComponent");
+    expect(component).not.toContain("getUserMedia");
+  });
+
   it("hosts breakout switch controls without capture", () => {
     expect(template).toContain("<app-breakout-controls");
     expect(component).toContain("BreakoutControlsComponent");

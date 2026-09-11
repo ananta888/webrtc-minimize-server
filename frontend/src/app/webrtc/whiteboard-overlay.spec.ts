@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { encodeWhiteboardOperation } from "./whiteboard-contract";
 import {
   appendWhiteboardOperation,
+  authorizedClearPeerIds,
+  authorizedDrawerPeerIds,
   boundSyncOps,
   ingestWhiteboardDelivery,
   undoOwnWhiteboardOperations,
@@ -102,12 +104,45 @@ describe("whiteboard overlay ingest", () => {
       payload: { ops: [op] },
     };
     const respBytes = encodeWhiteboardOperation(respOp);
-    const respDelivery = { originPeerId: "aaaaaaaaaaaaaaaa", trafficClass: "event", data: respBytes };
-    const ingested = ingestWhiteboardDelivery(respDelivery, { membershipEpoch: 2, knownPeerIds: known, seen: new Set() });
+    const respDelivery = { originPeerId: "aaaaaaaaaaaaaaaa", trafficClass: "event", data: reqBytes };
+    const ingested = ingestWhiteboardDelivery({ ...respDelivery, data: respBytes }, { membershipEpoch: 2, knownPeerIds: known, seen: new Set() });
     expect(ingested?.kind).toBe("sync-response");
     expect((ingested?.payload as { ops: unknown[] }).ops.length).toBe(1);
   });
+
+  it("authorizedDrawerPeerIds respects policy open vs presenter-only", () => {
+    const participants = [
+      { peerId: "owner1", role: "owner" },
+      { peerId: "guest1", role: "participant" },
+      { peerId: "pres1", role: "participant" },
+    ];
+    const known = new Set(["owner1", "guest1", "pres1"]);
+
+    // In open mode, all known peers may draw
+    const openSet = authorizedDrawerPeerIds(participants, "pres1", "open", known);
+    expect(openSet.has("owner1")).toBe(true);
+    expect(openSet.has("guest1")).toBe(true);
+    expect(openSet.has("pres1")).toBe(true);
+
+    // In presenter-only mode, only owner and presenter may draw
+    const restrictedSet = authorizedDrawerPeerIds(participants, "pres1", "presenter-only", known);
+    expect(restrictedSet.has("owner1")).toBe(true);
+    expect(restrictedSet.has("pres1")).toBe(true);
+    expect(restrictedSet.has("guest1")).toBe(false);
+  });
+
+  it("authorizedClearPeerIds allows owner and presenter", () => {
+    const participants = [
+      { peerId: "owner1", role: "owner" },
+      { peerId: "guest1", role: "participant" },
+    ];
+    const clearSet = authorizedClearPeerIds(participants, "guest1");
+    expect(clearSet.has("owner1")).toBe(true);
+    expect(clearSet.has("guest1")).toBe(true);
+    expect(clearSet.has("unknown")).toBe(false);
+  });
 });
+
 
 
 

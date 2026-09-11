@@ -1,0 +1,172 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "meet-interactive-collaboration",
+  "purpose": "Interaktive Kollaboration im Meet: Whiteboard-Rechtesteuerung (BBB-UX-023), flüchtige Shared Notes (BBB-UX-043) und In-Meeting-Umfragen (BBB-UX-044) ohne Inhaltsabnahme durch den Server.",
+  "goal": "Serverautorisierte Whiteboard-Policy, flüchtiges verschlüsseltes Textpad und inhaltsfreie Abstimmungen über den Data-Overlay umsetzen. Nutzergates zuletzt.",
+  "status": "in_progress",
+  "created": "2026-09-11",
+  "updated": "2026-09-11",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "user_verification_last": true,
+  "related_tracks": [
+    {
+      "repository": "webrtc-minimize-server",
+      "path": "todos/backlog/todo.bigbluebutton-collaboration-ux.json",
+      "relationship": "Promoviert BBB-UX-023 (Whiteboard-ACL), BBB-UX-043 (Shared Notes) und BBB-UX-044 (In-Meeting-Umfragen). Nutzergates bleiben INT-007."
+    }
+  ],
+  "milestones": [
+    {
+      "id": "INT-M1",
+      "title": "Serverautorisierte Whiteboard-Rechtesteuerung",
+      "task_ids": ["INT-001", "INT-002"],
+      "status": "done"
+    },
+    {
+      "id": "INT-M2",
+      "title": "Flüchtiges kollaboratives Textpad (Shared Notes)",
+      "task_ids": ["INT-003", "INT-004"],
+      "status": "done"
+    },
+    {
+      "id": "INT-M3",
+      "title": "Inhaltsfreie In-Meeting-Umfragen (Polling)",
+      "task_ids": ["INT-005", "INT-006"],
+      "status": "done"
+    },
+    {
+      "id": "INT-M4",
+      "title": "Nutzer- und Gerätegates zuletzt",
+      "task_ids": ["INT-007"],
+      "status": "in_progress"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "INT-001",
+      "title": "Whiteboard-Policy ('open' vs 'presenter-only') im Server-Moderationscontract und Audit abbilden",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Whiteboard-Policy ist 'open' oder 'presenter-only' und stammt nur aus serverautorisiertem Moderationszustand; unbekannte Werte fail-closed.",
+        "Nur Owner oder Presenter dürfen die Policy per Action 'whiteboard-policy-set' ändern; Änderungen erzeugen Audit-Eintrag.",
+        "Leave, Disconnect und Raumende setzen den flüchtigen Zustand deterministisch zurück; Pair-Räume bleiben 'open'."
+      ]
+    },
+    {
+      "id": "INT-002",
+      "title": "Data-Plane-Durchsetzung und UI-Rechteprüfung für Whiteboard Presenter-Only & Clear umsetzen",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["INT-001"],
+      "acceptance_criteria": [
+        "Im Modus 'presenter-only' dürfen nur Owner und Presenter 'whiteboard-op' senden; andere Peers empfangen nur im Read-Only-Modus.",
+        "Die UI blendet Zeichenwerkzeuge für nicht-berechtigte Teilnehmer aus und zeigt den Modus verständlich an.",
+        "Moderator-Clear ('whiteboard-clear') kann das Board revisionsgebunden leeren; unberechtigte Clear-Versuche werden fail-closed verworfen."
+      ]
+    },
+    {
+      "id": "INT-003",
+      "title": "Geschlossenen Shared-Notes-Contract mit Zeichenlimits, Versionierung und Export spezifizieren",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Der Vertrag definiert additive Typen 'notes-update', 'notes-sync-request', 'notes-snapshot' über den Data-Overlay.",
+        "Textinhalt ist auf maximal 32.000 Zeichen (32 KB) begrenzt; keine Ausführung von HTML, Skripten oder externen URIs.",
+        "Replay-, Längen- und Ratenprüfungen verwerfen invalide Nachrichten fail-closed."
+      ]
+    },
+    {
+      "id": "INT-004",
+      "title": "Shared-Notes-Sync, Editor-UI und flüchtiges Late-Join-Handling im Frontend integrieren",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": ["INT-003"],
+      "acceptance_criteria": [
+        "Das Notizen-Panel ermöglicht paralleles Bearbeiten mit Zeichenzählung und Konfliktvermeidung ohne Server-Inhaltsspeicherung.",
+        "Late Joiner fordern den aktuellen Notizen-Snapshot per DataChannel an; der Raumverlauf bleibt flüchtig.",
+        "Ein sichtbarer lokaler Klick ermöglicht den Download als .md oder .txt; Leave/Destroy leert den Zustand."
+      ]
+    },
+    {
+      "id": "INT-005",
+      "title": "Polling-Contract für Erstellung, anonyme Stimmabgabe und Ergebnisaggregation spezifizieren",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Der Vertrag definiert Typen 'poll-create', 'poll-vote', 'poll-publish', 'poll-close' über den Data-Overlay.",
+        "Frage (max 120 Zeichen) und 2-6 Optionen (je max 60 Zeichen) sind geschlossen begrenzt; XSS/HTML fail-closed.",
+        "Jeder Peer darf genau eine Stimme pro Umfrage abgeben; Mehrfachstimmen oder ungültige Option-Indizes werden abgewiesen."
+      ]
+    },
+    {
+      "id": "INT-006",
+      "title": "Polling-UI für Moderator (Erstellen/Auswerten/Schließen) und Teilnehmer (Abstimmung) umsetzen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": ["INT-005"],
+      "acceptance_criteria": [
+        "Owner/Presenter können Umfragen starten, Zwischenstände live verfolgen, Ergebnisse für alle veröffentlichen oder schließen.",
+        "Teilnehmer sehen die aktive Umfrage barrierearm als Overlay/Dialog und erhalten nach Abstimmung eine Bestätigung.",
+        "Ergebnisse können als Text exportiert werden; nach Schließen oder Raumende verfällt die Umfrage flüchtig."
+      ]
+    },
+    {
+      "id": "INT-007",
+      "title": "Nutzer-, Mehrbrowser- und Gerätegates für interaktive Kollaboration ausführen",
+      "status": "in_progress",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 50,
+      "depends_on": ["INT-002", "INT-004", "INT-006"],
+      "acceptance_criteria": [
+        "Echte Browserkontexte belegen konsistente Whiteboard-ACL, Notizen-Synchronisation und Umfrageabstimmung ohne Capture.",
+        "Safari/iOS, Churn und Live-Verifikation auf https://webrtc.ananta.de bleiben das finale Nutzergate."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["INT-001", "INT-002", "INT-003", "INT-004", "INT-005", "INT-006", "INT-007"],
+  "tasks_status_summary": {
+    "total": 7,
+    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 6 },
+    "progress_percent_done": 85.71,
+    "by_priority": { "P0": 2, "P1": 5, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 3, "high": 4, "critical": 0 },
+    "critical_path": { "total": 7, "done": 6, "remaining": 1 },
+    "milestones": { "total": 4, "todo": 0, "in_progress": 1, "blocked": 0, "done": 3 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 0,
+    "in_progress": 1,
+    "partial": 0,
+    "blocked": 0,
+    "done": 6
+  },
+  "summary_notes": [
+    "2026-09-11 Track aus BBB-UX-023 (Whiteboard-ACL), BBB-UX-043 (Shared Notes) und BBB-UX-044 (Polling) initialisiert. Software zuerst, INT-007 Nutzergates zuletzt.",
+    "2026-09-11 INT-001 Whiteboard-Policy ('open' vs 'presenter-only') im Server-Moderationscontract, Audit und Dispatch implementiert und verifiziert.",
+    "2026-09-11 INT-002 Whiteboard Presenter-Only Access Control & Clear in Data-Plane und UI umgesetzt und mit Unit-Tests verifiziert. Meilenstein INT-M1 abgeschlossen.",
+    "2026-09-11 INT-003 & INT-004 Shared Notes Contract, Sync-Service, Export und Editor-Panel implementiert und verifiziert. Meilenstein INT-M2 abgeschlossen.",
+    "2026-09-11 INT-005 & INT-006 In-Meeting-Polling Contract, Service, Barrierearme UI und Export implementiert und verifiziert. Meilenstein INT-M3 abgeschlossen."
+  ]
+}

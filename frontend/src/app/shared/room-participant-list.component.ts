@@ -4,7 +4,7 @@ import { FormsModule } from "@angular/forms";
 import { LocalMediaSource, MediaPublicationService } from "../webrtc/media-publication.service";
 import { PeerMeshService } from "../webrtc/peer-mesh.service";
 import { PresentationStageService } from "../webrtc/presentation-stage.service";
-import { ModerationAuditEntry, RoomModerationService } from "../webrtc/room-moderation.service";
+import { ModerationAction, ModerationAuditEntry, RoomModerationService } from "../webrtc/room-moderation.service";
 import { RoomSessionService } from "../webrtc/room-session.service";
 import {
   mediaObservationLabel,
@@ -258,7 +258,7 @@ export class RoomParticipantListComponent {
   }
 
   auditLabel(entry: ModerationAuditEntry): string {
-    const action = {
+    const action: Record<ModerationAction, string> = {
       "hand-raise": "Hand gehoben",
       "hand-lower": "Hand gesenkt",
       "hand-clear": "Hand gesenkt (Owner)",
@@ -266,8 +266,9 @@ export class RoomParticipantListComponent {
       "peer-remove-cancel": "Entfernen zurückgenommen",
       "presenter-assign": "Bühne übergeben",
       "publication-stop": `Stoppaufforderung ${mediaObservationLabel(entry.source)}`,
-    }[entry.action];
-    return `${action} · ${entry.actorPeerId.slice(0, 8)} → ${entry.targetPeerId.slice(0, 8)}`;
+      "whiteboard-policy-set": `Tafel-Modus geändert (${entry.source === "presenter-only" ? "Presenter" : "Offen"})`,
+    };
+    return `${action[entry.action]} · ${entry.actorPeerId.slice(0, 8)} → ${entry.targetPeerId.slice(0, 8)}`;
   }
 
   sourceText(sources: readonly string[]): string {

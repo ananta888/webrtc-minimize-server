@@ -430,6 +430,12 @@
               <app-whiteboard-board />
             </section>
             <section class="surface compact-panel">
+              <app-shared-notes-panel />
+            </section>
+            <section class="surface compact-panel">
+              <app-poll-panel />
+            </section>
+            <section class="surface compact-panel">
               <div class="surface-heading small"><span class="feature-icon violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 01-4 4H8l-5 3V7a4 4 0 014-4h10a4 4 0 014 4z"/></svg></span><div><p class="eyebrow">DataChannel</p><h2>Raumchat</h2></div></div>
               <app-room-chat-log id="chat-log" class="chat-log" aria-live="polite" [entries]="mesh.chat()" />
               <form id="chat-form" class="chat-form" (submit)="$event.preventDefault(); sendChat()">

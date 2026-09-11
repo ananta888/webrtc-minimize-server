@@ -75,4 +75,42 @@ describe("RoomModerationService", () => {
       targetPeerId: "bbbbbbbbbbbbbbbb", source: "camera",
     }]);
   });
+
+  it("handles whiteboardPolicy in snapshots and allows owner/presenter to set it", () => {
+    const sent: unknown[] = [];
+    const signaling = {
+      subscribe(handler: (message: never) => void) { return () => handler; },
+      send(message: unknown) { sent.push(message); },
+    } as unknown as SignalingService;
+    const service = new RoomModerationService(signaling);
+    service.bind("aaaaaaaaaaaaaaaa");
+    expect(service.whiteboardPolicy()).toBe("open");
+
+    // Snapshot with presenter-only whiteboardPolicy
+    service.apply({
+      version: 1, type: "moderation-state", membershipEpoch: 5,
+      participants: [
+        { peerId: "aaaaaaaaaaaaaaaa", role: "owner", hand: "none", raisedAt: 0 },
+        { peerId: "bbbbbbbbbbbbbbbb", role: "participant", hand: "none", raisedAt: 0 },
+      ],
+      queue: [],
+      whiteboardPolicy: "presenter-only",
+      audit: [{
+        sequence: 1, at: 10, actorPeerId: "aaaaaaaaaaaaaaaa", action: "whiteboard-policy-set",
+        targetPeerId: "aaaaaaaaaaaaaaaa", source: "presenter-only",
+      }],
+    });
+    expect(service.whiteboardPolicy()).toBe("presenter-only");
+    expect(service.canControlWhiteboard()).toBe(true);
+    expect(service.audit().length).toBe(1);
+
+    // Owner sets whiteboard policy
+    service.setWhiteboardPolicy("open");
+    expect(sent).toEqual([{ type: "whiteboard-policy-set", policy: "open" }]);
+
+    // Reset clears policy to default "open"
+    service.reset();
+    expect(service.whiteboardPolicy()).toBe("open");
+  });
 });
+

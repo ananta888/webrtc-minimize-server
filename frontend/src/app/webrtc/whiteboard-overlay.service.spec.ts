@@ -22,7 +22,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function createService(options?: { ownRole?: string; joined?: boolean }) {
+function createService(options?: {
+  ownRole?: string;
+  ownPresenter?: boolean;
+  whiteboardPolicy?: "open" | "presenter-only";
+  presenterPeerId?: string;
+  joined?: boolean;
+}) {
   const mesh = {
     peerChoices: signal([{ id: "bbbbbbbbbbbbbbbb" }]),
     membershipEpoch: signal(2),
@@ -38,6 +44,9 @@ function createService(options?: { ownRole?: string; joined?: boolean }) {
 
   const moderation = {
     ownRole: signal(options?.ownRole ?? "owner"),
+    ownPresenter: signal(options?.ownPresenter ?? false),
+    whiteboardPolicy: signal(options?.whiteboardPolicy ?? "open"),
+    presenterPeerId: signal(options?.presenterPeerId ?? ""),
     participants: signal([
       { peerId: "aaaaaaaaaaaaaaaa", role: options?.ownRole ?? "owner" },
       { peerId: "bbbbbbbbbbbbbbbb", role: "participant" },
@@ -49,6 +58,7 @@ function createService(options?: { ownRole?: string; joined?: boolean }) {
     send: vi.fn(),
   } as unknown as SignalingService;
 
+  TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     providers: [
       provideZonelessChangeDetection(),
@@ -197,4 +207,56 @@ describe("WhiteboardOverlayService", () => {
     service.reset();
     expect(service.ops().length).toBe(0);
   });
+
+  it("enforces presenter-only access control on publish and ingest", () => {
+    // 1. Participant in presenter-only cannot publish
+    const { service: guestService } = createService({
+      ownRole: "participant",
+      whiteboardPolicy: "presenter-only",
+      presenterPeerId: "cccccccccccccccc",
+    });
+    expect(guestService.canDraw()).toBe(false);
+    expect(guestService.publish("shape", {
+      shape: "rectangle",
+      color: "ink",
+      width: 2,
+      start: { x: 0, y: 0 },
+      end: { x: 10, y: 10 },
+    })).toBe(false);
+
+    // 2. Presenter in presenter-only CAN publish
+    const { service: presenterService } = createService({
+      ownRole: "participant",
+      ownPresenter: true,
+      whiteboardPolicy: "presenter-only",
+      presenterPeerId: "aaaaaaaaaaaaaaaa",
+    });
+    expect(presenterService.canDraw()).toBe(true);
+    expect(presenterService.publish("shape", {
+      shape: "rectangle",
+      color: "ink",
+      width: 2,
+      start: { x: 0, y: 0 },
+      end: { x: 10, y: 10 },
+    })).toBe(true);
+
+    // 3. Ingesting drawing op from non-presenter/non-owner in presenter-only is rejected
+    const unauthOp = {
+      version: 1 as const,
+      type: "whiteboard-op" as const,
+      opId: "f".repeat(32),
+      membershipEpoch: 2,
+      authorPeerId: "bbbbbbbbbbbbbbbb",
+      kind: "shape" as const,
+      payload: { shape: "line" as const, color: "ink" as const, width: 2, start: { x: 0, y: 0 }, end: { x: 5, y: 5 } },
+    };
+    const delivery = {
+      id: 10,
+      originPeerId: "bbbbbbbbbbbbbbbb",
+      trafficClass: "event" as const,
+      data: encodeWhiteboardOperation(unauthOp),
+    };
+    expect(presenterService.ingest(delivery)).toBe(false);
+  });
 });
+

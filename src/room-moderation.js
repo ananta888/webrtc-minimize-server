@@ -5,9 +5,10 @@ export const HAND_RATE_WINDOW_MS = 10_000;
 export const MODERATION_AUDIT_LIMIT = 256;
 export const MODERATION_ACTIONS = Object.freeze([
   "hand-raise", "hand-lower", "hand-clear", "peer-remove", "peer-remove-cancel",
-  "publication-stop", "presenter-assign",
+  "publication-stop", "presenter-assign", "whiteboard-policy-set",
 ]);
 export const PUBLICATION_SOURCES = Object.freeze(["microphone", "camera", "screen"]);
+export const WHITEBOARD_POLICIES = Object.freeze(["open", "presenter-only"]);
 export const REMOVE_UNDO_MS = 8_000;
 
 export class RoomModerationError extends Error {
@@ -48,7 +49,11 @@ export function recordAudit(room, { actorPeerId, action, targetPeerId, source = 
   if (!room || !Number.isSafeInteger(now) || now < 0) fail("invalid_moderation_audit");
   if (!MODERATION_ACTIONS.includes(action) || !/^[a-f0-9]{16}$/.test(actorPeerId || "")
     || !/^[a-f0-9]{16}$/.test(targetPeerId || "")
-    || (action === "publication-stop" ? !PUBLICATION_SOURCES.includes(source) : source !== "")) {
+    || (action === "publication-stop"
+      ? !PUBLICATION_SOURCES.includes(source)
+      : (action === "whiteboard-policy-set"
+        ? !WHITEBOARD_POLICIES.includes(source)
+        : source !== ""))) {
     fail("invalid_moderation_audit");
   }
   room.auditSequence = (room.auditSequence || 0) + 1;
@@ -68,6 +73,7 @@ export function recordAudit(room, { actorPeerId, action, targetPeerId, source = 
 export function moderationSnapshot(room, membershipEpoch, { audit = false } = {}) {
   if (!room || !Number.isSafeInteger(membershipEpoch) || membershipEpoch < 1) return null;
   const presenterPeerId = room.presenterPeerId && room.peers.has(room.presenterPeerId) ? room.presenterPeerId : "";
+  const whiteboardPolicy = WHITEBOARD_POLICIES.includes(room.whiteboardPolicy) ? room.whiteboardPolicy : "open";
   const pending = room.pendingRemove && room.peers.has(room.pendingRemove.targetPeerId)
     ? Object.freeze({ targetPeerId: room.pendingRemove.targetPeerId, expiresAt: room.pendingRemove.expiresAt })
     : null;
@@ -79,6 +85,7 @@ export function moderationSnapshot(room, membershipEpoch, { audit = false } = {}
       .sort((left, right) => left.peerId.localeCompare(right.peerId))),
     queue: handQueue(room),
     presenterPeerId,
+    whiteboardPolicy,
     ...(pending ? { pendingRemove: pending } : {}),
     ...(audit ? { audit: Object.freeze([...(room.audit || [])]) } : {}),
   });
@@ -212,3 +219,22 @@ export function clearHand(room, actor, targetPeerId, now) {
   recordAudit(room, { actorPeerId: actor.id, action: "hand-clear", targetPeerId, now });
   return true;
 }
+
+export function setWhiteboardPolicy(room, actor, policy, now) {
+  if (!room || room.peers.get(actor.id) !== actor) fail("peer_not_joined");
+  if (room.mode === "pair" || actor.machine === true) fail("moderation_unavailable");
+  const role = peerRole(actor, room.creatorPrincipal);
+  const isPresenter = room.presenterPeerId === actor.id;
+  if (role !== "owner" && !isPresenter) fail("moderation_forbidden");
+  if (!WHITEBOARD_POLICIES.includes(policy)) fail("invalid_whiteboard_policy");
+  if (!Number.isSafeInteger(now) || now < 0) fail("invalid_hand_clock");
+  if (room.whiteboardPolicy === policy) return true;
+  actor.whiteboardActions = (actor.whiteboardActions || []).filter((stamp) => now - stamp < HAND_RATE_WINDOW_MS);
+  if (actor.whiteboardActions.length >= HAND_RATE_LIMIT) fail("moderation_rate_limited");
+  actor.whiteboardActions.push(now);
+  room.whiteboardPolicy = policy;
+  room.updatedAt = now;
+  recordAudit(room, { actorPeerId: actor.id, action: "whiteboard-policy-set", targetPeerId: actor.id, source: policy, now });
+  return true;
+}
+

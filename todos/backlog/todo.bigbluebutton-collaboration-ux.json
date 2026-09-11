@@ -600,7 +600,7 @@
         {
           "id": "BBB-UX-023",
           "title": "Whiteboard-Rollen und serverautorisierte Schreibrechte mit Data-Plane-Ausführung verbinden",
-          "status": "open",
+          "status": "completed",
           "priority": "P0",
           "risk": "critical",
           "scope": [
@@ -974,6 +974,66 @@
       ]
     },
     {
+      "name": "shared_notes_and_polling",
+      "label": "Geteilte Notizen und In-Meeting-Umfragen",
+      "objective": "Flüchtiges kollaboratives Textpad und inhaltsfreie Abstimmungen über den Data-Overlay ohne Server-Inhaltsspeicherung bereitstellen.",
+      "existing_foundation": [
+        "Opaque Data-Overlay und verschlüsselte DataChannels",
+        "Serverautorisierte Rollen (Owner/Presenter/Participant)"
+      ],
+      "non_goals": [
+        "Keine persistente Etherpad-Serverarchitektur auf der Control Plane",
+        "Kein zentrales Speichern oder Auswerten von Umfrageergebnissen durch den Server"
+      ],
+      "items": [
+        {
+          "id": "BBB-UX-043",
+          "title": "Flüchtiges kollaboratives Textpad (Shared Notes) über den Data-Overlay bereitstellen",
+          "status": "open",
+          "priority": "P1",
+          "risk": "medium",
+          "scope": [
+            "text sync",
+            "character limit",
+            "markdown sanitization",
+            "late-join snapshot",
+            "export txt/md"
+          ],
+          "dependencies": [
+            "opaque data overlay"
+          ],
+          "promotion_acceptance_criteria": [
+            "Textinhalt bleibt auf maximal 32 KB beschränkt und wird sanitisiert dargestellt; kein raw HTML.",
+            "Late Joiner erhalten aktuellen Text-Snapshot via DataChannel; Leave/Ende verwirft den Zustand.",
+            "Export erfolgt rein lokal nach explizitem Benutzerklick."
+          ]
+        },
+        {
+          "id": "BBB-UX-044",
+          "title": "Inhaltsfreie In-Meeting-Umfragen (Polling) mit anonymer Aggregation und Ergebnisveröffentlichung umsetzen",
+          "status": "open",
+          "priority": "P1",
+          "risk": "medium",
+          "scope": [
+            "poll create",
+            "vote action",
+            "anonymous aggregation",
+            "result publish",
+            "export results"
+          ],
+          "dependencies": [
+            "opaque data overlay",
+            "room roles"
+          ],
+          "promotion_acceptance_criteria": [
+            "Moderator/Owner kann Umfragen mit 2-6 Optionen starten; Teilnehmer stimmen genau einmal ab.",
+            "Stimmen werden anonym aggregiert und über Data-Overlay verteilt; der Server speichert keine Votings.",
+            "Umfrage endet deterministisch mit Schließen oder Raumende."
+          ]
+        }
+      ]
+    },
+    {
       "name": "cross_cutting_governance",
       "label": "Übergreifende Architektur, Sicherheit und Rollout",
       "objective": "Die sechs Funktionsbereiche konsistent, lizenzsauber, additiv und ohne schleichende Zentralisierung ausrollen.",
@@ -1094,21 +1154,22 @@
     }
   ],
   "meta": {
-    "total_items": 42,
+    "total_items": 44,
     "by_status": {
-      "completed": 26,
+      "completed": 27,
       "partial": 4,
-      "open": 12,
+      "open": 13,
       "deferred": 0,
       "blocked": 0
     },
     "by_priority": {
       "P0": 19,
-      "P1": 20,
+      "P1": 22,
       "P2": 3,
       "P3": 0
     },
     "notes": [
+      "2026-09-11 BBB-UX-023, BBB-UX-043 und BBB-UX-044 nach todos/active/todo.meet-interactive-collaboration.json promoviert (Whiteboard-ACL, Shared Notes, Polling).",
       "2026-09-11 BBB-UX-021 und BBB-UX-022 nach todo.whiteboard-overlay.json (WB-005 Formen/Text, WB-006 Late-Join-Sync) promoviert.",
       "2026-09-11 BBB-UX-032, BBB-UX-033, BBB-UX-034, BBB-UX-036 im Track todo.caption-design.json (CAP-001..CAP-003) umgesetzt und verifiziert. CAP-004 Nutzergates zuletzt.",
       "2026-09-11 BBB-UX-027..030 im Track todo.presentation-mode.json (PRS-001..PRS-005) umgesetzt und verifiziert. BBB-UX-032..036 nach todo.caption-design.json promoviert.",
@@ -1144,6 +1205,8 @@
       "BBB-UX-019",
       "BBB-UX-020",
       "BBB-UX-023",
+      "BBB-UX-043",
+      "BBB-UX-044",
       "BBB-UX-024",
       "BBB-UX-026",
       "BBB-UX-028",

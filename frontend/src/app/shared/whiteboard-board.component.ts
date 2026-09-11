@@ -8,6 +8,7 @@ import {
   WhiteboardShapeType,
 } from "../webrtc/whiteboard-contract";
 import { WhiteboardOverlayService } from "../webrtc/whiteboard-overlay.service";
+import { RoomModerationService } from "../webrtc/room-moderation.service";
 import { RoomSessionService } from "../webrtc/room-session.service";
 
 const WIDTH = 640;
@@ -181,9 +182,22 @@ export function paintWhiteboard(ctx: CanvasRenderingContext2D, ops: readonly Whi
         </div>
       </div>
       <p class="hint">Zeichnungen laufen verschlüsselt zwischen den Browsern. Der Server sieht den Inhalt nicht. Capture startet nicht.</p>
+      <div class="whiteboard-status-row">
+        <span class="whiteboard-policy-status">
+          Modus: {{ moderation.whiteboardPolicy() === 'open' ? 'Alle Teilnehmer' : 'Nur Presenter' }}
+        </span>
+        @if (!board.canDraw()) {
+          <span class="whiteboard-badge read-only" id="whiteboard-read-only-badge">Lese-Modus</span>
+        }
+        @if (moderation.canControlWhiteboard()) {
+          <button id="whiteboard-toggle-policy" type="button" class="button ghost compact" (click)="togglePolicy()">
+            {{ moderation.whiteboardPolicy() === 'open' ? 'Auf Presenter beschränken' : 'Für alle freigeben' }}
+          </button>
+        }
+      </div>
       <div class="whiteboard-tools">
         <label>Werkzeug
-          <select id="whiteboard-tool-select" [disabled]="!session.joined()" (change)="tool = $any($event.target).value">
+          <select id="whiteboard-tool-select" [disabled]="!session.joined() || !board.canDraw()" (change)="tool = $any($event.target).value">
             <option value="pen">Stift</option>
             <option value="mark">Marker</option>
             <option value="rectangle">Rechteck</option>
@@ -194,7 +208,7 @@ export function paintWhiteboard(ctx: CanvasRenderingContext2D, ops: readonly Whi
           </select>
         </label>
         <label>Farbe
-          <select id="whiteboard-color" [disabled]="!session.joined() || tool === 'erase' || tool === 'mark'"
+          <select id="whiteboard-color" [disabled]="!session.joined() || !board.canDraw() || tool === 'erase' || tool === 'mark'"
             (change)="selectedColor = $any($event.target).value">
             <option value="ink">Tinte</option>
             <option value="accent">Akzent</option>
@@ -203,11 +217,11 @@ export function paintWhiteboard(ctx: CanvasRenderingContext2D, ops: readonly Whi
         </label>
         @if (tool === 'text') {
           <label>Text
-            <input id="whiteboard-text-input" type="text" maxlength="100" [disabled]="!session.joined()"
+            <input id="whiteboard-text-input" type="text" maxlength="100" [disabled]="!session.joined() || !board.canDraw()"
               placeholder="Text eingeben..." [value]="textInput" (input)="textInput = $any($event.target).value" />
           </label>
         }
-        <button id="whiteboard-undo" type="button" class="button ghost compact" [disabled]="!session.joined()"
+        <button id="whiteboard-undo" type="button" class="button ghost compact" [disabled]="!session.joined() || !board.canDraw()"
           (click)="board.undoOwn()">Eigenes Undo</button>
         <button id="whiteboard-clear" type="button" class="button ghost compact" [disabled]="!board.canClear()"
           (click)="board.requestClear()">Tafel leeren</button>
@@ -220,6 +234,9 @@ export function paintWhiteboard(ctx: CanvasRenderingContext2D, ops: readonly Whi
   `,
   styles: [`
     .whiteboard-panel { display: grid; gap: .55rem; }
+    .whiteboard-status-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; font-size: .8rem; }
+    .whiteboard-policy-status { color: var(--muted); }
+    .whiteboard-badge.read-only { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); border-radius: .3rem; padding: .15rem .4rem; font-size: .75rem; font-weight: 600; }
     .whiteboard-tools { display: flex; flex-wrap: wrap; gap: .45rem; align-items: end; }
     .whiteboard-tools label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; }
     .whiteboard-tools input[type="text"] { min-width: 10rem; padding: .3rem .5rem; border-radius: .4rem; border: 1px solid var(--line); background: var(--bg-surface); color: inherit; }
@@ -237,13 +254,22 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
   private dragStart: { x: number; y: number } | null = null;
   private dragCurrent: { x: number; y: number } | null = null;
 
-  constructor(readonly session: RoomSessionService, readonly board: WhiteboardOverlayService) {
+  constructor(
+    readonly session: RoomSessionService,
+    readonly board: WhiteboardOverlayService,
+    readonly moderation: RoomModerationService,
+  ) {
     effect(() => {
       const ops = this.board.ops();
       const canvas = this.canvasRef?.nativeElement;
       const ctx = canvas?.getContext("2d");
       if (ctx) paintWhiteboard(ctx, ops);
     });
+  }
+
+  togglePolicy(): void {
+    const next = this.moderation.whiteboardPolicy() === "open" ? "presenter-only" : "open";
+    this.moderation.setWhiteboardPolicy(next);
   }
 
   ngAfterViewInit(): void {
@@ -264,6 +290,7 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
   }
 
   down(event: PointerEvent): void {
+    if (!this.board.canDraw()) return;
     const point = this.coord(event);
     if (!point) return;
     event.preventDefault();

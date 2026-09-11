@@ -9,6 +9,7 @@ import { BreakoutError } from "./breakout-set.js";
 import {
   applyHand, assignPresenter, authorizePublicationStop, authorizeRemove, cancelRemove,
   clearHand, clearPendingRemove, dueRemove, fallbackPresenter, moderationSnapshot, peerRole,
+  setWhiteboardPolicy,
 } from "./room-moderation.js";
 
 export class RoomFullError extends Error {
@@ -474,6 +475,11 @@ export class RoomRegistry {
   authorizePublicationStop(actor, targetPeerId, source, now = Date.now()) {
     const room = this.#rooms.get(actor.roomId);
     return authorizePublicationStop(room, actor, targetPeerId, source, now);
+  }
+
+  setWhiteboardPolicy(actor, policy, now = Date.now()) {
+    const room = this.#rooms.get(actor.roomId);
+    return setWhiteboardPolicy(room, actor, policy, now);
   }
 
   setRelayCapability(peer, capability, now = Date.now()) {

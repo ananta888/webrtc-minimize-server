@@ -49,6 +49,8 @@ import { MediaControlBarComponent } from "../../shared/media-control-bar.compone
 import { RoomParticipantListComponent } from "../../shared/room-participant-list.component";
 import { BreakoutControlsComponent } from "../../shared/breakout-controls.component";
 import { WhiteboardBoardComponent } from "../../shared/whiteboard-board.component";
+import { SharedNotesPanelComponent } from "../../shared/shared-notes-panel.component";
+import { PollPanelComponent } from "../../shared/poll-panel.component";
 import { MediaStreamDirective } from "../../shared/media-stream.directive";
 import { MediaMosaicComponent } from "../../shared/media-mosaic.component";
 import { BlindMediaAgentService } from "../../webrtc/blind-media-agent.service";
@@ -82,6 +84,8 @@ type AppSection = "rooms" | "live" | "broadcast" | "captions" | "analysis" | "ch
     MediaControlBarComponent,
     RoomParticipantListComponent,
     WhiteboardBoardComponent,
+    SharedNotesPanelComponent,
+    PollPanelComponent,
     BreakoutControlsComponent,
     MediaStreamDirective,
     MediaMosaicComponent,
