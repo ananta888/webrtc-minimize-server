@@ -202,30 +202,31 @@ export class NativePackagerAssignmentRegistry {
     } else if (controllerPeerId !== previous.publisherPeerId) fail("stale_native_packager_replacement", 409);
     this.#assertResources(admission, tenantId, ownerPrincipal, now, previous);
     this.#assertEncoderTime(admission, tenantId, ownerPrincipal, now, now + ASSIGNMENT_LEASE_MS);
-    this.#assertBudget(admission, tenantId, ownerSubjectRef, now, now + ASSIGNMENT_LEASE_MS);
+    this.#assertBudget(admission, tenantId, ownerSubjectRef, now, now + ASSIGNMENT_LEASE_MS, previous);
     return admission;
   }
 
-  #requestedBudget(admission, from, until) {
+  #requestedBudget(admission, from, until, replacement = null) {
     const demand = nativePackagerResourceDemand(admission);
+    const replacementDemand = replacement?.admission ? nativePackagerResourceDemand(replacement.admission) : null;
     const encoderMinutes = Math.max(1, Math.ceil(((until - from) * admission.renditions.length) / 60_000));
     return requestedBroadcastUsage({
       viewerSessions: 20,
-      egressBitsPerSecond: demand.egressBitsPerSecond,
-      encoderSlots: demand.encoderSlots,
+      egressBitsPerSecond: Math.max(0, demand.egressBitsPerSecond - (replacementDemand?.egressBitsPerSecond ?? 0)),
+      encoderSlots: Math.max(0, demand.encoderSlots - (replacementDemand?.encoderSlots ?? 0)),
       encoderMinutes,
-      programMinutes: 1,
+      programMinutes: replacement ? 0 : 1,
     });
   }
 
-  #assertBudget(admission, tenantId, ownerSubjectRef, now, until) {
+  #assertBudget(admission, tenantId, ownerSubjectRef, now, until, replacement = null) {
     if (!this.#budgetLedger) return;
     try {
       evaluateLedgerBudget(this.#budgetLedger, {
         tenantId,
         principalRef: ownerSubjectRef,
         programId: admission.programId,
-        requested: this.#requestedBudget(admission, now, until),
+        requested: this.#requestedBudget(admission, now, until, replacement),
         limits: this.#budgetLimits,
       }, now);
     } catch (error) {
@@ -331,9 +332,12 @@ export class NativePackagerAssignmentRegistry {
       || (currentForProgram && ACTIVE_STATES.has(currentForProgram.state))) {
       fail("native_packager_assignment_conflict", 409);
     }
+    const replacement = (currentForProgram && currentForProgram.programId === admission.programId)
+      ? currentForProgram
+      : ([...this.#assignments.values()].findLast(r => r.programId === admission.programId && r.ownerPrincipal === ownerPrincipal) || null);
     this.#assertResources(verifiedAdmission, packager.capability.tenantId, ownerPrincipal, now);
     this.#assertEncoderTime(verifiedAdmission, packager.capability.tenantId, ownerPrincipal, now, lease.expiresAt);
-    this.#assertBudget(verifiedAdmission, packager.capability.tenantId, packager.capability.ownerSubjectRef, now, lease.expiresAt);
+    this.#assertBudget(verifiedAdmission, packager.capability.tenantId, packager.capability.ownerSubjectRef, now, lease.expiresAt, replacement);
     const assignmentId = this.#idFactory();
     if (!ASSIGNMENT.test(assignmentId || "") || this.#assignments.has(assignmentId)) {
       fail("invalid_native_packager_assignment_identifier", 500);
@@ -365,14 +369,14 @@ export class NativePackagerAssignmentRegistry {
       encoderBudgetUntil: lease.expiresAt,
     };
     this.#assertResources(verifiedAdmission, packager.capability.tenantId, ownerPrincipal, now);
-    this.#assertBudget(verifiedAdmission, packager.capability.tenantId, packager.capability.ownerSubjectRef, now, record.expiresAt);
+    this.#assertBudget(verifiedAdmission, packager.capability.tenantId, packager.capability.ownerSubjectRef, now, record.expiresAt, replacement);
     // Reentrant ICE/ID ports may have admitted another writer since the first checks.
     if (this.activeForPackager(packagerId) || this.activeForProgram(admission.programId) || this.#assignments.has(assignmentId)) {
       fail("native_packager_assignment_conflict", 409);
     }
     if (!this.#encoderTimeBudget.reserve({ tenantId: record.tenantId, ownerPrincipal }, verifiedAdmission.renditions.length,
       now, record.expiresAt, now)) fail("broadcast_temporarily_unavailable", 429);
-    this.#recordBudget(verifiedAdmission, record.tenantId, packager.capability.ownerSubjectRef, now, record.expiresAt);
+    this.#recordBudget(verifiedAdmission, record.tenantId, packager.capability.ownerSubjectRef, now, record.expiresAt, replacement);
     this.#assignments.set(assignmentId, record);
     this.#byPackager.set(packagerId, record);
     this.#byProgram.set(admission.programId, record);
