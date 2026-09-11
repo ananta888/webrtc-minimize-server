@@ -76,6 +76,7 @@ const DEFAULTS = Object.freeze({
   nativePackagerMaxPerPrincipal: 3,
   broadcastNativeOutputEnabled: false,
   broadcastMetricsEnabled: false,
+  meetMetricsEnabled: false,
   broadcastWhipEndpoint: "",
   broadcastWhipResourceBase: "",
   broadcastWhipProfile: "rfc9725",
@@ -471,6 +472,12 @@ export function loadConfig(env = process.env) {
     || !publicOrigin || new URL(publicOrigin).protocol !== "https:")) {
     throw new Error("BROADCAST_METRICS_ENABLED requires required OIDC and an HTTPS PUBLIC_ORIGIN");
   }
+  const meetMetricsEnabled = booleanValue(env.MEET_METRICS_ENABLED,
+    DEFAULTS.meetMetricsEnabled, "MEET_METRICS_ENABLED");
+  if (meetMetricsEnabled && (authMode !== "required"
+    || !publicOrigin || new URL(publicOrigin).protocol !== "https:")) {
+    throw new Error("MEET_METRICS_ENABLED requires required OIDC and an HTTPS PUBLIC_ORIGIN");
+  }
   const broadcastNativeOutputEnabled = booleanValue(
     env.BROADCAST_NATIVE_OUTPUT_ENABLED,
     DEFAULTS.broadcastNativeOutputEnabled,
@@ -682,6 +689,7 @@ export function loadConfig(env = process.env) {
     ),
     broadcastNativeOutputEnabled,
     broadcastMetricsEnabled,
+    meetMetricsEnabled,
     broadcastWhipEndpoint,
     broadcastWhipResourceBase,
     broadcastWhipProfile,

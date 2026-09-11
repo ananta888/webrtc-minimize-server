@@ -67,6 +67,16 @@ export class MeetObservability {
     });
   }
 
+  prometheus() {
+    const snapshot = this.snapshot();
+    return [
+      `meet_signaling_sessions ${snapshot.sessions}`,
+      ...JOIN.map((result) => `meet_joins_total{result="${result}"} ${snapshot.joins[result]}`),
+      ...MESSAGE.map((result) => `meet_signaling_messages_total{result="${result}"} ${snapshot.messages[result]}`),
+      ...TURN.map((kind) => `meet_turn_credentials_issued_total{class="${kind}"} ${snapshot.turnCredentials[kind]}`),
+    ].join("\n") + "\n";
+  }
+
   destroy() {
     this.#sessions = 0;
     this.#joins = { admitted: 0, denied: 0 };

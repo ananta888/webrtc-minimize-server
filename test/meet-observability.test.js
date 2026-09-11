@@ -22,6 +22,11 @@ test("meet counters stay content-free and closed", () => {
     turnCredentials: { infrastructure: 1, "peer-edge": 2 },
   });
   assert.doesNotMatch(JSON.stringify(snapshot), /room|sdp|ice|ticket|token|name|https:\/\//i);
+  const text = metrics.prometheus();
+  assert.match(text, /meet_signaling_sessions 1\n/);
+  assert.match(text, /meet_joins_total\{result="admitted"\} 1\n/);
+  assert.match(text, /meet_turn_credentials_issued_total\{class="peer-edge"\} 2\n/);
+  assert.doesNotMatch(text, /room|sdp|ticket|https:\/\//i);
   assert.throws(() => metrics.join("owner"), (error) => error instanceof MeetObservabilityError);
   metrics.destroy();
   assert.throws(() => metrics.snapshot(), (error) => error instanceof MeetObservabilityError);

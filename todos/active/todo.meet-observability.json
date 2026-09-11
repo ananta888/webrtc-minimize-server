@@ -23,7 +23,7 @@
     {
       "id": "MEET-OPS-M1",
       "title": "Inhaltsfreie Control-Plane-Zähler",
-      "task_ids": ["MEET-OPS-001"],
+      "task_ids": ["MEET-OPS-001", "MEET-OPS-003"],
       "status": "done"
     },
     {
@@ -55,21 +55,35 @@
       "priority": "P1",
       "risk": "medium",
       "progress_percent": 0,
-      "depends_on": ["MEET-OPS-001"],
+      "depends_on": ["MEET-OPS-001", "MEET-OPS-003"],
       "acceptance_criteria": [
         "Ein Operator-Export und Error-Budgets entstehen erst nach gemessenen Join-/TURN-Fenstern.",
         "Safari/iOS, NAT/TURN-Live und Lastfenster bleiben Nutzergates und schließen den Track nicht vorab."
       ]
+    },
+    {
+      "id": "MEET-OPS-003",
+      "title": "Default-aus Operator-Export für Meet-Zähler bereitstellen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["MEET-OPS-001"],
+      "acceptance_criteria": [
+        "GET /api/meet/metrics ist default-aus und braucht required OIDC, HTTPS-Origin und die Operatorrolle.",
+        "Der Text enthält nur geschlossene Zähler ohne Room-IDs, Namen, SDP oder Tokens.",
+        "Fremder Origin, URL-Tokens und fehlender Schalter liefern 404 und keine Samples."
+      ]
     }
   ],
-  "critical_path_tasks": ["MEET-OPS-001", "MEET-OPS-002"],
+  "critical_path_tasks": ["MEET-OPS-001", "MEET-OPS-003", "MEET-OPS-002"],
   "tasks_status_summary": {
-    "total": 2,
-    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 1 },
-    "progress_percent_done": 50,
-    "by_priority": { "P0": 1, "P1": 1, "P2": 0, "P3": 0 },
-    "by_risk": { "low": 0, "medium": 1, "high": 1, "critical": 0 },
-    "critical_path": { "total": 2, "done": 1, "remaining": 1 },
+    "total": 3,
+    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 2 },
+    "progress_percent_done": 66.67,
+    "by_priority": { "P0": 1, "P1": 2, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 2, "critical": 0 },
+    "critical_path": { "total": 3, "done": 2, "remaining": 1 },
     "milestones": { "total": 2, "todo": 1, "in_progress": 0, "blocked": 0, "done": 1 }
   },
   "progress_summary": {
@@ -78,9 +92,10 @@
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 1
+    "done": 2
   },
   "summary_notes": [
-    "2026-09-11 PROD-OPS-001 promoviert. Softwarezähler zuerst, Collector/SLO/Safari zuletzt als MEET-OPS-002."
+    "2026-09-11 PROD-OPS-001 promoviert. Softwarezähler zuerst, Collector/SLO/Safari zuletzt als MEET-OPS-002.",
+    "2026-09-11 MEET-OPS-003: default-aus GET /api/meet/metrics mit derselben Operator-OIDC-Grenze. Collector bleibt MEET-OPS-002."
   ]
 }

@@ -57,6 +57,7 @@ import { BroadcastHealthRegistry } from "./broadcast-observability.js";
 import { BroadcastRuntimeMetrics } from "./broadcast-runtime-metrics.js";
 import { hostResourceCounts } from "./broadcast-metric-samples.js";
 import { BroadcastMetricsHttp } from "./broadcast-metrics-http.js";
+import { MeetMetricsHttp } from "./meet-metrics-http.js";
 import { BroadcastRuntimeError, BroadcastRuntimeRegistry } from "./broadcast-runtime-registry.js";
 import { BroadcastProgramError } from "./broadcast-program-machine.js";
 import { broadcastSubjectRef, broadcastTenantRef } from "./broadcast-identifiers.js";
@@ -433,12 +434,19 @@ function createHttpHandler(config, registry, services) {
     broadcastRuntime,
     broadcastSourceRequests,
     meetObservability,
+    meetMetricsHttp,
   } = services;
   return async (request, response) => {
     try {
       const url = new URL(request.url, "http://localhost");
       if (url.pathname === "/api/broadcasts/metrics") {
         const result = await services.broadcastMetricsHttp.read(request, url);
+        response.writeHead(result.status, { ...securityHeaders(config), ...result.headers });
+        response.end(result.body);
+        return;
+      }
+      if (url.pathname === "/api/meet/metrics") {
+        const result = await meetMetricsHttp.read(request, url);
         response.writeHead(result.status, { ...securityHeaders(config), ...result.headers });
         response.end(result.body);
         return;
@@ -2986,12 +2994,14 @@ export function createAppServer(options = {}) {
     assignments: nativePackagerAssignments, sessions: broadcastPlaybackSessions, failover: broadcastFailover,
     host: { resourceCounts: () => hostResourceCounts() } });
   const broadcastMetricsHttp = new BroadcastMetricsHttp({ config, metrics: broadcastMetrics, verifier: oidcVerifier });
+  const meetMetricsHttp = new MeetMetricsHttp({ config, metrics: meetObservability, verifier: oidcVerifier });
   const services = {
     nativeCapacityPreviewGuard,
     nativeSourceLabels: new NativeSourceLabels(),
     broadcastPlaybackObservation: new BroadcastPlaybackObservation(),
     broadcastProgramHistory: new BroadcastProgramHistoryQuery(),
     broadcastMetricsHttp,
+    meetMetricsHttp,
     nativeSourceAudios: new NativeSourceAudioBroker({ send: (socket, command) =>
       Number.isSafeInteger(socket?.bufferedAmount) && socket.bufferedAmount >= 0 && socket.bufferedAmount <= 65536
       && safeSend(socket, command, 16384) }),
@@ -3036,6 +3046,7 @@ export function createAppServer(options = {}) {
     services.broadcastProgramHistory.destroy();
     broadcastRuntime?.closeProgramHistory?.();
     broadcastMetricsHttp.destroy();
+    meetMetricsHttp.destroy();
     services.nativeSourceScenes.destroy();
     services.nativeSourceAudios.destroy();
   });
