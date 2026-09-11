@@ -27,6 +27,42 @@ function fixture(capacityLimits = {}, entries = [grant({})]) {
       resourceRef: entries[index]?.resourceRef || resourceRef, origin, now }) };
 }
 
+test("program observation uses actual create/close/expire occupancy without allocating or exposing foreign scopes", async () => {
+  const entries = [grant({}), grant({ programId: "prg_bbbbbbbbbbbbbbbb" }), grant({ tenantId: "tn_bbbbbbbbbbbbbbbb" })];
+  const f = fixture({ deployment: 4, tenant: 3, program: 2 }, entries);
+  const inspect = (n = 1, now = NOW) => f.store.inspectProgramCapacity({ tenantId: scope.tenantId, programId: scope.programId,
+    additionalSessions: n, now });
+  assert.deepEqual(inspect(), { programSessions: 0, programLimit: 2, perAudienceLimit: 4, additionalSessions: 1, sharedBudgetsFit: true });
+  const first = await f.create(); await f.create(1); await f.create(2);
+  assert.equal(inspect().programSessions, 1); assert.equal(inspect().sharedBudgetsFit, true);
+  assert.equal(inspect(2).sharedBudgetsFit, false);
+  assert.equal(f.allocations(), 3); assert.equal(f.store.size, 3);
+  f.store.close({ sessionId: first.playbackSessionId, cookieHeader: first.setCookie[0].split(";", 1)[0], origin, now: NOW });
+  assert.equal(inspect(2).sharedBudgetsFit, true); assert.equal(inspect().programSessions, 0);
+  // Invalid inspection cannot expire real records as a side effect.
+  assert.throws(() => inspect(0, NOW + 60000)); assert.equal(f.store.size, 2);
+  assert.equal(inspect(2, NOW + 60000).sharedBudgetsFit, true); assert.equal(f.store.size, 0);
+});
+
+test("shared observation enforces all three shared boundaries without promising per-identity admission", () => {
+  const candidate = { tenantId: scope.tenantId, programId: scope.programId };
+  const occupied = [scope, { ...scope, programId: "prg_bbbbbbbbbbbbbbbb" }, { ...scope, tenantId: "tn_bbbbbbbbbbbbbbbb" }];
+  for (const [field, boundary] of [["deployment", 4], ["tenant", 3], ["program", 2]]) {
+    const policy = new BroadcastPlaybackCapacity({ [field]: boundary });
+    assert.equal(policy.inspectProgram(candidate, occupied, 1).sharedBudgetsFit, true);
+    assert.equal(policy.inspectProgram(candidate, occupied, 2).sharedBudgetsFit, false);
+  }
+  const noAudience = new BroadcastPlaybackCapacity({ audience: 0 });
+  assert.equal(noAudience.inspectProgram(candidate, [], 1).sharedBudgetsFit, true);
+  assert.equal(noAudience.inspectProgram(candidate, [], 1).perAudienceLimit, 0);
+  assert.equal(noAudience.allows(scope, []), false);
+  for (const n of [0, -1, 1.5, NaN, Infinity, 10001]) assert.throws(() => noAudience.inspectProgram(candidate, [], n));
+  for (const c of [null, [], { ...candidate, audienceRef: scope.audienceRef }, { ...candidate, tenantId: "invalid" }]) {
+    assert.throws(() => noAudience.inspectProgram(c, [], 1));
+  }
+  for (const records of [null, [null], Array(10001).fill(scope)]) assert.throws(() => noAudience.inspectProgram(candidate, records, 1));
+});
+
 test("playback capacity config is closed, bounded, immutable and carries ENV through Compose", () => {
   assert.deepEqual(loadConfig({}).broadcastPlaybackCapacity, BROADCAST_PLAYBACK_CAPACITY_DEFAULTS);
   const compose = parse(fs.readFileSync(new URL("../compose.yaml", import.meta.url), "utf8"));

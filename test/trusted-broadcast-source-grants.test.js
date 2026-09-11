@@ -22,6 +22,7 @@ import { parseClientMessage } from "../src/protocol.js";
 import { executeSourceModeration, parseSourceModeration } from "../src/broadcast-source-moderation.js";
 import { steadyFixtureClock } from "./helpers/steady-fixture-clock.mjs";
 import { exerciseNativeSourceLabelsHttp } from "./helpers/native-source-labels-http.mjs";
+import { BroadcastPlaybackSessionStore } from "../src/broadcast-playback-session-store.js";
 
 const validate = new Ajv({ strict: true }).compile(JSON.parse(await fs.readFile(
   new URL("../contracts/trusted-decrypt/wire.v1.schema.json", import.meta.url), "utf8")));
@@ -750,6 +751,72 @@ test("approve budget rejects excess replays before expensive full authority prun
   const previous = checks;
   assert.throws(() => grants.approve(f.identity, f.input, f.publisher), /rate/);
   assert.equal(checks, previous);
+});
+
+test("owner playback observation over HTTP verifies real JWT, runtime ownership and current cookie-store occupancy", { timeout: 8000 }, async t => {
+  const f = fixture(Date.now(), true, Date.now), keys = crypto.generateKeyPairSync("ed25519");
+  const config = { authMode: "required", oidcIssuer: f.identity.issuer, oidcAudience: "human", oidcAlgorithms: ["EdDSA"],
+    publicOrigin: "https://synthetic-fixture.example", nativePackagerSelfServiceEnabled: true, stunUrls: [], turnServers: [] };
+  const oidcVerifier = createOidcVerifier(config, { jwks: createLocalJWKSet({ keys: [await exportJWK(keys.publicKey)] }) });
+  let allocated = 0;
+  // Synthetic playback authority only; real JWT verification on the observation route.
+  const sessions = new BroadcastPlaybackSessionStore({ publicOrigin: config.publicOrigin,
+    capacityLimits: { program: 2, deployment: 3 }, idFactory: () => `pbs_${String(++allocated).padStart(24, "a")}`,
+    authority: { authorizeGatewayBearer: async header => {
+      assert.ok(["Bearer own-fixture", "Bearer foreign-fixture"].includes(header));
+      return { grantKind: "playback", resourceRef: f.resourceRef, audienceRef: "sub_aaaaaaaaaaaaaaaa",
+        tenantId: header === "Bearer own-fixture" ? broadcastTenantRef(f.identity.issuer) : "tn_bbbbbbbbbbbbbbbb",
+        programId: f.programId, programEpoch: 1, expiresAt: Date.now() + 60000 };
+    } } });
+  const app = createAppServer({ config, oidcVerifier, registry: f.rooms, broadcastRuntime: f.runtime, nativePackagers: f.packagers,
+    nativePackagerAssignments: f.assignments, broadcastPlaybackSessions: sessions,
+    nativePackagerEnrollmentStore: { definitions: () => [] }, nativePackagerInstallerService: {} });
+  await new Promise(resolve => app.server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => { app.server.closeAllConnections(); await new Promise(resolve => app.server.close(resolve)); });
+  const sign = subject => new SignJWT({}).setIssuer(f.identity.issuer).setAudience("human").setSubject(subject)
+    .setIssuedAt().setExpirationTime("2m").setProtectedHeader({ alg: "EdDSA" }).sign(keys.privateKey);
+  const token = await sign(f.ownerIdentity.subject), publisherToken = await sign(f.identity.subject);
+  const control = f.runtime.nativeControl(f.ownerIdentity, f.owner, f.programId);
+  const input = { requestVersion: 1, deviceFingerprint: f.owner.deviceFingerprint,
+    expectedProgramRevision: control.programRevision, expectedProgramEpoch: control.programEpoch, additionalSessions: 1 };
+  const url = `http://127.0.0.1:${app.server.address().port}/api/broadcasts/${f.programId}/playback-capacity`;
+  const headers = { origin: config.publicOrigin, "content-type": "application/json", authorization: `Bearer ${token}` };
+  const post = (body = input, options = {}) => fetch(url, { method: "POST", headers, body: JSON.stringify(body),
+    signal: AbortSignal.timeout(3000), ...options });
+  let response = await post(); assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal((await response.json()).programSessions, 0);
+  const first = await sessions.create({ origin: config.publicOrigin, authorizationHeader: "Bearer own-fixture", resourceRef: f.resourceRef });
+  await sessions.create({ origin: config.publicOrigin, authorizationHeader: "Bearer foreign-fixture", resourceRef: f.resourceRef });
+  const occupied = await (await post()).json(); assert.equal(occupied.programSessions, 1); assert.equal(occupied.sharedBudgetsFit, true);
+  assert.equal(occupied.programLimit, 2); assert.equal(occupied.reserved, false);
+  assert.equal((await (await post({ ...input, additionalSessions: 2 })).json()).sharedBudgetsFit, false);
+  for (const patch of [{ extra: true }, { requestVersion: 2 }, { deviceFingerprint: "wrong" }, { additionalSessions: 10001 }]) {
+    assert.equal((await post({ ...input, ...patch })).status, 400);
+  }
+  for (const patch of [{ expectedProgramRevision: control.programRevision + 1 }, { expectedProgramEpoch: control.programEpoch + 1 }]) {
+    assert.equal((await post({ ...input, ...patch })).status, 409);
+  }
+  assert.equal((await post({ ...input, deviceFingerprint: "z".repeat(43) })).status, 403);
+  assert.equal((await post({ ...input, deviceFingerprint: f.publisher.deviceFingerprint }, {
+    headers: { ...headers, authorization: `Bearer ${publisherToken}` } })).status, 403);
+  assert.equal((await post(input, { headers: { ...headers, authorization: "Bearer invalid" } })).status, 401);
+  assert.equal((await post(input, { headers: { ...headers, origin: "https://foreign.example" } })).status, 404);
+  assert.equal((await post(input, { headers: { ...headers, "content-type": "text/plain" } })).status, 404);
+  assert.equal((await post(input, { method: "GET", body: undefined })).status, 404);
+  for (const target of [url + "?token=forbidden", url.replace(f.programId, "prg_bbbbbbbbbbbbbbbb")]) {
+    assert.equal((await fetch(target, { method: "POST", headers, body: JSON.stringify(input) })).status, 404);
+  }
+  assert.equal((await post(input, { body: "{" })).status, 400);
+  assert.equal((await post({ ...input, extra: "a".repeat(1024) })).status, 400);
+  assert.equal(allocated, 2, "observation never allocates sessions or credentials");
+  sessions.close({ sessionId: first.playbackSessionId, cookieHeader: first.setCookie[0].split(";", 1)[0], origin: config.publicOrigin });
+  response = await post({ ...input, additionalSessions: 2 }); assert.equal(response.status, 200);
+  assert.equal((await response.json()).sharedBudgetsFit, true);
+  const oldId = f.owner.id; f.owner.id = "f".repeat(16);
+  assert.equal((await post()).status, 403, "current publisher peer binding is required"); f.owner.id = oldId;
+  let limited = false;
+  for (let i = 0; i < 12; i++) { response = await post(); if (response.status === 429) { limited = true; break; } assert.equal(response.status, 200); }
+  assert.equal(limited, true); assert.equal(sessions.size, 1);
 });
 
 for (const publicActions of [false, true, "receipt-failure", "backpressure"]) test(`live ${publicActions ? `public v4 ${publicActions}` : "internal source"} signaling renews only after ACK and stops on publisher revoke`, { timeout: 10000 }, async t => {

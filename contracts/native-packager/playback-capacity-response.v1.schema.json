@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/playback-capacity-response.v1.schema.json",
+  "title": "Advisory cookie-session capacity, not admission or network load",
+  "type": "object", "additionalProperties": false,
+  "required": ["version", "programId", "programRevision", "programEpoch", "observedAt", "expiresAt", "reserved", "programSessions", "programLimit", "perAudienceLimit", "additionalSessions", "sharedBudgetsFit"],
+  "properties": {
+    "version": { "const": 1 }, "reserved": { "const": false },
+    "programId": { "type": "string", "pattern": "^prg_[A-Za-z0-9_-]{16,64}$" },
+    "programRevision": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "programEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "observedAt": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "expiresAt": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "programSessions": { "type": "integer", "minimum": 0, "maximum": 10000 },
+    "programLimit": { "type": "integer", "minimum": 0, "maximum": 10000 },
+    "perAudienceLimit": { "type": "integer", "minimum": 0, "maximum": 10000 },
+    "additionalSessions": { "type": "integer", "minimum": 1, "maximum": 10000 },
+    "sharedBudgetsFit": { "type": "boolean" }
+  }
+}

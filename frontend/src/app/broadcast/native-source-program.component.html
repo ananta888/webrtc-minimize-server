@@ -73,6 +73,13 @@
   @if (programs.requestProgram()) { <p>Jetzt Quellenanfragen öffnen. Die Statusbestätigung ist noch kein Nachweis, dass ein Zuschauer Bild oder Ton empfängt.</p> }
   @if (programs.requestProgram()) {
     @defer (on interaction) {
+      <app-playback-capacity />
+    } @placeholder {
+      <button type="button" class="button secondary">Wiedergabesitzungen und Kapazität anzeigen</button>
+    } @error {
+      <p role="alert">Kapazitätsanzeige konnte nicht geladen werden. Die Sendung läuft unverändert weiter.</p>
+    }
+    @defer (on interaction) {
       <app-source-moderation />
     } @placeholder {
       <button type="button" class="button secondary">Aktive Quellenfreigaben verwalten</button>

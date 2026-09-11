@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { BroadcastPlaybackCapacity, normalizeBroadcastPlaybackCapacity, playbackCapacityScope } from "./broadcast-playback-capacity.js";
+import { BroadcastPlaybackCapacity, normalizeBroadcastPlaybackCapacity, playbackCapacityScope, playbackProgramScope } from "./broadcast-playback-capacity.js";
 
 const RESOURCE = /^res_[A-Za-z0-9_-]{16,64}$/;
 const SESSION = /^pbs_[A-Za-z0-9_-]{24,64}$/;
@@ -263,6 +263,15 @@ export class BroadcastPlaybackSessionStore {
     if (!session || origin !== this.#origin || !ownsCookie) notFound();
     this.#sessions.delete(sessionId);
     return sessionCookies(session, 0);
+  }
+
+  // Internal port: caller must authorize current program ownership first.
+  inspectProgramCapacity({ tenantId, programId, additionalSessions, now = Date.now() }) {
+    const scope = playbackProgramScope({ tenantId, programId });
+    if (!Number.isSafeInteger(now) || now < 0 || !Number.isSafeInteger(additionalSessions)
+      || additionalSessions < 1 || additionalSessions > 10000) fail("invalid_broadcast_playback_inspection");
+    this.#prune(now);
+    return this.#capacity.inspectProgram(scope, [...this.#sessions.values()].map(s => s.grantScope), additionalSessions);
   }
 
   get size() { return this.#sessions.size; }

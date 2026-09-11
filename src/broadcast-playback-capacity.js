@@ -11,6 +11,16 @@ export const BROADCAST_PLAYBACK_CAPACITY_ENV = Object.freeze({
 });
 const FIELDS = Object.keys(BROADCAST_PLAYBACK_CAPACITY_DEFAULTS);
 
+export function playbackProgramScope(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || Object.keys(value).length !== 2 || Object.keys(value).some(k => !["tenantId", "programId"].includes(k))
+    || typeof value.tenantId !== "string" || !/^tn_[A-Za-z0-9_-]{16,64}$/.test(value.tenantId)
+    || typeof value.programId !== "string" || !/^prg_[A-Za-z0-9_-]{16,64}$/.test(value.programId)) {
+    throw new TypeError("invalid_broadcast_playback_scope");
+  }
+  return Object.freeze({ tenantId: value.tenantId, programId: value.programId });
+}
+
 export function normalizeBroadcastPlaybackCapacity(value = {}) {
   if (!value || typeof value !== "object" || Array.isArray(value)
     || Object.keys(value).some(key => !FIELDS.includes(key))) throw new TypeError("invalid_broadcast_playback_capacity");
@@ -33,6 +43,25 @@ export function playbackCapacityScope(grant) {
 export class BroadcastPlaybackCapacity {
   #limits;
   constructor(limits) { this.#limits = normalizeBroadcastPlaybackCapacity(limits); }
+
+  // Advisory shared-budget check, not admission for an unspecified audience.
+  inspectProgram(candidate, occupied, additionalSessions) {
+    const scope = playbackProgramScope(candidate);
+    if (!Number.isSafeInteger(additionalSessions) || additionalSessions < 1 || additionalSessions > 10000
+      || !Array.isArray(occupied) || occupied.length > 10000) throw new TypeError("invalid_broadcast_playback_inspection");
+    let tenant = 0, program = 0;
+    for (const record of occupied) {
+      const other = playbackCapacityScope(record);
+      if (other.tenantId === scope.tenantId) {
+        tenant++;
+        if (other.programId === scope.programId) program++;
+      }
+    }
+    return Object.freeze({ programSessions: program, programLimit: this.#limits.program,
+      perAudienceLimit: this.#limits.audience, additionalSessions,
+      sharedBudgetsFit: occupied.length + additionalSessions <= this.#limits.deployment
+        && tenant + additionalSessions <= this.#limits.tenant && program + additionalSessions <= this.#limits.program });
+  }
 
   allows(candidate, occupied) {
     try {

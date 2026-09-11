@@ -9,10 +9,11 @@ import { NativePackagerStandbyComponent } from "./native-packager-standby.compon
 import { NativeSourceVideoOutput, normalizeSourceVideoOutput } from "./native-source-video-output";
 import { NativeCapacityPreviewComponent } from "./native-capacity-preview.component";
 import { SourceModerationComponent } from "./source-moderation.component";
+import { PlaybackCapacityComponent } from "./playback-capacity.component";
 
 @Component({
   selector: "app-native-source-program", standalone: true,
-  imports: [NativeSourceSceneComponent, NativeSourceAudioComponent, NativePackagerStandbyComponent, NativeCapacityPreviewComponent, SourceModerationComponent],
+  imports: [NativeSourceSceneComponent, NativeSourceAudioComponent, NativePackagerStandbyComponent, NativeCapacityPreviewComponent, SourceModerationComponent, PlaybackCapacityComponent],
   templateUrl: "./native-source-program.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

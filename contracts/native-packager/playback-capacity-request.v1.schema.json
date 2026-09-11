@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/playback-capacity-request.v1.schema.json",
+  "title": "Current-owner playback session capacity observation request",
+  "type": "object", "additionalProperties": false,
+  "required": ["requestVersion", "deviceFingerprint", "expectedProgramRevision", "expectedProgramEpoch", "additionalSessions"],
+  "properties": {
+    "requestVersion": { "const": 1 },
+    "deviceFingerprint": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+    "expectedProgramRevision": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "expectedProgramEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "additionalSessions": { "type": "integer", "minimum": 1, "maximum": 10000 }
+  }
+}
