@@ -1,5 +1,5 @@
 import { BroadcastMetricRegistry } from "./broadcast-observability.js";
-import { programMetricSamples, hlsMetricSamples, nativeResourceMetricSamples, transitionMetricSamples, hostResourceMetricSamples } from "./broadcast-metric-samples.js";
+import { programMetricSamples, hlsMetricSamples, nativeResourceMetricSamples, transitionMetricSamples, quotaMetricSamples, hostResourceMetricSamples } from "./broadcast-metric-samples.js";
 
 const SAMPLE_INTERVAL_MS = 15_000;
 
@@ -42,7 +42,8 @@ export class BroadcastRuntimeMetrics {
       // Independent sources: absent/bad traffic must not invent zeros or hide
       // a valid program sample. Each group is fully validated before insertion.
       for (const [read, source] of [[programMetricSamples, this.#runtime], [hlsMetricSamples, this.#hlsProxy],
-        [nativeResourceMetricSamples, this.#assignments], [transitionMetricSamples, this.#runtime], [hostResourceMetricSamples, this.#host]]) {
+        [nativeResourceMetricSamples, this.#assignments], [transitionMetricSamples, this.#runtime],
+        [quotaMetricSamples, this.#runtime], [hostResourceMetricSamples, this.#host]]) {
         let samples;
         try { samples = read(source, now); } catch { continue; }
         for (const event of samples) this.#metrics.observe({ ...event, observedAt: now });

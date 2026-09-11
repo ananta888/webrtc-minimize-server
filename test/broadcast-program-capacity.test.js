@@ -24,6 +24,13 @@ test("new-program preview never deduplicates the proposed start and never mutate
   }
 });
 
+test("limits are the frozen configured integers and reject unknown fields", () => {
+  const policy = new BroadcastProgramCapacity({ deployment: 4, gateway: 3, tenant: 2, principal: 1 });
+  assert.deepEqual(policy.limits, { deployment: 4, gateway: 3, tenant: 2, principal: 1 });
+  assert.ok(Object.isFrozen(policy.limits));
+  assert.throws(() => normalizeBroadcastProgramCapacity({ deployment: 4, extra: 1 }), /invalid_broadcast_program_capacity/);
+});
+
 test("same-program pending, active, update and handoff scopes count exactly once", () => {
   const policy = new BroadcastProgramCapacity({ deployment: 1, gateway: 1, tenant: 1, principal: 1 });
   assert.equal(policy.allows(a, []), true);

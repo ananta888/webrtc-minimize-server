@@ -1,7 +1,8 @@
 # Inhaltsfreie Broadcast-Observability
 
 Stand: 2026-09-11. TBP-034 definiert und testet eine kleine Metrik- und
-Readiness-Grenze sowie angeschlossene Control-Plane-, Native-Budget- und HLS-Proxy-Messports.
+Readiness-Grenze sowie angeschlossene Control-Plane-, Native-Budget-, HLS-Proxy-,
+Übergangs- und Programquoten-Messports.
 Es ist noch kein externer Collector im öffentlichen
 Deployment aktiviert; die SLOs bleiben deshalb `runtimeVerified: false`.
 
@@ -123,18 +124,30 @@ entfernen nur diese Messgruppe; sie erzeugen keine vermeintlich freien Slots.
 
 ### Angeschlossene Übergangslatenzen und Control-Plane-Host
 
-`broadcast_program_transition_seconds{transition="start"|"stop"|"handoff"}`
+`broadcast_program_transition_seconds{transition="start"|"stop"|"handoff"|"source-change"}`
 wird aus denselben committeten Runtime-Übergängen abgeleitet, die auch das
 Programmjournal beobachten. `start` misst Registrierung bis zum ersten
 bestätigten `live`, einmal je Programm; `stop` misst `stopping` bis `stopped`
 (ein direkter Stop ohne `stopping`-Phase erzeugt keinen Wert); `handoff` misst
 vom Beginn der Übergabe (Ausgabe-Neustart unter der nächsten Epoche) bis zur
 bestätigten Ausgabe des Nachfolgers unter dieser Epoche – eine bloße
-Writer-Zuordnung ist noch kein abgeschlossener Handoff. Werte werden nur in
-einem 15-Minuten-Fenster mit höchstens 256 Beobachtungen gehalten, ohne
-Programm-, Tenant- oder Gerätebezug; der Sampler übernimmt sie in dasselbe
-Histogramm bei jeder 15-s-Stichprobe. Fehlende Übergänge erzeugen keine
-Nullhistogramme. `source-change` bleibt im Katalog, ist aber nicht angeschlossen.
+Writer-Zuordnung ist noch kein abgeschlossener Handoff; `source-change` misst
+einen nicht-draft `preparing`-Neustart mit anderen Quellen ohne pending Writer
+bis zur bestätigten `live`-Ausgabe unter der neuen Epoche. Quellen-IDs bleiben
+intern und erscheinen nicht in Samples. Draft-Quellenzuweisung, Writer-Handoff
+auch bei geänderten Quellen und ein Epochensprung mit gleichen Quellen erzeugen
+keinen `source-change`-Wert. Werte werden nur in einem 15-Minuten-Fenster mit
+höchstens 256 Beobachtungen gehalten, ohne Programm-, Tenant- oder Gerätebezug;
+der Sampler übernimmt sie in dasselbe Histogramm bei jeder 15-s-Stichprobe.
+Fehlende Übergänge erzeugen keine Nullhistogramme.
+
+`broadcast_quota_ratio{scope=…,resource="programs"}` liest dieselbe Occupancy
+wie die Programmzuteilung: aktive und pending Programme, keine Drafts/Stopped/
+Failed, keine IDs. `deployment` und `gateway` sind die lokale Gesamtzahl gegen
+das jeweilige Limit; `tenant` und `principal` sind das **Maximum** über die
+jeweiligen Gruppen, nicht eine benannte Gruppe. Viewer-, Egress-, Encoder-,
+Laufzeit- und Kostenquoten bleiben unangeschlossen, statt als Null erfunden
+zu werden.
 
 `broadcast_resource_utilization_ratio{component="control-plane",resource=…}`
 liest ausschließlich diesen Prozesshost: `cpu` als 1-Minuten-Load geteilt durch
@@ -169,8 +182,9 @@ Der Export verwendet den gemeinsamen 15-Sekunden-Cache. Er liefert die tatsächl
 erhobenen Control-State-, Native-Planungsbudget- und optionalen HLS-Proxy-Messwerte,
 keine erfundenen Medienwerte.
 
-Bei vorhandener Runtime, Native-Assignment-Registry und HLS-Proxy sind bis zu 25 tatsächlich angeschlossene
-Serien verfügbar. Fehlende Messgruppen werden nicht als Nullzustand ausgegeben.
+Bei vorhandener Runtime, Native-Assignment-Registry und HLS-Proxy sind die
+Control-State-, Planungsbudget-, HLS-Proxy-, Programquoten- und Host-Serien
+verfügbar. Fehlende Messgruppen werden nicht als Nullzustand ausgegeben.
 Die Implementierung vergibt keine Realm-Rollen und aktiviert keinen Collector.
 Dessen dedizierte Identität, kurzlebige Tokens und Erneuerung müssen ausdrücklich
 provisioniert werden. Ohne Token-Introspektion wird ein Rollenentzug spätestens

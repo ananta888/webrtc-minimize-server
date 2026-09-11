@@ -1,13 +1,17 @@
 import { BROADCAST_PROGRAM_STATES } from "./broadcast-program-model.js";
 
 const MAX_SAMPLES = 256, RETENTION_MS = 15 * 60 * 1000, MAX_DURATION_MS = 60 * 60 * 1000;
-export const BROADCAST_TRANSITIONS = Object.freeze(["start", "stop", "handoff"]);
+export const BROADCAST_TRANSITIONS = Object.freeze(["start", "stop", "handoff", "source-change"]);
 const positive = n => Number.isSafeInteger(n) && n > 0;
+function sourcesKey(ids) {
+  return Array.isArray(ids) && ids.every(id => typeof id === "string") ? JSON.stringify(ids) : "";
+}
 function projection(record) {
   const machine = record?.snapshot?.machine, p = machine?.program, scope = machine?.scope;
   if (!p || !scope || typeof scope.tenantId !== "string" || typeof scope.programId !== "string"
     || !positive(p.programEpoch) || !BROADCAST_PROGRAM_STATES.includes(p.state)) return null;
-  return { key: `${scope.tenantId}\0${scope.programId}`, state: p.state, epoch: p.programEpoch, pending: Boolean(record.pendingHandoff) };
+  return { key: `${scope.tenantId}\0${scope.programId}`, state: p.state, epoch: p.programEpoch,
+    pending: Boolean(record.pendingHandoff), sources: sourcesKey(p.sourceIds) };
 }
 
 /** Content-free transition durations for the metrics sampler: no identifiers, no policy, bounded window. */
@@ -32,15 +36,24 @@ export class BroadcastProgramTransitions {
     if (!this.#time(now)) return false;
     const a = projection(before), b = projection(after);
     if (!b || before != null && !a || a && a.key !== b.key) return false;
-    const anchor = this.#anchors.get(b.key) ?? { registeredAt: now, stoppingAt: null, handoff: null, started: false };
+    const anchor = this.#anchors.get(b.key) ?? {
+      registeredAt: now, stoppingAt: null, handoff: null, sourceChange: null, started: false,
+    };
     if (!a) { this.#anchors.set(b.key, anchor); return true; }
     // A handoff restarts output under a new epoch; it is complete once that
     // successor epoch reports confirmed output. Start counts once per program.
+    // A source-change is a non-draft preparing restart with different sources
+    // and no pending writer; writer replacement with pendingHandoff stays handoff.
     if (!a.pending && b.pending) anchor.handoff = { at: now, epoch: a.epoch };
     if (a.state !== "stopping" && b.state === "stopping") anchor.stoppingAt = now;
+    if (a.sources !== b.sources && a.state !== "draft" && b.state === "preparing" && !b.pending && b.epoch > a.epoch) {
+      anchor.sourceChange = { at: now, epoch: a.epoch };
+    }
     if (b.state === "live" && !anchor.started) { anchor.started = true; this.#record("start", anchor.registeredAt, now); }
     else if (b.state === "live" && anchor.handoff && !b.pending && b.epoch > anchor.handoff.epoch) {
-      this.#record("handoff", anchor.handoff.at, now); anchor.handoff = null;
+      this.#record("handoff", anchor.handoff.at, now); anchor.handoff = null; anchor.sourceChange = null;
+    } else if (b.state === "live" && anchor.sourceChange && !b.pending && b.epoch > anchor.sourceChange.epoch) {
+      this.#record("source-change", anchor.sourceChange.at, now); anchor.sourceChange = null;
     }
     if (b.state === "stopped" && a.state !== "stopped") {
       if (anchor.stoppingAt !== null) this.#record("stop", anchor.stoppingAt, now);

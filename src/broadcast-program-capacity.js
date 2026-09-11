@@ -35,6 +35,7 @@ function validScope(scope) {
 export class BroadcastProgramCapacity {
   #limits;
   constructor(limits) { this.#limits = normalizeBroadcastProgramCapacity(limits); }
+  get limits() { return this.#limits; }
 
   allows(candidate, occupied) {
     if (!validScope(candidate)) return false;

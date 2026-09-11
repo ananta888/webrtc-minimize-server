@@ -1317,6 +1317,28 @@ export class BroadcastRuntimeRegistry {
   }
 
   get programCount() { return this.#records.size; }
+  // Occupancy vs configured limits only: worst tenant/principal ratios, never IDs.
+  programQuotaCounts() {
+    const unique = new Map(), tenants = new Map(), principals = new Map();
+    for (const scope of this.#occupiedProgramScopes()) {
+      unique.set(`${scope.tenantId}\0${scope.programId}`, scope);
+    }
+    for (const scope of unique.values()) {
+      tenants.set(scope.tenantId, (tenants.get(scope.tenantId) || 0) + 1);
+      const principal = `${scope.tenantId}\0${scope.principalRef}`;
+      principals.set(principal, (principals.get(principal) || 0) + 1);
+    }
+    const used = unique.size, limits = this.#programCapacity.limits;
+    const peak = values => values.length ? Math.max(...values) : 0;
+    return Object.freeze({
+      programs: Object.freeze({
+        deployment: Object.freeze({ used, limit: limits.deployment }),
+        gateway: Object.freeze({ used, limit: limits.gateway }),
+        tenant: Object.freeze({ used: peak([...tenants.values()]), limit: limits.tenant }),
+        principal: Object.freeze({ used: peak([...principals.values()]), limit: limits.principal }),
+      }),
+    });
+  }
   // Control-plane inventory only: never imply decoded media or audience health.
   // Do not pass records, keys or per-program observations across this boundary.
   programStateCounts() {

@@ -74,6 +74,21 @@ export function hostResourceCounts(root = process.cwd(), host = { loadavg: os.lo
 
 // Control-plane host only: utilization ratios of this process' host, never
 // paths, mount names, byte totals or other hosts' numbers.
+const QUOTA_SCOPES = Object.freeze(["deployment", "gateway", "tenant", "principal"]);
+export function quotaMetricSamples(runtime) {
+  if (typeof runtime?.programQuotaCounts !== "function") return [];
+  const counts = runtime.programQuotaCounts();
+  if (!exact(counts, ["programs"]) || !exact(counts.programs, QUOTA_SCOPES)) throw new Error("invalid_quota_metric_counts");
+  return QUOTA_SCOPES.map(scope => {
+    const row = counts.programs[scope];
+    if (!exact(row, ["used", "limit"]) || !Number.isSafeInteger(row.used) || row.used < 0 || row.used > 20_000
+      || !Number.isSafeInteger(row.limit) || row.limit < 1 || row.limit > 10_000) {
+      throw new Error("invalid_quota_metric_counts");
+    }
+    return sample("broadcast_quota_ratio", Math.min(1, row.used / row.limit), { scope, resource: "programs" });
+  });
+}
+
 export function hostResourceMetricSamples(host) {
   if (typeof host?.resourceCounts !== "function") return [];
   const counts = host.resourceCounts();
