@@ -37,7 +37,7 @@ import {
   ProtocolError,
 } from "./protocol.js";
 import { RoomAdmissionError, RoomFullError, RoomRegistry } from "./room-registry.js";
-import { RoomModerationError } from "./room-moderation.js";
+import { REMOVE_UNDO_MS, RoomModerationError } from "./room-moderation.js";
 import { MeetObservability } from "./meet-observability.js";
 import { BroadcastUsageLedger } from "./broadcast-budget-policy.js";
 import { BroadcastFailoverCoordinator } from "./broadcast-failover-coordinator.js";
@@ -1827,6 +1827,23 @@ function configureSignaling(
     syncAgents();
   };
 
+  const pendingRemoveTimers = new Map();
+  const clearRemoveTimer = (roomId) => {
+    const timer = pendingRemoveTimers.get(roomId);
+    if (timer) clearTimeout(timer);
+    pendingRemoveTimers.delete(roomId);
+  };
+  const executeDueRemove = (roomId) => {
+    pendingRemoveTimers.delete(roomId);
+    const targetId = registry.dueRemove(roomId);
+    if (!targetId) return;
+    const target = registry.members(roomId).find((member) => member.id === targetId);
+    if (target?.socket) {
+      safeSend(target.socket, { type: "error", code: "removed_by_owner" });
+      target.socket.close(1008, "removed_by_owner");
+    }
+  };
+
   const broadcastModeration = (roomId) => {
     const members = registry.members(roomId);
     const membershipEpoch = roomEpochs.get(roomId)?.membership || 0;
@@ -1987,9 +2004,11 @@ function configureSignaling(
       }
       relayHealth.leave(peer.roomId, peer.id);
       mediaAgents.leavePeer(peer);
+      const roomId = peer.roomId;
       for (const recipient of registry.leave(peer)) {
         safeSend(recipient.socket, { type: "peer-left", peerId: peer.id });
       }
+      if (!registry.hasPendingRemove(roomId)) clearRemoveTimer(roomId);
       machineReceivePolicy.prune(peer.roomId);
       directory.touch(peer.roomId);
       broadcastTopology(peer.roomId, true);
@@ -2055,11 +2074,22 @@ function configureSignaling(
         }
         if (message.type === "peer-remove") {
           registry.authorizeRemove(peer, message.targetPeerId);
-          const target = registry.members(peer.roomId).find((member) => member.id === message.targetPeerId);
-          if (target?.socket && target.socket !== socket) {
-            safeSend(target.socket, { type: "error", code: "removed_by_owner" });
-            target.socket.close(1008, "removed_by_owner");
-          }
+          clearRemoveTimer(peer.roomId);
+          const timer = setTimeout(() => executeDueRemove(peer.roomId), REMOVE_UNDO_MS);
+          timer.unref?.();
+          pendingRemoveTimers.set(peer.roomId, timer);
+          broadcastModeration(peer.roomId);
+          return;
+        }
+        if (message.type === "peer-remove-cancel") {
+          registry.cancelRemove(peer);
+          clearRemoveTimer(peer.roomId);
+          broadcastModeration(peer.roomId);
+          return;
+        }
+        if (message.type === "presenter-assign") {
+          registry.assignPresenter(peer, message.targetPeerId);
+          broadcastModeration(peer.roomId);
           return;
         }
         if (message.type === "publication-stop") {

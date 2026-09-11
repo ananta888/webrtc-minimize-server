@@ -4,9 +4,11 @@ export const HAND_RATE_LIMIT = 6;
 export const HAND_RATE_WINDOW_MS = 10_000;
 export const MODERATION_AUDIT_LIMIT = 256;
 export const MODERATION_ACTIONS = Object.freeze([
-  "hand-raise", "hand-lower", "hand-clear", "peer-remove", "publication-stop",
+  "hand-raise", "hand-lower", "hand-clear", "peer-remove", "peer-remove-cancel",
+  "publication-stop", "presenter-assign",
 ]);
 export const PUBLICATION_SOURCES = Object.freeze(["microphone", "camera", "screen"]);
+export const REMOVE_UNDO_MS = 8_000;
 
 export class RoomModerationError extends Error {
   constructor(code) {
@@ -65,6 +67,10 @@ export function recordAudit(room, { actorPeerId, action, targetPeerId, source = 
 
 export function moderationSnapshot(room, membershipEpoch, { audit = false } = {}) {
   if (!room || !Number.isSafeInteger(membershipEpoch) || membershipEpoch < 1) return null;
+  const presenterPeerId = room.presenterPeerId && room.peers.has(room.presenterPeerId) ? room.presenterPeerId : "";
+  const pending = room.pendingRemove && room.peers.has(room.pendingRemove.targetPeerId)
+    ? Object.freeze({ targetPeerId: room.pendingRemove.targetPeerId, expiresAt: room.pendingRemove.expiresAt })
+    : null;
   return Object.freeze({
     type: "moderation-state",
     membershipEpoch,
@@ -72,6 +78,8 @@ export function moderationSnapshot(room, membershipEpoch, { audit = false } = {}
       .map((peer) => moderationParticipant(peer, room.creatorPrincipal))
       .sort((left, right) => left.peerId.localeCompare(right.peerId))),
     queue: handQueue(room),
+    presenterPeerId,
+    ...(pending ? { pendingRemove: pending } : {}),
     ...(audit ? { audit: Object.freeze([...(room.audit || [])]) } : {}),
   });
 }
@@ -108,9 +116,70 @@ export function authorizeRemove(room, actor, targetPeerId, now) {
   actor.removeActions = (actor.removeActions || []).filter((stamp) => now - stamp < HAND_RATE_WINDOW_MS);
   if (actor.removeActions.length >= HAND_RATE_LIMIT) fail("moderation_rate_limited");
   actor.removeActions.push(now);
+  if (room.pendingRemove) fail("moderation_pending_exists");
+  room.pendingRemove = Object.freeze({
+    targetPeerId,
+    actorPeerId: actor.id,
+    expiresAt: now + REMOVE_UNDO_MS,
+  });
   room.updatedAt = now;
   recordAudit(room, { actorPeerId: actor.id, action: "peer-remove", targetPeerId, now });
   return true;
+}
+
+export function cancelRemove(room, actor, now) {
+  if (!room || room.peers.get(actor.id) !== actor) fail("peer_not_joined");
+  if (peerRole(actor, room.creatorPrincipal) !== "owner") fail("moderation_forbidden");
+  if (!room.pendingRemove) fail("moderation_pending_missing");
+  if (!Number.isSafeInteger(now) || now < 0) fail("invalid_hand_clock");
+  const targetPeerId = room.pendingRemove.targetPeerId;
+  room.pendingRemove = null;
+  room.updatedAt = now;
+  recordAudit(room, { actorPeerId: actor.id, action: "peer-remove-cancel", targetPeerId, now });
+  return true;
+}
+
+export function dueRemove(room, now) {
+  if (!room?.pendingRemove) return null;
+  if (!Number.isSafeInteger(now) || now < room.pendingRemove.expiresAt) return null;
+  const targetPeerId = room.pendingRemove.targetPeerId;
+  room.pendingRemove = null;
+  return targetPeerId;
+}
+
+export function clearPendingRemove(room, peerId) {
+  if (room?.pendingRemove && (room.pendingRemove.targetPeerId === peerId || room.pendingRemove.actorPeerId === peerId)) {
+    room.pendingRemove = null;
+  }
+}
+
+export function assignPresenter(room, actor, targetPeerId, now) {
+  if (!room || room.peers.get(actor.id) !== actor) fail("peer_not_joined");
+  if (room.mode === "pair" || actor.machine === true) fail("moderation_unavailable");
+  if (peerRole(actor, room.creatorPrincipal) !== "owner") fail("moderation_forbidden");
+  const target = room.peers.get(targetPeerId);
+  if (!target) fail("peer_not_joined");
+  if (target.machine === true) fail("moderation_unavailable");
+  if (!Number.isSafeInteger(now) || now < 0) fail("invalid_hand_clock");
+  if (room.presenterPeerId === targetPeerId) return true;
+  actor.presenterActions = (actor.presenterActions || []).filter((stamp) => now - stamp < HAND_RATE_WINDOW_MS);
+  if (actor.presenterActions.length >= HAND_RATE_LIMIT) fail("moderation_rate_limited");
+  actor.presenterActions.push(now);
+  room.presenterPeerId = targetPeerId;
+  room.updatedAt = now;
+  recordAudit(room, { actorPeerId: actor.id, action: "presenter-assign", targetPeerId, now });
+  return true;
+}
+
+export function fallbackPresenter(room) {
+  if (!room) return "";
+  if (room.presenterPeerId && room.peers.has(room.presenterPeerId)
+    && room.peers.get(room.presenterPeerId).machine !== true) {
+    return room.presenterPeerId;
+  }
+  const owner = [...room.peers.values()].find((peer) => peerRole(peer, room.creatorPrincipal) === "owner" && peer.machine !== true);
+  room.presenterPeerId = owner?.id || "";
+  return room.presenterPeerId;
 }
 
 export function authorizePublicationStop(room, actor, targetPeerId, source, now) {

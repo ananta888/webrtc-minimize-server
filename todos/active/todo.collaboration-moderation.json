@@ -16,7 +16,7 @@
     {
       "repository": "webrtc-minimize-server",
       "path": "todos/backlog/todo.bigbluebutton-collaboration-ux.json",
-      "relationship": "Promoviert BBB-UX-001 bis BBB-UX-005 und BBB-UX-007 bis BBB-UX-010. Nutzer-/Mehrbrowser-Gates bleiben COL-004."
+      "relationship": "Promoviert BBB-UX-001 bis BBB-UX-005, BBB-UX-007 bis BBB-UX-010, BBB-UX-026 und BBB-UX-027. Nutzer-/Mehrbrowser-Gates bleiben COL-004."
     }
   ],
   "milestones": [
@@ -35,7 +35,7 @@
     {
       "id": "COL-M3",
       "title": "Teilnehmerliste und Redereihenfolge",
-      "task_ids": ["COL-005", "COL-006", "COL-007", "COL-008", "COL-009"],
+      "task_ids": ["COL-005", "COL-006", "COL-007", "COL-008", "COL-009", "COL-010", "COL-011", "COL-012"],
       "status": "done"
     },
     {
@@ -95,7 +95,7 @@
       "priority": "P1",
       "risk": "medium",
       "progress_percent": 0,
-      "depends_on": ["COL-003", "COL-006", "COL-007", "COL-008", "COL-009"],
+      "depends_on": ["COL-003", "COL-006", "COL-007", "COL-008", "COL-009", "COL-010", "COL-011", "COL-012"],
       "acceptance_criteria": [
         "Echte Chromium- und Firefox-Identitäten belegen konsistenten Handzustand ohne Capture.",
         "Safari/iOS, physische Tastaturmatrix und 20-Teilnehmer-Churn bleiben Nutzergates und schließen den Track nicht vorab."
@@ -170,16 +170,58 @@
         "Der Zielbrowser stoppt höchstens eine bereits aktive lokale Publikation; es startet kein Capture.",
         "Die UI erklärt Ziel, Raum und dass es keine ferngesteuerte Gerätesteuerung ist."
       ]
+    },
+    {
+      "id": "COL-010",
+      "title": "Serverautorisierte Presenter-Zuweisung ohne Capture anbieten",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["COL-001", "COL-006"],
+      "acceptance_criteria": [
+        "Presenter-Recht stammt nur aus der Control Plane und ist von lokalen Publikationen getrennt.",
+        "Zuweisung startet weder Bildschirm, Kamera noch Mikrofon; Pair und Maschinen sind unavailable.",
+        "Leave des Presenters fällt deterministisch auf den verbleibenden Owner zurück."
+      ]
+    },
+    {
+      "id": "COL-011",
+      "title": "Entfernen mit Undo-Fenster vor Membership-Verlust ausführen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["COL-007"],
+      "acceptance_criteria": [
+        "Nach Bestätigung bleibt das Ziel bis zum serverseitigen Undo-Fenster Mitglied.",
+        "Owner-Cancel vor Ablauf verhindert den Leave; Ablauf nutzt denselben Leave-Pfad.",
+        "Doppelte Pending-Removes fail-closed; Capture entsteht nicht."
+      ]
+    },
+    {
+      "id": "COL-012",
+      "title": "Lokales Anheften ohne Sender- oder Rollenautorität anbieten",
+      "status": "done",
+      "priority": "P2",
+      "risk": "low",
+      "progress_percent": 100,
+      "depends_on": ["COL-006"],
+      "acceptance_criteria": [
+        "Anheften bleibt lokal, verändert keine fremde Senderqualität und keine serverautorisierte Rolle.",
+        "Die UI unterscheidet lokale Pin-Anzeige von Server-Bühne und Raumrolle.",
+        "Capture startet nicht."
+      ]
     }
   ],
-  "critical_path_tasks": ["COL-001", "COL-002", "COL-003", "COL-005", "COL-006", "COL-007", "COL-008", "COL-009", "COL-004"],
+  "critical_path_tasks": ["COL-001", "COL-002", "COL-003", "COL-005", "COL-006", "COL-007", "COL-008", "COL-009", "COL-010", "COL-011", "COL-012", "COL-004"],
   "tasks_status_summary": {
-    "total": 9,
-    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 8 },
-    "progress_percent_done": 88.89,
-    "by_priority": { "P0": 2, "P1": 7, "P2": 0, "P3": 0 },
-    "by_risk": { "low": 0, "medium": 4, "high": 4, "critical": 1 },
-    "critical_path": { "total": 9, "done": 8, "remaining": 1 },
+    "total": 12,
+    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 11 },
+    "progress_percent_done": 91.67,
+    "by_priority": { "P0": 2, "P1": 9, "P2": 1, "P3": 0 },
+    "by_risk": { "low": 1, "medium": 4, "high": 6, "critical": 1 },
+    "critical_path": { "total": 12, "done": 11, "remaining": 1 },
     "milestones": { "total": 4, "todo": 1, "in_progress": 0, "blocked": 0, "done": 3 }
   },
   "progress_summary": {
@@ -188,12 +230,13 @@
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 8
+    "done": 11
   },
   "summary_notes": [
     "2026-09-11 Track aus BBB-UX-001/002/007/010 promoviert. Software zuerst, COL-004 Nutzer-/Gerätegates zuletzt. Kein Capture, keine Breakouts, kein Whiteboard.",
     "2026-09-11 BBB-UX-003/008/009 als COL-005/006 promoviert: FIFO-Queue, Teilnehmerliste und Owner-Clear ohne Capture. COL-004 bleibt das letzte Nutzer-/Gerätegate.",
     "2026-09-11 BBB-UX-004 als COL-007: Owner-Entfernen mit Bestätigung, Leave-Pfad, ohne Capture. Mute/Presenter/Undo bleiben Backlog.",
-    "2026-09-11 BBB-UX-005 als COL-008 flüchtiges Owner-Audit; BBB-UX-004 Mute als COL-009 Stoppaufforderung ohne Capture. Presenter/Undo bleiben Backlog. COL-004 zuletzt."
+    "2026-09-11 BBB-UX-005 als COL-008 flüchtiges Owner-Audit; BBB-UX-004 Mute als COL-009 Stoppaufforderung ohne Capture. Presenter/Undo bleiben Backlog. COL-004 zuletzt.",
+    "2026-09-11 COL-010 Presenter ohne Capture, COL-011 Entfernen mit 8s-Undo, COL-012 lokales Anheften ohne Senderautorität. COL-004 zuletzt."
   ]
 }

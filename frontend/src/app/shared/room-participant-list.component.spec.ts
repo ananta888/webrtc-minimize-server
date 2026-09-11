@@ -36,6 +36,10 @@ describe("RoomParticipantListComponent", () => {
     expect(component).toContain("moderation.clear(item.peerId)");
     expect(component).toContain("moderation.remove");
     expect(component).toContain("moderation.requestStop");
+    expect(component).toContain("moderation.assignPresenter");
+    expect(component).toContain("moderation.cancelRemove");
+    expect(component).toContain("togglePin");
+    expect(component).toContain('id="peer-remove-undo"');
     expect(component).toContain('id="peer-remove-confirm"');
     expect(component).toContain('id="publication-stop-confirm"');
     expect(component).toContain('id="moderation-audit"');

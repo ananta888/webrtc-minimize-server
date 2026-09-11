@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { parseClientMessage, ProtocolError } from "../src/protocol.js";
 import { RoomAdmissionError, RoomRegistry } from "../src/room-registry.js";
-import { RoomModerationError, handQueue, moderationSnapshot, peerRole } from "../src/room-moderation.js";
+import { REMOVE_UNDO_MS, RoomModerationError, handQueue, moderationSnapshot, peerRole } from "../src/room-moderation.js";
 
 const errorCode = (code) => (error) => error instanceof RoomModerationError && error.code === code;
 
@@ -85,6 +85,10 @@ test("only the owner may remove another peer, never self, pair or machines", () 
   assert.throws(() => registry.authorizeRemove(guest, owner.id, 11), errorCode("moderation_forbidden"));
   assert.throws(() => registry.authorizeRemove(owner, owner.id, 12), errorCode("self_moderation_forbidden"));
   assert.equal(registry.authorizeRemove(owner, guest.id, 13), true);
+  assert.equal(registry.hasPendingRemove("room-mod"), true);
+  assert.equal(registry.dueRemove("room-mod", 13 + REMOVE_UNDO_MS - 1), null);
+  assert.equal(registry.cancelRemove(owner, 14), true);
+  assert.equal(registry.hasPendingRemove("room-mod"), false);
   const pair = registry.join("pair-room", {}, "One", 1, { mode: "pair", principal: "one" }).peer;
   const pairTwo = registry.join("pair-room", {}, "Two", 2, { mode: "pair", principal: "two" }).peer;
   assert.throws(() => registry.authorizeRemove(pair, pairTwo.id, 3), errorCode("moderation_unavailable"));
@@ -101,6 +105,8 @@ test("hand messages are closed and unknown fields fail", () => {
   const remove = parseClientMessage(JSON.stringify({ type: "peer-remove", targetPeerId: "aaaaaaaaaaaaaaaa" }));
   assert.equal(remove.targetPeerId, "aaaaaaaaaaaaaaaa");
   assert.throws(() => parseClientMessage(JSON.stringify({ type: "peer-remove", extra: true })), /unknown_message_field/);
+  assert.deepEqual(parseClientMessage(JSON.stringify({ type: "peer-remove-cancel" })), { type: "peer-remove-cancel" });
+  assert.equal(parseClientMessage(JSON.stringify({ type: "presenter-assign", targetPeerId: "aaaaaaaaaaaaaaaa" })).type, "presenter-assign");
   const stop = parseClientMessage(JSON.stringify({
     type: "publication-stop", targetPeerId: "aaaaaaaaaaaaaaaa", source: "microphone",
   }));
@@ -144,4 +150,27 @@ test("publication stop is owner-only and never a capture grant", () => {
   assert.throws(() => registry.authorizePublicationStop(owner, owner.id, "camera", 3), errorCode("self_moderation_forbidden"));
   assert.throws(() => registry.authorizePublicationStop(owner, guest.id, "screen-audio", 4), errorCode("invalid_publication_source"));
   assert.equal(registry.authorizePublicationStop(owner, guest.id, "camera", 5), true);
+});
+
+test("presenter assignment is owner-authored and never starts capture", () => {
+  const registry = new RoomRegistry();
+  const owner = registry.join("room-mod", {}, "Ada", 1, { principal: "owner" }).peer;
+  const guest = registry.join("room-mod", {}, "Grace", 2, { principal: "guest" }).peer;
+  assert.equal(registry.moderationSnapshot("room-mod", 1).presenterPeerId, owner.id);
+  assert.equal(registry.assignPresenter(owner, guest.id, 3), true);
+  assert.equal(registry.moderationSnapshot("room-mod", 1).presenterPeerId, guest.id);
+  assert.throws(() => registry.assignPresenter(guest, owner.id, 4), errorCode("moderation_forbidden"));
+  registry.leave(guest, 5);
+  assert.equal(registry.moderationSnapshot("room-mod", 1).presenterPeerId, owner.id);
+});
+
+test("scheduled remove expires only after the undo window", () => {
+  const registry = new RoomRegistry();
+  const owner = registry.join("room-mod", {}, "Ada", 1, { principal: "owner" }).peer;
+  const guest = registry.join("room-mod", {}, "Grace", 2, { principal: "guest" }).peer;
+  registry.authorizeRemove(owner, guest.id, 20);
+  assert.equal(registry.moderationSnapshot("room-mod", 1, { audit: true }).pendingRemove.targetPeerId, guest.id);
+  assert.equal(registry.dueRemove("room-mod", 20 + REMOVE_UNDO_MS), guest.id);
+  assert.equal(registry.hasPendingRemove("room-mod"), false);
+  assert.equal(guest.hand, "none");
 });

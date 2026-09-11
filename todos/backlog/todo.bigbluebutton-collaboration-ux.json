@@ -446,7 +446,7 @@
         {
           "id": "BBB-UX-026",
           "title": "Presenter-, Stage- und Layout-Contract getrennt von Capture definieren",
-          "status": "open",
+          "status": "partial",
           "priority": "P0",
           "risk": "critical",
           "scope": ["presenter role", "active stage source", "layout revision", "room epoch", "local override"],
@@ -460,7 +460,7 @@
         {
           "id": "BBB-UX-027",
           "title": "Moderne Bühnenansicht mit Filmstreifen, Fokus, Pin und lokalem Layout bauen",
-          "status": "open",
+          "status": "partial",
           "priority": "P1",
           "risk": "medium",
           "scope": ["screen-first stage", "speaker stage", "filmstrip", "local pin", "fullscreen", "mobile"],
@@ -710,8 +710,8 @@
     "total_items": 42,
     "by_status": {
       "completed": 0,
-      "partial": 9,
-      "open": 33,
+      "partial": 11,
+      "open": 31,
       "deferred": 0,
       "blocked": 0
     },
@@ -726,6 +726,7 @@
       "2026-09-11 BBB-UX-003/008/009 als COL-005/006 promoviert: FIFO-Queue, Teilnehmerliste und Owner-Clear ohne Capture. Mehrbrowser-/Safari-Gates bleiben COL-004.",
       "2026-09-11 BBB-UX-004 als COL-007: Owner-Entfernen mit Bestätigung. Mute, Presenter und Undo bleiben offen.",
       "2026-09-11 BBB-UX-005 als COL-008 (flüchtiges Owner-Audit, keine Persistenz). Mute als COL-009 Stoppaufforderung; Presenter/Undo weiter offen.",
+      "2026-09-11 BBB-UX-026/027 als COL-010/012: Presenter-Zuweisung und lokales Anheften. BBB-UX-004 Undo-Fenster als COL-011. Filmstreifen/Fullscreen und Folien bleiben offen.",
       "Diese Category-Todo ist Portfolio/Research und ausdrücklich kein ausführbarer Implementierungs-Track.",
       "BigBlueButton liefert die Produktideen, nicht die Zielarchitektur: Der zentrale mediasoup-/FreeSWITCH-/Recording-Pfad wird nicht übernommen.",
       "Teilnehmer- und Moderatorrollen bleiben serverautorisiert; DataChannels verleihen keine Rolle oder Membership.",

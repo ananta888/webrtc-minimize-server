@@ -41,6 +41,8 @@ describe("RoomModerationService", () => {
     expect(service.participants()).toEqual([]);
     expect(service.queue()).toEqual([]);
     expect(service.audit()).toEqual([]);
+    expect(service.presenterPeerId()).toBe("");
+    expect(service.pendingRemove()).toBeNull();
   });
 
   it("applies an authorized publication-stop locally and never starts capture", () => {

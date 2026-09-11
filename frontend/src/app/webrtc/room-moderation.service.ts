@@ -5,7 +5,8 @@ import { ServerMessage, SignalingService } from "./signaling.service";
 
 export type RoomRole = "owner" | "participant";
 export type HandState = "none" | "raised";
-export type ModerationAction = "hand-raise" | "hand-lower" | "hand-clear" | "peer-remove" | "publication-stop";
+export type ModerationAction = "hand-raise" | "hand-lower" | "hand-clear" | "peer-remove" | "peer-remove-cancel"
+  | "publication-stop" | "presenter-assign";
 
 export interface ModerationParticipant {
   readonly peerId: string;
@@ -24,7 +25,9 @@ export interface ModerationAuditEntry {
 }
 
 const PEER_ID = /^[a-f0-9]{16}$/;
-const ACTIONS = new Set<ModerationAction>(["hand-raise", "hand-lower", "hand-clear", "peer-remove", "publication-stop"]);
+const ACTIONS = new Set<ModerationAction>([
+  "hand-raise", "hand-lower", "hand-clear", "peer-remove", "peer-remove-cancel", "publication-stop", "presenter-assign",
+]);
 const SOURCES = new Set<LocalMediaSource>(["microphone", "camera", "screen"]);
 
 function parseAudit(value: unknown): readonly ModerationAuditEntry[] | null {
@@ -60,16 +63,35 @@ function parseAudit(value: unknown): readonly ModerationAuditEntry[] | null {
   return Object.freeze(entries);
 }
 
+export interface PendingRemove {
+  readonly targetPeerId: string;
+  readonly expiresAt: number;
+}
+
+function parsePendingRemove(value: unknown, participantIds: ReadonlySet<string>): PendingRemove | null | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (Object.keys(row).some((field) => !["targetPeerId", "expiresAt"].includes(field))) return null;
+  if (typeof row["targetPeerId"] !== "string" || !PEER_ID.test(row["targetPeerId"]) || !participantIds.has(row["targetPeerId"])) {
+    return null;
+  }
+  if (!Number.isSafeInteger(row["expiresAt"]) || Number(row["expiresAt"]) < 1) return null;
+  return { targetPeerId: row["targetPeerId"], expiresAt: Number(row["expiresAt"]) };
+}
+
 function parseSnapshot(message: ServerMessage): {
   membershipEpoch: number;
   participants: readonly ModerationParticipant[];
   queue: readonly string[];
   audit: readonly ModerationAuditEntry[];
+  presenterPeerId: string;
+  pendingRemove: PendingRemove | null;
 } | null {
   if (message.type !== "moderation-state") return null;
   if (!Number.isSafeInteger(message["membershipEpoch"]) || Number(message["membershipEpoch"]) < 1) return null;
   if (!Array.isArray(message["participants"]) || !Array.isArray(message["queue"])) return null;
-  if (Object.keys(message).some((field) => !["version", "type", "membershipEpoch", "participants", "queue", "audit"].includes(field))) {
+  if (Object.keys(message).some((field) => !["version", "type", "membershipEpoch", "participants", "queue", "audit", "presenterPeerId", "pendingRemove"].includes(field))) {
     return null;
   }
   const participants: ModerationParticipant[] = [];
@@ -106,11 +128,24 @@ function parseSnapshot(message: ServerMessage): {
   if (ordered.some((peerId, index) => queue[index] !== peerId)) return null;
   const audit = Object.hasOwn(message, "audit") ? parseAudit(message["audit"]) : [];
   if (!audit) return null;
+  const participantIds = new Set(participants.map((item) => item.peerId));
+  let presenterPeerId = "";
+  if (Object.hasOwn(message, "presenterPeerId")) {
+    if (typeof message["presenterPeerId"] !== "string") return null;
+    if (message["presenterPeerId"] !== "" && (!PEER_ID.test(message["presenterPeerId"]) || !participantIds.has(message["presenterPeerId"]))) {
+      return null;
+    }
+    presenterPeerId = message["presenterPeerId"];
+  }
+  const pending = parsePendingRemove(message["pendingRemove"], participantIds);
+  if (pending === null) return null;
   return {
     membershipEpoch: Number(message["membershipEpoch"]),
     participants: Object.freeze(participants),
     queue: Object.freeze([...queue as string[]]),
     audit,
+    presenterPeerId,
+    pendingRemove: pending || null,
   };
 }
 
@@ -135,7 +170,10 @@ export class RoomModerationService {
   readonly participants = signal<readonly ModerationParticipant[]>([]);
   readonly queue = signal<readonly string[]>([]);
   readonly audit = signal<readonly ModerationAuditEntry[]>([]);
+  readonly presenterPeerId = signal("");
+  readonly pendingRemove = signal<PendingRemove | null>(null);
   readonly ownPeerId = signal("");
+  readonly ownPresenter = computed(() => this.presenterPeerId() !== "" && this.presenterPeerId() === this.ownPeerId());
   readonly ownHand = computed(() => this.participants().find((item) => item.peerId === this.ownPeerId())?.hand === "raised");
   readonly ownRole = computed(() => this.participants().find((item) => item.peerId === this.ownPeerId())?.role || "participant");
   readonly queuePosition = computed(() => {
@@ -162,6 +200,8 @@ export class RoomModerationService {
     this.participants.set(snapshot.participants);
     this.queue.set(snapshot.queue);
     this.audit.set(snapshot.audit);
+    this.presenterPeerId.set(snapshot.presenterPeerId);
+    this.pendingRemove.set(snapshot.pendingRemove);
   }
 
   bind(peerId: string): void {
@@ -173,6 +213,8 @@ export class RoomModerationService {
     this.participants.set([]);
     this.queue.set([]);
     this.audit.set([]);
+    this.presenterPeerId.set("");
+    this.pendingRemove.set(null);
     this.ownPeerId.set("");
   }
 
@@ -193,5 +235,15 @@ export class RoomModerationService {
   requestStop(targetPeerId: string, source: LocalMediaSource): void {
     if (this.ownRole() !== "owner" || targetPeerId === this.ownPeerId() || !SOURCES.has(source)) return;
     this.signaling.send({ type: "publication-stop", targetPeerId, source });
+  }
+
+  assignPresenter(targetPeerId: string): void {
+    if (this.ownRole() !== "owner") return;
+    this.signaling.send({ type: "presenter-assign", targetPeerId });
+  }
+
+  cancelRemove(): void {
+    if (this.ownRole() !== "owner" || !this.pendingRemove()) return;
+    this.signaling.send({ type: "peer-remove-cancel" });
   }
 }

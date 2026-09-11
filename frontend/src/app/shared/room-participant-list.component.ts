@@ -70,6 +70,12 @@ import {
               <strong>{{ item.name }}{{ item.own ? ' · du' : '' }}</strong>
               <p>
                 <span class="role-chip" [attr.data-source]="'server'">Raumrolle · {{ item.role === 'owner' ? 'Owner' : 'Teilnehmer' }}</span>
+                @if (item.peerId === moderation.presenterPeerId()) {
+                  <span class="stage-chip">Bühne</span>
+                }
+                @if (localPin() === item.peerId) {
+                  <span class="pin-chip">Lokal angeheftet</span>
+                }
                 @if (item.hand === 'raised') {
                   <span class="hand-chip">Hand gehoben{{ item.queuePosition ? ' · Platz ' + item.queuePosition : '' }}</span>
                 }
@@ -85,6 +91,12 @@ import {
                 <button type="button" class="button ghost compact" [attr.data-clear-hand]="item.peerId"
                   (click)="moderation.clear(item.peerId)">Hand senken</button>
               }
+              <button type="button" class="button ghost compact" [attr.data-pin-peer]="item.peerId"
+                [attr.aria-pressed]="localPin() === item.peerId" (click)="togglePin(item.peerId)">{{ localPin() === item.peerId ? 'Loslösen' : 'Anheften' }}</button>
+              @if (canAssignPresenter(item)) {
+                <button type="button" class="button ghost compact" [attr.data-assign-presenter]="item.peerId"
+                  (click)="moderation.assignPresenter(item.peerId)">Bühne übergeben</button>
+              }
               @if (canRemove(item)) {
                 <button type="button" class="button ghost compact" [attr.data-remove-peer]="item.peerId"
                   (click)="askRemove(item)">Entfernen…</button>
@@ -97,12 +109,20 @@ import {
           <li class="list-empty">{{ session.joined() ? 'Keine Treffer in der aktuellen Filterung.' : 'Noch keinem Raum beigetreten.' }}</li>
         }
       </ul>
-      @if (pendingRemove(); as pending) {
+      @if (moderation.pendingRemove(); as pending) {
+        <div id="peer-remove-undo" class="remove-confirm" role="status">
+          <p>Entfernen läuft noch {{ undoSeconds(pending.expiresAt) }}s. Membership bleibt bis dahin bestehen.</p>
+          @if (moderation.ownRole() === 'owner') {
+            <button id="peer-remove-undo-action" type="button" class="button ghost" (click)="moderation.cancelRemove()">Zurücknehmen</button>
+          }
+        </div>
+      }
+      @if (removeDraft(); as pending) {
         <div id="peer-remove-confirm" class="remove-confirm" role="alertdialog" aria-labelledby="peer-remove-heading">
           <h3 id="peer-remove-heading">{{ pending.name }} entfernen?</h3>
           <p>Raum {{ session.roomId() }}. Die Person verliert die Membership in dieser Instanz. Capture startet nicht.</p>
           <div class="inline-actions">
-            <button id="peer-remove-cancel" type="button" class="button ghost" (click)="pendingRemove.set(null)">Abbrechen</button>
+            <button id="peer-remove-cancel" type="button" class="button ghost" (click)="removeDraft.set(null)">Abbrechen</button>
             <button id="peer-remove-confirm-action" type="button" class="button primary" (click)="confirmRemove()">Entfernen</button>
           </div>
         </div>
@@ -141,8 +161,10 @@ import {
     .participant-list, .hand-queue { display: grid; gap: .42rem; margin: 0; padding: 0; list-style: none; }
     .hand-queue li, .participant-row { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; border: 1px solid var(--line); border-radius: .7rem; padding: .55rem .65rem; background: var(--surface-raised); }
     .participant-row p, .hint { margin: .22rem 0 0; color: var(--muted); font-size: .68rem; }
-    .role-chip, .hand-chip { display: inline-flex; margin-right: .35rem; border-radius: 999px; padding: .12rem .4rem; font-size: .62rem; font-weight: 720; }
+    .role-chip, .hand-chip, .stage-chip, .pin-chip { display: inline-flex; margin-right: .35rem; border-radius: 999px; padding: .12rem .4rem; font-size: .62rem; font-weight: 720; }
     .role-chip { border: 1px solid rgba(169, 139, 255, .35); color: #d8c9ff; }
+    .stage-chip { border: 1px solid rgba(102, 224, 183, .35); color: #c8f8e8; }
+    .pin-chip { border: 1px solid rgba(255, 255, 255, .2); color: #d7deea; }
     .hand-chip { border: 1px solid rgba(255, 196, 92, .4); color: var(--amber); }
     .observation[data-kind="local"] { color: #c8f8e8; }
     .observation[data-kind="received"] { color: #d7deea; }
@@ -156,7 +178,8 @@ export class RoomParticipantListComponent {
   readonly query = signal("");
   readonly roleFilter = signal<ParticipantRoleFilter>("all");
   readonly handFilter = signal<ParticipantHandFilter>("all");
-  readonly pendingRemove = signal<ParticipantListRow | null>(null);
+  readonly removeDraft = signal<ParticipantListRow | null>(null);
+  readonly localPin = signal("");
   readonly pendingStop = signal<{ item: ParticipantListRow; source: LocalMediaSource } | null>(null);
   readonly rows = computed(() => participantListRows({
     ownPeerId: this.moderation.ownPeerId() || this.session.peerId(),
@@ -197,14 +220,27 @@ export class RoomParticipantListComponent {
 
   askRemove(item: ParticipantListRow): void {
     if (!this.canRemove(item)) return;
-    this.pendingRemove.set(item);
+    this.removeDraft.set(item);
   }
 
   confirmRemove(): void {
-    const pending = this.pendingRemove();
-    this.pendingRemove.set(null);
+    const pending = this.removeDraft();
+    this.removeDraft.set(null);
     if (!pending || !this.canRemove(pending)) return;
     this.moderation.remove(pending.peerId);
+  }
+
+  canAssignPresenter(item: ParticipantListRow): boolean {
+    return this.session.mode() !== "pair" && this.moderation.ownRole() === "owner"
+      && item.peerId !== this.moderation.presenterPeerId();
+  }
+
+  togglePin(peerId: string): void {
+    this.localPin.set(this.localPin() === peerId ? "" : peerId);
+  }
+
+  undoSeconds(expiresAt: number): number {
+    return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
   }
 
   askStop(item: ParticipantListRow): void {
@@ -224,7 +260,9 @@ export class RoomParticipantListComponent {
       "hand-raise": "Hand gehoben",
       "hand-lower": "Hand gesenkt",
       "hand-clear": "Hand gesenkt (Owner)",
-      "peer-remove": "Mitglied entfernt",
+      "peer-remove": "Entfernen geplant",
+      "peer-remove-cancel": "Entfernen zurückgenommen",
+      "presenter-assign": "Bühne übergeben",
       "publication-stop": `Stoppaufforderung ${mediaObservationLabel(entry.source)}`,
     }[entry.action];
     return `${action} · ${entry.actorPeerId.slice(0, 8)} → ${entry.targetPeerId.slice(0, 8)}`;

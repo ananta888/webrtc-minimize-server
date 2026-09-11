@@ -6,7 +6,8 @@ import {
   MIN_ROOM_PARTICIPANTS,
 } from "./room-limits.js";
 import {
-  applyHand, authorizePublicationStop, authorizeRemove, clearHand, moderationSnapshot, peerRole,
+  applyHand, assignPresenter, authorizePublicationStop, authorizeRemove, cancelRemove,
+  clearHand, clearPendingRemove, dueRemove, fallbackPresenter, moderationSnapshot, peerRole,
 } from "./room-moderation.js";
 
 export class RoomFullError extends Error {
@@ -58,6 +59,8 @@ export class RoomRegistry {
         creatorPrincipal: admission.creatorPrincipal || admission.principal || "anonymous",
         audit: [],
         auditSequence: 0,
+        presenterPeerId: "",
+        pendingRemove: null,
       };
       this.#rooms.set(roomId, room);
     }
@@ -109,16 +112,23 @@ export class RoomRegistry {
       },
     };
     room.peers.set(peerId, peer);
+    if (!room.presenterPeerId && peer.machine !== true
+      && peerRole(peer, room.creatorPrincipal) === "owner") {
+      room.presenterPeerId = peer.id;
+    }
     room.updatedAt = now;
     return { peer, existingPeers };
   }
 
   leave(peer, now = Date.now()) {
     const room = this.#rooms.get(peer.roomId);
-    if (!room || !room.peers.delete(peer.id)) return [];
+    if (!room || room.peers.get(peer.id) !== peer) return [];
+    clearPendingRemove(room, peer.id);
+    if (!room.peers.delete(peer.id)) return [];
     peer.hand = "none";
     peer.handRaisedAt = 0;
     peer.handActions = [];
+    fallbackPresenter(room);
     room.updatedAt = now;
     if (room.peers.size === 0) this.#rooms.delete(peer.roomId);
     return [...room.peers.values()];
@@ -221,6 +231,24 @@ export class RoomRegistry {
   authorizeRemove(actor, targetPeerId, now = Date.now()) {
     const room = this.#rooms.get(actor.roomId);
     return authorizeRemove(room, actor, targetPeerId, now);
+  }
+
+  cancelRemove(actor, now = Date.now()) {
+    const room = this.#rooms.get(actor.roomId);
+    return cancelRemove(room, actor, now);
+  }
+
+  dueRemove(roomId, now = Date.now()) {
+    return dueRemove(this.#rooms.get(roomId), now);
+  }
+
+  hasPendingRemove(roomId) {
+    return Boolean(this.#rooms.get(roomId)?.pendingRemove);
+  }
+
+  assignPresenter(actor, targetPeerId, now = Date.now()) {
+    const room = this.#rooms.get(actor.roomId);
+    return assignPresenter(room, actor, targetPeerId, now);
   }
 
   authorizePublicationStop(actor, targetPeerId, source, now = Date.now()) {
