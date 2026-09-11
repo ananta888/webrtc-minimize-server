@@ -708,6 +708,7 @@
     },
     {
       "id": "TBP-023",
+      "provider_decision_20260911": "Benutzer bestaetigt am2026-09-11: Es gibt noch keinen CDN-Anbieter/kein CDN-Konto. Keine kostenpflichtigen Ressourcen oder Konten anlegen. EigenerOrigin bleibt bestehenderBasispfad; CDN-Adapter/Policy/Contracts koennen vorbereitet werden,produktiveProviderintegration/Purge/Auth/Shielding/Last-/Failovernachweis erstnachAnbieterauswahlundexpliziterFreigabe. KeineOrigin-Kapazitaet alsCDNSkalierung behaupten. TBP023bleibtpartial55,keineAkzeptanzabgeschlossen,Summenunveraendert.",
       "title": "Origin-, CDN- und Standard-HLS-Skalierungsprofile implementieren",
       "status": "partial",
       "priority": "P1",
