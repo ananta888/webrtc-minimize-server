@@ -30,44 +30,44 @@ function integer(value: unknown, min: number, max: number): value is number {
 }
 
 function point(value: unknown): WhiteboardPoint | null {
-  if (!exact(value, ["x", "y"]) || !integer(value.x, -MAX_COORD, MAX_COORD) || !integer(value.y, -MAX_COORD, MAX_COORD)) {
+  if (!exact(value, ["x", "y"]) || !integer(value["x"], -MAX_COORD, MAX_COORD) || !integer(value["y"], -MAX_COORD, MAX_COORD)) {
     return null;
   }
-  return { x: value.x as number, y: value.y as number };
+  return { x: value["x"] as number, y: value["y"] as number };
 }
 
 export function parseWhiteboardOperation(value: unknown): WhiteboardOperation | null {
   if (!exact(value, ["version", "type", "opId", "membershipEpoch", "authorPeerId", "kind", "payload"])) return null;
-  if (value.version !== 1 || value.type !== "whiteboard-op") return null;
-  if (typeof value.opId !== "string" || !OP_ID.test(value.opId)) return null;
-  if (!integer(value.membershipEpoch, 1, Number.MAX_SAFE_INTEGER)) return null;
-  if (typeof value.authorPeerId !== "string" || !PEER_ID.test(value.authorPeerId)) return null;
-  if (typeof value.kind !== "string" || !KINDS.has(value.kind as WhiteboardKind)) return null;
-  const payload = parsePayload(value.kind as WhiteboardKind, value.payload);
+  if (value["version"] !== 1 || value["type"] !== "whiteboard-op") return null;
+  if (typeof value["opId"] !== "string" || !OP_ID.test(value["opId"])) return null;
+  if (!integer(value["membershipEpoch"], 1, Number.MAX_SAFE_INTEGER)) return null;
+  if (typeof value["authorPeerId"] !== "string" || !PEER_ID.test(value["authorPeerId"])) return null;
+  if (typeof value["kind"] !== "string" || !KINDS.has(value["kind"] as WhiteboardKind)) return null;
+  const payload = parsePayload(value["kind"] as WhiteboardKind, value["payload"]);
   if (!payload) return null;
   return {
-    version: 1, type: "whiteboard-op", opId: value.opId, membershipEpoch: value.membershipEpoch as number,
-    authorPeerId: value.authorPeerId, kind: value.kind as WhiteboardKind, payload,
+    version: 1, type: "whiteboard-op", opId: value["opId"], membershipEpoch: value["membershipEpoch"] as number,
+    authorPeerId: value["authorPeerId"], kind: value["kind"] as WhiteboardKind, payload,
   };
 }
 
 function parsePayload(kind: WhiteboardKind, payload: unknown): Readonly<Record<string, unknown>> | null {
   if (kind === "clear") return exact(payload, []) ? {} : null;
   if (kind === "stroke-begin") {
-    if (!exact(payload, ["color", "width", "point"]) || typeof payload.color !== "string" || !COLORS.has(payload.color as WhiteboardColor)
-      || !integer(payload.width, 1, 16)) return null;
-    const start = point(payload.point);
-    return start ? { color: payload.color, width: payload.width, point: start } : null;
+    if (!exact(payload, ["color", "width", "point"]) || typeof payload["color"] !== "string" || !COLORS.has(payload["color"] as WhiteboardColor)
+      || !integer(payload["width"], 1, 16)) return null;
+    const start = point(payload["point"]);
+    return start ? { color: payload["color"], width: payload["width"], point: start } : null;
   }
   if (kind === "stroke-point") {
-    if (!exact(payload, ["points"]) || !Array.isArray(payload.points)
-      || payload.points.length < 1 || payload.points.length > MAX_POINTS) return null;
-    const points = payload.points.map(point);
+    if (!exact(payload, ["points"]) || !Array.isArray(payload["points"])
+      || payload["points"].length < 1 || payload["points"].length > MAX_POINTS) return null;
+    const points = payload["points"].map(point);
     return points.every(Boolean) ? { points } : null;
   }
   if (kind === "stroke-end" || kind === "erase") {
     if (!exact(payload, ["point"])) return null;
-    const end = point(payload.point);
+    const end = point(payload["point"]);
     return end ? { point: end } : null;
   }
   return null;
