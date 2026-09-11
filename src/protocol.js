@@ -158,6 +158,20 @@ export function parseClientMessage(raw) {
     if (!PEER_ID_PATTERN.test(value.targetPeerId || "")) throw new ProtocolError("invalid_recipient");
     return Object.freeze({ type: "presenter-assign", targetPeerId: value.targetPeerId });
   }
+  if (value.type === "breakout-assign") {
+    if (!hasOnlyKeys(value, new Set(["type", "targetPeerId", "childRoomId"]))) throw new ProtocolError("unknown_message_field");
+    if (!PEER_ID_PATTERN.test(value.targetPeerId || "")) throw new ProtocolError("invalid_recipient");
+    return Object.freeze({
+      type: "breakout-assign",
+      targetPeerId: value.targetPeerId,
+      childRoomId: normalizeRoomId(value.childRoomId),
+    });
+  }
+  if (value.type === "breakout-revoke") {
+    if (!hasOnlyKeys(value, new Set(["type", "grantId"]))) throw new ProtocolError("unknown_message_field");
+    if (!PEER_ID_PATTERN.test(value.grantId || "")) throw new ProtocolError("invalid_breakout_grant");
+    return Object.freeze({ type: "breakout-revoke", grantId: value.grantId });
+  }
   if (value.type === "whiteboard-clear") {
     if (!hasOnlyKeys(value, new Set(["type"]))) throw new ProtocolError("unknown_message_field");
     return Object.freeze({ type: "whiteboard-clear" });

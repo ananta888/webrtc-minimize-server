@@ -8,6 +8,9 @@ export const MIN_BREAKOUT_CHILDREN = 1;
 export const MIN_BREAKOUT_LIFETIME_MS = 60_000;
 export const MAX_BREAKOUT_LIFETIME_MS = 4 * 60 * 60 * 1000;
 export const DEFAULT_BREAKOUT_LIFETIME_MS = 20 * 60 * 1000;
+export const MIN_BREAKOUT_GRANT_MS = 15_000;
+export const MAX_BREAKOUT_GRANT_MS = 15 * 60 * 1000;
+export const DEFAULT_BREAKOUT_GRANT_MS = 120_000;
 
 export class BreakoutError extends Error {
   constructor(code) {
@@ -27,6 +30,22 @@ function allocateChildRoomId(occupied) {
     if (ROOM_ID_PATTERN.test(roomId) && !occupied.has(roomId)) return roomId;
   }
   fail("breakout_room_id_exhausted");
+}
+
+function liveGrant(grant, now) {
+  return grant.consumedAt === 0 && grant.expiresAt > now;
+}
+
+function freezeGrant(grant) {
+  return Object.freeze({
+    grantId: grant.grantId,
+    setId: grant.setId,
+    childRoomId: grant.childRoomId,
+    targetPeerId: grant.targetPeerId,
+    parentRevision: grant.parentRevision,
+    expiresAt: grant.expiresAt,
+    consumed: grant.consumedAt > 0,
+  });
 }
 
 function freezeChild(child) {
@@ -108,8 +127,9 @@ export class BreakoutRegistry {
       createdAt: now,
       expiresAt: now + lifetimeMs,
       children,
+      grants: [],
     });
-    return this.snapshot(parentRoomId);
+    return this.snapshot(parentRoomId, now);
   }
 
   reserved(roomId) {
@@ -135,14 +155,79 @@ export class BreakoutRegistry {
     });
   }
 
-  mayJoinChild({ roomId, setId, now = Date.now() }) {
+  assign({
+    parentRoomId, ownerRole, targetPeer, childRoomId,
+    ttlMs = DEFAULT_BREAKOUT_GRANT_MS, now = Date.now(), occupied = 0,
+  }) {
+    if (ownerRole !== "owner") fail("breakout_owner_required");
+    const set = this.#sets.get(parentRoomId);
+    if (!set || set.state !== "open") fail("breakout_unavailable");
+    if (set.expiresAt <= now) fail("breakout_expired");
+    if (!targetPeer || targetPeer.roomId !== parentRoomId) fail("breakout_target_not_member");
+    if (targetPeer.machine === true) fail("breakout_machine_denied");
+    if (typeof targetPeer.principal !== "string" || targetPeer.principal.length < 1) fail("invalid_breakout_principal");
+    if (typeof targetPeer.deviceFingerprint !== "string" || targetPeer.deviceFingerprint.length < 8) {
+      fail("invalid_breakout_device");
+    }
+    const child = set.children.find((item) => item.roomId === childRoomId && item.state === "open");
+    if (!child) fail("breakout_unknown_child");
+    if (!Number.isSafeInteger(ttlMs) || ttlMs < MIN_BREAKOUT_GRANT_MS || ttlMs > MAX_BREAKOUT_GRANT_MS) {
+      fail("invalid_breakout_grant");
+    }
+    if (!Number.isSafeInteger(occupied) || occupied < 0) fail("invalid_breakout_occupancy");
+    const expiresAt = Math.min(now + ttlMs, set.expiresAt);
+    if (expiresAt <= now) fail("breakout_expired");
+    set.grants = set.grants.filter((grant) => !(liveGrant(grant, now)
+      && grant.principal === targetPeer.principal
+      && grant.deviceFingerprint === targetPeer.deviceFingerprint));
+    const waiting = set.grants.filter((grant) => liveGrant(grant, now) && grant.childRoomId === childRoomId).length;
+    if (waiting + occupied >= child.capacity) fail("breakout_child_full");
+    const grant = {
+      grantId: crypto.randomBytes(8).toString("hex"),
+      setId: set.setId,
+      parentRoomId,
+      parentRevision: set.parentRevision,
+      childRoomId,
+      principal: targetPeer.principal,
+      deviceFingerprint: targetPeer.deviceFingerprint,
+      targetPeerId: targetPeer.id,
+      expiresAt,
+      consumedAt: 0,
+    };
+    set.grants.push(grant);
+    return freezeGrant(grant);
+  }
+
+  revoke({ parentRoomId, ownerRole, grantId, now = Date.now() }) {
+    if (ownerRole !== "owner") fail("breakout_owner_required");
+    const set = this.#sets.get(parentRoomId);
+    if (!set || set.state !== "open") fail("breakout_unavailable");
+    const index = (set.grants || []).findIndex((grant) => grant.grantId === grantId);
+    if (index < 0) fail("breakout_unknown_grant");
+    const grant = set.grants[index];
+    if (!liveGrant(grant, now)) fail("breakout_grant_consumed");
+    set.grants.splice(index, 1);
+    grant.consumedAt = now;
+    return freezeGrant(grant);
+  }
+
+  consume({ roomId, setId, principal, deviceFingerprint, now = Date.now() }) {
     const reserved = this.reserved(roomId);
     if (!reserved || reserved.setId !== setId) fail("breakout_assignment_required");
     if (reserved.expiresAt <= now) fail("breakout_expired");
+    const set = this.#sets.get(reserved.parentRoomId);
+    const grant = (set?.grants || []).find((item) => liveGrant(item, now)
+      && item.childRoomId === roomId
+      && item.setId === setId
+      && item.principal === principal
+      && item.deviceFingerprint === deviceFingerprint
+      && item.parentRevision === set.parentRevision);
+    if (!grant) fail("breakout_assignment_required");
+    grant.consumedAt = now;
     return reserved;
   }
 
-  snapshot(parentRoomId) {
+  snapshot(parentRoomId, now = Date.now()) {
     const set = this.#sets.get(parentRoomId);
     if (!set || set.state === "closed") return null;
     return Object.freeze({
@@ -153,6 +238,7 @@ export class BreakoutRegistry {
       state: set.state,
       expiresAt: set.expiresAt,
       children: Object.freeze(set.children.filter((child) => child.state !== "closed").map(freezeChild)),
+      grants: Object.freeze((set.grants || []).filter((grant) => liveGrant(grant, now)).map(freezeGrant)),
     });
   }
 

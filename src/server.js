@@ -2102,6 +2102,42 @@ function configureSignaling(
           broadcastModeration(peer.roomId);
           return;
         }
+        if (message.type === "breakout-assign") {
+          const grant = registry.assignBreakout(peer, {
+            targetPeerId: message.targetPeerId,
+            childRoomId: message.childRoomId,
+          });
+          const snapshot = registry.breakoutSnapshot(peer.roomId);
+          for (const member of registry.members(peer.roomId)) {
+            if (snapshot) safeSend(member.socket, snapshot);
+            if (member.id === message.targetPeerId) {
+              safeSend(member.socket, {
+                type: "breakout-assigned",
+                grantId: grant.grantId,
+                setId: grant.setId,
+                childRoomId: grant.childRoomId,
+                parentRevision: grant.parentRevision,
+                expiresAt: grant.expiresAt,
+              });
+            }
+          }
+          return;
+        }
+        if (message.type === "breakout-revoke") {
+          const grant = registry.revokeBreakout(peer, message.grantId);
+          const snapshot = registry.breakoutSnapshot(peer.roomId);
+          for (const member of registry.members(peer.roomId)) {
+            if (snapshot) safeSend(member.socket, snapshot);
+            if (member.id === grant.targetPeerId) {
+              safeSend(member.socket, {
+                type: "breakout-revoked",
+                grantId: grant.grantId,
+                childRoomId: grant.childRoomId,
+              });
+            }
+          }
+          return;
+        }
         if (message.type === "whiteboard-clear") {
           if (peer.machine === true || registry.peerRole(peer) !== "owner") {
             throw new RoomModerationError("moderation_forbidden");

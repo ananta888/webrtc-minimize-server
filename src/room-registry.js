@@ -76,6 +76,46 @@ export class RoomRegistry {
     }
   }
 
+  assignBreakout(actor, { targetPeerId, childRoomId, ttlMs } = {}, now = Date.now()) {
+    const room = this.#rooms.get(actor.roomId);
+    if (!room || room.peers.get(actor.id) !== actor) throw new RoomAdmissionError("peer_not_joined");
+    if (!this.#breakouts) throw new RoomAdmissionError("breakout_unavailable");
+    const target = room.peers.get(targetPeerId);
+    try {
+      return this.#breakouts.assign({
+        parentRoomId: actor.roomId,
+        ownerRole: peerRole(actor, room.creatorPrincipal),
+        targetPeer: target,
+        childRoomId,
+        ttlMs,
+        now,
+        occupied: this.#rooms.get(childRoomId)?.peers.size || 0,
+      });
+    } catch (error) {
+      this.#breakoutError(error);
+    }
+  }
+
+  revokeBreakout(actor, grantId, now = Date.now()) {
+    const room = this.#rooms.get(actor.roomId);
+    if (!room || room.peers.get(actor.id) !== actor) throw new RoomAdmissionError("peer_not_joined");
+    if (!this.#breakouts) throw new RoomAdmissionError("breakout_unavailable");
+    try {
+      return this.#breakouts.revoke({
+        parentRoomId: actor.roomId,
+        ownerRole: peerRole(actor, room.creatorPrincipal),
+        grantId,
+        now,
+      });
+    } catch (error) {
+      this.#breakoutError(error);
+    }
+  }
+
+  breakoutSnapshot(parentRoomId, now = Date.now()) {
+    return this.#breakouts?.snapshot(parentRoomId, now) || null;
+  }
+
   closeBreakouts(parentRoomId, now = Date.now()) {
     const closed = this.#breakouts?.closeSet(parentRoomId, now);
     if (!closed) return [];
@@ -96,7 +136,13 @@ export class RoomRegistry {
     if (reserved) {
       if (mode === "pair") throw new RoomAdmissionError("breakout_pair_denied");
       try {
-        this.#breakouts.mayJoinChild({ roomId, setId: admission.breakoutSetId, now });
+        this.#breakouts.consume({
+          roomId,
+          setId: admission.breakoutSetId,
+          principal: admission.principal || "",
+          deviceFingerprint: admission.deviceFingerprint || "",
+          now,
+        });
       } catch (error) {
         this.#breakoutError(error);
       }

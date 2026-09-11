@@ -246,7 +246,7 @@
         {
           "id": "BBB-UX-013",
           "title": "Kurzlebige, zielgebundene Breakout-Zuweisungen und Moderatorrechte spezifizieren",
-          "status": "open",
+          "status": "partial",
           "priority": "P0",
           "risk": "critical",
           "scope": ["assignment grant", "target subject/device", "parent revision", "expiry", "single use"],
@@ -710,8 +710,8 @@
     "total_items": 42,
     "by_status": {
       "completed": 0,
-      "partial": 14,
-      "open": 28,
+      "partial": 15,
+      "open": 27,
       "deferred": 0,
       "blocked": 0
     },
