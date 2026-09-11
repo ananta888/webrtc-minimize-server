@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ananta.meet-session-retired.v1",
+  "title": "Closed retirement receipt, never recovered media or Hub reconnect",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "nonce", "sessionId", "binding", "retired"],
+  "properties": {
+    "schema": { "const": "ananta.meet-session-retired.v1" },
+    "nonce": { "type": "string", "pattern": "^[a-f0-9]{32}$" },
+    "sessionId": { "type": "string", "pattern": "^ms_[A-Za-z0-9_-]{32}$" },
+    "binding": { "$ref": "ananta.meet-machine-binding.v1" },
+    "retired": { "const": true }
+  }
+}

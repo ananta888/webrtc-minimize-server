@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ananta.meet-visual-probe.v1",
+  "title": "Bounded visual receive feasibility, never a capture or decode grant",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "profile", "supported", "limits"],
+  "properties": {
+    "schema": { "const": "ananta.meet-visual-probe.v1" },
+    "profile": { "const": "jpeg-source-v1" },
+    "supported": { "type": "boolean" },
+    "limits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["width", "height", "bytes", "frames", "intervalMs", "lifetimeMs", "operationMs"],
+      "properties": {
+        "width": { "const": 640 }, "height": { "const": 360 }, "bytes": { "const": 98304 },
+        "frames": { "const": 3 }, "intervalMs": { "const": 500 }, "lifetimeMs": { "const": 10000 },
+        "operationMs": { "const": 2000 }
+      }
+    }
+  }
+}

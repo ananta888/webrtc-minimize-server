@@ -59,7 +59,7 @@ for (const [name, engine] of Object.entries({ chromium, firefox })) {
     assert.deepEqual(result.first, { schema: "ananta.meet-client-probe.v1", client: "isolated-browser-v1",
       frameEnvelope: "codec-prefix-v1", nativeAdapter: false, secureContext: true, encodedTransform: true,
       codecs: { vp8Send: true, vp8Receive: true, opusSend: true, opusReceive: true },
-      ports: { session: true, mp4: true, chat: true, audio: true, screen: true, screenAudio: true, speech: true, avatar: true } });
+      ports: { session: true, mp4: true, chat: true, audio: true, visual: true, screen: true, screenAudio: true, speech: true, avatar: true } });
     assert.equal(result.stable, true); assert.equal(result.frozen, true); assert.equal(result.joined, false);
     assert.deepEqual(result.effects, { capture: 0, connection: 0, socket: 0 });
     assert.equal(result.forbidden, 0);

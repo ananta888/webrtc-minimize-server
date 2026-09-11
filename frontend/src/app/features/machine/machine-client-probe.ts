@@ -10,6 +10,7 @@ const REQUIRED_METHODS = {
   session: ["join", "renew", "leave", "status"], mp4: ["publish"],
   chat: ["open", "poll", "ack", "reply", "close", "status"],
   audio: ["sources", "open", "poll", "ack", "reply", "close", "status"],
+  visual: ["probe", "sources", "open", "frame", "close", "status"],
   screen: ["open", "push", "close", "status"], screenAudio: ["open", "push", "close", "status"],
   speech: ["open", "push", "close", "status"], avatar: ["open", "pulse", "close", "status"],
 } as const;

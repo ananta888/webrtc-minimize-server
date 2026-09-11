@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ananta.meet-session-observation.v1",
+  "title": "Own publication metadata only, never received media or a human identity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "nonce", "lease", "binding", "peerId", "roomId", "membershipEpoch", "publicationRevision", "publications"],
+  "properties": {
+    "schema": { "const": "ananta.meet-session-observation.v1" },
+    "nonce": { "type": "string", "pattern": "^[a-f0-9]{32}$" },
+    "lease": { "$ref": "ananta.meet-session-lease.v1" },
+    "binding": { "$ref": "ananta.meet-machine-binding.v1" },
+    "peerId": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
+    "roomId": { "type": "string", "pattern": "^room-[a-f0-9]{18}$" },
+    "membershipEpoch": { "type": "integer", "minimum": 1 },
+    "publicationRevision": { "type": "integer", "minimum": 0 },
+    "publications": {
+      "type": "array", "maxItems": 4,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["publicationId", "source", "publicationEpoch"],
+        "properties": {
+          "publicationId": { "type": "string", "pattern": "^[A-Za-z0-9_={}:-]{1,128}$" },
+          "source": { "enum": ["camera", "microphone", "screen", "screen-audio"] },
+          "publicationEpoch": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  }
+}

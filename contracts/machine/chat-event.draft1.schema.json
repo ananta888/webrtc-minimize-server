@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ananta.meet-chat-event.draft1",
+  "title": "Room chat event after membership binding, never a Hub transcript",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "session_id", "generation", "room_id", "membership_epoch", "message_id", "sender_peer_id", "sender_kind", "sent_at_ms", "text"],
+  "properties": {
+    "schema": { "const": "ananta.meet-chat-event.draft1" },
+    "session_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" },
+    "generation": { "type": "integer", "minimum": 1 },
+    "room_id": { "type": "string", "pattern": "^room-[a-f0-9]{18}$" },
+    "membership_epoch": { "type": "integer", "minimum": 1 },
+    "message_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" },
+    "sender_peer_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" },
+    "sender_kind": { "enum": ["human", "machine", "unknown"] },
+    "sent_at_ms": { "type": "integer", "minimum": 1 },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2000 }
+  }
+}

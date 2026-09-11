@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ananta.meet-rollout-plan.v2",
+  "title": "Versioned trust pins on a local rollout expectation, never a grant",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "meetRevision", "hubRevision", "publicOrigin", "hubIssuer", "hubKeySha256", "tenantId", "projectId", "roomId", "capabilities", "trustRevision", "keyId", "subject", "audience", "grantTtlSeconds"],
+  "properties": {
+    "schema": { "const": "ananta.meet-rollout-plan.v2" },
+    "meetRevision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "hubRevision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "publicOrigin": { "type": "string", "pattern": "^https://[^/]+$" },
+    "hubIssuer": { "type": "string", "minLength": 8, "maxLength": 160 },
+    "hubKeySha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "tenantId": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" },
+    "projectId": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" },
+    "roomId": { "type": "string", "pattern": "^room-[a-f0-9]{18}$" },
+    "capabilities": {
+      "type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true,
+      "items": { "enum": ["audio.receive", "avatar.publish", "chat.read", "chat.send", "screen-audio.publish", "screen.publish", "speech.publish", "video.receive"] }
+    },
+    "trustRevision": { "type": "integer", "minimum": 1 },
+    "keyId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+    "subject": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" },
+    "audience": { "enum": ["ananta-meet-machine-v1", "ananta-meet-machine-v2"] },
+    "grantTtlSeconds": { "type": "integer", "minimum": 1, "maximum": 600 }
+  }
+}

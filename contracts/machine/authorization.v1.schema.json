@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ananta.meet-authorization.v1",
+  "title": "Legacy authorization envelope without publication revision, never a grant",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "nonce", "lease", "binding", "publications"],
+  "properties": {
+    "schema": { "const": "ananta.meet-authorization.v1" },
+    "nonce": { "type": "string", "pattern": "^[a-f0-9]{32}$" },
+    "lease": { "$ref": "ananta.meet-session-lease.v1" },
+    "binding": { "$ref": "ananta.meet-machine-binding.v1" },
+    "publications": {
+      "type": "array", "maxItems": 4,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["publicationId", "source", "publicationEpoch"],
+        "properties": {
+          "publicationId": { "type": "string", "pattern": "^[A-Za-z0-9_={}:-]{1,128}$" },
+          "source": { "enum": ["camera", "microphone", "screen", "screen-audio"] },
+          "publicationEpoch": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  }
+}

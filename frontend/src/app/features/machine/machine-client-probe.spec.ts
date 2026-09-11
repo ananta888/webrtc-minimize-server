@@ -7,6 +7,7 @@ function setup() {
   const api = { join: effect, renew: effect, leave: effect, status: effect, publish: effect,
     chat: { ...source, poll: effect, ack: effect, reply: effect },
     audio: { ...source, sources: effect, poll: effect, ack: effect, reply: effect },
+    visual: { probe: effect, sources: effect, open: effect, frame: effect, close: effect, status: effect },
     screen: { ...source }, screenAudio: { ...source }, speech: { ...source }, avatar: { ...source, pulse: effect } };
   const runtime: MachineClientProbePorts = { secureContext: () => true, encodedTransform: () => true,
     codecs: (_direction, kind) => [{ mimeType: kind === "video" ? "video/VP8" : "audio/opus" }] };
@@ -19,7 +20,7 @@ it("reports closed versioned feasibility without executing a source or join", ()
     client: "isolated-browser-v1", frameEnvelope: "codec-prefix-v1", nativeAdapter: false,
     secureContext: true, encodedTransform: true,
     codecs: { vp8Send: true, vp8Receive: true, opusSend: true, opusReceive: true },
-    ports: { session: true, mp4: true, chat: true, audio: true, screen: true, screenAudio: true, speech: true, avatar: true } });
+    ports: { session: true, mp4: true, chat: true, audio: true, visual: true, screen: true, screenAudio: true, speech: true, avatar: true } });
   expect(effect).not.toHaveBeenCalled();
 });
 
@@ -63,8 +64,10 @@ it("codec exceptions affect only their own direction and never expose error deta
 it("missing methods cannot advertise a complete port; other ports remain independent", () => {
   const { api, runtime, effect } = setup();
   Reflect.deleteProperty(api.audio, "ack"); Reflect.deleteProperty(api, "renew");
+  Reflect.deleteProperty(api.visual, "open");
   const value = probeMachineClient(api, runtime);
   expect(value.ports.audio).toBe(false); expect(value.ports.session).toBe(false);
+  expect(value.ports.visual).toBe(false);
   expect(value.ports.chat).toBe(true); expect(value.ports.speech).toBe(true); expect(effect).not.toHaveBeenCalled();
 });
 

@@ -1,0 +1,288 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "type": "client-probe",
+      "schema": "client-probe.v1.schema.json",
+      "minimal": {
+        "schema": "ananta.meet-client-probe.v1",
+        "client": "isolated-browser-v1",
+        "frameEnvelope": "codec-prefix-v1",
+        "nativeAdapter": false,
+        "secureContext": false,
+        "encodedTransform": false,
+        "codecs": { "vp8Send": false, "vp8Receive": false, "opusSend": false, "opusReceive": false },
+        "ports": { "session": false, "mp4": false, "chat": false, "audio": false, "visual": false, "screen": false, "screenAudio": false, "speech": false, "avatar": false }
+      },
+      "full": {
+        "schema": "ananta.meet-client-probe.v1",
+        "client": "isolated-browser-v1",
+        "frameEnvelope": "codec-prefix-v1",
+        "nativeAdapter": false,
+        "secureContext": true,
+        "encodedTransform": true,
+        "codecs": { "vp8Send": true, "vp8Receive": true, "opusSend": true, "opusReceive": true },
+        "ports": { "session": true, "mp4": true, "chat": true, "audio": true, "visual": true, "screen": true, "screenAudio": true, "speech": true, "avatar": true }
+      },
+      "invalidPatch": { "nativeAdapter": true },
+      "invalidReason": "native-adapter-forbidden"
+    },
+    {
+      "type": "session-lease",
+      "schema": "session-lease.v1.schema.json",
+      "minimal": {
+        "schema": "ananta.meet-session-lease.v1",
+        "sessionId": "ms_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generation": 1,
+        "expiresAt": 1800000060000,
+        "absoluteExpiresAt": 1800007200000
+      },
+      "full": {
+        "schema": "ananta.meet-session-lease.v1",
+        "sessionId": "ms_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "generation": 4,
+        "expiresAt": 1800000120000,
+        "absoluteExpiresAt": 1800007200000
+      },
+      "invalidPatch": { "peerId": "aaaaaaaaaaaaaaaa" },
+      "invalidReason": "unknown-field"
+    },
+    {
+      "type": "machine-context",
+      "schema": "machine-context.v1.schema.json",
+      "minimal": {
+        "schema": "ananta.meet-machine-context.v1",
+        "tenantId": "tenant", "projectId": "project", "taskId": "task",
+        "runtimeId": "runtime", "hubSessionId": "hub"
+      },
+      "full": {
+        "schema": "ananta.meet-machine-context.v1",
+        "tenantId": "tn.example", "projectId": "proj-1", "taskId": "task.main",
+        "runtimeId": "rt_1", "hubSessionId": "hs_1"
+      },
+      "invalidPatch": { "subject": "human" },
+      "invalidReason": "unknown-field"
+    },
+    {
+      "type": "session-observation",
+      "schema": "session-observation.v1.schema.json",
+      "minimal": {
+        "schema": "ananta.meet-session-observation.v1",
+        "nonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "lease": {
+          "schema": "ananta.meet-session-lease.v1",
+          "sessionId": "ms_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "generation": 1, "expiresAt": 1800000060000, "absoluteExpiresAt": 1800007200000
+        },
+        "binding": {
+          "issuer": "https://identity.example/realms/ananta", "subject": "machine-1",
+          "roomId": "room-aaaaaaaaaaaaaaaaaa", "taskId": "task", "tenantId": "tenant",
+          "projectId": "project", "protocolVersion": "v2", "runtimeId": "runtime",
+          "hubSessionId": "hub", "capabilitySet": "screen.publish"
+        },
+        "peerId": "aaaaaaaaaaaaaaaa", "roomId": "room-aaaaaaaaaaaaaaaaaa",
+        "membershipEpoch": 1, "publicationRevision": 0, "publications": []
+      },
+      "full": {
+        "schema": "ananta.meet-session-observation.v1",
+        "nonce": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "lease": {
+          "schema": "ananta.meet-session-lease.v1",
+          "sessionId": "ms_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "generation": 2, "expiresAt": 1800000120000, "absoluteExpiresAt": 1800007200000
+        },
+        "binding": {
+          "issuer": "https://identity.example/realms/ananta", "subject": "machine-1",
+          "roomId": "room-aaaaaaaaaaaaaaaaaa", "taskId": "task", "tenantId": "tenant",
+          "projectId": "project", "protocolVersion": "v2", "runtimeId": "runtime",
+          "hubSessionId": "hub", "capabilitySet": "screen.publish"
+        },
+        "peerId": "aaaaaaaaaaaaaaaa", "roomId": "room-aaaaaaaaaaaaaaaaaa",
+        "membershipEpoch": 3, "publicationRevision": 1,
+        "publications": [{ "publicationId": "own-screen", "source": "screen", "publicationEpoch": 1 }]
+      },
+      "invalidPatch": { "displayName": "Ananta" },
+      "invalidReason": "unknown-field"
+    },
+    {
+      "type": "authorization",
+      "schema": "authorization.v1.schema.json",
+      "minimal": {
+        "schema": "ananta.meet-authorization.v1",
+        "nonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "lease": {
+          "schema": "ananta.meet-session-lease.v1",
+          "sessionId": "ms_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "generation": 1, "expiresAt": 1800000060000, "absoluteExpiresAt": 1800007200000
+        },
+        "binding": {
+          "issuer": "https://identity.example/realms/ananta", "subject": "machine-1",
+          "roomId": "room-aaaaaaaaaaaaaaaaaa", "taskId": "task", "tenantId": "tenant",
+          "projectId": "project", "protocolVersion": "v2", "runtimeId": "runtime",
+          "hubSessionId": "hub", "capabilitySet": "screen.publish"
+        },
+        "publications": []
+      },
+      "full": {
+        "schema": "ananta.meet-authorization.v1",
+        "nonce": "cccccccccccccccccccccccccccccccc",
+        "lease": {
+          "schema": "ananta.meet-session-lease.v1",
+          "sessionId": "ms_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "generation": 1, "expiresAt": 1800000060000, "absoluteExpiresAt": 1800007200000
+        },
+        "binding": {
+          "issuer": "https://identity.example/realms/ananta", "subject": "machine-1",
+          "roomId": "room-aaaaaaaaaaaaaaaaaa", "taskId": "task", "tenantId": "tenant",
+          "projectId": "project", "protocolVersion": "v2", "runtimeId": "runtime",
+          "hubSessionId": "hub", "capabilitySet": "screen.publish"
+        },
+        "publications": [{ "publicationId": "own-screen", "source": "screen", "publicationEpoch": 1 }]
+      },
+      "invalidPatch": { "publicationRevision": 1 },
+      "invalidReason": "unknown-field"
+    },
+    {
+      "type": "session-retired",
+      "schema": "session-retired.v1.schema.json",
+      "minimal": {
+        "schema": "ananta.meet-session-retired.v1",
+        "nonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sessionId": "ms_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "binding": {
+          "issuer": "https://identity.example/realms/ananta", "subject": "machine-1",
+          "roomId": "room-aaaaaaaaaaaaaaaaaa", "taskId": "task", "tenantId": "tenant",
+          "projectId": "project", "protocolVersion": "v2", "runtimeId": "runtime",
+          "hubSessionId": "hub", "capabilitySet": "screen.publish"
+        },
+        "retired": true
+      },
+      "full": {
+        "schema": "ananta.meet-session-retired.v1",
+        "nonce": "dddddddddddddddddddddddddddddddd",
+        "sessionId": "ms_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "binding": {
+          "issuer": "https://identity.example/realms/ananta", "subject": "machine-2",
+          "roomId": "room-bbbbbbbbbbbbbbbbbb", "taskId": "task", "tenantId": "tenant",
+          "projectId": "project", "protocolVersion": "v2", "runtimeId": "runtime",
+          "hubSessionId": "hub", "capabilitySet": "chat.read"
+        },
+        "retired": true
+      },
+      "invalidPatch": { "retired": false },
+      "invalidReason": "not-retired"
+    },
+    {
+      "type": "chat-event",
+      "schema": "chat-event.draft1.schema.json",
+      "minimal": {
+        "schema": "ananta.meet-chat-event.draft1",
+        "session_id": "hub", "generation": 1, "room_id": "room-aaaaaaaaaaaaaaaaaa",
+        "membership_epoch": 1, "message_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sender_peer_id": "aaaaaaaaaaaaaaaa", "sender_kind": "human", "sent_at_ms": 1800000000000,
+        "text": "ok"
+      },
+      "full": {
+        "schema": "ananta.meet-chat-event.draft1",
+        "session_id": "hub", "generation": 3, "room_id": "room-aaaaaaaaaaaaaaaaaa",
+        "membership_epoch": 4, "message_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "sender_peer_id": "bbbbbbbbbbbbbbbb", "sender_kind": "machine", "sent_at_ms": 1800000001000,
+        "text": "synthetic"
+      },
+      "invalidPatch": { "transcript": "secret" },
+      "invalidReason": "unknown-field"
+    },
+    {
+      "type": "visual-probe",
+      "schema": "visual-probe.v1.schema.json",
+      "minimal": {
+        "schema": "ananta.meet-visual-probe.v1", "profile": "jpeg-source-v1", "supported": false,
+        "limits": { "width": 640, "height": 360, "bytes": 98304, "frames": 3, "intervalMs": 500, "lifetimeMs": 10000, "operationMs": 2000 }
+      },
+      "full": {
+        "schema": "ananta.meet-visual-probe.v1", "profile": "jpeg-source-v1", "supported": true,
+        "limits": { "width": 640, "height": 360, "bytes": 98304, "frames": 3, "intervalMs": 500, "lifetimeMs": 10000, "operationMs": 2000 }
+      },
+      "invalidPatch": { "limits": { "width": 1280, "height": 360, "bytes": 98304, "frames": 3, "intervalMs": 500, "lifetimeMs": 10000, "operationMs": 2000 } },
+      "invalidReason": "limit-change"
+    },
+    {
+      "type": "integration",
+      "schema": "integration.v1.schema.json",
+      "minimal": {
+        "schema": "ananta.meet-integration.v1",
+        "admissionEnabled": false,
+        "supportedCapabilities": ["audio.receive", "avatar.publish", "chat.read", "chat.send", "screen-audio.publish", "screen.publish", "speech.publish", "video.receive"],
+        "operatorCapabilityCeiling": [],
+        "publisherConsentRequired": ["audio.receive", "chat.read", "video.receive"],
+        "sessionLease": "ananta.meet-session-lease.v1"
+      },
+      "full": {
+        "schema": "ananta.meet-integration.v1",
+        "admissionEnabled": true,
+        "supportedCapabilities": ["audio.receive", "avatar.publish", "chat.read", "chat.send", "screen-audio.publish", "screen.publish", "speech.publish", "video.receive"],
+        "operatorCapabilityCeiling": ["chat.read", "chat.send"],
+        "publisherConsentRequired": ["audio.receive", "chat.read", "video.receive"],
+        "sessionLease": "ananta.meet-session-lease.v1"
+      },
+      "invalidPatch": { "hubConnected": true },
+      "invalidReason": "unknown-field"
+    },
+    {
+      "type": "rollout-plan",
+      "schema": "rollout-plan.v1.schema.json",
+      "minimal": {
+        "schema": "ananta.meet-rollout-plan.v1",
+        "meetRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "hubRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "publicOrigin": "https://meet.example",
+        "hubIssuer": "https://identity.example/realms/ananta",
+        "hubKeySha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tenantId": "tenant", "projectId": "project", "roomId": "room-aaaaaaaaaaaaaaaaaa",
+        "capabilities": ["chat.read"]
+      },
+      "full": {
+        "schema": "ananta.meet-rollout-plan.v1",
+        "meetRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "hubRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "publicOrigin": "https://webrtc.example",
+        "hubIssuer": "https://identity.example/realms/ananta",
+        "hubKeySha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "tenantId": "tenant", "projectId": "project", "roomId": "room-aaaaaaaaaaaaaaaaaa",
+        "capabilities": ["audio.receive", "chat.read", "chat.send", "screen.publish"]
+      },
+      "invalidPatch": { "operatorAuthorized": true },
+      "invalidReason": "unknown-field"
+    },
+    {
+      "type": "rollout-plan-v2",
+      "schema": "rollout-plan.v2.schema.json",
+      "minimal": {
+        "schema": "ananta.meet-rollout-plan.v2",
+        "meetRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "hubRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "publicOrigin": "https://meet.example",
+        "hubIssuer": "https://identity.example/realms/ananta",
+        "hubKeySha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tenantId": "tenant", "projectId": "project", "roomId": "room-aaaaaaaaaaaaaaaaaa",
+        "capabilities": ["chat.read"],
+        "trustRevision": 1, "keyId": "k1", "subject": "machine-1",
+        "audience": "ananta-meet-machine-v2", "grantTtlSeconds": 60
+      },
+      "full": {
+        "schema": "ananta.meet-rollout-plan.v2",
+        "meetRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "hubRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "publicOrigin": "https://webrtc.example",
+        "hubIssuer": "https://identity.example/realms/ananta",
+        "hubKeySha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "tenantId": "tenant", "projectId": "project", "roomId": "room-aaaaaaaaaaaaaaaaaa",
+        "capabilities": ["audio.receive", "chat.read", "video.receive"],
+        "trustRevision": 3, "keyId": "primary", "subject": "org.machine",
+        "audience": "ananta-meet-machine-v1", "grantTtlSeconds": 600
+      },
+      "invalidPatch": { "productionReady": true },
+      "invalidReason": "unknown-field"
+    }
+  ]
+}

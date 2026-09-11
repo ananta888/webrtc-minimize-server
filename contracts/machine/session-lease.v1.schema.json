@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ananta.meet-session-lease.v1",
+  "title": "Ephemeral machine session lease, never a Hub grant",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "sessionId", "generation", "expiresAt", "absoluteExpiresAt"],
+  "properties": {
+    "schema": { "const": "ananta.meet-session-lease.v1" },
+    "sessionId": { "type": "string", "pattern": "^ms_[A-Za-z0-9_-]{32}$" },
+    "generation": { "type": "integer", "minimum": 1, "maximum": 512 },
+    "expiresAt": { "type": "integer", "minimum": 1 },
+    "absoluteExpiresAt": { "type": "integer", "minimum": 1 }
+  }
+}

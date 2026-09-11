@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ananta.meet-machine-binding.v1",
+  "title": "Exact Hub binding copy used on observation and retirement, never a peer identity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["issuer", "subject", "roomId", "taskId", "tenantId", "projectId", "protocolVersion", "runtimeId", "hubSessionId", "capabilitySet"],
+  "properties": {
+    "issuer": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "subject": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" },
+    "roomId": { "type": "string", "pattern": "^room-[a-f0-9]{18}$" },
+    "taskId": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" },
+    "tenantId": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" },
+    "projectId": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" },
+    "protocolVersion": { "enum": ["v1", "v2"] },
+    "runtimeId": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" },
+    "hubSessionId": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" },
+    "capabilitySet": { "type": "string", "minLength": 1, "maxLength": 160 }
+  }
+}

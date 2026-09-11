@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ananta.meet-machine-context.v1",
+  "title": "Closed Hub task binding, never a human identity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "tenantId", "projectId", "taskId", "runtimeId", "hubSessionId"],
+  "properties": {
+    "schema": { "const": "ananta.meet-machine-context.v1" },
+    "tenantId": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" },
+    "projectId": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" },
+    "taskId": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" },
+    "runtimeId": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" },
+    "hubSessionId": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$" }
+  }
+}
