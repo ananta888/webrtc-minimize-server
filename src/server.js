@@ -50,6 +50,7 @@ import {
 import { BroadcastAbuseGuard } from "./broadcast-admission-control.js";
 import { BroadcastHealthRegistry } from "./broadcast-observability.js";
 import { BroadcastRuntimeMetrics } from "./broadcast-runtime-metrics.js";
+import { hostResourceCounts } from "./broadcast-metric-samples.js";
 import { BroadcastMetricsHttp } from "./broadcast-metrics-http.js";
 import { BroadcastRuntimeError, BroadcastRuntimeRegistry } from "./broadcast-runtime-registry.js";
 import { BroadcastProgramError } from "./broadcast-program-machine.js";
@@ -2871,7 +2872,7 @@ export function createAppServer(options = {}) {
     throw new Error("BROADCAST_GATEWAY_AUTH_ENABLED requires a MediaMTX external auth service");
   }
   const broadcastMetrics = new BroadcastRuntimeMetrics({ runtime: broadcastRuntime, hlsProxy: broadcastHlsProxy,
-    assignments: nativePackagerAssignments });
+    assignments: nativePackagerAssignments, host: { resourceCounts: () => hostResourceCounts() } });
   const broadcastMetricsHttp = new BroadcastMetricsHttp({ config, metrics: broadcastMetrics, verifier: oidcVerifier });
   const services = {
     nativeCapacityPreviewGuard,

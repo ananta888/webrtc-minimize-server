@@ -99,8 +99,10 @@ test("runtime history follows real standby, stop-ACK handoff, output readiness a
   assert.equal(history()[0].kind, "handoff-assigned"); assert.equal(history()[0].state, "preparing");
   const command = f.sent[1].message;
   for (const [state, reason] of [["ready", "CAPABILITY_READY"], ["starting", "INGRESS_STARTING"], ["running", "OUTPUT_READY"]]) f.status(next.assignment, state, reason);
+  assert.deepEqual(f.runtime.transitionSamples(NOW).map(s => s.transition), ["start"], "an assigned successor is not a completed handoff");
   f.runtime.markNativeOutputReady(command.resourceRef, SECOND, next.assignment.fencingRevision, NOW);
   assert.equal(history()[0].state, "live"); assert.equal(history()[0].programEpoch, 2);
+  assert.deepEqual(f.runtime.transitionSamples(NOW).map(s => s.transition), ["start", "handoff"], "confirmed successor output completes the handoff metric");
   const length = history().length;
   f.runtime.renewNativeOutput(command.resourceRef, SECOND, next.assignment.fencingRevision, NOW + 60000, NOW);
   assert.equal(history().length, length, "lease heartbeats are not extra audit events");

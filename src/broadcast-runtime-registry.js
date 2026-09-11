@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { BroadcastProgramCapacity } from "./broadcast-program-capacity.js";
 import { BroadcastProgramHistory } from "./broadcast-program-history.js";
+import { BroadcastProgramTransitions } from "./broadcast-program-transitions.js";
 import { BroadcastProgramLifetime, normalizeBroadcastProgramRuntime } from "./broadcast-program-lifetime.js";
 import { normalizeNativeSourceAudioOutput } from "./native-source-audio-output.js";
 import { normalizeNativeSourceVideoOutput, nativeOutputRequestFields } from "./native-source-video-output.js";
@@ -145,6 +146,7 @@ export class BroadcastRuntimeRegistry {
   #authority;
   #records = new Map();
   #history = new BroadcastProgramHistory();
+  #transitions = new BroadcastProgramTransitions();
   #challenges = new Map();
   #pendingPublishers = new Map();
   #programCapacity;
@@ -301,7 +303,7 @@ export class BroadcastRuntimeRegistry {
       publisherFingerprint: null,
     });
     this.#records.set(key, record);
-    this.#history.observe(null, record, now);
+    this.#journal(null, record, now);
     this.#resourceRefs.add(input.resourceRef);
     return entry(record);
   }
@@ -369,7 +371,7 @@ export class BroadcastRuntimeRegistry {
     }, now);
     const next = Object.freeze({ ...record, snapshot, sourceAuthorityRevision: snapshot.machine.program.revision });
     this.#records.set(key, next);
-    this.#history.observe(record, next, now);
+    this.#journal(record, next, now);
     return entry(next);
   }
 
@@ -980,7 +982,7 @@ export class BroadcastRuntimeRegistry {
       revision: current.standbyRevision + 1, packagerIds: input.standbyPackagerIds });
     const next = Object.freeze({ ...record, standbyPlan });
     this.#records.set(key, next);
-    this.#history.observe(record, next, now);
+    this.#journal(record, next, now);
     return nativeStandbyProjection(machine, standbyPlan);
   }
 
@@ -1219,7 +1221,7 @@ export class BroadcastRuntimeRegistry {
       standbyPlan: ACTIVE.has(machine.program.state)
         && record.standbyPlan?.programEpoch === machine.program.programEpoch ? record.standbyPlan : null });
     this.#records.set(key, next);
-    this.#history.observe(historyBefore, next, now);
+    this.#journal(historyBefore, next, now);
     return next;
   }
 
@@ -1242,10 +1244,20 @@ export class BroadcastRuntimeRegistry {
       programEpoch: machine.program.programEpoch, events });
   }
 
-  closeProgramHistory() { this.#history.destroy(); }
+  // Both observers are advisory post-commit metadata; neither can reject a transition.
+  #journal(before, after, now) {
+    this.#history.observe(before, after, now);
+    try { this.#transitions.observe(before, after, now); } catch { /* Metrics never own a program transition. */ }
+  }
+
+  // Content-free windowed transition durations for the metrics sampler.
+  transitionSamples(now = this.#clock()) { return this.#transitions.samples(now); }
+
+  closeProgramHistory() { this.#history.destroy(); this.#transitions.destroy(); }
 
   prune(now = this.#clock()) {
     this.#history.prune(now);
+    this.#transitions.prune(now);
     for (const key of this.#records.keys()) this.#currentRecord(key, now);
     for (const [id, challenge] of this.#challenges) {
       if (challenge.expiresAt <= now) this.#challenges.delete(id);

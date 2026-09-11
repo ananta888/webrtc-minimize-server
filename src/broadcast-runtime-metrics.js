@@ -1,5 +1,5 @@
 import { BroadcastMetricRegistry } from "./broadcast-observability.js";
-import { programMetricSamples, hlsMetricSamples, nativeResourceMetricSamples } from "./broadcast-metric-samples.js";
+import { programMetricSamples, hlsMetricSamples, nativeResourceMetricSamples, transitionMetricSamples, hostResourceMetricSamples } from "./broadcast-metric-samples.js";
 
 const SAMPLE_INTERVAL_MS = 15_000;
 
@@ -10,16 +10,18 @@ export class BroadcastRuntimeMetrics {
   #runtime;
   #hlsProxy;
   #assignments;
+  #host;
   #clock;
   #metrics = new BroadcastMetricRegistry();
   #lastAttempt = null;
   #destroyed = false;
 
-  constructor({ runtime, hlsProxy, assignments, clock = Date.now }) {
+  constructor({ runtime, hlsProxy, assignments, host, clock = Date.now }) {
     if (typeof clock !== "function") throw new Error("invalid_broadcast_metrics_clock");
     this.#runtime = runtime;
     this.#hlsProxy = hlsProxy;
     this.#assignments = assignments;
+    this.#host = host;
     this.#clock = clock;
   }
 
@@ -40,7 +42,7 @@ export class BroadcastRuntimeMetrics {
       // Independent sources: absent/bad traffic must not invent zeros or hide
       // a valid program sample. Each group is fully validated before insertion.
       for (const [read, source] of [[programMetricSamples, this.#runtime], [hlsMetricSamples, this.#hlsProxy],
-        [nativeResourceMetricSamples, this.#assignments]]) {
+        [nativeResourceMetricSamples, this.#assignments], [transitionMetricSamples, this.#runtime], [hostResourceMetricSamples, this.#host]]) {
         let samples;
         try { samples = read(source, now); } catch { continue; }
         for (const event of samples) this.#metrics.observe({ ...event, observedAt: now });
@@ -60,5 +62,6 @@ export class BroadcastRuntimeMetrics {
     this.#runtime = null;
     this.#hlsProxy = null;
     this.#assignments = null;
+    this.#host = null;
   }
 }

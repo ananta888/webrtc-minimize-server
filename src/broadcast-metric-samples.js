@@ -1,4 +1,7 @@
+import os from "node:os";
+import fs from "node:fs";
 import { BROADCAST_PROGRAM_STATES } from "./broadcast-program-model.js";
+import { BROADCAST_TRANSITIONS } from "./broadcast-program-transitions.js";
 
 const sample = (metric, value, labels = {}) => ({ metric, value, labels });
 const exact = (value, fields) => value && typeof value === "object" && !Array.isArray(value)
@@ -44,4 +47,38 @@ export function nativeResourceMetricSamples(assignments, now) {
   return Object.entries(NATIVE_RESOURCE_METRICS).flatMap(([field, metric]) => [
     sample(metric, counts.used[field], { kind: "reserved" }), sample(metric, counts.limits[field], { kind: "limit" }),
   ]);
+}
+
+// Windowed durations already aggregated by the runtime: one histogram
+// observation each, no program identity, at most 256 values per sample.
+export function transitionMetricSamples(runtime, now) {
+  if (typeof runtime?.transitionSamples !== "function") return [];
+  const values = runtime.transitionSamples(now);
+  if (!Array.isArray(values) || values.length > 256 || !values.every(v => exact(v, ["transition", "seconds"])
+    && BROADCAST_TRANSITIONS.includes(v.transition) && Number.isFinite(v.seconds) && v.seconds >= 0 && v.seconds <= 3600)) {
+    throw new Error("invalid_transition_metric_samples");
+  }
+  return values.map(v => sample("broadcast_program_transition_seconds", v.seconds, { transition: v.transition }));
+}
+
+const ratio = value => Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : NaN;
+export function hostResourceCounts(root = process.cwd(), host = { loadavg: os.loadavg, cpus: os.cpus, freemem: os.freemem, totalmem: os.totalmem, statfs: fs.statfsSync }) {
+  const cores = host.cpus().length, total = host.totalmem();
+  const stats = host.statfs(root);
+  return Object.freeze({
+    cpu: ratio(cores > 0 ? host.loadavg()[0] / cores : NaN),
+    ram: ratio(total > 0 ? 1 - host.freemem() / total : NaN),
+    disk: ratio(stats.blocks > 0 ? 1 - stats.bavail / stats.blocks : NaN),
+  });
+}
+
+// Control-plane host only: utilization ratios of this process' host, never
+// paths, mount names, byte totals or other hosts' numbers.
+export function hostResourceMetricSamples(host) {
+  if (typeof host?.resourceCounts !== "function") return [];
+  const counts = host.resourceCounts();
+  if (!exact(counts, ["cpu", "ram", "disk"]) || !["cpu", "ram", "disk"].every(key => Number.isFinite(counts[key]) && counts[key] >= 0 && counts[key] <= 1)) {
+    throw new Error("invalid_host_resource_counts");
+  }
+  return ["cpu", "ram", "disk"].map(resource => sample("broadcast_resource_utilization_ratio", counts[resource], { component: "control-plane", resource }));
 }

@@ -121,6 +121,29 @@ Tenant-/Owner-/Agent-/Raumlabels, Reservierungslisten oder Einzelrecord-Exporte.
 Die Aggregate sind unveränderlich. Ungültige oder fehlende Ressourcenaggregate
 entfernen nur diese Messgruppe; sie erzeugen keine vermeintlich freien Slots.
 
+### Angeschlossene Übergangslatenzen und Control-Plane-Host
+
+`broadcast_program_transition_seconds{transition="start"|"stop"|"handoff"}`
+wird aus denselben committeten Runtime-Übergängen abgeleitet, die auch das
+Programmjournal beobachten. `start` misst Registrierung bis zum ersten
+bestätigten `live`, einmal je Programm; `stop` misst `stopping` bis `stopped`
+(ein direkter Stop ohne `stopping`-Phase erzeugt keinen Wert); `handoff` misst
+vom Beginn der Übergabe (Ausgabe-Neustart unter der nächsten Epoche) bis zur
+bestätigten Ausgabe des Nachfolgers unter dieser Epoche – eine bloße
+Writer-Zuordnung ist noch kein abgeschlossener Handoff. Werte werden nur in
+einem 15-Minuten-Fenster mit höchstens 256 Beobachtungen gehalten, ohne
+Programm-, Tenant- oder Gerätebezug; der Sampler übernimmt sie in dasselbe
+Histogramm bei jeder 15-s-Stichprobe. Fehlende Übergänge erzeugen keine
+Nullhistogramme. `source-change` bleibt im Katalog, ist aber nicht angeschlossen.
+
+`broadcast_resource_utilization_ratio{component="control-plane",resource=…}`
+liest ausschließlich diesen Prozesshost: `cpu` als 1-Minuten-Load geteilt durch
+Kernanzahl, `ram` als belegten Anteil des Gesamtspeichers, `disk` als belegten
+Anteil des Dateisystems unter dem Arbeitsverzeichnis, jeweils auf 0…1 begrenzt.
+Unbekannte Kapazität (keine Kerne, kein Speicher, keine Blöcke) ergibt keinen
+Wert statt einer falschen Null. Pfade, Mountnamen, Bytezahlen und fremde Hosts
+(Packager, Gateway, Origin) werden nicht ausgegeben; deren Ressourcen bleiben offen.
+
 ### Optionaler Operator-HTTP-Export
 
 `BROADCAST_METRICS_ENABLED=true` aktiviert `GET /api/broadcasts/metrics`.
@@ -198,7 +221,9 @@ echten Proxys mit synthetischem Upstream; er beweist keine Zuschauerzustellung.
 Native-Tests prüfen echte Prepare-/Stop-/Disconnect-/Lease-Übergänge, unveränderte
 Records beim Lesen, geschlossene Aggregate, Nullbudgets, Fehlerisolation und
 die tatsächliche Serververdrahtung bis zum JWT-geschützten HTTP-Export.
-Offen bleiben Medien-/Player-/Host-Instrumentierung, Übergangslatenzen,
-abgesicherter Prometheus-Collector,
+Übergangslatenzen und der Control-Plane-Host sind über deterministische
+Übergangsfolgen, den echten Registry-Start/-Stop/-Handoff und den HTTP-Export
+geprüft. Offen bleiben Medien-/Player-Instrumentierung, Packager-/Gateway-/
+Origin-Hostressourcen, `source-change`, abgesicherter Prometheus-Collector,
 Dashboard-Import, Alarmzustellung, Zugriffsaudit und Last-/SLO-Messungen auf
 dem Zielhost. Daher bleibt TBP-034 offen (`in_progress`).
