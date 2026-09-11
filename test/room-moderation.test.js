@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { parseClientMessage, ProtocolError } from "../src/protocol.js";
 import { RoomAdmissionError, RoomRegistry } from "../src/room-registry.js";
-import { RoomModerationError, moderationSnapshot, peerRole } from "../src/room-moderation.js";
+import { RoomModerationError, handQueue, moderationSnapshot, peerRole } from "../src/room-moderation.js";
 
 const errorCode = (code) => (error) => error instanceof RoomModerationError && error.code === code;
 
@@ -19,6 +19,8 @@ test("owner and participant roles come only from membership, never from client p
   assert.equal(snapshot.type, "moderation-state");
   assert.equal(snapshot.membershipEpoch, 1);
   assert.deepEqual(snapshot.participants.map((item) => item.role).sort(), ["owner", "participant"].sort());
+  assert.equal(snapshot.participants.every((item) => item.raisedAt === 0 && item.hand === "none"), true);
+  assert.deepEqual(snapshot.queue, []);
   assert.doesNotMatch(JSON.stringify(snapshot), /Ada|Grace|https:\/\/id/);
 });
 
@@ -40,6 +42,24 @@ test("hand raise is idempotent, pair and machine unavailable, and leave wipes st
   assert.equal(owner.hand, "none");
   assert.equal(registry.moderationSnapshot("room-mod", 2).participants.some((item) => item.peerId === owner.id), false);
   assert.equal(other.hand, "none");
+});
+
+test("hand queue is FIFO by server raisedAt with peer-id tie-break and survives owner change", () => {
+  const registry = new RoomRegistry();
+  const owner = registry.join("room-mod", {}, "Ada", 1, { principal: "owner" }).peer;
+  const first = registry.join("room-mod", {}, "Grace", 2, { principal: "guest" }).peer;
+  const second = registry.join("room-mod", {}, "Linus", 3, { principal: "other" }).peer;
+  registry.setHand(second, "raised", 40);
+  registry.setHand(first, "raised", 10);
+  registry.setHand(owner, "raised", 10);
+  const snapshot = registry.moderationSnapshot("room-mod", 1);
+  assert.deepEqual(snapshot.queue, [first, owner, second]
+    .sort((left, right) => left.handRaisedAt - right.handRaisedAt || left.id.localeCompare(right.id))
+    .map((peer) => peer.id));
+  assert.equal(snapshot.participants.find((item) => item.peerId === first.id).raisedAt, 10);
+  registry.clearHand(owner, first.id, 50);
+  assert.deepEqual(registry.moderationSnapshot("room-mod", 1).queue, [owner.id, second.id]);
+  assert.deepEqual(handQueue(null), []);
 });
 
 test("only the owner may clear another hand and rate limits apply", () => {

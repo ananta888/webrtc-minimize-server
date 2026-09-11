@@ -596,7 +596,7 @@ app-media-control-bar { display: block; }
   .network-status { display: none; }
   .live-workspace { grid-template-columns: minmax(0, 1fr); }
   .live-sidebar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .live-sidebar app-pair-workspace-panel { grid-column: 1 / -1; }
+  .live-sidebar app-pair-workspace-panel, .live-sidebar .participant-sidebar { grid-column: 1 / -1; }
   .persistent-media-dock { left: calc(50% + 2.6rem); width: min(48rem, calc(100vw - 7rem)); }
   .dock-room { min-width: 10rem; }
 }

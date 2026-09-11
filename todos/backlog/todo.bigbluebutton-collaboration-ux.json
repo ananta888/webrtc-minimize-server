@@ -2,7 +2,7 @@
   "$schema": "../todo.schema.json",
   "version": 1,
   "created": "2026-09-02",
-  "updated": "2026-09-02",
+  "updated": "2026-09-11",
   "project": "webrtc-minimize-server",
   "title": "BigBlueButton-inspirierte Kollaborations- und Moderationsoberfläche",
   "purpose": "Bewährte Interaktionsmuster aus BigBlueButton als eigenständige, sicherheitsgebundene Produktideen erfassen, ohne dessen zentrale Medien-, Recording- oder Serverarchitektur zu übernehmen.",
@@ -89,7 +89,7 @@
         {
           "id": "BBB-UX-003",
           "title": "Filterbare, gruppierbare Teilnehmerliste mit Medien- und Netzstatus gestalten",
-          "status": "open",
+          "status": "partial",
           "priority": "P1",
           "risk": "medium",
           "scope": ["Suche", "Rollenfilter", "Active Speaker", "Mikrofon/Kamera/Bildschirm", "Handstatus", "Agentpfad", "kompakte Mobilansicht"],
@@ -169,7 +169,7 @@
         {
           "id": "BBB-UX-008",
           "title": "Faire Hand-Warteschlange und Moderator-Workflow entwerfen",
-          "status": "open",
+          "status": "partial",
           "priority": "P1",
           "risk": "medium",
           "scope": ["serverseitige Reihenfolge", "Bestätigung", "nächste Person", "mehrere Moderatoren", "gleichzeitige Updates"],
@@ -183,7 +183,7 @@
         {
           "id": "BBB-UX-009",
           "title": "Handheben als global erreichbare, barrierearme UI-Aktion integrieren",
-          "status": "open",
+          "status": "partial",
           "priority": "P1",
           "risk": "low",
           "scope": ["Live-Leiste", "Teilnehmerliste", "Tastatur", "eigener Status", "Reihenfolge", "dezente Benachrichtigung"],
@@ -710,8 +710,8 @@
     "total_items": 42,
     "by_status": {
       "completed": 0,
-      "partial": 4,
-      "open": 38,
+      "partial": 7,
+      "open": 35,
       "deferred": 0,
       "blocked": 0
     },
@@ -723,6 +723,7 @@
     },
     "notes": [
       "2026-09-11 BBB-UX-001/002/007/010 nach todos/active/todo.collaboration-moderation.json promoviert. Software zuerst, Nutzer-/Safari-/Churn-Gates als COL-004 zuletzt.",
+      "2026-09-11 BBB-UX-003/008/009 als COL-005/006 promoviert: FIFO-Queue, Teilnehmerliste und Owner-Clear ohne Capture. Mehrbrowser-/Safari-Gates bleiben COL-004.",
       "Diese Category-Todo ist Portfolio/Research und ausdrücklich kein ausführbarer Implementierungs-Track.",
       "BigBlueButton liefert die Produktideen, nicht die Zielarchitektur: Der zentrale mediasoup-/FreeSWITCH-/Recording-Pfad wird nicht übernommen.",
       "Teilnehmer- und Moderatorrollen bleiben serverautorisiert; DataChannels verleihen keine Rolle oder Membership.",

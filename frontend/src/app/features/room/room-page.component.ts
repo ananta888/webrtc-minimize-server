@@ -46,6 +46,7 @@ import {
   RoomVisibility,
 } from "../../rooms/room-directory.service";
 import { MediaControlBarComponent } from "../../shared/media-control-bar.component";
+import { RoomParticipantListComponent } from "../../shared/room-participant-list.component";
 import { MediaStreamDirective } from "../../shared/media-stream.directive";
 import { MediaMosaicComponent } from "../../shared/media-mosaic.component";
 import { BlindMediaAgentService } from "../../webrtc/blind-media-agent.service";
@@ -74,6 +75,7 @@ type AppSection = "rooms" | "live" | "broadcast" | "captions" | "analysis" | "ch
     RoomChatLogComponent,
     BroadcastPreflightComponent,
     MediaControlBarComponent,
+    RoomParticipantListComponent,
     MediaStreamDirective,
     MediaMosaicComponent,
     MeshAnalysisComponent,

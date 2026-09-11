@@ -47,6 +47,16 @@ describe("Room page information architecture", () => {
     expect(template).toContain('(click)="enterListedRoom(room)"');
   });
 
+  it("shows a live participant list without deriving capture or membership from the UI", () => {
+    expect(template).toContain("<app-room-participant-list");
+    expect(component).toContain("RoomParticipantListComponent");
+    const list = readFileSync("frontend/src/app/shared/room-participant-list.component.ts", "utf8");
+    expect(list).toContain('id="participant-list"');
+    expect(list).toContain("moderation.clear");
+    expect(list).not.toContain("getUserMedia");
+    expect(list).not.toContain("getDisplayMedia");
+  });
+
   it("offers the room-bound mesh analysis as a separate non-capturing view", () => {
     expect(template).toContain('id="mesh-analysis-navigation"');
     expect(template).toContain("activeSection() === 'analysis'");

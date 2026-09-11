@@ -16,7 +16,7 @@
     {
       "repository": "webrtc-minimize-server",
       "path": "todos/backlog/todo.bigbluebutton-collaboration-ux.json",
-      "relationship": "Promoviert BBB-UX-001, BBB-UX-002, BBB-UX-007 und BBB-UX-010. Nutzer-/Mehrbrowser-Gates bleiben COL-004."
+      "relationship": "Promoviert BBB-UX-001, BBB-UX-002, BBB-UX-003, BBB-UX-007, BBB-UX-008, BBB-UX-009 und BBB-UX-010. Nutzer-/Mehrbrowser-Gates bleiben COL-004."
     }
   ],
   "milestones": [
@@ -34,6 +34,12 @@
     },
     {
       "id": "COL-M3",
+      "title": "Teilnehmerliste und Redereihenfolge",
+      "task_ids": ["COL-005", "COL-006"],
+      "status": "done"
+    },
+    {
+      "id": "COL-M4",
       "title": "Nutzer- und Gerätegates zuletzt",
       "task_ids": ["COL-004"],
       "status": "todo"
@@ -89,22 +95,50 @@
       "priority": "P1",
       "risk": "medium",
       "progress_percent": 0,
-      "depends_on": ["COL-003"],
+      "depends_on": ["COL-003", "COL-006"],
       "acceptance_criteria": [
         "Echte Chromium- und Firefox-Identitäten belegen konsistenten Handzustand ohne Capture.",
         "Safari/iOS, physische Tastaturmatrix und 20-Teilnehmer-Churn bleiben Nutzergates und schließen den Track nicht vorab."
       ]
+    },
+    {
+      "id": "COL-005",
+      "title": "Serverautorisierte FIFO-Handwarteschlange in den Membership-Snapshot aufnehmen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": ["COL-001", "COL-002"],
+      "acceptance_criteria": [
+        "Gleichzeitige Handmeldungen ergeben eine deterministische, für alle identische FIFO-Reihenfolge aus serverseitigem raisedAt und Peer-ID.",
+        "Queue und raisedAt stammen nur aus der Control Plane; unbekannte Felder, falsche Queue-Mengen und umsortierte Snapshots fail-closed.",
+        "Leave, Clear und Senken entfernen die Position deterministisch innerhalb der laufenden Instanz."
+      ]
+    },
+    {
+      "id": "COL-006",
+      "title": "Filterbare Teilnehmerliste und Owner-Clear ohne Capture anbieten",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": ["COL-003", "COL-005"],
+      "acceptance_criteria": [
+        "Die Live-Seitenleiste zeigt bis 20 Teilnehmer tastaturbedienbar, such- und rollenfilterbar, ohne Layoutsprünge aus der Liste abzuleiten.",
+        "Serverrollen, lokale Medienbeobachtung und empfangene Remote-Medien sind visuell getrennt; die Liste startet kein Capture.",
+        "Nur der Owner sieht Clear-Aktionen für fremde gehobene Hände; Pair-Räume blenden Queue und Handheben aus."
+      ]
     }
   ],
-  "critical_path_tasks": ["COL-001", "COL-002", "COL-003", "COL-004"],
+  "critical_path_tasks": ["COL-001", "COL-002", "COL-003", "COL-005", "COL-006", "COL-004"],
   "tasks_status_summary": {
-    "total": 4,
-    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 3 },
-    "progress_percent_done": 75,
-    "by_priority": { "P0": 2, "P1": 2, "P2": 0, "P3": 0 },
-    "by_risk": { "low": 0, "medium": 2, "high": 1, "critical": 1 },
-    "critical_path": { "total": 4, "done": 3, "remaining": 1 },
-    "milestones": { "total": 3, "todo": 1, "in_progress": 0, "blocked": 0, "done": 2 }
+    "total": 6,
+    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 5 },
+    "progress_percent_done": 83.33,
+    "by_priority": { "P0": 2, "P1": 4, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 4, "high": 1, "critical": 1 },
+    "critical_path": { "total": 6, "done": 5, "remaining": 1 },
+    "milestones": { "total": 4, "todo": 1, "in_progress": 0, "blocked": 0, "done": 3 }
   },
   "progress_summary": {
     "state": "in_progress",
@@ -112,9 +146,10 @@
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 3
+    "done": 5
   },
   "summary_notes": [
-    "2026-09-11 Track aus BBB-UX-001/002/007/010 promoviert. Software zuerst, COL-004 Nutzer-/Gerätegates zuletzt. Kein Capture, keine Breakouts, kein Whiteboard."
+    "2026-09-11 Track aus BBB-UX-001/002/007/010 promoviert. Software zuerst, COL-004 Nutzer-/Gerätegates zuletzt. Kein Capture, keine Breakouts, kein Whiteboard.",
+    "2026-09-11 BBB-UX-003/008/009 als COL-005/006 promoviert: FIFO-Queue, Teilnehmerliste und Owner-Clear ohne Capture. COL-004 bleibt das letzte Nutzer-/Gerätegate."
   ]
 }

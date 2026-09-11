@@ -20,11 +20,21 @@ export function peerRole(peer, creatorPrincipal) {
 }
 
 export function moderationParticipant(peer, creatorPrincipal) {
+  const raised = peer.hand === "raised" && Number.isSafeInteger(peer.handRaisedAt) && peer.handRaisedAt > 0;
   return Object.freeze({
     peerId: peer.id,
     role: peerRole(peer, creatorPrincipal),
-    hand: peer.hand === "raised" ? "raised" : "none",
+    hand: raised ? "raised" : "none",
+    raisedAt: raised ? peer.handRaisedAt : 0,
   });
+}
+
+export function handQueue(room) {
+  if (!room) return Object.freeze([]);
+  return Object.freeze([...room.peers.values()]
+    .filter((peer) => peer.hand === "raised" && Number.isSafeInteger(peer.handRaisedAt) && peer.handRaisedAt > 0)
+    .sort((left, right) => left.handRaisedAt - right.handRaisedAt || left.id.localeCompare(right.id))
+    .map((peer) => peer.id));
 }
 
 export function moderationSnapshot(room, membershipEpoch) {
@@ -35,6 +45,7 @@ export function moderationSnapshot(room, membershipEpoch) {
     participants: Object.freeze([...room.peers.values()]
       .map((peer) => moderationParticipant(peer, room.creatorPrincipal))
       .sort((left, right) => left.peerId.localeCompare(right.peerId))),
+    queue: handQueue(room),
   });
 }
 

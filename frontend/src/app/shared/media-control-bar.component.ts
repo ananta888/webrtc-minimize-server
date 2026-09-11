@@ -23,7 +23,8 @@ import { RoomSessionService } from "../webrtc/room-session.service";
         <span>{{ media.active('screen') ? 'Bildschirmfreigabe stoppen' : 'Bildschirm teilen' }}</span>
       </button>
       <span class="control-divider" aria-hidden="true"></span>
-      <button id="toggle-hand" class="media-control" type="button" [disabled]="!session.joined()"
+      <button id="toggle-hand" class="media-control" type="button"
+        [disabled]="!session.joined() || session.mode() === 'pair'"
         [attr.aria-pressed]="moderation.ownHand()" (click)="moderation.raise()">
         <span>{{ moderation.ownHand() ? 'Hand senken' : 'Hand heben' }}</span>
       </button>

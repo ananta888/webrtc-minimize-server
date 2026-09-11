@@ -9,13 +9,16 @@ describe("MediaControlBarComponent", () => {
     expect(component).toContain('id="toggle-screen"');
     expect(component).toContain("(click)=\"media.toggle('screen')\"");
     expect(component).toContain("Bildschirm teilen");
-    expect(component).not.toContain("session.mode");
+    const screenButton = component.match(/id="toggle-screen"[^>]*>/)?.[0] || "";
+    expect(screenButton).toContain('id="toggle-screen"');
+    expect(screenButton).not.toContain("session.mode");
   });
 
   it("keeps all capture actions disabled until session membership is active", () => {
     expect(component.match(/\[disabled\]="!session\.joined\(\) \|\| !!media\.pending\(\)"/g)).toHaveLength(3);
     expect(component).toContain('id="toggle-hand"');
     expect(component).toContain("moderation.raise()");
+    expect(component).toContain("session.mode() === 'pair'");
     expect(component).not.toContain("getUserMedia");
     expect(component).not.toContain("getDisplayMedia");
   });
