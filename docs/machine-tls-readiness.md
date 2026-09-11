@@ -1,6 +1,41 @@
 # Bounded private Ananta TLS readiness
 
-## Current isolated startup finding
+## Current failure-only resource observation (11 September)
+
+[CI 34548642305](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34548642305)
+at `2ae0445` finished failed solely in the separate Chromium TURN-UDP startup:
+98 refused connections, container running, no observed JavaScript-entry or
+listener marker. Firefox UDP and both TCP cases passed. Both complete project
+shards passed (1,629 Node/browser passes, five explicit skips), as did native,
+blind-agent, both macOS, production-image and live Keycloak/TURN jobs.
+The earlier intermittent native audio failures did not recur in this run;
+that does not prove their full historical cause or permanent resolution.
+
+Failure inspection now adds one bounded `docker exec` to read exactly
+`/proc/1/stat`, `cpu.stat` and `memory.events` of its own started proxy.
+It exposes only PID1 state, user/system ticks, thread count and fixed numeric
+CPU/memory counters; executable names, PIDs, addresses, commands, environment,
+unknown fields and raw records never leave the adapter. The Linux documentation
+defines the [process fields](https://docs.kernel.org/filesystems/proc.html)
+and [cgroup counters](https://docs.kernel.org/admin-guide/cgroup-v2.html).
+Process ticks are not converted to elapsed time; CPU counters cover the cgroup,
+including the small diagnostic reader. A single snapshot is not causal proof.
+
+Each of the now three failure-only Docker calls remains limited to one second
+and 4 KiB, with a killed CLI on timeout. Unsupported, inaccessible or malformed
+records remain unknown. Duplicate or invalid counters never become zeros.
+No readiness retry, warmup, restart, timeout or resource-limit increase was
+introduced. The five-second readiness contract and original media/consent
+deadlines are unchanged. A failed read does not replace the original TLS error.
+
+Thirty-two focused tests pass (1.087 s), including fixed targets, redaction,
+numeric bounds and existing deadline/cleanup checks. An actual owned proxy-only
+run, without browser or capture, returned seven Node threads, sleeping state,
+CPU counters and zero OOM/throttle counters; its own proxy/STUN/network cleanup
+completed. That healthy local run is neither a reproduction nor a repair of
+the GitHub startup fault. The new projection still needs a failing CI sample.
+
+## Initial isolated startup finding (10 September)
 
 The Ananta job of CI `34489193294` at `cae41da` failed before launching its
 Chromium UDP browser: connect/refused after 99 attempts; the owned container
@@ -12,8 +47,9 @@ A local **proxy-only** invocation of the unchanged fixture completed TLS
 readiness and cleanup in 4.281 seconds. Its explicit launcher interception
 stopped execution before any browser was started. This used ephemeral private
 TURN/policy infrastructure, not a human source or production authority.
-Local audio/browser tests remain paused while the reported Windows-Firefox
-audio issue is investigated. The healthy local startup is neither a
+Local audio/browser tests were paused then while the reported Windows-Firefox
+audio issue was investigated; the user has since reported recovery. No host
+audio settings were changed in the current investigation. The healthy local startup is neither a
 reproduction nor a fix for the GitHub failure; no deadline was extended.
 
 The private proxy now emits a fixed marker immediately on entering its

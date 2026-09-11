@@ -163,8 +163,16 @@ read-only eingebunden; der Bericht lautet `source-mounted-runtime`, nicht
 `production-image-runtime`. Dieser Pfad bestand lokal am 11.09.2026 in 6,53 s.
 Die erste Fixture scheiterte an der nicht bereitgestellten Standard-Datenbank;
 explizite In-Memory-Teststores beheben dies ohne produktive DB-Änderung.
-Die neue CI-Image-Abnahme ist noch ausstehend; weder dieser Test noch ein
-grüner Healthcheck aktiviert produktiven Hub-/Projekttrust oder beweist
-Hub-Dialog, Medienstopps und Netzwerk-/TURN-Verhalten.
+Die echte Image-Abnahme bestand am 11.09.2026 für `2ae0445` im
+[Docker-Job der CI 34548642305](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34548642305/job/103109083794):
+zwei Prüfungen, kein Skip, 9,148 Sekunden. Der Bericht bestätigt ausdrücklich
+`production-image-runtime`, fehlenden Hostpfad abgewiesen, Read-only,
+Init-Signalweiterleitung, atomaren Austausch, ungültige und alte Revisionen
+abgewiesen sowie Wiederaufnahme mit höherer Revision ohne Prozesswechsel.
+Auch Artefaktvergleich und OCI-Canary-Scan dieses Jobs bestanden.
+
+Die Gesamt-CI blieb wegen des separaten Ananta-TURN-Proxy-Startfehlers rot.
+Weder dieser Image-Test noch ein grüner Healthcheck aktiviert produktiven
+Hub-/Projekttrust oder beweist Hub-Dialog, Medienstopps und Netzwerk-/TURN-Verhalten.
 
 Gemeinsame Browser-, Agent-, TURN- und Langzeitabnahme folgen gebündelt.

@@ -6,17 +6,19 @@ import { observeMachineProxyFailure } from "./helpers/machine-proxy-failure-obse
 const name = "meet-test-tls-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 const state = { Status: "running", Running: true, OOMKilled: false, ExitCode: 0 };
 
-test("proxy failure snapshot executes only two bounded read-only operations for its exact fixture", () => {
+test("proxy failure snapshot executes only three bounded read-only operations for its exact fixture", () => {
   const calls = [], secret = "private-command-token-and-address";
   const value = observeMachineProxyFailure(name, (file, args, options) => {
     calls.push({ file, args, options });
+    if (args[0] === "exec") return "";
     return args[0] === "inspect" ? JSON.stringify({ ...state, Error: secret, Pid: 123, StartedAt: secret })
       : secret + "\ntest_tls_process_entered\ntest_tls_network_module_loaded\ntest_tls_listener_ready\ntest_tls_connection_capacity\n";
   });
   assert.deepEqual(value, { container: { status: "running", running: true, oomKilled: false, exitCode: 0 },
-    processEntered: true, networkModuleLoaded: true, listenerAnnounced: true });
+    processEntered: true, networkModuleLoaded: true, listenerAnnounced: true, resources: { process: null, cpu: null, memory: null } });
   assert.deepEqual(calls.map(c => [c.file, ...c.args]), [
     ["docker", "inspect", "--format", "{{json .State}}", name], ["docker", "logs", "--tail", "16", name],
+    ["docker", "exec", name, "cat", "/proc/1/stat", "/sys/fs/cgroup/cpu.stat", "/sys/fs/cgroup/memory.events"],
   ]);
   for (const { options } of calls) assert.deepEqual(options, { encoding: "utf8", timeout: 1000,
     killSignal: "SIGKILL", maxBuffer: 4096, stdio: ["ignore", "pipe", "pipe"] });
@@ -51,14 +53,14 @@ test("failed, malformed, oversized and non-string reads remain unknown, never he
     assert.ok(!JSON.stringify(value).includes("secret"));
   }
   assert.deepEqual(observeMachineProxyFailure(name, () => { throw Error("private docker command"); }),
-    { container: null, processEntered: null, networkModuleLoaded: null, listenerAnnounced: null });
+    { container: null, processEntered: null, networkModuleLoaded: null, listenerAnnounced: null, resources: null });
 });
 
 test("a listener announcement is historical, not proof of current process health", () => {
   const value = observeMachineProxyFailure(name, (_file, args) => args[0] === "inspect"
     ? JSON.stringify({ ...state, Status: "exited", Running: false, OOMKilled: true, ExitCode: 137 }) : "test_tls_listener_ready\n");
   assert.deepEqual(value, { container: { status: "exited", running: false, oomKilled: true, exitCode: 137 },
-    processEntered: false, networkModuleLoaded: false, listenerAnnounced: true });
+    processEntered: false, networkModuleLoaded: false, listenerAnnounced: true, resources: { process: null, cpu: null, memory: null } });
   assert.equal(observeMachineProxyFailure(name, () => "prefix test_tls_listener_ready\ntest_tls_listener_ready suffix\n").listenerAnnounced, false);
 });
 
@@ -69,6 +71,7 @@ test("an actual stuck inspection is killed without retaining its partial output 
     if (++calls > 1) return "";
     return execFileSync(process.execPath, ["-e", "process.on('SIGTERM',()=>{});process.stdout.write('private-canary');setInterval(()=>{},1000)"], options);
   });
-  assert.equal(calls, 2); assert.deepEqual(value, { container: null, processEntered: false, networkModuleLoaded: false, listenerAnnounced: false });
+  assert.equal(calls, 3); assert.deepEqual(value, { container: null, processEntered: false, networkModuleLoaded: false, listenerAnnounced: false,
+    resources: { process: null, cpu: null, memory: null } });
   assert.ok(performance.now() - started < 3000);
 });

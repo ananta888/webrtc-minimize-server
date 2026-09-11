@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { projectMachineProxyResources } from "./machine-proxy-resources.mjs";
 
 /** Failure-only inspection of an owned fixture, never a general Docker/log API. */
 export function observeMachineProxyFailure(name, execute = execFileSync) {
@@ -12,6 +13,8 @@ export function observeMachineProxyFailure(name, execute = execFileSync) {
   };
   const state = read(["inspect", "--format", "{{json .State}}", name]);
   const logs = read(["logs", "--tail", "16", name]);
+  const resources = projectMachineProxyResources(read(["exec", name, "cat", "/proc/1/stat",
+    "/sys/fs/cgroup/cpu.stat", "/sys/fs/cgroup/memory.events"]));
   let container = null;
   try {
     const value = JSON.parse(state);
@@ -25,5 +28,5 @@ export function observeMachineProxyFailure(name, execute = execFileSync) {
   } catch { /* Unknown or oversized state is not a healthy container. */ }
   const announced = marker => logs === null ? null : logs.split("\n").some(line => line === marker);
   return Object.freeze({ container, processEntered: announced("test_tls_process_entered"),
-    networkModuleLoaded: announced("test_tls_network_module_loaded"), listenerAnnounced: announced("test_tls_listener_ready") });
+    networkModuleLoaded: announced("test_tls_network_module_loaded"), listenerAnnounced: announced("test_tls_listener_ready"), resources });
 }
