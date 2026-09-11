@@ -39,7 +39,8 @@ test("malformed page fields cannot enter the audio diagnostic as raw text or unb
 });
 
 test("real strategy poll distinguishes all reset reasons without relaxing its stable window", async () => {
-  const sequence = [null, sample(1, .15), sample(1), sample(1.5), sample(1.75, .24), sample(1.6, .24),
+  // .23 is inside the absolute band but 8 % below the window start: a ramp, not decoder jitter.
+  const sequence = [null, sample(1, .15), sample(1), sample(1.5), sample(1.75, .23), sample(1.6, .24),
     { ...sample(1.7, .24), frames: 10 }, sample(.1, .24, 2), sample(.6, .24, 2)];
   let reads = 0;
   const page = { evaluate: async () => {
