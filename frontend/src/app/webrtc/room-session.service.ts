@@ -6,6 +6,7 @@ import { DeviceIdentityService } from "../identity/device-identity.service";
 import { MachineSessionContext, MachineSessionLease, parseMachineSessionContext, parseMachineSessionLease } from "./machine-session-contract";
 import { IceTierPolicy, parseIceTierPolicy } from "./ice-policy";
 import { PeerMeshService } from "./peer-mesh.service";
+import { RoomModerationService } from "./room-moderation.service";
 import { ServerMessage, SignalingService } from "./signaling.service";
 import { SessionOperation } from "./session-operation";
 
@@ -51,6 +52,7 @@ export class RoomSessionService {
     private readonly device: DeviceIdentityService,
     private readonly signaling: SignalingService,
     private readonly mesh: PeerMeshService,
+    private readonly moderation: RoomModerationService | null = null,
   ) {}
 
   async createRoom(mode: RoomMode, persistent = false, title = ""): Promise<{ roomId: string; inviteUrl: string; workspaceId?: string }> {
@@ -192,6 +194,7 @@ export class RoomSessionService {
     this.workspaceRole.set("");
     this.roomCreator.set(false);
     this.icePolicy.set(null);
+    this.moderation?.reset();
     let cleanupFailed = false;
     try {
       this.signaling.leave();
@@ -232,7 +235,12 @@ export class RoomSessionService {
       for (const peer of peers) this.mesh.addPeer(peer.id, peer.name, peer.machine === true, peer.machineCapabilities);
       this.joined.set(true);
       this.peerId.set(ownId);
+      this.moderation?.bind(ownId);
       this.mesh.announcePublications();
+      return;
+    }
+    if (message.type === "moderation-state") {
+      this.moderation?.apply(message);
       return;
     }
     if (message.type === "peer-joined") {

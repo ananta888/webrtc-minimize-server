@@ -1,0 +1,120 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "collaboration-moderation",
+  "purpose": "Serverautorisierte Raumrollen und begrenztes Handheben aus dem BBB-UX-Backlog als eigenständigen Meet-Track umsetzen, ohne Capture, Breakouts oder Whiteboards.",
+  "goal": "Owner- und Teilnehmerrollen sowie eigene Handmeldungen stammen nur aus der Control Plane. Nutzer- und Gerätegates bleiben der letzte Task.",
+  "status": "in_progress",
+  "created": "2026-09-11",
+  "updated": "2026-09-11",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "user_verification_last": true,
+  "related_tracks": [
+    {
+      "repository": "webrtc-minimize-server",
+      "path": "todos/backlog/todo.bigbluebutton-collaboration-ux.json",
+      "relationship": "Promoviert BBB-UX-001, BBB-UX-002, BBB-UX-007 und BBB-UX-010. Nutzer-/Mehrbrowser-Gates bleiben COL-004."
+    }
+  ],
+  "milestones": [
+    {
+      "id": "COL-M1",
+      "title": "Vertrag und Membership-Zustand",
+      "task_ids": ["COL-001"],
+      "status": "done"
+    },
+    {
+      "id": "COL-M2",
+      "title": "Signaling und UI ohne Capture",
+      "task_ids": ["COL-002", "COL-003"],
+      "status": "done"
+    },
+    {
+      "id": "COL-M3",
+      "title": "Nutzer- und Gerätegates zuletzt",
+      "task_ids": ["COL-004"],
+      "status": "todo"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "COL-001",
+      "title": "Serverautorisierte Rollen und Handzustand in der Membership modellieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Rollen sind nur owner oder participant und stammen aus verifizierter Membership; Peer-Payloads können keine Rolle erzeugen oder erhöhen.",
+        "Handheben ist raum-, peer- und epochengebunden, default-aus, idempotent und in Pair- sowie Maschinenpfaden unavailable.",
+        "Leave, Disconnect und Raumende entfernen Handzustand deterministisch."
+      ]
+    },
+    {
+      "id": "COL-002",
+      "title": "Geschlossene Hand-Nachrichten und Owner-Clear fail-closed durchsetzen",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["COL-001"],
+      "acceptance_criteria": [
+        "Clientnachrichten enthalten nur type beziehungsweise targetPeerId; unbekannte Felder fail-closed.",
+        "Nur der Owner darf fremde Hände senken; Self-Moderation, Cross-Room, Replay und Rate-Limit besitzen Negativtests.",
+        "Maschinenclients dürfen Handheben nicht senden; Mute oder Capture entstehen nicht."
+      ]
+    },
+    {
+      "id": "COL-003",
+      "title": "Tastaturbedienbares Handheben ohne Capture in der Control-Bar anbieten",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": ["COL-002"],
+      "acceptance_criteria": [
+        "Ein sichtbarer Klick oder Tastaturfokus hebt oder senkt nur die eigene Hand.",
+        "Die UI startet weder Mikrofon, Kamera noch Bildschirm.",
+        "Gezielte Frontendtests prüfen Join-Disable, Owner-Clear-Anzeige und unbekannte Serverfelder."
+      ]
+    },
+    {
+      "id": "COL-004",
+      "title": "Nutzer- und Gerätegates für Handheben zuletzt ausführen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 0,
+      "depends_on": ["COL-003"],
+      "acceptance_criteria": [
+        "Echte Chromium- und Firefox-Identitäten belegen konsistenten Handzustand ohne Capture.",
+        "Safari/iOS, physische Tastaturmatrix und 20-Teilnehmer-Churn bleiben Nutzergates und schließen den Track nicht vorab."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["COL-001", "COL-002", "COL-003", "COL-004"],
+  "tasks_status_summary": {
+    "total": 4,
+    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 3 },
+    "progress_percent_done": 75,
+    "by_priority": { "P0": 2, "P1": 2, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 2, "high": 1, "critical": 1 },
+    "critical_path": { "total": 4, "done": 3, "remaining": 1 },
+    "milestones": { "total": 3, "todo": 1, "in_progress": 0, "blocked": 0, "done": 2 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 1,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 3
+  },
+  "summary_notes": [
+    "2026-09-11 Track aus BBB-UX-001/002/007/010 promoviert. Software zuerst, COL-004 Nutzer-/Gerätegates zuletzt. Kein Capture, keine Breakouts, kein Whiteboard."
+  ]
+}

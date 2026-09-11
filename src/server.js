@@ -37,6 +37,7 @@ import {
   ProtocolError,
 } from "./protocol.js";
 import { RoomAdmissionError, RoomFullError, RoomRegistry } from "./room-registry.js";
+import { RoomModerationError } from "./room-moderation.js";
 import { SessionTicketError, SessionTicketStore } from "./session-tickets.js";
 import { createMediaAgentIceServers } from "./media-agent-ice.js";
 import { createEdgeTurnCredentials, createTurnCredentials } from "./turn-credentials.js";
@@ -1818,6 +1819,14 @@ function configureSignaling(
     syncAgents();
   };
 
+  const broadcastModeration = (roomId) => {
+    const members = registry.members(roomId);
+    const membershipEpoch = roomEpochs.get(roomId)?.membership || 0;
+    const snapshot = registry.moderationSnapshot(roomId, membershipEpoch);
+    if (!snapshot || members.length === 0) return;
+    for (const member of members) safeSend(member.socket, snapshot);
+  };
+
   const broadcastTopology = (roomId, membershipChanged = false) => {
     const members = registry.members(roomId);
     if (members.length === 0) {
@@ -1842,6 +1851,7 @@ function configureSignaling(
       blockedRelayIds: relayHealth.blockedRelayIds(roomId),
     });
     for (const member of members) safeSend(member.socket, topology);
+    broadcastModeration(roomId);
     broadcastMediaAgentState(roomId);
   };
 
@@ -2009,6 +2019,16 @@ function configureSignaling(
         if (message.type === "leave") {
           leave();
           socket.close(1000, "client_leave");
+          return;
+        }
+        if (message.type === "hand-raise" || message.type === "hand-lower") {
+          registry.setHand(peer, message.type === "hand-raise" ? "raised" : "none");
+          broadcastModeration(peer.roomId);
+          return;
+        }
+        if (message.type === "hand-clear") {
+          registry.clearHand(peer, message.targetPeerId);
+          broadcastModeration(peer.roomId);
           return;
         }
         if (message.type === "machine-receive-consent") {
@@ -2234,7 +2254,8 @@ function configureSignaling(
       } catch (error) {
         safeSend(socket, {
           type: "error",
-          code: error instanceof ProtocolError || error instanceof MachineReceivePolicyError ? error.code : "invalid_message",
+          code: error instanceof ProtocolError || error instanceof MachineReceivePolicyError
+            || error instanceof RoomModerationError ? error.code : "invalid_message",
         });
       }
     });

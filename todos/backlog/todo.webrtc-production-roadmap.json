@@ -65,6 +65,6 @@
       "PROD-DATA-003 bleibt partial: Workspace, Presence und Cursor sind persistent; Threads, HA sowie Backup/Restore fehlen.",
       "SFU bleibt ein optionaler Skalierungs-Folgeschritt; required-SFrame arbeitet als adaptives Direct-/Edge-/Infrastruktur-TURN-Mesh, während der consentierte Decode/Re-encode-Trusted-Relay nur im expliziten disabled-Legacy-Modus aktiv ist."
     ],
-    "recommended_order": ["PROD-SEC-001", "PROD-SEC-002", "PROD-NET-001", "PROD-OPS-002", "PROD-SEC-003", "PROD-SEC-004", "PROD-OPS-001", "PROD-NET-002", "PROD-DATA-001", "PROD-DATA-002", "PROD-NET-003", "PROD-OPS-003", "PROD-OPS-004", "PROD-DATA-003", "PROD-NET-004"]
+    "recommended_order": ["PROD-SEC-001", "PROD-SEC-002", "PROD-NET-001", "PROD-SEC-003", "PROD-SEC-004", "PROD-OPS-001", "PROD-NET-002", "PROD-DATA-001", "PROD-DATA-002", "PROD-NET-003", "PROD-OPS-003", "PROD-OPS-004", "PROD-DATA-003", "PROD-NET-004", "PROD-OPS-002"]
   }
 }

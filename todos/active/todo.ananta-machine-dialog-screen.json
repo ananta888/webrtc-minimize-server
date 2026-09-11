@@ -4,6 +4,7 @@
   "owner": "Ananta Meet maintainers",
   "track": "ananta-machine-dialog-screen",
   "status": "in_progress",
+  "user_verification_last": true,
   "purpose": "Meet-seitige Erweiterung der vorhandenen KI-Teilnahme um separat autorisierten Empfang, Raumchat-Ereignisse, agenteneigenes Bildschirmteilen und erneuerbare, widerrufbare Sitzungen.",
   "scope": {
     "turn_failure_isolation_result": "2026-09-10: TCP-Gate hat jetzt explizit !cancelled() und erfolgreiche Fixture-Vorbereitung als Bedingung, unabhaengig vom UDP-Ergebnis. Alle Tests bleiben strikt, Jobdeckel 10min und TLS-Fristen unveraendert. Zwoelf Workflow-/TLS-Checks PASS in 0.111s, Workflow-Validierung PASS. Kein erneuter Gesamtcheck fuer diese kleine CI-Aenderung; neue CI-Ausfuehrung erforderlich. Vorherige CI 34473189164 beendet/FAIL: Hauptjob 1248 Node-PASS, eine TwoSource-Bildabweichung, vier Skips in 664.873s, anschliessend Zeitlimit-Abbruch. Standby-Handoff und SingleSource bestanden. Ananta-UDP Chromium scheitert vor Browserstart, Firefox besteht; TCP nicht erreicht. Oeffentlich erneut HTTP502. Keine Produktions-/Trust-/Ananta-Aenderung; MDS-08 bleibt 25/in_progress.",

@@ -5,6 +5,7 @@ import {
   MAX_ROOM_PARTICIPANTS,
   MIN_ROOM_PARTICIPANTS,
 } from "./room-limits.js";
+import { applyHand, clearHand, moderationSnapshot } from "./room-moderation.js";
 
 export class RoomFullError extends Error {
   constructor() {
@@ -87,6 +88,9 @@ export class RoomRegistry {
       machineReceiveVersion: admission.machineReceiveVersion === 1 ? 1 : 0,
       machineCapabilities: Object.freeze([...(admission.machineCapabilities || [])]),
       creator: (admission.principal || "anonymous") === room.creatorPrincipal,
+      hand: "none",
+      handRaisedAt: 0,
+      handActions: [],
       publications: new Map(),
       publicationEpoch: 0,
       publicationRevision: 0,
@@ -108,6 +112,9 @@ export class RoomRegistry {
   leave(peer, now = Date.now()) {
     const room = this.#rooms.get(peer.roomId);
     if (!room || !room.peers.delete(peer.id)) return [];
+    peer.hand = "none";
+    peer.handRaisedAt = 0;
+    peer.handActions = [];
     room.updatedAt = now;
     if (room.peers.size === 0) this.#rooms.delete(peer.roomId);
     return [...room.peers.values()];
@@ -186,6 +193,20 @@ export class RoomRegistry {
 
   creatorPrincipal(roomId) {
     return this.#rooms.get(roomId)?.creatorPrincipal || "";
+  }
+
+  moderationSnapshot(roomId, membershipEpoch) {
+    return moderationSnapshot(this.#rooms.get(roomId), membershipEpoch);
+  }
+
+  setHand(peer, hand, now = Date.now()) {
+    const room = this.#rooms.get(peer.roomId);
+    return applyHand(room, peer, hand, now);
+  }
+
+  clearHand(actor, targetPeerId, now = Date.now()) {
+    const room = this.#rooms.get(actor.roomId);
+    return clearHand(room, actor, targetPeerId, now);
   }
 
   setRelayCapability(peer, capability, now = Date.now()) {

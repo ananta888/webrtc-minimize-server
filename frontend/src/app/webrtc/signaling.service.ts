@@ -31,6 +31,7 @@ export const SERVER_MESSAGE_VERSIONS = Object.freeze({
   "broadcast-source-moderation-state": 1,
   "broadcast-source-moderation-revoked": 1,
   "broadcast-source-moderation-unavailable": 1,
+  "moderation-state": 1,
   "overlay-key": 1,
   error: 1,
 } satisfies Readonly<Record<string, number>>);

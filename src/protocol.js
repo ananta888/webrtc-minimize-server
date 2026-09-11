@@ -135,6 +135,15 @@ export function parseClientMessage(raw) {
     try { return parseMachineReceiveConsent(value); }
     catch (error) { throw new ProtocolError(error.code || "machine_receive_consent_invalid"); }
   }
+  if (value.type === "hand-raise" || value.type === "hand-lower") {
+    if (!hasOnlyKeys(value, new Set(["type"]))) throw new ProtocolError("unknown_message_field");
+    return Object.freeze({ type: value.type });
+  }
+  if (value.type === "hand-clear") {
+    if (!hasOnlyKeys(value, new Set(["type", "targetPeerId"]))) throw new ProtocolError("unknown_message_field");
+    if (!PEER_ID_PATTERN.test(value.targetPeerId || "")) throw new ProtocolError("invalid_recipient");
+    return Object.freeze({ type: "hand-clear", targetPeerId: value.targetPeerId });
+  }
   if (value.type === "leave") {
     if (!hasOnlyKeys(value, new Set(["type"]))) {
       throw new ProtocolError("unknown_message_field");

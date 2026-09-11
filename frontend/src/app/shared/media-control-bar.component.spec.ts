@@ -14,6 +14,8 @@ describe("MediaControlBarComponent", () => {
 
   it("keeps all capture actions disabled until session membership is active", () => {
     expect(component.match(/\[disabled\]="!session\.joined\(\) \|\| !!media\.pending\(\)"/g)).toHaveLength(3);
+    expect(component).toContain('id="toggle-hand"');
+    expect(component).toContain("moderation.raise()");
     expect(component).not.toContain("getUserMedia");
     expect(component).not.toContain("getDisplayMedia");
   });

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, output } from "@angular/core";
 
 import { MediaPublicationService } from "../webrtc/media-publication.service";
+import { RoomModerationService } from "../webrtc/room-moderation.service";
 import { RoomSessionService } from "../webrtc/room-session.service";
 
 @Component({
@@ -22,6 +23,11 @@ import { RoomSessionService } from "../webrtc/room-session.service";
         <span>{{ media.active('screen') ? 'Bildschirmfreigabe stoppen' : 'Bildschirm teilen' }}</span>
       </button>
       <span class="control-divider" aria-hidden="true"></span>
+      <button id="toggle-hand" class="media-control" type="button" [disabled]="!session.joined()"
+        [attr.aria-pressed]="moderation.ownHand()" (click)="moderation.raise()">
+        <span>{{ moderation.ownHand() ? 'Hand senken' : 'Hand heben' }}</span>
+      </button>
+      <span class="control-divider" aria-hidden="true"></span>
       <button id="leave-room" class="media-control leave" type="button" [disabled]="!session.joined()" (click)="leaveRoom.emit()">
         <span class="control-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15a11 11 0 0114 0M7 14l-2 4-3-2M17 14l2 4 3-2"/></svg></span>
         <span>Verlassen</span>
@@ -35,5 +41,6 @@ export class MediaControlBarComponent {
   constructor(
     readonly session: RoomSessionService,
     readonly media: MediaPublicationService,
+    readonly moderation: RoomModerationService,
   ) {}
 }

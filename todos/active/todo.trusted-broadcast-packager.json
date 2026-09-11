@@ -6,6 +6,7 @@
   "purpose": "Einen optionalen, klar getrennten Broadcast-Zweig für große, überwiegend passive Zuschauerzahlen planen: Ein explizit autorisierter Browser- oder Native-Packager publiziert ausgewählte Quellen per WHIP an ein austauschbares Media-Gateway, das LL-HLS als belastbaren Basispfad und MoQ ausschließlich capability-gesteuert bereitstellt, ohne das bestehende SFrame-E2EE-Meet oder die blinden Media-Agenten umzudeuten.",
   "goal": "Ein produktionsreifer, contract-first Broadcast-Pfad mit nachvollziehbaren Trust-Grenzen, kurzlebiger Autorisierung, öffentlicher und privater Sichtbarkeit, Live-Untertiteln, abgestuften Codec-/Rendition-Profilen, optionalem MoQ, kontrollierter Skalierung, Failover, Telemetrie und reproduzierbaren Sicherheits-, Browser-, Last- und Betriebsnachweisen. Der interaktive Raum bleibt unabhängig davon auf maximal 20 Mitglieder begrenzt und Ende-zu-Ende-verschlüsselt.",
   "status": "in_progress",
+  "user_verification_last": true,
   "created": "2026-09-02",
   "updated": "2026-09-11",
   "status_scale": [
