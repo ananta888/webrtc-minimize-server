@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { parseClientMessage, ProtocolError } from "../src/protocol.js";
 import { WHITEBOARD_CONTRACT, WhiteboardContractError, parseWhiteboardOperation } from "../src/whiteboard-contract.js";
 
 const base = {
@@ -27,4 +28,10 @@ test("whiteboard operations are closed, bounded and never HTML", () => {
   assert.deepEqual(parseWhiteboardOperation({
     ...base, kind: "clear", payload: {},
   }).payload, {});
+});
+
+test("whiteboard clear signaling is closed and content-free", () => {
+  assert.deepEqual(parseClientMessage(JSON.stringify({ type: "whiteboard-clear" })), { type: "whiteboard-clear" });
+  assert.throws(() => parseClientMessage(JSON.stringify({ type: "whiteboard-clear", extra: true })),
+    (error) => error instanceof ProtocolError && error.code === "unknown_message_field");
 });

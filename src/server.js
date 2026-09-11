@@ -2100,6 +2100,20 @@ function configureSignaling(
           broadcastModeration(peer.roomId);
           return;
         }
+        if (message.type === "whiteboard-clear") {
+          if (peer.machine === true || registry.peerRole(peer) !== "owner") {
+            throw new RoomModerationError("moderation_forbidden");
+          }
+          const membershipEpoch = roomEpochs.get(peer.roomId)?.membership || 0;
+          for (const member of registry.members(peer.roomId)) {
+            safeSend(member.socket, {
+              type: "whiteboard-cleared",
+              membershipEpoch,
+              actorPeerId: peer.id,
+            });
+          }
+          return;
+        }
         if (message.type === "publication-stop") {
           registry.authorizePublicationStop(peer, message.targetPeerId, message.source);
           const target = registry.members(peer.roomId).find((member) => member.id === message.targetPeerId);

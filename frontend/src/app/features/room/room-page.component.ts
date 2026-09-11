@@ -47,6 +47,7 @@ import {
 } from "../../rooms/room-directory.service";
 import { MediaControlBarComponent } from "../../shared/media-control-bar.component";
 import { RoomParticipantListComponent } from "../../shared/room-participant-list.component";
+import { WhiteboardBoardComponent } from "../../shared/whiteboard-board.component";
 import { MediaStreamDirective } from "../../shared/media-stream.directive";
 import { MediaMosaicComponent } from "../../shared/media-mosaic.component";
 import { BlindMediaAgentService } from "../../webrtc/blind-media-agent.service";
@@ -61,6 +62,7 @@ import { SignalingService } from "../../webrtc/signaling.service";
 import { VideoCapturePreferencesService, VideoCaptureSource } from "../../webrtc/video-capture-preferences.service";
 import { PairWorkspacePanelComponent } from "../../workspace/pair-workspace-panel.component";
 import { PairWorkspaceService, WorkspaceSummary } from "../../workspace/pair-workspace.service";
+import { WhiteboardOverlayService } from "../../webrtc/whiteboard-overlay.service";
 import { MeshAnalysisComponent } from "../../mesh-analysis/mesh-analysis.component";
 import { MachinePermissionsPanelComponent } from "../machine/machine-permissions-panel.component";
 
@@ -76,6 +78,7 @@ type AppSection = "rooms" | "live" | "broadcast" | "captions" | "analysis" | "ch
     BroadcastPreflightComponent,
     MediaControlBarComponent,
     RoomParticipantListComponent,
+    WhiteboardBoardComponent,
     MediaStreamDirective,
     MediaMosaicComponent,
     MeshAnalysisComponent,
@@ -194,6 +197,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     readonly receiveQuality: ReceiveQualityPreferenceService,
     readonly videoPreferences: VideoCapturePreferencesService,
     readonly directory: RoomDirectoryService,
+    readonly whiteboard: WhiteboardOverlayService,
     readonly workspaces: PairWorkspaceService,
   ) {}
 

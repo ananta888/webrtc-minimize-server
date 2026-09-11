@@ -47,6 +47,12 @@ describe("Room page information architecture", () => {
     expect(template).toContain('(click)="enterListedRoom(room)"');
   });
 
+  it("hosts the ephemeral whiteboard in the live sidebar without capture", () => {
+    expect(template).toContain("<app-whiteboard-board");
+    expect(component).toContain("WhiteboardBoardComponent");
+    expect(component).not.toContain("getUserMedia");
+  });
+
   it("shows a live participant list without deriving capture or membership from the UI", () => {
     expect(template).toContain("<app-room-participant-list");
     expect(component).toContain("RoomParticipantListComponent");
