@@ -34,7 +34,7 @@ async function fetchCaption(url: string, signal: AbortSignal): Promise<string | 
   let complete = false;
   try {
     signal.throwIfAborted();
-    if (response.status === 404) return null;
+    if ([401, 403, 404].includes(response.status)) return null;
     if (!response.ok) return undefined;
     const declared = response.headers.get("content-length");
     if (!response.body || response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "text/vtt"

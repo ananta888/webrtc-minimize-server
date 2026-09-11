@@ -42,6 +42,48 @@ function caption(overrides: Record<string, unknown> = {}) {
 }
 
 describe("BrowserBroadcastCaptionPackager", () => {
+  it("cannot reauthorize a retired source epoch, but a newer epoch remains usable", () => {
+    const { packager } = fixture();
+    expect(packager.ingest(caption(), STARTED_AT + 2100).accepted).toBe(true);
+    expect(packager.revokeSource(SOURCE_ID)).toBe(true);
+    expect(packager.authorizeSource(SOURCE_ID, 4)).toBe(false);
+    expect(packager.authorizeSource(SOURCE_ID, 3)).toBe(false);
+    expect(packager.authorizeSource(SOURCE_ID, 5)).toBe(true);
+    expect(packager.ingest(caption({ sourceEpoch: 5, capturedAtMs: STARTED_AT + 2300 }), STARTED_AT + 2300).accepted).toBe(true);
+  });
+
+  it("does not republish previously seen or delayed pre-consent text after destination reenable", () => {
+    const { packager } = fixture();
+    expect(packager.ingest(caption(), STARTED_AT + 2100).accepted).toBe(true);
+    packager.reconfigure(DEFAULT_BROADCAST_CAPTION_CONSENT, DEFAULT_BROADCAST_CAPTION_SETTINGS, STARTED_AT + 2200);
+    packager.reconfigure({ ...DEFAULT_BROADCAST_CAPTION_CONSENT, broadcastTextTrack: true }, DEFAULT_BROADCAST_CAPTION_SETTINGS, STARTED_AT + 2300);
+    for (const utteranceId of ["0123456789abcdef", "2222222222222222"]) {
+      expect(packager.ingest(caption({ utteranceId, revision: 2, capturedAtMs: STARTED_AT + 2250 }), STARTED_AT + 2400).accepted).toBe(false);
+    }
+    expect(packager.ingest(caption({ utteranceId: "3333333333333333", capturedAtMs: STARTED_AT + 2401 }), STARTED_AT + 2401).accepted).toBe(true);
+  });
+
+  it("bounds retired source identities without eviction and releases them only at program end", () => {
+    const { packager } = fixture();
+    packager.revokeSource(SOURCE_ID);
+    for (let n = 0; n < 1023; n++) {
+      const id = `src_${String(n).padStart(16, "0")}`;
+      expect(packager.authorizeSource(id, 1)).toBe(true); expect(packager.revokeSource(id)).toBe(true);
+    }
+    expect(packager.authorizeSource("src_ffffffffffffffff", 1)).toBe(false);
+    expect(packager.authorizeSource(SOURCE_ID, 4)).toBe(false);
+    expect(packager.authorizeSource(SOURCE_ID, 5)).toBe(true);
+    expect(Reflect.get(packager, "sourceEpochs").size).toBe(1024);
+    packager.close(); expect(Reflect.get(packager, "sourceEpochs").size).toBe(0);
+  });
+
+  it.each([NaN, Infinity, STARTED_AT - 1, STARTED_AT + 2099])("closes caption outputs on uncertain consent time %s", now => {
+    const { packager, output } = fixture(); packager.ingest(caption(), STARTED_AT + 2100);
+    expect(packager.reconfigure(DEFAULT_BROADCAST_CAPTION_CONSENT, DEFAULT_BROADCAST_CAPTION_SETTINGS, now)).toBe(false);
+    expect(packager.snapshotForLateJoin(STARTED_AT + 2300)).toBeNull();
+    expect(packager.authorizeSource(SOURCE_ID, 5)).toBe(false);
+    expect(output.clearBurnIn).toHaveBeenCalled(); expect(output.revokeTextTrack).toHaveBeenCalled();
+  });
   it("begins a fresh authorization scope without retaining prior cues or sources", () => {
     const { packager } = fixture();
     expect(packager.ingest(caption(), STARTED_AT + 2100).accepted).toBe(true);
@@ -64,7 +106,7 @@ describe("BrowserBroadcastCaptionPackager", () => {
     expect(packager.ingest(caption({ utteranceId: "0000000000000000", final: false }), STARTED_AT + 2100).reason).toBe("duplicate-revision");
     expect(packager.ingest(caption({ utteranceId: "0000000000000000", final: false, revision: 2 }), STARTED_AT + 2100).accepted).toBe(true);
     expect(packager.reconfigure({ ...DEFAULT_BROADCAST_CAPTION_CONSENT, broadcastTextTrack: true },
-      { ...DEFAULT_BROADCAST_CAPTION_SETTINGS, syncBudgetMs: 8000 })).toBe(true);
+      { ...DEFAULT_BROADCAST_CAPTION_SETTINGS, syncBudgetMs: 8000 }, STARTED_AT + 2100)).toBe(true);
     expect(packager.ingest(caption({ utteranceId: "0000000000000000", final: false, revision: 2 }), STARTED_AT + 10000).reason).toBe("duplicate-revision");
     expect(packager.ingest(caption({ capturedAtMs: STARTED_AT + 10001 }), STARTED_AT + 10001).accepted).toBe(true);
     expect(packager.ingest(caption({ utteranceId: "0000000000000000", revision: 3 }), STARTED_AT + 10001).reason).toBe("stale-caption");
@@ -175,13 +217,13 @@ describe("BrowserBroadcastCaptionPackager", () => {
     expect(packager.ingest(caption(), STARTED_AT + 2_100).accepted).toBe(true);
     expect(packager.reconfigure({
       ...DEFAULT_BROADCAST_CAPTION_CONSENT, broadcastBurnIn: false, broadcastTextTrack: false,
-    }, DEFAULT_BROADCAST_CAPTION_SETTINGS)).toBe(true);
+    }, DEFAULT_BROADCAST_CAPTION_SETTINGS, STARTED_AT + 2150)).toBe(true);
     expect(output.clearBurnIn).toHaveBeenCalled();
     expect(output.revokeTextTrack).toHaveBeenLastCalledWith(1);
     expect(packager.snapshotForLateJoin(STARTED_AT + 2_200)).toBeNull();
     expect(packager.reconfigure({
       ...DEFAULT_BROADCAST_CAPTION_CONSENT, broadcastTextTrack: true,
-    }, DEFAULT_BROADCAST_CAPTION_SETTINGS)).toBe(true);
+    }, DEFAULT_BROADCAST_CAPTION_SETTINGS, STARTED_AT + 2250)).toBe(true);
     expect(packager.snapshotForLateJoin(STARTED_AT + 2_300)).toBeNull();
   });
 });

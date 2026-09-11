@@ -30,6 +30,8 @@ type nativeMediaSession struct {
 	startTimer        *time.Timer
 	captionMu         sync.Mutex
 	caption           *nativeCaptionMessage
+	captionSequence   int64 // Guarded by captionMu, retained independently of revoke envelopes.
+	captionHasUpdate  bool
 	captionSet        atomic.Bool
 	bytes             atomic.Uint64
 	packets           atomic.Uint64

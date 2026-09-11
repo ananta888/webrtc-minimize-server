@@ -51,10 +51,10 @@ describe("bounded broadcast caption transport", () => {
     await expect(load()).rejects.toBeDefined(); expect(response.body?.locked || false).toBe(false);
   });
 
-  it.each([401, 403, 404, 429, 500])("cancels ignored HTTP %i bodies and only 404 requests cue removal", async status => {
+  it.each([401, 403, 404, 429, 500])("cancels ignored HTTP %i bodies and removes cues on missing authorization or source", async status => {
     const cancel = vi.fn(), body = new ReadableStream<Uint8Array>({ cancel });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status, headers })));
-    expect(await load()).toBe(status === 404 ? null : undefined);
+    expect(await load()).toBe([401, 403, 404].includes(status) ? null : undefined);
     expect(cancel).toHaveBeenCalledOnce(); expect(body.locked).toBe(false);
   });
 

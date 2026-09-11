@@ -435,6 +435,25 @@ describe("BroadcastHlsPlayer", () => {
     await limitedPlayer.destroy();
   });
 
+  it.each([401, 403, 404])("removes existing caption DOM and blob after HTTP %i without stopping media", async status => {
+    vi.useFakeTimers();
+    const element = video(true), vtt = "WEBVTT\n\ncc-1\n00:00:01.000 --> 00:00:02.000\nHallo\n";
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(vtt, { headers: { "content-type": "text/vtt" } }))
+      .mockImplementation(async () => new Response(null, { status }));
+    vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:private-caption") });
+    const revoke = vi.fn(); Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revoke });
+    const player = new BroadcastHlsPlayer();
+    await player.open(element, "/broadcast/play/res_dddddddddddddddd/index.m3u8", { muted: true, volume: 1, captions: true }, new AbortController().signal);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(element.querySelector("track[data-broadcast-player]")).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(element.querySelector("track[data-broadcast-player]")).toBeNull();
+    expect(revoke).toHaveBeenCalledWith("blob:private-caption");
+    expect(element.pause).not.toHaveBeenCalled();
+    await player.destroy(); expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("polls the same protected playback scope for bounded live WebVTT and revokes it on destroy", async () => {
     const element = video(true);
     const vtt = "WEBVTT\n\ncc-1\n00:00:01.000 --> 00:00:02.000\nHallo\n";

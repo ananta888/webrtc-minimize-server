@@ -8,6 +8,7 @@ const MAX_CUES = 32;
 const MAX_SEGMENT_BYTES = 64 * 1024;
 const LIVE_WINDOW_MS = 30_000;
 const MAX_SOURCES = 80;
+const MAX_SOURCE_IDENTITIES = 1024;
 const MAX_REVISIONS = 1024;
 const MAX_SYNC_MS = 8000;
 
@@ -49,9 +50,11 @@ function cueText(cue: BroadcastCaptionCue): string {
 export class BrowserBroadcastCaptionPackager {
   private readonly revisions = new Map<string, { revision: number; expiresAt: number }>();
   private readonly authorizedSources = new Map<string, number>();
+  private readonly sourceEpochs = new Map<string, number>();
   private cues: BroadcastCaptionCue[] = [];
   private programStartedAtMs = -1;
   private lastObservedAtMs = -1;
+  private consentNotBeforeMs = -1;
   private mediaSequence = 0;
   private discontinuitySequence = 0;
   private consent = DEFAULT_BROADCAST_CAPTION_CONSENT;
@@ -65,22 +68,28 @@ export class BrowserBroadcastCaptionPackager {
     if (!Number.isSafeInteger(programStartedAtMs) || programStartedAtMs < 0 || !normalizedConsent || !normalizedSettings) return false;
     this.close();
     this.programStartedAtMs = programStartedAtMs;
+    this.consentNotBeforeMs = programStartedAtMs - 1;
     this.consent = normalizedConsent;
     this.settings = normalizedSettings;
     return true;
   }
 
-  reconfigure(consent: BroadcastCaptionConsent, settings: BroadcastCaptionSettings): boolean {
+  reconfigure(consent: BroadcastCaptionConsent, settings: BroadcastCaptionSettings, nowMs = Date.now()): boolean {
     const normalizedConsent = normalizeBroadcastCaptionConsent(consent);
     const normalizedSettings = normalizeBroadcastCaptionSettings(settings);
     if (!normalizedConsent || !normalizedSettings || this.programStartedAtMs < 0) return false;
-    if (normalizedConsent.broadcastTextTrack !== this.consent.broadcastTextTrack) {
-      this.discontinuitySequence += 1;
-      this.cues = [];
-      this.revisions.clear();
-      this.output.revokeTextTrack(this.discontinuitySequence);
+    if (!Number.isSafeInteger(nowMs) || nowMs < this.programStartedAtMs || nowMs < this.lastObservedAtMs) {
+      this.close(); return false; // Uncertain time never preserves a revoked destination.
     }
-    if (this.consent.broadcastBurnIn && !normalizedConsent.broadcastBurnIn) this.output.clearBurnIn();
+    this.lastObservedAtMs = nowMs;
+    if (normalizedConsent.broadcastTextTrack !== this.consent.broadcastTextTrack
+      || normalizedConsent.broadcastBurnIn !== this.consent.broadcastBurnIn) {
+      this.discontinuitySequence += 1;
+      this.consentNotBeforeMs = nowMs;
+      this.cues = [];
+      // Keep replay high-water marks until their bounded capture window expires.
+      this.clearOutputs();
+    }
     this.consent = normalizedConsent;
     this.settings = normalizedSettings;
     return true;
@@ -88,10 +97,12 @@ export class BrowserBroadcastCaptionPackager {
 
   authorizeSource(sourceId: string, sourceEpoch: number): boolean {
     if (this.programStartedAtMs < 0 || !SOURCE_ID.test(sourceId) || !Number.isSafeInteger(sourceEpoch) || sourceEpoch < 1) return false;
-    const previous = this.authorizedSources.get(sourceId);
-    if (previous !== undefined && sourceEpoch < previous) return false;
-    if (previous === undefined && this.authorizedSources.size >= MAX_SOURCES) return false;
-    if (previous !== undefined && sourceEpoch > previous) this.revokeSource(sourceId);
+    const previous = this.sourceEpochs.get(sourceId), active = this.authorizedSources.has(sourceId);
+    if (previous !== undefined && (sourceEpoch < previous || sourceEpoch === previous && !active)) return false;
+    if (!active && this.authorizedSources.size >= MAX_SOURCES
+      || previous === undefined && this.sourceEpochs.size >= MAX_SOURCE_IDENTITIES) return false;
+    if (active && previous !== undefined && sourceEpoch > previous) this.revokeSource(sourceId);
+    this.sourceEpochs.set(sourceId, sourceEpoch);
     this.authorizedSources.set(sourceId, sourceEpoch);
     return true;
   }
@@ -110,7 +121,8 @@ export class BrowserBroadcastCaptionPackager {
     if (!this.consent.broadcastTextTrack && !this.consent.broadcastBurnIn) {
       return { accepted: false, reason: "not-shared", transientText: "" };
     }
-    if (nowMs < this.lastObservedAtMs || Math.abs(nowMs - input.capturedAtMs) > this.settings.syncBudgetMs || input.capturedAtMs < this.programStartedAtMs) {
+    if (nowMs < this.lastObservedAtMs || Math.abs(nowMs - input.capturedAtMs) > this.settings.syncBudgetMs
+      || input.capturedAtMs < this.programStartedAtMs || input.capturedAtMs <= this.consentNotBeforeMs) {
       return { accepted: false, reason: "stale-caption", transientText: "" };
     }
     this.lastObservedAtMs = nowMs;
@@ -180,7 +192,9 @@ export class BrowserBroadcastCaptionPackager {
     if (this.programStartedAtMs >= 0) this.discontinuitySequence += 1;
     this.programStartedAtMs = -1;
     this.lastObservedAtMs = -1;
+    this.consentNotBeforeMs = -1;
     this.authorizedSources.clear();
+    this.sourceEpochs.clear();
     this.revisions.clear();
     this.cues = [];
     this.consent = DEFAULT_BROADCAST_CAPTION_CONSENT;

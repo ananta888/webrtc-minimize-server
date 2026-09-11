@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/pion/webrtc/v4"
 )
@@ -40,11 +41,7 @@ type nativeCaptionMessage struct {
 }
 
 func decodeNativeCaption(raw []byte, assignment *packagerAssignment) (*nativeCaptionMessage, error) {
-	if len(raw) == 0 || len(raw) > maximumCaptionMessageSize || assignment == nil {
-		return nil, errors.New("invalid native caption message")
-	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &fields); err != nil {
+	if len(raw) == 0 || len(raw) > maximumCaptionMessageSize || assignment == nil || !utf8.Valid(raw) {
 		return nil, errors.New("invalid native caption message")
 	}
 	var message nativeCaptionMessage
@@ -62,29 +59,22 @@ func decodeNativeCaption(raw []byte, assignment *packagerAssignment) (*nativeCap
 		message.DiscontinuitySequence > 1_000_000 {
 		return nil, errors.New("stale native caption message")
 	}
-	baseFields := map[string]bool{
-		"version": true, "type": true, "assignmentId": true, "programEpoch": true,
-		"fencingRevision": true, "operation": true, "discontinuitySequence": true,
+	keys := []string{"version", "type", "assignmentId", "programEpoch", "fencingRevision", "operation", "discontinuitySequence"}
+	if message.Operation == "update" {
+		keys = append(keys, "language", "mediaSequence", "startsAtMs", "endsAtMs", "cueCount", "body")
 	}
-	for field := range baseFields {
-		if _, present := fields[field]; !present {
-			return nil, errors.New("invalid native caption message")
+	// encoding/json otherwise silently accepts duplicate keys and null scalars.
+	exact, ok := sourceProgramExactObject(raw, keys...)
+	if !ok {
+		return nil, errors.New("invalid native caption shape")
+	}
+	for _, value := range exact {
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return nil, errors.New("invalid native caption value")
 		}
 	}
 	if message.Operation == "revoke" {
-		if len(fields) != len(baseFields) {
-			return nil, errors.New("invalid native caption revoke")
-		}
 		return &message, nil
-	}
-	for _, field := range []string{"language", "mediaSequence", "startsAtMs", "endsAtMs", "cueCount", "body"} {
-		baseFields[field] = true
-		if _, present := fields[field]; !present {
-			return nil, errors.New("invalid native caption update")
-		}
-	}
-	if len(fields) != len(baseFields) {
-		return nil, errors.New("invalid native caption update")
 	}
 	if message.Operation != "update" || !captionLanguagePattern.MatchString(message.Language) ||
 		message.MediaSequence == nil || *message.MediaSequence < 0 || *message.MediaSequence > 10_000_000 ||
@@ -123,13 +113,19 @@ func (media *nativeMediaSession) acceptCaptionMessage(raw []byte) {
 	}
 	media.captionMu.Lock()
 	current := media.caption
-	if current != nil && (message.DiscontinuitySequence < current.DiscontinuitySequence ||
-		(message.DiscontinuitySequence == current.DiscontinuitySequence && message.Operation == "update" &&
-			current.Operation == "update" && *message.MediaSequence <= *current.MediaSequence)) {
+	if message.Operation == "update" && media.captionHasUpdate && *message.MediaSequence <= media.captionSequence {
+		media.captionMu.Unlock()
+		return
+	}
+	if current != nil && message.DiscontinuitySequence < current.DiscontinuitySequence {
 		media.captionMu.Unlock()
 		return
 	}
 	media.caption = message
+	if message.Operation == "update" {
+		media.captionHasUpdate = true
+		media.captionSequence = *message.MediaSequence
+	}
 	media.captionMu.Unlock()
 	media.flushCaptionOutput()
 }

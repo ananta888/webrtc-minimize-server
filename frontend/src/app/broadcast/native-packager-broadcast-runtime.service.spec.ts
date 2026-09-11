@@ -188,6 +188,20 @@ describe("NativePackagerBroadcastRuntimeService", () => {
     expect(composition.setCaptionOverlay).toHaveBeenCalledWith(
       expect.objectContaining({ compositionId: "composition-test" }), "", "high-contrast", 88,
     );
+    const reenabledAt = Date.now() + 2;
+    const now = vi.spyOn(Date, "now").mockReturnValue(reenabledAt);
+    captionSettingsListener?.(captionConsent, currentCaptionSettings);
+    const afterReenable = pc.dataChannel.send.mock.calls.length;
+    captionListener?.({ source: "screen-audio", sourceEpoch: 3, utteranceId: "4444444444444444",
+      revision: 0, language: "de-DE", text: "result before new consent", final: true, capturedAtMs: reenabledAt - 1 });
+    expect(pc.dataChannel.send).toHaveBeenCalledTimes(afterReenable);
+    now.mockReturnValue(reenabledAt + 1);
+    captionListener?.({ source: "screen-audio", sourceEpoch: 3, utteranceId: "5555555555555555",
+      revision: 0, language: "de-DE", text: "newly shared result", final: true, capturedAtMs: reenabledAt + 1 });
+    expect(pc.dataChannel.send).toHaveBeenCalledTimes(afterReenable + 1);
+    expect(String(pc.dataChannel.send.mock.calls.at(-1)?.[0])).toContain("newly shared result");
+    expect(String(pc.dataChannel.send.mock.calls.at(-1)?.[0])).not.toContain("result before new consent");
+    now.mockRestore();
     for (const type of ["native-packager-status", "native-packager-signal"]) {
       subscriber?.({ version: 1, type, assignmentId: "asn_old0123456789abcdef", state: "stopped" });
     }

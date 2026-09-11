@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -87,5 +88,68 @@ func TestNativeCaptionOutputIsAtomicBoundedAndRevocable(t *testing.T) {
 	}))
 	if _, err = os.Stat(filename); !os.IsNotExist(err) {
 		t.Fatal("caption output survived revoke")
+	}
+}
+
+func TestNativeCaptionRevokeRetainsSequenceBarrier(t *testing.T) {
+	assignment := assignmentFrom(assignmentMessage(time.Now()))
+	output := t.TempDir()
+	media := &nativeMediaSession{assignment: assignment, pipeline: &transcodePipeline{output: output}}
+	media.acceptCaptionMessage(captionJSON(t, assignment, nil))
+	media.acceptCaptionMessage(captionJSON(t, assignment, map[string]any{
+		"operation": "revoke", "language": nil, "mediaSequence": nil,
+		"startsAtMs": nil, "endsAtMs": nil, "cueCount": nil, "body": nil,
+	}))
+	filename := filepath.Join(output, nativeCaptionFilename)
+	for _, discontinuity := range []int{1, 2} {
+		media.acceptCaptionMessage(captionJSON(t, assignment, map[string]any{"discontinuitySequence": discontinuity}))
+		if _, err := os.Stat(filename); !os.IsNotExist(err) {
+			t.Fatal("pre-revoke sequence revived caption output")
+		}
+	}
+	media.acceptCaptionMessage(captionJSON(t, assignment, map[string]any{"mediaSequence": 4}))
+	if _, err := os.Stat(filename); err != nil {
+		t.Fatal("fresh higher sequence in current generation must remain usable")
+	}
+}
+
+func TestNativeCaptionRejectsDuplicateAndNullFields(t *testing.T) {
+	assignment := assignmentFrom(assignmentMessage(time.Now()))
+	valid := string(captionJSON(t, assignment, nil))
+	for _, raw := range []string{
+		strings.Replace(valid, `"discontinuitySequence":1`, `"discontinuitySequence":null`, 1),
+		strings.Replace(valid, `"discontinuitySequence":1`, `"discontinuitySequence":1,"discontinuitySequence":1`, 1),
+		strings.Replace(valid, `"body":`, `"Body":"bad","body":`, 1),
+	} {
+		if _, err := decodeNativeCaption([]byte(raw), assignment); err == nil {
+			t.Fatal("ambiguous caption envelope accepted")
+		}
+	}
+}
+
+func TestNativeCaptionConcurrentUpdatesCannotResetRevokeHighwater(t *testing.T) {
+	assignment := assignmentFrom(assignmentMessage(time.Now()))
+	output := t.TempDir()
+	media := &nativeMediaSession{assignment: assignment, pipeline: &transcodePipeline{output: output}}
+	var group sync.WaitGroup
+	for n := 0; n < 32; n++ {
+		raw := captionJSON(t, assignment, map[string]any{"mediaSequence": n})
+		group.Add(1)
+		go func() { defer group.Done(); media.acceptCaptionMessage(raw) }()
+	}
+	group.Wait()
+	media.acceptCaptionMessage(captionJSON(t, assignment, map[string]any{
+		"operation": "revoke", "language": nil, "mediaSequence": nil, "discontinuitySequence": 2,
+		"startsAtMs": nil, "endsAtMs": nil, "cueCount": nil, "body": nil,
+	}))
+	for n := 0; n < 32; n++ {
+		media.acceptCaptionMessage(captionJSON(t, assignment, map[string]any{"mediaSequence": n, "discontinuitySequence": 2}))
+	}
+	if _, err := os.Stat(filepath.Join(output, nativeCaptionFilename)); !os.IsNotExist(err) {
+		t.Fatal("replay after concurrent updates recreated revoked captions")
+	}
+	media.acceptCaptionMessage(captionJSON(t, assignment, map[string]any{"mediaSequence": 32, "discontinuitySequence": 2}))
+	if _, err := os.Stat(filepath.Join(output, nativeCaptionFilename)); err != nil {
+		t.Fatal("fresh caption cannot recover after concurrent updates")
 	}
 }
