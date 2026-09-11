@@ -42,6 +42,7 @@ import { createMediaAgentIceServers } from "./media-agent-ice.js";
 import { createEdgeTurnCredentials, createTurnCredentials } from "./turn-credentials.js";
 import { createNativePackagerIceServers } from "./native-packager-ice.js";
 import { MediaMtxExternalAuthError, MediaMtxExternalAuthService } from "./mediamtx-external-auth.js";
+import { createMediaMtxControlClient } from "./mediamtx-control.js";
 import { BroadcastHlsProxy, BroadcastHlsProxyError } from "./broadcast-hls-proxy.js";
 import {
   BroadcastPlaybackSessionError,
@@ -217,6 +218,7 @@ function publicRuntimeConfig(config, services = {}) {
       ),
       endpoint: config.nativePackagerSelfServiceEnabled ? "/native-packager" : "",
       targets: services.nativePackagerInstallerService?.availableTargets() || [],
+      unsignedArtifacts: Boolean(services.nativePackagerInstallerService?.availableTargets()?.length),
     },
     broadcast: {
       whip: {
@@ -2820,6 +2822,8 @@ export function createAppServer(options = {}) {
       }],
     });
   }
+  const mediaMtxControl = options.mediaMtxControl
+    || createMediaMtxControlClient(config.broadcastMediamtxControlOrigin);
   const broadcastRuntime = options.broadcastRuntime || (broadcastGrantAuthority
     ? new BroadcastRuntimeRegistry({ grantAuthority: broadcastGrantAuthority,
       programCapacityLimits: config.broadcastProgramCapacity,
@@ -2830,6 +2834,9 @@ export function createAppServer(options = {}) {
         if (!assignment) return;
         const result = nativePackagerAssignments.stop(principal, assignment.packagerId, assignment.assignmentId, reasonCode, now);
         if (result.command) safeSend(nativePackagers.socketFor(assignment.packagerId), result.command);
+      },
+      onResourceStopped: ({ resourceRef }) => {
+        void mediaMtxControl?.purgeResource(resourceRef).catch(() => {});
       },
     }) : null);
   const broadcastSourceRequests = broadcastRuntime ? new BroadcastSourceRequests({

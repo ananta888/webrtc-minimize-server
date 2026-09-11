@@ -48,6 +48,16 @@ export function nativePackagerVerificationCommand(release: NativePackagerRelease
   if (artifact && !release.artifacts.includes(artifact)) throw new Error("native_packager_release_invalid");
   return `gh attestation verify ./${artifact?.filename || "native-packager-release.v1.json"} --repo ${REPOSITORY} --signer-workflow ${WORKFLOW} --source-digest ${release.revision} --source-ref refs/heads/main --deny-self-hosted-runners`;
 }
+export function nativePackagerDigestCommand(artifact: NativePackagerReleaseArtifact, platform = "linux"): string {
+  if (!TARGETS.includes(artifact.target) || !/^[a-f0-9]{64}$/.test(artifact.sha256)
+    || artifact.filename !== `native-broadcast-packager-${artifact.target}${artifact.target === "windows-amd64" ? ".exe" : ""}`
+    || !["windows", "linux", "macos"].includes(platform) || !artifact.target.startsWith(`${platform}-`)) {
+    throw new Error("native_packager_update_invalid");
+  }
+  return platform === "windows"
+    ? `(Get-FileHash -Algorithm SHA256 .\\${artifact.filename}).Hash.ToLower() -eq '${artifact.sha256}'`
+    : `printf '%s  %s\\n' '${artifact.sha256}' '${artifact.filename}' | sha256sum -c -`;
+}
 export function nativePackagerUpdateCommand(id: string, platform: string, artifact: NativePackagerReleaseArtifact): string {
   if (!/^pkr_[A-Za-z0-9_-]{16,64}$/.test(id) || !["windows", "linux", "macos"].includes(platform)
     || !TARGETS.includes(artifact.target) || !artifact.target.startsWith(`${platform}-`) || !/^[a-f0-9]{64}$/.test(artifact.sha256)) throw new Error("native_packager_update_invalid");

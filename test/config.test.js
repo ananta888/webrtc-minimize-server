@@ -54,6 +54,7 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.equal(config.broadcastGatewayAuthEnabled, false);
   assert.deepEqual(config.broadcastGatewayAuthAddresses, ["127.0.0.1", "::1"]);
   assert.equal(config.broadcastGatewayOrigin, "");
+  assert.equal(config.broadcastMediamtxControlOrigin, "");
   assert.equal(config.broadcastSigningPrivateKey, "");
   assert.equal(config.broadcastSigningKeyId, "broadcast-control-1");
 });
@@ -90,6 +91,10 @@ test("loadConfig rejects unsafe bounds and malformed public origins", () => {
   assert.throws(() => loadConfig({ BROADCAST_NATIVE_OUTPUT_ENABLED: "sometimes" }), /true or false/);
   assert.throws(() => loadConfig({ BROADCAST_WHIP_ENDPOINT: "https://media.example/live/whip?token=secret" }), /query/);
   assert.throws(() => loadConfig({ BROADCAST_WHIP_RESOURCE_BASE: "http://media.example/ingest" }), /HTTPS URL/);
+  assert.throws(() => loadConfig({ BROADCAST_MEDIAMTX_CONTROL_ORIGIN: "https://127.0.0.1:9997" }), /BROADCAST_MEDIAMTX_CONTROL_ORIGIN/);
+  assert.throws(() => loadConfig({ BROADCAST_MEDIAMTX_CONTROL_ORIGIN: "http://example.test:9997" }), /BROADCAST_MEDIAMTX_CONTROL_ORIGIN/);
+  assert.equal(loadConfig({ BROADCAST_MEDIAMTX_CONTROL_ORIGIN: "http://10.255.254.3:9997" }).broadcastMediamtxControlOrigin,
+    "http://10.255.254.3:9997");
   assert.throws(() => loadConfig({ BROADCAST_WHIP_REDIRECT_ORIGINS: "https://edge.example/path" }), /HTTPS origins/);
   assert.throws(() => loadConfig({ BROADCAST_WHIP_AUDIO_CODECS: "video/vp8" }), /audio MIME/);
   assert.throws(() => loadConfig({ BROADCAST_WHIP_RETRY_BUDGET: "3" }), /between 0 and 2/);

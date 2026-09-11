@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   BROADCAST_SLOS,
+  BroadcastUsageLedger,
   evaluateBroadcastBudget,
   PrivacyPreservingViewerCounter,
 } from "../src/broadcast-budget-policy.js";
@@ -46,6 +47,30 @@ test("SLOs are profile-specific and remain unverified until browser load evidenc
     assert.ok(slo.measurementWindowMinutes >= 5);
     assert.ok(slo.errorBudgetMinutesPer30Days > 0);
   }
+});
+
+test("usage ledger aggregates HMAC-keyed hourly buckets without IDs", () => {
+  const ledger = new BroadcastUsageLedger({ key: Buffer.alloc(32, 9), clock: () => 3_600_000 });
+  ledger.record({
+    tenantId: "tn_aaaaaaaaaaaaaaaa", principalRef: "sub_aaaaaaaaaaaaaaaa",
+    metric: "encoderMinutes", amount: 12, at: 3_600_000,
+  });
+  ledger.record({
+    tenantId: "tn_aaaaaaaaaaaaaaaa", principalRef: "sub_bbbbbbbbbbbbbbbb",
+    metric: "encoderMinutes", amount: 8, at: 3_600_000,
+  });
+  const usage = ledger.usage({ tenantId: "tn_aaaaaaaaaaaaaaaa", principalRef: "sub_aaaaaaaaaaaaaaaa" });
+  assert.equal(usage.deployment.encoderMinutes, 20);
+  assert.equal(usage.tenant.encoderMinutes, 20);
+  assert.equal(usage.principal.encoderMinutes, 12);
+  assert.doesNotMatch(JSON.stringify(usage), /tn_|sub_|prg_/);
+  const admitted = evaluateBroadcastBudget(request({ usage }));
+  assert.equal(admitted.admitted, true);
+  ledger.destroy();
+  assert.throws(() => ledger.record({
+    tenantId: "tn_aaaaaaaaaaaaaaaa", principalRef: "sub_aaaaaaaaaaaaaaaa",
+    metric: "encoderMinutes", amount: 1,
+  }), /invalid_broadcast_usage_record|invalid_broadcast_usage_ledger/);
 });
 
 test("viewer counter deduplicates opaque sessions without IP or device fingerprint", () => {

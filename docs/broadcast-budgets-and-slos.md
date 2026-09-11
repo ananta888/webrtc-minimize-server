@@ -47,6 +47,10 @@ eine [Angular-Kapazitätsvorschau](native-capacity-preview.md) und
 [instanzlokale Encoder-Minuten](native-encoder-time-budgets.md). Diese sind nicht
 mit der vollständigen, oben beschriebenen generischen Kostenpolicy gleichzusetzen.
 
+`BroadcastUsageLedger` hält HMAC-gebundene Stunden-Buckets für Deployment,
+Tenant und Principal ohne IDs in Snapshots. Destroy überschreibt den Schlüssel.
+Das ist ein In-Process-Zähler, kein persistenter Provider-Monatsabschluss.
+
 Die generischen Policies und Negativtests sind vorhanden; es fehlen noch persistente,
 transaktionale Usage-Zähler, konkrete Providerpreise, Monatsperioden,
 vollständige Kosten-Preflightverdrahtung, Alerting/Error-Budget-Auswertung und reproduzierbare

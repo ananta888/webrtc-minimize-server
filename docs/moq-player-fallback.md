@@ -6,6 +6,11 @@ Zuschauerroute verdrahtet und aktiviert keinen realen MoQ-Adapter.
 
 ## Auswahl
 
+`probeWebTransportAvailability()` prüft nur Secure Context und die Anwesenheit
+des `WebTransport`-Konstruktors. Es wird keine Session geöffnet und kein QUIC-
+Handshake gestartet. Bloße Constructor-Präsenz ist kein MoQ-Interoperabilitäts-
+nachweis.
+
 `auto` ist der sichere Standard. MoQ wird nur versucht, wenn der serverseitig
 ausgehandelte Scope dieselben Tenant-, Program-, Epoch- und Audience-Werte
 enthält, MOQT draft-20, LOC draft-04, WebTransport RFC 9297 und der Codec exakt

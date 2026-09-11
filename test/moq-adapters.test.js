@@ -7,10 +7,13 @@ import {
   MoqAdapterRegistry,
   MoqProviderCredentialVault,
   createCloudflareMoqAdapter,
+  createExperimentalSecureObjectsAdapter,
   createMediaMtxMoqAdapter,
   createTestMoqAdapter,
+  experimentalSecureObjectRoundtrip,
   validateMoqTarget,
 } from "../src/moq-adapters.js";
+import { MOQ_SECURE_OBJECTS_DRAFT } from "../src/moq-secure-objects-prototype.js";
 
 const NOW = 1_800_000_000_000;
 const SCOPE = Object.freeze({
@@ -72,6 +75,39 @@ test("MediaMTX and Cloudflare MoQ declare exact incompatible drafts and remain u
   await assert.rejects(() => mediaMtx.publish({}), errorCode("mediamtx_moq_draft_mismatch"));
   await assert.rejects(() => cloudflare.subscribe({}), errorCode("cloudflare_moq_draft_mismatch"));
   assert.notEqual(cloudflare.adapterKind, "cloudflare-stream");
+});
+
+test("experimental Secure Objects adapter stays disabled and only roundtrips in test", async () => {
+  const adapter = createExperimentalSecureObjectsAdapter(() => NOW);
+  const capability = adapter.capability(SCOPE);
+  assert.equal(adapter.enabled, false);
+  assert.equal(capability.enabled, false);
+  assert.deepEqual(capability.secureObjectVersions, [MOQ_SECURE_OBJECTS_DRAFT]);
+  await assert.rejects(() => adapter.publish({}), errorCode("secure_objects_experimental_disabled"));
+  const prior = process.env.NODE_ENV;
+  process.env.NODE_ENV = "test";
+  try {
+    const payload = Buffer.from("private-frame-payload");
+    const properties = Buffer.from("private-caption-property");
+    const result = experimentalSecureObjectRoundtrip({
+      context: {
+        tenantId: SCOPE.tenantId, programId: SCOPE.programId, programEpoch: SCOPE.programEpoch,
+        audienceId: SCOPE.audienceId, namespace: `${SCOPE.tenantId}/${SCOPE.programId}/epoch/${SCOPE.programEpoch}`,
+        trackName: "video-main", deviceRef: "dev_dddddddddddddddd", enabled: true, maxObjectsPerKey: 4,
+      },
+      key: Buffer.from("00112233445566778899aabbccddeeff", "hex"),
+      object: {
+        groupId: 9, objectId: 3, priority: 32, payload, encryptedProperties: properties,
+        publicImmutableProperties: Buffer.from([0x41, 0x42]),
+      },
+      clock: () => NOW,
+    });
+    assert.equal(result.draftVersion, MOQ_SECURE_OBJECTS_DRAFT);
+    assert.equal(result.relaySeesPlaintext, false);
+    assert.equal(result.opened.payload.toString(), "private-frame-payload");
+  } finally {
+    process.env.NODE_ENV = prior;
+  }
 });
 
 test("registry exchanges adapters through one port without changing negotiation policy", async () => {

@@ -86,5 +86,9 @@ The separate Ananta two-hour-profile attempt finished failed in39.95 seconds
 at the750-ms screen freshness fence (observed gap1,096,801 microseconds), while
 the large frontend stage was running. This is neither a two-hour success nor
 proof of a causal scheduling diagnosis. Ananta adds passive bounded scheduling
-observations and separates the next timed soak from large suites. MDS-08/09
-and the public operator/trust/evidence acceptance remain open.
+observations and separates the next timed soak from large suites.
+
+`scripts/live-machine-dialog-audio-chat-soak.mjs` is an additional skip-by-default
+harness for PCM, chat ACK and screen together. It starts only with
+`MACHINE_AUDIO_CHAT_SOAK_SECONDS=300..7200` and is not a two-hour or Hub-trust
+result. MDS-08/09 and the public operator/trust/evidence acceptance remain open.

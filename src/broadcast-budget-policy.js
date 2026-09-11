@@ -89,6 +89,92 @@ export const BROADCAST_SLOS = Object.freeze({
   }),
 });
 
+const USAGE_METRICS = Object.freeze([
+  "viewerSessions", "egressBitsPerSecond", "encoderSlots", "encoderMinutes", "programMinutes", "costMicros",
+]);
+
+export class BroadcastUsageLedger {
+  #key;
+  #clock;
+  #maximumBuckets;
+  #destroyed = false;
+  #buckets = new Map();
+
+  constructor({ key, clock = Date.now, maximumBuckets = 168 } = {}) {
+    if (!Buffer.isBuffer(key) || key.length < 32 || key.length > 64
+      || typeof clock !== "function" || !Number.isSafeInteger(maximumBuckets)
+      || maximumBuckets < 1 || maximumBuckets > 744) {
+      fail("invalid_broadcast_usage_ledger", 500);
+    }
+    this.#key = Buffer.from(key);
+    this.#clock = clock;
+    this.#maximumBuckets = maximumBuckets;
+  }
+
+  #digest(scope, id) {
+    return crypto.createHmac("sha256", this.#key).update(`${scope}\0${id}`).digest("base64url");
+  }
+
+  #hour(at) {
+    return Math.floor(at / 3_600_000) * 3_600_000;
+  }
+
+  record({ tenantId, principalRef, metric, amount, at = this.#clock() }) {
+    if (this.#destroyed) fail("invalid_broadcast_usage_ledger", 500);
+    if (!REF.test(tenantId || "") || !REF.test(principalRef || "")
+      || !USAGE_METRICS.includes(metric) || !Number.isSafeInteger(amount) || amount < 0 || amount > 1_000_000_000
+      || !Number.isSafeInteger(at) || at < 0) fail("invalid_broadcast_usage_record");
+    const hour = this.#hour(at);
+    this.prune(at);
+    let bucket = this.#buckets.get(hour);
+    if (!bucket) {
+      if (this.#buckets.size >= this.#maximumBuckets) fail("broadcast_usage_ledger_capacity_exhausted", 429);
+      bucket = new Map();
+      this.#buckets.set(hour, bucket);
+    }
+    const add = (scope, id) => {
+      const digest = this.#digest(scope, id);
+      const current = bucket.get(digest) || Object.fromEntries(USAGE_METRICS.map((name) => [name, 0]));
+      current[metric] += amount;
+      bucket.set(digest, current);
+    };
+    add("deployment", "all");
+    add("tenant", tenantId);
+    add("principal", `${tenantId}\0${principalRef}`);
+  }
+
+  usage({ tenantId, principalRef, at = this.#clock() }) {
+    if (this.#destroyed) fail("invalid_broadcast_usage_ledger", 500);
+    if (!REF.test(tenantId || "") || !REF.test(principalRef || "")) fail("invalid_broadcast_usage_query");
+    this.prune(at);
+    const totals = (scope, id) => {
+      const digest = this.#digest(scope, id);
+      const sum = Object.fromEntries(USAGE_METRICS.map((name) => [name, 0]));
+      for (const bucket of this.#buckets.values()) {
+        const row = bucket.get(digest);
+        if (row) for (const name of USAGE_METRICS) sum[name] += row[name];
+      }
+      return Object.freeze({ ...sum });
+    };
+    return Object.freeze({
+      deployment: totals("deployment", "all"),
+      tenant: totals("tenant", tenantId),
+      principal: totals("principal", `${tenantId}\0${principalRef}`),
+    });
+  }
+
+  prune(at = this.#clock()) {
+    const oldest = this.#hour(at) - (this.#maximumBuckets - 1) * 3_600_000;
+    for (const hour of [...this.#buckets.keys()]) if (hour < oldest) this.#buckets.delete(hour);
+  }
+
+  destroy() {
+    this.#buckets.clear();
+    this.#key.fill(0);
+    this.#destroyed = true;
+  }
+}
+
 export class PrivacyPreservingViewerCounter {
   #key;
   #leaseMs;

@@ -91,6 +91,7 @@ const DEFAULTS = Object.freeze({
   broadcastGatewayAuthEnabled: false,
   broadcastGatewayAuthAddresses: ["127.0.0.1", "::1"],
   broadcastGatewayOrigin: "",
+  broadcastMediamtxControlOrigin: "",
   broadcastSigningPrivateKey: "",
   broadcastSigningKeyId: "broadcast-control-1",
 });
@@ -299,6 +300,17 @@ function httpOrigin(value, name) {
     throw new Error(`${name} must be an HTTP(S) origin without a path, credentials, query or fragment`);
   }
   return parsed.origin;
+}
+
+function mediaMtxControlOrigin(value) {
+  if (!value) return "";
+  const origin = httpOrigin(value, "BROADCAST_MEDIAMTX_CONTROL_ORIGIN");
+  const parsed = new URL(origin);
+  if (parsed.protocol !== "http:" || parsed.port !== "9997"
+    || !["127.0.0.1", "10.255.254.3", "broadcast-gateway"].includes(parsed.hostname)) {
+    throw new Error("BROADCAST_MEDIAMTX_CONTROL_ORIGIN must be http://127.0.0.1:9997, http://10.255.254.3:9997 or http://broadcast-gateway:9997");
+  }
+  return origin;
 }
 
 function httpsWhipEndpoint(value) {
@@ -718,6 +730,9 @@ export function loadConfig(env = process.env) {
       DEFAULTS.broadcastGatewayAuthAddresses,
     )),
     broadcastGatewayOrigin,
+    broadcastMediamtxControlOrigin: mediaMtxControlOrigin(
+      env.BROADCAST_MEDIAMTX_CONTROL_ORIGIN || DEFAULTS.broadcastMediamtxControlOrigin,
+    ),
     broadcastMaxProgramRuntimeMs: boundedInteger(env.BROADCAST_MAX_PROGRAM_RUNTIME_MS === "" ? NaN : env.BROADCAST_MAX_PROGRAM_RUNTIME_MS,
       BROADCAST_PROGRAM_RUNTIME_DEFAULT_MS,
       { minimum: 60_000, maximum: 86_400_000, name: "BROADCAST_MAX_PROGRAM_RUNTIME_MS" }),

@@ -164,6 +164,19 @@ test("active internal registrations cannot bypass runtime capacity or retain a d
   assert.equal(runtime.programStateCounts().live, 1);
 });
 
+test("stop notifies isolated resource cleanup without program identity", () => {
+  const owner = identity("owner", "Ada");
+  const stopped = [];
+  const runtime = new BroadcastRuntimeRegistry({
+    grantAuthority: authority(), clock: () => NOW,
+    onResourceStopped: (event) => { stopped.push(event); throw new Error("cleanup-must-not-abort-stop"); },
+  });
+  runtime.register(registration(owner, "a"));
+  assert.equal(runtime.stopProgram(owner, "prg_aaaaaaaaaaaaaaaa").availability, "ended");
+  assert.deepEqual(stopped, [{ resourceRef: "res_aaaaaaaaaaaaaaaa" }]);
+  assert.doesNotMatch(JSON.stringify(stopped), /prg_|tn_|sub_/);
+});
+
 test("playback uses a one-time device-bound challenge and does not create room membership", async () => {
   const owner = identity("owner", "Ada");
   const viewer = identity("viewer", "Grace");

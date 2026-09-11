@@ -266,6 +266,7 @@ test("HTTP surface serves health, runtime config, rooms and app", async (context
       publicationEnabled: false,
       endpoint: "",
       targets: [],
+      unsignedArtifacts: false,
     },
     broadcast: {
       whip: {

@@ -5,6 +5,11 @@ import {
   negotiateMoqCapabilities,
   validateMoqContract,
 } from "./moq-contracts.js";
+import {
+  MOQ_SECURE_OBJECTS_DRAFT,
+  MoqSecureObjectsPrototype,
+  relaySecureMoqObject,
+} from "./moq-secure-objects-prototype.js";
 
 const ADAPTER_ID = /^[a-z][a-z0-9-]{2,63}$/;
 const PROVIDER_ID = /^[a-z][a-z0-9-]{2,63}$/;
@@ -294,6 +299,49 @@ export function createMediaMtxMoqAdapter(clock = Date.now) {
     extensions: ["loc-header-v04"],
     unavailableReason: "mediamtx_moq_draft_mismatch",
   }, clock);
+}
+
+export function createExperimentalSecureObjectsAdapter(clock = Date.now) {
+  return new DeclaredMoqAdapter({
+    adapterId: "secure-objects-experimental",
+    adapterKind: "secure-objects-experimental",
+    participantKind: "gateway",
+    participantRef: "gtw_secureobjectsxxxx",
+    enabled: false,
+    transportVersions: [MOQ_PROTOCOL_PINS.transport],
+    locVersions: [MOQ_PROTOCOL_PINS.loc],
+    webTransportVersions: [MOQ_PROTOCOL_PINS.webTransport],
+    secureObjectVersions: [MOQ_SECURE_OBJECTS_DRAFT],
+    codecs: ["opus", "aac", "h264"],
+    fallbackProtocols: ["ll-hls", "hls"],
+    extensions: ["secure-object-v01"],
+    unavailableReason: "secure_objects_experimental_disabled",
+  }, clock);
+}
+
+export function experimentalSecureObjectRoundtrip({ context, key, object, clock = Date.now }) {
+  if (process.env.NODE_ENV !== "test") fail("secure_objects_experimental_disabled");
+  const publisher = new MoqSecureObjectsPrototype(context, clock);
+  const subscriber = new MoqSecureObjectsPrototype({ ...context, deviceRef: "dev_eeeeeeeeeeeeeeee" }, clock);
+  const record = { keyId: 1, trackBaseKey: key, notBefore: clock() - 1_000, expiresAt: clock() + 60_000 };
+  publisher.addKey(record);
+  subscriber.addKey({ ...record, trackBaseKey: Buffer.from(key) });
+  publisher.activateKey(1);
+  subscriber.activateKey(1);
+  const sealed = publisher.seal(object);
+  const forwarded = relaySecureMoqObject(sealed);
+  const opened = subscriber.open(forwarded);
+  publisher.destroy();
+  subscriber.destroy();
+  return Object.freeze({
+    draftVersion: sealed.draftVersion,
+    relaySeesPlaintext: forwarded.ciphertext.includes(object.payload)
+      || forwarded.ciphertext.includes(object.encryptedProperties),
+    opened: Object.freeze({
+      payload: Buffer.from(opened.payload),
+      encryptedProperties: Buffer.from(opened.encryptedProperties),
+    }),
+  });
 }
 
 export function createCloudflareMoqAdapter(clock = Date.now) {

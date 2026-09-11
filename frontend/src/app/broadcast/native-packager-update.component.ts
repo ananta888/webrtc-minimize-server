@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, Input, computed, signal } from "@angular/core";
 import { FormsModule } from "@angular/forms";
+import { RuntimeConfigService } from "../core/runtime-config.service";
 import { OwnedNativePackager } from "./native-packager-onboarding.service";
-import { nativePackagerUpdateCommand, nativePackagerVerificationCommand } from "./native-packager-release";
+import { nativePackagerDigestCommand, nativePackagerUpdateCommand, nativePackagerVerificationCommand } from "./native-packager-release";
 import { NativePackagerReleaseService } from "./native-packager-release.service";
 import { NativePackagerMigrationService } from "./native-packager-migration.service";
 
@@ -22,6 +23,9 @@ import { NativePackagerMigrationService } from "./native-packager-migration.serv
         <p>Serverangebot: Agent {{ release.agentVersion }} · {{ release.builtAt }} · Go {{ release.goVersion }}</p>
         <code>{{ release.revision }}</code>
         <p class="warning">Noch nicht unabhängig verifiziert. Eine Prüfsumme vom Server ist keine Signaturprüfung im Browser.</p>
+        @if (unsigned()) {
+          <p class="warning">Lokale Artefakte ohne GitHub-Attestation. Nur der SHA-256-Digest gilt; ohne übereinstimmenden Hash kein Update.</p>
+        }
         <label>Architektur dieses Agent-Rechners
           <select [ngModel]="target()" (ngModelChange)="target.set($event)">
             <option value="">Bitte bewusst auswählen</option>
@@ -30,10 +34,14 @@ import { NativePackagerMigrationService } from "./native-packager-migration.serv
         </label>
         @if (selected(); as artifact) {
           <p>{{ artifact.bytes }} Bytes · SHA-256: <code>{{ artifact.sha256 }}</code></p>
-          <p>1. Beide Dateien in einen neuen Prüfordner herunterladen. Dort mit einer aktuellen GitHub CLI unabhängig prüfen; beide Befehle müssen erfolgreich sein.</p>
+          <p>1. Beide Dateien in einen neuen Prüfordner herunterladen. Zuerst den SHA-256-Digest der Datei prüfen; ohne Treffer kein Update.</p>
           <a href="/downloads/native-packager/release.json" download="native-packager-release.v1.json">Release-Manifest</a> ·
           <a [href]="'/downloads/native-packager/' + artifact.target" [attr.download]="artifact.filename">Binärdatei zur Prüfung</a>
-          <pre>{{ verify(release) }}</pre><pre>{{ verify(release, artifact) }}</pre>
+          <pre>{{ digest(artifact, packager.platform) }}</pre>
+          @if (!unsigned()) {
+            <p>Zusätzlich mit einer aktuellen GitHub CLI unabhängig prüfen; beide Befehle müssen erfolgreich sein.</p>
+            <pre>{{ verify(release) }}</pre><pre>{{ verify(release, artifact) }}</pre>
+          }
           <p>2. Die Revision zusätzlich mit dem beabsichtigten GitHub-Release/Commit vergleichen. Ein gültiger alter Nachweis beweist nicht, dass dies die neueste oder freigegebene Version ist.</p>
           <p>3. Erst danach den bereits lokal installierten Updater starten. Er lädt erneut und prüft diesen exakten Hash. Bei einem zwischenzeitlichen Deployment bricht er ab.</p>
           <pre>{{ update(packager.id, packager.platform, artifact) }}</pre>
@@ -62,6 +70,12 @@ export class NativePackagerUpdateComponent {
   readonly target = signal("");
   readonly selected = computed(() => this.catalog.release()?.artifacts.find(item => item.target === this.target()) || null);
   readonly verify = nativePackagerVerificationCommand;
+  readonly digest = nativePackagerDigestCommand;
   readonly update = nativePackagerUpdateCommand;
-  constructor(readonly catalog: NativePackagerReleaseService, readonly migration: NativePackagerMigrationService) {}
+  readonly unsigned = computed(() => this.runtime.value()?.nativePackagers.unsignedArtifacts === true);
+  constructor(
+    readonly catalog: NativePackagerReleaseService,
+    readonly migration: NativePackagerMigrationService,
+    readonly runtime: RuntimeConfigService,
+  ) {}
 }

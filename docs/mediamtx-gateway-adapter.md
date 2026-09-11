@@ -13,6 +13,9 @@ Version, Digest, MIT-Lizenz und ein minimales CycloneDX-Inventar liegen unter
 - WebRTC/WHIP-Ingest auf Container-Port 8889,
 - LL-HLS auf Container-Port 8888,
 - Control API 9997 und Metrics 9998 ausschließlich in Docker-Netzen,
+  optionaler Stop-Purge über `BROADCAST_MEDIAMTX_CONTROL_ORIGIN`
+  (`DELETE /v3/config/paths/delete/{res_…}` nach Kick von WHIP- und HLS-Sessions;
+  Regex-Pfadkonfiguration bleibt unangetastet),
 - UDP-ICE auf 8189,
 - flüchtige In-Memory-HLS-Parts ohne Recording- oder DVR-Pfad.
 

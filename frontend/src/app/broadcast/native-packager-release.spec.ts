@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { nativePackagerUpdateCommand, nativePackagerVerificationCommand, parseNativePackagerRelease } from "./native-packager-release";
+import { nativePackagerDigestCommand, nativePackagerUpdateCommand, nativePackagerVerificationCommand, parseNativePackagerRelease } from "./native-packager-release";
 import { NativePackagerReleaseService } from "./native-packager-release.service";
 import { NativePackagerMigrationService } from "./native-packager-migration.service";
 import { OidcAuthService } from "../auth/oidc-auth.service";
@@ -33,6 +33,10 @@ describe("native packager release trust boundary", () => {
     expect(() => nativePackagerUpdateCommand(id, "linux", release.artifacts[4])).toThrow("invalid");
     expect(() => nativePackagerUpdateCommand("../other", "linux", release.artifacts[0])).toThrow("invalid");
     expect(() => nativePackagerVerificationCommand(release, { ...release.artifacts[0], filename: "injected" })).toThrow("invalid");
+    expect(nativePackagerDigestCommand(release.artifacts[0], "linux")).toContain(release.artifacts[0].sha256);
+    expect(nativePackagerDigestCommand(release.artifacts[0], "linux")).toContain("sha256sum -c");
+    expect(nativePackagerDigestCommand(release.artifacts[4], "windows")).toContain("Get-FileHash");
+    expect(() => nativePackagerDigestCommand(release.artifacts[0], "windows")).toThrow("invalid");
   });
   it("loads only on an explicit call, without tokens, capture, enrollment or redirects", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify(fixture()), { headers: { "content-type": "application/json" } }));

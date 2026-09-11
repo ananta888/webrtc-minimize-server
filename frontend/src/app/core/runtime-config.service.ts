@@ -35,6 +35,7 @@ export interface RuntimeConfig {
     publicationEnabled: boolean;
     endpoint: string;
     targets: readonly NativePackagerTarget[];
+    unsignedArtifacts: boolean;
   }>;
   readonly broadcast: Readonly<{
     whip: Readonly<{
@@ -202,6 +203,7 @@ export class RuntimeConfigService {
       || !config.nativePackagers || typeof config.nativePackagers.configured !== "boolean"
       || typeof config.nativePackagers.selfService !== "boolean"
       || typeof config.nativePackagers.publicationEnabled !== "boolean"
+      || typeof config.nativePackagers.unsignedArtifacts !== "boolean"
       || (config.nativePackagers.publicationEnabled && !config.nativePackagers.selfService)
       || config.nativePackagers.endpoint !== (config.nativePackagers.selfService ? "/native-packager" : "")
       || !Array.isArray(config.nativePackagers.targets) || config.nativePackagers.targets.length > 5

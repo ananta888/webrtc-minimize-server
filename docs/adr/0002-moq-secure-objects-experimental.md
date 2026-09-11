@@ -28,7 +28,9 @@ Secure Objects bleibt ein eigener, standardmäßig deaktivierter
 Experimentaladapter. Es ersetzt weder SFrame im Raum noch TLS/QUIC und wird
 nicht als vorhandene Broadcast-E2EE-Produkteigenschaft beworben.
 
-`src/moq-secure-objects-prototype.js` bildet nur einen überprüfbaren
+`createExperimentalSecureObjectsAdapter()` hängt denselben Kern als
+default-aus Gateway-Adapter in die MoQ-Registry, ohne Publish/Subscribe
+freizugeben. `src/moq-secure-objects-prototype.js` bildet nur einen überprüfbaren
 kryptografischen Kern nach:
 
 - draft-01 und die dort verpflichtende Suite

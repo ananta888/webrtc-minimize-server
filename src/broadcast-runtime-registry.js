@@ -152,6 +152,7 @@ export class BroadcastRuntimeRegistry {
   #programCapacity;
   #maxProgramRuntimeMs;
   #onProgramExpired;
+  #onResourceStopped;
   #challengeTtlMs;
   #clock;
   #idFactory;
@@ -168,6 +169,7 @@ export class BroadcastRuntimeRegistry {
     programCapacityLimits,
     maxProgramRuntimeMs,
     onProgramExpired = () => {},
+    onResourceStopped = () => {},
     challengeTtlMs = 60_000,
     clock = Date.now,
     idFactory = () => `bpc_${crypto.randomBytes(24).toString("base64url")}`,
@@ -183,13 +185,15 @@ export class BroadcastRuntimeRegistry {
       || typeof clock !== "function" || typeof idFactory !== "function"
       || typeof programIdFactory !== "function" || typeof policyIdFactory !== "function"
       || typeof resourceIdFactory !== "function" || typeof leaseIdFactory !== "function"
-      || typeof anonymousSubjectFactory !== "function" || typeof onProgramExpired !== "function") {
+      || typeof anonymousSubjectFactory !== "function" || typeof onProgramExpired !== "function"
+      || typeof onResourceStopped !== "function") {
       fail("invalid_broadcast_runtime_configuration", 500);
     }
     this.#authority = grantAuthority;
     this.#programCapacity = new BroadcastProgramCapacity(programCapacityLimits);
     this.#maxProgramRuntimeMs = normalizeBroadcastProgramRuntime(maxProgramRuntimeMs);
     this.#onProgramExpired = onProgramExpired;
+    this.#onResourceStopped = onResourceStopped;
     this.#audience = audienceRegistry || new BroadcastAudienceRegistry({
       revokeProgramEpoch: (...args) => this.#authority.revokeProgramEpoch(...args),
     });
@@ -426,7 +430,9 @@ export class BroadcastRuntimeRegistry {
         now,
       );
     }
-    return this.#synchronizeRecord(key, { ...record, pendingHandoff: null }, machine, now);
+    const next = this.#synchronizeRecord(key, { ...record, pendingHandoff: null }, machine, now);
+    try { this.#onResourceStopped({ resourceRef: record.resourceRef }); } catch { /* isolated gateway cleanup */ }
+    return next;
   }
 
   async createPlaybackChallenge(identity, programId, now = this.#clock(), anonymousContext = null) {

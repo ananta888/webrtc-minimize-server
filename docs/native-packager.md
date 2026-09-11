@@ -64,6 +64,11 @@ laufenden FFmpeg-/Treiber-/Gerätekombination. VAAPI wird derzeit nicht gemeldet
 weil der notwendige gerätegebundene Upload-/Filterpfad noch nicht Teil der
 portablen Pipeline ist; das Vorhandensein von `/dev/dri` allein genügt nicht.
 
+Der Updater verlangt weiterhin den exakten SHA-256 der heruntergeladenen Datei.
+Ohne Digest-Treffer bleibt der laufende Dienst unverändert. GitHub-Attestation
+ist ein zusätzlicher Herkunftsschritt und wird bei lokalen `unsignedArtifacts`
+nicht als vorhanden behauptet.
+
 Für dauerhaft betriebene, operatorverwaltete Rechner gibt es zusätzlich eine
 offline provisionierbare Registrierung ohne Benutzerpasswort und ohne
 langfristiges OIDC-Token. Der Agent erzeugt seinen P-256-Private-Key innerhalb
