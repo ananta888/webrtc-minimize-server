@@ -69,6 +69,15 @@
     <button id="native-source-start" class="button primary" type="button" [disabled]="!canStart()" (click)="start()">Leere Sendung bewusst starten…</button>
   </fieldset>
   <p id="native-source-status" role="status" aria-live="polite">{{ statusLabel() }}</p>
+  @if (programs.historyContext()) {
+    @defer (on interaction) {
+      <app-program-history />
+    } @placeholder {
+      <button type="button" class="button secondary">Bestätigten Programmverlauf anzeigen</button>
+    } @error {
+      <p role="alert">Der Verlauf konnte nicht geladen werden. Die Steuerung der Sendung bleibt verfügbar.</p>
+    }
+  }
   @if (confirmedPackager()) { <p id="native-source-confirmed-packager">Aktuell bestätigter Packager: {{ confirmedPackager() }}</p> }
   @if (programs.requestProgram()) { <p>Jetzt Quellenanfragen öffnen. Die Statusbestätigung ist noch kein Nachweis, dass ein Zuschauer Bild oder Ton empfängt.</p> }
   @if (programs.requestProgram()) {

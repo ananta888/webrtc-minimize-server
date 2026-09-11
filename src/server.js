@@ -82,6 +82,7 @@ import { NativeSourceSceneBroker, NativeSourceSceneError } from "./native-source
 import { directNativeSourceScene } from "./native-source-scene-director.js";
 import { NativeSourceLabels } from "./native-source-labels.js";
 import { BroadcastPlaybackObservation } from "./broadcast-playback-observation.js";
+import { BroadcastProgramHistoryQuery } from "./broadcast-program-history-query.js";
 import { NATIVE_SCENE_REPLIES } from "./native-source-scene-wire.js";
 import { NativeSourceAudioBroker, NativeSourceAudioError } from "./native-source-audio-broker.js";
 import { directNativeSourceAudio } from "./native-source-audio-director.js";
@@ -777,6 +778,21 @@ function createHttpHandler(config, registry, services) {
       const nativeStandbyMatch = url.pathname.match(
         /^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/(native-standby-control|native-standbys)$/,
       );
+      const historyMatch = url.pathname.match(/^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/native-program-history$/);
+      if (historyMatch) {
+        if (!broadcastRuntime || config.authMode !== "required" || !config.nativePackagerSelfServiceEnabled
+          || request.method !== "POST" || url.search || !requestOriginAllowed(request, config)
+          || request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          response.writeHead(404, { "cache-control": "no-store" }); response.end(); return;
+        }
+        const identity = await authenticateRequest(request, config, oidcVerifier);
+        const ownerPrincipal = principalFor(identity), input = await readJsonBody(request, 512);
+        const result = services.broadcastProgramHistory.query({ identity, ownerPrincipal, input, programId: historyMatch[1],
+          runtime: broadcastRuntime,
+          getMember: () => registry.membersForPrincipal(ownerPrincipal).find(p => p.deviceFingerprint === input.deviceFingerprint) });
+        sendJson(response, 200, result, securityHeaders(config));
+        return;
+      }
       const playbackCapacityMatch = url.pathname.match(/^\/api\/broadcasts\/(prg_[A-Za-z0-9_-]{16,64})\/playback-capacity$/);
       if (playbackCapacityMatch) {
         if (!broadcastRuntime || !services.broadcastPlaybackSessions || config.authMode !== "required"
@@ -2859,6 +2875,7 @@ export function createAppServer(options = {}) {
     nativeCapacityPreviewGuard,
     nativeSourceLabels: new NativeSourceLabels(),
     broadcastPlaybackObservation: new BroadcastPlaybackObservation(),
+    broadcastProgramHistory: new BroadcastProgramHistoryQuery(),
     broadcastMetricsHttp,
     nativeSourceAudios: new NativeSourceAudioBroker({ send: (socket, command) =>
       Number.isSafeInteger(socket?.bufferedAmount) && socket.bufferedAmount >= 0 && socket.bufferedAmount <= 65536
@@ -2896,6 +2913,8 @@ export function createAppServer(options = {}) {
     broadcastMetrics.destroy();
     services.nativeSourceLabels.destroy();
     services.broadcastPlaybackObservation.destroy();
+    services.broadcastProgramHistory.destroy();
+    broadcastRuntime?.closeProgramHistory?.();
     broadcastMetricsHttp.destroy();
     services.nativeSourceScenes.destroy();
     services.nativeSourceAudios.destroy();

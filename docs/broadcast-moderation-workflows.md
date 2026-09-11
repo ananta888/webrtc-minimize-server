@@ -1,5 +1,12 @@
 # Broadcast-Regie, Quellenwiderruf und Packager-Handoff
 
+Aktuelle Ergänzungen (2026-09-11): Die kontogebundene
+[Quellenmoderation](broadcast-source-moderation.md) ist inzwischen angeschlossen.
+Der neue [bestätigte Programmverlauf](broadcast-program-history.md) zeigt
+begrenzte flüchtige Runtime-Übergänge einschließlich Stop und Handoff. Das ist
+kein vollständiges Audit und keine automatische Standby-Übernahme. Die folgenden
+historischen Abschnitte behalten ihre jeweilige Datierung und ihre Grenzen.
+
 Stand: 2026-09-07. Dieses Dokument beschreibt den TBP-030-Zwischenstand.
 Die Domainpolicy für serverseitige Moderation ist vorbereitet, aber noch nicht
 vollständig an eine öffentliche Moderations-API angeschlossen. Eine getrennte

@@ -57,8 +57,17 @@ test("Angular keyboard starts an empty v4 program only after confirmation, waits
       createdAt: 1, lastAuthenticatedAt: 1, revokedAt: 0, online: true, consentedRoomIds: [roomId], confirmedRoomIds: [roomId],
       capability: { ffmpegVersion: "fixture", health: "healthy", maximumRenditions: 3, capabilityVersion: 2, sourcePrograms: true }, heartbeat: null };
     let outputReady = false, creates = 0, starts = 0, programStops = 0, assignmentStops = 0, startBody;
-    let ownRequests = 0, ownBody;
+    let ownRequests = 0, ownBody, historyReads = 0;
     const page = await context.newPage();
+    await page.route(`**/api/broadcasts/${program.programId}/native-program-history`, route => {
+      historyReads++;
+      assert.deepEqual(Object.keys(route.request().postDataJSON()).sort(), ["deviceFingerprint", "requestVersion"]);
+      const now = Date.now();
+      return route.fulfill({ json: { version: 1, programId: program.programId, programEpoch: 1,
+        programRevision: programStops ? 5 : 4, observedAt: now, expiresAt: now + 5000, complete: false, retentionMs: 900000,
+        events: [{ kind: "state-changed", state: programStops ? "stopped" : "live", programRevision: programStops ? 5 : 4,
+          programEpoch: 1, occurredAt: now - 1, standbyCount: 0 }] } });
+    });
     const startup = observeBrowserStartup(page);
     const verifySceneUi = await installNativeSceneUiFixture(page, program.programId, () => app.registry.members(roomId)[0]);
     await page.route("**/api/native-packagers", route => route.fulfill({ json: { packagers: [packager], assignments: [] } }));
@@ -120,6 +129,12 @@ test("Angular keyboard starts an empty v4 program only after confirmation, waits
     assert.equal(await page.locator("#broadcast-source-request-target").count(), 0);
     outputReady = true;
     await page.locator("#native-source-status", { hasText: "Ausgabe vom Packager bestätigt" }).waitFor();
+    assert.equal(historyReads, 0);
+    await page.getByRole("button", { name: "Bestätigten Programmverlauf anzeigen", exact: true }).press("Enter");
+    const historyPanel = page.locator("app-program-history");
+    await historyPanel.locator("button:not([disabled])").waitFor(); assert.equal(historyReads, 0, "opening a panel never queries automatically");
+    await historyPanel.getByRole("button", { name: "Verlauf aktuell laden" }).press("Enter");
+    await historyPanel.locator("ol", { hasText: "Ausgabe bestätigt" }).waitFor(); assert.equal(historyReads, 1);
     await page.locator("#broadcast-source-request-target").waitFor();
     assert.equal(ownRequests, 0);
     assert.equal(await page.locator("#broadcast-source-request-target").inputValue(), "");
@@ -141,6 +156,10 @@ test("Angular keyboard starts an empty v4 program only after confirmation, waits
     await page.locator("#native-source-stop").press("Enter");
     await page.locator("#native-source-status", { hasText: "Sendung gestoppt" }).waitFor();
     assert.equal(programStops, 1); assert.equal(assignmentStops, 1);
+    await page.getByRole("button", { name: "Bestätigten Programmverlauf anzeigen", exact: true }).press("Enter");
+    await historyPanel.locator("button:not([disabled])").waitFor();
+    await historyPanel.getByRole("button", { name: "Verlauf aktuell laden" }).press("Enter");
+    await historyPanel.locator("ol", { hasText: "Gestoppt" }).waitFor(); assert.equal(historyReads, 2);
     assert.equal(await page.evaluate(() => window.__nativeSourceUiCapture), 0);
     assert.equal(await page.evaluate(() => window.__nativeSourceUiConnections), initialConnections);
   });

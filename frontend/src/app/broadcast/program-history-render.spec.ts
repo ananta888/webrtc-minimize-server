@@ -1,0 +1,32 @@
+import "@angular/compiler";
+import { Component, provideZonelessChangeDetection, signal } from "@angular/core";
+import { TestBed } from "@angular/core/testing";
+import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
+import { afterAll, afterEach, expect, it, vi } from "vitest";
+import { ProgramHistoryComponent, PROGRAM_HISTORY_TEMPLATE } from "./program-history.component";
+const platform = platformBrowserTesting(); TestBed.initTestEnvironment(BrowserTestingModule, platform);
+afterEach(() => { TestBed.resetTestingModule(); vi.restoreAllMocks(); });
+afterAll(() => { TestBed.resetTestEnvironment(); platform.destroy(); });
+it("renders actual Angular controls with focus, explicit load, handoff distinctions and session cleanup", async () => {
+  const program = { programId: "prg_aaaaaaaaaaaaaaaa", programEpoch: 2, programRevision: 4 };
+  const session = signal<string | null>("session"); let now = 10; vi.spyOn(performance, "now").mockImplementation(() => now);
+  const programs = { historyContext: () => session() ? { key: session(), program } : null };
+  const api = { programHistory: vi.fn(async () => ({ version: 1, ...program, observedAt: 1800000000000, expiresAt: 1800000005000,
+    complete: false, retentionMs: 900000, events: [{ kind: "handoff-assigned", state: "preparing", programEpoch: 2,
+      programRevision: 4, occurredAt: 1799999999000, standbyCount: 0 }] })) };
+  class Rendered extends ProgramHistoryComponent { constructor() { super(programs as never, api as never); } }
+  Component({ selector: "test-program-history", standalone: true, template: PROGRAM_HISTORY_TEMPLATE })(Rendered);
+  await TestBed.configureTestingModule({ imports: [Rendered], providers: [provideZonelessChangeDetection()] }).compileComponents();
+  const fixture = TestBed.createComponent(Rendered), root: HTMLElement = fixture.nativeElement;
+  fixture.detectChanges(); expect(api.programHistory).not.toHaveBeenCalled();
+  const button = root.querySelector<HTMLButtonElement>("button")!;
+  expect(button.disabled).toBe(false); button.focus(); expect(document.activeElement).toBe(button);
+  button.click(); await fixture.whenStable();
+  expect(root.querySelector("ol")?.textContent).toContain("noch keine Ausgabebestätigung");
+  expect(root.textContent).toContain("kein vollständiges oder dauerhaftes Audit");
+  now = 5010; fixture.componentInstance.controller.tick(); await fixture.whenStable();
+  expect(root.querySelector("ol")).toBeNull(); expect(root.textContent).toContain("Momentaufnahme veraltet");
+  button.click(); await fixture.whenStable(); expect(root.querySelectorAll("li")).toHaveLength(1);
+  session.set(null); await fixture.whenStable(); expect(root.querySelector("ol")).toBeNull(); expect(button.disabled).toBe(true);
+  fixture.destroy(); expect(api.programHistory).toHaveBeenCalledTimes(2);
+});

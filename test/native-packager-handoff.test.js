@@ -84,6 +84,32 @@ function standbyRequest(control, standbyPackagerIds = [SECOND]) {
     standbyPackagerIds, requestedRenditions: 2, allowHardwareAcceleration: false };
 }
 
+test("runtime history follows real standby, stop-ACK handoff, output readiness and idempotent stop", async () => {
+  const f = fixture(true), history = () => f.runtime.nativeProgramHistory(f.identity, f.member, f.programId, NOW).events;
+  assert.deepEqual(history().map(e => [e.kind, e.state]), [["state-changed", "live"], ["state-changed", "preparing"], ["registered", "draft"]]);
+  const control = f.runtime.nativeStandbyControl(f.identity, f.member, f.programId);
+  f.runtime.selectNativeStandbys(f.identity, f.member, f.programId, standbyRequest(control),
+    (id, request) => f.assignments.previewReplacement(f.ownerPrincipal, id, request, f.first.snapshot.assignmentId, f.member.id, NOW), NOW);
+  assert.equal(history()[0].kind, "standby-changed"); assert.equal(history()[0].standbyCount, 1);
+  const transfer = handoffNativePackager(f.args);
+  assert.ok(history().some(e => e.kind === "handoff-begun"));
+  assert.equal(history().some(e => e.kind === "handoff-assigned"), false);
+  f.status(f.first.snapshot, "stopped", "ASSIGNMENT_STOPPED");
+  const next = await transfer;
+  assert.equal(history()[0].kind, "handoff-assigned"); assert.equal(history()[0].state, "preparing");
+  const command = f.sent[1].message;
+  for (const [state, reason] of [["ready", "CAPABILITY_READY"], ["starting", "INGRESS_STARTING"], ["running", "OUTPUT_READY"]]) f.status(next.assignment, state, reason);
+  f.runtime.markNativeOutputReady(command.resourceRef, SECOND, next.assignment.fencingRevision, NOW);
+  assert.equal(history()[0].state, "live"); assert.equal(history()[0].programEpoch, 2);
+  const length = history().length;
+  f.runtime.renewNativeOutput(command.resourceRef, SECOND, next.assignment.fencingRevision, NOW + 60000, NOW);
+  assert.equal(history().length, length, "lease heartbeats are not extra audit events");
+  f.runtime.stopProgram(f.identity, f.programId, NOW); assert.equal(history()[0].state, "stopped");
+  const stoppedLength = history().length; f.runtime.stopProgram(f.identity, f.programId, NOW); assert.equal(history().length, stoppedLength);
+  assert.throws(() => f.runtime.nativeProgramHistory({ ...f.identity, subject: "other" }, f.member, f.programId, NOW));
+  assert.throws(() => f.runtime.nativeProgramHistory(f.identity, { ...f.member, deviceFingerprint: "b".repeat(43) }, f.programId, NOW));
+});
+
 function replacementRequest(f, patch = {}) {
   return { requestVersion: 1, trigger: "user-action", tenantId: broadcastTenantRef(f.identity.issuer),
     ownerSubjectRef: broadcastSubjectRef(f.identity), roomId: f.member.roomId, programId: f.programId,

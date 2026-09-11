@@ -205,6 +205,16 @@ export class BroadcastControlPlaneService implements WhipAuthorizationPort {
     });
   }
 
+  async programHistory(program: import("./playback-capacity").PlaybackCapacityScope, signal: AbortSignal) {
+    signal.throwIfAborted();
+    const { requestProgramHistory } = await import("./program-history-http");
+    signal.throwIfAborted();
+    return requestProgramHistory(program, signal, {
+      fingerprint: () => this.device.fingerprint(), authorizationHeader: () => this.auth.authorizationHeader(),
+      readJson: json, responseError: requestError,
+    });
+  }
+
   async playbackCapacity(program: import("./playback-capacity").PlaybackCapacityScope, additional: number, signal: AbortSignal) {
     signal.throwIfAborted();
     const { requestPlaybackCapacity } = await import("./playback-capacity-http");

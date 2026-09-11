@@ -24,6 +24,8 @@ export class NativeSourceProgramService implements OnDestroy {
   readonly controller: NativeSourceProgramController;
   private readonly timer: ReturnType<typeof setInterval>;
   private destroyed = false;
+  private historySession: string | null = null;
+  private readonly historyProgram = signal<NativeSourceProgramView["program"]>(null);
 
   constructor(private readonly auth: OidcAuthService, private readonly runtime: RuntimeConfigService,
     private readonly device: DeviceIdentityService, private readonly room: RoomSessionService,
@@ -51,9 +53,21 @@ export class NativeSourceProgramService implements OnDestroy {
         try { await control.confirmNativeProgramStopped(program.programId, AbortSignal.timeout(15000)); } catch { failed = true; }
         if (failed) throw new Error("native_source_program_stop_unconfirmed");
       },
-      changed: view => this.view.set(view),
+      changed: view => {
+        const key = this.context();
+        if (view.phase === "preparing" && view.active && !view.program) {
+          this.historySession = key; this.historyProgram.set(null);
+        }
+        if (!key || key !== this.historySession) { this.historySession = null; this.historyProgram.set(null); }
+        else if (view.program) this.historyProgram.set(view.program);
+        this.view.set(view);
+      },
     });
-    this.timer = setInterval(() => this.controller.tick(), 250);
+    this.timer = setInterval(() => {
+      this.controller.tick();
+      const key = this.context();
+      if (!key || key !== this.historySession) { this.historySession = null; this.historyProgram.set(null); }
+    }, 250);
   }
 
   private context(): string | null {
@@ -85,6 +99,10 @@ export class NativeSourceProgramService implements OnDestroy {
     const key = this.context(), program = this.requestProgram();
     return key && program ? { key, program } : null;
   }
+  historyContext(): { key: string; program: NonNullable<NativeSourceProgramView["program"]> } | null {
+    const key = this.context(), program = this.historyProgram();
+    return key && key === this.historySession && program ? { key, program } : null;
+  }
   /** Display only, from current server-authored membership; never invitations or agent claims. */
   publisherName(peerId: string): string | null {
     if (!this.sceneContext() || !/^[a-f0-9]{16}$/.test(peerId)) return null;
@@ -99,5 +117,8 @@ export class NativeSourceProgramService implements OnDestroy {
       : (version === 1 || version === 2) && capability?.capabilityVersion === version + 2)
       ? { ...context, key: JSON.stringify([context.key, id]), audioControlVersion: version } : null;
   }
-  ngOnDestroy(): void { this.destroyed = true; clearInterval(this.timer); this.controller.destroy(); }
+  ngOnDestroy(): void {
+    this.destroyed = true; this.historySession = null; this.historyProgram.set(null);
+    clearInterval(this.timer); this.controller.destroy();
+  }
 }

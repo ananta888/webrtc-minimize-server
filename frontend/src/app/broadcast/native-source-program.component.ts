@@ -10,10 +10,11 @@ import { NativeSourceVideoOutput, normalizeSourceVideoOutput } from "./native-so
 import { NativeCapacityPreviewComponent } from "./native-capacity-preview.component";
 import { SourceModerationComponent } from "./source-moderation.component";
 import { PlaybackCapacityComponent } from "./playback-capacity.component";
+import { ProgramHistoryComponent } from "./program-history.component";
 
 @Component({
   selector: "app-native-source-program", standalone: true,
-  imports: [NativeSourceSceneComponent, NativeSourceAudioComponent, NativePackagerStandbyComponent, NativeCapacityPreviewComponent, SourceModerationComponent, PlaybackCapacityComponent],
+  imports: [NativeSourceSceneComponent, NativeSourceAudioComponent, NativePackagerStandbyComponent, NativeCapacityPreviewComponent, SourceModerationComponent, PlaybackCapacityComponent, ProgramHistoryComponent],
   templateUrl: "./native-source-program.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

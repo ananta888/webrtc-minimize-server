@@ -753,6 +753,56 @@ test("approve budget rejects excess replays before expensive full authority prun
   assert.equal(checks, previous);
 });
 
+test("program history HTTP requires actual signed owner identity and current device, including after stop", { timeout: 8000 }, async t => {
+  const f = fixture(Date.now(), true, Date.now), keys = crypto.generateKeyPairSync("ed25519");
+  const config = { authMode: "required", oidcIssuer: f.identity.issuer, oidcAudience: "human", oidcAlgorithms: ["EdDSA"],
+    publicOrigin: "https://synthetic-fixture.example", nativePackagerSelfServiceEnabled: true, stunUrls: [], turnServers: [] };
+  const oidcVerifier = createOidcVerifier(config, { jwks: createLocalJWKSet({ keys: [await exportJWK(keys.publicKey)] }) });
+  const app = createAppServer({ config, oidcVerifier, registry: f.rooms, broadcastRuntime: f.runtime, nativePackagers: f.packagers,
+    nativePackagerAssignments: f.assignments, nativePackagerEnrollmentStore: { definitions: () => [] }, nativePackagerInstallerService: {} });
+  await new Promise(resolve => app.server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => { app.server.closeAllConnections(); await new Promise(resolve => app.server.close(resolve)); });
+  const sign = subject => new SignJWT({}).setIssuer(f.identity.issuer).setAudience("human").setSubject(subject)
+    .setIssuedAt().setExpirationTime("2m").setProtectedHeader({ alg: "EdDSA" }).sign(keys.privateKey);
+  const token = await sign(f.ownerIdentity.subject), publisherToken = await sign(f.identity.subject);
+  const input = { requestVersion: 1, deviceFingerprint: f.owner.deviceFingerprint };
+  const url = `http://127.0.0.1:${app.server.address().port}/api/broadcasts/${f.programId}/native-program-history`;
+  const headers = { origin: config.publicOrigin, "content-type": "application/json", authorization: `Bearer ${token}` };
+  const post = (body = input, options = {}) => fetch(url, { method: "POST", headers, body: JSON.stringify(body),
+    signal: AbortSignal.timeout(3000), ...options });
+  const response = await post(); assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store");
+  const history = await response.json();
+  const validateHistory = new Ajv({ strict: true }).compile(JSON.parse(await fs.readFile(
+    new URL("../contracts/native-packager/program-history-response.v1.schema.json", import.meta.url), "utf8")));
+  assert.ok(validateHistory(history)); assert.equal(history.complete, false); assert.equal(history.events[0].state, "live");
+  assert.equal(history.programId, f.programId); assert.ok(history.expiresAt - history.observedAt <= 5000);
+  assert.doesNotMatch(JSON.stringify(history), /Synthetic|tenantId|ownerSubject|token|sourceId|resourceRef|publisherId/);
+  for (const patch of [{ extra: true }, { requestVersion: 2 }, { deviceFingerprint: "wrong" }]) {
+    assert.equal((await post({ ...input, ...patch })).status, 400);
+  }
+  assert.equal((await post({ ...input, deviceFingerprint: "z".repeat(43) })).status, 403);
+  assert.equal((await post({ ...input, deviceFingerprint: f.publisher.deviceFingerprint }, {
+    headers: { ...headers, authorization: `Bearer ${publisherToken}` } })).status, 403);
+  assert.equal((await post(input, { headers: { ...headers, authorization: "Bearer invalid" } })).status, 401);
+  assert.equal((await post(input, { headers: { ...headers, origin: "https://foreign.example" } })).status, 404);
+  assert.equal((await post(input, { headers: { ...headers, "content-type": "text/plain" } })).status, 404);
+  assert.equal((await post(input, { method: "GET", body: undefined })).status, 404);
+  for (const target of [url + "?token=forbidden", url.replace(f.programId, "prg_bbbbbbbbbbbbbbbb")]) {
+    assert.equal((await fetch(target, { method: "POST", headers, body: JSON.stringify(input) })).status, 404);
+  }
+  assert.equal((await post(input, { body: "{" })).status, 400);
+  assert.equal((await post({ ...input, extra: "a".repeat(512) })).status, 400);
+  const oldId = f.owner.id; f.owner.id = "f".repeat(16);
+  assert.equal((await post()).status, 403); f.owner.id = oldId;
+  f.runtime.stopProgram(f.ownerIdentity, f.programId, Date.now());
+  const stopped = await (await post()).json(); assert.ok(validateHistory(stopped));
+  assert.equal(stopped.events[0].state, "stopped"); assert.ok(stopped.programRevision > history.programRevision);
+  let limited = false;
+  for (let i = 0; i < 12; i++) { const r = await post(); if (r.status === 429) { limited = true; break; } assert.equal(r.status, 200); }
+  assert.equal(limited, true);
+  f.rooms.leave(f.owner); assert.equal((await post()).status, 403);
+});
+
 test("owner playback observation over HTTP verifies real JWT, runtime ownership and current cookie-store occupancy", { timeout: 8000 }, async t => {
   const f = fixture(Date.now(), true, Date.now), keys = crypto.generateKeyPairSync("ed25519");
   const config = { authMode: "required", oidcIssuer: f.identity.issuer, oidcAudience: "human", oidcAlgorithms: ["EdDSA"],

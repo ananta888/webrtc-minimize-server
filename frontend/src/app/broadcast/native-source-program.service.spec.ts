@@ -30,6 +30,21 @@ function fixture() {
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
+it("retains only the last own program for history after stop, never after a membership generation change", async () => {
+  const f = fixture();
+  try {
+    expect(f.service.historyContext()).toBeNull();
+    await f.service.controller.start(request, "user-action");
+    expect(f.service.historyContext()?.program.programId).toBe(program.programId);
+    await f.service.controller.stop();
+    expect(f.service.requestProgram()).toBeNull(); expect(f.service.historyContext()?.program.programId).toBe(program.programId);
+    const calls = f.control.nativeHandoffControl.mock.calls.length;
+    f.mesh.membershipEpoch.set(3); expect(f.service.historyContext()).toBeNull();
+    await vi.advanceTimersByTimeAsync(250); f.mesh.membershipEpoch.set(2);
+    expect(f.service.historyContext()).toBeNull(); expect(f.control.nativeHandoffControl).toHaveBeenCalledTimes(calls);
+  } finally { f.service.ngOnDestroy(); }
+});
+
 it.each(["room", "epoch", "identity", "capability", "disconnect", "expiry", "destroy"])("fences a capacity reply after %s changes", async change => {
   const f = fixture(); let resolve!: (value: unknown) => void;
   const preview = vi.fn(() => new Promise(done => { resolve = done; }));

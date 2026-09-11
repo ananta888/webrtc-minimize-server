@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/program-history-response.v1.schema.json",
+  "title": "Native program history response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "complete",
+    "retentionMs",
+    "programId",
+    "programRevision",
+    "programEpoch",
+    "observedAt",
+    "expiresAt",
+    "events"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "complete": {
+      "const": false
+    },
+    "retentionMs": {
+      "const": 900000
+    },
+    "programId": {
+      "type": "string",
+      "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+    },
+    "programRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "programEpoch": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "observedAt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "expiresAt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "events": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "state",
+          "occurredAt",
+          "programRevision",
+          "programEpoch",
+          "standbyCount"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "registered",
+              "state-changed",
+              "standby-changed",
+              "handoff-begun",
+              "handoff-assigned",
+              "handoff-stopped"
+            ]
+          },
+          "state": {
+            "enum": [
+              "draft",
+              "preparing",
+              "awaiting_consent",
+              "publishing",
+              "live",
+              "degraded",
+              "stopping",
+              "stopped",
+              "failed"
+            ]
+          },
+          "occurredAt": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "programRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "programEpoch": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "standbyCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { BroadcastProgramCapacity } from "./broadcast-program-capacity.js";
+import { BroadcastProgramHistory } from "./broadcast-program-history.js";
 import { BroadcastProgramLifetime, normalizeBroadcastProgramRuntime } from "./broadcast-program-lifetime.js";
 import { normalizeNativeSourceAudioOutput } from "./native-source-audio-output.js";
 import { normalizeNativeSourceVideoOutput, nativeOutputRequestFields } from "./native-source-video-output.js";
@@ -143,6 +144,7 @@ export class BroadcastRuntimeRegistry {
   #audience;
   #authority;
   #records = new Map();
+  #history = new BroadcastProgramHistory();
   #challenges = new Map();
   #pendingPublishers = new Map();
   #programCapacity;
@@ -299,6 +301,7 @@ export class BroadcastRuntimeRegistry {
       publisherFingerprint: null,
     });
     this.#records.set(key, record);
+    this.#history.observe(null, record, now);
     this.#resourceRefs.add(input.resourceRef);
     return entry(record);
   }
@@ -366,6 +369,7 @@ export class BroadcastRuntimeRegistry {
     }, now);
     const next = Object.freeze({ ...record, snapshot, sourceAuthorityRevision: snapshot.machine.program.revision });
     this.#records.set(key, next);
+    this.#history.observe(record, next, now);
     return entry(next);
   }
 
@@ -974,7 +978,9 @@ export class BroadcastRuntimeRegistry {
     }
     const standbyPlan = Object.freeze({ programEpoch: current.programEpoch,
       revision: current.standbyRevision + 1, packagerIds: input.standbyPackagerIds });
-    this.#records.set(key, Object.freeze({ ...record, standbyPlan }));
+    const next = Object.freeze({ ...record, standbyPlan });
+    this.#records.set(key, next);
+    this.#history.observe(record, next, now);
     return nativeStandbyProjection(machine, standbyPlan);
   }
 
@@ -1166,6 +1172,7 @@ export class BroadcastRuntimeRegistry {
   }
 
   #synchronizeRecord(key, record, machine, now, outputAvailabilityOnly = false) {
+    const historyBefore = this.#records.get(key);
     this.#assertProgramCapacity(machine);
     assertCleanupCapacity(machine);
     let lifetime = record.lifetime;
@@ -1212,8 +1219,20 @@ export class BroadcastRuntimeRegistry {
       standbyPlan: ACTIVE.has(machine.program.state)
         && record.standbyPlan?.programEpoch === machine.program.programEpoch ? record.standbyPlan : null });
     this.#records.set(key, next);
+    this.#history.observe(historyBefore, next, now);
     return next;
   }
+
+  nativeProgramHistory(identity, member, programId, now = this.#clock()) {
+    const { record } = this.#nativeOwned(identity, member, programId, now);
+    const { machine } = record.snapshot;
+    const events = this.#history.list(machine.scope.tenantId, programId, now);
+    if (!events) fail("broadcast_program_history_unavailable", 503);
+    return Object.freeze({ programId, programRevision: machine.program.revision,
+      programEpoch: machine.program.programEpoch, events });
+  }
+
+  closeProgramHistory() { this.#history.destroy(); }
 
   prune(now = this.#clock()) {
     for (const key of this.#records.keys()) this.#currentRecord(key, now);
