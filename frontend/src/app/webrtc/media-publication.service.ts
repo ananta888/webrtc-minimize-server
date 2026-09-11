@@ -104,8 +104,15 @@ export class MediaPublicationService {
           stream.removeTrack(track);
         }
       }
-      if (source === "microphone") this.mediaStrategy.recordAppliedAudio(stream.getAudioTracks()[0].getSettings());
-      else this.recordAppliedSettings(source, stream.getVideoTracks()[0]);
+      if (source === "microphone") {
+        this.mediaStrategy.recordAppliedAudio(stream.getAudioTracks()[0].getSettings());
+      } else {
+        const videoTrack = stream.getVideoTracks()[0];
+        if (source === "screen" && "contentHint" in videoTrack) {
+          try { videoTrack.contentHint = "detail"; } catch { /* best-effort */ }
+        }
+        this.recordAppliedSettings(source, videoTrack);
+      }
       if (source === "screen") this.screenAudioActive.set(stream.getAudioTracks().length > 0);
       this.streams.set(source, stream);
       this.registerLocalOriginalTracks(source, stream.getTracks());

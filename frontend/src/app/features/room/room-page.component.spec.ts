@@ -265,4 +265,18 @@ describe("Room page information architecture", () => {
     expect(component).not.toContain("getUserMedia");
     expect(component).not.toContain("getDisplayMedia");
   });
+
+  it("offers a stage and filmstrip layout with fullscreen toggle without capture APIs", () => {
+    expect(template).toContain('id="stage-layout-toggle"');
+    expect(template).toContain('id="stage-fullscreen-button"');
+    expect(template).toContain('id="media-filmstrip"');
+    expect(template).toContain('class="media-card stage-primary"');
+    expect(template).toContain('class="media-card filmstrip-item"');
+    expect(template).toContain("stage.mode() === 'stage'");
+    expect(template).toContain("stage.togglePin");
+    expect(component).toContain("toggleStageFullscreen");
+    expect(component).toContain("PresentationStageService");
+    expect(component).not.toContain("getUserMedia");
+    expect(component).not.toContain("getDisplayMedia");
+  });
 });

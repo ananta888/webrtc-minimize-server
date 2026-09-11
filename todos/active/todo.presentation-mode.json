@@ -1,0 +1,209 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "presentation-mode",
+  "purpose": "Bühnenansicht mit Filmstreifen, Fokus, Pin und sauberem Bildschirmfreigabe-Lifecycle ohne automatischen Capture.",
+  "goal": "Bühnen- und Filmstreifenlayout, Screen-First-Priorisierung, lokales Pinning und Presenter-Handoff ohne Capture.",
+  "status": "in_progress",
+  "created": "2026-09-11",
+  "updated": "2026-09-11",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "user_verification_last": true,
+  "related_tracks": [
+    {
+      "repository": "webrtc-minimize-server",
+      "path": "todos/backlog/todo.bigbluebutton-collaboration-ux.json",
+      "relationship": "Promoviert BBB-UX-027, BBB-UX-028, BBB-UX-029 und BBB-UX-030. Nutzer- und Gerätegates zuletzt als PRS-006."
+    }
+  ],
+  "milestones": [
+    {
+      "id": "PRS-M1",
+      "title": "Bühnenansicht und Filmstreifen-Layout",
+      "task_ids": [
+        "PRS-001",
+        "PRS-002"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "PRS-M2",
+      "title": "Lifecycle und Prioritätsstrategie",
+      "task_ids": [
+        "PRS-003",
+        "PRS-004"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "PRS-M3",
+      "title": "Presenter-Handoff und Nutzergates",
+      "task_ids": [
+        "PRS-005",
+        "PRS-006"
+      ],
+      "status": "in_progress"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "PRS-001",
+      "title": "Stage Layout Model mit Prioritätsreihenfolge definieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Deterministische Priorität: lokaler Pin > aktiver Bildschirm > Server-Presenter > Active Speaker > Raster.",
+        "Lokaler Pin überschreibt nur die eigene Ansicht, verändert weder Serverzustand noch fremde Sender-Bitrate.",
+        "Gibt Hauptbühnen-Item und geordnete Filmstreifen-Items zurück; unbekannte Medienquellen werden fail-closed ignoriert.",
+        "Reine Audioquellen bleiben im Audiopfad und erscheinen nicht im visuellen Filmstreifen."
+      ]
+    },
+    {
+      "id": "PRS-002",
+      "title": "Bühnenansicht mit responsivem Filmstreifen und Vollbild in Angular integrieren",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [
+        "PRS-001"
+      ],
+      "acceptance_criteria": [
+        "Hauptbühne stellt das fokussierte Video prominent dar; Filmstreifen ordnet übrige Kameras horizontal/vertikal an.",
+        "Vollbild-Schaltfläche nutzt Standard-Fullscreen-API mit barrierearmer Beschriftung ohne Nebeneffekte auf andere Peers.",
+        "Screenreader und Tastaturbedienung für Fokuswechsel und Filmstreifen navigation.",
+        "Keine Capture-APIs aufgerufen; ohne Benutzeraktion startet kein Medium."
+      ]
+    },
+    {
+      "id": "PRS-003",
+      "title": "Explizite Capture-Lifecycles und sauberen Quellenwechsel für Bildschirmfreigabe durchsetzen",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": [
+        "PRS-001"
+      ],
+      "acceptance_criteria": [
+        "Nur der explizite Klick auf Bildschirm teilen öffnet getDisplayMedia; kein automatischer Start durch Signale oder Rollenwechsel.",
+        "Bildschirmton ist ein separates Opt-in und stoppt unabhängig vom Bild.",
+        "Track.onended, Leave und Raumwechsel räumen Bildschirm-Tracks idempotent auf und setzen die Bühne deterministisch zurück."
+      ]
+    },
+    {
+      "id": "PRS-004",
+      "title": "Präsentationsbezogene Content-Hints und Empfänger-Bandbreitensteuerung",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": [
+        "PRS-003"
+      ],
+      "acceptance_criteria": [
+        "Bildschirm-Videotrack erhält contentHint = detail für optimierte Textlesbarkeit.",
+        "Empfänger können lokal Qualität oder Nur-Audio wählen, ohne die Senderqualität für andere zu ändern.",
+        "Audiofloor wird auch bei maximaler Bildschirmauslastung nicht unterschritten."
+      ]
+    },
+    {
+      "id": "PRS-005",
+      "title": "Revisionsgebundenes Presenter-Handoff mit automatischem Bühnenübergang",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [
+        "PRS-001",
+        "PRS-003"
+      ],
+      "acceptance_criteria": [
+        "Presenter-Wechsel aktualisiert die Bühnenpriorität, startet aber niemals automatisch ein Gerät des neuen Presenters.",
+        "Leave des Presenters fällt deterministisch auf den Raum-Owner oder medienfreien Modus zurück.",
+        "Gleichzeitige Moderator-Zuweisungen folgen der serverseitigen Konfliktregel."
+      ]
+    },
+    {
+      "id": "PRS-006",
+      "title": "Nutzer- und Gerätegates für Präsentationsmodus zuletzt ausführen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 0,
+      "depends_on": [
+        "PRS-002",
+        "PRS-004",
+        "PRS-005"
+      ],
+      "acceptance_criteria": [
+        "Mindestens zwei Browseridentitäten belegen konsistenten Bühnenwechsel bei Screen-Share, Pin und Presenter-Assign.",
+        "Safari/iOS, physische Bildschirme und 20-Teilnehmer-Last bleiben Nutzergates."
+      ]
+    }
+  ],
+  "critical_path_tasks": [
+    "PRS-001",
+    "PRS-002",
+    "PRS-003",
+    "PRS-005",
+    "PRS-006"
+  ],
+  "tasks_status_summary": {
+    "total": 6,
+    "by_status": {
+      "todo": 1,
+      "in_progress": 0,
+      "partial": 0,
+      "blocked": 0,
+      "done": 5
+    },
+    "progress_percent_done": 83.33,
+    "by_priority": {
+      "P0": 2,
+      "P1": 4,
+      "P2": 0,
+      "P3": 0
+    },
+    "by_risk": {
+      "low": 0,
+      "medium": 2,
+      "high": 2,
+      "critical": 2
+    },
+    "critical_path": {
+      "total": 5,
+      "done": 4,
+      "remaining": 1
+    },
+    "milestones": {
+      "total": 3,
+      "todo": 0,
+      "in_progress": 1,
+      "blocked": 0,
+      "done": 2
+    }
+  }
+}

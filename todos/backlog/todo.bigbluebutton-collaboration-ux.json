@@ -61,11 +61,21 @@
         {
           "id": "BBB-UX-001",
           "title": "Versionierten Teilnehmer-, Rollen- und Moderationszustand modellieren",
-          "status": "partial",
+          "status": "completed",
           "priority": "P0",
           "risk": "critical",
-          "scope": ["owner/moderator/participant/guest", "join revision", "display state", "hand and presentation state", "server-authored epoch"],
-          "dependencies": ["RoomRegistry", "OIDC principal binding", "device proof"],
+          "scope": [
+            "owner/moderator/participant/guest",
+            "join revision",
+            "display state",
+            "hand and presentation state",
+            "server-authored epoch"
+          ],
+          "dependencies": [
+            "RoomRegistry",
+            "OIDC principal binding",
+            "device proof"
+          ],
           "promotion_acceptance_criteria": [
             "Der Server gibt Rollen nur aus verifizierter Membership aus; Peer-Payloads können keine Rolle erzeugen oder erhöhen.",
             "Unbekannte Rollen, Felder, Revisionen und stale Epochen werden abgewiesen.",
@@ -75,11 +85,19 @@
         {
           "id": "BBB-UX-002",
           "title": "Explizite Berechtigungsmatrix für Moderationsaktionen definieren",
-          "status": "partial",
+          "status": "completed",
           "priority": "P0",
           "risk": "critical",
-          "scope": ["entfernen", "Publikation serverseitig nicht mehr autorisieren", "Hand senken", "Presenter übergeben", "Breakout zuweisen"],
-          "dependencies": ["BBB-UX-001"],
+          "scope": [
+            "entfernen",
+            "Publikation serverseitig nicht mehr autorisieren",
+            "Hand senken",
+            "Presenter übergeben",
+            "Breakout zuweisen"
+          ],
+          "dependencies": [
+            "BBB-UX-001"
+          ],
           "promotion_acceptance_criteria": [
             "Jede Aktion nennt Subjekt, Ziel, Raum, Membership-Revision und zulässige Rolle.",
             "Mute bedeutet höchstens lokale Stoppaufforderung oder Entzug künftiger Publikationsautorität; es startet niemals Capture.",
@@ -89,11 +107,21 @@
         {
           "id": "BBB-UX-003",
           "title": "Filterbare, gruppierbare Teilnehmerliste mit Medien- und Netzstatus gestalten",
-          "status": "partial",
+          "status": "completed",
           "priority": "P1",
           "risk": "medium",
-          "scope": ["Suche", "Rollenfilter", "Active Speaker", "Mikrofon/Kamera/Bildschirm", "Handstatus", "Agentpfad", "kompakte Mobilansicht"],
-          "dependencies": ["BBB-UX-001"],
+          "scope": [
+            "Suche",
+            "Rollenfilter",
+            "Active Speaker",
+            "Mikrofon/Kamera/Bildschirm",
+            "Handstatus",
+            "Agentpfad",
+            "kompakte Mobilansicht"
+          ],
+          "dependencies": [
+            "BBB-UX-001"
+          ],
           "promotion_acceptance_criteria": [
             "Die Liste bleibt bei 20 Teilnehmern tastaturbedienbar, stabil sortiert und ohne Layoutsprünge lesbar.",
             "Gemessene lokale Werte, fremde Statusangaben und serverautorisierte Rollen sind visuell unterscheidbar.",
@@ -103,11 +131,19 @@
         {
           "id": "BBB-UX-004",
           "title": "Kontextgebundene Moderatoraktionen mit Bestätigung und Undo-Fenster entwerfen",
-          "status": "partial",
+          "status": "completed",
           "priority": "P1",
           "risk": "high",
-          "scope": ["Aktionsmenü pro Teilnehmer", "destruktive Bestätigung", "optimistische UI vermeiden", "idempotente Requests"],
-          "dependencies": ["BBB-UX-002", "BBB-UX-003"],
+          "scope": [
+            "Aktionsmenü pro Teilnehmer",
+            "destruktive Bestätigung",
+            "optimistische UI vermeiden",
+            "idempotente Requests"
+          ],
+          "dependencies": [
+            "BBB-UX-002",
+            "BBB-UX-003"
+          ],
           "promotion_acceptance_criteria": [
             "Destruktive Aktionen zeigen Ziel, Auswirkung und Raum vor dem Absenden eindeutig an.",
             "Doppelklick, Retry und verspätete Antwort führen nicht zu mehrfachen oder auf ein neues Mitglied übertragenen Aktionen.",
@@ -117,11 +153,18 @@
         {
           "id": "BBB-UX-005",
           "title": "Inhaltsfreies, kurzlebiges Moderations-Audit und Datenschutzhinweise erforschen",
-          "status": "partial",
+          "status": "completed",
           "priority": "P1",
           "risk": "high",
-          "scope": ["wer führte welche Policy-Aktion aus", "Zeitpunkt", "Ergebnis", "keine Medien-/Chat-/Untertitelinhalte"],
-          "dependencies": ["BBB-UX-002"],
+          "scope": [
+            "wer führte welche Policy-Aktion aus",
+            "Zeitpunkt",
+            "Ergebnis",
+            "keine Medien-/Chat-/Untertitelinhalte"
+          ],
+          "dependencies": [
+            "BBB-UX-002"
+          ],
           "research_questions": [
             "Reicht ein flüchtiger Raum-Eventstream oder benötigt ein optionaler Workspace eine explizite Aufbewahrung?",
             "Welche pseudonymisierten Angaben sind für Missbrauchsklärung minimal erforderlich?"
@@ -137,8 +180,18 @@
           "status": "open",
           "priority": "P1",
           "risk": "medium",
-          "scope": ["ARIA", "Fokusmanagement", "Screenreader", "Kontrast", "Join/Leave-Churn", "mobile viewport"],
-          "dependencies": ["BBB-UX-003", "BBB-UX-004"],
+          "scope": [
+            "ARIA",
+            "Fokusmanagement",
+            "Screenreader",
+            "Kontrast",
+            "Join/Leave-Churn",
+            "mobile viewport"
+          ],
+          "dependencies": [
+            "BBB-UX-003",
+            "BBB-UX-004"
+          ],
           "promotion_acceptance_criteria": [
             "Chromium und Firefox bestehen Tastatur-, Fokus- und dynamische Statusansagen ohne Wiederholungsschleifen.",
             "Schneller Join/Leave-Churn hinterlässt keine veralteten Teilnehmer oder Aktionen.",
@@ -155,11 +208,19 @@
         {
           "id": "BBB-UX-007",
           "title": "Additiven Handstatus-Contract mit Membership-Epoch und monotonic revision spezifizieren",
-          "status": "partial",
+          "status": "completed",
           "priority": "P0",
           "risk": "high",
-          "scope": ["raise", "lower", "acknowledged", "raisedAt server order", "revision"],
-          "dependencies": ["BBB-UX-001"],
+          "scope": [
+            "raise",
+            "lower",
+            "acknowledged",
+            "raisedAt server order",
+            "revision"
+          ],
+          "dependencies": [
+            "BBB-UX-001"
+          ],
           "promotion_acceptance_criteria": [
             "Nur das eigene Mitglied oder eine autorisierte Moderationsaktion kann den Handstatus ändern.",
             "Replay, Cross-Room, unbekannte Felder und ältere Revisionen werden fail-closed verworfen.",
@@ -169,11 +230,20 @@
         {
           "id": "BBB-UX-008",
           "title": "Faire Hand-Warteschlange und Moderator-Workflow entwerfen",
-          "status": "partial",
+          "status": "completed",
           "priority": "P1",
           "risk": "medium",
-          "scope": ["serverseitige Reihenfolge", "Bestätigung", "nächste Person", "mehrere Moderatoren", "gleichzeitige Updates"],
-          "dependencies": ["BBB-UX-007", "BBB-UX-002"],
+          "scope": [
+            "serverseitige Reihenfolge",
+            "Bestätigung",
+            "nächste Person",
+            "mehrere Moderatoren",
+            "gleichzeitige Updates"
+          ],
+          "dependencies": [
+            "BBB-UX-007",
+            "BBB-UX-002"
+          ],
           "promotion_acceptance_criteria": [
             "Gleichzeitige Handmeldungen ergeben eine deterministische, für alle identische Reihenfolge.",
             "Moderatoraktionen sind idempotent und revisionsgebunden.",
@@ -183,11 +253,21 @@
         {
           "id": "BBB-UX-009",
           "title": "Handheben als global erreichbare, barrierearme UI-Aktion integrieren",
-          "status": "partial",
+          "status": "completed",
           "priority": "P1",
           "risk": "low",
-          "scope": ["Live-Leiste", "Teilnehmerliste", "Tastatur", "eigener Status", "Reihenfolge", "dezente Benachrichtigung"],
-          "dependencies": ["BBB-UX-007", "BBB-UX-003"],
+          "scope": [
+            "Live-Leiste",
+            "Teilnehmerliste",
+            "Tastatur",
+            "eigener Status",
+            "Reihenfolge",
+            "dezente Benachrichtigung"
+          ],
+          "dependencies": [
+            "BBB-UX-007",
+            "BBB-UX-003"
+          ],
           "promotion_acceptance_criteria": [
             "Heben und Senken benötigen jeweils eine eindeutige lokale Aktion und sind sofort rückgängig zu machen.",
             "Farbe ist nicht der einzige Statusindikator; Screenreader erhalten knappe Zustandswechsel.",
@@ -197,11 +277,19 @@
         {
           "id": "BBB-UX-010",
           "title": "Rate-Limits, Ablauf und Disconnect-Cleanup gegen Handheben-Spam festlegen",
-          "status": "partial",
+          "status": "completed",
           "priority": "P0",
           "risk": "high",
-          "scope": ["Toggle-Rate", "Queue-Cap", "TTL", "Leave cleanup", "Reconnect identity"],
-          "dependencies": ["BBB-UX-007"],
+          "scope": [
+            "Toggle-Rate",
+            "Queue-Cap",
+            "TTL",
+            "Leave cleanup",
+            "Reconnect identity"
+          ],
+          "dependencies": [
+            "BBB-UX-007"
+          ],
           "promotion_acceptance_criteria": [
             "Ein Peer kann durch schnelles Umschalten weder Signaling noch fremde UI fluten.",
             "Leave und abgelaufene Membership entfernen offene Handmeldungen deterministisch.",
@@ -211,11 +299,21 @@
         {
           "id": "BBB-UX-011",
           "title": "Mehrbrowser- und Moderatoren-Konflikttests für Handheben planen",
-          "status": "open",
+          "status": "partial",
           "priority": "P1",
           "risk": "medium",
-          "scope": ["3 bis 20 Browser", "zwei Moderatoren", "Churn", "stale messages", "mobile accessibility"],
-          "dependencies": ["BBB-UX-008", "BBB-UX-009", "BBB-UX-010"],
+          "scope": [
+            "3 bis 20 Browser",
+            "zwei Moderatoren",
+            "Churn",
+            "stale messages",
+            "mobile accessibility"
+          ],
+          "dependencies": [
+            "BBB-UX-008",
+            "BBB-UX-009",
+            "BBB-UX-010"
+          ],
           "promotion_acceptance_criteria": [
             "Tests belegen konsistente Reihenfolge in mindestens zwei Browser-Engines.",
             "Negativtests decken unberechtigte Senkung, Cross-Room-Zugriff, Replay und Rate-Limit ab.",
@@ -232,11 +330,21 @@
         {
           "id": "BBB-UX-012",
           "title": "Parent-/Breakout-Domainmodell mit eigenen Membership- und Security-Epochen definieren",
-          "status": "partial",
+          "status": "completed",
           "priority": "P0",
           "risk": "critical",
-          "scope": ["parent room", "breakout set", "child room IDs", "capacity", "lifetime", "state machine"],
-          "dependencies": ["RoomRegistry", "room limits"],
+          "scope": [
+            "parent room",
+            "breakout set",
+            "child room IDs",
+            "capacity",
+            "lifetime",
+            "state machine"
+          ],
+          "dependencies": [
+            "RoomRegistry",
+            "room limits"
+          ],
           "promotion_acceptance_criteria": [
             "Jeder Breakout besitzt getrennte Membership, Peer-IDs, Signaling-Tickets, Topologie und Schlüssel.",
             "Kein Child-Peer kann aus Parent- oder Nachbar-Signalen Membership ableiten.",
@@ -246,11 +354,20 @@
         {
           "id": "BBB-UX-013",
           "title": "Kurzlebige, zielgebundene Breakout-Zuweisungen und Moderatorrechte spezifizieren",
-          "status": "partial",
+          "status": "completed",
           "priority": "P0",
           "risk": "critical",
-          "scope": ["assignment grant", "target subject/device", "parent revision", "expiry", "single use"],
-          "dependencies": ["BBB-UX-002", "BBB-UX-012"],
+          "scope": [
+            "assignment grant",
+            "target subject/device",
+            "parent revision",
+            "expiry",
+            "single use"
+          ],
+          "dependencies": [
+            "BBB-UX-002",
+            "BBB-UX-012"
+          ],
           "promotion_acceptance_criteria": [
             "Nur autorisierte Moderatoren erstellen, ändern oder schließen Zuordnungen.",
             "Ein Grant ist an Principal, Gerät, Parent, Child, Revision und Ablauf gebunden.",
@@ -260,11 +377,19 @@
         {
           "id": "BBB-UX-014",
           "title": "Manuelle, zufällige und freiwillige Breakout-Zuordnung als austauschbare Policy entwerfen",
-          "status": "open",
+          "status": "completed",
           "priority": "P1",
           "risk": "high",
-          "scope": ["manual", "balanced random", "self select", "capacity conflict", "late joiner"],
-          "dependencies": ["BBB-UX-013"],
+          "scope": [
+            "manual",
+            "balanced random",
+            "self select",
+            "capacity conflict",
+            "late joiner"
+          ],
+          "dependencies": [
+            "BBB-UX-013"
+          ],
           "promotion_acceptance_criteria": [
             "Jede Policy liefert eine deterministische, validierte Zuordnung ohne Überschreitung der Child-Kapazität.",
             "Freiwillige Auswahl erweitert keine Moderator- oder Parent-Rechte.",
@@ -274,11 +399,20 @@
         {
           "id": "BBB-UX-015",
           "title": "Sicheren Raumwechsel mit vollständigem Medien-, DataChannel- und Schlüssel-Cleanup bauen",
-          "status": "partial",
+          "status": "completed",
           "priority": "P0",
           "risk": "critical",
-          "scope": ["stop local tracks", "close peer connections", "clear captions/chat/whiteboard", "rotate keys", "new ticket"],
-          "dependencies": ["BBB-UX-012", "BBB-UX-013"],
+          "scope": [
+            "stop local tracks",
+            "close peer connections",
+            "clear captions/chat/whiteboard",
+            "rotate keys",
+            "new ticket"
+          ],
+          "dependencies": [
+            "BBB-UX-012",
+            "BBB-UX-013"
+          ],
           "promotion_acceptance_criteria": [
             "Vor Eintritt in den Child-Raum sind alle Parent-Publikationen und erreichbaren privaten Schlüssel aus dem Browser-State entfernt.",
             "Der Wechsel benötigt einen sichtbaren lokalen Bestätigungsschritt und startet keine Quelle automatisch neu.",
@@ -288,11 +422,20 @@
         {
           "id": "BBB-UX-016",
           "title": "Breakout-Lobby, Countdown, Hilferuf und kontrollierte Rückkehr gestalten",
-          "status": "open",
+          "status": "completed",
           "priority": "P1",
           "risk": "medium",
-          "scope": ["Vorschau der Zuordnung", "Restzeit", "Moderatornachricht als Policy-Metadatum", "help request", "return flow"],
-          "dependencies": ["BBB-UX-014", "BBB-UX-015"],
+          "scope": [
+            "Vorschau der Zuordnung",
+            "Restzeit",
+            "Moderatornachricht als Policy-Metadatum",
+            "help request",
+            "return flow"
+          ],
+          "dependencies": [
+            "BBB-UX-014",
+            "BBB-UX-015"
+          ],
           "promotion_acceptance_criteria": [
             "Countdown basiert auf Serverzeit und bleibt bei Hintergrundtabs verständlich.",
             "Hilferuf enthält keinen Medien- oder Chatinhalt und gewährt dem Moderator keinen automatischen Medieneintritt.",
@@ -302,11 +445,20 @@
         {
           "id": "BBB-UX-017",
           "title": "TURN-, Trusted-Relay- und Media-Agent-Isolation für Breakouts festlegen",
-          "status": "open",
+          "status": "completed",
           "priority": "P0",
           "risk": "critical",
-          "scope": ["room-bound TURN credentials", "agent consent per child", "lease epochs", "no cross-breakout DAG"],
-          "dependencies": ["BBB-UX-012", "media-agent contracts", "TURN credential service"],
+          "scope": [
+            "room-bound TURN credentials",
+            "agent consent per child",
+            "lease epochs",
+            "no cross-breakout DAG"
+          ],
+          "dependencies": [
+            "BBB-UX-012",
+            "media-agent contracts",
+            "TURN credential service"
+          ],
           "promotion_acceptance_criteria": [
             "Agenten und Relay-Kanten werden pro Child-Raum neu gewählt und können keine Nachbarpublikation abonnieren.",
             "TURN-Credentials sind kurzlebig und an die autorisierte Child-Session gebunden.",
@@ -316,11 +468,21 @@
         {
           "id": "BBB-UX-018",
           "title": "Breakout-E2E-Gate für Churn, Ablauf, Reconnect und Angriffe definieren",
-          "status": "open",
+          "status": "partial",
           "priority": "P0",
           "risk": "high",
-          "scope": ["mehrere Child-Räume", "moderator leave", "server restart", "expired grants", "cross-room signaling"],
-          "dependencies": ["BBB-UX-015", "BBB-UX-016", "BBB-UX-017"],
+          "scope": [
+            "mehrere Child-Räume",
+            "moderator leave",
+            "server restart",
+            "expired grants",
+            "cross-room signaling"
+          ],
+          "dependencies": [
+            "BBB-UX-015",
+            "BBB-UX-016",
+            "BBB-UX-017"
+          ],
           "promotion_acceptance_criteria": [
             "Mindestens zwei parallele Breakouts beweisen getrennte Membership, DataChannels und Medien.",
             "Negativtests decken Cross-Room-Signaling, stale Tickets, Replay und Agent-Crosslink ab.",
@@ -337,11 +499,20 @@
         {
           "id": "BBB-UX-019",
           "title": "ADR für Whiteboard-Zustand, Transport und Konvergenz erstellen",
-          "status": "partial",
+          "status": "completed",
           "priority": "P0",
           "risk": "critical",
-          "scope": ["operation log versus CRDT", "direct DataChannel", "opaque overlay snapshots", "late join", "ephemeral default"],
-          "dependencies": ["opaque data overlay", "room membership"],
+          "scope": [
+            "operation log versus CRDT",
+            "direct DataChannel",
+            "opaque overlay snapshots",
+            "late join",
+            "ephemeral default"
+          ],
+          "dependencies": [
+            "opaque data overlay",
+            "room membership"
+          ],
           "research_questions": [
             "Welche minimale CRDT-/Operation-Struktur konvergiert bei 20 Peers und Churn ohne zentralen Inhaltsserver?",
             "Wie erhält ein Late Joiner einen authentisierten Snapshot ohne unbeschränkte Peer-Queues?",
@@ -355,11 +526,22 @@
         {
           "id": "BBB-UX-020",
           "title": "Versionierten Whiteboard-Operationscontract mit harten Grenzen definieren",
-          "status": "partial",
+          "status": "completed",
           "priority": "P0",
           "risk": "critical",
-          "scope": ["stroke", "shape", "text", "erase", "viewport", "operation ID", "author device", "epoch"],
-          "dependencies": ["BBB-UX-019"],
+          "scope": [
+            "stroke",
+            "shape",
+            "text",
+            "erase",
+            "viewport",
+            "operation ID",
+            "author device",
+            "epoch"
+          ],
+          "dependencies": [
+            "BBB-UX-019"
+          ],
           "promotion_acceptance_criteria": [
             "Alle Nachrichtentypen und Felder werden exakt validiert; unbekannte Varianten sind fail-closed.",
             "Koordinaten, Text, Punkte pro Stroke, Nachrichtengröße, Operationen pro Sekunde und Gesamtzustand sind hart begrenzt.",
@@ -372,8 +554,18 @@
           "status": "open",
           "priority": "P1",
           "risk": "high",
-          "scope": ["merge", "tombstones", "bounded history", "snapshot digest", "chunk resume", "compaction"],
-          "dependencies": ["BBB-UX-020", "overlay chunk resume"],
+          "scope": [
+            "merge",
+            "tombstones",
+            "bounded history",
+            "snapshot digest",
+            "chunk resume",
+            "compaction"
+          ],
+          "dependencies": [
+            "BBB-UX-020",
+            "overlay chunk resume"
+          ],
           "promotion_acceptance_criteria": [
             "Drei oder mehr Peers konvergieren trotz Reordering, Duplikaten, kurzzeitigem Disconnect und gleichzeitigem Editieren bytegleich.",
             "Snapshots besitzen Digest, Größenlimit, Chunk-ACK und dürfen keine Membership-Autorität transportieren.",
@@ -386,8 +578,19 @@
           "status": "open",
           "priority": "P2",
           "risk": "medium",
-          "scope": ["Stift", "Marker", "Formen", "Text", "Radierer", "Undo nur eigener Aktionen", "Cursor", "Zoom"],
-          "dependencies": ["BBB-UX-021"],
+          "scope": [
+            "Stift",
+            "Marker",
+            "Formen",
+            "Text",
+            "Radierer",
+            "Undo nur eigener Aktionen",
+            "Cursor",
+            "Zoom"
+          ],
+          "dependencies": [
+            "BBB-UX-021"
+          ],
           "promotion_acceptance_criteria": [
             "Die erste Version beschränkt sich auf einen klaren Werkzeugkern und funktioniert mit Maus, Touch und Stift.",
             "Fremde Cursor sind gedrosselt, optional ausblendbar und werden nicht persistiert.",
@@ -400,8 +603,17 @@
           "status": "open",
           "priority": "P0",
           "risk": "critical",
-          "scope": ["view", "draw", "presenter-only", "moderator clear", "permission revision"],
-          "dependencies": ["BBB-UX-002", "BBB-UX-020"],
+          "scope": [
+            "view",
+            "draw",
+            "presenter-only",
+            "moderator clear",
+            "permission revision"
+          ],
+          "dependencies": [
+            "BBB-UX-002",
+            "BBB-UX-020"
+          ],
           "promotion_acceptance_criteria": [
             "Schreibrechte stammen aus serverautorisierter Rolle und aktueller Membership-Revision.",
             "Peers prüfen Rechte zusätzlich lokal, leiten daraus aber keine Membership ab.",
@@ -414,8 +626,17 @@
           "status": "open",
           "priority": "P0",
           "risk": "critical",
-          "scope": ["Canvas primitives", "no raw SVG/HTML", "font limits", "image decoding", "CSP", "memory budgets"],
-          "dependencies": ["BBB-UX-020"],
+          "scope": [
+            "Canvas primitives",
+            "no raw SVG/HTML",
+            "font limits",
+            "image decoding",
+            "CSP",
+            "memory budgets"
+          ],
+          "dependencies": [
+            "BBB-UX-020"
+          ],
           "promotion_acceptance_criteria": [
             "Fremdtext wird ausschließlich als Text gerendert; HTML, Script, URL-Handler und untrusted SVG werden nicht interpretiert.",
             "Bilder benötigen expliziten lokalen Import, Typ-/Pixel-/Byte-Limits und sicheren Decoderpfad.",
@@ -428,8 +649,17 @@
           "status": "open",
           "priority": "P1",
           "risk": "high",
-          "scope": ["PNG/PDF export", "visible click", "accessible text summary", "Chromium/Firefox", "touch"],
-          "dependencies": ["BBB-UX-022", "BBB-UX-024"],
+          "scope": [
+            "PNG/PDF export",
+            "visible click",
+            "accessible text summary",
+            "Chromium/Firefox",
+            "touch"
+          ],
+          "dependencies": [
+            "BBB-UX-022",
+            "BBB-UX-024"
+          ],
           "promotion_acceptance_criteria": [
             "Export entsteht ausschließlich lokal nach sichtbarem Klick und wird nicht automatisch hochgeladen.",
             "Ein barrierearmer Alternativtext-/Objektlistenmodus ist vor Produktionsfreigabe entschieden.",
@@ -446,11 +676,20 @@
         {
           "id": "BBB-UX-026",
           "title": "Presenter-, Stage- und Layout-Contract getrennt von Capture definieren",
-          "status": "partial",
+          "status": "completed",
           "priority": "P0",
           "risk": "critical",
-          "scope": ["presenter role", "active stage source", "layout revision", "room epoch", "local override"],
-          "dependencies": ["BBB-UX-001", "BBB-UX-002"],
+          "scope": [
+            "presenter role",
+            "active stage source",
+            "layout revision",
+            "room epoch",
+            "local override"
+          ],
+          "dependencies": [
+            "BBB-UX-001",
+            "BBB-UX-002"
+          ],
           "promotion_acceptance_criteria": [
             "Presenter-Recht und aktive lokale Publikation sind getrennte Zustände.",
             "Eine Presenter-Zuweisung darf niemals getDisplayMedia, Kamera oder Mikrofon auslösen.",
@@ -463,8 +702,18 @@
           "status": "partial",
           "priority": "P1",
           "risk": "medium",
-          "scope": ["screen-first stage", "speaker stage", "filmstrip", "local pin", "fullscreen", "mobile"],
-          "dependencies": ["BBB-UX-026", "participant view"],
+          "scope": [
+            "screen-first stage",
+            "speaker stage",
+            "filmstrip",
+            "local pin",
+            "fullscreen",
+            "mobile"
+          ],
+          "dependencies": [
+            "BBB-UX-026",
+            "participant view"
+          ],
           "promotion_acceptance_criteria": [
             "Moderator-Stage und persönliche Pin-/Layoutwahl sind sichtbar voneinander getrennt.",
             "Ein lokaler Pin verändert weder fremde Senderqualität noch serverseitige Rolle.",
@@ -477,8 +726,17 @@
           "status": "open",
           "priority": "P0",
           "risk": "critical",
-          "scope": ["screen click", "screen audio separate consent", "source replace", "track ended", "stop"],
-          "dependencies": ["BBB-UX-026", "MediaPublicationService"],
+          "scope": [
+            "screen click",
+            "screen audio separate consent",
+            "source replace",
+            "track ended",
+            "stop"
+          ],
+          "dependencies": [
+            "BBB-UX-026",
+            "MediaPublicationService"
+          ],
           "promotion_acceptance_criteria": [
             "Nur der lokale Teilen-Button kann den Browserdialog öffnen.",
             "Bildschirmton bleibt ein separates Opt-in und stoppt unabhängig vom Bild.",
@@ -491,8 +749,18 @@
           "status": "open",
           "priority": "P1",
           "risk": "high",
-          "scope": ["screen priority", "camera thumbnails", "audio floor", "receiver preference", "agent layer plan"],
-          "dependencies": ["media strategy", "receive quality", "media-agent subscriptions"],
+          "scope": [
+            "screen priority",
+            "camera thumbnails",
+            "audio floor",
+            "receiver preference",
+            "agent layer plan"
+          ],
+          "dependencies": [
+            "media strategy",
+            "receive quality",
+            "media-agent subscriptions"
+          ],
           "promotion_acceptance_criteria": [
             "Das Preset priorisiert Bildschirm und Sprache, ohne Audio unter das Mindestbudget zu drücken.",
             "Empfänger können lokal niedrigere Qualität oder Nur-Audio wählen; niemand kann höhere Qualität erzwingen.",
@@ -505,8 +773,17 @@
           "status": "open",
           "priority": "P1",
           "risk": "high",
-          "scope": ["offer/accept", "revoke", "presenter leave", "two moderators", "fallback layout"],
-          "dependencies": ["BBB-UX-026", "BBB-UX-028"],
+          "scope": [
+            "offer/accept",
+            "revoke",
+            "presenter leave",
+            "two moderators",
+            "fallback layout"
+          ],
+          "dependencies": [
+            "BBB-UX-026",
+            "BBB-UX-028"
+          ],
           "promotion_acceptance_criteria": [
             "Übergabe ist revisionsgebunden und aktiviert beim neuen Presenter keine Quelle automatisch.",
             "Leave oder Track-Ende fällt auf einen medienfreien beziehungsweise Active-Speaker-Modus zurück.",
@@ -519,8 +796,17 @@
           "status": "open",
           "priority": "P2",
           "risk": "high",
-          "scope": ["PDF/image deck", "local rendering", "page intent", "no office conversion server", "keyboard/mobile"],
-          "dependencies": ["BBB-UX-019", "BBB-UX-027"],
+          "scope": [
+            "PDF/image deck",
+            "local rendering",
+            "page intent",
+            "no office conversion server",
+            "keyboard/mobile"
+          ],
+          "dependencies": [
+            "BBB-UX-019",
+            "BBB-UX-027"
+          ],
           "research_questions": [
             "Kann ein begrenztes PDF lokal sicher gerendert und als verschlüsselter Artefakttransfer geteilt werden?",
             "Reicht ein synchronisierter Seitenindex statt Pixelstream für bandbreitensparende Folien?"
@@ -548,8 +834,18 @@
           "status": "open",
           "priority": "P1",
           "risk": "medium",
-          "scope": ["Position", "max lines", "safe area", "contrast", "video/screen layouts", "mobile"],
-          "dependencies": ["browser-vosk-captions", "BBB-UX-027"],
+          "scope": [
+            "Position",
+            "max lines",
+            "safe area",
+            "contrast",
+            "video/screen layouts",
+            "mobile"
+          ],
+          "dependencies": [
+            "browser-vosk-captions",
+            "BBB-UX-027"
+          ],
           "promotion_acceptance_criteria": [
             "Untertitel verdecken keine Mediensteuerung, Handmeldungen oder kritischen Warnungen.",
             "Overlay funktioniert in Raster, Bühne, Vollbild, Screen-Share und Pair-Modus.",
@@ -562,8 +858,17 @@
           "status": "open",
           "priority": "P1",
           "risk": "medium",
-          "scope": ["speaker label", "language tag", "partial replacement", "final history", "confidence omission"],
-          "dependencies": ["caption contract", "BBB-UX-032"],
+          "scope": [
+            "speaker label",
+            "language tag",
+            "partial replacement",
+            "final history",
+            "confidence omission"
+          ],
+          "dependencies": [
+            "caption contract",
+            "BBB-UX-032"
+          ],
           "promotion_acceptance_criteria": [
             "Partial-Ergebnisse ersetzen dieselbe Äußerung, statt die Oberfläche zu fluten.",
             "Der Sprecher stammt nur aus der bestehenden Peer-Membership, niemals aus Caption-Textdaten.",
@@ -576,8 +881,17 @@
           "status": "open",
           "priority": "P2",
           "risk": "low",
-          "scope": ["font scale", "background opacity", "top/bottom", "line count", "speaker colors", "reset"],
-          "dependencies": ["BBB-UX-032"],
+          "scope": [
+            "font scale",
+            "background opacity",
+            "top/bottom",
+            "line count",
+            "speaker colors",
+            "reset"
+          ],
+          "dependencies": [
+            "BBB-UX-032"
+          ],
           "promotion_acceptance_criteria": [
             "Alle Einstellungen wirken nur im eigenen Browser und starten weder Modell noch Mikrofon.",
             "Werte sind begrenzt, tastaturbedienbar und auf Standard zurücksetzbar.",
@@ -590,8 +904,18 @@
           "status": "open",
           "priority": "P1",
           "risk": "high",
-          "scope": ["language variants", "size", "license", "source pin", "download progress", "offline cache", "fallback"],
-          "dependencies": ["browser-vosk-captions"],
+          "scope": [
+            "language variants",
+            "size",
+            "license",
+            "source pin",
+            "download progress",
+            "offline cache",
+            "fallback"
+          ],
+          "dependencies": [
+            "browser-vosk-captions"
+          ],
           "promotion_acceptance_criteria": [
             "Die UI unterscheidet ausgewählt, heruntergeladen, vorbereitet, aktiv, fehlerhaft und lokal gelöscht.",
             "Downloadgröße, Drittquelle, Lizenz und erwarteter lokaler CPU-/Speicherbedarf sind vor dem Klick sichtbar.",
@@ -604,8 +928,17 @@
           "status": "open",
           "priority": "P0",
           "risk": "critical",
-          "scope": ["bounded history", "clear", "leave cleanup", "optional local export", "consent notice"],
-          "dependencies": ["caption contract", "privacy review"],
+          "scope": [
+            "bounded history",
+            "clear",
+            "leave cleanup",
+            "optional local export",
+            "consent notice"
+          ],
+          "dependencies": [
+            "caption contract",
+            "privacy review"
+          ],
           "promotion_acceptance_criteria": [
             "Standardmäßig existiert kein persistentes Transkript; Leave und Destroy entfernen den erreichbaren Verlauf.",
             "Ein späterer Export benötigt einen gesonderten sichtbaren Klick und eine klare Warnung für Gesprächsteilnehmer.",
@@ -618,8 +951,20 @@
           "status": "open",
           "priority": "P1",
           "risk": "high",
-          "scope": ["ARIA live policy", "deduplication", "keyboard", "20 peers", "Chromium/Firefox", "slow device"],
-          "dependencies": ["BBB-UX-033", "BBB-UX-034", "BBB-UX-035", "BBB-UX-036"],
+          "scope": [
+            "ARIA live policy",
+            "deduplication",
+            "keyboard",
+            "20 peers",
+            "Chromium/Firefox",
+            "slow device"
+          ],
+          "dependencies": [
+            "BBB-UX-033",
+            "BBB-UX-034",
+            "BBB-UX-035",
+            "BBB-UX-036"
+          ],
           "promotion_acceptance_criteria": [
             "Screenreader erhalten Finaltexte ohne jede Partial-Revision erneut vorzulesen.",
             "Ein langsamer oder bösartiger Caption-Peer kann UI, Queue oder Worker nicht unbeschränkt belasten.",
@@ -639,7 +984,13 @@
           "status": "open",
           "priority": "P0",
           "risk": "high",
-          "scope": ["feature inspiration", "no copied assets", "own components", "source matrix", "trademark wording"],
+          "scope": [
+            "feature inspiration",
+            "no copied assets",
+            "own components",
+            "source matrix",
+            "trademark wording"
+          ],
           "dependencies": [],
           "promotion_acceptance_criteria": [
             "Übernommene Ideen und eigenständige Umsetzung werden in einer Herkunftsmatrix nachvollziehbar getrennt.",
@@ -653,8 +1004,18 @@
           "status": "open",
           "priority": "P0",
           "risk": "critical",
-          "scope": ["moderation", "hand", "breakout", "whiteboard", "presentation", "caption", "version negotiation"],
-          "dependencies": ["existing signaling and peer contracts"],
+          "scope": [
+            "moderation",
+            "hand",
+            "breakout",
+            "whiteboard",
+            "presentation",
+            "caption",
+            "version negotiation"
+          ],
+          "dependencies": [
+            "existing signaling and peer contracts"
+          ],
           "promotion_acceptance_criteria": [
             "Jede Funktion besitzt einen getrennten Contract und kleinen Port statt eines unbeschränkten Universal-Events.",
             "Alte Browser ignorieren additive serverseitige Capabilities sicher; unbekannte eingehende Messages werden geschlossen abgelehnt.",
@@ -667,8 +1028,16 @@
           "status": "open",
           "priority": "P1",
           "risk": "high",
-          "scope": ["server flags", "browser capabilities", "room policy", "mixed versions", "rollback"],
-          "dependencies": ["BBB-UX-039"],
+          "scope": [
+            "server flags",
+            "browser capabilities",
+            "room policy",
+            "mixed versions",
+            "rollback"
+          ],
+          "dependencies": [
+            "BBB-UX-039"
+          ],
           "promotion_acceptance_criteria": [
             "Jedes Modul kann unabhängig deaktiviert werden, ohne Join, Medien oder bestehende DataChannels zu beschädigen.",
             "Mixed-Version-Räume besitzen einen klaren, fail-closed Capability-Zustand.",
@@ -681,7 +1050,15 @@
           "status": "open",
           "priority": "P0",
           "risk": "critical",
-          "scope": ["role abuse", "cross-room", "replay", "oversize", "XSS", "CPU/memory", "content-free telemetry"],
+          "scope": [
+            "role abuse",
+            "cross-room",
+            "replay",
+            "oversize",
+            "XSS",
+            "CPU/memory",
+            "content-free telemetry"
+          ],
           "dependencies": [],
           "promotion_acceptance_criteria": [
             "Das Threat Model beschreibt Angreifer, Trust Boundaries und Negativtests je Funktionsbereich.",
@@ -695,8 +1072,18 @@
           "status": "open",
           "priority": "P1",
           "risk": "medium",
-          "scope": ["track boundaries", "dependency graph", "UX prototypes", "security gates", "deployment evidence"],
-          "dependencies": ["BBB-UX-038", "BBB-UX-039", "BBB-UX-041"],
+          "scope": [
+            "track boundaries",
+            "dependency graph",
+            "UX prototypes",
+            "security gates",
+            "deployment evidence"
+          ],
+          "dependencies": [
+            "BBB-UX-038",
+            "BBB-UX-039",
+            "BBB-UX-041"
+          ],
           "promotion_acceptance_criteria": [
             "Kein Active-Track vermischt Membership-Policy, Data-Plane-Inhalt und UI in einem untestbaren Modul.",
             "Jeder Track enthält Unit-, Negativ-, Browser- und gegebenenfalls Multi-Peer-/NAT-Nachweise proportional zum Risiko.",
@@ -709,9 +1096,9 @@
   "meta": {
     "total_items": 42,
     "by_status": {
-      "completed": 0,
-      "partial": 16,
-      "open": 26,
+      "completed": 18,
+      "partial": 3,
+      "open": 21,
       "deferred": 0,
       "blocked": 0
     },
@@ -722,6 +1109,7 @@
       "P3": 0
     },
     "notes": [
+      "2026-09-11 BBB-UX-012 bis BBB-UX-017 im Track todo.breakout-rooms.json (BRK-001..BRK-006) umgesetzt und getestet; BBB-UX-018 partial (BRK-007 User-Gate).",
       "2026-09-11 BBB-UX-001/002/007/010 nach todos/active/todo.collaboration-moderation.json promoviert. Software zuerst, Nutzer-/Safari-/Churn-Gates als COL-004 zuletzt.",
       "2026-09-11 BBB-UX-003/008/009 als COL-005/006 promoviert: FIFO-Queue, Teilnehmerliste und Owner-Clear ohne Capture. Mehrbrowser-/Safari-Gates bleiben COL-004.",
       "2026-09-11 BBB-UX-004 als COL-007: Owner-Entfernen mit Bestätigung. Mute, Presenter und Undo bleiben offen.",

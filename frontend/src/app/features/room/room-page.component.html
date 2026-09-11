@@ -301,26 +301,86 @@
 
         <section class="live-workspace">
           <div class="stage surface">
-            <div id="media-grid" class="media-grid">
-              @for (item of media.publications(); track item.source) {
-                <article class="media-card local-media">
-                  <span class="media-label">Du · {{ mediaLabel(item.source) }}</span>
-                  @if (item.kind === 'video') { <video autoplay muted playsinline [appMediaStream]="item.stream"></video> }
-                  @else { <audio autoplay muted controls [appMediaStream]="item.stream"></audio> }
-                </article>
-              }
-              @for (item of mesh.focusRemoteMedia(); track item.key) {
-                <article
-                  class="media-card remote-media"
-                  [attr.data-publication-id]="item.key"
-                  [attr.data-peer-id]="item.peerId"
-                  [attr.data-transport-peer-id]="item.transportPeerId"
-                  [attr.data-source]="item.source"
-                >
-                  <span class="media-label">{{ item.peerName }} · {{ mediaLabel(item.source) }}</span>
-                  @if (item.kind === 'video') { <video autoplay playsinline [appMediaStream]="item.stream"></video> }
-                  @else { <audio autoplay controls [appMediaStream]="item.stream"></audio> }
-                </article>
+            <div id="media-grid" class="media-grid" [class.stage-layout]="stage.mode() === 'stage'">
+              @if (stage.mode() === 'stage') {
+                <div class="stage-controls-bar">
+                  <div class="stage-badges">
+                    @if (stage.hasScreenShare()) { <span class="stage-badge screen-badge">Bildschirm</span> }
+                    @if (stage.stageItem()?.isPresenter) { <span class="stage-badge presenter-badge">Presenter</span> }
+                    @if (stage.stageItem()?.isPinned) { <span class="stage-badge pin-badge">Angeheftet</span> }
+                  </div>
+                  <div class="stage-actions">
+                    <button id="stage-layout-toggle" type="button" class="button ghost compact"
+                      (click)="stage.toggleViewPreference()"
+                      [attr.aria-label]="stage.viewPreference() === 'grid' ? 'Bühnenansicht aktivieren' : 'Rasteransicht aktivieren'">
+                      {{ stage.viewPreference() === 'grid' ? 'Bühne' : 'Raster' }}
+                    </button>
+                    <button id="stage-fullscreen-button" type="button" class="button ghost compact"
+                      (click)="toggleStageFullscreen()"
+                      [attr.aria-label]="stage.isFullscreen() ? 'Vollbild beenden' : 'Vollbild aktivieren'">
+                      {{ stage.isFullscreen() ? 'Vollbild beenden' : 'Vollbild' }}
+                    </button>
+                  </div>
+                </div>
+
+                @if (stage.stageItem(); as stageItem) {
+                  <div class="stage-primary-container">
+                    <article
+                      class="media-card stage-primary"
+                      [class.local-media]="stageItem.isLocal"
+                      [class.remote-media]="!stageItem.isLocal"
+                      [attr.data-publication-id]="stageItem.key || stageItem.id"
+                      [attr.data-peer-id]="stageItem.peerId"
+                      [attr.data-transport-peer-id]="stageItem.transportPeerId || stageItem.peerId"
+                      [attr.data-source]="stageItem.source"
+                    >
+                      <span class="media-label">{{ stageItem.isLocal ? 'Du' : stageItem.peerName }} · {{ mediaLabel(stageItem.source) }}</span>
+                      <video autoplay playsinline [muted]="stageItem.isLocal" [appMediaStream]="stageItem.stream"></video>
+                    </article>
+                  </div>
+                }
+
+                @if (stage.filmstripItems().length > 0) {
+                  <div id="media-filmstrip" class="media-filmstrip" role="region" aria-label="Teilnehmer-Filmstreifen">
+                    @for (item of stage.filmstripItems(); track item.id) {
+                      <article
+                        class="media-card filmstrip-item"
+                        [class.local-media]="item.isLocal"
+                        [class.remote-media]="!item.isLocal"
+                        [attr.data-publication-id]="item.key || item.id"
+                        [attr.data-peer-id]="item.peerId"
+                        [attr.data-transport-peer-id]="item.transportPeerId || item.peerId"
+                        [attr.data-source]="item.source"
+                        (click)="stage.togglePin(item.peerId)"
+                        [attr.title]="item.peerName + ' anheften'"
+                      >
+                        <span class="media-label">{{ item.isLocal ? 'Du' : item.peerName }} · {{ mediaLabel(item.source) }}</span>
+                        <video autoplay playsinline [muted]="item.isLocal" [appMediaStream]="item.stream"></video>
+                      </article>
+                    }
+                  </div>
+                }
+              } @else {
+                @for (item of media.publications(); track item.source) {
+                  <article class="media-card local-media">
+                    <span class="media-label">Du · {{ mediaLabel(item.source) }}</span>
+                    @if (item.kind === 'video') { <video autoplay muted playsinline [appMediaStream]="item.stream"></video> }
+                    @else { <audio autoplay muted controls [appMediaStream]="item.stream"></audio> }
+                  </article>
+                }
+                @for (item of mesh.focusRemoteMedia(); track item.key) {
+                  <article
+                    class="media-card remote-media"
+                    [attr.data-publication-id]="item.key"
+                    [attr.data-peer-id]="item.peerId"
+                    [attr.data-transport-peer-id]="item.transportPeerId"
+                    [attr.data-source]="item.source"
+                  >
+                    <span class="media-label">{{ item.peerName }} · {{ mediaLabel(item.source) }}</span>
+                    @if (item.kind === 'video') { <video autoplay playsinline [appMediaStream]="item.stream"></video> }
+                    @else { <audio autoplay controls [appMediaStream]="item.stream"></audio> }
+                  </article>
+                }
               }
               @if (mesh.mosaicRemoteMedia().length > 0) {
                 <article id="inactive-mosaic" class="media-card mosaic-media">

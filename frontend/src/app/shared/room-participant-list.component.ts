@@ -3,6 +3,7 @@ import { FormsModule } from "@angular/forms";
 
 import { LocalMediaSource, MediaPublicationService } from "../webrtc/media-publication.service";
 import { PeerMeshService } from "../webrtc/peer-mesh.service";
+import { PresentationStageService } from "../webrtc/presentation-stage.service";
 import { ModerationAuditEntry, RoomModerationService } from "../webrtc/room-moderation.service";
 import { RoomSessionService } from "../webrtc/room-session.service";
 import {
@@ -179,7 +180,7 @@ export class RoomParticipantListComponent {
   readonly roleFilter = signal<ParticipantRoleFilter>("all");
   readonly handFilter = signal<ParticipantHandFilter>("all");
   readonly removeDraft = signal<ParticipantListRow | null>(null);
-  readonly localPin = signal("");
+  readonly localPin = computed(() => this.stage.localPin());
   readonly pendingStop = signal<{ item: ParticipantListRow; source: LocalMediaSource } | null>(null);
   readonly rows = computed(() => participantListRows({
     ownPeerId: this.moderation.ownPeerId() || this.session.peerId(),
@@ -208,6 +209,7 @@ export class RoomParticipantListComponent {
     readonly mesh: PeerMeshService,
     readonly media: MediaPublicationService,
     readonly moderation: RoomModerationService,
+    readonly stage: PresentationStageService,
   ) {}
 
   canClear(item: ParticipantListRow): boolean {
@@ -236,7 +238,7 @@ export class RoomParticipantListComponent {
   }
 
   togglePin(peerId: string): void {
-    this.localPin.set(this.localPin() === peerId ? "" : peerId);
+    this.stage.togglePin(peerId);
   }
 
   undoSeconds(expiresAt: number): number {

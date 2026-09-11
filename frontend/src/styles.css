@@ -308,6 +308,21 @@ legend { color: #bac5d5; font-size: .78rem; font-weight: 700; }
 .live-workspace { display: grid; max-width: 96rem; grid-template-columns: minmax(0, 1fr) minmax(17.5rem, 21rem); gap: 1rem; align-items: start; }
 .stage { min-width: 0; overflow: hidden; }
 .media-grid { position: relative; display: grid; min-height: clamp(24rem, 61vh, 48rem); grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: .65rem; padding: .7rem; background: #080b10; }
+.media-grid.stage-layout { display: flex; flex-direction: column; }
+.stage-controls-bar { display: flex; justify-content: space-between; align-items: center; padding: .35rem .6rem; border-radius: .6rem; background: rgba(3, 5, 9, .75); border: 1px solid var(--line); margin-bottom: .45rem; }
+.stage-badges { display: flex; gap: .4rem; align-items: center; }
+.stage-badge { font-size: .63rem; font-weight: 700; padding: .18rem .5rem; border-radius: 999px; background: rgba(255, 255, 255, .08); color: #e8eef6; }
+.stage-badge.screen-badge { background: rgba(102, 224, 183, .16); color: var(--mint); border: 1px solid rgba(102, 224, 183, .35); }
+.stage-badge.presenter-badge { background: rgba(169, 139, 255, .16); color: var(--violet); border: 1px solid rgba(169, 139, 255, .35); }
+.stage-badge.pin-badge { background: rgba(230, 195, 92, .16); color: #e6c35c; border: 1px solid rgba(230, 195, 92, .35); }
+.stage-actions { display: flex; gap: .4rem; align-items: center; }
+.stage-primary-container { flex: 1 1 auto; min-height: clamp(18rem, 50vh, 42rem); display: flex; position: relative; }
+.media-card.stage-primary { flex: 1 1 100%; width: 100%; min-height: clamp(18rem, 50vh, 42rem); border-color: rgba(169, 139, 255, .35); }
+.media-card.stage-primary video { max-height: 65vh; object-fit: contain; }
+.media-filmstrip { display: flex; gap: .55rem; overflow-x: auto; padding: .5rem 0 .2rem; scrollbar-width: thin; }
+.media-card.filmstrip-item { flex: 0 0 clamp(9rem, 16vw, 14rem); min-height: 7rem; height: 8rem; cursor: pointer; transition: transform .15s ease, border-color .15s ease; }
+.media-card.filmstrip-item:hover { border-color: var(--mint); transform: translateY(-2px); }
+.media-card.filmstrip-item video { min-height: 7rem; height: 8rem; object-fit: cover; }
 .media-card { position: relative; min-height: 14rem; overflow: hidden; border: 1px solid var(--line); border-radius: .8rem; background: #020408; }
 .local-media { border-color: rgba(102, 224, 183, .28); }
 .media-card video { display: block; width: 100%; height: 100%; min-height: 14rem; max-height: 70vh; object-fit: contain; background: #020408; }

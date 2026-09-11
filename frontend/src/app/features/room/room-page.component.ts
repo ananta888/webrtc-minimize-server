@@ -65,6 +65,7 @@ import { PairWorkspacePanelComponent } from "../../workspace/pair-workspace-pane
 import { PairWorkspaceService, WorkspaceSummary } from "../../workspace/pair-workspace.service";
 import { BreakoutSwitchService } from "../../webrtc/breakout-switch.service";
 import { WhiteboardOverlayService } from "../../webrtc/whiteboard-overlay.service";
+import { PresentationStageService } from "../../webrtc/presentation-stage.service";
 import { MeshAnalysisComponent } from "../../mesh-analysis/mesh-analysis.component";
 import { MachinePermissionsPanelComponent } from "../machine/machine-permissions-panel.component";
 
@@ -203,13 +204,29 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     readonly whiteboard: WhiteboardOverlayService,
     readonly breakouts: BreakoutSwitchService,
     readonly workspaces: PairWorkspaceService,
+    readonly stage: PresentationStageService,
   ) {}
+
+  toggleStageFullscreen(): void {
+    const stageEl = document.getElementById("media-grid");
+    if (!stageEl) return;
+    if (!document.fullscreenElement) {
+      void stageEl.requestFullscreen?.().catch(() => undefined);
+      this.stage.setFullscreen(true);
+    } else {
+      void document.exitFullscreen?.().catch(() => undefined);
+      this.stage.setFullscreen(false);
+    }
+  }
 
   reloadPage(): void { location.reload(); }
 
   async ngOnInit(): Promise<void> {
     window.addEventListener("beforeunload", this.beforeUnload);
     window.addEventListener("pagehide", this.pageHide);
+    document.addEventListener("fullscreenchange", () => {
+      this.stage.setFullscreen(Boolean(document.fullscreenElement));
+    });
     const params = new URLSearchParams(location.search);
     if (new Set<AppSection>(["rooms", "live", "broadcast", "captions", "analysis", "chat", "settings"]).has(params.get("section") as AppSection)) {
       this.activeSection.set(params.get("section") as AppSection);
@@ -335,6 +352,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
 
   async leave(): Promise<void> {
     await this.resetBroadcastPreflight();
+    this.stage.reset();
     this.captions.stop();
     this.media.stopAll();
     this.session.leave();
@@ -345,6 +363,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
 
   async logout(): Promise<void> {
     await this.resetBroadcastPreflight();
+    this.stage.reset();
     this.captions.stop();
     this.media.stopAll();
     this.session.leave();
