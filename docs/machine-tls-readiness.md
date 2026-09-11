@@ -1,5 +1,40 @@
 # Bounded private Ananta TLS readiness
 
+## Blocked PID1 follow-up (11 September)
+
+CI `34573639631` at `17ef2db` finished with all other jobs successful;
+only Chromium TURN-UDP failed before browser startup. The failure snapshot
+showed PID1 in `D`, one thread, no CPU throttling/OOM counters and no observed
+JavaScript-entry marker. Firefox UDP and both TCP dialogs passed. `D` alone
+does not establish a disk, entropy, memory or scheduling cause.
+
+The failure-only reader now includes minor/major faults, block-I/O wait ticks,
+process `read_bytes` and read-call counts. A fourth bounded read accesses only
+the same owned container's `/proc/1/wchan`. Only a fixed list of known wait
+symbols can be emitted; unknown symbols, addresses, offsets, zero and denied
+reads become `null`. No stack, mappings, command line, environment, host PID
+or extra Linux capability is accessed. All four calls retain the individual
+one-second/4-KiB limits; the wait-symbol projection itself is limited to 128
+bytes. Thus failure inspection can add at most four per-call timeout budgets,
+after the original readiness failure, never extend readiness into success.
+
+The [Linux proc documentation](https://docs.kernel.org/filesystems/proc.html)
+defines the fixed stat offsets, I/O counters and wait symbol. Faults and I/O
+counters are cumulative; zero is not evidence against pending I/O, and missing
+fields are not invented zeros. Wait symbols depend on kernel configuration
+and access restrictions; a single snapshot is not a causal diagnosis.
+No fixture restart, warmup, larger readiness deadline or policy change is
+introduced. A failing CI sample is still required to select a causal repair.
+
+The 35 focused parser, redaction, exact-target, real timeout and unchanged
+TLS/proxy tests pass (1.074 seconds). A real owned proxy-only socket probe,
+without a browser or media, verified forwarding and the expanded projection:
+sleeping PID1, seven threads, 6,275 minor faults, zero major faults/block-I/O
+ticks/storage-read bytes, 88 read calls and `do_epoll_wait`. The proxy, STUN
+fixture and private network were cleaned up. This healthy local snapshot is
+not a reproduction or repair of the CI startup failure. No current production
+configuration, host audio or browser session was modified.
+
 ## Current failure-only resource observation (11 September)
 
 [CI 34548642305](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34548642305)
