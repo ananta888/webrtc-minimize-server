@@ -48,6 +48,7 @@ type sourceVideoMixer struct {
 	scene        []*sourceVideoMixInput
 	sceneFits    []string // Scene-owned presentation; never mutates source admission.
 	rects        []sourceVideoRect
+	overlay      sourceVideoOverlay
 }
 
 type sourceVideoMixInput struct {
@@ -286,6 +287,9 @@ func (m *sourceVideoMixer) RenderGuarded(at int64, consume func(int64, uint64, [
 		fillSourceVideoSlate(m.output, m.cfg.width, 0, 0, m.cfg.width, m.cfg.height)
 		guard = sourceRenderGuard{}
 	}
+	if m.cfg.authorized() {
+		paintSourceVideoOverlay(m.output, m.cfg.width, m.cfg.height, m.overlay, m.rects)
+	}
 	if err := consume(at, m.revision, m.output, guard); err != nil {
 		m.closeLocked()
 		return errors.New("source video mixer output failed")
@@ -357,6 +361,7 @@ func (m *sourceVideoMixer) closeLocked() {
 	clear(m.output)
 	m.output, m.scene, m.rects = nil, nil, nil
 	m.sceneFits = nil
+	m.overlay = sourceVideoOverlay{}
 	m.usedBytes = 0
 }
 

@@ -23,6 +23,7 @@ const (
 )
 
 var captionLanguagePattern = regexp.MustCompile(`^[a-z]{2,3}(?:-[A-Z][a-z]{3})?(?:-[A-Z]{2}|-[0-9]{3})?$`)
+var captionCueTagPattern = regexp.MustCompile(`<[^>]{0,64}>`)
 
 type nativeCaptionMessage struct {
 	Version               int    `json:"version"`
@@ -165,4 +166,32 @@ func (media *nativeMediaSession) flushCaptionOutput() {
 	if err == nil {
 		_ = os.Rename(name, filename)
 	}
+}
+
+// Last cue payload only. No timestamps, speaker IDs or room metadata.
+func nativeCaptionCueText(body string) string {
+	if !strings.HasPrefix(body, "WEBVTT\n\n") || strings.ContainsRune(body, 0) || len(body) > maximumCaptionBodySize {
+		return ""
+	}
+	blocks := strings.Split(strings.TrimSpace(body[len("WEBVTT\n\n"):]), "\n\n")
+	var text string
+	for _, block := range blocks {
+		lines := strings.Split(block, "\n")
+		start := 0
+		if len(lines) > 0 && strings.Contains(lines[0], "-->") {
+			start = 1
+		} else if len(lines) > 1 && strings.Contains(lines[1], "-->") {
+			start = 2
+		}
+		payload := strings.TrimSpace(strings.Join(lines[start:], " "))
+		payload = captionCueTagPattern.ReplaceAllString(payload, "")
+		if payload == "" || overlayLooksLikeIdentifier(payload) {
+			continue
+		}
+		if utf8.RuneCountInString(payload) > overlayCaptionMax {
+			payload = string([]rune(payload)[:overlayCaptionMax])
+		}
+		text = payload
+	}
+	return text
 }
