@@ -5,7 +5,7 @@ import {
   MAX_ROOM_PARTICIPANTS,
   MIN_ROOM_PARTICIPANTS,
 } from "./room-limits.js";
-import { applyHand, clearHand, moderationSnapshot } from "./room-moderation.js";
+import { applyHand, authorizeRemove, clearHand, moderationSnapshot } from "./room-moderation.js";
 
 export class RoomFullError extends Error {
   constructor() {
@@ -207,6 +207,11 @@ export class RoomRegistry {
   clearHand(actor, targetPeerId, now = Date.now()) {
     const room = this.#rooms.get(actor.roomId);
     return clearHand(room, actor, targetPeerId, now);
+  }
+
+  authorizeRemove(actor, targetPeerId, now = Date.now()) {
+    const room = this.#rooms.get(actor.roomId);
+    return authorizeRemove(room, actor, targetPeerId, now);
   }
 
   setRelayCapability(peer, capability, now = Date.now()) {

@@ -144,6 +144,11 @@ export function parseClientMessage(raw) {
     if (!PEER_ID_PATTERN.test(value.targetPeerId || "")) throw new ProtocolError("invalid_recipient");
     return Object.freeze({ type: "hand-clear", targetPeerId: value.targetPeerId });
   }
+  if (value.type === "peer-remove") {
+    if (!hasOnlyKeys(value, new Set(["type", "targetPeerId"]))) throw new ProtocolError("unknown_message_field");
+    if (!PEER_ID_PATTERN.test(value.targetPeerId || "")) throw new ProtocolError("invalid_recipient");
+    return Object.freeze({ type: "peer-remove", targetPeerId: value.targetPeerId });
+  }
   if (value.type === "leave") {
     if (!hasOnlyKeys(value, new Set(["type"]))) {
       throw new ProtocolError("unknown_message_field");

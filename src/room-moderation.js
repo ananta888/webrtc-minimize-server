@@ -64,6 +64,21 @@ export function applyHand(room, peer, hand, now) {
   return true;
 }
 
+export function authorizeRemove(room, actor, targetPeerId, now) {
+  if (!room || room.peers.get(actor.id) !== actor) fail("peer_not_joined");
+  if (room.mode === "pair" || actor.machine === true) fail("moderation_unavailable");
+  if (peerRole(actor, room.creatorPrincipal) !== "owner") fail("moderation_forbidden");
+  if (targetPeerId === actor.id) fail("self_moderation_forbidden");
+  const target = room.peers.get(targetPeerId);
+  if (!target) fail("peer_not_joined");
+  if (!Number.isSafeInteger(now) || now < 0) fail("invalid_hand_clock");
+  actor.removeActions = (actor.removeActions || []).filter((stamp) => now - stamp < HAND_RATE_WINDOW_MS);
+  if (actor.removeActions.length >= HAND_RATE_LIMIT) fail("moderation_rate_limited");
+  actor.removeActions.push(now);
+  room.updatedAt = now;
+  return true;
+}
+
 export function clearHand(room, actor, targetPeerId, now) {
   if (!room || room.peers.get(actor.id) !== actor) fail("peer_not_joined");
   if (peerRole(actor, room.creatorPrincipal) !== "owner") fail("moderation_forbidden");

@@ -80,15 +80,31 @@ import {
                 @else { Keine lokale Medienbeobachtung }
               </p>
             </div>
-            @if (canClear(item)) {
-              <button type="button" class="button ghost compact" [attr.data-clear-hand]="item.peerId"
-                (click)="moderation.clear(item.peerId)">Hand senken</button>
-            }
+            <div class="participant-actions">
+              @if (canClear(item)) {
+                <button type="button" class="button ghost compact" [attr.data-clear-hand]="item.peerId"
+                  (click)="moderation.clear(item.peerId)">Hand senken</button>
+              }
+              @if (canRemove(item)) {
+                <button type="button" class="button ghost compact" [attr.data-remove-peer]="item.peerId"
+                  (click)="askRemove(item)">Entfernen…</button>
+              }
+            </div>
           </li>
         } @empty {
           <li class="list-empty">{{ session.joined() ? 'Keine Treffer in der aktuellen Filterung.' : 'Noch keinem Raum beigetreten.' }}</li>
         }
       </ul>
+      @if (pendingRemove(); as pending) {
+        <div id="peer-remove-confirm" class="remove-confirm" role="alertdialog" aria-labelledby="peer-remove-heading">
+          <h3 id="peer-remove-heading">{{ pending.name }} entfernen?</h3>
+          <p>Raum {{ session.roomId() }}. Die Person verliert die Membership in dieser Instanz. Capture startet nicht.</p>
+          <div class="inline-actions">
+            <button id="peer-remove-cancel" type="button" class="button ghost" (click)="pendingRemove.set(null)">Abbrechen</button>
+            <button id="peer-remove-confirm-action" type="button" class="button primary" (click)="confirmRemove()">Entfernen</button>
+          </div>
+        </div>
+      }
     </section>
   `,
   styles: [`
@@ -103,12 +119,16 @@ import {
     .hand-chip { border: 1px solid rgba(255, 196, 92, .4); color: var(--amber); }
     .observation[data-kind="local"] { color: #c8f8e8; }
     .observation[data-kind="received"] { color: #d7deea; }
+    .participant-actions { display: grid; gap: .28rem; }
+    .remove-confirm { display: grid; gap: .45rem; border: 1px solid rgba(255, 119, 125, .3); border-radius: .7rem; padding: .7rem; }
+    .remove-confirm h3, .remove-confirm p { margin: 0; }
   `],
 })
 export class RoomParticipantListComponent {
   readonly query = signal("");
   readonly roleFilter = signal<ParticipantRoleFilter>("all");
   readonly handFilter = signal<ParticipantHandFilter>("all");
+  readonly pendingRemove = signal<ParticipantListRow | null>(null);
   readonly rows = computed(() => participantListRows({
     ownPeerId: this.moderation.ownPeerId() || this.session.peerId(),
     ownName: this.session.displayName(),
@@ -139,10 +159,30 @@ export class RoomParticipantListComponent {
   ) {}
 
   canClear(item: ParticipantListRow): boolean {
-    return this.session.mode() !== "pair" && this.moderation.ownRole() === "owner" && item.hand === "raised" && !item.own;
+    return this.canModerate(item) && item.hand === "raised";
+  }
+
+  canRemove(item: ParticipantListRow): boolean {
+    return this.canModerate(item);
+  }
+
+  askRemove(item: ParticipantListRow): void {
+    if (!this.canRemove(item)) return;
+    this.pendingRemove.set(item);
+  }
+
+  confirmRemove(): void {
+    const pending = this.pendingRemove();
+    this.pendingRemove.set(null);
+    if (!pending || !this.canRemove(pending)) return;
+    this.moderation.remove(pending.peerId);
   }
 
   sourceText(sources: readonly string[]): string {
     return sources.map((source) => mediaObservationLabel(source)).join(", ");
+  }
+
+  private canModerate(item: ParticipantListRow): boolean {
+    return this.session.mode() !== "pair" && this.moderation.ownRole() === "owner" && !item.own;
   }
 }

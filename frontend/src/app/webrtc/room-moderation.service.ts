@@ -108,4 +108,9 @@ export class RoomModerationService {
     if (this.ownRole() !== "owner") return;
     this.signaling.send({ type: "hand-clear", targetPeerId });
   }
+
+  remove(targetPeerId: string): void {
+    if (this.ownRole() !== "owner" || targetPeerId === this.ownPeerId()) return;
+    this.signaling.send({ type: "peer-remove", targetPeerId });
+  }
 }

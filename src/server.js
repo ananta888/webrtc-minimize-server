@@ -2049,6 +2049,15 @@ function configureSignaling(
           broadcastModeration(peer.roomId);
           return;
         }
+        if (message.type === "peer-remove") {
+          registry.authorizeRemove(peer, message.targetPeerId);
+          const target = registry.members(peer.roomId).find((member) => member.id === message.targetPeerId);
+          if (target?.socket && target.socket !== socket) {
+            safeSend(target.socket, { type: "error", code: "removed_by_owner" });
+            target.socket.close(1008, "removed_by_owner");
+          }
+          return;
+        }
         if (message.type === "machine-receive-consent") {
           machineReceivePolicy.update(peer, message);
           return;

@@ -16,7 +16,7 @@
     {
       "repository": "webrtc-minimize-server",
       "path": "todos/backlog/todo.bigbluebutton-collaboration-ux.json",
-      "relationship": "Promoviert BBB-UX-001, BBB-UX-002, BBB-UX-003, BBB-UX-007, BBB-UX-008, BBB-UX-009 und BBB-UX-010. Nutzer-/Mehrbrowser-Gates bleiben COL-004."
+      "relationship": "Promoviert BBB-UX-001, BBB-UX-002, BBB-UX-003, BBB-UX-004, BBB-UX-007, BBB-UX-008, BBB-UX-009 und BBB-UX-010. Nutzer-/Mehrbrowser-Gates bleiben COL-004."
     }
   ],
   "milestones": [
@@ -35,7 +35,7 @@
     {
       "id": "COL-M3",
       "title": "Teilnehmerliste und Redereihenfolge",
-      "task_ids": ["COL-005", "COL-006"],
+      "task_ids": ["COL-005", "COL-006", "COL-007"],
       "status": "done"
     },
     {
@@ -95,7 +95,7 @@
       "priority": "P1",
       "risk": "medium",
       "progress_percent": 0,
-      "depends_on": ["COL-003", "COL-006"],
+      "depends_on": ["COL-003", "COL-006", "COL-007"],
       "acceptance_criteria": [
         "Echte Chromium- und Firefox-Identitäten belegen konsistenten Handzustand ohne Capture.",
         "Safari/iOS, physische Tastaturmatrix und 20-Teilnehmer-Churn bleiben Nutzergates und schließen den Track nicht vorab."
@@ -128,16 +128,30 @@
         "Serverrollen, lokale Medienbeobachtung und empfangene Remote-Medien sind visuell getrennt; die Liste startet kein Capture.",
         "Nur der Owner sieht Clear-Aktionen für fremde gehobene Hände; Pair-Räume blenden Queue und Handheben aus."
       ]
+    },
+    {
+      "id": "COL-007",
+      "title": "Owner-Entfernen mit Bestätigung ohne Capture durchsetzen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["COL-002", "COL-006"],
+      "acceptance_criteria": [
+        "Nur der Owner darf ein anderes Mitglied entfernen; Self-Remove, Pair, Maschinen und unbekannte Felder fail-closed.",
+        "Die UI zeigt Ziel, Raum und Wirkung vor dem Absenden; Capture startet nicht.",
+        "Das Ziel verliert die Membership über denselben Leave-Pfad wie ein Disconnect."
+      ]
     }
   ],
-  "critical_path_tasks": ["COL-001", "COL-002", "COL-003", "COL-005", "COL-006", "COL-004"],
+  "critical_path_tasks": ["COL-001", "COL-002", "COL-003", "COL-005", "COL-006", "COL-007", "COL-004"],
   "tasks_status_summary": {
-    "total": 6,
-    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 5 },
-    "progress_percent_done": 83.33,
-    "by_priority": { "P0": 2, "P1": 4, "P2": 0, "P3": 0 },
-    "by_risk": { "low": 0, "medium": 4, "high": 1, "critical": 1 },
-    "critical_path": { "total": 6, "done": 5, "remaining": 1 },
+    "total": 7,
+    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 6 },
+    "progress_percent_done": 85.71,
+    "by_priority": { "P0": 2, "P1": 5, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 4, "high": 2, "critical": 1 },
+    "critical_path": { "total": 7, "done": 6, "remaining": 1 },
     "milestones": { "total": 4, "todo": 1, "in_progress": 0, "blocked": 0, "done": 3 }
   },
   "progress_summary": {
@@ -146,10 +160,11 @@
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 5
+    "done": 6
   },
   "summary_notes": [
     "2026-09-11 Track aus BBB-UX-001/002/007/010 promoviert. Software zuerst, COL-004 Nutzer-/Gerätegates zuletzt. Kein Capture, keine Breakouts, kein Whiteboard.",
-    "2026-09-11 BBB-UX-003/008/009 als COL-005/006 promoviert: FIFO-Queue, Teilnehmerliste und Owner-Clear ohne Capture. COL-004 bleibt das letzte Nutzer-/Gerätegate."
+    "2026-09-11 BBB-UX-003/008/009 als COL-005/006 promoviert: FIFO-Queue, Teilnehmerliste und Owner-Clear ohne Capture. COL-004 bleibt das letzte Nutzer-/Gerätegate.",
+    "2026-09-11 BBB-UX-004 als COL-007: Owner-Entfernen mit Bestätigung, Leave-Pfad, ohne Capture. Mute/Presenter/Undo bleiben Backlog."
   ]
 }

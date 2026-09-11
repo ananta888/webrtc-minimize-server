@@ -77,11 +77,29 @@ test("only the owner may clear another hand and rate limits apply", () => {
   assert.equal(other.hand, "raised");
 });
 
+test("only the owner may remove another peer, never self, pair or machines", () => {
+  const registry = new RoomRegistry();
+  const owner = registry.join("room-mod", {}, "Ada", 1, { principal: "owner" }).peer;
+  const guest = registry.join("room-mod", {}, "Grace", 2, { principal: "guest" }).peer;
+  assert.throws(() => registry.authorizeRemove(guest, owner.id, 11), errorCode("moderation_forbidden"));
+  assert.throws(() => registry.authorizeRemove(owner, owner.id, 12), errorCode("self_moderation_forbidden"));
+  assert.equal(registry.authorizeRemove(owner, guest.id, 13), true);
+  const pair = registry.join("pair-room", {}, "One", 1, { mode: "pair", principal: "one" }).peer;
+  const pairTwo = registry.join("pair-room", {}, "Two", 2, { mode: "pair", principal: "two" }).peer;
+  assert.throws(() => registry.authorizeRemove(pair, pairTwo.id, 3), errorCode("moderation_unavailable"));
+  const bot = registry.join("room-bot", {}, "Bot", 2, { principal: "bot", machine: true, machineReceiveVersion: 1 }).peer;
+  const botTwo = registry.join("room-bot", {}, "Bot2", 3, { principal: "bot2", machine: true, machineReceiveVersion: 1 }).peer;
+  assert.throws(() => registry.authorizeRemove(bot, botTwo.id, 4), errorCode("moderation_unavailable"));
+});
+
 test("hand messages are closed and unknown fields fail", () => {
   assert.deepEqual(parseClientMessage(JSON.stringify({ type: "hand-raise" })), { type: "hand-raise" });
   assert.deepEqual(parseClientMessage(JSON.stringify({ type: "hand-lower" })), { type: "hand-lower" });
   assert.throws(() => parseClientMessage(JSON.stringify({ type: "hand-raise", extra: true })), /unknown_message_field/);
   assert.throws(() => parseClientMessage(JSON.stringify({ type: "hand-clear" })), /invalid_recipient/);
+  const remove = parseClientMessage(JSON.stringify({ type: "peer-remove", targetPeerId: "aaaaaaaaaaaaaaaa" }));
+  assert.equal(remove.targetPeerId, "aaaaaaaaaaaaaaaa");
+  assert.throws(() => parseClientMessage(JSON.stringify({ type: "peer-remove", extra: true })), /unknown_message_field/);
   const clear = parseClientMessage(JSON.stringify({ type: "hand-clear", targetPeerId: "aaaaaaaaaaaaaaaa" }));
   assert.equal(clear.targetPeerId, "aaaaaaaaaaaaaaaa");
   assert.throws(() => parseClientMessage(JSON.stringify({ type: "hand-role", role: "owner" })),
