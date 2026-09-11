@@ -716,12 +716,14 @@
     },
     {
       "id": "TBP-023",
+      "disabled_cdn_adapter_plan": "2026-09-11: Kein CDN-Konto. Fail-closed Capability-Objekt alle Flags false, Origin-Profil bleibt Basis. Keine Providerintegration.",
+      "disabled_cdn_adapter_result": "2026-09-11: disabledBroadcastCdnCapabilities(); Selektor nimmt bei expectedViewers 500 und originHealthy false unavailable, bei 20 Origin ohne CDN-Scale. TBP-023 55 -> 58 partial. Kein Push.",
       "provider_decision_20260911": "Benutzer bestaetigt am2026-09-11: Es gibt noch keinen CDN-Anbieter/kein CDN-Konto. Keine kostenpflichtigen Ressourcen oder Konten anlegen. EigenerOrigin bleibt bestehenderBasispfad; CDN-Adapter/Policy/Contracts koennen vorbereitet werden,produktiveProviderintegration/Purge/Auth/Shielding/Last-/Failovernachweis erstnachAnbieterauswahlundexpliziterFreigabe. KeineOrigin-Kapazitaet alsCDNSkalierung behaupten. TBP023bleibtpartial55,keineAkzeptanzabgeschlossen,Summenunveraendert.",
       "title": "Origin-, CDN- und Standard-HLS-Skalierungsprofile implementieren",
       "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 55,
+      "progress_percent": 58,
       "depends_on": ["TBP-019", "TBP-021", "TBP-022"],
       "acceptance_criteria": [
         "Ein gemessenes Origin-LL-HLS-Profil definiert maximale gleichzeitige Viewer, Requests pro Sekunde, Egress, offene Blocking-Reloads, CPU/RAM und erwartete Latenz pro Hostklasse.",

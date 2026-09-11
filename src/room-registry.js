@@ -43,6 +43,7 @@ export class RoomRegistry {
     const mode = admission.mode || "room";
     const capacity = mode === "pair" ? 2 : this.#maxParticipants;
     if (!new Set(["room", "pair"]).has(mode)) throw new RoomAdmissionError("invalid_room_mode");
+    if (mode === "pair" && admission.machine === true) throw new RoomAdmissionError("machine_pair_denied");
     if (admission.machine === true && admission.machineReceiveVersion !== 1) throw new RoomAdmissionError("machine_client_upgrade_required");
     let room = this.#rooms.get(roomId);
     if (!room) {

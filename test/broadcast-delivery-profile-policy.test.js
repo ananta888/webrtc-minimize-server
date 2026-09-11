@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   CDN_HLS_PROFILE,
   createPublicCdnCachePolicy,
+  disabledBroadcastCdnCapabilities,
   ORIGIN_LLHLS_PROFILE,
   selectBroadcastDeliveryProfile,
 } from "../src/broadcast-delivery-profile-policy.js";
@@ -13,6 +14,21 @@ const cdn = {
   pathAllowed: false, shielding: false, purgeReady: false, cacheKeyVersion: 1,
   maximumViewers: 10_000, healthy: false,
 };
+
+test("disabled CDN capabilities never select a CDN profile or invent origin scale", () => {
+  const disabled = disabledBroadcastCdnCapabilities();
+  assert.equal(disabled.enabled, false);
+  assert.equal(disabled.runtimeVerified, false);
+  assert.equal(disabled.purgeReady, false);
+  assert.throws(() => selectBroadcastDeliveryProfile({
+    visibility: "public", expectedViewers: 500, originHealthy: false, currentProfileId: null, cdn: disabled,
+  }), /unavailable/);
+  const origin = selectBroadcastDeliveryProfile({
+    visibility: "public", expectedViewers: 20, originHealthy: true, currentProfileId: null, cdn: disabled,
+  });
+  assert.equal(origin.profile.delivery, "origin-llhls");
+  assert.notEqual(origin.profile.maximumViewers, 500);
+});
 
 test("measured origin profile admits only its verified local viewer envelope", () => {
   assert.equal(ORIGIN_LLHLS_PROFILE.maximumViewers, 20);

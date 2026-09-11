@@ -279,6 +279,8 @@
     },
     {
       "id": "MDS-08",
+      "pair_machine_deny_plan": "2026-09-11: Pair-Sessions duerfen keine KI-Membership. Registry wirft machine_pair_denied vor Kapazitaet. Admission JWT bleibt pair-invalid. 2h-Soak unangetastet.",
+      "pair_machine_deny_result": "2026-09-11: RoomRegistry.join pair+machine=true -> machine_pair_denied, auch nach menschlichem ersten Peer. 14 Registry/CDN-Tests PASS. Soak/TURN-Serie offen. MDS-08 25 bleibt in_progress. Kein Push.",
 
       "native_tls_proxy_apt_dropin_result": "2026-09-11: CI 34582789238 (002206f) Ananta-Job erneut am Ubuntu-Mirror haengend, diesmal in Playwrights eigenem --with-deps apt-Aufruf; das neue 4-min-Step-Limit hat den Job sichtbar an diesem Schritt beendet (statt 10 min stiller Abbruch). Per-Befehl -o-Optionen erreichen den internen apt-Aufruf nicht; Transfergrenze jetzt als /etc/apt/apt.conf.d/99-webrtc-ci-bounded-transfers (Acquire::Retries 2, http/https Timeout 20 s) in eigenem 1-min-Schritt vor dem ersten apt-Nutzer, mit apt-config dump lokal geparst. Workflow-Contracttest angepasst (Reihenfolge, Inhalt, keine weiteren Step-Limits) 3 PASS, workflows:validate PASS. Alle anderen Jobs des Laufs gruen inkl. beider Projektshards mit rekalibriertem Audio-Gate. Native-Proxy-Serie bleibt bei einer gruenen Probe. MDS-08 bleibt 25 in_progress.",
 

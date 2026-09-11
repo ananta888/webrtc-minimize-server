@@ -103,6 +103,20 @@ test("RoomRegistry imposes no application-level limit on room count", () => {
   assert.equal(registry.participantCount, 0);
 });
 
+test("pair rooms never admit a machine participant", () => {
+  const registry = new RoomRegistry();
+  assert.throws(() => registry.join("pair-alpha", {}, "Ananta (KI)", 1, {
+    mode: "pair", machine: true, machineReceiveVersion: 1, principal: "hub|machine",
+  }), (error) => error instanceof RoomAdmissionError && error.code === "machine_pair_denied");
+  registry.join("pair-alpha", {}, "Ada", 1, {
+    mode: "pair", principal: "issuer|ada", deviceFingerprint: "device-a",
+  });
+  assert.throws(() => registry.join("pair-alpha", {}, "Ananta (KI)", 2, {
+    mode: "pair", machine: true, machineReceiveVersion: 1, principal: "hub|machine",
+  }), (error) => error instanceof RoomAdmissionError && error.code === "machine_pair_denied");
+  assert.equal(registry.participantCount, 1);
+});
+
 test("RoomRegistry isolates pair mode, caps it at two and rejects a duplicate device", () => {
   const registry = new RoomRegistry();
   const first = registry.join("pair-alpha", {}, "Ada", 1, {

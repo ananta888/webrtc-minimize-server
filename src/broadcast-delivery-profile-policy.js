@@ -34,6 +34,15 @@ export const CDN_HLS_PROFILE = Object.freeze({
   privateDelivery: "uncacheable-authorized-proxy",
 });
 
+/** Fail-closed until a provider is selected and origin-authenticated. */
+export function disabledBroadcastCdnCapabilities() {
+  return Object.freeze({
+    enabled: false, runtimeVerified: false, originAuthenticated: false, hostAllowed: false,
+    pathAllowed: false, shielding: false, purgeReady: false, cacheKeyVersion: 1,
+    maximumViewers: 1, healthy: false,
+  });
+}
+
 function validCdn(value) {
   const fields = new Set([
     "enabled", "runtimeVerified", "originAuthenticated", "hostAllowed", "pathAllowed",
