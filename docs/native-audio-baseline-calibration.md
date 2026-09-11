@@ -18,7 +18,8 @@ Vor der ersten Strategieauswahl muss die Referenz jetzt:
 - in beiden Kanälen für beide Töne zwischen 0,225 und 0,275 liegen;
 - mindestens eine Sekunde fortschreitender Medienzeit und Frames derselben
   Ausgabegeneration umfassen;
-- gegenüber dem Fensterbeginn je Ton und Kanal höchstens zwei Prozent driften.
+- gegenüber dem Fensterbeginn je Ton und Kanal höchstens fünf Prozent driften
+  (bis zur unten belegten Jitteranalyse zwei Prozent).
 
 Ein Pegelausfall, größere Drift, Zähler-Rücklauf oder Generationswechsel
 verwirft das laufende Messfenster. Der gesamte Versuch behält sein bisheriges
@@ -156,3 +157,31 @@ Die kleine Frequenzabweichung erklärt diesen verbleibenden Fehler also nicht.
 Die gemeinsame Prüfung bleibt mit zwei Erfolgen und einem Fehler rot.
 Auch der frühere echte Quellenstopp ist durch diesen Nachlauf nicht behoben.
 Produktionsimage, gemeinsame CI und Langzeitabnahme bleiben zusätzliche Gates.
+
+## Belegter Messjitter statt Rampe: Stabilitätsgrenze fünf Prozent
+
+Alle bisher aufgezeichneten Kalibrierungsfehler der Folge Bildschirm zuerst/
+Unverarbeitet zeigen dasselbe Bild: 27, 34, 19 (CI `34574944778`, Job
+Project check 1/2 auf `c882ea3`) und lokal 47 Pegeldrift-Resets, längstes
+Fenster 0,479–0,669 Sekunden, dabei **kein** verfehlter Zielpegel, kein
+Generationswechsel und kein Zählerrücklauf. Sämtliche Amplituden der Fenster
+lagen zwischen 0,2463 und 0,2553, also innerhalb des absoluten Bandes und
+3,5 Prozent Spitze-Spitze um den Mittelwert; das unabhängig dekodierte HLS
+hatte gleichzeitig konstant 0,2494 RMS pro Kanal. Der Encoderausgang ist
+also stabil; die Streuung entsteht in der Viewer-Messung (AAC-Dekodierung
+und 2048-Sample-Analysefenster) und ist damit keine Rampe.
+
+Die Stabilitätsgrenze gegenüber dem Fensterbeginn beträgt deshalb jetzt fünf
+statt zwei Prozent. Eine Rampe innerhalb des absoluten Bandes (0,23 → 0,24 →
+0,25, 8,7 Prozent über eine Sekunde) verwirft das Fenster weiterhin; die
+bestehende Regression dafür bleibt rot bei Rampen. Eine neue deterministische
+Regression mit den aufgezeichneten CI-Amplituden schlägt gegen die alte
+Zwei-Prozent-Grenze fehl und besteht mit der neuen. Das absolute Band
+0,225–0,275, die Einsekunden-Medienzeit, das 20-Sekunden-Limit, alle
+Strategietoleranzen, Consentfristen und der produktive Mixer sind unverändert.
+
+Reale Browserläufe nach der Änderung: Verstärkung/Stumm 66,7 s, Ausgewogen/
+Sprache zuerst 72,6 s und Bildschirm zuerst/Unverarbeitet 81,4 s bestanden
+gemeinsam (221 s), einschließlich Quellenwiderruf, erhaltenem Mikrofon und
+Stop. Das ist ein lokaler Nachweis auf einem Host; der gemeinsame CI-Lauf und
+der reale Kopfhörer-/Lautsprechertest bleiben eigene Gates.

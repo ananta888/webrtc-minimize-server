@@ -84,6 +84,18 @@ for (const [name, sequence] of [
   }
 });
 
+test("baseline wait tolerates decoded-tone jitter inside the band without resetting its window", async () => {
+  // Amplitudes recorded from the failing CI 34574944778 calibration: every
+  // sample inside 0.225..0.275, spread 3.5 % peak-to-peak, no ramp.
+  const levels = [.2466, .2553, .2528, .2508, .2496, .2549, .2463, .2536, .2481, .2524];
+  const sequence = levels.map((level, i) => toneValue(level, 1 + i * .12));
+  let reads = 0;
+  const page = { evaluate: async () => { assert.ok(reads < sequence.length, "bounded fixture reads"); return sequence[reads++]; } };
+  const result = await waitNativeAudioStrategy(page, "unprocessed");
+  assert.equal(reads, 10, "the first read whose span reaches one second completes the window");
+  assert.deepEqual(result.channels, sequence[9].channels);
+});
+
 test("retained audio freshness follows output generations when HLS resets time and frame counters", async () => {
   const baseline = { channels: [[.25, .25], [.25, .25]] };
   const value = (mediaEpoch, time, frames) => ({ channels: [[.25, 0], [.25, 0]], mediaEpoch,

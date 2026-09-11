@@ -88,8 +88,13 @@ const baselineValid = baseline => amplitudes(baseline?.channels) && baseline.cha
 // native-scene-live-fixture generates both oscillators with gain .25. Mere
 // audibility is not a full-level reference: decoder startup can ramp a tone.
 const calibratedLevels = value => value.channels.every(row => row.every(v => v >= .225 && v <= .275));
+// Stability rejects a ramp inside the absolute band, not decoder jitter: the
+// AAC-decoded fixture tones measured 0.2463..0.2553 (3.5 % peak-to-peak) around
+// a constant 0.2494 encoder RMS in CI 34574944778 and locally, so a 2 % bound
+// against the first sample reset the window 19..47 times without a real ramp.
+const STABLE_LEVEL_TOLERANCE = .05;
 const stableLevels = (first, value) => value.channels.every((row, channel) => row.every((v, tone) =>
-  Math.abs(v - first.channels[channel][tone]) <= first.channels[channel][tone] * .02));
+  Math.abs(v - first.channels[channel][tone]) <= first.channels[channel][tone] * STABLE_LEVEL_TOLERANCE));
 
 export function nativeAudioStrategyMatches(value, strategy, baseline = null) {
   if (!Object.hasOwn(targets, strategy) || !playing(value)) return false;
