@@ -1,5 +1,30 @@
 # Bounded private Ananta TLS readiness
 
+## First failing I/O sample (11 September)
+
+The Ananta job of [CI 34576055134](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34576055134)
+at `f465e1d` now includes the expanded reader. Chromium TURN-UDP again failed
+before browser launch after 97 refused connections. The owned PID1 was in `D`
+with seven threads, 4,611 minor and 527 major faults, 50,769,920 read bytes and
+62 read calls. Block-I/O ticks, CPU throttle and OOM counters were zero.
+Both JavaScript entry and network-module markers were present, but not the
+listener marker; the allowlisted wait symbol was unknown (`null`). Firefox
+UDP and both TCP cases passed. The complete CI was still running when this
+sample was recorded.
+
+This establishes actual storage-read activity, not its duration or a causal
+explanation of the blocked startup. It does not justify a warmup, enlarged
+deadline, raw stack inspection, extra capabilities or relaxed media checks.
+The next investigation should isolate the private proxy startup under the
+same time/resource/network limits, rather than merely collect the same
+readiness outcome again. No production TLS failure or repair is inferred.
+
+The previous `c882ea3` run 34574944778 finished failed: alongside the older
+Chromium UDP startup fault, project shard 1 failed the unprocessed calibration
+of the screen-first/unprocessed audio case **before** applying either strategy.
+That shard had 853 passes, one failure and two skips in 493.871 seconds. This
+separate calibration gate remains open; no tolerance was changed here.
+
 ## Blocked PID1 follow-up (11 September)
 
 CI `34573639631` at `17ef2db` finished with all other jobs successful;
