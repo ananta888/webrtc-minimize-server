@@ -81,7 +81,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      MEET_TEST_PROXY_IMAGE: node:22-alpine
+      MEET_TEST_PROXY_IMAGE: webrtc-test-tls-proxy:native-v1
+      MEET_TEST_PROXY_ENGINE: native-v1
       MEET_TEST_STUN_IMAGE: coturn/coturn:4.17.0
     steps:
       - name: Check out repository
@@ -108,7 +109,7 @@ jobs:
         id: prepare-turn-fixture
         run: |
           npm run build
-          docker pull node:22-alpine
+          docker build --tag webrtc-test-tls-proxy:native-v1 test/fixtures/machine-tls-proxy
           docker pull coturn/coturn:4.17.0
       - name: Real Chromium and Firefox dialog over TURN UDP
         env:

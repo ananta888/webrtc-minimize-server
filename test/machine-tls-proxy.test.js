@@ -4,6 +4,32 @@ import { EventEmitter } from "node:events";
 import { runInNewContext } from "node:vm";
 import { privateMachineTlsProxy } from "./helpers/machine-tls-proxy.js";
 
+test("native proxy uses the same owned network and sandbox without a Node startup", () => {
+  for (const limit of [16, 32]) {
+    const f = fixture();
+    const proxy = privateMachineTlsProxy(180, f.run, limit, "direct", 2, undefined, "native-v1");
+    try {
+      proxy.start(32123);
+      const create = f.calls.find(args => args[0] === "create");
+      assert.deepEqual(create.slice(-6), ["--entrypoint=/usr/local/bin/machine-tls-proxy", "sha256:" + "a".repeat(64),
+        "172.30.0.1", "32123", String(limit), "180"]);
+      for (const option of ["--read-only", "--cap-drop=ALL", "--cap-add=NET_BIND_SERVICE", "--memory=128m", "--pids-limit=32", "--cpus=.5", "--security-opt=no-new-privileges"]) {
+        assert.ok(create.includes(option));
+      }
+      assert.ok(!create.some(arg => /--entrypoint=node|--publish|--mount|--network=host/.test(arg)));
+      assert.ok(!create.includes("-p") && !create.includes("-v"));
+    } finally { proxy.close(); }
+  }
+});
+
+test("unknown native proxy profiles fail before any Docker operation", () => {
+  const f = fixture();
+  for (const engine of ["auto", "native", "native-v2", "", false, null]) {
+    assert.throws(() => privateMachineTlsProxy(180, f.run, 16, "direct", 2, undefined, engine), /test_proxy_engine_invalid/);
+  }
+  assert.deepEqual(f.calls, []);
+});
+
 test("generated proxy announces process entry, module loading and listener in order without extra startup work", () => {
   const f = fixture(), proxy = privateMachineTlsProxy(180, f.run);
   try {

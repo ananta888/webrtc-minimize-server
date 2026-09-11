@@ -1,5 +1,62 @@
 # Bounded private Ananta TLS readiness
 
+## Explicit native test-proxy adapter (11 September)
+
+`MEET_TEST_PROXY_ENGINE=native-v1` selects a small statically linked Go
+byte-forwarder in `test/fixtures/machine-tls-proxy/`; the default remains the
+existing Node fixture. Unknown profiles fail before Docker side effects. The
+separate Ananta TURN job builds and selects this native image, then runs the
+**unchanged** Chromium/Firefox UDP and TCP dialog tests. Go unit/vet checks
+are included in the ordinary project gate. This is test infrastructure only.
+
+The observed native executable is 2,150,584 bytes. Its image pins both existing
+Node/Alpine runtime-base and Go-builder digests; compilation has no network,
+CGO or third-party modules. `GOMAXPROCS=1` prevents inheriting the host's full
+CPU parallelism. The image retains existing shell/proc tools for the same
+failure-only reader, but Node is not started as the forwarding process.
+This removes that runtime's startup from this fixture; it does not prove the
+cause of its historical I/O stalls or guarantee cold-cache startup latency.
+
+Unchanged boundaries:
+
+- The exact owned internal Docker network, private IPv4 gateway and one
+  validated target port; listener port 443, no host ports, mounts or DNS.
+- Read-only container, 128 MiB, 0.5 CPU, 32 PIDs, dropped capabilities except
+  `NET_BIND_SERVICE`, and no-new-privileges.
+- Exactly 16 or 32 accepted client sessions; excess clients close promptly
+  and at most eight fixed capacity markers are logged.
+- 120-second traffic-idle timeout, 180–7,380-second process lifetime, and
+  cleanup of both stream directions on disconnect, SIGTERM or expiry.
+- The existing five-second TLS readiness deadline, ephemeral CA, authenticated
+  TURN, actual SFrame decoding, source consent, chat/screen and renewal checks.
+
+The proxy does not parse HTTP, terminate TLS, decode media or receive frame
+keys. Two fixed 32-KiB copy buffers per session provide backpressure rather
+than unbounded queues. Arguments are closed and canonical; public addresses,
+DNS names, IPv6, unknown connection limits and extra arguments are rejected.
+Its fixed entry/network/listener markers use the existing observation shape;
+with this profile, entry/network markers refer to Go startup, not JavaScript.
+Missing or old markers still cannot manufacture readiness.
+
+There is no warmup, cache flush, enlarged readiness budget, fixture retry or
+relaxed media assertion. Both old and native startup can succeed locally; the
+Node TURN job also passed on `f10f295`. The failing snapshot on `f465e1d`
+therefore motivates a smaller owned helper, not a claim of a reproduced or
+permanently fixed kernel failure. The new adapter still requires its own CI
+and common production-gate evidence.
+
+Local verification: 39 Node adapter/workflow/diagnostic/TLS checks passed in
+1.067 seconds. Go unit/race/vet passed, including five final race-enabled
+repetitions in 2.653 seconds; real loopback tests cover binary integrity,
+capacity, idle/lifetime/cancel and unavailable backend. A read observation
+timeout is explicitly not accepted as evidence that the proxy closed a socket.
+The actual final image passed both real browser cases over TCP (36.049 seconds)
+and UDP (35.674 seconds), with 16,000 decrypted PCM samples, chat, own screen,
+three renewals, required active SFrame without transform errors and forced
+relay pairs in each case. These are isolated synthetic-policy tests, not
+productive Hub authorization or a WAN/long-duration gate. No host audio
+settings, production service, Ananta source or serving assets were changed.
+
 ## First failing I/O sample (11 September)
 
 The Ananta job of [CI 34576055134](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34576055134)

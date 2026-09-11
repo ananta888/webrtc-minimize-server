@@ -13,7 +13,9 @@ const transport = value => job.steps.find(step => step.env?.MACHINE_DIALOG_ICE_P
 test("Ananta TURN TCP remains independent of UDP failure without bypassing setup or cancellation", () => {
   assert.ok(prepare);
   assert.match(prepare.run, /npm run build/);
-  assert.match(prepare.run, /docker pull node:22-alpine/);
+  assert.match(prepare.run, /docker build --tag webrtc-test-tls-proxy:native-v1 test\/fixtures\/machine-tls-proxy/);
+  assert.equal(job.env.MEET_TEST_PROXY_ENGINE, "native-v1");
+  assert.equal(job.env.MEET_TEST_PROXY_IMAGE, "webrtc-test-tls-proxy:native-v1");
   assert.match(prepare.run, /docker pull coturn\/coturn:4\.17\.0/);
   assert.equal(prepare.if, undefined);
   assert.equal(transport("turn-udp").if, undefined);

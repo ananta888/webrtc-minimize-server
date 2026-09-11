@@ -8,12 +8,14 @@ import { privateMachineTurn } from "./machine-turn-fixture.js";
 import { observeMachineProxyFailure } from "./machine-proxy-failure-observation.mjs";
 
 export function privateMachineTlsProxy(lifetimeSeconds, run = docker, connectionLimit = 16, icePath = "direct", relayParticipants = 2,
-  inspectFailure = observeMachineProxyFailure) {
+  inspectFailure = observeMachineProxyFailure, engine = process.env.MEET_TEST_PROXY_ENGINE || "node") {
+  if (!["node", "native-v1"].includes(engine)) throw new Error("test_proxy_engine_invalid");
   if (!["direct", "turn-udp", "turn-tcp"].includes(icePath)) throw new Error("test_ice_path_invalid");
   if (![2, 3].includes(relayParticipants)) throw new Error("test_turn_scope_invalid");
   if (!Number.isInteger(lifetimeSeconds) || lifetimeSeconds < 180 || lifetimeSeconds > 7380) throw new Error("test_lifetime_invalid");
   if (![16, 32].includes(connectionLimit)) throw new Error("test_proxy_connection_limit_invalid");
-  const image = run(["image", "inspect", process.env.MEET_TEST_PROXY_IMAGE || "webrtc-ci-local-webrtc:latest", "--format", "{{.Id}}"]);
+  const defaultImage = engine === "native-v1" ? "webrtc-test-tls-proxy:native-v1" : "webrtc-ci-local-webrtc:latest";
+  const image = run(["image", "inspect", process.env.MEET_TEST_PROXY_IMAGE || defaultImage, "--format", "{{.Id}}"]);
   if (!/^sha256:[a-f0-9]{64}$/.test(image)) throw new Error("test_proxy_image_missing");
   const name = "meet-test-tls-" + randomUUID();
   const network = name + "-network";
@@ -67,9 +69,12 @@ export function privateMachineTlsProxy(lifetimeSeconds, run = docker, connection
           server.once('listening',()=>console.log('test_tls_listener_ready'));
           server.maxConnections=${connectionLimit};server.listen(443,'0.0.0.0');setTimeout(()=>process.exit(0),${lifetimeSeconds * 1000})`;
         containerAttempted = true;
+        const command = engine === "native-v1"
+          ? ["--entrypoint=/usr/local/bin/machine-tls-proxy", image, gateway, String(port), String(connectionLimit), String(lifetimeSeconds)]
+          : ["--entrypoint=node", image, "--max-old-space-size=32", "-e", code];
         run(["create", "--name", name, "--network", network, "--ip", originHost,
           "--user=0:0", "--read-only", "--cap-drop=ALL", "--cap-add=NET_BIND_SERVICE", "--security-opt=no-new-privileges",
-          "--memory=128m", "--pids-limit=32", "--cpus=.5", "--entrypoint=node", image, "--max-old-space-size=32", "-e", code]);
+          "--memory=128m", "--pids-limit=32", "--cpus=.5", ...command]);
         run(["start", name]);
         stun.start();
       },
