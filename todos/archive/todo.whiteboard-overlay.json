@@ -5,7 +5,7 @@
   "track": "whiteboard-overlay",
   "purpose": "Flüchtiges, begrenztes Whiteboard über den opaque Data-Overlay, ohne die Control Plane zum Inhaltsserver zu machen.",
   "goal": "Geschlossene Operationen und Overlay-Transport zuerst. Persistenz bleibt default-aus. Nutzer- und Gerätegates zuletzt.",
-  "status": "in_progress",
+  "status": "done",
   "created": "2026-09-11",
   "updated": "2026-09-11",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
@@ -42,7 +42,7 @@
       "id": "WB-M4",
       "title": "Nutzer- und Gerätegates zuletzt",
       "task_ids": ["WB-004"],
-      "status": "todo"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -119,10 +119,10 @@
     {
       "id": "WB-004",
       "title": "Nutzer- und Gerätegates für Whiteboard zuletzt ausführen",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "medium",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["WB-006"],
       "acceptance_criteria": [
         "Chromium- und Firefox-Mehrpeer-Konvergenz wird real geprüft.",
@@ -133,26 +133,26 @@
   "critical_path_tasks": ["WB-001", "WB-002", "WB-003", "WB-005", "WB-006", "WB-004"],
   "tasks_status_summary": {
     "total": 6,
-    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 5 },
-    "progress_percent_done": 83.33,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 6 },
+    "progress_percent_done": 100,
     "by_priority": { "P0": 2, "P1": 4, "P2": 0, "P3": 0 },
-
     "by_risk": { "low": 0, "medium": 2, "high": 2, "critical": 2 },
-    "critical_path": { "total": 6, "done": 5, "remaining": 1 },
-    "milestones": { "total": 4, "todo": 1, "in_progress": 0, "blocked": 0, "done": 3 }
+    "critical_path": { "total": 6, "done": 6, "remaining": 0 },
+    "milestones": { "total": 4, "todo": 0, "in_progress": 0, "blocked": 0, "done": 4 }
   },
   "progress_summary": {
-    "state": "in_progress",
-    "todo_remaining": 1,
+    "state": "done",
+    "todo_remaining": 0,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 5
+    "done": 6
   },
   "summary_notes": [
     "2026-09-11 Track aus BBB-UX-019/020. WB-001 Vertrag geschlossen (Node+Angular Parser). Overlay-Fanout und Canvas folgen. Persistenz bleibt aus. WB-004 Nutzergates zuletzt.",
     "2026-09-11 WB-002 Overlay-Event-Fanout mit Origin=Autor und Membership-Epoch. WB-003 Canvas ohne HTML/Capture; Clear nur Owner über Signaling.",
-    "2026-09-11 WB-005 und WB-006 umgesetzt: Formen (Rechteck, Kreis/Ellipse, Linie), Plaintext und flüchtige Snapshot-Synchronisation (sync-request/sync-response) über Opaque-Data-Overlay. Canvas 2D Rendering ohne DOM/HTML-Injection. WB-004 Nutzergates zuletzt."
+    "2026-09-11 WB-005 und WB-006 umgesetzt: Formen (Rechteck, Kreis/Ellipse, Linie), Plaintext und flüchtige Snapshot-Synchronisation (sync-request/sync-response) über Opaque-Data-Overlay. Canvas 2D Rendering ohne DOM/HTML-Injection. WB-004 Nutzergates zuletzt.",
+    "2026-09-11 WB-004: Nutzer- und Gerätegates durch Live-Abnahme auf https://webrtc.ananta.de erfolgreich verifiziert. Mehrpeer-Konvergenz, Werkzeuge (Formen, Stift, Radierer), Text, Farbpalette, atomares Undo und Late-Join-Synchronisation live bestätigt. Track vollständig abgeschlossen."
   ]
 }
 

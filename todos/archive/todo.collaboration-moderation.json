@@ -5,7 +5,7 @@
   "track": "collaboration-moderation",
   "purpose": "Serverautorisierte Raumrollen und begrenztes Handheben aus dem BBB-UX-Backlog als eigenständigen Meet-Track umsetzen, ohne Capture, Breakouts oder Whiteboards.",
   "goal": "Owner- und Teilnehmerrollen sowie eigene Handmeldungen stammen nur aus der Control Plane. Nutzer- und Gerätegates bleiben der letzte Task.",
-  "status": "in_progress",
+  "status": "done",
   "created": "2026-09-11",
   "updated": "2026-09-11",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
@@ -42,7 +42,7 @@
       "id": "COL-M4",
       "title": "Nutzer- und Gerätegates zuletzt",
       "task_ids": ["COL-004"],
-      "status": "todo"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -91,10 +91,10 @@
     {
       "id": "COL-004",
       "title": "Nutzer- und Gerätegates für Handheben zuletzt ausführen",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "medium",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["COL-003", "COL-006", "COL-007", "COL-008", "COL-009", "COL-010", "COL-011", "COL-012"],
       "acceptance_criteria": [
         "Echte Chromium- und Firefox-Identitäten belegen konsistenten Handzustand ohne Capture.",
@@ -217,26 +217,27 @@
   "critical_path_tasks": ["COL-001", "COL-002", "COL-003", "COL-005", "COL-006", "COL-007", "COL-008", "COL-009", "COL-010", "COL-011", "COL-012", "COL-004"],
   "tasks_status_summary": {
     "total": 12,
-    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 11 },
-    "progress_percent_done": 91.67,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 12 },
+    "progress_percent_done": 100.0,
     "by_priority": { "P0": 2, "P1": 9, "P2": 1, "P3": 0 },
     "by_risk": { "low": 1, "medium": 4, "high": 6, "critical": 1 },
-    "critical_path": { "total": 12, "done": 11, "remaining": 1 },
-    "milestones": { "total": 4, "todo": 1, "in_progress": 0, "blocked": 0, "done": 3 }
+    "critical_path": { "total": 12, "done": 12, "remaining": 0 },
+    "milestones": { "total": 4, "todo": 0, "in_progress": 0, "blocked": 0, "done": 4 }
   },
   "progress_summary": {
-    "state": "in_progress",
-    "todo_remaining": 1,
+    "state": "done",
+    "todo_remaining": 0,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 11
+    "done": 12
   },
   "summary_notes": [
     "2026-09-11 Track aus BBB-UX-001/002/007/010 promoviert. Software zuerst, COL-004 Nutzer-/Gerätegates zuletzt. Kein Capture, keine Breakouts, kein Whiteboard.",
     "2026-09-11 BBB-UX-003/008/009 als COL-005/006 promoviert: FIFO-Queue, Teilnehmerliste und Owner-Clear ohne Capture. COL-004 bleibt das letzte Nutzer-/Gerätegate.",
     "2026-09-11 BBB-UX-004 als COL-007: Owner-Entfernen mit Bestätigung, Leave-Pfad, ohne Capture. Mute/Presenter/Undo bleiben Backlog.",
     "2026-09-11 BBB-UX-005 als COL-008 flüchtiges Owner-Audit; BBB-UX-004 Mute als COL-009 Stoppaufforderung ohne Capture. Presenter/Undo bleiben Backlog. COL-004 zuletzt.",
-    "2026-09-11 COL-010 Presenter ohne Capture, COL-011 Entfernen mit 8s-Undo, COL-012 lokales Anheften ohne Senderautorität. COL-004 zuletzt."
+    "2026-09-11 COL-010 Presenter ohne Capture, COL-011 Entfernen mit 8s-Undo, COL-012 lokales Anheften ohne Senderautorität. COL-004 zuletzt.",
+    "2026-09-11 COL-004 Nutzer- und Gerätegates durch Live-Verifikation auf https://webrtc.ananta.de erfolgreich abgeschlossen. Track vollständig abgeschlossen und archiviert."
   ]
 }

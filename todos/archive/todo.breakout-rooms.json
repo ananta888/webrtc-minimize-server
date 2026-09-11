@@ -5,7 +5,7 @@
   "track": "breakout-rooms",
   "purpose": "Zeitlich begrenzte, strikt isolierte Unterräume mit eigenen Membership- und Security-Epochen, ohne Capture, Cross-Room-Signaling oder Pair-Umdeutung.",
   "goal": "Parent- und Child-Räume bleiben getrennte Memberships. Zuweisung, Raumwechsel und Isolation folgen. Nutzer- und Gerätegates zuletzt.",
-  "status": "in_progress",
+  "status": "done",
   "created": "2026-09-11",
   "updated": "2026-09-11",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
@@ -48,7 +48,7 @@
       "id": "BRK-M5",
       "title": "Nutzer- und Gerätegates zuletzt",
       "task_ids": ["BRK-007"],
-      "status": "todo"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -139,10 +139,10 @@
     {
       "id": "BRK-007",
       "title": "Nutzer- und Gerätegates für Breakouts zuletzt ausführen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["BRK-003", "BRK-004", "BRK-006"],
       "acceptance_criteria": [
         "Mindestens zwei parallele Breakouts beweisen getrennte Membership, DataChannels und Medien.",
@@ -154,20 +154,20 @@
   "critical_path_tasks": ["BRK-001", "BRK-002", "BRK-003", "BRK-004", "BRK-005", "BRK-006", "BRK-007"],
   "tasks_status_summary": {
     "total": 7,
-    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 6 },
-    "progress_percent_done": 85.71,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 7 },
+    "progress_percent_done": 100,
     "by_priority": { "P0": 5, "P1": 2, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 1, "high": 2, "critical": 4 },
-    "critical_path": { "total": 7, "done": 6, "remaining": 1 },
-    "milestones": { "total": 5, "todo": 1, "in_progress": 0, "blocked": 0, "done": 4 }
+    "critical_path": { "total": 7, "done": 7, "remaining": 0 },
+    "milestones": { "total": 5, "todo": 0, "in_progress": 0, "blocked": 0, "done": 5 }
   },
   "progress_summary": {
-    "state": "in_progress",
-    "todo_remaining": 1,
+    "state": "done",
+    "todo_remaining": 0,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 6
+    "done": 7
   },
   "summary_notes": [
     "2026-09-11 Track aus BBB-UX-012 bis BBB-UX-018. BRK-001 Domain: eigene Child-Room-IDs, Epochen, 20er-Cap je konkretem Raum, Join ohne Grant fail-closed. BRK-002 Grants folgen. BRK-007 Nutzergates zuletzt.",
@@ -175,6 +175,7 @@
     "2026-09-11 BRK-003: Keine Parallelmembership, Child-Tickets nur mit Live-Grant, expliziter Wechsel stoppt Medien/Mesh vor Join. Leerer Parent schließt das Set nicht. BRK-007 zuletzt.",
     "2026-09-11 BRK-004: Isolation umgesetzt: Child-gebundene TURN-Credentials, kein automatischer Relay-Consent, Topology und Media-Agents strikt raumgebunden.",
     "2026-09-11 BRK-005: Zuordnungspolitiken umgesetzt: manuell, balanced/random, freiwillige Wahl ohne Rechteausweitung und serverseitige Konfliktauflösung.",
-    "2026-09-11 BRK-006: Serverzeit-Countdown, inhaltsfreier Hilferuf und medienfreie kontrollierte Rückkehr umgesetzt. Nur BRK-007 Nutzergates verbleiben."
+    "2026-09-11 BRK-006: Serverzeit-Countdown, inhaltsfreier Hilferuf und medienfreie kontrollierte Rückkehr umgesetzt. Nur BRK-007 Nutzergates verbleiben.",
+    "2026-09-11 BRK-007: Nutzer- und Gerätegates durch Live-Abnahme auf https://webrtc.ananta.de erfolgreich verifiziert. Raumisolation, Breakout-Zuweisung, Hilferuf und kontrollierte Rückkehr ohne automatische Capture-Reaktivierung live bestätigt. Track vollständig abgeschlossen."
   ]
 }

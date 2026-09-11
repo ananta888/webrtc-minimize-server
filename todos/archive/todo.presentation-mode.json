@@ -5,7 +5,7 @@
   "track": "presentation-mode",
   "purpose": "Bühnenansicht mit Filmstreifen, Fokus, Pin und sauberem Bildschirmfreigabe-Lifecycle ohne automatischen Capture.",
   "goal": "Bühnen- und Filmstreifenlayout, Screen-First-Priorisierung, lokales Pinning und Presenter-Handoff ohne Capture.",
-  "status": "in_progress",
+  "status": "done",
   "created": "2026-09-11",
   "updated": "2026-09-11",
   "status_scale": [
@@ -61,7 +61,7 @@
         "PRS-005",
         "PRS-006"
       ],
-      "status": "in_progress"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -149,10 +149,10 @@
     {
       "id": "PRS-006",
       "title": "Nutzer- und Gerätegates für Präsentationsmodus zuletzt ausführen",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "medium",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": [
         "PRS-002",
         "PRS-004",
@@ -174,13 +174,13 @@
   "tasks_status_summary": {
     "total": 6,
     "by_status": {
-      "todo": 1,
+      "todo": 0,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 5
+      "done": 6
     },
-    "progress_percent_done": 83.33,
+    "progress_percent_done": 100,
     "by_priority": {
       "P0": 2,
       "P1": 4,
@@ -195,15 +195,27 @@
     },
     "critical_path": {
       "total": 5,
-      "done": 4,
-      "remaining": 1
+      "done": 5,
+      "remaining": 0
     },
     "milestones": {
       "total": 3,
       "todo": 0,
-      "in_progress": 1,
+      "in_progress": 0,
       "blocked": 0,
-      "done": 2
+      "done": 3
     }
-  }
+  },
+  "progress_summary": {
+    "state": "done",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 6
+  },
+  "summary_notes": [
+    "2026-09-11 PRS-001 bis PRS-005: Bühnenansicht, Filmstreifen-Layout, Screen-First-Priorisierung, lokales Pinning und Presenter-Handoff ohne Capture implementiert.",
+    "2026-09-11 PRS-006: Nutzer- und Gerätegates durch erfolgreiche Live-Abnahme auf https://webrtc.ananta.de real verifiziert. Bühnen- und Filmstreifenlayout, Pinning und konsistente Mosaik-Rückkehr live bestätigt. Track vollständig abgeschlossen."
+  ]
 }

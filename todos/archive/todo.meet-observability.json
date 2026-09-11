@@ -5,7 +5,7 @@
   "track": "meet-observability",
   "purpose": "Inhaltsfreie Signaling- und TURN-Zähler für das Meet, ohne SDP, Namen, Room-Codes oder Collector-Versprechen.",
   "goal": "Join-, Session-, Rate-Limit- und TURN-Credential-Zähler bleiben prozesslokal und geschlossen. Nutzer- und Gerätegates kommen zuletzt.",
-  "status": "in_progress",
+  "status": "done",
   "created": "2026-09-11",
   "updated": "2026-09-11",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
@@ -30,7 +30,7 @@
       "id": "MEET-OPS-M2",
       "title": "Nutzer- und Gerätegates zuletzt",
       "task_ids": ["MEET-OPS-002"],
-      "status": "todo"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -51,10 +51,10 @@
     {
       "id": "MEET-OPS-002",
       "title": "Collector-, SLO- und Mehrbrowser-Gates zuletzt ausführen",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "medium",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["MEET-OPS-001", "MEET-OPS-003"],
       "acceptance_criteria": [
         "Ein Operator-Export und Error-Budgets entstehen erst nach gemessenen Join-/TURN-Fenstern.",
@@ -79,23 +79,24 @@
   "critical_path_tasks": ["MEET-OPS-001", "MEET-OPS-003", "MEET-OPS-002"],
   "tasks_status_summary": {
     "total": 3,
-    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 2 },
-    "progress_percent_done": 66.67,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 3 },
+    "progress_percent_done": 100.0,
     "by_priority": { "P0": 1, "P1": 2, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 1, "high": 2, "critical": 0 },
-    "critical_path": { "total": 3, "done": 2, "remaining": 1 },
-    "milestones": { "total": 2, "todo": 1, "in_progress": 0, "blocked": 0, "done": 1 }
+    "critical_path": { "total": 3, "done": 3, "remaining": 0 },
+    "milestones": { "total": 2, "todo": 0, "in_progress": 0, "blocked": 0, "done": 2 }
   },
   "progress_summary": {
-    "state": "in_progress",
-    "todo_remaining": 1,
+    "state": "done",
+    "todo_remaining": 0,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 2
+    "done": 3
   },
   "summary_notes": [
     "2026-09-11 PROD-OPS-001 promoviert. Softwarezähler zuerst, Collector/SLO/Safari zuletzt als MEET-OPS-002.",
-    "2026-09-11 MEET-OPS-003: default-aus GET /api/meet/metrics mit derselben Operator-OIDC-Grenze. Collector bleibt MEET-OPS-002."
+    "2026-09-11 MEET-OPS-003: default-aus GET /api/meet/metrics mit derselben Operator-OIDC-Grenze. Collector bleibt MEET-OPS-002.",
+    "2026-09-11 MEET-OPS-002: Live-Gate und Metriken-Verifikation auf https://webrtc.ananta.de erfolgreich abgeschlossen. Track vollständig abgeschlossen und archiviert."
   ]
 }

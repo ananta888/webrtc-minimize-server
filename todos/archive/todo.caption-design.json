@@ -5,7 +5,7 @@
   "track": "caption-design",
   "purpose": "Lokale Vosk-Untertitel visuell, einstellbar und datenschutzgerecht ausbauen, ohne Audio oder Transkripte an den Server zu senden.",
   "goal": "Lokale Darstellungseinstellungen (Position, Schriftgröße, Zeilenanzahl), kontrastreiches Overlay und datenschutzgerechter lokaler Export.",
-  "status": "in_progress",
+  "status": "done",
   "created": "2026-09-11",
   "updated": "2026-09-11",
   "status_scale": [
@@ -59,7 +59,7 @@
       "task_ids": [
         "CAP-004"
       ],
-      "status": "todo"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -112,10 +112,10 @@
     {
       "id": "CAP-004",
       "title": "Nutzer- und Gerätegates für Untertitelgestaltung zuletzt ausführen",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "medium",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": [
         "CAP-002",
         "CAP-003"
@@ -135,13 +135,13 @@
   "tasks_status_summary": {
     "total": 4,
     "by_status": {
-      "todo": 1,
+      "todo": 0,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 3
+      "done": 4
     },
-    "progress_percent_done": 75,
+    "progress_percent_done": 100,
     "by_priority": {
       "P0": 1,
       "P1": 3,
@@ -156,15 +156,27 @@
     },
     "critical_path": {
       "total": 4,
-      "done": 3,
-      "remaining": 1
+      "done": 4,
+      "remaining": 0
     },
     "milestones": {
       "total": 3,
-      "todo": 1,
+      "todo": 0,
       "in_progress": 0,
       "blocked": 0,
-      "done": 2
+      "done": 3
     }
-  }
+  },
+  "progress_summary": {
+    "state": "done",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 4
+  },
+  "summary_notes": [
+    "2026-09-11 CAP-001 bis CAP-003: Lokale Untertiteleinstellungen, responsives Overlay und lokaler Text-Export mit Datenschutzhinweis implementiert.",
+    "2026-09-11 CAP-004: Nutzer- und Gerätegates durch Live-Abnahme auf https://webrtc.ananta.de erfolgreich verifiziert. Styling, responsive Positionierung und lokaler Transkript-Download live bestätigt. Track vollständig abgeschlossen."
+  ]
 }
