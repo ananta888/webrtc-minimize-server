@@ -2879,7 +2879,8 @@ export function createAppServer(options = {}) {
     throw new Error("BROADCAST_GATEWAY_AUTH_ENABLED requires a MediaMTX external auth service");
   }
   const broadcastMetrics = new BroadcastRuntimeMetrics({ runtime: broadcastRuntime, hlsProxy: broadcastHlsProxy,
-    assignments: nativePackagerAssignments, host: { resourceCounts: () => hostResourceCounts() } });
+    assignments: nativePackagerAssignments, sessions: broadcastPlaybackSessions,
+    host: { resourceCounts: () => hostResourceCounts() } });
   const broadcastMetricsHttp = new BroadcastMetricsHttp({ config, metrics: broadcastMetrics, verifier: oidcVerifier });
   const services = {
     nativeCapacityPreviewGuard,

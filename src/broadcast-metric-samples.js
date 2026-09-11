@@ -89,6 +89,27 @@ export function quotaMetricSamples(runtime) {
   });
 }
 
+const WHIP_SESSION_STATES = Object.freeze(["opening", "active", "closing", "failed"]);
+export function whipMetricSamples(runtime) {
+  if (typeof runtime?.whipSessionCounts !== "function") return [];
+  const counts = runtime.whipSessionCounts();
+  if (!exact(counts, WHIP_SESSION_STATES)
+    || WHIP_SESSION_STATES.some((state) => !Number.isSafeInteger(counts[state]) || counts[state] < 0 || counts[state] > 10_000)
+    || Object.values(counts).reduce((sum, count) => sum + count, 0) > 10_000) {
+    throw new Error("invalid_whip_metric_counts");
+  }
+  return WHIP_SESSION_STATES.map((state) => sample("broadcast_whip_sessions", counts[state], { state }));
+}
+
+const VIEWER_CLASSES = Object.freeze(["origin-small", "cdn-medium", "cdn-large"]);
+export function viewerMetricSamples(sessions) {
+  if (sessions == null || typeof sessions.size !== "number") return [];
+  const size = sessions.size;
+  if (!Number.isSafeInteger(size) || size < 0 || size > 10_000) throw new Error("invalid_viewer_metric_counts");
+  const klass = size <= 20 ? "origin-small" : size <= 500 ? "cdn-medium" : "cdn-large";
+  return VIEWER_CLASSES.map((name) => sample("broadcast_viewers", name === klass ? size : 0, { class: name }));
+}
+
 export function hostResourceMetricSamples(host) {
   if (typeof host?.resourceCounts !== "function") return [];
   const counts = host.resourceCounts();

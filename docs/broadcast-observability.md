@@ -52,8 +52,22 @@ leeren die jeweilige Messgruppe, ohne Ausnahmeinhalte zu loggen oder
 Programmzustände zu ändern. Eine ungültige oder zurückspringende Uhr leert den gesamten Cache und setzt bei Rücksprung
 die 15-s-Samplinggrenze neu. Ein Fehler erzeugt keine erfundenen Nullmesswerte.
 Der Programm-Port hält nur neun aktuelle aggregierte Gauges, keine Einzelereignisse oder
-Historie. Die übrigen Katalogmetriken sind damit ausdrücklich noch nicht an
-Medien-, Player- oder Hostmessungen angeschlossen.
+Historie.
+
+`broadcast_whip_sessions` zählt Prozess-WHIP-Ingests nach `opening`/`active`/
+`closing`/`failed`. Native Packager-Writer mit `pkr_`-Holder sind ausgeschlossen.
+Draft- und gestoppte Programme zählen nicht. Das ist keine Publisheridentität
+und kein Nachweis dekodierter Frames.
+
+`broadcast_viewers{class}` spiegelt die aktuelle Cookie-Sitzungszahl des
+Playback-Stores in genau einer Kapazitätsklasse (`origin-small` bis 20,
+`cdn-medium` bis 500, sonst `cdn-large`). Das sind Sitzungen, keine eindeutigen
+Menschen und keine CDN-Last.
+
+Die übrigen Katalogmetriken (Ingest-/Egress-Bitrate, Frames, Encoderzeit,
+Segmente, Playerstart, End-to-glass, Rebuffering, A/V-Sync, Caption-Delay,
+Failover, Error Budget) sind damit ausdrücklich noch nicht an Medien- oder
+Player-Messungen angeschlossen.
 
 ### Angeschlossene HLS-Proxy-Instrumentierung
 

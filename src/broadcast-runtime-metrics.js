@@ -1,5 +1,5 @@
 import { BroadcastMetricRegistry } from "./broadcast-observability.js";
-import { programMetricSamples, hlsMetricSamples, nativeResourceMetricSamples, transitionMetricSamples, quotaMetricSamples, hostResourceMetricSamples } from "./broadcast-metric-samples.js";
+import { programMetricSamples, hlsMetricSamples, nativeResourceMetricSamples, transitionMetricSamples, quotaMetricSamples, hostResourceMetricSamples, whipMetricSamples, viewerMetricSamples } from "./broadcast-metric-samples.js";
 
 const SAMPLE_INTERVAL_MS = 15_000;
 
@@ -11,17 +11,19 @@ export class BroadcastRuntimeMetrics {
   #hlsProxy;
   #assignments;
   #host;
+  #sessions;
   #clock;
   #metrics = new BroadcastMetricRegistry();
   #lastAttempt = null;
   #destroyed = false;
 
-  constructor({ runtime, hlsProxy, assignments, host, clock = Date.now }) {
+  constructor({ runtime, hlsProxy, assignments, host, sessions, clock = Date.now }) {
     if (typeof clock !== "function") throw new Error("invalid_broadcast_metrics_clock");
     this.#runtime = runtime;
     this.#hlsProxy = hlsProxy;
     this.#assignments = assignments;
     this.#host = host;
+    this.#sessions = sessions;
     this.#clock = clock;
   }
 
@@ -43,7 +45,8 @@ export class BroadcastRuntimeMetrics {
       // a valid program sample. Each group is fully validated before insertion.
       for (const [read, source] of [[programMetricSamples, this.#runtime], [hlsMetricSamples, this.#hlsProxy],
         [nativeResourceMetricSamples, this.#assignments], [transitionMetricSamples, this.#runtime],
-        [quotaMetricSamples, this.#runtime], [hostResourceMetricSamples, this.#host]]) {
+        [quotaMetricSamples, this.#runtime], [hostResourceMetricSamples, this.#host],
+        [whipMetricSamples, this.#runtime], [viewerMetricSamples, this.#sessions]]) {
         let samples;
         try { samples = read(source, now); } catch { continue; }
         for (const event of samples) this.#metrics.observe({ ...event, observedAt: now });
@@ -64,5 +67,6 @@ export class BroadcastRuntimeMetrics {
     this.#hlsProxy = null;
     this.#assignments = null;
     this.#host = null;
+    this.#sessions = null;
   }
 }

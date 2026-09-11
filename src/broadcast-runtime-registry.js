@@ -1356,5 +1356,21 @@ export class BroadcastRuntimeRegistry {
     }
     return Object.freeze(counts);
   }
+  // WHIP ingest inventory only: native packager-writers are excluded. Counts
+  // are process-local sessions, not decoded media or unique publishers.
+  whipSessionCounts() {
+    const counts = { opening: 0, active: 0, closing: 0, failed: 0 };
+    for (const record of this.#records.values()) {
+      const machine = record.snapshot.machine;
+      const packager = machine.writerLeases.find((lease) => lease.role === "packager-writer");
+      if (packager && /^pkr_/.test(packager.holderRef || "")) continue;
+      const state = machine.program.state;
+      if (state === "preparing" || state === "awaiting_consent") counts.opening += 1;
+      else if (state === "publishing" || state === "live" || state === "degraded") counts.active += 1;
+      else if (state === "stopping") counts.closing += 1;
+      else if (state === "failed") counts.failed += 1;
+    }
+    return Object.freeze(counts);
+  }
   get challengeCount() { return this.#challenges.size; }
 }

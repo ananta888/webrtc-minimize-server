@@ -4,6 +4,7 @@ import test from "node:test";
 import { BROADCAST_PROGRAM_STATES } from "../src/broadcast-program-model.js";
 import { BroadcastRuntimeRegistry } from "../src/broadcast-runtime-registry.js";
 import { BroadcastRuntimeMetrics } from "../src/broadcast-runtime-metrics.js";
+import { whipMetricSamples, viewerMetricSamples } from "../src/broadcast-metric-samples.js";
 import { createAppServer } from "../src/server.js";
 
 const NOW = 1_800_000_000_000;
@@ -23,6 +24,24 @@ function fixture() {
   });
   return { runtime, owner, member, create };
 }
+
+test("whip and viewer samples stay identity-free and class-bounded", () => {
+  assert.deepEqual(whipMetricSamples({}), []);
+  assert.throws(() => whipMetricSamples({ whipSessionCounts: () => ({ opening: 1 }) }));
+  assert.deepEqual(whipMetricSamples({
+    whipSessionCounts: () => ({ opening: 1, active: 2, closing: 0, failed: 0 }),
+  }).map(s => [s.labels.state, s.value]), [["opening", 1], ["active", 2], ["closing", 0], ["failed", 0]]);
+  assert.deepEqual(viewerMetricSamples({ size: 20 }).map(s => [s.labels.class, s.value]),
+    [["origin-small", 20], ["cdn-medium", 0], ["cdn-large", 0]]);
+  assert.deepEqual(viewerMetricSamples({ size: 21 }).map(s => [s.labels.class, s.value]),
+    [["origin-small", 0], ["cdn-medium", 21], ["cdn-large", 0]]);
+  assert.deepEqual(viewerMetricSamples({ size: 501 }).map(s => [s.labels.class, s.value]),
+    [["origin-small", 0], ["cdn-medium", 0], ["cdn-large", 501]]);
+  assert.throws(() => viewerMetricSamples({ size: 10_001 }));
+  const { runtime, create } = fixture();
+  create();
+  assert.deepEqual(runtime.whipSessionCounts(), { opening: 0, active: 0, closing: 0, failed: 0 });
+});
 
 test("control metrics cover exactly the contract states, without invented delivery profiles", () => {
   const schema = JSON.parse(readFileSync("contracts/broadcast/broadcast-program.v1.schema.json", "utf8"));
@@ -50,8 +69,11 @@ test("real registry create, rejected stop, stop and idempotent stop update anony
   for (const canary of [first, second, "private-owner-canary", "private-room-canary", "private-title-canary", "private-name-canary", "identity.example"]) {
     assert.equal(serialized.includes(canary), false);
   }
-  assert.equal(metrics.snapshot().every(row => row.metric === "broadcast_control_programs"
-    && Object.keys(row.labels).join() === "state"), true);
+  const control = metrics.snapshot().filter(row => row.metric === "broadcast_control_programs");
+  const whip = metrics.snapshot().filter(row => row.metric === "broadcast_whip_sessions");
+  assert.equal(control.every(row => Object.keys(row.labels).join() === "state"), true);
+  assert.deepEqual(Object.fromEntries(whip.map(row => [row.labels.state, row.value])),
+    { opening: 0, active: 0, closing: 0, failed: 0 });
 });
 
 test("sampling is bounded to 15s across both ports and replaces old states with zero", () => {
