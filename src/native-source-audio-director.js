@@ -1,7 +1,7 @@
 import { NativeSourceAudioError, sameNativeAudioContext } from "./native-source-audio-broker.js";
 import { normalizeNativeAudioSelection } from "./native-source-audio.js";
 import { supportsNativeSourceAudioV1, supportsNativeSourceAudioV2, supportsNativeSourceAudioV3 } from "./native-packager-policy.js";
-import { observeNativeDirectorApply } from "./native-director-history.js";
+import { observeNativeDirectorApply, observeNativeDirectorReject } from "./native-director-history.js";
 
 const fail = (code, status = 409) => { throw new NativeSourceAudioError(code, status); };
 const positive = n => Number.isSafeInteger(n) && n > 0;
@@ -62,5 +62,6 @@ export async function directNativeSourceAudio({ identity, ownerPrincipal, progra
     observeNativeDirectorApply(runtime, identity, observedContext, "audio-applied", result.audioRevision, checkedAt);
     return Object.freeze({ ...common, outcome: "applied", appliedAt: result.appliedAt, audioRevision: result.audioRevision });
   }
+  observeNativeDirectorReject(runtime, identity, observedContext, "audio-rejected", checkedAt);
   return Object.freeze({ ...common, outcome: "rejected", observedAt: result.observedAt, reasonCode: result.reasonCode });
 }

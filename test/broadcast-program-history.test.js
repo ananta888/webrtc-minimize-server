@@ -75,7 +75,39 @@ test("v2 action history is closed, bounded and never changes the v1 event contra
     new URL("../contracts/native-packager/program-history-response.v2.schema.json", import.meta.url))));
   assert.equal(validate(response), true, JSON.stringify(validate.errors));
   assert.equal(validate({ ...response, events: [{ ...response.events[0], sourceKind: "camera" }] }), false);
-  assert.equal(schema.response(response), false); assert.equal(history.list(tenant, program, NOW, 3), null);
+  assert.equal(schema.response(response), false); assert.equal(history.list(tenant, program, NOW, 4), null);
+});
+
+test("v3 invitation/rejection history is closed and filtered out of v1/v2 before the visible limit", () => {
+  const history = new BroadcastProgramHistory(); history.observe(null, record(), NOW);
+  const requested = { kind: "source-requested", sourceKind: "screen", reason: "invited", controlRevision: null };
+  const closed = { kind: "source-request-closed", sourceKind: "screen", reason: "declined", controlRevision: null };
+  const rejected = { kind: "scene-rejected", sourceKind: null, reason: null, controlRevision: null };
+  for (let i = 0; i < 40; i++) assert.equal(history.action(record(), i % 2 ? requested : rejected, NOW), true);
+  assert.equal(history.list(tenant, program, NOW).length, 1);
+  assert.equal(history.list(tenant, program, NOW, 2).length, 1, "v2 clients never see v3 kinds");
+  assert.equal(history.list(tenant, program, NOW, 3).length, 32);
+  for (const bad of [{ ...requested, reason: null }, { ...requested, reason: "declined" }, { ...requested, sourceKind: null },
+    { ...requested, controlRevision: 1 }, { ...closed, reason: "invited" }, { ...closed, reason: "expired" }, { ...closed, reason: null },
+    { ...rejected, controlRevision: 2 }, { ...rejected, reason: "SCENE_NOT_APPLIED" }, { ...rejected, sourceKind: "camera" },
+    { ...rejected, kind: "handoff-rejected" }]) {
+    assert.equal(history.action(record(), bad, NOW), false, JSON.stringify(bad));
+  }
+  assert.equal(history.action(record(), { ...requested, reason: "own-source", sourceKind: "microphone" }, NOW), true);
+  for (const reason of ["declined", "cancelled", "invalidated"]) assert.equal(history.action(record(), { ...closed, reason }, NOW), true);
+  assert.equal(history.action(record(), { ...rejected, kind: "audio-rejected" }, NOW), true);
+  const events = history.list(tenant, program, NOW, 3);
+  const response = { version: 3, programId: program, programRevision: 4, programEpoch: 2,
+    complete: false, retentionMs: 900000, observedAt: NOW, expiresAt: NOW + 5000, events };
+  const [v2, v3] = [2, 3].map(v => new Ajv({ strict: true }).compile(JSON.parse(fs.readFileSync(
+    new URL(`../contracts/native-packager/program-history-response.v${v}.schema.json`, import.meta.url)))));
+  assert.equal(v3(response), true, JSON.stringify(v3.errors));
+  assert.equal(v2({ ...response, version: 2 }), false, "v3 kinds are not valid v2 events");
+  assert.equal(v3({ ...response, events: [{ ...events[0], controlRevision: 1 }] }), false);
+  assert.equal(v3({ ...response, events: [{ ...events[1], reason: "own-source" }] }), false);
+  assert.deepEqual(events.slice(0, 5).map(e => [e.kind, e.sourceKind, e.reason]), [["audio-rejected", null, null],
+    ["source-request-closed", "screen", "invalidated"], ["source-request-closed", "screen", "cancelled"],
+    ["source-request-closed", "screen", "declined"], ["source-requested", "microphone", "own-source"]]);
 });
 
 test("query is closed, human/current-device gated, short-lived and bounded by membership rate", () => {
@@ -93,7 +125,11 @@ test("query is closed, human/current-device gated, short-lived and bounded by me
   assert.equal(requestV2({ ...input, requestVersion: 2 }), true);
   assert.equal(normalizeProgramHistoryQuery({ ...input, requestVersion: 2 }).requestVersion, 2);
   assert.equal(requestV2(input), false);
-  for (const bad of [null, [], {}, { ...input, extra: 1 }, { ...input, requestVersion: 3 }, { ...input, deviceFingerprint: "bad" }]) {
+  const requestV3 = new Ajv({ strict: true }).compile(JSON.parse(fs.readFileSync(
+    new URL("../contracts/native-packager/program-history-request.v3.schema.json", import.meta.url))));
+  assert.equal(requestV3({ ...input, requestVersion: 3 }), true); assert.equal(requestV3({ ...input, requestVersion: 2 }), false);
+  assert.equal(normalizeProgramHistoryQuery({ ...input, requestVersion: 3 }).requestVersion, 3);
+  for (const bad of [null, [], {}, { ...input, extra: 1 }, { ...input, requestVersion: 4 }, { ...input, deviceFingerprint: "bad" }]) {
     assert.equal(schema.request(bad), false); assert.throws(() => normalizeProgramHistoryQuery(bad));
   }
   for (const patch of [{ authenticated: false }, { creator: false }, { machine: true }, { principal: "other" }, { deviceFingerprint: "z".repeat(43) }]) {

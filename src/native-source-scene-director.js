@@ -1,6 +1,6 @@
 import { NativeSourceSceneError, sameNativeSceneContext } from "./native-source-scene-broker.js";
 import { supportsNativeSourceSceneV1, supportsNativeSourceSceneV2 } from "./native-packager-policy.js";
-import { observeNativeDirectorApply } from "./native-director-history.js";
+import { observeNativeDirectorApply, observeNativeDirectorReject } from "./native-director-history.js";
 
 const fail = (code, status = 409) => { throw new NativeSourceSceneError(code, status); };
 const positive = n => Number.isSafeInteger(n) && n > 0;
@@ -80,5 +80,6 @@ export async function directNativeSourceScene({ identity, ownerPrincipal, progra
     observeNativeDirectorApply(runtime, identity, observedContext, "scene-applied", result.sceneRevision, checkedAt);
     return Object.freeze({ ...common, outcome: "applied", appliedAt: result.appliedAt, sceneRevision: result.sceneRevision });
   }
+  observeNativeDirectorReject(runtime, identity, observedContext, "scene-rejected", checkedAt);
   return Object.freeze({ ...common, outcome: "rejected", observedAt: result.observedAt, reasonCode: result.reasonCode });
 }

@@ -3,7 +3,14 @@ import { BROADCAST_PROGRAM_STATES } from "./broadcast-program-model.js";
 const MAX_EVENTS = 256, MAX_VISIBLE = 32, RETENTION_MS = 15 * 60 * 1000;
 const kinds = new Set(["registered", "state-changed", "standby-changed", "handoff-begun", "handoff-assigned", "handoff-stopped"]);
 const actions = new Set(["source-consented", "source-revoked", "scene-applied", "audio-applied"]);
+// v3: invitations and agent-rejected commands. Expiry of an unanswered invitation is
+// not journaled: the invitation record outlives its consent unchanged until TTL.
+const requests = new Set(["source-requested", "source-request-closed", "scene-rejected", "audio-rejected"]);
 const reasons = new Set(["user-revoked", "program-owner-removed", "expired", "lease-lost", "destroyed"]);
+const requestReasons = Object.freeze({ "source-requested": new Set(["own-source", "invited"]),
+  "source-request-closed": new Set(["declined", "cancelled", "invalidated"]) });
+const SOURCE_KINDS = ["camera", "microphone", "screen", "screen-audio"];
+const visible = Object.freeze({ 1: kinds, 2: new Set([...kinds, ...actions]), 3: new Set([...kinds, ...actions, ...requests]) });
 const positive = n => Number.isSafeInteger(n) && n > 0;
 function projection(record) {
   const machine = record?.snapshot?.machine, p = machine?.program, scope = machine?.scope;
@@ -50,11 +57,13 @@ export class BroadcastProgramHistory {
     if (!p || !Number.isSafeInteger(p.standbyCount) || p.standbyCount < 0 || p.standbyCount > 2
       || !event || Object.keys(event).length !== 4
       || Object.keys(event).some(k => !["kind", "sourceKind", "reason", "controlRevision"].includes(k))
-      || !actions.has(event.kind)) return false;
+      || !actions.has(event.kind) && !requests.has(event.kind)) return false;
     const source = event.kind.startsWith("source-");
-    if (source ? !["camera", "microphone", "screen", "screen-audio"].includes(event.sourceKind)
-      || event.controlRevision !== null || (event.kind === "source-revoked" ? !reasons.has(event.reason) : event.reason !== null)
-      : event.sourceKind !== null || event.reason !== null || !positive(event.controlRevision)) return false;
+    if (source ? !SOURCE_KINDS.includes(event.sourceKind) || event.controlRevision !== null
+      || (event.kind === "source-revoked" ? !reasons.has(event.reason)
+        : event.kind in requestReasons ? !requestReasons[event.kind].has(event.reason) : event.reason !== null)
+      : event.sourceKind !== null || event.reason !== null
+        || (event.kind.endsWith("-rejected") ? event.controlRevision !== null : !positive(event.controlRevision))) return false;
     this.#events.push(Object.freeze({ key: p.key, ...event, occurredAt: now, programRevision: p.programRevision,
       programEpoch: p.programEpoch, state: p.state, standbyCount: p.standbyCount }));
     if (this.#events.length > MAX_EVENTS) this.#events.splice(0, this.#events.length - MAX_EVENTS);
@@ -62,9 +71,9 @@ export class BroadcastProgramHistory {
   }
   list(tenantId, programId, now, version = 1) {
     if (!this.#time(now)) return null;
-    if (![1, 2].includes(version)) return null;
+    if (!Object.hasOwn(visible, version)) return null;
     const key = `${tenantId}\0${programId}`;
-    return Object.freeze(this.#events.filter(e => e.key === key && (version === 2 || kinds.has(e.kind))).slice(-MAX_VISIBLE).reverse()
+    return Object.freeze(this.#events.filter(e => e.key === key && visible[version].has(e.kind)).slice(-MAX_VISIBLE).reverse()
       .map(({ key: _key, ...event }) => Object.freeze(version === 1 ? event
         : { sourceKind: null, reason: null, controlRevision: null, ...event })));
   }

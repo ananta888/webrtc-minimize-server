@@ -2834,6 +2834,7 @@ export function createAppServer(options = {}) {
   const broadcastSourceRequests = broadcastRuntime ? new BroadcastSourceRequests({
     members: roomId => registry.members(roomId),
     program: (...args) => broadcastRuntime.nativeSourceRequestContext(...args),
+    observe: (...args) => broadcastRuntime.observeProgramAction(...args),
   }) : null;
   const mediaMtxExternalAuthService = options.mediaMtxExternalAuthService
     || (broadcastGrantAuthority && config.broadcastGatewayAuthEnabled

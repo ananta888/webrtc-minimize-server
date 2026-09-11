@@ -50,9 +50,11 @@ for (const kind of ["scene", "audio"]) for (const mode of ["applied", "query", "
       const result = (kind === "scene" ? directNativeSourceScene : directNativeSourceAudio)(args);
       if (["stale", "after-ack", "invalid"].includes(mode)) await assert.rejects(result);
       else assert.equal((await result).outcome, mode === "rejected" ? "rejected" : mode === "query" ? "observed" : "applied");
-      if (mode !== "applied") assert.deepEqual(events, []);
-      else assert.deepEqual(events, [[{ tenantId: broadcastTenantRef(identity.issuer), ownerSubjectRef: broadcastSubjectRef(identity),
-        roomId: member.roomId, programId, programEpoch: 2 }, { kind: `${kind}-applied`, sourceKind: null, reason: null, controlRevision: 2 }, now]]);
+      const scope = { tenantId: broadcastTenantRef(identity.issuer), ownerSubjectRef: broadcastSubjectRef(identity),
+        roomId: member.roomId, programId, programEpoch: 2 };
+      if (mode === "applied") assert.deepEqual(events, [[scope, { kind: `${kind}-applied`, sourceKind: null, reason: null, controlRevision: 2 }, now]]);
+      else if (mode === "rejected") assert.deepEqual(events, [[scope, { kind: `${kind}-rejected`, sourceKind: null, reason: null, controlRevision: null }, now]]);
+      else assert.deepEqual(events, []);
     } finally { broker.destroy(); }
   });
 }

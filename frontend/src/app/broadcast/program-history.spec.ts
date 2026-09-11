@@ -3,7 +3,7 @@ import { parseProgramHistory, type ProgramHistory } from "./program-history";
 import { ProgramHistoryController, type ProgramHistoryView } from "./program-history-controller";
 import { requestProgramHistory } from "./program-history-http";
 const program = { programId: "prg_aaaaaaaaaaaaaaaa", programRevision: 4, programEpoch: 2 };
-const value = (): ProgramHistory => ({ version: 2, ...program, observedAt: 1800000000000, expiresAt: 1800000005000,
+const value = (): ProgramHistory => ({ version: 3, ...program, observedAt: 1800000000000, expiresAt: 1800000005000,
   complete: false, retentionMs: 900000, events: [{ kind: "state-changed", state: "live", programRevision: 4,
     programEpoch: 2, occurredAt: 1799999999000, standbyCount: 0, sourceKind: null, reason: null, controlRevision: null }] });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -16,7 +16,7 @@ it("strictly bounds and clones history, allowing newer read-only snapshots after
     expect(() => parseProgramHistory(bad, program)).toThrow();
     bad[field] = null; expect(() => parseProgramHistory(bad, program)).toThrow();
   }
-  for (const patch of [{ token: "secret" }, { complete: true }, { version: 1 }, { retentionMs: 900001 },
+  for (const patch of [{ token: "secret" }, { complete: true }, { version: 2 }, { retentionMs: 900001 },
     { programId: "prg_bbbbbbbbbbbbbbbb" }, { programRevision: 3 }, { programEpoch: 1 }, { observedAt: NaN },
     { expiresAt: good.observedAt }, { expiresAt: good.expiresAt + 1 }, { events: Array(33).fill(good.events[0]) }]) {
     expect(() => parseProgramHistory({ ...good, ...patch }, program)).toThrow();
@@ -44,14 +44,25 @@ it("v2 action details cannot mix consent reasons, control revisions or unknown s
     { kind: "source-revoked", sourceKind: "camera", reason: "program-owner-removed", controlRevision: null },
     { kind: "scene-applied", sourceKind: null, reason: null, controlRevision: 2 },
     { kind: "audio-applied", sourceKind: null, reason: null, controlRevision: 3 },
+    { kind: "source-requested", sourceKind: "screen", reason: "invited", controlRevision: null },
+    { kind: "source-requested", sourceKind: "microphone", reason: "own-source", controlRevision: null },
+    { kind: "source-request-closed", sourceKind: "camera", reason: "declined", controlRevision: null },
+    { kind: "source-request-closed", sourceKind: "camera", reason: "invalidated", controlRevision: null },
+    { kind: "scene-rejected", sourceKind: null, reason: null, controlRevision: null },
+    { kind: "audio-rejected", sourceKind: null, reason: null, controlRevision: null },
   ]) {
     const good = { ...base, events: [{ ...row, ...patch }] };
     expect(parseProgramHistory(good, program).events[0]).toEqual(good.events[0]);
-    for (const bad of [{ sourceKind: "private-source" }, { reason: "unknown" }, { controlRevision: 0 }, { controlRevision: 1.5 }]) {
+    for (const bad of [{ sourceKind: "private-source" }, { reason: "unknown" }, { controlRevision: 0 }, { controlRevision: 1.5 },
+      ...(patch.controlRevision === null ? [{ controlRevision: 4 }] : []), ...(patch.reason ? [{ reason: null }] : [])]) {
       expect(() => parseProgramHistory({ ...base, events: [{ ...row, ...patch, ...bad }] }, program)).toThrow();
     }
   }
   expect(() => parseProgramHistory({ ...base, events: [{ ...row, reason: "expired" }] }, program)).toThrow();
+  for (const [kind, reason] of [["source-requested", "declined"], ["source-request-closed", "invited"], ["source-request-closed", "expired"],
+    ["source-revoked", "declined"], ["source-consented", "own-source"], ["scene-rejected", "SCENE_NOT_APPLIED"]]) {
+    expect(() => parseProgramHistory({ ...base, events: [{ ...row, kind, sourceKind: kind.startsWith("source-") ? "camera" : null, reason }] }, program)).toThrow();
+  }
 });
 it("has no automatic query and counts freshness from request start, not response receipt", async () => {
   const f = fixture(); f.controller.tick(); expect(f.query).not.toHaveBeenCalled();
@@ -93,7 +104,7 @@ it("HTTP is bounded, read-only, authenticated without URL tokens and abortable b
   const [url, options] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
   expect(url).toBe(`/api/broadcasts/${program.programId}/native-program-history`);
   expect(options).toMatchObject({ method: "POST", cache: "no-store", redirect: "error", credentials: "same-origin" });
-  expect(JSON.parse(options.body as string)).toEqual({ requestVersion: 2, deviceFingerprint: "a".repeat(43) });
+  expect(JSON.parse(options.body as string)).toEqual({ requestVersion: 3, deviceFingerprint: "a".repeat(43) });
   expect(readJson).toHaveBeenCalledWith(expect.any(Response), "invalid_program_history_response", 16384);
   abort.abort(); await expect(requestProgramHistory(program, abort.signal, ports)).rejects.toThrow(); expect(fetcher).toHaveBeenCalledTimes(1);
   const late = new AbortController(); readJson.mockImplementationOnce(async () => { late.abort(); return value(); });

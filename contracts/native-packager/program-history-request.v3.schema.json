@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/program-history-request.v3.schema.json",
+  "title": "Native program history request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "requestVersion",
+    "deviceFingerprint"
+  ],
+  "properties": {
+    "requestVersion": {
+      "const": 3
+    },
+    "deviceFingerprint": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    }
+  }
+}

@@ -91,7 +91,7 @@ function fixture(start = 1800000000000, sourceProgram = false, liveClock = null)
   const assignment = installAssignment();
   runtime.markNativeOutputReady(prepared.admission.resourceRef, packagerId, prepared.lease.fencingRevision, now);
   const requests = new BroadcastSourceRequests({ members: roomId => rooms.members(roomId),
-    program: (...args) => runtime.nativeSourceRequestContext(...args), clock });
+    program: (...args) => runtime.nativeSourceRequestContext(...args), clock, observe: (...args) => runtime.observeProgramAction(...args) });
   const invite = sourceKind => {
     const control = runtime.nativeControl(ownerIdentity, owner, programId);
     return requests.execute(ownerIdentity, { requestVersion: 1, action: "create", trigger: "user-action", roomId: owner.roomId,
@@ -824,7 +824,15 @@ test("program history HTTP requires actual signed owner identity and current dev
   f.grants.revoke(f.identity, f.input.deviceFingerprint, consent.consentId);
   const revoked = await (await post({ ...input, requestVersion: 2 })).json();
   assert.equal(validateModern(revoked), true); assert.equal(revoked.events[0].reason, "user-revoked");
-  for (const patch of [{ extra: true }, { requestVersion: 3 }, { deviceFingerprint: "wrong" }]) {
+  const latest = await (await post({ ...input, requestVersion: 3 })).json();
+  const validateLatest = new Ajv({ strict: true }).compile(JSON.parse(await fs.readFile(
+    new URL("../contracts/native-packager/program-history-response.v3.schema.json", import.meta.url), "utf8")));
+  assert.equal(validateLatest(latest), true, JSON.stringify(validateLatest.errors)); assert.equal(latest.version, 3);
+  assert.deepEqual(latest.events.map(e => e.kind).filter(k => k.startsWith("source-")), ["source-revoked", "source-consented", "source-requested"]);
+  const invited = latest.events.find(e => e.kind === "source-requested");
+  assert.equal(invited.reason, "invited"); assert.equal(invited.sourceKind, "camera"); assert.equal(invited.controlRevision, null);
+  assert.equal(revoked.events.some(e => e.kind === "source-requested"), false, "v2 responses filter invitation events");
+  for (const patch of [{ extra: true }, { requestVersion: 4 }, { deviceFingerprint: "wrong" }]) {
     assert.equal((await post({ ...input, ...patch })).status, 400);
   }
   assert.equal((await post({ ...input, deviceFingerprint: "z".repeat(43) })).status, 403);

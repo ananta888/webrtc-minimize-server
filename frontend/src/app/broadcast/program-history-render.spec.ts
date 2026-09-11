@@ -11,7 +11,7 @@ it("renders actual Angular controls with focus, explicit load, handoff distincti
   const program = { programId: "prg_aaaaaaaaaaaaaaaa", programEpoch: 2, programRevision: 4 };
   const session = signal<string | null>("session"); let now = 10; vi.spyOn(performance, "now").mockImplementation(() => now);
   const programs = { historyContext: () => session() ? { key: session(), program } : null };
-  const api = { programHistory: vi.fn(async () => ({ version: 2, ...program, observedAt: 1800000000000, expiresAt: 1800000005000,
+  const api = { programHistory: vi.fn(async () => ({ version: 3, ...program, observedAt: 1800000000000, expiresAt: 1800000005000,
     complete: false, retentionMs: 900000, events: [{ kind: "handoff-assigned", state: "preparing", programEpoch: 2,
       programRevision: 4, occurredAt: 1799999999000, standbyCount: 0, sourceKind: null, reason: null, controlRevision: null }] })) };
   class Rendered extends ProgramHistoryComponent { constructor() { super(programs as never, api as never); } }
@@ -29,6 +29,13 @@ it("renders actual Angular controls with focus, explicit load, handoff distincti
     [{ kind: "source-revoked", sourceKind: "microphone", reason: "user-revoked" }, "Mikrofon: Freigabe widerrufen – durch Publisher"],
     [{ kind: "scene-applied", controlRevision: 7 }, "Szenenrevision 7"],
     [{ kind: "audio-applied", controlRevision: 8 }, "Audiorevision 8"],
+    [{ kind: "source-requested", sourceKind: "camera", reason: "invited" }, "Kamera: Teilnehmer eingeladen (noch keine Zustimmung)"],
+    [{ kind: "source-requested", sourceKind: "screen", reason: "own-source" }, "Bildschirm: eigene Quelle angefragt"],
+    [{ kind: "source-request-closed", sourceKind: "screen-audio", reason: "declined" }, "Bildschirmton: Einladung vom Teilnehmer abgelehnt"],
+    [{ kind: "source-request-closed", sourceKind: "camera", reason: "cancelled" }, "Einladung vom Sendungsinhaber zurückgezogen"],
+    [{ kind: "source-request-closed", sourceKind: "camera", reason: "invalidated" }, "hinfällig"],
+    [{ kind: "scene-rejected" }, "Layoutänderung vom Agenten abgewiesen"],
+    [{ kind: "audio-rejected" }, "Audioänderung vom Agenten abgewiesen"],
   ] as const) expect(fixture.componentInstance.eventText({ ...base, ...patch })).toContain(expected);
   expect(root.textContent).toContain("kein vollständiges oder dauerhaftes Audit");
   now = 5010; fixture.componentInstance.controller.tick(); await fixture.whenStable();

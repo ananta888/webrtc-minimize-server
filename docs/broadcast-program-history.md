@@ -25,9 +25,26 @@ Output-Ready-Pfad setzt den Zustand auf `live`; auch das beweist keinen Empfang
 bei einem Zuschauer. Standbys erhalten durch Beobachtung oder Vormerkung keine
 Medienschlüssel. Das Journal autorisiert keine Aktion und startet keinen Failover.
 
+Der additive v3-Vertrag ergänzt Einladungen und abgewiesene Regiebefehle:
+`source-requested` (Quellenart, Grund `own-source` oder `invited`) entsteht erst
+nach Kontext-, Ziel- und Quotenprüfung mit gespeicherter Einladung;
+`source-request-closed` (Grund `declined`, `cancelled` oder `invalidated`) nach
+dem tatsächlichen Zustandswechsel der Einladung, Invalidierung in der bestehenden
+Aktualitätsprüfung bei Programm-, Writer- oder Mitgliedschaftswechsel.
+`scene-rejected`/`audio-rejected` entstehen an derselben Stelle wie die
+bestätigten Änderungen, also erst nach der abschließenden Autoritäts- und
+Versionsprüfung des Direktors; der feste Ablehnungscode ist durch den Typ
+bestimmt und wird nicht gesondert übertragen. Abgewiesene, gedrosselte oder
+nicht autorisierte Anfragen, idempotente Wiederholungen und reine Abfragen
+erzeugen keine Einträge. Eine unbeantwortet abgelaufene Einladung wird bewusst
+nicht journaliert: Der Einladungsdatensatz bleibt nach erteilter Zustimmung bis
+zu seinem TTL unverändert bestehen, ein „abgelaufen“ nach Zustimmung wäre
+irreführend. Der v2-Vertrag erhält diese Typen nicht.
+
 Die Anzeige ist ausdrücklich **kein vollständiges Audit**: einzelne Quellen
-werden nicht identifizierbar aufgezeichnet, Quellenanfragen/Ablehnungen und
-fehlgeschlagene Steuerbefehle fehlen weiterhin. Die bestehenden Autorisierungs-
+und Einladungen werden nicht identifizierbar aufgezeichnet, Teilnehmer,
+Anfragekennungen und Fehlerursachen fehlen; der Verlauf ist flüchtig und
+prozesslokal. Die bestehenden Autorisierungs-
 und Widerrufspfade bleiben unverändert. Beobachterfehler dürfen eine bereits
 getroffene Sicherheitsentscheidung weder zurücknehmen noch deren Wirkung
 verhindern. Ereignisse einer überholten Programmepoche werden nicht nachträglich
@@ -36,9 +53,9 @@ als aktuelle Aktion eingeordnet. Das Journal bleibt best-effort und `complete:fa
 ## Zugriff und Aufbewahrung
 
 `POST /api/broadcasts/:programId/native-program-history` akzeptiert ausschließlich
-die geschlossenen v1-/v2-Verträge aus `contracts/native-packager/`. Der Browser
-fordert ausdrücklich v2 an; ein v1-Request erhält unverändert nur die bisherigen
-Ereignistypen und Felder, gefiltert **vor** der 32er-Grenze. Er benötigt
+die geschlossenen v1-/v2-/v3-Verträge aus `contracts/native-packager/`. Der Browser
+fordert ausdrücklich v3 an; ein v1-/v2-Request erhält unverändert nur die jeweils
+bekannten Ereignistypen und Felder, gefiltert **vor** der 32er-Grenze. Er benötigt
 verifiziertes menschliches OIDC, aktuelle Creator-Membership und die exakte
 ursprüngliche Publisher-Peer-/Geräte-/Tenant-/Owner-Bindung. Ein Raumcode,
 Agentenstatus oder gleicher Kontoname allein genügt nicht. Auch nach Stop wird
@@ -59,7 +76,8 @@ keine harte Echtzeit-Speicherlöschungszusage). Andere Programme können ältere
 Einträge verdrängen; es werden weder fremde Zähler noch globale Sequenznummern
 ausgegeben. Einträge enthalten nur Ereignistyp, Zustand, Revision, Epoche,
 Zeitpunkt und Standby-Anzahl; v2 zusätzlich nur Quellenart, festen Widerrufsgrund
-oder Audio-/Szenenrevision, ansonsten `null`. Keine Namen, Medien, Untertiteltexte, Tokens,
+oder Audio-/Szenenrevision, v3 zusätzlich feste Einladungs-/Schließgründe,
+ansonsten `null`. Keine Namen, Medien, Untertiteltexte, Tokens,
 Quellen- oder Agenten-IDs. Neustart/Close löscht alles; ein Uhrenrücksprung leert
 das Journal und lässt es bis zum bisherigen Zeitstand nicht verfügbar sein.
 

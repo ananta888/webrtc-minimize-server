@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { oidcPrincipal } from "./broadcast-identifiers.js";
+import { broadcastSubjectRef, broadcastTenantRef, oidcPrincipal } from "./broadcast-identifiers.js";
 
 const COMMON = ["requestVersion", "action", "roomId", "deviceFingerprint"];
 const ACTIONS = Object.freeze({
@@ -47,10 +47,21 @@ export class BroadcastSourceRequests {
   #program;
   #clock;
   #id;
+  #observe;
   #closed = false;
-  constructor({ members, program, clock = Date.now, idFactory = () => `bsr_${crypto.randomBytes(18).toString("base64url")}` }) {
-    if ([members, program, clock, idFactory].some(fn => typeof fn !== "function")) fail("invalid_broadcast_source_request_configuration", 500);
-    this.#members = members; this.#program = program; this.#clock = clock; this.#id = idFactory;
+  constructor({ members, program, clock = Date.now, idFactory = () => `bsr_${crypto.randomBytes(18).toString("base64url")}`, observe = () => {} }) {
+    if ([members, program, clock, idFactory, observe].some(fn => typeof fn !== "function")) fail("invalid_broadcast_source_request_configuration", 500);
+    this.#members = members; this.#program = program; this.#clock = clock; this.#id = idFactory; this.#observe = observe;
+  }
+
+  // Post-commit journal metadata only: the owner scope and the invitation's source
+  // kind, never peer/request identifiers. Observer failure cannot change a result.
+  #journal(record, kind, reason, now) {
+    try {
+      this.#observe(Object.freeze({ tenantId: broadcastTenantRef(record.identity.issuer), ownerSubjectRef: broadcastSubjectRef(record.identity),
+        roomId: record.roomId, programId: record.programId, programEpoch: record.programEpoch }),
+      Object.freeze({ kind, sourceKind: record.sourceKind, reason, controlRevision: null }), now);
+    } catch { /* Advisory only. */ }
   }
 
   execute(identity, raw) {
@@ -73,7 +84,7 @@ export class BroadcastSourceRequests {
     }
     const state = input.action === "decline" ? "declined" : "cancelled";
     if (record.state !== "pending" && record.state !== state) fail("stale_broadcast_source_request", 409);
-    record.state = state;
+    if (record.state !== state) { record.state = state; this.#journal(record, "source-request-closed", state, now); }
     return this.#response([record]);
   }
 
@@ -104,6 +115,7 @@ export class BroadcastSourceRequests {
       sourceKind: input.sourceKind, state: "pending", createdAt: now, expiresAt: now + TTL,
       owner: binding(actor), target: binding(target), identity: Object.freeze({ issuer: identity.issuer, subject: identity.subject }) };
     this.#records.set(requestId, record);
+    this.#journal(record, "source-requested", own ? "own-source" : "invited", now);
     return this.#response([record]);
   }
 
@@ -131,7 +143,7 @@ export class BroadcastSourceRequests {
         if (now < record.createdAt || !owner || !members.some(peer => matches(peer, record.target))) throw new Error();
         const current = this.#program(record.identity, owner, record.programId, now);
         if (["programRevision", "programEpoch", "packagerRef", "fencingRevision"].some(key => current[key] !== record[key])) throw new Error();
-      } catch { record.state = "invalidated"; }
+      } catch { record.state = "invalidated"; this.#journal(record, "source-request-closed", "invalidated", now); }
     }
   }
 

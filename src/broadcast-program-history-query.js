@@ -3,7 +3,7 @@ import { BroadcastPlaybackSessionError } from "./broadcast-playback-session-stor
 const fail = (code, status) => { throw new BroadcastPlaybackSessionError(code, status); };
 export function normalizeProgramHistoryQuery(value) {
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length !== 2
-    || Object.keys(value).some(k => !["requestVersion", "deviceFingerprint"].includes(k)) || ![1, 2].includes(value.requestVersion)
+    || Object.keys(value).some(k => !["requestVersion", "deviceFingerprint"].includes(k)) || ![1, 2, 3].includes(value.requestVersion)
     || typeof value.deviceFingerprint !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(value.deviceFingerprint)) {
     fail("invalid_program_history_request", 400);
   }

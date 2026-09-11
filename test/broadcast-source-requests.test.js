@@ -7,6 +7,7 @@ import { SignJWT, createLocalJWKSet, exportJWK } from "jose";
 import { chromium } from "playwright";
 import { machineFixtureAssets } from "./helpers/machine-fixture-assets.mjs";
 import { BroadcastSourceRequests } from "../src/broadcast-source-requests.js";
+import { broadcastSubjectRef, broadcastTenantRef } from "../src/broadcast-identifiers.js";
 import { BroadcastRuntimeRegistry } from "../src/broadcast-runtime-registry.js";
 import { RoomRegistry } from "../src/room-registry.js";
 import { createAppServer } from "../src/server.js";
@@ -38,9 +39,11 @@ function fixture(live = false) {
     sourceIds: ["src_aaaaaaaaaaaaaaaa"], requestedRenditions: 1, allowHardwareAcceleration: false,
   }, request => request, now);
   runtime.markNativeOutputReady(prepared.admission.resourceRef, "pkr_aaaaaaaaaaaaaaaa", prepared.lease.fencingRevision, now);
+  const journal = [];
   const requests = new BroadcastSourceRequests({ members: room => rooms.members(room),
     program: (...args) => runtime.nativeSourceRequestContext(...args), clock,
-    idFactory: () => `bsr_${String(++sequence).padStart(24, "0")}` });
+    idFactory: () => `bsr_${String(++sequence).padStart(24, "0")}`,
+    observe: (...args) => { journal.push(args); if (journal.length > 8) throw new Error("private observer error"); } });
   const context = runtime.nativeSourceRequestContext(identities.owner, peers.owner, programId, now);
   const input = (role, action, extra = {}) => ({ requestVersion: 1, action, roomId: "room-alpha",
     deviceFingerprint: peers[role].deviceFingerprint, ...(action === "list" ? {} : { trigger: "user-action" }),
@@ -53,9 +56,39 @@ function fixture(live = false) {
     assert.equal(responseSchema(result), true, JSON.stringify(responseSchema.errors));
     return result.requests;
   };
-  return { rooms, peers, identities, runtime, programId, context, input, execute, requests, now: () => now,
+  return { rooms, peers, identities, runtime, programId, context, input, execute, requests, journal, now: () => now,
     advance: ms => { now += ms; } };
 }
+
+test("invitation lifecycle enters the owner-scoped journal after commit only, without identifiers", () => {
+  const f = fixture(), scope = { tenantId: broadcastTenantRef(issuer), ownerSubjectRef: broadcastSubjectRef(f.identities.owner),
+    roomId: "room-alpha", programId: f.programId, programEpoch: f.context.programEpoch };
+  const event = (kind, reason, sourceKind = "camera") => [scope, { kind, sourceKind, reason, controlRevision: null }, f.now()];
+  assert.throws(() => f.execute("owner", "create", { targetPeerId: f.peers.owner.id }));
+  assert.throws(() => f.execute("other", "create"));
+  assert.deepEqual(f.journal, [], "rejected invitations are not journaled");
+  const [invited] = f.execute("owner", "create");
+  assert.deepEqual(f.journal, [event("source-requested", "invited")]);
+  assert.throws(() => f.execute("owner", "create"), /pending/); assert.equal(f.journal.length, 1);
+  f.execute("target", "decline", { requestId: invited.requestId });
+  f.execute("target", "decline", { requestId: invited.requestId });
+  assert.deepEqual(f.journal.slice(1), [event("source-request-closed", "declined")], "idempotent repeat adds nothing");
+  const [own] = f.execute("owner", "create-own", { sourceKind: "screen" });
+  f.execute("owner", "cancel", { requestId: own.requestId });
+  assert.deepEqual(f.journal.slice(2), [event("source-requested", "own-source", "screen"), event("source-request-closed", "cancelled", "screen")]);
+  const [pending] = f.execute("owner", "create", { sourceKind: "microphone" });
+  f.runtime.stopProgram(f.identities.owner, f.programId);
+  assert.equal(f.execute("owner", "list").find(r => r.requestId === pending.requestId).state, "invalidated");
+  assert.deepEqual(f.journal.slice(5), [event("source-request-closed", "invalidated", "microphone")]);
+  assert.equal(f.execute("owner", "list").length, 3); assert.equal(f.journal.length, 6, "listing and repeated refresh journal nothing");
+  for (const entry of f.journal) {
+    assert.doesNotMatch(JSON.stringify(entry), /bsr_|peerId|fingerprint|target|principal|Synthetic/);
+    assert.ok(Object.isFrozen(entry[0]) && Object.isFrozen(entry[1]));
+  }
+  const h = fixture(), kinds = ["camera", "microphone", "screen", "screen-audio"];
+  for (let i = 0; i < 5; i++) { const [r] = h.execute("owner", "create", { sourceKind: kinds[i % 4] }); h.execute("owner", "cancel", { requestId: r.requestId }); }
+  assert.equal(h.journal.length, 10, "an observer failure after commit changes neither the result nor later journaling");
+});
 
 test("real program invitations are scoped metadata and support decline/cancel without changing its writer", () => {
   const f = fixture(), before = f.runtime.nativeControl(f.identities.owner, f.peers.owner, f.programId);
