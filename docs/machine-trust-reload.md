@@ -92,8 +92,8 @@ Versionsfähigkeit, kein Ersatz für den tatsächlichen Signal-/Containertest.
 Erst nach Deployment einer Version mit diesem Signalhandler, Prüfung des
 aktivierten Modus und atomarem Dateiaustausch darf der Betreiber mit denselben
 Compose-Dateien `docker compose … kill --signal SIGHUP webrtc` ausführen.
-Der Produktions-Init-Prozess soll das Signal an Node weiterleiten; die reale
-Containerabnahme folgt getrennt. Nicht an alte oder nicht aktivierte Dienste
+Der Produktions-Init-Prozess muss das Signal an Node weiterleiten; der unten
+beschriebene isolierte Image-Test prüft diesen Pfad. Nicht an alte oder nicht aktivierte Dienste
 senden: Deren Standard-SIGHUP kann sie beenden. Ein bewusstes Rollback auf Software vor
 Einführung dieses Pfads benötigt vorher einen Wechsel zu statischem `profile`
 und reguläres Neuanlegen des Dienstes. Software-Rollback setzt weder Trust-Datei
@@ -113,6 +113,58 @@ Human-OIDC. Ein Node-Unterprozess prüft reale SIGHUP-Signale und atomare
 Dateiersetzung. Compose-Rendering und begrenzte Deployment-Runner-Tests prüfen
 Auswahl und Rückweg ohne Produktionsmutation. Die erste Signal-Fixture hatte
 fehlende explizite OIDC-Konfiguration; die Testidentität wurde vervollständigt,
-nicht Auth deaktiviert. Beim Compose-Test wurde die erwartete Darstellung von
-`create_host_path: false` korrigiert, nicht die Absicherung entfernt.
+nicht Auth deaktiviert.
+
+### Compose-Darstellung und tatsächliche Mount-Sicherheit
+
+Die YAML-Quelle muss ausdrücklich `bind.create_host_path: false` enthalten.
+Docker beschreibt diese [Absicherung für lange Bind-Mount-Syntax](https://docs.docker.com/reference/compose-file/services/#long-syntax-5).
+Im [compose-go-v2.9.1-Modell](https://github.com/compose-spec/compose-go/blob/v2.9.1/types/types.go)
+wird das boolesche Feld mit `json:"create_host_path,omitempty"` serialisiert;
+ein gerendertes `bind: {}` ist deshalb dort mit explizitem `false` vereinbar.
+Der Regressionstest akzeptiert nur diese beiden JSON-Formen, prüft die
+explizite YAML-Policy unabhängig und lehnt `true`, `null`, Strings, fremde
+Bind-Optionen oder abweichende Source-/Target-/Read-only-Felder ab.
+Ein echter CLI-Negativtest bestätigt zusätzlich: Fehlt das eigene
+Test-Trust-Verzeichnis, endet der Selektor mit seinem festen Fehlercode,
+ohne es anzulegen oder den Pfad auszugeben.
+
+### Isolierter Linux-Container-Test
+
+```bash
+RUN_MACHINE_TRUST_CONTAINER_TEST=1 \
+MACHINE_TRUST_CONTAINER_IMAGE=<lokales-produktionsimage> \
+MACHINE_TRUST_CONTAINER_EXPECTED_REVISION="$(git rev-parse HEAD)" \
+node --test test/machine-trust-container.test.js
+```
+
+Das Image muss lokal vorliegen. Der Test pinnt seine Image-ID, prüft Revision,
+Reload-Marker, Benutzer und Node-CMD. Er startet ausschließlich sein zufällig
+benanntes Compose-Projekt mit `network_mode: none`, ohne veröffentlichte Ports,
+mit flüchtigen Testidentitäten und In-Memory-Stores. Der echte Reload-Override
+wird unverändert eingemischt. Getestet werden:
+
+- fehlender Hostpfad: konkrete Mount-Ablehnung, kein neu angelegtes Verzeichnis;
+- vorhandenes öffentliches Profil: read-only, auch ein Root-Schreibversuch scheitert mit `EROFS`;
+- reales `docker compose kill --signal SIGHUP`, Init-Weiterleitung und exakt ein festes ACK;
+- atomarer Host-Dateiersatz, Scopeentzug, ungültiges Profil und Revisionsrückschritt;
+- Wiederaufnahme nur mit höherer gültiger Revision, unveränderter Prozess/Container und kein Restart.
+
+Begrenzte Docker-Aufrufe und eigener Cleanup entfernen nur die Testressourcen.
+Ohne explizite Aktivierung meldet der normale Node-Testlauf einen sichtbaren
+Skip. Im Docker-CI-Job ist der Test dagegen verpflichtend: ein gecachter Build
+derselben Revision wird geladen, das gebaute Image ohne Source-Mount geprüft.
+Das ist kein Vergleich der Archivbytes mit dem separat geprüften OCI-Archiv.
+
+Für einen kurzen Entwicklungscheck darf ausdrücklich
+`MACHINE_TRUST_CONTAINER_SOURCE_FIXTURE=1` mit `MACHINE_TRUST_CONTAINER_IMAGE=node:22-alpine`
+gesetzt werden. Dann werden nur Projektquellen, Contracts und Node-Abhängigkeiten
+read-only eingebunden; der Bericht lautet `source-mounted-runtime`, nicht
+`production-image-runtime`. Dieser Pfad bestand lokal am 11.09.2026 in 6,53 s.
+Die erste Fixture scheiterte an der nicht bereitgestellten Standard-Datenbank;
+explizite In-Memory-Teststores beheben dies ohne produktive DB-Änderung.
+Die neue CI-Image-Abnahme ist noch ausstehend; weder dieser Test noch ein
+grüner Healthcheck aktiviert produktiven Hub-/Projekttrust oder beweist
+Hub-Dialog, Medienstopps und Netzwerk-/TURN-Verhalten.
+
 Gemeinsame Browser-, Agent-, TURN- und Langzeitabnahme folgen gebündelt.

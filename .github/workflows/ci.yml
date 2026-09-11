@@ -151,7 +151,7 @@ jobs:
     name: Docker build
     needs: [test, native-packager]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -186,6 +186,26 @@ jobs:
             --source-digest "$GITHUB_SHA" --source-ref refs/heads/main --deny-self-hosted-runners
       - name: Scan OCI archive for synthetic leakage canaries
         run: BROADCAST_LEAKAGE_SCOPE=image BROADCAST_IMAGE_ARCHIVE=/tmp/webrtc-minimize-server.oci.tar node scripts/broadcast-leakage-gate.mjs
+
+      - name: Load production build for isolated trust reload gate
+        run: |
+          docker buildx build --build-arg SOURCE_REVISION=${{ github.sha }} \
+            --build-arg SOURCE_TIMESTAMP="$(git show -s --format=%cI HEAD)" \
+            --load --tag webrtc-trust-container:ci .
+      - name: Set up Node.js for production container gate
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install container gate dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Require real production image trust mount and SIGHUP behavior
+        env:
+          RUN_MACHINE_TRUST_CONTAINER_TEST: "1"
+          MACHINE_TRUST_CONTAINER_IMAGE: webrtc-trust-container:ci
+          MACHINE_TRUST_CONTAINER_EXPECTED_REVISION: ${{ github.sha }}
+          MACHINE_TRUST_CONTAINER_SOURCE_FIXTURE: "0"
+        run: node --test test/machine-trust-container.test.js
 
   media-agent:
     name: Blind media agent

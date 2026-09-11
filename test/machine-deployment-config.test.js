@@ -5,13 +5,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { parse } from "yaml";
 import { machineDeploymentConfig } from "../src/machine-deployment-config.js";
 import { trustFixture } from "./helpers/machine-trust.mjs";
+import { assertMachineTrustMount } from "./helpers/machine-trust-mount.mjs";
 
 const defaults = { mode: "disabled", issuer: "", publicKeyFile: "", profileFile: "", inlineKey: "", inlineProfile: "",
   capabilities: "chat.read,chat.send", authMode: "required", mediaE2eeMode: "required" };
 const repository = new URL("..", import.meta.url).pathname;
 const cli = path.join(repository, "scripts/machine-deployment-config.mjs");
+const reloadOverride = path.join(repository, "infra/deployment/compose.machine-profile-reload.yaml");
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "machine-deployment-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -75,7 +78,32 @@ test("live profile deployment requires the exact public directory file and fails
   const service = rendered.services.webrtc;
   assert.equal(service.environment.MACHINE_HUB_TRUST_RELOAD, "signal");
   assert.equal(service.environment.MACHINE_HUB_TRUST_PROFILE_JSON_FILE, "/run/machine-trust/machine-trust.json");
-  assert.deepEqual(service.volumes[0], { type: "bind", source: f.root, target: "/run/machine-trust", read_only: true, bind: { create_host_path: false } });
+  const sourceVolumes = parse(fs.readFileSync(reloadOverride, "utf8")).services.webrtc.volumes;
+  assert.equal(sourceVolumes.length, 1); assert.equal(service.volumes.length, 1);
+  assertMachineTrustMount(sourceVolumes[0], service.volumes[0], f.root);
+});
+test("mount assertion accepts only explicit false or legacy omission while requiring source false", () => {
+  const source = parse(fs.readFileSync(reloadOverride, "utf8")).services.webrtc.volumes[0];
+  const rendered = { ...source, source: "/owned-test-directory" };
+  for (const bind of [{}, { create_host_path: false }]) assertMachineTrustMount(source, { ...rendered, bind }, rendered.source);
+  for (const bind of [undefined, null, [], { create_host_path: true }, { create_host_path: null },
+    { create_host_path: 0 }, { create_host_path: "false" }, { propagation: "rshared" }]) {
+    assert.throws(() => assertMachineTrustMount(source, { ...rendered, bind }, rendered.source));
+  }
+  for (const bind of [{}, undefined, { create_host_path: true }]) {
+    assert.throws(() => assertMachineTrustMount({ ...source, bind }, { ...rendered, bind: {} }, rendered.source));
+  }
+  for (const patch of [{ read_only: false }, { source: "/wrong" }, { target: "/wrong" }, { type: "volume" }, { extra: true }]) {
+    assert.throws(() => assertMachineTrustMount(source, { ...rendered, ...patch }, rendered.source));
+  }
+});
+test("live-profile CLI rejects a missing trust directory without creating it or revealing its path", t => {
+  const f = fixture(t), missing = path.join(f.root, "absent-public-trust");
+  const result = f.run({ MACHINE_DEPLOYMENT_MODE: "profile-reload", MACHINE_HUB_TRUST_PROFILE_DIRECTORY: missing,
+    MACHINE_HUB_TRUST_PROFILE_JSON_FILE: path.join(missing, "machine-trust.json") });
+  assert.equal(result.status, 2); assert.equal(result.stdout, "");
+  assert.deepEqual(JSON.parse(result.stderr), { status: "blocked", code: "machine_deployment_config_invalid" });
+  assert.equal(fs.existsSync(missing), false);
 });
 test("actual Compose resolves .env, interpolation, process precedence and empty ceilings without activation", t => {
   const f = fixture(t);
