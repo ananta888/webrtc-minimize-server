@@ -67,3 +67,38 @@ werden behalten. Ältere Snapshots bleiben unveränderlich. Die bestehende
 Akzeptanzlogik, Zweiprozentgrenze, einsekündige Medienzeit und das Gesamtlimit
 von 20 Sekunden bleiben unverändert. Der konkrete Fehler ist dadurch noch
 nicht behoben; neue reale CI-Evidence ist erforderlich.
+
+## Getrennte Befunde aus dem gebündelten Check
+
+Der isolierte Gesamtcheck auf `bcd68e1` endete mit zwei Fehlern bei
+1594 bestandenen Node-/Browsertests und vier Skips. Neben der separat
+korrigierten Machine-Admission-Test-Erwartung meldete der Strategietest nach
+„Sprache zuerst“ vier Nullamplituden bei fortlaufendem Video und einer neuen
+MediaSource-Generation. Ein bestandener Einzelnachlauf (74,744 Sekunden)
+beweist keine Behebung dieses Ausfalls.
+
+Die Strategie- und Retained-Microphone-Fehler erfassen deshalb zusätzlich die
+bereits vorhandene unabhängige FFmpeg-Dekodierung des neuesten privaten
+HLS-Fragments und den passiven, ausschließlich im Testbinary vorhandenen
+Source-State-Observer. Er liest mit `TryLock` und ruft keine Policy-,
+Freshness- oder Capture-Funktionen auf. Audio-Decoder- und Mixer-Details werden
+vom derzeit videoorientierten Observer noch nicht dargestellt; fehlende
+Detailverfügbarkeit bedeutet nicht, dass ein Audiodecoder geschlossen ist.
+
+Der native Statusverlauf hält die letzten 32 Übergänge statt der ersten 32
+Meldungen fest. Identische aufeinanderfolgende Statusmeldungen erhalten einen
+bei 1000 saturierenden Zähler. Alte Einträge bleiben unveränderlich. Die
+Fehleraufnahme vor dem Cleanup ist von späteren Stop-/Restart-Meldungen des
+Testabbaus zu unterscheiden. Es werden keine Quellenkennungen, Medienbytes,
+Schlüssel oder freien Fehlertexte ausgegeben.
+
+Ein zweiter, auf zwei parallele Tests begrenzter Nachlauf zeigt einen anderen
+Fehler: Szenenwechsel und zwei Encoderersetzungen bestanden (69,978 Sekunden),
+Audio scheiterte bereits an der Kalibrierung (59,774 Sekunden). Beide Quellen
+hatten vier gültige Senderreports, offene Clocks und vorhandene Decoder;
+die committed und producer HLS-Fragmente enthielten jeweils 48000 dekodierte
+Stereosamples mit RMS ungefähr 0,2492 pro Kanal. Der Player spielte, ohne
+Fehlercode. Das Messfenster erreichte jedoch nur 0,479 Sekunden, bei 27
+Pegeldrift-Resets. Das belegt weder den Grund dieser Schwankungen noch den
+Grund des separaten vollständigen Tonausfalls. Zeitlimits, Pegelgrenzen,
+Quellenconsent und Runtime bleiben unverändert; beide Fehler bleiben offen.

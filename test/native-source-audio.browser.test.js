@@ -20,7 +20,8 @@ async function confirm(page, action, accepted = true) {
 // consent leases. Strategy changes must not silently renew a source consent.
 for (const strategies of [null, ["balanced", "speech-first"], ["screen-first", "unprocessed"]]) test(`rendered Angular audio controls actual native ${strategies ? "two-source priorities " + strategies.join("+") : "gain/mute"} without expanding consent`, { timeout: 150_000 }, async t => {
   if (process.platform !== "linux") { t.skip("Actual native production process requires Linux containment and local FFmpeg"); return; }
-  const f = await nativeSceneLiveFixture(t, { allowSyntheticAudio: true, allowSyntheticScreen: Boolean(strategies), allowSyntheticScreenAudio: Boolean(strategies) }), { page } = f;
+  const f = await nativeSceneLiveFixture(t, { allowSyntheticAudio: true, allowSyntheticScreen: Boolean(strategies), allowSyntheticScreenAudio: Boolean(strategies),
+    observeSourceState: Boolean(strategies) }), { page } = f;
   page.setDefaultTimeout(5000);
   let stage = "setup";
   const replies = [];
@@ -150,16 +151,24 @@ for (const strategies of [null, ["balanced", "speech-first"], ["screen-first", "
     await page.locator("#native-source-status", { hasText: "Ausgabe vom Packager bestätigt" }).waitFor();
   };
   if (strategies) {
-    const screen = await nativeAudioStrategyFlow({ page, audio, sources, query, confirm, viewer, strategies,
-      stage: value => { stage = value; }, output: audioOutput });
-    stage = "revoke-screen-audio";
-    await revoke(screen);
-    const retained = await query();
-    assert.equal(retained.sources.length, 1); assert.equal(retained.sources[0].sourceKind, "microphone");
-    assert.equal(retained.mix.strategy, strategies.at(-1));
-    assert.equal(await page.locator("#toggle-screen").getAttribute("aria-pressed"), "true", "broadcast audio revoke preserves room screen capture");
-    stage = "retained-microphone-output";
-    audioOutput.retained = await waitNativeMicrophoneAfterScreenRevoke(viewer, audioOutput.baseline, audioOutput[strategies.at(-1)]);
+    try {
+      const screen = await nativeAudioStrategyFlow({ page, audio, sources, query, confirm, viewer, strategies,
+        stage: value => { stage = value; }, output: audioOutput });
+      stage = "revoke-screen-audio";
+      await revoke(screen);
+      const retained = await query();
+      assert.equal(retained.sources.length, 1); assert.equal(retained.sources[0].sourceKind, "microphone");
+      assert.equal(retained.mix.strategy, strategies.at(-1));
+      assert.equal(await page.locator("#toggle-screen").getAttribute("aria-pressed"), "true", "broadcast audio revoke preserves room screen capture");
+      stage = "retained-microphone-output";
+      audioOutput.retained = await waitNativeMicrophoneAfterScreenRevoke(viewer, audioOutput.baseline, audioOutput[strategies.at(-1)]);
+    } catch (error) {
+      const sourceState = await f.agent.observe();
+      t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, instrumentedBinary: true,
+        stage, sourceState, native: [...f.observation.native], output: await nativeAudioOutputObservation(f.output),
+        viewer: await sceneViewerObservation(viewer) }));
+      throw error;
+    }
   }
   stage = "revoke";
   // A source proven to contribute to this encoder generation must fence it on

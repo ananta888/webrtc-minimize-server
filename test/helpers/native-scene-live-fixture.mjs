@@ -16,6 +16,7 @@ import { machineFixtureAssets } from "./machine-fixture-assets.mjs";
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
 import { recordNativeSceneReply } from "./native-scene-reply-observation.mjs";
 import { nativeSceneOutputProfile } from "./native-scene-output-profile.mjs";
+import { recordNativeStatus } from "./native-status-observation.mjs";
 
 const execute = promisify(execFile);
 async function unusedLoopbackPort() {
@@ -88,10 +89,7 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
     try {
       const value = JSON.parse(bytes.toString());
       recordNativeSceneReply(observation.scene, value);
-      if (observation.native.length < 32 && ["assignment-status", "trusted-source-status"].includes(value.type)) {
-        const fixed = input => typeof input === "string" && /^[a-zA-Z_-]{1,64}$/.test(input) ? input : null;
-        observation.native.push({ type: value.type, state: fixed(value.state), code: fixed(value.reasonCode) });
-      }
+      recordNativeStatus(observation.native, value);
     } catch { /* Never output raw protocol input. */ }
   }));
   tls.on("request", (req, res) => app.server.emit("request", req, res));
