@@ -5,6 +5,7 @@ import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
 import { decodedScene, decodedSceneTiles, openSceneViewer, sceneViewerObservation } from "./helpers/native-scene-viewer.mjs";
 import { assertFreshNativeSceneApply, assertObservedNativeScene, observeNativeSceneSubmission } from "./helpers/native-scene-reply-observation.mjs";
 import { nativeAudioOutputObservation } from "./helpers/native-audio-output.mjs";
+import { captureFirstCameraLease } from "./helpers/native-source-lease-replay.mjs";
 
 async function confirm(page, action) {
   const dialog = page.waitForEvent("dialog"), pending = action();
@@ -16,6 +17,13 @@ for (const multiple of [false, true]) test(multiple
   : "coupled Angular director uses actual native source-program authority", { timeout: 180_000 }, async t => {
   if (process.platform !== "linux") { t.skip("Coupled production-process fixture requires Linux containment and local FFmpeg"); return; }
   const f = await nativeSceneLiveFixture(t, { allowSyntheticScreen: multiple, observeSourceState: true }), { page } = f;
+  let retiredLease;
+  if (multiple) {
+    const peers = f.app.registry.members(f.roomId);
+    assert.equal(peers.length, 1);
+    retiredLease = captureFirstCameraLease(peers[0].socket);
+    t.after(() => retiredLease.dispose());
+  }
   await waitFixtureValue(page, async id => {
     const response = await fetch("/api/native-packagers", { headers: {
       authorization: `Bearer ${sessionStorage.getItem("webrtc.oidc.access-token")}` } });
@@ -155,6 +163,11 @@ for (const multiple of [false, true]) test(multiple
   if (!multiple) assert.ok(revoked.decodedFrames > red.decodedFrames && red.decodedFrames > initial.decodedFrames);
   let finalSlate, survivingMovement;
   if (multiple) {
+    // Replay the exact first server-issued camera lease only after its expiry
+    // and confirmed revoke. This must not stop the independently renewed screen.
+    retiredLease.replayExpired();
+    await sources.getByRole("alert").filter({ hasText: "Quellenfreigabe nicht bestätigt" }).waitFor({ timeout: 5000 });
+    await sources.locator("li", { hasText: "Sender aktiv" }).filter({ hasText: "Bildschirm" }).waitFor({ timeout: 5000 });
     survivingMovement = await decodedSceneTiles(viewer, ["slate", "blue"], revoked.pixels[1][2]);
     assert.ok(survivingMovement.decodedFrames > revoked.decodedFrames, "remaining source continues decoding after the first revoke");
     assert.equal(await page.locator("#toggle-screen").getAttribute("aria-pressed"), "true");

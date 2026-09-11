@@ -94,7 +94,9 @@ export class TrustedSourceWorkflow {
   receive(raw: Record<string, unknown>): void {
     if (this.destroyed || typeof raw["type"] !== "string" || !raw["type"].startsWith("trusted-source-")) return;
     this.tick();
+    let failureScope: Publication | "selection" | null = null;
     try {
+      failureScope = this.failureScope(raw);
       if (raw["type"] === "trusted-source-publications") {
         const editor = this.editor;
         if (!editor || !editor.references || editor.ready || !this.current(editor.context)) return;
@@ -164,10 +166,45 @@ export class TrustedSourceWorkflow {
       } else return sourceFail();
     } catch {
       // An invalid source-control message must never turn a pending local choice into authority.
-      this.editor = null; this.error = "trusted_source_control_invalid";
-      for (const p of this.publications.values()) if (this.live(p)) this.stop(p, true);
+      this.error = "trusted_source_control_invalid";
+      if (failureScope === "selection") this.editor = null;
+      else if (failureScope) this.stop(failureScope, true);
+      else {
+        this.editor = null;
+        for (const p of this.publications.values()) if (this.live(p)) this.stop(p, true);
+      }
     }
     this.emit();
+  }
+
+  /** Cleanup routing only, never validation or authorization. A known retired
+   * source's late invalid message must not revoke an independent live source.
+   * The normal exact parsers and all lifetime checks still run afterward. */
+  private failureScope(raw: Record<string, unknown>): Publication | "selection" | null {
+    if (raw["type"] === "trusted-source-publications") return "selection";
+    if (raw["type"] === "trusted-source-approved") {
+      return typeof raw["requestId"] === "string" ? this.publications.get(raw["requestId"]) ?? null : null;
+    }
+    const rows = [...this.publications.values()];
+    let matches: Publication[] = [];
+    if (raw["type"] === "trusted-source-publisher-lease") {
+      const value = raw["lease"];
+      if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+      const consent = (value as Record<string, unknown>)["consent"];
+      if (!consent || typeof consent !== "object" || Array.isArray(consent)) return null;
+      // The cast is only for comparing existing immutable local bindings. It
+      // cannot bypass parseTrustedSourceLease or supply a lease to a publisher.
+      const candidate = value as TrustedSourceLease;
+      matches = rows.filter(p => p.lease ? sameTrustedSource(p.lease, candidate)
+        : p.consent && this.equalConsent(p.consent, candidate.consent) && this.leaseMatches(p, candidate));
+    } else if (raw["type"] === "trusted-source-agent-signal" || raw["type"] === "trusted-source-publisher-stop") {
+      matches = rows.filter(p => p.lease && raw["sourceLeaseId"] === p.lease.sourceLeaseId
+        && raw["consentId"] === p.lease.consent.consentId && raw["assignmentId"] === p.lease.assignmentId
+        && raw["fencingRevision"] === p.lease.fencingRevision);
+    } else if (raw["type"] === "trusted-source-revoked") {
+      matches = rows.filter(p => p.consent && raw["consentId"] === p.consent.consentId);
+    }
+    return matches.length === 1 ? matches[0] : null;
   }
 
   private start(p: Publication): void {

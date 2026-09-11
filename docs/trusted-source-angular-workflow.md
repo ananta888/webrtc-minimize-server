@@ -44,10 +44,46 @@ lokale Zustimmung.
 
 `Sender aktiv` bezeichnet den bestätigten Senderzustand, nicht HLS-Wiedergabe
 beim Publikum. Unbekannte Felder und unpassende Kontrollnachrichten geben keine
-zusätzlichen Rechte; fehlerhafte Source-Control-Nachrichten beenden lokal aktive
-Quellen konservativ. Es gibt keinen Legacy-/Klartext-Fallback.
+zusätzlichen Rechte. Bei einer über bestehende lokale Bindungen eindeutig
+zuordenbaren fehlerhaften Source-Control-Nachricht endet nur der betreffende
+Broadcastsender. Eine verspätete ungültige Nachricht für eine bereits gestoppte
+Quelle kann weder diese wieder starten noch eine andere gültige Quelle beenden.
+Ungültige Antworten zur Quellenauswahl verwerfen nur die offene Auswahl.
+Unbekannte oder nicht eindeutig zuordenbare Fehler beenden weiterhin alle
+aktiven Broadcastsender konservativ. Die Zuordnung dient ausschließlich der
+Fehlerbereinigung: Exakte Parser, Identitäts-/Epochprüfungen, Consent, Fristen,
+Lease-Revisionen und Schlüssel-ACKs bleiben unverändert erforderlich.
+Es gibt keinen Legacy-/Klartext-Fallback; geliehene Raumtracks bleiben unberührt.
 
 ## Architektur und Prüfgrenzen
+
+### Quellengetrennte Fehlerbehandlung (2026-09-11)
+
+Zwölf neue Regressionen prüfen abgelaufene und fehlerhafte Nachrichten für
+aktive, ausstehende und bereits gestoppte Quellen, unabhängige Verlängerungen
+und Auswahl sowie die weiterhin konservative Behandlung unbekannter Bindungen.
+Mit den vorhandenen Workflow-/Publishertests bestanden 66 Tests (1,30 s).
+Typprüfung und Todo-Gate bestanden ebenfalls.
+
+Der gekoppelte Angular-/Node-/Native-/SFrame-/HLS-Test wiederholt genau den
+ersten tatsächlich ausgestellten Kamera-Lease nach Ablauf und ausdrücklich
+bestätigtem Kamerawiderruf. Die rein testlokale Beobachtung behält höchstens
+8 KiB und wiederholt die Nachricht nur einmal; drei Hilfstests prüfen Grenzen,
+unveränderte Weiterleitung und Bereinigung. Der bisherige private Angular-Build
+scheiterte danach am weiterhin aktiven Bildschirm-Sender (38,885 s). Derselbe
+Test mit dem korrigierten privaten Build bestand (29,308 s): sichtbare Ablehnung,
+weiterhin bewegte Bildschirmbilder im dekodierten HLS, anschließend regulärer
+Widerruf und Slate. Die Raumtracks bleiben bei beiden Widerrufen aktiv;
+Layoutwechsel oder Fehlermeldung öffnen keine weitere Capture-Quelle.
+
+Die gezielte Chromium-/Firefox-Matrix gegen den realen nativen Receiver bestand
+ebenfalls (zwei Fälle, 58,760 s), jeweils mit mindestens 401 authentifizierten
+VP8-/Opus-Frames durch den tatsächlichen Workflow und SFrame-Publisher.
+
+Das belegt diesen reproduzierten Fehler und seine Korrektur mit synthetischen
+Quellen, nicht die Ursache jedes früher beobachteten Audioabbruchs. Die separate
+Audio-Kalibrierungsintermittenz und die gemeinsame Produktionsabnahme bleiben
+offen; dieser Teilnachweis ersetzt keinen vollständigen grünen Check.
 
 Der Einladungsvertrag ist aus dem HTTP-Service extrahiert und bleibt über dessen
 bisherige Exporte kompatibel. Reine Parser/Workflow, Angular-Komposition,
