@@ -5,6 +5,8 @@ import { NativeAudioWindowEvidence, nativeAudioMeasurementSummary } from "./nati
 export function nativeAudioFrequencyObservation() {
   const p = window.__nativeAudioProbe;
   if (!p) return null;
+  if (![44100, 48000].includes(p.context?.sampleRate) || !Array.isArray(p.analysers) || p.analysers.length !== 2
+    || p.analysers.some(analyser => analyser?.fftSize !== 2048)) return null;
   // Reopening HLS replaces MediaSource and resets element counters. Keep only
   // a bounded local generation in reports, never the private source URL.
   const source = p.video.currentSrc;
@@ -14,9 +16,43 @@ export function nativeAudioFrequencyObservation() {
     if (!Number.isSafeInteger(previous) || previous < 0 || previous >= 64) return null;
     p.frequencySource = source; p.frequencyEpoch = previous + 1;
   }
-  const channels = p.analysers.map(analyser => {
+  const peaks = [];
+  const nominalChannels = p.analysers.map(analyser => {
     const samples = new Float32Array(analyser.fftSize);
     analyser.getFloatTimeDomainData(samples);
+    // Locate only the two known fixture tones. Native asynchronous resampling
+    // can move a tone off its nominal bin without reducing its amplitude.
+    const weighted = new Float64Array(samples.length);
+    let weights = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const w = .5 * (1 - Math.cos(2 * Math.PI * i / (samples.length - 1)));
+      weighted[i] = samples[i] * w; weights += w;
+    }
+    const magnitude = frequency => {
+      const angle = 2 * Math.PI * frequency / p.context.sampleRate;
+      const cos = Math.cos(angle), sin = Math.sin(angle);
+      let re = 0, im = 0, c = 1, s = 0;
+      for (const value of weighted) {
+        re += value * c; im -= value * s;
+        const next = c * cos - s * sin; s = s * cos + c * sin; c = next;
+      }
+      return 2 * Math.hypot(re, im) / weights;
+    };
+    peaks.push([440, 880].map(nominal => {
+      const low = nominal * .9, high = nominal * 1.1, step = p.context.sampleRate / samples.length / 4;
+      let best = low, amplitude = -1;
+      for (let frequency = low; frequency <= high; frequency += step) {
+        const value = magnitude(frequency);
+        if (value > amplitude) { best = frequency; amplitude = value; }
+      }
+      let left = Math.max(low, best - step), right = Math.min(high, best + step);
+      for (let i = 0; i < 12; i++) {
+        const a = left + (right - left) / 3, b = right - (right - left) / 3;
+        if (magnitude(a) > magnitude(b)) right = b; else left = a;
+      }
+      const frequency = (left + right) / 2;
+      return { frequency, amplitude: magnitude(frequency) };
+    }));
     // Hann-windowed DFT avoids dependence on FFT-bin alignment or oscillator phase.
     return [440, 880].map(frequency => {
       let real = 0, imaginary = 0, weight = 0;
@@ -29,7 +65,15 @@ export function nativeAudioFrequencyObservation() {
       return 2 * Math.hypot(real, imaginary) / weight;
     });
   });
-  return { channels, mediaEpoch: p.frequencyEpoch, time: p.video.currentTime, frames: p.video.getVideoPlaybackQuality().totalVideoFrames,
+  const channels = peaks.map(row => row.map((peak, tone) => {
+    const nominal = [440, 880][tone];
+    // Preserve the existing silence threshold. An inaudible search result has
+    // no meaningful peak frequency; a detectable out-of-band tone is invalid.
+    const supported = peak.frequency >= nominal / 1.05 - .2 && peak.frequency <= nominal / .95 + .2;
+    return peak.amplitude < .0002 || supported ? peak.amplitude : NaN;
+  }));
+  return { channels, spectral: { peaks, nominalChannels, sampleRate: p.context.sampleRate, playbackRate: p.video.playbackRate },
+    mediaEpoch: p.frequencyEpoch, time: p.video.currentTime, frames: p.video.getVideoPlaybackQuality().totalVideoFrames,
     ready: p.video.readyState, paused: p.video.paused, contextRunning: p.context.state === "running" };
 }
 
@@ -99,5 +143,6 @@ async function waitFrequencyMatch(page, matches, diagnostic, requireStableLevels
   } }).catch(error => { throw new Error(JSON.stringify({ ...diagnostic, latest: nativeAudioMeasurementSummary(latest),
     failure: error?.message === "test_fixture_wait_deadline" ? "deadline" : "observation-failed",
     windowEvidence: evidence.snapshot() })); });
-  return { channels: result.channels, mediaEpoch: result.mediaEpoch, time: result.time, frames: result.frames };
+  return { channels: result.channels, mediaEpoch: result.mediaEpoch, time: result.time, frames: result.frames,
+    ...(result.spectral ? { spectral: nativeAudioMeasurementSummary(result).spectral } : {}) };
 }

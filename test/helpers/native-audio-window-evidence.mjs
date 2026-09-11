@@ -4,12 +4,28 @@ const REASONS = Object.freeze(["not-playing", "target-mismatch", "generation", "
 const number = value => typeof value === "number" && Number.isFinite(value) && value >= 0
   && value <= Number.MAX_SAFE_INTEGER ? Math.round(value * 1000000) / 1000000 : null;
 
+function spectralSummary(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const peaks = Array.isArray(value.peaks) && value.peaks.length === 2
+    && value.peaks.every(row => Array.isArray(row) && row.length === 2)
+    ? Object.freeze(value.peaks.map(row => Object.freeze(row.map(peak => Object.freeze({
+      frequency: peak?.frequency <= 2000 ? number(peak.frequency) : null,
+      amplitude: peak?.amplitude <= 1 ? number(peak.amplitude) : null,
+    }))))) : null;
+  const nominalChannels = Array.isArray(value.nominalChannels) && value.nominalChannels.length === 2
+    && value.nominalChannels.every(row => Array.isArray(row) && row.length === 2)
+    ? Object.freeze(value.nominalChannels.map(row => Object.freeze(row.map(v => v <= 1 ? number(v) : null)))) : null;
+  return Object.freeze({ peaks, nominalChannels, sampleRate: [44100, 48000].includes(value.sampleRate) ? value.sampleRate : null,
+    playbackRate: value.playbackRate >= .5 && value.playbackRate <= 2 ? number(value.playbackRate) : null });
+}
+
 export function nativeAudioMeasurementSummary(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const channels = Array.isArray(value.channels) && value.channels.length === 2
     && value.channels.every(row => Array.isArray(row) && row.length === 2)
     ? Object.freeze(value.channels.map(row => Object.freeze(row.map(v => typeof v === "number" && v <= 1 ? number(v) : null)))) : null;
-  return Object.freeze({ channels, mediaEpoch: Number.isInteger(value.mediaEpoch) && value.mediaEpoch >= 1 && value.mediaEpoch <= 64 ? value.mediaEpoch : null,
+  return Object.freeze({ channels, ...(Object.hasOwn(value, "spectral") ? { spectral: spectralSummary(value.spectral) } : {}),
+    mediaEpoch: Number.isInteger(value.mediaEpoch) && value.mediaEpoch >= 1 && value.mediaEpoch <= 64 ? value.mediaEpoch : null,
     time: number(value.time), frames: Number.isSafeInteger(value.frames) && value.frames >= 0 ? value.frames : null,
     ready: Number.isInteger(value.ready) && value.ready >= 0 && value.ready <= 4 ? value.ready : null,
     paused: typeof value.paused === "boolean" ? value.paused : null,

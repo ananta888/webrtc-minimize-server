@@ -115,7 +115,7 @@ test("fixed synthetic DFT separates both tones in both channels regardless of ph
       }
       assert.equal(nativeAudioStrategyMatches(result, "unprocessed", { channels: [[.25, .2], [.125, .05]] }), true);
       assert.equal(nativeAudioStrategyMatches(result, "unprocessed"), false, "unequal test tones are not the full-level fixture baseline");
-      assert.deepEqual(Object.keys(result).sort(), ["channels", "contextRunning", "frames", "mediaEpoch", "paused", "ready", "time"]);
+      assert.deepEqual(Object.keys(result).sort(), ["channels", "contextRunning", "frames", "mediaEpoch", "paused", "ready", "spectral", "time"]);
       assert.equal(result.mediaEpoch, 1); assert.equal(nativeAudioFrequencyObservation().mediaEpoch, 1);
       globalThis.window.__nativeAudioProbe.video.currentSrc = "blob:synthetic-two";
       assert.equal(nativeAudioFrequencyObservation().mediaEpoch, 2);
@@ -125,6 +125,32 @@ test("fixed synthetic DFT separates both tones in both channels regardless of ph
       globalThis.window.__nativeAudioProbe.video.currentSrc = "blob:synthetic-three";
       globalThis.window.__nativeAudioProbe.frequencyEpoch = 64;
       assert.equal(nativeAudioFrequencyObservation(), null, "generation counter remains bounded");
+    }
+  } finally { if (previous === undefined) delete globalThis.window; else globalThis.window = previous; }
+});
+
+test("non-unity sample conversion biases fixed-bin amplitude while the independent peak retains actual level", () => {
+  const previous = globalThis.window;
+  try {
+    for (const rate of [44100, 48000]) for (const ratio of [.95, .98, 1.02, 1.05]) for (const phase of [0, 1.7]) {
+      const levels = [[.25, .25], [.125, .07]];
+      globalThis.window = { __nativeAudioProbe: {
+        analysers: levels.map(row => ({ fftSize: 2048, getFloatTimeDomainData(samples) {
+          for (let i = 0; i < samples.length; i++) samples[i] = row[0] * Math.sin(2 * Math.PI * 440 / ratio * i / rate + phase)
+            + row[1] * Math.sin(2 * Math.PI * 880 / ratio * i / rate - phase);
+        } })), context: { sampleRate: rate, state: "running" },
+        video: { currentSrc: "blob:synthetic", currentTime: 5, playbackRate: 1,
+          getVideoPlaybackQuality: () => ({ totalVideoFrames: 75 }), readyState: 4, paused: false },
+      } };
+      const result = nativeAudioFrequencyObservation();
+      assert.ok(result.spectral.nominalChannels[0][1] < .225, "a real .25 tone is falsely reported underlevel by the fixed bin");
+      for (let channel = 0; channel < 2; channel++) for (let tone = 0; tone < 2; tone++) {
+        const peak = result.spectral.peaks[channel][tone];
+        assert.ok(Math.abs(peak.amplitude - levels[channel][tone]) < .001);
+        assert.ok(Math.abs(peak.frequency - [440, 880][tone] / ratio) < .2);
+      }
+      assert.equal(nativeAudioStrategyMatches(result, "unprocessed", { channels: levels }), true,
+        "supported sample-clock conversion must not be mistaken for attenuation");
     }
   } finally { if (previous === undefined) delete globalThis.window; else globalThis.window = previous; }
 });
@@ -182,4 +208,47 @@ test("strategy evidence rejects missing tone, wrong priority, stopped output and
   assert.equal(nativeAudioStrategyMatches(output([1, 1]), "constructor", baseline), false);
   assert.equal(nativeAudioStrategyMatches(output([1, .5]), "balanced"), false);
   assert.equal(nativeAudioStrategyMatches(output([1, 1]), "balanced", { channels: [[0, 0], [0, 0]] }), false);
+});
+
+test("peak measurement preserves level/priority/silence limits and rejects unsupported frequency shifts", () => {
+  const previous = globalThis.window;
+  function observe(levels, ratios = [1.02, .98]) {
+    globalThis.window = { __nativeAudioProbe: {
+      analysers: levels.map(row => ({ fftSize: 2048, getFloatTimeDomainData(samples) {
+        for (let i = 0; i < samples.length; i++) samples[i] = row.reduce((sum, gain, tone) => sum
+          + gain * Math.sin(2 * Math.PI * [440, 880][tone] / ratios[tone] * i / 48000 + .7), 0);
+      } })), context: { sampleRate: 48000, state: "running" },
+      video: { currentSrc: "blob:fixture", currentTime: 5, playbackRate: 1,
+        getVideoPlaybackQuality: () => ({ totalVideoFrames: 75 }), readyState: 4, paused: false },
+    } };
+    return nativeAudioFrequencyObservation();
+  }
+  try {
+    const baseline = observe([[.25, .25], [.25, .25]]);
+    assert.equal(nativeAudioStrategyMatches(baseline, "unprocessed"), true);
+    for (const [strategy, factors] of Object.entries({ unprocessed: [1, 1], balanced: [1, .5], "speech-first": [1, .28], "screen-first": [.28, 1] })) {
+      const result = observe([factors.map(v => .25 * v), factors.map(v => .25 * v)]);
+      assert.equal(nativeAudioStrategyMatches(result, strategy, baseline), true);
+      if (strategy !== "unprocessed") assert.equal(nativeAudioStrategyMatches(baseline, strategy, baseline), false);
+    }
+    for (let channel = 0; channel < 2; channel++) for (let tone = 0; tone < 2; tone++) {
+      for (const level of [0, .155, .2, .3]) {
+        const levels = [[.25, .25], [.25, .25]]; levels[channel][tone] = level;
+        assert.equal(nativeAudioStrategyMatches(observe(levels), "unprocessed"), false);
+      }
+      for (const ratio of [.9, .94, 1.06, 1.1]) {
+        const ratios = [1, 1]; ratios[tone] = ratio;
+        assert.equal(nativeAudioStrategyMatches(observe([[.25, .25], [.25, .25]], ratios), "unprocessed"), false);
+      }
+    }
+    assert.equal(nativeAudioMicrophoneOnlyMatches(observe([[.25, 0], [.25, 0]]), baseline), true);
+    assert.equal(nativeAudioMicrophoneOnlyMatches(observe([[0, 0], [0, 0]]), baseline), false);
+    assert.equal(nativeAudioMicrophoneOnlyMatches(observe([[.25, .07], [.25, .07]]), baseline), false);
+    for (const rate of [0, -1, NaN, Infinity, 96000, "48000"]) {
+      observe([[0, 0], [0, 0]]); globalThis.window.__nativeAudioProbe.context.sampleRate = rate;
+      assert.equal(nativeAudioFrequencyObservation(), null, "invalid rates cannot start unbounded frequency search");
+    }
+    observe([[0, 0], [0, 0]]); globalThis.window.__nativeAudioProbe.analysers[0].fftSize = 4096;
+    assert.equal(nativeAudioFrequencyObservation(), null);
+  } finally { if (previous === undefined) delete globalThis.window; else globalThis.window = previous; }
 });

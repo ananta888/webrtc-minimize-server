@@ -60,6 +60,27 @@ test("real strategy poll distinguishes all reset reasons without relaxing its st
   assert.equal(reads, sequence.length);
 });
 
+test("optional spectral evidence is bounded, immutable and cannot retain arbitrary page data", () => {
+  const peak = { frequency: 892.25, amplitude: .25, token: "secret-canary" };
+  const spectral = { peaks: [[peak, peak], [peak, peak]], sampleRate: 48000, playbackRate: 1, pcm: ["private"] };
+  const result = nativeAudioMeasurementSummary({ ...sample(1), spectral });
+  peak.amplitude = 0;
+  assert.equal(result.spectral.peaks[0][0].amplitude, .25);
+  assert.ok(Object.isFrozen(result.spectral.peaks[0][0]));
+  assert.doesNotMatch(JSON.stringify(result), /secret|token|private|pcm/);
+  const evidence = new NativeAudioWindowEvidence();
+  for (let i = 0; i < 20; i++) evidence.record({ ...sample(1 + i / 10), spectral }, "continue", sample(1));
+  assert.equal(evidence.snapshot().recent.length, 8);
+  assert.ok(JSON.stringify(evidence.snapshot()).length < 8192);
+  for (const peaks of [Array(10000).fill(peak), [[peak], [peak]], "private"]) {
+    assert.equal(nativeAudioMeasurementSummary({ ...sample(1), spectral: { ...spectral, peaks } }).spectral.peaks, null);
+  }
+  const bad = nativeAudioMeasurementSummary({ ...sample(1), spectral: { peaks: [[{ frequency: "secret", amplitude: Infinity }, null], [false, {}]],
+    sampleRate: "private", playbackRate: -1 } });
+  assert.deepEqual(bad.spectral, { peaks: [[{ frequency: null, amplitude: null }, { frequency: null, amplitude: null }],
+    [{ frequency: null, amplitude: null }, { frequency: null, amplitude: null }]], nominalChannels: null, sampleRate: null, playbackRate: null });
+});
+
 test("deadline diagnostics distinguish a pending observation from a page exception", async t => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let release;
