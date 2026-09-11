@@ -19,6 +19,7 @@ import { NativePackagerAssignmentRegistry } from "../src/native-packager-assignm
 import { parseNativePackagerMessage } from "../src/native-packager-control.js";
 import { TrustedBroadcastSourceActions, parseTrustedSourceAction } from "../src/trusted-broadcast-source-actions.js";
 import { parseClientMessage } from "../src/protocol.js";
+import { executeSourceModeration, parseSourceModeration } from "../src/broadcast-source-moderation.js";
 import { steadyFixtureClock } from "./helpers/steady-fixture-clock.mjs";
 import { exerciseNativeSourceLabelsHttp } from "./helpers/native-source-labels-http.mjs";
 
@@ -121,6 +122,85 @@ function fixture(start = 1800000000000, sourceProgram = false, liveClock = null)
       refreshCapability();
     } };
 }
+
+const moderationSchema = new Ajv({ strict: true }).compile(JSON.parse(await fs.readFile(
+  new URL("../contracts/trusted-decrypt/source-moderation.v1.schema.json", import.meta.url), "utf8")));
+const moderationQuery = f => ({ version: 1, type: "broadcast-source-moderation-query", requestId: "m".repeat(24),
+  programId: f.programId, programEpoch: f.assignment.programEpoch });
+const moderationRevoke = (f, state, consentId) => ({ ...moderationQuery(f), type: "broadcast-source-moderation-revoke",
+  consentId, programRevision: state.programRevision, fencingRevision: state.fencingRevision });
+
+test("owner moderation lists metadata and stops only the chosen source at receiver and publisher", () => {
+  const f = sourceControlFixture(), camera = f.prepare();
+  f.broker.acknowledge(f.socket, f.ack(camera));
+  f.rooms.setMediaState(f.publisher, { source: "screen", active: true, trackId: "track-screen" }, f.now());
+  const invitation = f.invite("screen"), screen = f.grants.approve(f.identity, { ...f.input,
+    requestId: invitation.requestId, publicationId: "track-screen",
+    expectedPublicationEpoch: f.rooms.publication(f.publisher.id, "track-screen", f.owner.roomId).publicationEpoch }, f.publisher);
+  const screenLease = f.broker.prepare(screen.consentId, f.socket);
+  f.broker.acknowledge(f.socket, { ...f.ack(screenLease), consentId: screen.consentId });
+  const execute = message => executeSourceModeration(f.grants, f.broker, f.owner, f.ownerIdentity, message);
+  const state = execute(moderationQuery(f));
+  assert.equal(moderationSchema(state), true, JSON.stringify(moderationSchema.errors));
+  assert.equal(state.sources.length, 2); assert.equal(state.expiresAt - state.observedAt, 5000);
+  assert.equal(JSON.stringify(state).includes(f.publisher.principal), false);
+  const request = moderationRevoke(f, state, f.consent.consentId), receipt = execute(request);
+  assert.equal(moderationSchema(receipt), true); assert.equal(f.lookup(f.consent), null); assert.ok(f.lookup(screen));
+  assert.equal(f.messages.at(-1).type, "trusted-source-stop");
+  assert.equal(f.messages.at(-1).consentId, f.consent.consentId);
+  assert.equal(f.publisherMessages.at(-1).message.type, "trusted-source-publisher-stop");
+  assert.equal(f.publisherMessages.at(-1).message.consentId, f.consent.consentId);
+  assert.deepEqual(execute(request), receipt, "same-scope duplicate removal cannot resurrect or extend consent");
+  assert.deepEqual(execute(moderationQuery(f)).sources.map(s => s.consentId), [screen.consentId]);
+  assert.equal(f.grants.auditEvents().at(-1).reasonCode, "program-owner-removed");
+  assert.ok(f.rooms.publication(f.publisher.id, "track-camera", f.owner.roomId), "room publication is independent");
+  f.broker.destroy();
+});
+
+test("moderation requires actual current human creator connection, exact identity and writer fences", () => {
+  const f = fixture(), consent = f.approve(), query = moderationQuery(f);
+  const list = (identity = f.ownerIdentity, actor = f.owner, input = query) =>
+    f.grants.listForOwner(identity, actor, input.programId, input.programEpoch);
+  for (const [identity, actor] of [[f.ownerIdentity, { ...f.owner }], [f.identity, f.publisher],
+    [f.identity, f.owner], [{ ...f.ownerIdentity, issuer: "https://foreign.example" }, f.owner]]) {
+    assert.throws(() => list(identity, actor));
+  }
+  for (const patch of [{ programId: "prg_" + "z".repeat(16) }, { programEpoch: query.programEpoch + 1 }]) {
+    assert.throws(() => list(f.ownerIdentity, f.owner, { ...query, ...patch }));
+  }
+  const state = list(), request = moderationRevoke(f, state, consent.consentId);
+  for (const patch of [{ programRevision: state.programRevision + 1 }, { fencingRevision: state.fencingRevision + 1 },
+    { consentId: "cns_" + "z".repeat(16) }, { programEpoch: state.programEpoch + 1 }]) {
+    assert.throws(() => f.grants.revokeForOwner(f.ownerIdentity, f.owner, { ...request, ...patch }));
+    assert.ok(f.lookup(consent));
+  }
+  f.owner.machine = true; assert.throws(() => list()); f.owner.machine = false;
+  f.owner.creator = false; assert.throws(() => list()); f.owner.creator = true;
+  f.rooms.leave(f.owner); assert.throws(() => list());
+});
+
+test("moderation cannot keep stale grants through membership change and is rate bounded", () => {
+  const f = fixture(), consent = f.approve(), query = moderationQuery(f);
+  f.epoch();
+  assert.deepEqual(f.grants.listForOwner(f.ownerIdentity, f.owner, query.programId, query.programEpoch).sources, []);
+  assert.equal(f.lookup(consent), null);
+  for (let i = 1; i < 60; i++) f.grants.listForOwner(f.ownerIdentity, f.owner, query.programId, query.programEpoch);
+  assert.throws(() => f.grants.listForOwner(f.ownerIdentity, f.owner, query.programId, query.programEpoch), /rate/);
+});
+
+test("moderation wire contract rejects extra fields, versions, bad identifiers and oversized requests", () => {
+  const f = fixture(), consent = f.approve(), query = moderationQuery(f);
+  const state = f.grants.listForOwner(f.ownerIdentity, f.owner, query.programId, query.programEpoch);
+  for (const valid of [query, moderationRevoke(f, state, consent.consentId)]) {
+    assert.equal(moderationSchema(valid), true); assert.deepEqual(parseClientMessage(JSON.stringify(valid)), valid);
+    for (const patch of [{ version: 2 }, { requestId: "bad" }, { programEpoch: 0 }, { roomId: f.owner.roomId },
+      { programId: null }, { type: "trusted-source-moderation-query" }]) {
+      const invalid = { ...valid, ...patch };
+      assert.equal(moderationSchema(invalid), false); assert.throws(() => parseSourceModeration(invalid));
+    }
+  }
+  assert.throws(() => parseClientMessage(" ".repeat(2048) + JSON.stringify(query)), /invalid_source_moderation/);
+});
 
 test("invitation resolution may advance time without falsely expiring the active writer", () => {
   const f = fixture();
@@ -741,6 +821,14 @@ for (const publicActions of [false, true, "receipt-failure", "backpressure"]) te
   assert.equal(response.status, 201);
   const requestId = (await response.json()).requests[0].requestId;
   const actor = f.rooms.members(f.input.roomId).find(peer => peer.id === joined.peerId);
+  if (publicActions === true) {
+    const query = moderationQuery(f);
+    socket.send(JSON.stringify(query));
+    await until(() => browserMessages.some(m => m.type === "broadcast-source-moderation-unavailable"));
+    const denial = browserMessages.find(m => m.type === "broadcast-source-moderation-unavailable");
+    assert.equal(moderationSchema(denial), true); assert.equal(denial.requestId, query.requestId);
+    assert.equal(socket.readyState, WebSocket.OPEN, "owner denial does not close the publisher connection");
+  }
   if (publicActions === "receipt-failure") {
     const send = actor.socket.send.bind(actor.socket);
     actor.socket.send = (raw, ...args) => {

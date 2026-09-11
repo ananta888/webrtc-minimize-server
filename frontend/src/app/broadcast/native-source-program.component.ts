@@ -8,10 +8,11 @@ import { supportsSourceAudioOutput } from "./native-source-audio-capability";
 import { NativePackagerStandbyComponent } from "./native-packager-standby.component";
 import { NativeSourceVideoOutput, normalizeSourceVideoOutput } from "./native-source-video-output";
 import { NativeCapacityPreviewComponent } from "./native-capacity-preview.component";
+import { SourceModerationComponent } from "./source-moderation.component";
 
 @Component({
   selector: "app-native-source-program", standalone: true,
-  imports: [NativeSourceSceneComponent, NativeSourceAudioComponent, NativePackagerStandbyComponent, NativeCapacityPreviewComponent],
+  imports: [NativeSourceSceneComponent, NativeSourceAudioComponent, NativePackagerStandbyComponent, NativeCapacityPreviewComponent, SourceModerationComponent],
   templateUrl: "./native-source-program.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

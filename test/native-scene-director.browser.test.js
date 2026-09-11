@@ -13,7 +13,7 @@ async function confirm(page, action) {
 }
 
 for (const multiple of [false, true]) test(multiple
-  ? "coupled Angular director preserves a second source through two encoder replacements"
+  ? "coupled Angular director preserves a second source through encoder replacements and owner removal"
   : "coupled Angular director uses actual native source-program authority", { timeout: 180_000 }, async t => {
   if (process.platform !== "linux") { t.skip("Coupled production-process fixture requires Linux containment and local FFmpeg"); return; }
   const f = await nativeSceneLiveFixture(t, { allowSyntheticScreen: multiple, observeSourceState: true }), { page } = f;
@@ -151,8 +151,20 @@ for (const multiple of [false, true]) test(multiple
     assert.equal(await page.evaluate(() => window.__sceneCaptures), 2, "presentation changes never reopen capture");
     fitEvidence = { letterbox, mixed, filled };
   }
-  await sources.locator("li", { hasText: "Sender aktiv" }).filter({ hasText: "Kamera" })
-    .getByRole("button", { name: "Broadcast-Quelle sofort stoppen", exact: true }).click();
+  if (multiple) {
+    await page.getByRole("button", { name: "Aktive Quellenfreigaben verwalten", exact: true }).press("Enter");
+    const moderation = page.locator("app-source-moderation");
+    assert.equal(await moderation.locator("article").count(), 0, "opening does not query or create consent");
+    await moderation.locator("#source-moderation-query").press("Enter");
+    await moderation.getByRole("status").filter({ hasText: "Freigaben aktuell geprüft" }).waitFor();
+    assert.equal(await moderation.locator("article").count(), 2);
+    await confirm(page, () => moderation.getByRole("button", { name: "Kamera aus Sendung entfernen…", exact: true }).press("Enter"));
+    await moderation.getByRole("status").filter({ hasText: "Freigabe serverseitig widerrufen" }).waitFor();
+    assert.equal(f.app.trustedBroadcastSources.auditEvents().at(-1).reasonCode, "program-owner-removed");
+  } else {
+    await sources.locator("li", { hasText: "Sender aktiv" }).filter({ hasText: "Kamera" })
+      .getByRole("button", { name: "Broadcast-Quelle sofort stoppen", exact: true }).click();
+  }
   const revoked = await (multiple ? decodedSceneTiles(viewer, ["slate", "blue"]) : decodedScene(viewer, "slate", red.time + 1)).catch(async error => {
     t.diagnostic(JSON.stringify({ stage: "source-revoked", initial, red, viewer: await sceneViewerObservation(viewer),
       program: await page.locator("#native-source-status").innerText(), observation: f.observation }));

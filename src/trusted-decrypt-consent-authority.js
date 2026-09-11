@@ -20,7 +20,7 @@ const CONTEXT_FIELDS = new Set(["identity", "membership", "packager", "lease", "
 const MAX_TTL_MS = 10 * 60_000;
 const REASON_CODES = new Set([
   "user-revoked", "expired", "program-epoch-changed", "room-epoch-changed", "packager-handoff",
-  "lease-lost", "room-left", "source-ended", "destroyed",
+  "lease-lost", "room-left", "source-ended", "destroyed", "program-owner-removed",
 ]);
 
 export class TrustedDecryptConsentError extends Error {

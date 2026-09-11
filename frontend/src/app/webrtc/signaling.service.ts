@@ -28,6 +28,9 @@ export const SERVER_MESSAGE_VERSIONS = Object.freeze({
   "trusted-source-publisher-lease": 1,
   "trusted-source-publisher-stop": 1,
   "trusted-source-agent-signal": 1,
+  "broadcast-source-moderation-state": 1,
+  "broadcast-source-moderation-revoked": 1,
+  "broadcast-source-moderation-unavailable": 1,
   "overlay-key": 1,
   error: 1,
 } satisfies Readonly<Record<string, number>>);

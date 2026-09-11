@@ -72,6 +72,13 @@
   @if (confirmedPackager()) { <p id="native-source-confirmed-packager">Aktuell bestätigter Packager: {{ confirmedPackager() }}</p> }
   @if (programs.requestProgram()) { <p>Jetzt Quellenanfragen öffnen. Die Statusbestätigung ist noch kein Nachweis, dass ein Zuschauer Bild oder Ton empfängt.</p> }
   @if (programs.requestProgram()) {
+    @defer (on interaction) {
+      <app-source-moderation />
+    } @placeholder {
+      <button type="button" class="button secondary">Aktive Quellenfreigaben verwalten</button>
+    } @error {
+      <p role="alert">Quellenverwaltung konnte nicht geladen werden. Die gesamte Sendung kann weiterhin gestoppt werden.</p>
+    }
     @defer (on immediate) {
       <app-native-source-scene />
     } @placeholder {

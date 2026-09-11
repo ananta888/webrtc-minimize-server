@@ -1,0 +1,245 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/trusted-decrypt/source-moderation.v1.schema.json",
+  "title": "Authenticated program-owner source removal; observations are not media ACKs",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "type",
+        "programId",
+        "programEpoch"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{16,64}$"
+        },
+        "type": {
+          "const": "broadcast-source-moderation-query"
+        },
+        "programId": {
+          "type": "string",
+          "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+        },
+        "programEpoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "type",
+        "programId",
+        "programEpoch",
+        "consentId",
+        "programRevision",
+        "fencingRevision"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{16,64}$"
+        },
+        "type": {
+          "const": "broadcast-source-moderation-revoke"
+        },
+        "programId": {
+          "type": "string",
+          "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+        },
+        "programEpoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "consentId": {
+          "type": "string",
+          "pattern": "^cns_[A-Za-z0-9_-]{16,64}$"
+        },
+        "programRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "fencingRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "type",
+        "programId",
+        "programEpoch",
+        "programRevision",
+        "fencingRevision",
+        "observedAt",
+        "expiresAt",
+        "sources"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{16,64}$"
+        },
+        "type": {
+          "const": "broadcast-source-moderation-state"
+        },
+        "programId": {
+          "type": "string",
+          "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+        },
+        "programEpoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "programRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "fencingRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "observedAt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expiresAt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "sources": {
+          "type": "array",
+          "maxItems": 80,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "consentId",
+              "sourceId",
+              "sourceKind",
+              "publisherPeerId",
+              "expiresAt"
+            ],
+            "properties": {
+              "consentId": {
+                "type": "string",
+                "pattern": "^cns_[A-Za-z0-9_-]{16,64}$"
+              },
+              "sourceId": {
+                "type": "string",
+                "pattern": "^src_[A-Za-z0-9_-]{16,64}$"
+              },
+              "sourceKind": {
+                "enum": [
+                  "camera",
+                  "microphone",
+                  "screen",
+                  "screen-audio"
+                ]
+              },
+              "publisherPeerId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{16}$"
+              },
+              "expiresAt": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "type",
+        "programId",
+        "programEpoch",
+        "consentId"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{16,64}$"
+        },
+        "type": {
+          "const": "broadcast-source-moderation-revoked"
+        },
+        "programId": {
+          "type": "string",
+          "pattern": "^prg_[A-Za-z0-9_-]{16,64}$"
+        },
+        "programEpoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "consentId": {
+          "type": "string",
+          "pattern": "^cns_[A-Za-z0-9_-]{16,64}$"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "type"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{16,64}$"
+        },
+        "type": {
+          "const": "broadcast-source-moderation-unavailable"
+        }
+      }
+    }
+  ]
+}

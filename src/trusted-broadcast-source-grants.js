@@ -132,6 +132,54 @@ export class TrustedBroadcastSourceGrants {
     return record.consent;
   }
 
+  // Owner moderation is removal only, never a publisher impersonation or grant.
+  listForOwner(identity, actor, programId, programEpoch) {
+    const { writer, now } = this.#owner(identity, actor, programId, programEpoch);
+    const sources = [];
+    for (const record of this.#records.values()) {
+      if (this.#owned(record, actor, programId, programEpoch) && this.#current(record, now)) {
+        sources.push(Object.freeze({ consentId: record.consent.consentId, sourceId: record.consent.sourceId,
+          sourceKind: record.sourceKind, publisherPeerId: record.publisher.id, expiresAt: record.consent.expiresAt }));
+      }
+    }
+    return Object.freeze({ programId, programEpoch, programRevision: writer.programRevision,
+      fencingRevision: writer.fencingRevision, observedAt: now, expiresAt: Math.min(now + 5000, writer.expiresAt),
+      sources: Object.freeze(sources) });
+  }
+
+  revokeForOwner(identity, actor, input) {
+    const { programId, programEpoch, programRevision, fencingRevision, consentId } = input;
+    const { writer, now } = this.#owner(identity, actor, programId, programEpoch);
+    if (writer.programRevision !== programRevision || writer.fencingRevision !== fencingRevision) {
+      fail("stale_source_moderation", 409);
+    }
+    const record = this.#records.get(consentId);
+    if (!record || !this.#owned(record, actor, programId, programEpoch)) fail("trusted_source_unavailable", 404);
+    if (record.active && !this.#current(record, now)) fail("stale_source_moderation", 409);
+    this.#invalidate(record, "program-owner-removed", now);
+  }
+
+  #owned(record, actor, programId, programEpoch) {
+    return record.roomId === actor.roomId && record.programId === programId && record.programEpoch === programEpoch
+      && record.owner.id === actor.id && record.owner.principal === actor.principal
+      && record.owner.fingerprint === actor.deviceFingerprint;
+  }
+  #owner(identity, actor, programId, programEpoch) {
+    const now = this.#now(), principal = oidcPrincipal(identity);
+    if (!actor || actor.authenticated !== true || actor.machine === true || actor.creator !== true
+      || !this.#ports.members(actor.roomId).includes(actor) || actor.principal !== principal
+      || typeof programId !== "string" || !/^prg_[A-Za-z0-9_-]{16,64}$/.test(programId)
+      || !positive(programEpoch)) fail("trusted_source_owner_required", 403);
+    this.#rate(principal, now);
+    const writer = this.#ports.writer(identity, actor, programId, now);
+    if (writer.programEpoch !== programEpoch || !positive(writer.programRevision) || !positive(writer.fencingRevision)
+      || writer.tenantId !== broadcastTenantRef(identity.issuer) || writer.ownerSubjectRef !== broadcastSubjectRef(identity)
+      || !positive(writer.expiresAt) || writer.expiresAt <= now || !["live", "degraded"].includes(writer.state)) {
+      fail("stale_source_moderation", 409);
+    }
+    return { writer, now };
+  }
+
   prune() { const now = this.#now(); return this.#prune(now); }
   auditEvents() { return this.#authority.auditEvents(); }
   destroy() {

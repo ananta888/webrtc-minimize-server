@@ -1,6 +1,7 @@
 import { parseMachineReceiveConsent } from "./machine-receive-policy.js";
 import { parseTrustedSourceSignal } from "./trusted-broadcast-source-signal.js";
 import { parseTrustedSourceAction } from "./trusted-broadcast-source-actions.js";
+import { parseSourceModeration } from "./broadcast-source-moderation.js";
 import { TRACK_ID_PATTERN } from "./publication-identifiers.js";
 export { TRACK_ID_PATTERN } from "./publication-identifiers.js";
 
@@ -117,6 +118,11 @@ export function validateCandidate(candidate) {
 
 export function parseClientMessage(raw) {
   const value = parseJson(raw);
+  if (["broadcast-source-moderation-query", "broadcast-source-moderation-revoke"].includes(value.type)) {
+    if (Buffer.byteLength(raw) > 2048) throw new ProtocolError("invalid_source_moderation");
+    try { return parseSourceModeration(value); }
+    catch { throw new ProtocolError("invalid_source_moderation"); }
+  }
   if (["trusted-source-approve", "trusted-source-revoke", "trusted-source-publications"].includes(value.type)) {
     try { return parseTrustedSourceAction(value); }
     catch { throw new ProtocolError("invalid_trusted_source_action"); }

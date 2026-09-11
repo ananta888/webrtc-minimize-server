@@ -89,6 +89,7 @@ import { BroadcastSourceRequests, BroadcastSourceRequestError } from "./broadcas
 import { TrustedBroadcastSourceGrants } from "./trusted-broadcast-source-grants.js";
 import { TrustedBroadcastSourceControl } from "./trusted-broadcast-source-control.js";
 import { TrustedBroadcastSourceActions } from "./trusted-broadcast-source-actions.js";
+import { executeSourceModeration } from "./broadcast-source-moderation.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
@@ -1986,6 +1987,19 @@ function configureSignaling(
             fromName: peer.name,
             to: undefined,
           });
+          return;
+        }
+        if (["broadcast-source-moderation-query", "broadcast-source-moderation-revoke"].includes(message.type)) {
+          let receipt;
+          try {
+            if (!trustedBroadcastSources || !trustedBroadcastSourceControl) throw new Error("unavailable");
+            receipt = executeSourceModeration(trustedBroadcastSources, trustedBroadcastSourceControl, peer, identity.sourceIdentity, message);
+          } catch {
+            receipt = { version: 1, type: "broadcast-source-moderation-unavailable", requestId: message.requestId };
+          }
+          const bytes = Buffer.byteLength(JSON.stringify(receipt));
+          // Lost receipts do not restore a revoked source; the UI must query again.
+          if (bytes <= 32768 && socket.bufferedAmount + bytes <= 65536) safeSend(socket, receipt, 32768);
           return;
         }
         if (message.type === "trusted-source-publisher-signal") {
