@@ -1528,7 +1528,6 @@ function createHttpHandler(config, registry, services) {
           throw new ProtocolError("machine_client_upgrade_required");
         }
         const roomId = normalizeRoomId(input.roomId);
-        if (registry.reservedBreakout(roomId)) throw new ProtocolError("breakout_assignment_required");
         const mode = normalizeMode(input.mode);
         const requestedName = normalizeDisplayName(input.displayName);
         const humanIdentity = url.pathname === "/api/sessions"
@@ -1544,6 +1543,14 @@ function createHttpHandler(config, registry, services) {
         const principal = identity
           ? `${identity.issuer}|${identity.subject}`
           : `anonymous:${device.fingerprint}`;
+        if (registry.reservedBreakout(roomId)) {
+          if (url.pathname === "/api/machine/sessions" || mode === "pair") {
+            throw new ProtocolError("breakout_assignment_required");
+          }
+          if (!registry.hasLiveBreakoutGrant({
+            roomId, principal, deviceFingerprint: device.fingerprint,
+          })) throw new ProtocolError("breakout_assignment_required");
+        }
         const authorizedName = identity ? normalizeDisplayName(identity.displayName) : requestedName;
         const workspace = workspaceStore?.admit(
           roomId,
@@ -1553,12 +1560,17 @@ function createHttpHandler(config, registry, services) {
         if (workspace && mode !== "pair") throw new PairWorkspaceError("workspace_pair_mode_required", 409);
         const origin = requestOrigin(request, config);
         const machineLease = identity?.machineExpiresAt ? machineSessions.issue(identity, device.fingerprint) : null;
+        const reservedBreakout = registry.reservedBreakout(roomId);
         const issued = ticketStore.issue({
           roomId,
           mode,
           name: authorizedName,
           principal,
           authenticated: Boolean(identity),
+          ...(reservedBreakout ? {
+            breakoutSetId: reservedBreakout.setId,
+            breakoutChildRoomId: roomId,
+          } : {}),
           ...(identity ? { sourceIdentity: Object.freeze({ issuer: identity.issuer, subject: identity.subject }) } : {}),
           deviceFingerprint: device.fingerprint,
           machineReceiveVersion: input.machineReceiveVersion === 1 ? 1 : 0,
@@ -1964,6 +1976,10 @@ function configureSignaling(
         machineCapabilities: identity.machineCapabilities,
         machineReceiveVersion: identity.machineReceiveVersion,
         creatorPrincipal: directory.ownerPrincipal(identity.roomId),
+        ...(identity.breakoutSetId ? {
+          breakoutSetId: identity.breakoutSetId,
+          breakoutChildRoomId: identity.breakoutChildRoomId,
+        } : {}),
       });
     } catch (error) {
       const code = error instanceof RoomFullError || error instanceof RoomAdmissionError
@@ -2100,6 +2116,16 @@ function configureSignaling(
         if (message.type === "presenter-assign") {
           registry.assignPresenter(peer, message.targetPeerId);
           broadcastModeration(peer.roomId);
+          return;
+        }
+        if (message.type === "breakout-open") {
+          const snapshot = registry.openBreakouts(peer, {
+            childCount: message.childCount,
+            capacity: message.capacity,
+          });
+          for (const member of registry.members(peer.roomId)) {
+            if (snapshot) safeSend(member.socket, snapshot);
+          }
           return;
         }
         if (message.type === "breakout-assign") {

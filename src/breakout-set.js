@@ -211,6 +211,17 @@ export class BreakoutRegistry {
     return freezeGrant(grant);
   }
 
+  hasLiveGrant({ roomId, principal, deviceFingerprint, now = Date.now() }) {
+    const reserved = this.reserved(roomId);
+    if (!reserved) return false;
+    const set = this.#sets.get(reserved.parentRoomId);
+    return (set?.grants || []).some((grant) => liveGrant(grant, now)
+      && grant.childRoomId === roomId
+      && grant.principal === principal
+      && grant.deviceFingerprint === deviceFingerprint
+      && grant.parentRevision === set.parentRevision);
+  }
+
   consume({ roomId, setId, principal, deviceFingerprint, now = Date.now() }) {
     const reserved = this.reserved(roomId);
     if (!reserved || reserved.setId !== setId) fail("breakout_assignment_required");

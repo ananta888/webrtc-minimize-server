@@ -274,7 +274,7 @@
         {
           "id": "BBB-UX-015",
           "title": "Sicheren Raumwechsel mit vollständigem Medien-, DataChannel- und Schlüssel-Cleanup bauen",
-          "status": "open",
+          "status": "partial",
           "priority": "P0",
           "risk": "critical",
           "scope": ["stop local tracks", "close peer connections", "clear captions/chat/whiteboard", "rotate keys", "new ticket"],
@@ -710,8 +710,8 @@
     "total_items": 42,
     "by_status": {
       "completed": 0,
-      "partial": 15,
-      "open": 27,
+      "partial": 16,
+      "open": 26,
       "deferred": 0,
       "blocked": 0
     },

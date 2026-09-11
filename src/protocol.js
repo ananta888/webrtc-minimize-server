@@ -158,6 +158,16 @@ export function parseClientMessage(raw) {
     if (!PEER_ID_PATTERN.test(value.targetPeerId || "")) throw new ProtocolError("invalid_recipient");
     return Object.freeze({ type: "presenter-assign", targetPeerId: value.targetPeerId });
   }
+  if (value.type === "breakout-open") {
+    if (!hasOnlyKeys(value, new Set(["type", "childCount", "capacity"]))) throw new ProtocolError("unknown_message_field");
+    if (!Number.isSafeInteger(value.childCount) || value.childCount < 1 || value.childCount > 10) {
+      throw new ProtocolError("invalid_breakout_count");
+    }
+    if (!Number.isSafeInteger(value.capacity) || value.capacity < 2 || value.capacity > 20) {
+      throw new ProtocolError("invalid_breakout_capacity");
+    }
+    return Object.freeze({ type: "breakout-open", childCount: value.childCount, capacity: value.capacity });
+  }
   if (value.type === "breakout-assign") {
     if (!hasOnlyKeys(value, new Set(["type", "targetPeerId", "childRoomId"]))) throw new ProtocolError("unknown_message_field");
     if (!PEER_ID_PATTERN.test(value.targetPeerId || "")) throw new ProtocolError("invalid_recipient");

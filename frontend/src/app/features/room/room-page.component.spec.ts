@@ -53,6 +53,11 @@ describe("Room page information architecture", () => {
     expect(component).not.toContain("getUserMedia");
   });
 
+  it("hosts breakout switch controls without capture", () => {
+    expect(template).toContain("<app-breakout-controls");
+    expect(component).toContain("BreakoutControlsComponent");
+  });
+
   it("shows a live participant list without deriving capture or membership from the UI", () => {
     expect(template).toContain("<app-room-participant-list");
     expect(component).toContain("RoomParticipantListComponent");

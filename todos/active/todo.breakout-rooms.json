@@ -30,7 +30,7 @@
       "id": "BRK-M2",
       "title": "Zuweisung und Raumwechsel",
       "task_ids": ["BRK-002", "BRK-003"],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "BRK-M3",
@@ -83,10 +83,10 @@
     {
       "id": "BRK-003",
       "title": "Sicheren Raumwechsel mit vollständigem Medien-, DataChannel- und Schlüssel-Cleanup bauen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["BRK-001", "BRK-002"],
       "acceptance_criteria": [
         "Vor Eintritt in den Child-Raum sind alle Parent-Publikationen und erreichbaren privaten Schlüssel aus dem Browser-State entfernt.",
@@ -154,23 +154,24 @@
   "critical_path_tasks": ["BRK-001", "BRK-002", "BRK-003", "BRK-004", "BRK-005", "BRK-006", "BRK-007"],
   "tasks_status_summary": {
     "total": 7,
-    "by_status": { "todo": 5, "in_progress": 0, "partial": 0, "blocked": 0, "done": 2 },
-    "progress_percent_done": 28.57,
+    "by_status": { "todo": 4, "in_progress": 0, "partial": 0, "blocked": 0, "done": 3 },
+    "progress_percent_done": 42.86,
     "by_priority": { "P0": 5, "P1": 2, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 1, "high": 2, "critical": 4 },
-    "critical_path": { "total": 7, "done": 2, "remaining": 5 },
-    "milestones": { "total": 5, "todo": 3, "in_progress": 1, "blocked": 0, "done": 1 }
+    "critical_path": { "total": 7, "done": 3, "remaining": 4 },
+    "milestones": { "total": 5, "todo": 3, "in_progress": 0, "blocked": 0, "done": 2 }
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 5,
+    "todo_remaining": 4,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 2
+    "done": 3
   },
   "summary_notes": [
     "2026-09-11 Track aus BBB-UX-012 bis BBB-UX-018. BRK-001 Domain: eigene Child-Room-IDs, Epochen, 20er-Cap je konkretem Raum, Join ohne Grant fail-closed. BRK-002 Grants folgen. BRK-007 Nutzergates zuletzt.",
-    "2026-09-11 BRK-002: Owner-Grants an Principal/Gerät/Child/Parent-Revision/Ablauf, einmal verbraucht. Child-Code ohne Grant bleibt denied. Raumwechsel folgt als BRK-003."
+    "2026-09-11 BRK-002: Owner-Grants an Principal/Gerät/Child/Parent-Revision/Ablauf, einmal verbraucht. Child-Code ohne Grant bleibt denied. Raumwechsel folgt als BRK-003.",
+    "2026-09-11 BRK-003: Keine Parallelmembership, Child-Tickets nur mit Live-Grant, expliziter Wechsel stoppt Medien/Mesh vor Join. Leerer Parent schließt das Set nicht. BRK-007 zuletzt."
   ]
 }

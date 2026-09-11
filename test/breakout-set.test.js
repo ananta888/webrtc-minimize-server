@@ -21,7 +21,8 @@ function joinParent(rooms, roomId, name, now, principal) {
 }
 
 function joinChild(rooms, peer, set, childRoomId, now) {
-  return rooms.join(childRoomId, {}, peer.name, now, {
+  rooms.leave(peer, now);
+  return rooms.join(childRoomId, {}, peer.name, now + 1, {
     principal: peer.principal,
     deviceFingerprint: peer.deviceFingerprint,
     breakoutSetId: set.setId,
@@ -66,7 +67,7 @@ test("guessing a child room ID does not create or join membership", () => {
   assert.throws(() => rooms.join(childId, {}, "Intruder", 21), admission("breakout_assignment_required"));
   assert.throws(
     () => rooms.join(childId, {}, "WrongSet", 21, {
-      principal: "owner", deviceFingerprint: owner.deviceFingerprint,
+      principal: "intruder", deviceFingerprint: "device-intruder",
       breakoutSetId: "deadbeefdeadbeef", breakoutChildRoomId: childId,
     }),
     admission("breakout_assignment_required"),
@@ -93,21 +94,38 @@ test("grants bind principal, device, parent revision and expire once", () => {
   assert.equal(grant.expiresAt, 15_040);
   assert.equal(JSON.stringify(grant).includes(guest.principal), false);
   assert.equal(JSON.stringify(grant).includes(guest.deviceFingerprint), false);
-  assert.throws(() => joinChild(rooms, other, set, left, 41), admission("breakout_assignment_required"));
+  assert.throws(() => rooms.join(left, {}, other.name, 41, {
+    principal: other.principal, deviceFingerprint: other.deviceFingerprint,
+    breakoutSetId: set.setId, breakoutChildRoomId: left,
+  }), admission("breakout_parallel_membership"));
   assert.throws(() => rooms.join(left, {}, "Spoof", 42, {
     principal: guest.principal, deviceFingerprint: other.deviceFingerprint,
     breakoutSetId: set.setId, breakoutChildRoomId: left,
   }), admission("breakout_assignment_required"));
+  assert.throws(() => rooms.join(left, {}, "Parallel", 42.5, {
+    principal: guest.principal, deviceFingerprint: guest.deviceFingerprint,
+    breakoutSetId: set.setId, breakoutChildRoomId: left,
+  }), admission("breakout_parallel_membership"));
   const childGuest = joinChild(rooms, guest, set, left, 43);
   assert.notEqual(childGuest.id, guest.id);
   assert.equal(rooms.recipient(owner, childGuest.id), null);
-  assert.throws(() => joinChild(rooms, guest, set, left, 44), admission("breakout_assignment_required"));
+  assert.throws(() => rooms.join(left, {}, "Replay", 44, {
+    principal: guest.principal, deviceFingerprint: guest.deviceFingerprint,
+    breakoutSetId: set.setId, breakoutChildRoomId: left,
+  }), admission("breakout_assignment_required"));
   rooms.assignBreakout(owner, { targetPeerId: other.id, childRoomId: right }, 50);
   const replaced = rooms.assignBreakout(owner, { targetPeerId: other.id, childRoomId: left }, 51);
   assert.equal(replaced.childRoomId, left);
-  assert.throws(() => joinChild(rooms, other, set, right, 52), admission("breakout_assignment_required"));
-  rooms.revokeBreakout(owner, replaced.grantId, 53);
-  assert.throws(() => joinChild(rooms, other, set, left, 54), admission("breakout_assignment_required"));
+  rooms.leave(other, 52);
+  assert.throws(() => rooms.join(right, {}, other.name, 53, {
+    principal: other.principal, deviceFingerprint: other.deviceFingerprint,
+    breakoutSetId: set.setId, breakoutChildRoomId: right,
+  }), admission("breakout_assignment_required"));
+  rooms.revokeBreakout(owner, replaced.grantId, 54);
+  assert.throws(() => rooms.join(left, {}, other.name, 55, {
+    principal: other.principal, deviceFingerprint: other.deviceFingerprint,
+    breakoutSetId: set.setId, breakoutChildRoomId: left,
+  }), admission("breakout_assignment_required"));
 });
 
 test("authorized child join is isolated from parent and sibling rooms", () => {
@@ -130,7 +148,7 @@ test("authorized child join is isolated from parent and sibling rooms", () => {
   assert.equal(rooms.recipient(childA, parentGuest.id), null);
   assert.equal(rooms.recipient(childA, childB.id), null);
   assert.deepEqual(rooms.members(left.roomId).map((peer) => peer.id), [childA.id]);
-  assert.equal(rooms.members("room-parent4").length, 4);
+  assert.equal(rooms.members("room-parent4").length, 2);
 });
 
 test("each concrete room keeps its own 20-member cap", () => {
@@ -149,10 +167,16 @@ test("each concrete room keeps its own 20-member cap", () => {
   for (let index = 0; index < 20; index += 1) {
     joinChild(rooms, parentPeers[index], set, childId, 70 + index);
   }
-  assert.throws(() => rooms.assignBreakout(owner, { targetPeerId: owner.id, childRoomId: childId }, 90),
-    admission("breakout_child_full"));
-  assert.equal(rooms.members("room-parent5").length, 20);
+  assert.equal(rooms.members("room-parent5").length, 0);
   assert.equal(rooms.members(childId).length, 20);
+  for (let index = 0; index < 20; index += 1) {
+    joinParent(rooms, "room-parent5", `N${index}`, 200 + index, `n${index}`);
+  }
+  assert.equal(rooms.members("room-parent5").length, 20);
+  assert.throws(() => rooms.join(childId, {}, "C20", 300, {
+    principal: "c20", deviceFingerprint: "device-c20xx",
+    breakoutSetId: set.setId, breakoutChildRoomId: childId,
+  }), admission("breakout_assignment_required"));
 });
 
 test("pair rooms, nested children and non-owners cannot open a set", () => {
@@ -187,24 +211,29 @@ test("closing or expiring a set evicts children and invalidates old grants", () 
   assert.deepEqual(evicted.map((peer) => peer.id), [child.id]);
   assert.deepEqual(rooms.members(childId), []);
   assert.equal(rooms.reservedBreakout(childId), null);
-  assert.throws(() => joinChild(rooms, guest, set, childId, 130), admission("breakout_assignment_required"));
+  assert.throws(() => rooms.join(childId, {}, "Late", 130, {
+    principal: guest.principal, deviceFingerprint: guest.deviceFingerprint,
+    breakoutSetId: set.setId, breakoutChildRoomId: childId,
+  }), admission("breakout_assignment_required"));
   const again = rooms.openBreakouts(owner, { childCount: 1, capacity: 2, lifetimeMs: 60_000 }, 200);
-  rooms.assignBreakout(owner, { targetPeerId: guest.id, childRoomId: again.children[0].roomId }, 210);
-  joinChild(rooms, guest, again, again.children[0].roomId, 211);
+  const returning = joinParent(rooms, "room-parent7", "Kid", 205, "child");
+  rooms.assignBreakout(owner, { targetPeerId: returning.id, childRoomId: again.children[0].roomId }, 210);
+  joinChild(rooms, returning, again, again.children[0].roomId, 211);
   rooms.prune(200 + 60_000);
   assert.equal(rooms.reservedBreakout(again.children[0].roomId), null);
   assert.deepEqual(rooms.members(again.children[0].roomId), []);
 });
 
-test("empty parent leave closes reserved children", () => {
+test("empty parent leave keeps reserved children until close or expiry", () => {
   const rooms = registry();
   const owner = joinParent(rooms, "room-parent8", "Ada", 1, "owner");
-  const set = rooms.openBreakouts(owner, { childCount: 1, capacity: 2 }, 1);
-  rooms.assignBreakout(owner, { targetPeerId: owner.id, childRoomId: set.children[0].roomId }, 2);
-  joinChild(rooms, owner, set, set.children[0].roomId, 3);
-  rooms.leave(owner, 4);
-  assert.equal(rooms.reservedBreakout(set.children[0].roomId), null);
-  assert.deepEqual(rooms.members(set.children[0].roomId), []);
+  const guest = joinParent(rooms, "room-parent8", "Grace", 2, "guest");
+  const set = rooms.openBreakouts(owner, { childCount: 1, capacity: 2 }, 3);
+  rooms.assignBreakout(owner, { targetPeerId: guest.id, childRoomId: set.children[0].roomId }, 4);
+  const child = joinChild(rooms, guest, set, set.children[0].roomId, 5);
+  rooms.leave(owner, 6);
+  assert.equal(rooms.reservedBreakout(set.children[0].roomId).setId, set.setId);
+  assert.deepEqual(rooms.members(set.children[0].roomId).map((peer) => peer.id), [child.id]);
 });
 
 test("breakout assignment messages are closed and content-free", () => {
@@ -219,4 +248,7 @@ test("breakout assignment messages are closed and content-free", () => {
   assert.deepEqual(parseClientMessage(JSON.stringify({
     type: "breakout-revoke", grantId: "bbbbbbbbbbbbbbbb",
   })), { type: "breakout-revoke", grantId: "bbbbbbbbbbbbbbbb" });
+  assert.deepEqual(parseClientMessage(JSON.stringify({
+    type: "breakout-open", childCount: 2, capacity: 10,
+  })), { type: "breakout-open", childCount: 2, capacity: 10 });
 });
