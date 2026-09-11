@@ -22,6 +22,7 @@ func testOrigin(t *testing.T) (*origin, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(value.Close)
 	return value, resource
 }
 
@@ -120,6 +121,41 @@ func TestHealthDoesNotExposeMedia(t *testing.T) {
 	value, _ := testOrigin(t)
 	if response := request(value, http.MethodGet, "/healthz", ""); response.Code != http.StatusNoContent {
 		t.Fatalf("health failed: %d", response.Code)
+	}
+}
+
+func TestOriginPinsConfiguredRootAcrossPathReplacement(t *testing.T) {
+	value, resource := testOrigin(t)
+	outside := t.TempDir()
+	if err := os.Mkdir(filepath.Join(outside, resource), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, resource, "index.m3u8"), []byte("outside-original-root"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	moved := value.root + "-moved"
+	if err := os.Rename(value.root, moved); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Remove(value.root); err != nil {
+			t.Error(err)
+		}
+		if err := os.Rename(moved, value.root); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := os.Symlink(outside, value.root); err != nil {
+		t.Fatal(err)
+	}
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		response := request(value, method, "/"+resource+"/index.m3u8", "Bearer synthetic-test-token")
+		if response.Code != http.StatusOK {
+			t.Fatalf("pinned original unavailable: %s %d", method, response.Code)
+		}
+		if method == http.MethodGet && response.Body.String() != "#EXTM3U\n" {
+			t.Fatal("origin escaped original directory through replaced root path")
+		}
 	}
 }
 

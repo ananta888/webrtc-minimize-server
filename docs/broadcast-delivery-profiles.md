@@ -67,3 +67,7 @@ Caddy-/Origin-Regeln und reale Purge-/Shield-/Fallback-Lasttests. Für Origin
 fehlen Mini-PC-, WAN-, Browser- und 60-Minuten-Messungen sowie echte
 End-to-glass-Latenz, Rebuffering und A/V-Sync. Diese Werte dürfen nicht aus der
 kurzen Entwicklungs-Hostmessung extrapoliert werden.
+
+Die [Dateisystemgrenze des nativen HLS-Origin](broadcast-origin-filesystem-boundary.md)
+ist separat gegen Pfad- und Linkaustausch gehärtet. Dies ist eine Voraussetzung,
+aber keine CDN-Origin-Authentisierung oder Freigabe zur öffentlichen Exposition.

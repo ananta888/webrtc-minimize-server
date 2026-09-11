@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -23,19 +24,42 @@ var rootMediaFilePattern = regexp.MustCompile(`^(?:(?:index|(?:low|medium|high)(
 var renditionMediaFilePattern = regexp.MustCompile(`^(?:low|medium|high)/(?:index\.m3u8|init(?:_[0-2])?\.mp4|segment_[0-9]{1,12}\.m4s)$`)
 
 type origin struct {
-	root string
+	root      string
+	directory *os.File
+	closeOnce sync.Once
 }
 
 func newOrigin(root string) (*origin, error) {
+	if !supportedMediaFilesystem {
+		return nil, errors.New("broadcast origin requires Linux filesystem support")
+	}
 	if !filepath.IsAbs(root) || strings.ContainsAny(root, "\x00\r\n") {
 		return nil, errors.New("BROADCAST_ORIGIN_ROOT must be absolute")
 	}
 	clean := filepath.Clean(root)
-	info, err := os.Stat(clean)
+	info, err := os.Lstat(clean)
 	if err != nil || !info.IsDir() {
 		return nil, errors.New("broadcast origin root unavailable")
 	}
-	return &origin{root: clean}, nil
+	capability, err := os.OpenRoot(clean)
+	if err != nil {
+		return nil, errors.New("broadcast origin root unavailable")
+	}
+	defer capability.Close()
+	directory, err := capability.Open(".")
+	if err != nil {
+		return nil, errors.New("broadcast origin root unavailable")
+	}
+	actual, err := directory.Stat()
+	if err != nil || !os.SameFile(info, actual) {
+		_ = directory.Close()
+		return nil, errors.New("broadcast origin root unavailable")
+	}
+	return &origin{root: clean, directory: directory}, nil
+}
+
+func (value *origin) Close() {
+	value.closeOnce.Do(func() { _ = value.directory.Close() })
 }
 
 func (value *origin) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -66,26 +90,7 @@ func (value *origin) ServeHTTP(response http.ResponseWriter, request *http.Reque
 		http.NotFound(response, request)
 		return
 	}
-	resourceDirectory := filepath.Join(value.root, parts[0])
-	filename := filepath.Join(append([]string{resourceDirectory}, parts[1:]...)...)
-	relative, err := filepath.Rel(resourceDirectory, filename)
-	if err != nil || filepath.Dir(resourceDirectory) != value.root || filepath.ToSlash(relative) != relativeMediaPath {
-		http.NotFound(response, request)
-		return
-	}
-	candidates := []string{resourceDirectory}
-	if len(parts) == 3 {
-		candidates = append(candidates, filepath.Join(resourceDirectory, parts[1]))
-	}
-	candidates = append(candidates, filename)
-	for _, candidate := range candidates {
-		info, err := os.Lstat(candidate)
-		if err != nil || info.Mode()&os.ModeSymlink != 0 {
-			http.NotFound(response, request)
-			return
-		}
-	}
-	file, err := os.Open(filename)
+	file, err := value.openMedia(parts)
 	if err != nil {
 		http.NotFound(response, request)
 		return
@@ -96,8 +101,8 @@ func (value *origin) ServeHTTP(response http.ResponseWriter, request *http.Reque
 		http.NotFound(response, request)
 		return
 	}
-	contentType := mime.TypeByExtension(filepath.Ext(filename))
-	switch filepath.Ext(filename) {
+	contentType := mime.TypeByExtension(filepath.Ext(relativeMediaPath))
+	switch filepath.Ext(relativeMediaPath) {
 	case ".m3u8":
 		contentType = "application/vnd.apple.mpegurl"
 	case ".m4s", ".mp4":
@@ -129,6 +134,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer value.Close()
 	address := strings.TrimSpace(os.Getenv("BROADCAST_ORIGIN_ADDRESS"))
 	if address == "" {
 		address = ":8081"
