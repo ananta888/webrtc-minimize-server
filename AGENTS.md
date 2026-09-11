@@ -80,14 +80,24 @@ Category-Todos entsprechen `todos/todo.schema.json`. Sie ordnen Ideen und Forsch
 1. Vor einer Änderung das passende aktive Todo lesen.
 2. Gibt es keinen passenden Task, zuerst einen kleinen Task mit Risiko, Priorität, Abhängigkeiten und prüfbaren Akzeptanzkriterien hinzufügen.
 3. Beim Arbeitsbeginn den Task auf `in_progress` und `progress_percent` auf `1..99` setzen.
-4. Code, Tests, Dokumentation und Todo-Status gemeinsam ändern.
-5. Erst nach erfüllten Akzeptanzkriterien und realer Verifikation auf `done`/`100` setzen.
+4. Code, gezielte Tests, Dokumentation und Todo-Status gemeinsam ändern. Testumfang und Push folgen dem Abschnitt „Lokale Slices, Blöcke und Push“.
+5. Erst nach erfüllten Akzeptanzkriterien und der Block-Verifikation auf `done`/`100` setzen.
 6. Abgeleitete Summen in derselben Änderung aktualisieren.
 7. `npm run todos:validate` ausführen. `tasks[]` ist immer die Source of Truth; Summary-Blöcke sind nur geprüfte Caches.
 
 Erlaubte Task-Status sind `todo`, `in_progress`, `partial`, `blocked`, `done`. `todo` hat 0 %, `done` 100 %, `in_progress` und `partial` haben 1–99 %. `blocked` muss einen konkreten Grund im Task oder in `summary_notes` nennen.
 
 Ein Track kommt nur ins Archiv, wenn alle Tasks und Milestones `done` sind und das Todo-Gate erfolgreich ist. Historie und Akzeptanzkriterien dürfen beim Archivieren nicht entfernt werden.
+
+### Lokale Slices, Blöcke und Push
+
+`main` löst die volle CI aus. `cancel-in-progress` bricht einen laufenden Lauf beim nächsten Push auf denselben Branch ab. Deshalb ist Push keine Slice-Routine.
+
+- **Slice:** Kleine lokale Arbeitseinheit innerhalb eines Tasks. Conventional Commits und Todo-Notizen dürfen hier entstehen. Pflichttests sind gezielte Unit-Tests (Node-Testläufer oder `vitest`) in Sekunden, nicht Minuten. Integrations- oder Browser-Tests nur, wenn sie kurz und deterministisch bleiben. Kein `npm run check`, keine native Chaos-/TURN-/Soak-Matrix und kein `git push` am Slice-Ende.
+- **Block:** Abgeschlossene, zusammenhängende Lieferung. Ein Block ist ein Task mit erfüllten Akzeptanzkriterien, besser ein Milestone, **bevorzugt ein vollständiger Track**. Erst am Blockende laufen `npm run todos:validate`, `npm run check` und die pfadspezifischen schweren Nachweise aus dem Abschnitt Verifikation.
+- **Push:** Erst nach abgeschlossenem Block. Ein Diagnose-Slice, eine Assertion-Rekalibrierung, eine CI-Beobachtung, ein Docs-only-Evidenzsatz oder eine einzelne Kalibriergrenze ist kein Block.
+
+Ausnahmen für einen Push vor Track-Ende: `main` ist durch die eigene Änderung rot, oder eine Sicherheitslücke muss sofort landen. Keine Ausnahme: CI soll den Slice beweisen, der vorige Lauf wurde abgebrochen, oder nur eine Messgrenze hat sich geändert.
 
 ## Sicherheitsprinzipien
 
@@ -136,13 +146,15 @@ Zusätzlich:
 
 ## Verifikation
 
-Vor Abschluss mindestens:
+Während eines Slices nur den geänderten Port gezielt prüfen. Lange Browser-, Native-, TURN- oder `npm run check`-Läufe gehören nicht in die innere Schleife.
+
+Vor Push eines Blocks mindestens:
 
 ```bash
 npm run check
 ```
 
-Je nach Änderung zusätzlich:
+Je nach Block zusätzlich:
 
 - zwei echte Browseridentitäten für Medien/DataChannel,
 - zwei getrennte Browserkontexte für Pair-Gerätebindung,
@@ -153,7 +165,7 @@ Je nach Änderung zusätzlich:
 - Negativtests für unbekannte Messages, falsche Rooms, Oversize, Rate-Limit und Disconnect,
 - Prüfung, dass ohne Benutzeraktion keine Capture-Berechtigung erscheint.
 
-Tests dürfen externe STUN-/TURN-Dienste sauber überspringen, aber nicht stillschweigend als bestanden melden.
+Tests dürfen externe STUN-/TURN-Dienste sauber überspringen, aber nicht stillschweigend als bestanden melden. Ein nicht reproduzierbar verifizierter schwerer Pfad bleibt `unverified`, `partial` oder `blocked`; er darf keinen Slice-Push erzwingen.
 
 ## Output- und Repository-Grenzen
 

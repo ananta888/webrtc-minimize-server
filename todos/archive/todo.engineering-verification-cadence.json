@@ -1,0 +1,62 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "engineering-verification-cadence",
+  "purpose": "Die lokale Arbeits- und Push-Kadenz so binden, dass CI nur nach abgeschlossenen Blöcken läuft und Slices nicht mit langen Integrations- oder Browser-Matrizen den Runner belasten.",
+  "goal": "Agents und Beitragende pushen erst nach einem abgeschlossenen Block, bevorzugt nach einem vollständigen Track; während der Implementierung bleiben Tests kleine, gezielte Unit-Tests und nur kurze Integrationstests.",
+  "status": "completed",
+  "created": "2026-09-11",
+  "updated": "2026-09-11",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "EVC-M01",
+      "title": "Verbindliche Slice-/Block-/Push-Kadenz",
+      "task_ids": ["EVC-001"],
+      "status": "done"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "EVC-001",
+      "title": "Push erst nach Block oder Track und gezielte Slice-Tests in AGENTS.md binden",
+      "completion_verification": "2026-09-11: AGENTS.md Pflichtablauf verweist auf Slice/Block/Push; neuer Abschnitt bindet Push nach Block, bevorzugt vollstaendigem Track, gezielte Unit-Tests im Slice und npm run check am Blockende. README Entwicklung und todos/active/README.md verweisen darauf. Keine CI-YAML-, Secret- oder Runtimeaenderung. todos:validate vor Archiv.",
+      "status": "done",
+      "progress_percent": 100,
+      "priority": "P1",
+      "risk": "low",
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AGENTS.md unterscheidet Slice, Block und Push: lokale Commits dürfen klein bleiben; git push erfolgt erst nach einem abgeschlossenen Block und bevorzugt nach einem vollständigen Track.",
+        "Ein Diagnose-Slice, eine Assertion-Rekalibrierung, eine CI-Beobachtung oder ein reiner Evidenzsatz in Todos/Docs gilt nicht als Block.",
+        "Während eines Slices sind nur gezielte Unit-Tests Pflicht; Integrations- oder Browser-Tests nur, wenn sie kurz und deterministisch bleiben. npm run check und schwere Pfadnachweise gehören an das Blockende vor dem Push.",
+        "Die gleiche Kadenz steht kurz in README und todos/active/README.md. npm run todos:validate besteht. Keine CI-YAML- oder Runtimeänderung."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["EVC-001"],
+  "tasks_status_summary": {
+    "total": 1,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 1 },
+    "progress_percent_done": 100,
+    "by_priority": { "P0": 0, "P1": 1, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 1, "medium": 0, "high": 0, "critical": 0 },
+    "critical_path": { "total": 1, "done": 1, "remaining": 0 },
+    "milestones": { "total": 1, "todo": 0, "in_progress": 0, "blocked": 0, "done": 1 }
+  },
+  "progress_summary": {
+    "state": "completed",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 1
+  },
+  "summary_notes": [
+    "2026-09-11 Anlass: dichte main-Pushes haben CI cancel-in-progress ausgelöst und Nachweise unvollständig gelassen. Regeländerung ist Prozess, kein Runner-Umbau.",
+    "2026-09-11 EVC-001: AGENTS.md bindet Slice (gezielte Unit-Tests, kein Push), Block (Task/Milestone, bevorzugt vollständiger Track) und Push erst nach Blockende mit npm run check. README und todos/active/README.md verweisen darauf. Keine CI-YAML- oder Runtimeänderung. todos:validate vor Archiv."
+  ]
+}

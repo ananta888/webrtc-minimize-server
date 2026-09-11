@@ -374,7 +374,9 @@ Die vollständige Herkunfts- und Lückenmatrix steht in [docs/ananta-webrtc-adop
 
 ## Entwicklung
 
-`AGENTS.md` macht das Todo-Tracking verbindlich. Der vollständige lokale Gate ist:
+`AGENTS.md` macht das Todo-Tracking verbindlich. Lokale Slices commiten mit gezielten Unit-Tests; `git push` erst nach einem abgeschlossenen Block, bevorzugt nach einem vollständigen Track. `npm run check` und lange Integrations- oder Browserläufe laufen am Blockende, nicht nach jedem Slice.
+
+Der vollständige lokale Gate vor einem Push ist:
 
 ```bash
 npm run check
