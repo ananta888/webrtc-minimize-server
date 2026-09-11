@@ -13,7 +13,7 @@ it.each([1, 2])("renders preview v%s and separate audio/video demand only after 
   const session = signal<string | null>("session-one");
   const programs = { capacityContext: () => session(), previewCapacity: vi.fn(async () => ({
     schema: `ananta.native-capacity-preview.v${version}`, ...(version === 2 ? { programSlots: "available" } : {}),
-    reserved: false, costStatus: "unknown", observedAt: 1800000000000,
+    reserved: false, costStatus: "unknown", capacityClass: "origin-small", observedAt: 1800000000000,
     expiresAt: 1800000005000, requestedRenditions: 3, reduced: true, videoEncoder: "libx264",
     demand: { cpuUnits: 4, memoryMiB: 224, encoderSlots: 1, gpuSlots: 0, egressBitsPerSecond: 648600 },
     renditions: [{ id: "low", width: 640, height: 360, framesPerSecond: 15, videoBitsPerSecond: 500000, audioBitsPerSecond: 64000, audioChannels: 2 }],
@@ -34,6 +34,7 @@ it.each([1, 2])("renders preview v%s and separate audio/video demand only after 
   expect(root.textContent).toContain("1 von 3"); expect(root.textContent).toContain("640 × 360");
   expect(root.textContent).toContain("Video 500.0 kbit/s"); expect(root.textContent).toContain("Audio 64.0 kbit/s");
   expect(root.textContent).toContain("Kosten: nicht berechenbar"); expect(root.textContent).toContain("Keine Reservierung");
+  expect(root.textContent).toContain("Origin klein (bis 20 Viewer)");
   expect(root.textContent).toContain(version === 2 ? "Programmlimits für einen zusätzlichen Start geprüft" : "Programmlimits wurden nicht geprüft");
   session.set(null); await fixture.whenStable();
   expect(root.textContent).toContain("Vorschau veraltet"); expect(root.querySelector("li")).toBeNull();

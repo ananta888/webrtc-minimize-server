@@ -44,9 +44,15 @@ export function previewNativeSourceCapacity(identity, member, input, assignments
     ...(input.requestVersion === 3 ? { videoOutput: input.videoOutput } : {}),
   }, member.id, now);
   checkPrograms();
+  const capacityClass = typeof assignments.preflightCapacityClass === "function"
+    ? assignments.preflightCapacityClass({
+      tenantId: scope.tenantId, principalRef: scope.principalRef, admission, now,
+    })
+    : "origin-small";
+  if (!["origin-small", "cdn-medium", "cdn-large"].includes(capacityClass)) fail("invalid_native_capacity_preview");
   return Object.freeze({ schema: combined ? "ananta.native-capacity-preview.v2" : "ananta.native-capacity-preview.v1",
     ...(combined ? { programSlots: "available" } : {}), reserved: false, costStatus: "unknown",
-    observedAt: now, expiresAt: Math.min(now + 5000, identity.expiresAt),
+    capacityClass, observedAt: now, expiresAt: Math.min(now + 5000, identity.expiresAt),
     requestedRenditions: input.requestedRenditions, reduced: admission.renditions.length < input.requestedRenditions,
     videoEncoder: admission.videoEncoder, demand: nativePackagerResourceDemand(admission),
     renditions: Object.freeze(admission.renditions.map(r => Object.freeze({ id: r.id, width: r.width, height: r.height,

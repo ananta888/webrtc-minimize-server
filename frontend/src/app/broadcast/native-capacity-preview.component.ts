@@ -28,6 +28,9 @@ export const NATIVE_CAPACITY_PREVIEW_TEMPLATE = `
         <p>Budgetbedarf: {{ preview.demand.cpuUnits }} CPU-Planeinheiten · {{ preview.demand.memoryMiB }} MiB ·
           {{ preview.demand.encoderSlots }} Encoder-Slots · {{ preview.demand.gpuSlots }} GPU-Slots.
           Planungswerte, keine Messung freier Hardware-Ressourcen.</p>
+        <p id="native-capacity-class">Kapazitätsklasse {{ preview.capacityClass === 'origin-small' ? 'Origin klein (bis 20 Viewer)'
+          : preview.capacityClass === 'cdn-medium' ? 'CDN mittel (bis 500 Viewer)' : 'CDN groß' }}.
+          Keine Providerkosten und keine gemessene Zuschauerlast.</p>
       }
       <p>Die Prüfung reserviert nichts und ist höchstens fünf Sekunden aktuell. Der Start prüft die Zulassung erneut.
         Zuschauer-Kapazität und Providerkosten sind durch diese Prüfung nicht zugesagt.

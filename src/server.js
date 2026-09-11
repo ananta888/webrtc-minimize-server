@@ -38,6 +38,9 @@ import {
 } from "./protocol.js";
 import { RoomAdmissionError, RoomFullError, RoomRegistry } from "./room-registry.js";
 import { RoomModerationError } from "./room-moderation.js";
+import { MeetObservability } from "./meet-observability.js";
+import { BroadcastUsageLedger } from "./broadcast-budget-policy.js";
+import { BroadcastFailoverCoordinator } from "./broadcast-failover-coordinator.js";
 import { SessionTicketError, SessionTicketStore } from "./session-tickets.js";
 import { createMediaAgentIceServers } from "./media-agent-ice.js";
 import { createEdgeTurnCredentials, createTurnCredentials } from "./turn-credentials.js";
@@ -429,6 +432,7 @@ function createHttpHandler(config, registry, services) {
     broadcastHealthRegistry,
     broadcastRuntime,
     broadcastSourceRequests,
+    meetObservability,
   } = services;
   return async (request, response) => {
     try {
@@ -1556,9 +1560,12 @@ function createHttpHandler(config, registry, services) {
         });
         const directIceServers = config.stunUrls.map((urls) => ({ urls }));
         const peerRelayIceServers = createEdgeTurnCredentials(config, principal);
+        const issuedTurn = createTurnCredentials(config, principal);
+        if (peerRelayIceServers.length) meetObservability?.turn("peer-edge", peerRelayIceServers.length);
+        if (issuedTurn.length) meetObservability?.turn("infrastructure", issuedTurn.length);
         const infrastructureRelayIceServers = [
           ...config.turnServers,
-          ...createTurnCredentials(config, principal),
+          ...issuedTurn,
         ];
         sendJson(response, 201, {
           ticket: issued.ticket,
@@ -1694,6 +1701,7 @@ function configureSignaling(
   broadcastSourceRequests,
   nativeSourceScenes,
   nativeSourceAudios,
+  meetObservability,
 ) {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
   const mediaAgentWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
@@ -1902,6 +1910,7 @@ function configureSignaling(
         throw new SessionTicketError("machine_session_expired");
       }
     } catch (error) {
+      meetObservability?.join("denied");
       rejectUpgrade(socket, error instanceof SessionTicketError ? 401 : 400, error.code || "invalid_join");
       return;
     }
@@ -1929,6 +1938,7 @@ function configureSignaling(
       const code = error instanceof RoomFullError || error instanceof RoomAdmissionError
         ? error.code
         : "join_failed";
+      meetObservability?.join("denied");
       safeSend(socket, { type: "error", code });
       socket.close(1008, code);
       return;
@@ -1954,13 +1964,17 @@ function configureSignaling(
           }, () => machineSessionObservation(peer, roomEpochs.get(peer.roomId)?.membership || 1),
           () => { leave(); return !registry.members(peer.roomId).includes(peer); });
       } catch {
+        meetObservability?.join("denied");
         registry.leave(peer); socket.close(1008, "machine_session_unavailable"); return;
       }
     }
     let left = false;
+    let sessionOpen = false;
     const leave = () => {
       if (left) return;
       left = true;
+      if (sessionOpen) meetObservability?.sessionClose();
+      sessionOpen = false;
       try {
         broadcastRuntime?.stopProgramsForMember?.(peer);
       } catch {
@@ -1978,6 +1992,9 @@ function configureSignaling(
     };
     directory.touch(peer.roomId);
     socket.isAlive = true;
+    meetObservability?.join("admitted");
+    meetObservability?.sessionOpen();
+    sessionOpen = true;
     safeSend(socket, {
       type: "welcome",
       peerId: peer.id,
@@ -2005,6 +2022,7 @@ function configureSignaling(
       try {
         if (isBinary) throw new ProtocolError("binary_signaling_unsupported");
         if (!registry.allowMessage(peer, Date.now(), { limit: config.signalRateLimit })) {
+          meetObservability?.message("rate_limited");
           throw new ProtocolError("rate_limited");
         }
         let message;
@@ -2252,10 +2270,12 @@ function configureSignaling(
             ...(visual ? { publicationEpoch: visual.publicationEpoch } : {}) });
         }
       } catch (error) {
+        const code = error instanceof ProtocolError || error instanceof MachineReceivePolicyError
+          || error instanceof RoomModerationError ? error.code : "invalid_message";
+        if (code !== "rate_limited") meetObservability?.message("protocol_error");
         safeSend(socket, {
           type: "error",
-          code: error instanceof ProtocolError || error instanceof MachineReceivePolicyError
-            || error instanceof RoomModerationError ? error.code : "invalid_message",
+          code,
         });
       }
     });
@@ -2788,6 +2808,10 @@ export function createAppServer(options = {}) {
     enrollmentStore: nativePackagerEnrollmentStore,
     definitions: nativePackagerEnrollmentStore?.definitions() || [],
   });
+  const broadcastUsageLedger = options.broadcastUsageLedger
+    || new BroadcastUsageLedger({ key: crypto.randomBytes(32) });
+  const broadcastFailover = options.broadcastFailover || new BroadcastFailoverCoordinator();
+  const meetObservability = options.meetObservability || new MeetObservability();
   const nativePackagerAssignments = options.nativePackagerAssignments
     || new NativePackagerAssignmentRegistry({
       controlRegistry: nativePackagers,
@@ -2795,6 +2819,7 @@ export function createAppServer(options = {}) {
       encoderMinutesLimits: config.broadcastNativeEncoderMinutes,
       scopedResourceLimits: options.config && !Object.hasOwn(options.config, "broadcastNativeScopedResourceLimits")
         ? undefined : config.broadcastNativeScopedResourceLimits,
+      budgetLedger: broadcastUsageLedger,
       programLeaseDeadline: (scope, now) => broadcastRuntime?.programLeaseDeadline(scope, now) ?? null,
       iceServersForPackager: (packagerId, now) => createNativePackagerIceServers(config, packagerId, now),
       sourceProgramMembership: (owner, roomId, peerId) => {
@@ -2900,7 +2925,7 @@ export function createAppServer(options = {}) {
     throw new Error("BROADCAST_GATEWAY_AUTH_ENABLED requires a MediaMTX external auth service");
   }
   const broadcastMetrics = new BroadcastRuntimeMetrics({ runtime: broadcastRuntime, hlsProxy: broadcastHlsProxy,
-    assignments: nativePackagerAssignments, sessions: broadcastPlaybackSessions,
+    assignments: nativePackagerAssignments, sessions: broadcastPlaybackSessions, failover: broadcastFailover,
     host: { resourceCounts: () => hostResourceCounts() } });
   const broadcastMetricsHttp = new BroadcastMetricsHttp({ config, metrics: broadcastMetrics, verifier: oidcVerifier });
   const services = {
@@ -2939,10 +2964,15 @@ export function createAppServer(options = {}) {
     broadcastGrantAuthority,
     broadcastSourceRequests,
     broadcastPlaybackSessions,
+    meetObservability,
+    broadcastUsageLedger,
+    broadcastFailover,
   };
   const server = http.createServer(createHttpHandler(config, registry, services));
   server.on("close", () => {
     broadcastMetrics.destroy();
+    meetObservability.destroy();
+    broadcastUsageLedger.destroy();
     services.nativeSourceLabels.destroy();
     services.broadcastPlaybackObservation.destroy();
     services.broadcastProgramHistory.destroy();
@@ -2971,6 +3001,7 @@ export function createAppServer(options = {}) {
     nativePackagers, nativePackagerAssignments, machineSessions, broadcastSourceRequests,
     services.nativeSourceScenes,
     services.nativeSourceAudios,
+    meetObservability,
   );
   services.trustedBroadcastSourceControl = signaling.trustedBroadcastSourceControl;
   return {
@@ -2995,6 +3026,9 @@ export function createAppServer(options = {}) {
     broadcastRuntime,
     broadcastGrantAuthority,
     broadcastPlaybackSessions,
+    meetObservability,
+    broadcastUsageLedger,
+    broadcastFailover,
   };
 }
 

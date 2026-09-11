@@ -4,8 +4,11 @@ import test from "node:test";
 import {
   BROADCAST_SLOS,
   BroadcastUsageLedger,
+  DEFAULT_BROADCAST_BUDGET_LIMITS,
   evaluateBroadcastBudget,
+  evaluateLedgerBudget,
   PrivacyPreservingViewerCounter,
+  requestedBroadcastUsage,
 } from "../src/broadcast-budget-policy.js";
 
 const zero = { viewerSessions: 0, egressBitsPerSecond: 0, encoderSlots: 0, encoderMinutes: 0, programMinutes: 0, costMicros: 0 };
@@ -71,6 +74,26 @@ test("usage ledger aggregates HMAC-keyed hourly buckets without IDs", () => {
     tenantId: "tn_aaaaaaaaaaaaaaaa", principalRef: "sub_aaaaaaaaaaaaaaaa",
     metric: "encoderMinutes", amount: 1,
   }), /invalid_broadcast_usage_record|invalid_broadcast_usage_ledger/);
+});
+
+test("ledger admission uses recorded usage and keeps cost unknown when prices are absent", () => {
+  const ledger = new BroadcastUsageLedger({ key: Buffer.alloc(32, 4), clock: () => 3_600_000 });
+  const requested = requestedBroadcastUsage({ viewerSessions: 20, encoderSlots: 1, encoderMinutes: 1, programMinutes: 1 });
+  const admitted = evaluateLedgerBudget(ledger, {
+    tenantId: "tn_aaaaaaaaaaaaaaaa", principalRef: "sub_aaaaaaaaaaaaaaaa", programId: "prg_aaaaaaaaaaaaaaaa",
+    requested, limits: DEFAULT_BROADCAST_BUDGET_LIMITS,
+  }, 3_600_000);
+  assert.equal(admitted.capacityClass, "origin-small");
+  assert.equal(requested.costMicros, 0);
+  ledger.record({
+    tenantId: "tn_aaaaaaaaaaaaaaaa", principalRef: "sub_aaaaaaaaaaaaaaaa",
+    metric: "encoderMinutes", amount: DEFAULT_BROADCAST_BUDGET_LIMITS.principal.encoderMinutes, at: 3_600_000,
+  });
+  assert.throws(() => evaluateLedgerBudget(ledger, {
+    tenantId: "tn_aaaaaaaaaaaaaaaa", principalRef: "sub_aaaaaaaaaaaaaaaa", programId: "prg_aaaaaaaaaaaaaaaa",
+    requested, limits: DEFAULT_BROADCAST_BUDGET_LIMITS,
+  }, 3_600_000), /broadcast_principal_encoderMinutes_budget_exhausted/);
+  ledger.destroy();
 });
 
 test("viewer counter deduplicates opaque sessions without IP or device fingerprint", () => {

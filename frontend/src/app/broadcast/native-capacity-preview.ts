@@ -6,6 +6,7 @@ import { normalizeSourceVideoOutput } from "./native-source-video-output";
 
 interface NativeCapacityDetails {
   reserved: false; costStatus: "unknown";
+  capacityClass: "origin-small" | "cdn-medium" | "cdn-large";
   observedAt: number; expiresAt: number; requestedRenditions: number; reduced: boolean;
   videoEncoder: "libx264" | "h264_nvenc" | "h264_videotoolbox";
   demand: { cpuUnits: number; memoryMiB: number; encoderSlots: number; gpuSlots: number; egressBitsPerSecond: number };
@@ -21,9 +22,10 @@ const invalid = () => { throw new BroadcastBrowserPortError("invalid_native_capa
 
 export function parseNativeCapacityPreview(value: unknown, requested: number, version: 1 | 2 = 1): NativeCapacityPreview {
   const v = value as NativeCapacityPreview;
-  if (!exact(v, ["schema", "reserved", "costStatus", "observedAt", "expiresAt", "requestedRenditions", "reduced", "videoEncoder", "demand", "renditions",
+  if (!exact(v, ["schema", "reserved", "costStatus", "capacityClass", "observedAt", "expiresAt", "requestedRenditions", "reduced", "videoEncoder", "demand", "renditions",
       ...(version === 2 ? ["programSlots"] : [])]) || ![1, 2].includes(version)
     || v.schema !== `ananta.native-capacity-preview.v${version}` || v.reserved !== false || v.costStatus !== "unknown"
+    || !["origin-small", "cdn-medium", "cdn-large"].includes(v.capacityClass)
     || v.schema === "ananta.native-capacity-preview.v2" && v.programSlots !== "available"
     || !int(v.observedAt, 1, Number.MAX_SAFE_INTEGER) || !int(v.expiresAt, v.observedAt + 1, v.observedAt + 5000)
     || !int(requested, 1, 3) || v.requestedRenditions !== requested

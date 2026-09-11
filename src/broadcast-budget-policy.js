@@ -29,6 +29,43 @@ function add(left, right) {
 
 function ratio(value, limit) { return limit === 0 ? (value === 0 ? 0 : Infinity) : value / limit; }
 
+export const DEFAULT_BROADCAST_BUDGET_LIMITS = Object.freeze({
+  deployment: Object.freeze({
+    viewerSessions: 1_000, egressBitsPerSecond: 1_000_000_000, encoderSlots: 48,
+    encoderMinutes: 20_000, programMinutes: 30_000, costMicros: 0,
+  }),
+  tenant: Object.freeze({
+    viewerSessions: 500, egressBitsPerSecond: 500_000_000, encoderSlots: 16,
+    encoderMinutes: 10_000, programMinutes: 15_000, costMicros: 0,
+  }),
+  principal: Object.freeze({
+    viewerSessions: 100, egressBitsPerSecond: 100_000_000, encoderSlots: 3,
+    encoderMinutes: 1_000, programMinutes: 2_000, costMicros: 0,
+  }),
+});
+
+export function requestedBroadcastUsage({
+  viewerSessions = 20, egressBitsPerSecond = 0, encoderSlots = 1, encoderMinutes = 1, programMinutes = 1,
+} = {}) {
+  return normalizeLimit({
+    viewerSessions, egressBitsPerSecond, encoderSlots, encoderMinutes, programMinutes, costMicros: 0,
+  }, "request");
+}
+
+export function evaluateLedgerBudget(ledger, input, at) {
+  if (!ledger || typeof ledger.usage !== "function") fail("invalid_broadcast_usage_ledger", 500);
+  const usage = ledger.usage({ tenantId: input.tenantId, principalRef: input.principalRef, at });
+  return evaluateBroadcastBudget({
+    tenantId: input.tenantId,
+    principalRef: input.principalRef,
+    programId: input.programId,
+    requested: input.requested,
+    usage,
+    limits: input.limits || DEFAULT_BROADCAST_BUDGET_LIMITS,
+    softLimitRatio: input.softLimitRatio ?? 0.8,
+  });
+}
+
 export function evaluateBroadcastBudget(input) {
   const fields = new Set(["tenantId", "principalRef", "programId", "requested", "usage", "limits", "softLimitRatio"]);
   if (!input || typeof input !== "object" || Array.isArray(input)

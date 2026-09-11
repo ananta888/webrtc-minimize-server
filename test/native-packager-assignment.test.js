@@ -7,6 +7,7 @@ import {
 } from "../src/native-packager-assignment.js";
 import { admitNativePackager, NATIVE_BROADCAST_PROFILE } from "../src/native-packager-policy.js";
 import { nativePackagerResourceDemand } from "../src/native-packager-resource-budget.js";
+import { BroadcastUsageLedger, DEFAULT_BROADCAST_BUDGET_LIMITS } from "../src/broadcast-budget-policy.js";
 
 const NOW = 1_800_000_000_000;
 const OWNER = "https://identity.example/realms/ananta|owner";
@@ -430,4 +431,28 @@ test("offline, self-expanded admission, disconnect and lease expiry fail closed"
   expiring.prune(NOW + 31_002);
   assert.equal(expiring.activeForPackager(PACKAGER), null);
   assert.equal(expiring.list(OWNER)[0].state, "failed");
+});
+
+test("usage ledger denies native admission after recorded encoder minutes without allocating", () => {
+  const ledger = new BroadcastUsageLedger({ key: Buffer.alloc(32, 5), clock: () => NOW });
+  const limits = {
+    deployment: { ...DEFAULT_BROADCAST_BUDGET_LIMITS.deployment, encoderMinutes: 5 },
+    tenant: { ...DEFAULT_BROADCAST_BUDGET_LIMITS.tenant, encoderMinutes: 5 },
+    principal: { ...DEFAULT_BROADCAST_BUDGET_LIMITS.principal, encoderMinutes: 5 },
+  };
+  const assignments = registry(undefined, { budgetLedger: ledger, budgetLimits: limits });
+  assert.equal(assignments.preflightCapacityClass({
+    tenantId: "tn_aaaaaaaaaaaaaaaa", principalRef: "sub_aaaaaaaaaaaaaaaa",
+    admission: admitNativePackager(capability(), request(), NOW), now: NOW,
+  }), "origin-small");
+  ledger.record({
+    tenantId: "tn_aaaaaaaaaaaaaaaa", principalRef: "sub_aaaaaaaaaaaaaaaa",
+    metric: "encoderMinutes", amount: 5, at: NOW,
+  });
+  assert.throws(() => assignments.admit(OWNER, PACKAGER, request(), NOW), (error) => (
+    error instanceof NativePackagerAssignmentError
+    && /encoderMinutes_budget_exhausted$/.test(error.code) && error.status === 429
+  ));
+  assert.equal(assignments.activeForPackager(PACKAGER), null);
+  ledger.destroy();
 });

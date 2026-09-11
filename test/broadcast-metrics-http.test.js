@@ -75,7 +75,8 @@ test("actual HTTP endpoint rejects ordinary or invalid JWTs and exports only fix
   assert.equal(response.headers.get("access-control-allow-origin"), null);
   const text = await response.text();
   assert.match(text, /broadcast_control_programs\{state="live"\} 2/);
-  assert.equal(text.trim().split("\n").length, 28, "nine program states, ten planning gauges, four proxy counters and three control-plane host ratios");
+  assert.equal(text.trim().split("\n").length, 43, "nine program states, ten planning gauges, six proxy counters, three host ratios and fifteen failover counters");
+  assert.match(text, /broadcast_failovers_total\{failure="packager",outcome="recovered"\} 0/);
   for (const resource of ["cpu", "ram", "disk"]) {
     const [, value] = text.match(new RegExp(`broadcast_resource_utilization_ratio\\{component="control-plane",resource="${resource}"\\} ([0-9.]+)\\n`));
     assert.ok(Number(value) >= 0 && Number(value) <= 1);

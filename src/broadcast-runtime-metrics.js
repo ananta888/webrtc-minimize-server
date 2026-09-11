@@ -1,5 +1,5 @@
 import { BroadcastMetricRegistry } from "./broadcast-observability.js";
-import { programMetricSamples, hlsMetricSamples, nativeResourceMetricSamples, transitionMetricSamples, quotaMetricSamples, hostResourceMetricSamples, whipMetricSamples, viewerMetricSamples } from "./broadcast-metric-samples.js";
+import { programMetricSamples, hlsMetricSamples, nativeResourceMetricSamples, transitionMetricSamples, quotaMetricSamples, hostResourceMetricSamples, whipMetricSamples, viewerMetricSamples, failoverMetricSamples } from "./broadcast-metric-samples.js";
 
 const SAMPLE_INTERVAL_MS = 15_000;
 
@@ -12,18 +12,20 @@ export class BroadcastRuntimeMetrics {
   #assignments;
   #host;
   #sessions;
+  #failover;
   #clock;
   #metrics = new BroadcastMetricRegistry();
   #lastAttempt = null;
   #destroyed = false;
 
-  constructor({ runtime, hlsProxy, assignments, host, sessions, clock = Date.now }) {
+  constructor({ runtime, hlsProxy, assignments, host, sessions, failover, clock = Date.now }) {
     if (typeof clock !== "function") throw new Error("invalid_broadcast_metrics_clock");
     this.#runtime = runtime;
     this.#hlsProxy = hlsProxy;
     this.#assignments = assignments;
     this.#host = host;
     this.#sessions = sessions;
+    this.#failover = failover;
     this.#clock = clock;
   }
 
@@ -46,7 +48,8 @@ export class BroadcastRuntimeMetrics {
       for (const [read, source] of [[programMetricSamples, this.#runtime], [hlsMetricSamples, this.#hlsProxy],
         [nativeResourceMetricSamples, this.#assignments], [transitionMetricSamples, this.#runtime],
         [quotaMetricSamples, this.#runtime], [hostResourceMetricSamples, this.#host],
-        [whipMetricSamples, this.#runtime], [viewerMetricSamples, this.#sessions]]) {
+        [whipMetricSamples, this.#runtime], [viewerMetricSamples, this.#sessions],
+        [failoverMetricSamples, this.#failover]]) {
         let samples;
         try { samples = read(source, now); } catch { continue; }
         for (const event of samples) this.#metrics.observe({ ...event, observedAt: now });
@@ -68,5 +71,6 @@ export class BroadcastRuntimeMetrics {
     this.#assignments = null;
     this.#host = null;
     this.#sessions = null;
+    this.#failover = null;
   }
 }

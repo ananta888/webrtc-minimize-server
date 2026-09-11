@@ -47,7 +47,8 @@ test("preview uses real cumulative ladder admission and budgets without allocati
     assert.equal(validateResponse(result), true, JSON.stringify(validateResponse.errors));
     assert.equal(result.schema, "ananta.native-capacity-preview.v1");
     assert.equal(result.reserved, false); assert.equal(result.reduced, true);
-    assert.equal(result.costStatus, "unknown"); assert.equal(result.expiresAt, f.now + 5000);
+    assert.equal(result.costStatus, "unknown"); assert.equal(result.capacityClass, "origin-small");
+    assert.equal(result.expiresAt, f.now + 5000);
     assert.deepEqual(result.renditions.map(r => r.id), ["low", "medium"]);
     assert.deepEqual(result.demand, { cpuUnits: 16, memoryMiB: 320, encoderSlots: 2, gpuSlots: 0, egressBitsPerSecond: 2024000 });
     assert.doesNotMatch(JSON.stringify(result), /prg_|res_|lea_|asn_|tn_|sub_|dev_|pkr_|token|credential|room-alpha/);

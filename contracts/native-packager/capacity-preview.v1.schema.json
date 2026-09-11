@@ -8,6 +8,7 @@
     "schema",
     "reserved",
     "costStatus",
+    "capacityClass",
     "observedAt",
     "expiresAt",
     "requestedRenditions",
@@ -25,6 +26,9 @@
     },
     "costStatus": {
       "const": "unknown"
+    },
+    "capacityClass": {
+      "enum": ["origin-small", "cdn-medium", "cdn-large"]
     },
     "observedAt": {
       "type": "integer",

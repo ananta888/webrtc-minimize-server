@@ -224,18 +224,41 @@ function recoveryFor(failureType, tookOver) {
   return freeze({ disposition: "resume", discontinuity: true, playerRestart: true });
 }
 
+const FAILOVER_LABELS = Object.freeze(["packager", "gateway", "host", "network", "provider"]);
+const FAILOVER_OUTCOMES = Object.freeze(["recovered", "stopped", "failed"]);
+
+function emptyFailoverCounts() {
+  return Object.fromEntries(FAILOVER_LABELS.map((failure) => [
+    failure,
+    Object.fromEntries(FAILOVER_OUTCOMES.map((outcome) => [outcome, 0])),
+  ]));
+}
+
 export class BroadcastFailoverCoordinator {
   #programs = new Map();
   #leaseTtlMs;
   #graceMs;
   #recoveryDeadlineMs;
   #maxStandbys;
+  #failovers = emptyFailoverCounts();
 
   constructor({ leaseTtlMs = 15_000, graceMs = 5_000, recoveryDeadlineMs = 30_000, maxStandbys = 2 } = {}) {
     this.#leaseTtlMs = integer(leaseTtlMs, 5_000, 120_000, "invalid_broadcast_failover_config");
     this.#graceMs = integer(graceMs, 0, this.#leaseTtlMs, "invalid_broadcast_failover_config");
     this.#recoveryDeadlineMs = integer(recoveryDeadlineMs, this.#graceMs + 1, 300_000, "invalid_broadcast_failover_config");
     this.#maxStandbys = integer(maxStandbys, 1, 4, "invalid_broadcast_failover_config");
+  }
+
+  failoverCounts() {
+    return freeze(Object.fromEntries(FAILOVER_LABELS.map((failure) => [
+      failure,
+      freeze({ ...this.#failovers[failure] }),
+    ])));
+  }
+
+  #recordFailover(failureType, outcome) {
+    if (!FAILOVER_LABELS.includes(failureType) || !FAILOVER_OUTCOMES.includes(outcome)) return;
+    this.#failovers[failureType][outcome] += 1;
   }
 
   register(input) {
@@ -485,6 +508,7 @@ export class BroadcastFailoverCoordinator {
     state.active = active;
     state.failureSince = null;
     const recovery = recoveryFor(failureType, true);
+    if (failureType) this.#recordFailover(failureType, "recovered");
     this.#emit(program, failureType ? "writer-takeover" : "writer-acquired", role, now, {
       failureType,
       fencingRevision: active.fencingRevision,
@@ -498,6 +522,7 @@ export class BroadcastFailoverCoordinator {
     for (const roleState of program.roles.values()) roleState.active = null;
     program.fencingRevision += 1;
     const recovery = recoveryFor(failureType, false);
+    this.#recordFailover(failureType, reasonCode === "RECOVERY_NOT_SAFE" ? "failed" : "stopped");
     this.#emit(program, "program-stopped", role, now, {
       failureType,
       fencingRevision: program.fencingRevision,

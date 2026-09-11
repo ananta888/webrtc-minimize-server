@@ -10,6 +10,13 @@ import {
   supportsNativeSourceSignalV1,
   supportsNativeSourceAudioV3,
 } from "./native-packager-policy.js";
+import {
+  BroadcastBudgetError,
+  DEFAULT_BROADCAST_BUDGET_LIMITS,
+  evaluateLedgerBudget,
+  requestedBroadcastUsage,
+} from "./broadcast-budget-policy.js";
+import { nativePackagerResourceDemand } from "./native-packager-resource-budget.js";
 
 const PACKAGER = /^pkr_[A-Za-z0-9_-]{16,64}$/;
 const ASSIGNMENT = /^asn_[A-Za-z0-9_-]{16,64}$/;
@@ -112,6 +119,8 @@ export class NativePackagerAssignmentRegistry {
   #programLeaseDeadline;
   #resourceBudget;
   #encoderTimeBudget;
+  #budgetLedger;
+  #budgetLimits;
 
   constructor({
     controlRegistry,
@@ -122,6 +131,8 @@ export class NativePackagerAssignmentRegistry {
     resourceLimits,
     scopedResourceLimits,
     encoderMinutesLimits,
+    budgetLedger = null,
+    budgetLimits = DEFAULT_BROADCAST_BUDGET_LIMITS,
   } = {}) {
     if (!controlRegistry || typeof controlRegistry.candidate !== "function"
       || typeof idFactory !== "function" || typeof iceServersForPackager !== "function"
@@ -135,19 +146,41 @@ export class NativePackagerAssignmentRegistry {
     this.#programLeaseDeadline = programLeaseDeadline;
     this.#resourceBudget = new NativePackagerScopedResourceBudget(resourceLimits, scopedResourceLimits);
     this.#encoderTimeBudget = new NativeEncoderTimeBudget(encoderMinutesLimits);
+    this.#budgetLedger = budgetLedger;
+    this.#budgetLimits = budgetLimits || DEFAULT_BROADCAST_BUDGET_LIMITS;
   }
 
   admit(ownerPrincipal, packagerId, request, now = Date.now()) {
-    const { admission, tenantId } = this.#candidateAdmission(ownerPrincipal, packagerId, request, now);
+    const { admission, tenantId, ownerSubjectRef } = this.#candidateAdmission(ownerPrincipal, packagerId, request, now);
     this.#assertResources(admission, tenantId, ownerPrincipal, now);
     this.#assertEncoderTime(admission, tenantId, ownerPrincipal, now, now + ASSIGNMENT_LEASE_MS);
+    this.#assertBudget(admission, tenantId, ownerSubjectRef, now, now + ASSIGNMENT_LEASE_MS);
     return admission;
+  }
+
+  preflightCapacityClass({ tenantId, principalRef, admission, now = Date.now() }) {
+    const requested = this.#requestedBudget(admission, now, now + ASSIGNMENT_LEASE_MS);
+    if (!this.#budgetLedger) {
+      return requested.viewerSessions <= 20 ? "origin-small"
+        : requested.viewerSessions <= 500 ? "cdn-medium" : "cdn-large";
+    }
+    return evaluateLedgerBudget(this.#budgetLedger, {
+      tenantId,
+      principalRef,
+      programId: admission.programId,
+      requested,
+      limits: this.#budgetLimits,
+    }, now).capacityClass;
   }
 
   #candidateAdmission(ownerPrincipal, packagerId, request, now) {
     const packager = this.#control.candidate(ownerPrincipal, packagerId, now);
     if (!packager.online || !packager.capability) fail("native_packager_offline", 503);
-    return { admission: admitNativePackager(packager.capability, request, now), tenantId: packager.capability.tenantId };
+    return {
+      admission: admitNativePackager(packager.capability, request, now),
+      tenantId: packager.capability.tenantId,
+      ownerSubjectRef: packager.capability.ownerSubjectRef,
+    };
   }
 
   // Server-only replacement preview. This neither reserves capacity nor skips
@@ -162,14 +195,53 @@ export class NativePackagerAssignmentRegistry {
       fail("stale_native_packager_replacement", 409);
     }
     if (this.activeForPackager(packagerId)) fail("native_packager_assignment_conflict", 409);
-    const { admission, tenantId } = this.#candidateAdmission(ownerPrincipal, packagerId, request, now);
+    const { admission, tenantId, ownerSubjectRef } = this.#candidateAdmission(ownerPrincipal, packagerId, request, now);
     if (previous.assignmentProtocolVersion >= 4) {
       if (controllerPeerId !== previous.controllerPeerId) fail("stale_native_packager_replacement", 409);
       this.#sourceAuthority(ownerPrincipal, packagerId, admission.roomId, controllerPeerId, now, !!admission.audioOutput);
     } else if (controllerPeerId !== previous.publisherPeerId) fail("stale_native_packager_replacement", 409);
     this.#assertResources(admission, tenantId, ownerPrincipal, now, previous);
     this.#assertEncoderTime(admission, tenantId, ownerPrincipal, now, now + ASSIGNMENT_LEASE_MS);
+    this.#assertBudget(admission, tenantId, ownerSubjectRef, now, now + ASSIGNMENT_LEASE_MS);
     return admission;
+  }
+
+  #requestedBudget(admission, from, until) {
+    const demand = nativePackagerResourceDemand(admission);
+    const encoderMinutes = Math.max(1, Math.ceil(((until - from) * admission.renditions.length) / 60_000));
+    return requestedBroadcastUsage({
+      viewerSessions: 20,
+      egressBitsPerSecond: demand.egressBitsPerSecond,
+      encoderSlots: demand.encoderSlots,
+      encoderMinutes,
+      programMinutes: 1,
+    });
+  }
+
+  #assertBudget(admission, tenantId, ownerSubjectRef, now, until) {
+    if (!this.#budgetLedger) return;
+    try {
+      evaluateLedgerBudget(this.#budgetLedger, {
+        tenantId,
+        principalRef: ownerSubjectRef,
+        programId: admission.programId,
+        requested: this.#requestedBudget(admission, now, until),
+        limits: this.#budgetLimits,
+      }, now);
+    } catch (error) {
+      if (error instanceof BroadcastBudgetError) fail(error.code, error.status);
+      throw error;
+    }
+  }
+
+  #recordBudget(admission, tenantId, ownerSubjectRef, now, until) {
+    if (!this.#budgetLedger) return;
+    const requested = this.#requestedBudget(admission, now, until);
+    for (const metric of ["egressBitsPerSecond", "encoderSlots", "encoderMinutes", "programMinutes"]) {
+      this.#budgetLedger.record({
+        tenantId, principalRef: ownerSubjectRef, metric, amount: requested[metric], at: now,
+      });
+    }
   }
 
   prepare(ownerPrincipal, packagerId, admissionValue, leaseValue, publisherPeerId, now = Date.now()) {
@@ -261,6 +333,7 @@ export class NativePackagerAssignmentRegistry {
     }
     this.#assertResources(verifiedAdmission, packager.capability.tenantId, ownerPrincipal, now);
     this.#assertEncoderTime(verifiedAdmission, packager.capability.tenantId, ownerPrincipal, now, lease.expiresAt);
+    this.#assertBudget(verifiedAdmission, packager.capability.tenantId, packager.capability.ownerSubjectRef, now, lease.expiresAt);
     const assignmentId = this.#idFactory();
     if (!ASSIGNMENT.test(assignmentId || "") || this.#assignments.has(assignmentId)) {
       fail("invalid_native_packager_assignment_identifier", 500);
@@ -292,12 +365,14 @@ export class NativePackagerAssignmentRegistry {
       encoderBudgetUntil: lease.expiresAt,
     };
     this.#assertResources(verifiedAdmission, packager.capability.tenantId, ownerPrincipal, now);
+    this.#assertBudget(verifiedAdmission, packager.capability.tenantId, packager.capability.ownerSubjectRef, now, record.expiresAt);
     // Reentrant ICE/ID ports may have admitted another writer since the first checks.
     if (this.activeForPackager(packagerId) || this.activeForProgram(admission.programId) || this.#assignments.has(assignmentId)) {
       fail("native_packager_assignment_conflict", 409);
     }
     if (!this.#encoderTimeBudget.reserve({ tenantId: record.tenantId, ownerPrincipal }, verifiedAdmission.renditions.length,
       now, record.expiresAt, now)) fail("broadcast_temporarily_unavailable", 429);
+    this.#recordBudget(verifiedAdmission, record.tenantId, packager.capability.ownerSubjectRef, now, record.expiresAt);
     this.#assignments.set(assignmentId, record);
     this.#byPackager.set(packagerId, record);
     this.#byProgram.set(admission.programId, record);

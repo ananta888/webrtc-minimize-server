@@ -903,7 +903,7 @@
       "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 62,
+      "progress_percent": 74,
       "depends_on": [
         "TBP-004",
         "TBP-020",
@@ -917,7 +917,8 @@
         "Kapazitätsbehauptungen werden erst nach reproduzierbarem Lasttest veröffentlicht und nennen Hardware, Region, Codec, Renditions, Zuschauerverteilung und Begrenzungen."
       ],
       "usage_ledger_plan": "2026-09-11: In-process HMAC-Stundenbuckets fuer Deployment/Tenant/Principal ohne IDs. Keine Providerpreise oder persistente Monate.",
-      "usage_ledger_result": "2026-09-11: BroadcastUsageLedger + Budget-Admission-Snapshot. 1 neuer Node-Test PASS. Last-/Preisnachweis offen. TBP-024 55 -> 62 partial. Kein Push."
+      "usage_ledger_result": "2026-09-11: BroadcastUsageLedger + Budget-Admission-Snapshot. 1 neuer Node-Test PASS. Last-/Preisnachweis offen. TBP-024 55 -> 62 partial. Kein Push.",
+      "admission_wiring_result": "2026-09-11: evaluateLedgerBudget an Native-Admit/Prepare, Kapazitaetsklasse origin-small/cdn-medium/cdn-large in Preview v1/v2, costStatus bleibt unknown. Providerpreise und persistente Monate offen. TBP-024 62 -> 74 partial. Kein Push."
     },
     {
       "id": "TBP-025",
@@ -1331,6 +1332,7 @@
       "id": "TBP-034",
       "whip_viewer_metrics_plan": "2026-09-11: WHIP-Sessionzaehler ohne Native-pkr-Writer; Viewerklasse aus Cookie-Store-Groesse, nicht Menschen.",
       "whip_viewer_metrics_result": "2026-09-11: whipSessionCounts + broadcast_viewers class origin-small/cdn-medium/cdn-large. 22 Metrik-/HTTP-Tests PASS. Keine Bitrate/Frame/SLO-Behauptung. TBP-034 80 -> 86 in_progress. Kein Push.",
+      "failover_metrics_result": "2026-09-11: BroadcastFailoverCoordinator zaehlt recovered/stopped/failed je packager/gateway/host/network/provider; browser-Stops ohne Kataloglabel bleiben 0. Sampler broadcast_failovers_total, Operator-HTTP 28 -> 43 Zeilen. Error-Budget-Ratio ohne gemessene Unverfuegbarkeit nicht erfunden. TBP-034 86 -> 90 in_progress. Kein Push.",
       "source_change_metrics_plan": "2026-09-11 vor Code: Kataloglabel source-change war unangeschlossen. Beobachter misst nur committete nicht-draft preparing-Neustarts mit anderen Quellen ohne pending Writer bis bestaetigtes live unter neuer Epoche. Draft-Quellenzuweisung, Writer-Handoff auch bei Quellenwechsel und Epochensprung mit gleichen Quellen erzeugen keinen Wert. Quellen-IDs nur intern, nie in Samples. Tests zuerst gegen deterministische Folgen; HTTP-Zeilenzahl bleibt 28 ohne erfundenes Histogramm. Keine Runtime-/Rechteaenderung.",
       "source_change_metrics_result": "2026-09-11: BROADCAST_TRANSITIONS um source-change ergaenzt. Interner Quellenfingerprint (JSON der ID-Liste) nur zum Vergleich; Samples bleiben {transition,seconds}. Draft-Setzen, pending Handoff mit Quellenwechsel und gleicher Quellen-Epochensprung erzeugen keinen Wert; live->preparing(neue Quellen)->live schon. Programquoten: programQuotaCounts aus derselben Occupancy wie Admission, worst-case Tenant/Principal ohne IDs, Sampler broadcast_quota_ratio resource=programs; Viewer/Egress/Encoder/Runtime/Kosten bleiben unangeschlossen. 18 gezielte Tests PASS. docs/broadcast-observability.md. Offen: Medien-/Player-Instrumentierung, Packager-/Gateway-/Origin-Host, Collector/Dashboard/Alarm/SLO. TBP-034 72 -> 80 in_progress, Summen unveraendert. Kein Push.",
       "transition_host_metrics_result": "2026-09-11: src/broadcast-program-transitions.js beobachtet dieselben committeten Runtime-Uebergaenge wie das Journal (gemeinsamer #journal-Aufruf an allen vier Commit-Stellen, Fehler des Beobachters wirkungslos) und liefert inhaltsfreie Fensterwerte (15 min, max 256): start = Registrierung bis erstes bestaetigtes live (einmal je Programm), stop = stopping bis stopped, handoff = Ausgabe-Neustart unter naechster Epoche bis bestaetigte Nachfolgerausgabe unter dieser Epoche (Writer-Zuordnung allein zaehlt nicht). Sampler uebernimmt sie in broadcast_program_transition_seconds; broadcast_resource_utilization_ratio{component=control-plane} aus Load/Kerne, belegtem RAM und belegtem Dateisystem des Arbeitsverzeichnisses, 0..1 begrenzt, unbekannte Kapazitaet ergibt keinen Wert; keine Pfade/Bytes/Fremdhosts. Tests: deterministische Uebergangsfolgen inkl. realer Handoff-Sequenz live->preparing(pending,Epoche+1)->preparing->live, Scope-/Failed-/Direktstop-/Rollback-/Ring-/Destroy-Faelle, echter Registry-Start (3,5 s im 5-s-Bucket) und Stop, Handoff-Test bestaetigt Metrik erst nach Nachfolgerausgabe, Sampler-Validierung atomar ohne erfundene Nullen, HTTP-Export jetzt 28 Zeilen inkl. drei Host-Ratios und ohne Histogramm ohne Uebergang. 4+64+7 Tests PASS. docs/broadcast-observability.md. Offen: Medien-/Player-Instrumentierung, Packager-/Gateway-/Origin-Hostressourcen, source-change, Collector/Dashboard/Alarmzustellung/Zielhost-SLO. TBP-034 68 -> 72 in_progress, Summen unveraendert.",
@@ -1341,7 +1343,7 @@
       "status": "in_progress",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 86,
+      "progress_percent": 90,
       "depends_on": [
         "TBP-005",
         "TBP-017",

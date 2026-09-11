@@ -4,7 +4,8 @@ import test from "node:test";
 import { BROADCAST_PROGRAM_STATES } from "../src/broadcast-program-model.js";
 import { BroadcastRuntimeRegistry } from "../src/broadcast-runtime-registry.js";
 import { BroadcastRuntimeMetrics } from "../src/broadcast-runtime-metrics.js";
-import { whipMetricSamples, viewerMetricSamples } from "../src/broadcast-metric-samples.js";
+import { whipMetricSamples, viewerMetricSamples, failoverMetricSamples } from "../src/broadcast-metric-samples.js";
+import { BroadcastFailoverCoordinator } from "../src/broadcast-failover-coordinator.js";
 import { createAppServer } from "../src/server.js";
 
 const NOW = 1_800_000_000_000;
@@ -24,6 +25,15 @@ function fixture() {
   });
   return { runtime, owner, member, create };
 }
+
+test("failover samples export closed counters without program identity", () => {
+  const failover = new BroadcastFailoverCoordinator();
+  assert.deepEqual(failoverMetricSamples({}).length, 0);
+  const zeros = failoverMetricSamples(failover);
+  assert.equal(zeros.length, 15);
+  assert.equal(zeros.every((row) => row.metric === "broadcast_failovers_total" && row.value === 0), true);
+  assert.throws(() => failoverMetricSamples({ failoverCounts: () => ({ packager: { recovered: 1 } }) }));
+});
 
 test("whip and viewer samples stay identity-free and class-bounded", () => {
   assert.deepEqual(whipMetricSamples({}), []);

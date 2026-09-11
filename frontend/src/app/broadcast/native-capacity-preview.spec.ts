@@ -10,13 +10,14 @@ const validateRequest = new Ajv2020({ strict: true }).compile(JSON.parse(readFil
 const request = { roomId: "room-alpha", title: "Private title", visibility: "private" as const,
   packagerId: "pkr_aaaaaaaaaaaaaaaa", requestedRenditions: 1, allowHardwareAcceleration: false };
 const response = (): NativeCapacityPreview => ({ schema: "ananta.native-capacity-preview.v1", reserved: false, costStatus: "unknown",
+  capacityClass: "origin-small",
   observedAt: 1800000000000, expiresAt: 1800000005000, requestedRenditions: 1, reduced: false, videoEncoder: "libx264",
   demand: { cpuUnits: 4, memoryMiB: 224, encoderSlots: 1, gpuSlots: 0, egressBitsPerSecond: 648600 },
   renditions: [{ id: "low", width: 640, height: 360, framesPerSecond: 15, videoBitsPerSecond: 500000, audioBitsPerSecond: 64000, audioChannels: 2 }] });
 afterEach(() => vi.restoreAllMocks());
 it("accepts only a bounded closed observation whose demand matches its actual ladder", () => {
   expect(parseNativeCapacityPreview(response(), 1)).toEqual(response());
-  for (const change of ["reserved", "expiry", "extra", "demand", "rendition", "reduced", "cost", "encoder", "authority"]) {
+  for (const change of ["reserved", "expiry", "extra", "demand", "rendition", "reduced", "cost", "encoder", "authority", "class"]) {
     const value: any = response();
     if (change === "reserved") value.reserved = true;
     if (change === "expiry") value.expiresAt++;
@@ -27,6 +28,7 @@ it("accepts only a bounded closed observation whose demand matches its actual la
     if (change === "cost") value.costStatus = "free";
     if (change === "encoder") value.videoEncoder = "unknown";
     if (change === "authority") value.lease = "not_authority";
+    if (change === "class") value.capacityClass = "unlimited";
     expect(() => parseNativeCapacityPreview(value, 1), change).toThrow("invalid_native_capacity_preview");
   }
   expect(() => parseNativeCapacityPreview(response(), 2)).toThrow();

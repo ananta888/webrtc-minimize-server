@@ -1,0 +1,86 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "meet-observability",
+  "purpose": "Inhaltsfreie Signaling- und TURN-Zähler für das Meet, ohne SDP, Namen, Room-Codes oder Collector-Versprechen.",
+  "goal": "Join-, Session-, Rate-Limit- und TURN-Credential-Zähler bleiben prozesslokal und geschlossen. Nutzer- und Gerätegates kommen zuletzt.",
+  "status": "in_progress",
+  "created": "2026-09-11",
+  "updated": "2026-09-11",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "user_verification_last": true,
+  "related_tracks": [
+    {
+      "repository": "webrtc-minimize-server",
+      "path": "todos/backlog/todo.webrtc-production-roadmap.json",
+      "relationship": "Promoviert PROD-OPS-001. Collector, SLOs und Browser-Gates bleiben MEET-OPS-002."
+    }
+  ],
+  "milestones": [
+    {
+      "id": "MEET-OPS-M1",
+      "title": "Inhaltsfreie Control-Plane-Zähler",
+      "task_ids": ["MEET-OPS-001"],
+      "status": "done"
+    },
+    {
+      "id": "MEET-OPS-M2",
+      "title": "Nutzer- und Gerätegates zuletzt",
+      "task_ids": ["MEET-OPS-002"],
+      "status": "todo"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "MEET-OPS-001",
+      "title": "Inhaltsfreie Join-, Session-, Rate-Limit- und TURN-Zähler einführen",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Zähler enthalten nur geschlossene Enums für Join, Sessions, Signaling-Fehler und TURN-Klassen, niemals Room-IDs, Namen, SDP, ICE oder Tokens.",
+        "Rate-Limits und Join-Ablehnungen erhöhen getrennte Zähler; erfolgreiche Sessions sinken beim Leave.",
+        "Gezielte Tests prüfen Label-Fail-closed und dass Serialisierungen keine Identitäten enthalten."
+      ]
+    },
+    {
+      "id": "MEET-OPS-002",
+      "title": "Collector-, SLO- und Mehrbrowser-Gates zuletzt ausführen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 0,
+      "depends_on": ["MEET-OPS-001"],
+      "acceptance_criteria": [
+        "Ein Operator-Export und Error-Budgets entstehen erst nach gemessenen Join-/TURN-Fenstern.",
+        "Safari/iOS, NAT/TURN-Live und Lastfenster bleiben Nutzergates und schließen den Track nicht vorab."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["MEET-OPS-001", "MEET-OPS-002"],
+  "tasks_status_summary": {
+    "total": 2,
+    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 1 },
+    "progress_percent_done": 50,
+    "by_priority": { "P0": 1, "P1": 1, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 1, "critical": 0 },
+    "critical_path": { "total": 2, "done": 1, "remaining": 1 },
+    "milestones": { "total": 2, "todo": 1, "in_progress": 0, "blocked": 0, "done": 1 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 1,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 1
+  },
+  "summary_notes": [
+    "2026-09-11 PROD-OPS-001 promoviert. Softwarezähler zuerst, Collector/SLO/Safari zuletzt als MEET-OPS-002."
+  ]
+}

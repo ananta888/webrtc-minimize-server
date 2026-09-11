@@ -110,6 +110,22 @@ export function viewerMetricSamples(sessions) {
   return VIEWER_CLASSES.map((name) => sample("broadcast_viewers", name === klass ? size : 0, { class: name }));
 }
 
+const FAILOVER_FAILURES = Object.freeze(["packager", "gateway", "host", "network", "provider"]);
+const FAILOVER_OUTCOMES = Object.freeze(["recovered", "stopped", "failed"]);
+export function failoverMetricSamples(coordinator) {
+  if (typeof coordinator?.failoverCounts !== "function") return [];
+  const counts = coordinator.failoverCounts();
+  if (!exact(counts, FAILOVER_FAILURES)
+    || FAILOVER_FAILURES.some((failure) => !exact(counts[failure], FAILOVER_OUTCOMES)
+      || FAILOVER_OUTCOMES.some((outcome) => !Number.isSafeInteger(counts[failure][outcome])
+        || counts[failure][outcome] < 0 || counts[failure][outcome] > 1_000_000))) {
+    throw new Error("invalid_failover_metric_counts");
+  }
+  return FAILOVER_FAILURES.flatMap((failure) => FAILOVER_OUTCOMES.map((outcome) => (
+    sample("broadcast_failovers_total", counts[failure][outcome], { failure, outcome })
+  )));
+}
+
 export function hostResourceMetricSamples(host) {
   if (typeof host?.resourceCounts !== "function") return [];
   const counts = host.resourceCounts();

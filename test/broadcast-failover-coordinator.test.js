@@ -92,6 +92,8 @@ test("reachable standbys stay keyless and reachability without current consent n
   assert.equal(grace.action, "grace");
   const takeover = failover.evaluate(SCOPE, "packager-writer", signals({ writer: "unavailable" }), NOW + 12_001);
   assert.equal(takeover.action, "takeover");
+  assert.equal(failover.failoverCounts().packager.recovered, 1);
+  assert.equal(JSON.stringify(failover.failoverCounts()).includes("pkr_"), false);
   assert.equal(takeover.active.holderRef, candidate("c", 80).holderRef);
   assert.equal(takeover.active.fencingRevision > first.active.fencingRevision, true);
   assert.throws(() => failover.authorizeWriter(SCOPE, "packager-writer", {
@@ -154,6 +156,8 @@ test("safe recovery emits a discontinuity and browser source loss stops visibly"
   unsafe.evaluate(SCOPE, "packager-writer", signals({ browserSource: "unavailable" }), NOW + 10_001);
   const stopped = unsafe.evaluate(SCOPE, "packager-writer", signals({ browserSource: "unavailable" }), NOW + 12_001);
   assert.deepEqual(stopped.recovery, { disposition: "visible-stop", discontinuity: false, playerRestart: false });
+  assert.equal(unsafe.failoverCounts().packager.failed, 0);
+  assert.equal(unsafe.failoverCounts().packager.stopped, 0);
 });
 
 test("recovery snapshot contains only metadata and bounded idempotency outbox", () => {
