@@ -5,7 +5,9 @@ import {
   MAX_ROOM_PARTICIPANTS,
   MIN_ROOM_PARTICIPANTS,
 } from "./room-limits.js";
-import { applyHand, authorizeRemove, clearHand, moderationSnapshot } from "./room-moderation.js";
+import {
+  applyHand, authorizePublicationStop, authorizeRemove, clearHand, moderationSnapshot, peerRole,
+} from "./room-moderation.js";
 
 export class RoomFullError extends Error {
   constructor() {
@@ -54,6 +56,8 @@ export class RoomRegistry {
         mode,
         capacity,
         creatorPrincipal: admission.creatorPrincipal || admission.principal || "anonymous",
+        audit: [],
+        auditSequence: 0,
       };
       this.#rooms.set(roomId, room);
     }
@@ -195,8 +199,13 @@ export class RoomRegistry {
     return this.#rooms.get(roomId)?.creatorPrincipal || "";
   }
 
-  moderationSnapshot(roomId, membershipEpoch) {
-    return moderationSnapshot(this.#rooms.get(roomId), membershipEpoch);
+  moderationSnapshot(roomId, membershipEpoch, options = {}) {
+    return moderationSnapshot(this.#rooms.get(roomId), membershipEpoch, options);
+  }
+
+  peerRole(peer) {
+    const room = this.#rooms.get(peer.roomId);
+    return peerRole(peer, room?.creatorPrincipal);
   }
 
   setHand(peer, hand, now = Date.now()) {
@@ -212,6 +221,11 @@ export class RoomRegistry {
   authorizeRemove(actor, targetPeerId, now = Date.now()) {
     const room = this.#rooms.get(actor.roomId);
     return authorizeRemove(room, actor, targetPeerId, now);
+  }
+
+  authorizePublicationStop(actor, targetPeerId, source, now = Date.now()) {
+    const room = this.#rooms.get(actor.roomId);
+    return authorizePublicationStop(room, actor, targetPeerId, source, now);
   }
 
   setRelayCapability(peer, capability, now = Date.now()) {

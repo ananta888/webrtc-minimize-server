@@ -16,7 +16,7 @@
     {
       "repository": "webrtc-minimize-server",
       "path": "todos/backlog/todo.bigbluebutton-collaboration-ux.json",
-      "relationship": "Promoviert BBB-UX-001, BBB-UX-002, BBB-UX-003, BBB-UX-004, BBB-UX-007, BBB-UX-008, BBB-UX-009 und BBB-UX-010. Nutzer-/Mehrbrowser-Gates bleiben COL-004."
+      "relationship": "Promoviert BBB-UX-001 bis BBB-UX-005 und BBB-UX-007 bis BBB-UX-010. Nutzer-/Mehrbrowser-Gates bleiben COL-004."
     }
   ],
   "milestones": [
@@ -35,7 +35,7 @@
     {
       "id": "COL-M3",
       "title": "Teilnehmerliste und Redereihenfolge",
-      "task_ids": ["COL-005", "COL-006", "COL-007"],
+      "task_ids": ["COL-005", "COL-006", "COL-007", "COL-008", "COL-009"],
       "status": "done"
     },
     {
@@ -95,7 +95,7 @@
       "priority": "P1",
       "risk": "medium",
       "progress_percent": 0,
-      "depends_on": ["COL-003", "COL-006", "COL-007"],
+      "depends_on": ["COL-003", "COL-006", "COL-007", "COL-008", "COL-009"],
       "acceptance_criteria": [
         "Echte Chromium- und Firefox-Identitäten belegen konsistenten Handzustand ohne Capture.",
         "Safari/iOS, physische Tastaturmatrix und 20-Teilnehmer-Churn bleiben Nutzergates und schließen den Track nicht vorab."
@@ -142,16 +142,44 @@
         "Die UI zeigt Ziel, Raum und Wirkung vor dem Absenden; Capture startet nicht.",
         "Das Ziel verliert die Membership über denselben Leave-Pfad wie ein Disconnect."
       ]
+    },
+    {
+      "id": "COL-008",
+      "title": "Flüchtiges inhaltsfreies Moderations-Audit in der laufenden Instanz führen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["COL-001", "COL-007"],
+      "acceptance_criteria": [
+        "Das Audit enthält nur Peer-IDs, Aktion, Zeit und optionale Quelle, niemals Namen, Room-Codes, SDP/ICE oder Medieninhalt.",
+        "Nur der Owner empfängt den Audit-Ausschnitt; er ist auf 256 Einträge begrenzt und verschwindet mit dem Raum.",
+        "Es gibt keine Persistenz und keine Produktionslogs dieser Ereignisse."
+      ]
+    },
+    {
+      "id": "COL-009",
+      "title": "Owner-Stoppaufforderung für bestehende Publikationen ohne Capture umsetzen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["COL-007"],
+      "acceptance_criteria": [
+        "Nur der Owner darf eine Stoppaufforderung an ein anderes Mitglied senden; Self, Pair, Maschine und screen-audio fail-closed.",
+        "Der Zielbrowser stoppt höchstens eine bereits aktive lokale Publikation; es startet kein Capture.",
+        "Die UI erklärt Ziel, Raum und dass es keine ferngesteuerte Gerätesteuerung ist."
+      ]
     }
   ],
-  "critical_path_tasks": ["COL-001", "COL-002", "COL-003", "COL-005", "COL-006", "COL-007", "COL-004"],
+  "critical_path_tasks": ["COL-001", "COL-002", "COL-003", "COL-005", "COL-006", "COL-007", "COL-008", "COL-009", "COL-004"],
   "tasks_status_summary": {
-    "total": 7,
-    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 6 },
-    "progress_percent_done": 85.71,
-    "by_priority": { "P0": 2, "P1": 5, "P2": 0, "P3": 0 },
-    "by_risk": { "low": 0, "medium": 4, "high": 2, "critical": 1 },
-    "critical_path": { "total": 7, "done": 6, "remaining": 1 },
+    "total": 9,
+    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 8 },
+    "progress_percent_done": 88.89,
+    "by_priority": { "P0": 2, "P1": 7, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 4, "high": 4, "critical": 1 },
+    "critical_path": { "total": 9, "done": 8, "remaining": 1 },
     "milestones": { "total": 4, "todo": 1, "in_progress": 0, "blocked": 0, "done": 3 }
   },
   "progress_summary": {
@@ -160,11 +188,12 @@
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 6
+    "done": 8
   },
   "summary_notes": [
     "2026-09-11 Track aus BBB-UX-001/002/007/010 promoviert. Software zuerst, COL-004 Nutzer-/Gerätegates zuletzt. Kein Capture, keine Breakouts, kein Whiteboard.",
     "2026-09-11 BBB-UX-003/008/009 als COL-005/006 promoviert: FIFO-Queue, Teilnehmerliste und Owner-Clear ohne Capture. COL-004 bleibt das letzte Nutzer-/Gerätegate.",
-    "2026-09-11 BBB-UX-004 als COL-007: Owner-Entfernen mit Bestätigung, Leave-Pfad, ohne Capture. Mute/Presenter/Undo bleiben Backlog."
+    "2026-09-11 BBB-UX-004 als COL-007: Owner-Entfernen mit Bestätigung, Leave-Pfad, ohne Capture. Mute/Presenter/Undo bleiben Backlog.",
+    "2026-09-11 BBB-UX-005 als COL-008 flüchtiges Owner-Audit; BBB-UX-004 Mute als COL-009 Stoppaufforderung ohne Capture. Presenter/Undo bleiben Backlog. COL-004 zuletzt."
   ]
 }

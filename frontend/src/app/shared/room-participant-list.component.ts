@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 
-import { MediaPublicationService } from "../webrtc/media-publication.service";
+import { LocalMediaSource, MediaPublicationService } from "../webrtc/media-publication.service";
 import { PeerMeshService } from "../webrtc/peer-mesh.service";
-import { RoomModerationService } from "../webrtc/room-moderation.service";
+import { ModerationAuditEntry, RoomModerationService } from "../webrtc/room-moderation.service";
 import { RoomSessionService } from "../webrtc/room-session.service";
 import {
   mediaObservationLabel,
@@ -88,6 +88,8 @@ import {
               @if (canRemove(item)) {
                 <button type="button" class="button ghost compact" [attr.data-remove-peer]="item.peerId"
                   (click)="askRemove(item)">Entfernen…</button>
+                <button type="button" class="button ghost compact" [attr.data-stop-publication]="item.peerId"
+                  (click)="askStop(item)">Publikation stoppen…</button>
               }
             </div>
           </li>
@@ -104,6 +106,31 @@ import {
             <button id="peer-remove-confirm-action" type="button" class="button primary" (click)="confirmRemove()">Entfernen</button>
           </div>
         </div>
+      }
+      @if (pendingStop(); as pending) {
+        <div id="publication-stop-confirm" class="remove-confirm" role="alertdialog" aria-labelledby="publication-stop-heading">
+          <h3 id="publication-stop-heading">Publikation von {{ pending.item.name }} stoppen?</h3>
+          <p>Raum {{ session.roomId() }}. Das ist eine Stoppaufforderung an den Zielbrowser, kein ferngesteuertes Capture.</p>
+          <label>Quelle
+            <select id="publication-stop-source" [ngModel]="pending.source"
+              (ngModelChange)="pendingStop.set({ item: pending.item, source: $event })">
+              <option value="microphone">Mikrofon</option>
+              <option value="camera">Kamera</option>
+              <option value="screen">Bildschirm</option>
+            </select>
+          </label>
+          <div class="inline-actions">
+            <button id="publication-stop-cancel" type="button" class="button ghost" (click)="pendingStop.set(null)">Abbrechen</button>
+            <button id="publication-stop-confirm-action" type="button" class="button primary" (click)="confirmStop()">Stopp anfragen</button>
+          </div>
+        </div>
+      }
+      @if (moderation.ownRole() === 'owner' && moderation.audit().length > 0) {
+        <ol id="moderation-audit" class="moderation-audit" aria-label="Flüchtiges Moderationsprotokoll">
+          @for (entry of moderation.audit(); track entry.sequence) {
+            <li [attr.data-action]="entry.action">{{ auditLabel(entry) }}</li>
+          }
+        </ol>
       }
     </section>
   `,
@@ -122,6 +149,7 @@ import {
     .participant-actions { display: grid; gap: .28rem; }
     .remove-confirm { display: grid; gap: .45rem; border: 1px solid rgba(255, 119, 125, .3); border-radius: .7rem; padding: .7rem; }
     .remove-confirm h3, .remove-confirm p { margin: 0; }
+    .moderation-audit { margin: 0; padding-left: 1.1rem; color: var(--muted); font-size: .68rem; }
   `],
 })
 export class RoomParticipantListComponent {
@@ -129,6 +157,7 @@ export class RoomParticipantListComponent {
   readonly roleFilter = signal<ParticipantRoleFilter>("all");
   readonly handFilter = signal<ParticipantHandFilter>("all");
   readonly pendingRemove = signal<ParticipantListRow | null>(null);
+  readonly pendingStop = signal<{ item: ParticipantListRow; source: LocalMediaSource } | null>(null);
   readonly rows = computed(() => participantListRows({
     ownPeerId: this.moderation.ownPeerId() || this.session.peerId(),
     ownName: this.session.displayName(),
@@ -176,6 +205,29 @@ export class RoomParticipantListComponent {
     this.pendingRemove.set(null);
     if (!pending || !this.canRemove(pending)) return;
     this.moderation.remove(pending.peerId);
+  }
+
+  askStop(item: ParticipantListRow): void {
+    if (!this.canRemove(item)) return;
+    this.pendingStop.set({ item, source: "microphone" });
+  }
+
+  confirmStop(): void {
+    const pending = this.pendingStop();
+    this.pendingStop.set(null);
+    if (!pending || !this.canRemove(pending.item)) return;
+    this.moderation.requestStop(pending.item.peerId, pending.source);
+  }
+
+  auditLabel(entry: ModerationAuditEntry): string {
+    const action = {
+      "hand-raise": "Hand gehoben",
+      "hand-lower": "Hand gesenkt",
+      "hand-clear": "Hand gesenkt (Owner)",
+      "peer-remove": "Mitglied entfernt",
+      "publication-stop": `Stoppaufforderung ${mediaObservationLabel(entry.source)}`,
+    }[entry.action];
+    return `${action} · ${entry.actorPeerId.slice(0, 8)} → ${entry.targetPeerId.slice(0, 8)}`;
   }
 
   sourceText(sources: readonly string[]): string {

@@ -21,6 +21,7 @@ test("owner and participant roles come only from membership, never from client p
   assert.deepEqual(snapshot.participants.map((item) => item.role).sort(), ["owner", "participant"].sort());
   assert.equal(snapshot.participants.every((item) => item.raisedAt === 0 && item.hand === "none"), true);
   assert.deepEqual(snapshot.queue, []);
+  assert.equal(Object.hasOwn(snapshot, "audit"), false);
   assert.doesNotMatch(JSON.stringify(snapshot), /Ada|Grace|https:\/\/id/);
 });
 
@@ -100,6 +101,13 @@ test("hand messages are closed and unknown fields fail", () => {
   const remove = parseClientMessage(JSON.stringify({ type: "peer-remove", targetPeerId: "aaaaaaaaaaaaaaaa" }));
   assert.equal(remove.targetPeerId, "aaaaaaaaaaaaaaaa");
   assert.throws(() => parseClientMessage(JSON.stringify({ type: "peer-remove", extra: true })), /unknown_message_field/);
+  const stop = parseClientMessage(JSON.stringify({
+    type: "publication-stop", targetPeerId: "aaaaaaaaaaaaaaaa", source: "microphone",
+  }));
+  assert.equal(stop.source, "microphone");
+  assert.throws(() => parseClientMessage(JSON.stringify({
+    type: "publication-stop", targetPeerId: "aaaaaaaaaaaaaaaa", source: "screen-audio",
+  })), /invalid_media_source/);
   const clear = parseClientMessage(JSON.stringify({ type: "hand-clear", targetPeerId: "aaaaaaaaaaaaaaaa" }));
   assert.equal(clear.targetPeerId, "aaaaaaaaaaaaaaaa");
   assert.throws(() => parseClientMessage(JSON.stringify({ type: "hand-role", role: "owner" })),
@@ -107,4 +115,33 @@ test("hand messages are closed and unknown fields fail", () => {
   assert.equal(moderationSnapshot(null, 1), null);
   assert.throws(() => new RoomRegistry().setHand({ id: "x", roomId: "missing" }, "raised"),
     (error) => error instanceof RoomAdmissionError || error instanceof RoomModerationError);
+});
+
+test("volatile audit is owner-only, identity-free and wiped with the room", () => {
+  const registry = new RoomRegistry();
+  const owner = registry.join("room-mod", {}, "Ada", 1, { principal: "owner" }).peer;
+  const guest = registry.join("room-mod", {}, "Grace", 2, { principal: "guest" }).peer;
+  registry.setHand(guest, "raised", 10);
+  registry.clearHand(owner, guest.id, 11);
+  registry.authorizePublicationStop(owner, guest.id, "microphone", 12);
+  const ownerView = registry.moderationSnapshot("room-mod", 1, { audit: true });
+  const guestView = registry.moderationSnapshot("room-mod", 1);
+  assert.equal(ownerView.audit.length, 3);
+  assert.deepEqual(ownerView.audit.map((item) => item.action), ["hand-raise", "hand-clear", "publication-stop"]);
+  assert.equal(ownerView.audit[2].source, "microphone");
+  assert.equal(Object.hasOwn(guestView, "audit"), false);
+  assert.doesNotMatch(JSON.stringify(ownerView), /Ada|Grace|microphone_track|sdp/i);
+  registry.leave(owner, 13);
+  registry.leave(guest, 14);
+  assert.equal(registry.moderationSnapshot("room-mod", 1), null);
+});
+
+test("publication stop is owner-only and never a capture grant", () => {
+  const registry = new RoomRegistry();
+  const owner = registry.join("room-mod", {}, "Ada", 1, { principal: "owner" }).peer;
+  const guest = registry.join("room-mod", {}, "Grace", 2, { principal: "guest" }).peer;
+  assert.throws(() => registry.authorizePublicationStop(guest, owner.id, "camera", 2), errorCode("moderation_forbidden"));
+  assert.throws(() => registry.authorizePublicationStop(owner, owner.id, "camera", 3), errorCode("self_moderation_forbidden"));
+  assert.throws(() => registry.authorizePublicationStop(owner, guest.id, "screen-audio", 4), errorCode("invalid_publication_source"));
+  assert.equal(registry.authorizePublicationStop(owner, guest.id, "camera", 5), true);
 });

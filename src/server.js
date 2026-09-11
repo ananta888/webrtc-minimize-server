@@ -1830,9 +1830,13 @@ function configureSignaling(
   const broadcastModeration = (roomId) => {
     const members = registry.members(roomId);
     const membershipEpoch = roomEpochs.get(roomId)?.membership || 0;
-    const snapshot = registry.moderationSnapshot(roomId, membershipEpoch);
-    if (!snapshot || members.length === 0) return;
-    for (const member of members) safeSend(member.socket, snapshot);
+    if (members.length === 0) return;
+    for (const member of members) {
+      const snapshot = registry.moderationSnapshot(roomId, membershipEpoch, {
+        audit: registry.peerRole(member) === "owner",
+      });
+      if (snapshot) safeSend(member.socket, snapshot);
+    }
   };
 
   const broadcastTopology = (roomId, membershipChanged = false) => {
@@ -2056,6 +2060,21 @@ function configureSignaling(
             safeSend(target.socket, { type: "error", code: "removed_by_owner" });
             target.socket.close(1008, "removed_by_owner");
           }
+          return;
+        }
+        if (message.type === "publication-stop") {
+          registry.authorizePublicationStop(peer, message.targetPeerId, message.source);
+          const target = registry.members(peer.roomId).find((member) => member.id === message.targetPeerId);
+          const membershipEpoch = roomEpochs.get(peer.roomId)?.membership || 0;
+          if (target?.socket && target.socket !== socket) {
+            safeSend(target.socket, {
+              type: "publication-stop-request",
+              membershipEpoch,
+              targetPeerId: message.targetPeerId,
+              source: message.source,
+            });
+          }
+          broadcastModeration(peer.roomId);
           return;
         }
         if (message.type === "machine-receive-consent") {
