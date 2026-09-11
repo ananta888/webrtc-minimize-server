@@ -337,7 +337,7 @@
         {
           "id": "BBB-UX-019",
           "title": "ADR für Whiteboard-Zustand, Transport und Konvergenz erstellen",
-          "status": "open",
+          "status": "partial",
           "priority": "P0",
           "risk": "critical",
           "scope": ["operation log versus CRDT", "direct DataChannel", "opaque overlay snapshots", "late join", "ephemeral default"],
@@ -355,7 +355,7 @@
         {
           "id": "BBB-UX-020",
           "title": "Versionierten Whiteboard-Operationscontract mit harten Grenzen definieren",
-          "status": "open",
+          "status": "partial",
           "priority": "P0",
           "risk": "critical",
           "scope": ["stroke", "shape", "text", "erase", "viewport", "operation ID", "author device", "epoch"],
@@ -710,8 +710,8 @@
     "total_items": 42,
     "by_status": {
       "completed": 0,
-      "partial": 11,
-      "open": 31,
+      "partial": 13,
+      "open": 29,
       "deferred": 0,
       "blocked": 0
     },
@@ -727,6 +727,7 @@
       "2026-09-11 BBB-UX-004 als COL-007: Owner-Entfernen mit Bestätigung. Mute, Presenter und Undo bleiben offen.",
       "2026-09-11 BBB-UX-005 als COL-008 (flüchtiges Owner-Audit, keine Persistenz). Mute als COL-009 Stoppaufforderung; Presenter/Undo weiter offen.",
       "2026-09-11 BBB-UX-026/027 als COL-010/012: Presenter-Zuweisung und lokales Anheften. BBB-UX-004 Undo-Fenster als COL-011. Filmstreifen/Fullscreen und Folien bleiben offen.",
+      "2026-09-11 BBB-UX-019/020 als todos/active/todo.whiteboard-overlay.json. WB-001 geschlossener Operationsvertrag, Persistenz ephemeral. Overlay-Transport folgt.",
       "Diese Category-Todo ist Portfolio/Research und ausdrücklich kein ausführbarer Implementierungs-Track.",
       "BigBlueButton liefert die Produktideen, nicht die Zielarchitektur: Der zentrale mediasoup-/FreeSWITCH-/Recording-Pfad wird nicht übernommen.",
       "Teilnehmer- und Moderatorrollen bleiben serverautorisiert; DataChannels verleihen keine Rolle oder Membership.",

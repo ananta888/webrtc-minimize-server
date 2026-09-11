@@ -1,0 +1,120 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "whiteboard-overlay",
+  "purpose": "Flüchtiges, begrenztes Whiteboard über den opaque Data-Overlay, ohne die Control Plane zum Inhaltsserver zu machen.",
+  "goal": "Geschlossene Operationen und Overlay-Transport zuerst. Persistenz bleibt default-aus. Nutzer- und Gerätegates zuletzt.",
+  "status": "in_progress",
+  "created": "2026-09-11",
+  "updated": "2026-09-11",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "user_verification_last": true,
+  "related_tracks": [
+    {
+      "repository": "webrtc-minimize-server",
+      "path": "todos/backlog/todo.bigbluebutton-collaboration-ux.json",
+      "relationship": "Promoviert BBB-UX-019 und BBB-UX-020. Rendering, CRDT-Konvergenz und Browsergates folgen. Nutzer-Gates zuletzt als WB-004."
+    }
+  ],
+  "milestones": [
+    {
+      "id": "WB-M1",
+      "title": "Geschlossener Operationsvertrag",
+      "task_ids": ["WB-001"],
+      "status": "done"
+    },
+    {
+      "id": "WB-M2",
+      "title": "Overlay-Transport und UI",
+      "task_ids": ["WB-002", "WB-003"],
+      "status": "todo"
+    },
+    {
+      "id": "WB-M3",
+      "title": "Nutzer- und Gerätegates zuletzt",
+      "task_ids": ["WB-004"],
+      "status": "todo"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "WB-001",
+      "title": "Geschlossenen Whiteboard-Operationsvertrag mit harten Grenzen definieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Operationen sind versioniert und fail-closed; unbekannte Arten und Felder werden abgewiesen.",
+        "Koordinaten, Punkte pro Nachricht und Farbwerte sind hart begrenzt; HTML/SVG werden nicht interpretiert.",
+        "Persistenz ist ausdrücklich ephemeral; der Vertrag transportiert keine Membership-Autorität."
+      ]
+    },
+    {
+      "id": "WB-002",
+      "title": "Whiteboard-Operationen über den opaque Overlay-Eventpfad austauschen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["WB-001"],
+      "acceptance_criteria": [
+        "Operationen laufen nur als begrenzte Overlay-Events zwischen aktuellen Mitgliedern.",
+        "Unbekannte Payloads, Oversize und Cross-Room werden fail-closed verworfen.",
+        "Die Control Plane terminiert, speichert und loggt keine Zeicheninhalte."
+      ]
+    },
+    {
+      "id": "WB-003",
+      "title": "Canvas-Rendering ohne HTML-Import und ohne Capture anbieten",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["WB-002"],
+      "acceptance_criteria": [
+        "Nur Canvas-Primitive; kein innerHTML, kein untrusted SVG, kein getUserMedia.",
+        "Clear ist owner-autorisiert über die Control Plane, Inhalt bleibt Data Plane.",
+        "Lokales Undo betrifft nur eigene Operationen."
+      ]
+    },
+    {
+      "id": "WB-004",
+      "title": "Nutzer- und Gerätegates für Whiteboard zuletzt ausführen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 0,
+      "depends_on": ["WB-003"],
+      "acceptance_criteria": [
+        "Chromium- und Firefox-Mehrpeer-Konvergenz wird real geprüft.",
+        "Safari/iOS, Touch und 20-Teilnehmer-Churn bleiben Nutzergates."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["WB-001", "WB-002", "WB-003", "WB-004"],
+  "tasks_status_summary": {
+    "total": 4,
+    "by_status": { "todo": 3, "in_progress": 0, "partial": 0, "blocked": 0, "done": 1 },
+    "progress_percent_done": 25,
+    "by_priority": { "P0": 2, "P1": 2, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 1, "critical": 2 },
+    "critical_path": { "total": 4, "done": 1, "remaining": 3 },
+    "milestones": { "total": 3, "todo": 2, "in_progress": 0, "blocked": 0, "done": 1 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 3,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 1
+  },
+  "summary_notes": [
+    "2026-09-11 Track aus BBB-UX-019/020. WB-001 Vertrag geschlossen (Node+Angular Parser). Overlay-Fanout und Canvas folgen. Persistenz bleibt aus. WB-004 Nutzergates zuletzt."
+  ]
+}
