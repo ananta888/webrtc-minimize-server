@@ -36,6 +36,7 @@ import {
   parseClientMessage,
   ProtocolError,
 } from "./protocol.js";
+import { BreakoutRegistry } from "./breakout-set.js";
 import { RoomAdmissionError, RoomFullError, RoomRegistry } from "./room-registry.js";
 import { REMOVE_UNDO_MS, RoomModerationError } from "./room-moderation.js";
 import { MeetObservability } from "./meet-observability.js";
@@ -1527,6 +1528,7 @@ function createHttpHandler(config, registry, services) {
           throw new ProtocolError("machine_client_upgrade_required");
         }
         const roomId = normalizeRoomId(input.roomId);
+        if (registry.reservedBreakout(roomId)) throw new ProtocolError("breakout_assignment_required");
         const mode = normalizeMode(input.mode);
         const requestedName = normalizeDisplayName(input.displayName);
         const humanIdentity = url.pathname === "/api/sessions"
@@ -2841,6 +2843,7 @@ export function createAppServer(options = {}) {
   const registry = options.registry || new RoomRegistry({
     maxParticipants: config.maxRoomParticipants,
     idleTtlMs: config.roomIdleTtlMs,
+    breakouts: options.breakouts || new BreakoutRegistry(),
   });
   const directory = options.directory || new RoomDirectory({
     maxParticipants: config.maxRoomParticipants,

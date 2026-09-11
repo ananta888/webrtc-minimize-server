@@ -1,0 +1,175 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "breakout-rooms",
+  "purpose": "Zeitlich begrenzte, strikt isolierte Unterräume mit eigenen Membership- und Security-Epochen, ohne Capture, Cross-Room-Signaling oder Pair-Umdeutung.",
+  "goal": "Parent- und Child-Räume bleiben getrennte Memberships. Zuweisung, Raumwechsel und Isolation folgen. Nutzer- und Gerätegates zuletzt.",
+  "status": "in_progress",
+  "created": "2026-09-11",
+  "updated": "2026-09-11",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "user_verification_last": true,
+  "related_tracks": [
+    {
+      "repository": "webrtc-minimize-server",
+      "path": "todos/backlog/todo.bigbluebutton-collaboration-ux.json",
+      "relationship": "Promoviert BBB-UX-012 bis BBB-UX-018. Nutzer-/Mehrbrowser-Gates bleiben BRK-007."
+    }
+  ],
+  "milestones": [
+    {
+      "id": "BRK-M1",
+      "title": "Parent-/Child-Domainmodell",
+      "task_ids": ["BRK-001"],
+      "status": "done"
+    },
+    {
+      "id": "BRK-M2",
+      "title": "Zuweisung und Raumwechsel",
+      "task_ids": ["BRK-002", "BRK-003"],
+      "status": "todo"
+    },
+    {
+      "id": "BRK-M3",
+      "title": "TURN-, Relay- und Agent-Isolation",
+      "task_ids": ["BRK-004"],
+      "status": "todo"
+    },
+    {
+      "id": "BRK-M4",
+      "title": "Zuordnungspolitik und Lobby",
+      "task_ids": ["BRK-005", "BRK-006"],
+      "status": "todo"
+    },
+    {
+      "id": "BRK-M5",
+      "title": "Nutzer- und Gerätegates zuletzt",
+      "task_ids": ["BRK-007"],
+      "status": "todo"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "BRK-001",
+      "title": "Parent-/Breakout-Domainmodell mit eigenen Membership- und Security-Epochen definieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Jeder Breakout besitzt getrennte Membership, Peer-IDs, Signaling-Tickets, Topologie- und Schlüssel-Epochen.",
+        "Kein Child-Peer kann aus Parent- oder Nachbar-Signalen Membership ableiten.",
+        "Die Summe führt nie zu mehr als 20 gleichzeitigen Mitgliedschaften pro konkretem Raum."
+      ]
+    },
+    {
+      "id": "BRK-002",
+      "title": "Kurzlebige, zielgebundene Breakout-Zuweisungen und Moderatorrechte spezifizieren",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["BRK-001"],
+      "acceptance_criteria": [
+        "Nur autorisierte Owner erstellen, ändern oder schließen Zuordnungen.",
+        "Ein Grant ist an Principal, Gerät, Parent, Child, Revision und Ablauf gebunden.",
+        "Erraten eines Child-Room-Codes ersetzt weder Zuweisung noch Identität."
+      ]
+    },
+    {
+      "id": "BRK-003",
+      "title": "Sicheren Raumwechsel mit vollständigem Medien-, DataChannel- und Schlüssel-Cleanup bauen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["BRK-001", "BRK-002"],
+      "acceptance_criteria": [
+        "Vor Eintritt in den Child-Raum sind alle Parent-Publikationen und erreichbaren privaten Schlüssel aus dem Browser-State entfernt.",
+        "Der Wechsel benötigt einen sichtbaren lokalen Bestätigungsschritt und startet keine Quelle automatisch neu.",
+        "Fehlschlag führt in einen sicheren, medienfreien Zustand mit möglichem Rückweg statt Parallelmembership."
+      ]
+    },
+    {
+      "id": "BRK-004",
+      "title": "TURN-, Trusted-Relay- und Media-Agent-Isolation für Breakouts festlegen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 0,
+      "depends_on": ["BRK-001"],
+      "acceptance_criteria": [
+        "Agenten und Relay-Kanten werden pro Child-Raum neu gewählt und können keine Nachbarpublikation abonnieren.",
+        "TURN-Credentials sind kurzlebig und an die autorisierte Child-Session gebunden.",
+        "Parent-Consent wird nicht stillschweigend auf Breakouts vererbt."
+      ]
+    },
+    {
+      "id": "BRK-005",
+      "title": "Manuelle, zufällige und freiwillige Breakout-Zuordnung als austauschbare Policy entwerfen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["BRK-002"],
+      "acceptance_criteria": [
+        "Jede Policy liefert eine deterministische, validierte Zuordnung ohne Überschreitung der Child-Kapazität.",
+        "Freiwillige Auswahl erweitert keine Owner- oder Parent-Rechte.",
+        "Konflikte und späte Joins besitzen sichtbare, serverseitig autorisierte Auflösung."
+      ]
+    },
+    {
+      "id": "BRK-006",
+      "title": "Breakout-Lobby, Countdown, Hilferuf und kontrollierte Rückkehr gestalten",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 0,
+      "depends_on": ["BRK-003", "BRK-005"],
+      "acceptance_criteria": [
+        "Countdown basiert auf Serverzeit und bleibt bei Hintergrundtabs verständlich.",
+        "Hilferuf enthält keinen Medien- oder Chatinhalt und gewährt dem Owner keinen automatischen Medieneintritt.",
+        "Rückkehr stoppt Child-Medien zuerst und verlangt für Parent-Capture erneut eine lokale Aktion."
+      ]
+    },
+    {
+      "id": "BRK-007",
+      "title": "Nutzer- und Gerätegates für Breakouts zuletzt ausführen",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["BRK-003", "BRK-004", "BRK-006"],
+      "acceptance_criteria": [
+        "Mindestens zwei parallele Breakouts beweisen getrennte Membership, DataChannels und Medien.",
+        "Negativtests decken Cross-Room-Signaling, stale Tickets, Replay und Agent-Crosslink ab.",
+        "Safari/iOS, physische Geräte und 20-Teilnehmer-Churn bleiben Nutzergates."
+      ]
+    }
+  ],
+  "critical_path_tasks": ["BRK-001", "BRK-002", "BRK-003", "BRK-004", "BRK-005", "BRK-006", "BRK-007"],
+  "tasks_status_summary": {
+    "total": 7,
+    "by_status": { "todo": 6, "in_progress": 0, "partial": 0, "blocked": 0, "done": 1 },
+    "progress_percent_done": 14.29,
+    "by_priority": { "P0": 5, "P1": 2, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 2, "critical": 4 },
+    "critical_path": { "total": 7, "done": 1, "remaining": 6 },
+    "milestones": { "total": 5, "todo": 4, "in_progress": 0, "blocked": 0, "done": 1 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 6,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 1
+  },
+  "summary_notes": [
+    "2026-09-11 Track aus BBB-UX-012 bis BBB-UX-018. BRK-001 Domain: eigene Child-Room-IDs, Epochen, 20er-Cap je konkretem Raum, Join ohne Grant fail-closed. BRK-002 Grants folgen. BRK-007 Nutzergates zuletzt."
+  ]
+}

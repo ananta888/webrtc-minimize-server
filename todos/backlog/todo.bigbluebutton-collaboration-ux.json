@@ -232,7 +232,7 @@
         {
           "id": "BBB-UX-012",
           "title": "Parent-/Breakout-Domainmodell mit eigenen Membership- und Security-Epochen definieren",
-          "status": "open",
+          "status": "partial",
           "priority": "P0",
           "risk": "critical",
           "scope": ["parent room", "breakout set", "child room IDs", "capacity", "lifetime", "state machine"],
@@ -710,8 +710,8 @@
     "total_items": 42,
     "by_status": {
       "completed": 0,
-      "partial": 13,
-      "open": 29,
+      "partial": 14,
+      "open": 28,
       "deferred": 0,
       "blocked": 0
     },
@@ -727,7 +727,8 @@
       "2026-09-11 BBB-UX-004 als COL-007: Owner-Entfernen mit Bestätigung. Mute, Presenter und Undo bleiben offen.",
       "2026-09-11 BBB-UX-005 als COL-008 (flüchtiges Owner-Audit, keine Persistenz). Mute als COL-009 Stoppaufforderung; Presenter/Undo weiter offen.",
       "2026-09-11 BBB-UX-026/027 als COL-010/012: Presenter-Zuweisung und lokales Anheften. BBB-UX-004 Undo-Fenster als COL-011. Filmstreifen/Fullscreen und Folien bleiben offen.",
-      "2026-09-11 BBB-UX-019/020 als todos/active/todo.whiteboard-overlay.json. WB-001 geschlossener Operationsvertrag, Persistenz ephemeral. Overlay-Transport folgt.",
+      "2026-09-11 BBB-UX-019/020 als todos/active/todo.whiteboard-overlay.json. WB-001 Vertrag, WB-002 Overlay-Fanout, WB-003 Canvas ohne HTML/Capture. WB-004 Nutzergates zuletzt.",
+      "2026-09-11 BBB-UX-012 bis BBB-UX-018 als todos/active/todo.breakout-rooms.json. BRK-001 Domain mit isolierten Child-IDs/Epochen und 20er-Cap je Raum. Grants und Wechsel folgen. BRK-007 zuletzt.",
       "Diese Category-Todo ist Portfolio/Research und ausdrücklich kein ausführbarer Implementierungs-Track.",
       "BigBlueButton liefert die Produktideen, nicht die Zielarchitektur: Der zentrale mediasoup-/FreeSWITCH-/Recording-Pfad wird nicht übernommen.",
       "Teilnehmer- und Moderatorrollen bleiben serverautorisiert; DataChannels verleihen keine Rolle oder Membership.",

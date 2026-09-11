@@ -5,6 +5,7 @@ import {
   MAX_ROOM_PARTICIPANTS,
   MIN_ROOM_PARTICIPANTS,
 } from "./room-limits.js";
+import { BreakoutError } from "./breakout-set.js";
 import {
   applyHand, assignPresenter, authorizePublicationStop, authorizeRemove, cancelRemove,
   clearHand, clearPendingRemove, dueRemove, fallbackPresenter, moderationSnapshot, peerRole,
@@ -28,8 +29,9 @@ export class RoomRegistry {
   #rooms = new Map();
   #maxParticipants;
   #idleTtlMs;
+  #breakouts;
 
-  constructor({ maxParticipants = DEFAULT_ROOM_PARTICIPANTS, idleTtlMs = 3_600_000 } = {}) {
+  constructor({ maxParticipants = DEFAULT_ROOM_PARTICIPANTS, idleTtlMs = 3_600_000, breakouts = null } = {}) {
     if (
       !Number.isSafeInteger(maxParticipants)
       || maxParticipants < MIN_ROOM_PARTICIPANTS
@@ -41,11 +43,67 @@ export class RoomRegistry {
     }
     this.#maxParticipants = maxParticipants;
     this.#idleTtlMs = idleTtlMs;
+    this.#breakouts = breakouts;
+  }
+
+  #breakoutError(error) {
+    if (error instanceof BreakoutError) throw new RoomAdmissionError(error.code);
+    throw error;
+  }
+
+  reservedBreakout(roomId) {
+    return this.#breakouts?.reserved(roomId) || null;
+  }
+
+  openBreakouts(actor, { childCount, capacity, lifetimeMs } = {}, now = Date.now()) {
+    const room = this.#rooms.get(actor.roomId);
+    if (!room || room.peers.get(actor.id) !== actor) throw new RoomAdmissionError("peer_not_joined");
+    if (!this.#breakouts) throw new RoomAdmissionError("breakout_unavailable");
+    try {
+      return this.#breakouts.openSet({
+        parentRoomId: actor.roomId,
+        parentMode: room.mode,
+        parentKind: room.kind || "room",
+        ownerRole: peerRole(actor, room.creatorPrincipal),
+        childCount,
+        capacity,
+        lifetimeMs,
+        now,
+        occupiedRoomIds: [...this.#rooms.keys()],
+      });
+    } catch (error) {
+      this.#breakoutError(error);
+    }
+  }
+
+  closeBreakouts(parentRoomId, now = Date.now()) {
+    const closed = this.#breakouts?.closeSet(parentRoomId, now);
+    if (!closed) return [];
+    const evicted = [];
+    for (const childRoomId of closed.childRoomIds) {
+      const room = this.#rooms.get(childRoomId);
+      if (!room) continue;
+      for (const peer of room.peers.values()) evicted.push(peer);
+      room.peers.clear();
+      this.#rooms.delete(childRoomId);
+    }
+    return evicted;
   }
 
   join(roomId, socket, name, now = Date.now(), admission = {}) {
     const mode = admission.mode || "room";
-    const capacity = mode === "pair" ? 2 : this.#maxParticipants;
+    const reserved = this.reservedBreakout(roomId);
+    if (reserved) {
+      if (mode === "pair") throw new RoomAdmissionError("breakout_pair_denied");
+      try {
+        this.#breakouts.mayJoinChild({ roomId, setId: admission.breakoutSetId, now });
+      } catch (error) {
+        this.#breakoutError(error);
+      }
+    } else if (admission.breakoutSetId || admission.breakoutChildRoomId) {
+      throw new RoomAdmissionError("breakout_assignment_required");
+    }
+    const capacity = reserved ? reserved.capacity : mode === "pair" ? 2 : this.#maxParticipants;
     if (!new Set(["room", "pair"]).has(mode)) throw new RoomAdmissionError("invalid_room_mode");
     if (mode === "pair" && admission.machine === true) throw new RoomAdmissionError("machine_pair_denied");
     if (admission.machine === true && admission.machineReceiveVersion !== 1) throw new RoomAdmissionError("machine_client_upgrade_required");
@@ -55,6 +113,8 @@ export class RoomRegistry {
         peers: new Map(),
         updatedAt: now,
         mode,
+        kind: reserved ? "breakout" : "room",
+        parentRoomId: reserved ? reserved.parentRoomId : "",
         capacity,
         creatorPrincipal: admission.creatorPrincipal || admission.principal || "anonymous",
         audit: [],
@@ -65,6 +125,9 @@ export class RoomRegistry {
       this.#rooms.set(roomId, room);
     }
     if (room.mode !== mode || room.capacity !== capacity) throw new RoomAdmissionError("room_mode_mismatch");
+    if (reserved && (room.kind !== "breakout" || room.parentRoomId !== reserved.parentRoomId)) {
+      throw new RoomAdmissionError("room_mode_mismatch");
+    }
     if ((admission.machine === true && (admission.machineReceiveVersion !== 1
       || [...room.peers.values()].some(peer => peer.machineReceiveVersion !== 1)))
       || (admission.machineReceiveVersion !== 1 && [...room.peers.values()].some(peer => peer.machine))) {
@@ -130,7 +193,10 @@ export class RoomRegistry {
     peer.handActions = [];
     fallbackPresenter(room);
     room.updatedAt = now;
-    if (room.peers.size === 0) this.#rooms.delete(peer.roomId);
+    if (room.peers.size === 0) {
+      this.#rooms.delete(peer.roomId);
+      if ((room.kind || "room") !== "breakout") this.closeBreakouts(peer.roomId, now);
+    }
     return [...room.peers.values()];
   }
 
@@ -284,10 +350,12 @@ export class RoomRegistry {
   }
 
   prune(now = Date.now()) {
+    for (const parentRoomId of this.#breakouts?.due(now) || []) this.closeBreakouts(parentRoomId, now);
     let removed = 0;
     for (const [roomId, room] of this.#rooms) {
       if (room.peers.size === 0 && now - room.updatedAt >= this.#idleTtlMs) {
         this.#rooms.delete(roomId);
+        if ((room.kind || "room") !== "breakout") this.closeBreakouts(roomId, now);
         removed += 1;
       }
     }
