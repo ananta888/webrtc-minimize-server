@@ -38,14 +38,22 @@ test("HLS proxy uses only the fixed gateway and keeps bearer data out of its res
     "content-length": "8",
     "x-content-type-options": "nosniff",
     "cross-origin-resource-policy": "same-origin",
+    "content-security-policy": "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox",
   });
-  assert.doesNotMatch(JSON.stringify(response.headers), /secret-never-returned/);
+  assert.doesNotMatch(JSON.stringify(response.headers), /secret-never-returned|set-cookie/i);
   assert.equal(await new Response(response.body).text(), "#EXTM3U");
 });
 
 test("HLS proxy bounds range, redirects, content type, size and private misses", async () => {
   await assert.rejects(proxy().value.fetchMedia({ range: "items=1-2" }), /not_found/);
-  await assert.rejects(proxy(401).value.fetchMedia({ method: "GET", range: "" }), /not_found/);
+  for (const status of [401, 403, 404]) {
+    await assert.rejects(proxy(status).value.fetchMedia({ method: "GET", range: "" }), (error) => {
+      assert.equal(error.status, 404);
+      assert.equal(error.headers, undefined);
+      assert.doesNotMatch(String(error.message), /secret|set-cookie/i);
+      return /not_found/.test(error.message);
+    });
+  }
   await assert.rejects(proxy(500).value.fetchMedia({ method: "GET", range: "" }), /gateway_unavailable/);
   await assert.rejects(proxy(200, "text/html").value.fetchMedia({ method: "GET", range: "" }), /invalid_response/);
 });

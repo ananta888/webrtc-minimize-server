@@ -225,6 +225,7 @@ export class BroadcastHlsProxy {
         ...(response.headers.get("accept-ranges") ? { "accept-ranges": response.headers.get("accept-ranges") } : {}),
         "x-content-type-options": "nosniff",
         "cross-origin-resource-policy": "same-origin",
+        "content-security-policy": "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox",
       }),
       body,
     });

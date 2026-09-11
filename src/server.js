@@ -1264,7 +1264,7 @@ function createHttpHandler(config, registry, services) {
         // Rate classification is never authorization: the proxy still verifies
         // the current grant, resource, expiry and policy before contacting origin.
         const result = await broadcastHlsProxy.fetchMedia(mediaInput);
-        response.writeHead(result.status, { ...result.headers, ...securityHeaders(config) });
+        response.writeHead(result.status, { ...securityHeaders(config), ...result.headers });
         if (!result.body || request.method === "HEAD") response.end();
         else await pipeline(Readable.fromWeb(result.body), response);
         return;
