@@ -32,27 +32,27 @@ export class MeetObservability {
   }
 
   sessionOpen() {
-    this.#guard();
+    if (this.#destroyed) return;
     this.#sessions += 1;
   }
 
   sessionClose() {
-    this.#guard();
+    if (this.#destroyed) return;
     this.#sessions = Math.max(0, this.#sessions - 1);
   }
 
   join(result) {
-    this.#guard();
+    if (this.#destroyed) return;
     increment(this.#joins, result);
   }
 
   message(result) {
-    this.#guard();
+    if (this.#destroyed) return;
     increment(this.#messages, result);
   }
 
   turn(kind, count = 1) {
-    this.#guard();
+    if (this.#destroyed) return;
     if (!TURN.includes(kind) || !Number.isSafeInteger(count) || count < 0 || count > 24) fail("invalid_meet_metric_label");
     this.#turn[kind] += count;
   }
