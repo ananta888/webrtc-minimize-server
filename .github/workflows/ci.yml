@@ -92,9 +92,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Bound apt mirror transfers
+        # Applies to every apt call of this job, including Playwright's own
+        # --with-deps install: a stalled mirror fails fast instead of silently
+        # consuming the readiness budget (CI 34578116825, 34582789238).
+        timeout-minutes: 1
+        run: |
+          printf 'Acquire::Retries "2";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99-webrtc-ci-bounded-transfers > /dev/null
       - name: Install dependencies and browsers
-        # Playwright's --with-deps also runs apt; a hung mirror must fail this
-        # step visibly instead of silently consuming the whole job budget.
         timeout-minutes: 4
         run: |
           npm ci
@@ -102,9 +108,8 @@ jobs:
       - name: Provide a synthetic Firefox audio clock
         timeout-minutes: 2
         run: |
-          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update
-          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 \
-            install --no-install-recommends -y pulseaudio pulseaudio-utils
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y pulseaudio pulseaudio-utils
           pulseaudio -n --daemonize=yes --exit-idle-time=-1 \
             --load="module-native-protocol-unix" \
             --load="module-null-sink sink_name=webrtc_ci_audio rate=48000 channels=2"

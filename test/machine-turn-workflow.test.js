@@ -26,21 +26,23 @@ test("Ananta TURN TCP remains independent of UDP failure without bypassing setup
 });
 
 test("apt-backed setup steps fail within their own bound instead of consuming the job budget", () => {
-  // CI 34578116825 lost nine of ten minutes to a hung apt mirror before the proxy ever started.
+  // CI 34578116825 lost nine of ten minutes to a hung apt mirror before the proxy ever started;
+  // CI 34582789238 then stalled inside Playwright's own apt call, which per-command flags cannot reach.
+  const bound = job.steps.find(step => step.name === "Bound apt mirror transfers");
   const install = job.steps.find(step => step.name === "Install dependencies and browsers");
   const audio = job.steps.find(step => step.name === "Provide a synthetic Firefox audio clock");
+  assert.equal(bound["timeout-minutes"], 1);
   assert.equal(install["timeout-minutes"], 4);
   assert.equal(audio["timeout-minutes"], 2);
-  assert.ok(install["timeout-minutes"] + audio["timeout-minutes"] < job["timeout-minutes"]);
-  const aptCalls = audio.run.split("\n").filter(line => /apt-get/.test(line));
-  assert.equal(aptCalls.length, 2);
-  for (const call of aptCalls) {
-    assert.match(call, /-o Acquire::Retries=2 /);
-    assert.match(call, /-o Acquire::http::Timeout=20 /);
-    assert.match(call, /-o Acquire::https::Timeout=20 /);
-  }
+  assert.ok(bound["timeout-minutes"] + install["timeout-minutes"] + audio["timeout-minutes"] < job["timeout-minutes"]);
+  assert.ok(job.steps.indexOf(bound) < job.steps.indexOf(install), "the apt bound must precede the first apt user");
+  assert.match(bound.run, /Acquire::Retries "2";/);
+  assert.match(bound.run, /Acquire::http::Timeout "20";/);
+  assert.match(bound.run, /Acquire::https::Timeout "20";/);
+  assert.match(bound.run, /\/etc\/apt\/apt\.conf\.d\/99-webrtc-ci-bounded-transfers/);
+  assert.doesNotMatch(bound.run, /apt-get/, "the bound is configuration, not another mirror transfer");
   for (const step of job.steps) {
-    if (step !== install && step !== audio) assert.equal(step["timeout-minutes"], undefined);
+    if (![bound, install, audio].includes(step)) assert.equal(step["timeout-minutes"], undefined);
   }
 });
 

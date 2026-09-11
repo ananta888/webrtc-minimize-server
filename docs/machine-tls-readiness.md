@@ -1,5 +1,18 @@
 # Bounded private Ananta TLS readiness
 
+## Second mirror stall, now failing fast (11 September)
+
+[CI 34582789238](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34582789238)
+at `002206f` stalled again on the Ubuntu mirror, this time inside Playwright's
+own `--with-deps` apt install; the new four-minute step limit ended the job
+visibly at that step instead of after ten silent minutes. Per-command
+`apt-get -o` options cannot reach that internal apt call, so the transfer
+bound now lives in `/etc/apt/apt.conf.d/99-webrtc-ci-bounded-transfers`
+(`Acquire::Retries 2`, 20-second http/https timeouts), written by a one-minute
+step before the first apt user. All other jobs of that run were green,
+including both project shards with the recalibrated audio gate. The native
+proxy itself was again not reached; its series count stays at one green probe.
+
 ## First completed native-adapter probe (11 September)
 
 [CI 34580977330](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34580977330)
