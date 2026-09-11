@@ -10,6 +10,9 @@ export const NATIVE_CAPACITY_PREVIEW_TEMPLATE = `
         [disabled]="!request() || state().phase === 'pending'" (click)="query()">Packager-Kapazität prüfen</button>
       <p role="status" aria-live="polite">{{ statusText() }}</p>
       @if (state().value; as preview) {
+        @if (preview.schema === 'ananta.native-capacity-preview.v2') {
+          <p>Programmlimits für einen zusätzlichen Start geprüft. Bereits laufende und noch startende Sendungen sind berücksichtigt.</p>
+        } @else { <p>Ältere Vorschau: Programmlimits wurden nicht geprüft.</p> }
         <p>{{ preview.renditions.length }} von {{ preview.requestedRenditions }} gewünschten Qualitätsstufen ·
           {{ preview.videoEncoder === 'libx264' ? 'Software-Encoding' : 'Hardware-Encoding mit Software-Fallback' }}.</p>
         @if (preview.reduced) { <p>Die Packager-Fähigkeiten reduzieren die angefragte Anzahl an Qualitätsstufen.</p> }
@@ -27,7 +30,7 @@ export const NATIVE_CAPACITY_PREVIEW_TEMPLATE = `
           Planungswerte, keine Messung freier Hardware-Ressourcen.</p>
       }
       <p>Die Prüfung reserviert nichts und ist höchstens fünf Sekunden aktuell. Der Start prüft die Zulassung erneut.
-        Programmlimits, Zuschauer-Kapazität und Providerkosten sind durch diese native Ressourcenprüfung nicht zugesagt.
+        Zuschauer-Kapazität und Providerkosten sind durch diese Prüfung nicht zugesagt.
         Kosten: nicht berechenbar – keine Preis- oder Kostenfreigabe hinterlegt.</p>
     </section>
   `;
@@ -56,9 +59,11 @@ export class NativeCapacityPreviewComponent implements OnDestroy {
   statusText(): string {
     switch (this.state().phase) {
       case "pending": return "Aktuelle Native-Admission wird geprüft…";
-      case "current": return "Native Ressourcenbudgets zum Prüfzeitpunkt eingehalten. Keine Reservierung.";
+      case "current": return this.state().value?.schema === "ananta.native-capacity-preview.v2"
+        ? "Native Ressourcen und Programmlimits zum Prüfzeitpunkt eingehalten. Keine Reservierung."
+        : "Native Ressourcenbudgets zum Prüfzeitpunkt eingehalten. Keine Reservierung.";
       case "stale": return "Vorschau veraltet oder Auswahl/Sitzung geändert. Bitte erneut prüfen.";
-      case "unavailable": return "Keine Kapazitätsbestätigung: Berechtigung, Raumfreigabe, Packager-Verfügbarkeit oder Ressourcenlimit prüfen. Bei zu vielen Anfragen eine Minute warten.";
+      case "unavailable": return "Keine Kapazitätsbestätigung: Berechtigung, Raumfreigabe, Packager-Verfügbarkeit, Programm- oder Ressourcenlimit prüfen. Bei zu vielen Anfragen eine Minute warten.";
       default: return "Noch keine Kapazitätsprüfung für diese Auswahl.";
     }
   }

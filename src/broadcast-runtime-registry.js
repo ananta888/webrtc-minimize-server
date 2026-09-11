@@ -1252,6 +1252,16 @@ export class BroadcastRuntimeRegistry {
 
   #assertProgramCapacity(candidate) {
     if (INACTIVE_PROGRAM_STATES.has(candidate.program.state)) return;
+    if (!this.#programCapacity.allows(capacityScope(candidate), this.#occupiedProgramScopes())) fail("broadcast_temporarily_unavailable", 429);
+  }
+
+  // Internal read-only advisory port. Scope is supplied by the authenticated
+  // preview adapter; this does not grant membership or reserve a program slot.
+  allowsNewProgram(scope) {
+    return this.#programCapacity.allowsNew(scope, this.#occupiedProgramScopes());
+  }
+
+  #occupiedProgramScopes() {
     const occupied = [];
     for (const record of this.#records.values()) {
       if (!INACTIVE_PROGRAM_STATES.has(record.snapshot.machine.program.state)) occupied.push(capacityScope(record.snapshot.machine));
@@ -1261,7 +1271,7 @@ export class BroadcastRuntimeRegistry {
       // start cannot steal capacity during terminal cleanup of the old caller.
       occupied.push(capacityScope(transaction.challenge.candidate));
     }
-    if (!this.#programCapacity.allows(capacityScope(candidate), occupied)) fail("broadcast_temporarily_unavailable", 429);
+    return occupied;
   }
 
   get programCount() { return this.#records.size; }

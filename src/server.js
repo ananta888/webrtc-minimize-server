@@ -944,7 +944,8 @@ function createHttpHandler(config, registry, services) {
         const input = await readJsonBody(request);
         const member = registry.membersForPrincipal(principalFor(identity)).find(candidate =>
           candidate.roomId === input.roomId && candidate.deviceFingerprint === input.deviceFingerprint);
-        sendJson(response, 200, previewNativeSourceCapacity(identity, member, input, nativePackagerAssignments),
+        sendJson(response, 200, previewNativeSourceCapacity(identity, member, input, nativePackagerAssignments, Date.now(),
+          scope => broadcastRuntime?.allowsNewProgram(scope) === true),
           { ...securityHeaders(config), "cache-control": "no-store" });
         return;
       }

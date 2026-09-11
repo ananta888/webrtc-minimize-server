@@ -10,9 +10,11 @@ import { readFileSync } from "node:fs";
 import Ajv2020 from "ajv/dist/2020.js";
 const validateResponse = new Ajv2020({ strict: true }).compile(JSON.parse(readFileSync(
   new URL("../contracts/native-packager/capacity-preview.v1.schema.json", import.meta.url), "utf8")));
+const validateCombinedResponse = new Ajv2020({ strict: true }).compile(JSON.parse(readFileSync(
+  new URL("../contracts/native-packager/capacity-preview.v2.schema.json", import.meta.url), "utf8")));
 
 function fixture(limits = {}, scopedResourceLimits) {
-  const now = Date.now(), identity = { issuer: "https://id.example/realms/test", subject: "owner", expiresAt: now + 60000 };
+  const now = Date.now(), identity = { issuer: "https://id.example/realms/test", subject: "owner", displayName: "Synthetic owner", expiresAt: now + 60000 };
   const principal = `${identity.issuer}|${identity.subject}`, packagerId = "pkr_aaaaaaaaaaaaaaaa";
   const member = { id: "0123456789abcdef", principal, authenticated: true, creator: true,
     roomId: "room-alpha", deviceFingerprint: "a".repeat(43) };
@@ -62,6 +64,34 @@ test("explicit output strategies and hardware use actual server selection", () =
   assert.equal(result.videoEncoder, "h264_nvenc"); assert.equal(result.demand.gpuSlots, 3);
   assert.equal(result.renditions[0].width, 426); assert.equal(result.renditions[2].audioBitsPerSecond, 48000);
   assert.equal(f.preview({ requestVersion: 3, audioOutput: null, videoOutput: { profile: "screen-v1" } }).renditions.length, 3);
+});
+
+test("combined preview requires current verified program-slot checks without returning scope or reservations", () => {
+  const f = fixture(), seen = [], input = { ...f.input, previewVersion: 2 };
+  const check = scope => { seen.push(scope); return true; };
+  const value = previewNativeSourceCapacity(f.identity, f.member, input, f.assignments, f.now, check);
+  assert.equal(validateCombinedResponse(value), true, JSON.stringify(validateCombinedResponse.errors));
+  assert.equal(value.programSlots, "available"); assert.equal(value.reserved, false);
+  assert.equal(seen.length, 2); assert.equal(Object.isFrozen(seen[0]), true);
+  assert.deepEqual(seen[0], { tenantId: broadcastTenantRef(f.identity.issuer), principalRef: broadcastSubjectRef(f.identity) });
+  assert.doesNotMatch(JSON.stringify(value), /tn_|sub_|room-alpha|limit|usage|reservation/);
+  for (const check of [undefined, () => false, () => 1]) {
+    assert.throws(() => previewNativeSourceCapacity(f.identity, f.member, input, f.assignments, f.now, check),
+      error => error.code === "broadcast_temporarily_unavailable" && error.status === 429);
+  }
+  assert.throws(() => previewNativeSourceCapacity(f.identity, f.member, { ...input, previewVersion: 3 }, f.assignments, f.now, check),
+    error => error.code === "invalid_native_capacity_preview");
+  assert.equal(f.assignments.activeForPackager(f.input.packagerId), null);
+});
+
+test("combined preview checks program occupancy again after reentrant native admission", () => {
+  const f = fixture(); let allowed = true, admitted = 0;
+  const assignments = { admitSourceProgram(...args) { admitted++; allowed = false; return f.assignments.admitSourceProgram(...args); } };
+  const query = () => previewNativeSourceCapacity(f.identity, f.member, { ...f.input, previewVersion: 2 }, assignments, f.now, () => allowed);
+  assert.throws(query, error => error.status === 429); assert.equal(admitted, 1);
+  assert.throws(query, error => error.status === 429); assert.equal(admitted, 1, "full program capacity short-circuits native observation");
+  f.member.creator = false;
+  assert.throws(query, error => error.status === 403, "membership is checked before occupancy");
 });
 
 for (const scope of ["deployment", "tenant", "principal"]) test(`preview enforces current ${scope} budgets`, () => {
@@ -130,5 +160,42 @@ test("HTTP preview is authenticated, origin-checked, bounded, rate-limited and d
   const limited = await post(); assert.equal(limited.status, 429);
   assert.equal((await limited.json()).error, "broadcast_temporarily_unavailable");
   assert.equal(app.broadcastRuntime.programCount, 0);
+  assert.equal(f.assignments.activeForPackager(f.input.packagerId), null);
+});
+
+for (const scope of ["deployment", "gateway", "tenant", "principal"]) test(`combined HTTP preview applies actual ${scope} program occupancy without allocation`, { timeout: 8000 }, async t => {
+  const f = fixture();
+  const config = { ...loadConfig({ AUTH_MODE: "required", PAIR_WORKSPACE_ENABLED: "false", KEYCLOAK_ORIGIN: "https://id.example",
+    KEYCLOAK_REALM: "test", OIDC_CLIENT_ID: "human", OIDC_AUDIENCE: "human", PUBLIC_ORIGIN: "https://meet.example" }),
+    nativePackagerSelfServiceEnabled: true, broadcastProgramCapacity: { deployment: 10, gateway: 10, tenant: 10, principal: 10, [scope]: 1 } };
+  const app = createAppServer({ config, nativePackagerAssignments: f.assignments,
+    nativePackagerInstallerService: {}, nativePackagerEnrollmentStore: { definitions: () => [] },
+    oidcVerifier: { verify: async token => { if (token !== "synthetic-owner") throw new AuthenticationError("invalid_token"); return f.identity; } },
+    broadcastGrantAuthority: { issue() { throw new Error("must_not_issue_grant"); }, issueAnonymousPlayback() {}, revokeProgramEpoch() {} } });
+  const peer = app.registry.join(f.member.roomId, {}, "Synthetic", f.now, { principal: f.member.principal,
+    deviceFingerprint: f.member.deviceFingerprint, authenticated: true }).peer;
+  f.member.id = peer.id;
+  await new Promise(resolve => app.server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => { app.registry.leave(peer); app.server.closeAllConnections(); await new Promise(resolve => app.server.close(resolve)); });
+  const post = (body = { ...f.input, previewVersion: 2 }) => fetch(`http://127.0.0.1:${app.server.address().port}/api/broadcasts/native-capacity-preview`, {
+    method: "POST", headers: { authorization: "Bearer synthetic-owner", origin: config.publicOrigin, "content-type": "application/json" },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(4000) });
+  const first = await post(); assert.equal(first.status, 200);
+  assert.equal(validateCombinedResponse(await first.json()), true);
+  assert.equal(app.broadcastRuntime.programCount, 0);
+  const programId = app.broadcastRuntime.createProgram(f.identity, peer, { requestVersion: 1, roomId: peer.roomId,
+    title: "Synthetic occupancy", visibility: "private" }).control.programId;
+  const draft = await post(); assert.equal(draft.status, 200); await draft.arrayBuffer();
+  app.broadcastRuntime.prepareNativeSourceProgram(f.identity, peer, programId, { requestVersion: 1,
+    trigger: "user-action", inputMode: "trusted-sframe-v1", packagerId: f.input.packagerId,
+    requestedRenditions: 1, allowHardwareAcceleration: false }, () => ({}));
+  const full = await post(); assert.equal(full.status, 429);
+  assert.deepEqual(await full.json(), { error: "broadcast_temporarily_unavailable" });
+  assert.equal(full.headers.get("cache-control"), "no-store");
+  const old = await post(f.input); assert.equal(old.status, 200);
+  assert.equal(validateResponse(await old.json()), true, "legacy request retains its declared native-only preview");
+  app.broadcastRuntime.stopProgram(f.identity, programId);
+  const released = await post(); assert.equal(released.status, 200); await released.arrayBuffer();
+  assert.equal(app.broadcastRuntime.programCount, 1, "preview never creates drafts or programs");
   assert.equal(f.assignments.activeForPackager(f.input.packagerId), null);
 });

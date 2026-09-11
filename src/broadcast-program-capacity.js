@@ -37,23 +37,39 @@ export class BroadcastProgramCapacity {
   constructor(limits) { this.#limits = normalizeBroadcastProgramCapacity(limits); }
 
   allows(candidate, occupied) {
-    if (!validScope(candidate) || !Array.isArray(occupied) || occupied.length > 20_000) return false;
+    if (!validScope(candidate)) return false;
+    return this.#allows(candidate, occupied, false);
+  }
+
+  // Advisory new-start observation: do not invent a program ID which might
+  // accidentally deduplicate against an existing or pending program.
+  allowsNew(candidate, occupied) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)
+      || Object.keys(candidate).length !== 2 || !Object.hasOwn(candidate, "tenantId") || !Object.hasOwn(candidate, "principalRef")
+      || typeof candidate.tenantId !== "string" || !/^tn_[A-Za-z0-9_-]{16,64}$/.test(candidate.tenantId)
+      || typeof candidate.principalRef !== "string" || !/^sub_[A-Za-z0-9_-]{16,64}$/.test(candidate.principalRef)) return false;
+    return this.#allows(candidate, occupied, true);
+  }
+
+  #allows(candidate, occupied, newProgram) {
+    if (!Array.isArray(occupied) || occupied.length > 20_000) return false;
     const programs = new Map();
-    for (const scope of [...occupied, candidate]) {
+    for (const scope of newProgram ? occupied : [...occupied, candidate]) {
       if (!validScope(scope)) return false;
       const key = `${scope.tenantId}\0${scope.programId}`;
       const prior = programs.get(key);
       if (prior && prior.principalRef !== scope.principalRef) return false;
       programs.set(key, scope);
     }
-    let tenant = 0, principal = 0;
+    let tenant = newProgram ? 1 : 0, principal = newProgram ? 1 : 0;
     for (const scope of programs.values()) {
       if (scope.tenantId === candidate.tenantId) {
         tenant++;
         if (scope.principalRef === candidate.principalRef) principal++;
       }
     }
-    return programs.size <= this.#limits.deployment && programs.size <= this.#limits.gateway
+    const total = programs.size + (newProgram ? 1 : 0);
+    return total <= this.#limits.deployment && total <= this.#limits.gateway
       && tenant <= this.#limits.tenant && principal <= this.#limits.principal;
   }
 }

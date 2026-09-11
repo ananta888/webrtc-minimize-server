@@ -4,23 +4,27 @@ import type { NativeControlHttpPorts } from "./native-control-http-ports";
 import { normalizeSourceAudioOutput } from "./native-source-audio-output";
 import { normalizeSourceVideoOutput } from "./native-source-video-output";
 
-export interface NativeCapacityPreview {
-  schema: "ananta.native-capacity-preview.v1"; reserved: false; costStatus: "unknown";
+interface NativeCapacityDetails {
+  reserved: false; costStatus: "unknown";
   observedAt: number; expiresAt: number; requestedRenditions: number; reduced: boolean;
   videoEncoder: "libx264" | "h264_nvenc" | "h264_videotoolbox";
   demand: { cpuUnits: number; memoryMiB: number; encoderSlots: number; gpuSlots: number; egressBitsPerSecond: number };
   renditions: readonly { id: string; width: number; height: number; framesPerSecond: number;
     videoBitsPerSecond: number; audioBitsPerSecond: number; audioChannels: number }[];
 }
+export type NativeCapacityPreview = NativeCapacityDetails & ({ schema: "ananta.native-capacity-preview.v1" }
+  | { schema: "ananta.native-capacity-preview.v2"; programSlots: "available" });
 const exact = (v: any, fields: string[]) => v && typeof v === "object" && !Array.isArray(v)
   && Object.keys(v).length === fields.length && fields.every(k => Object.hasOwn(v, k));
 const int = (v: unknown, min: number, max: number): v is number => Number.isSafeInteger(v) && (v as number) >= min && (v as number) <= max;
 const invalid = () => { throw new BroadcastBrowserPortError("invalid_native_capacity_preview"); };
 
-export function parseNativeCapacityPreview(value: unknown, requested: number): NativeCapacityPreview {
+export function parseNativeCapacityPreview(value: unknown, requested: number, version: 1 | 2 = 1): NativeCapacityPreview {
   const v = value as NativeCapacityPreview;
-  if (!exact(v, ["schema", "reserved", "costStatus", "observedAt", "expiresAt", "requestedRenditions", "reduced", "videoEncoder", "demand", "renditions"])
-    || v.schema !== "ananta.native-capacity-preview.v1" || v.reserved !== false || v.costStatus !== "unknown"
+  if (!exact(v, ["schema", "reserved", "costStatus", "observedAt", "expiresAt", "requestedRenditions", "reduced", "videoEncoder", "demand", "renditions",
+      ...(version === 2 ? ["programSlots"] : [])]) || ![1, 2].includes(version)
+    || v.schema !== `ananta.native-capacity-preview.v${version}` || v.reserved !== false || v.costStatus !== "unknown"
+    || v.schema === "ananta.native-capacity-preview.v2" && v.programSlots !== "available"
     || !int(v.observedAt, 1, Number.MAX_SAFE_INTEGER) || !int(v.expiresAt, v.observedAt + 1, v.observedAt + 5000)
     || !int(requested, 1, 3) || v.requestedRenditions !== requested
     || !["libx264", "h264_nvenc", "h264_videotoolbox"].includes(v.videoEncoder)
@@ -54,7 +58,7 @@ export async function requestNativeCapacityPreview(request: NativeSourceProgramR
   const response = await fetch("/api/broadcasts/native-capacity-preview", {
     method: "POST", headers: { "content-type": "application/json", ...ports.authorizationHeader() },
     credentials: "same-origin", cache: "no-store", redirect: "error", signal,
-    body: JSON.stringify({ requestVersion: video ? 3 : audio ? 2 : 1, trigger: "user-action", roomId: request.roomId,
+    body: JSON.stringify({ previewVersion: 2, requestVersion: video ? 3 : audio ? 2 : 1, trigger: "user-action", roomId: request.roomId,
       packagerId: request.packagerId, deviceFingerprint: fingerprint, requestedRenditions: request.requestedRenditions,
       allowHardwareAcceleration: request.allowHardwareAcceleration,
       ...(video ? { videoOutput: video, audioOutput: audio ?? null } : audio ? { audioOutput: audio } : {}) }),
@@ -62,5 +66,5 @@ export async function requestNativeCapacityPreview(request: NativeSourceProgramR
   if (!response.ok) throw ports.responseError(response, "native_capacity_preview_unavailable");
   const value = await ports.readJson(response, "invalid_native_capacity_preview", 4096);
   signal.throwIfAborted();
-  return parseNativeCapacityPreview(value, request.requestedRenditions);
+  return parseNativeCapacityPreview(value, request.requestedRenditions, 2);
 }

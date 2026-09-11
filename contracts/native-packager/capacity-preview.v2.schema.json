@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/capacity-preview.v2.schema.json",
+  "title": "Read-only combined native resource and new-program slot observation; no reservation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "reserved",
+    "costStatus",
+    "observedAt",
+    "expiresAt",
+    "requestedRenditions",
+    "reduced",
+    "videoEncoder",
+    "demand",
+    "renditions",
+    "programSlots"
+  ],
+  "properties": {
+    "schema": {
+      "const": "ananta.native-capacity-preview.v2"
+    },
+    "reserved": {
+      "const": false
+    },
+    "costStatus": {
+      "const": "unknown"
+    },
+    "observedAt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "expiresAt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "requestedRenditions": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "reduced": {
+      "type": "boolean"
+    },
+    "videoEncoder": {
+      "enum": [
+        "libx264",
+        "h264_nvenc",
+        "h264_videotoolbox"
+      ]
+    },
+    "demand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cpuUnits",
+        "memoryMiB",
+        "encoderSlots",
+        "gpuSlots",
+        "egressBitsPerSecond"
+      ],
+      "properties": {
+        "cpuUnits": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000000
+        },
+        "memoryMiB": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000000
+        },
+        "encoderSlots": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "gpuSlots": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "egressBitsPerSecond": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000000
+        }
+      }
+    },
+    "renditions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "width",
+          "height",
+          "framesPerSecond",
+          "videoBitsPerSecond",
+          "audioBitsPerSecond",
+          "audioChannels"
+        ],
+        "properties": {
+          "id": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1280
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720
+          },
+          "framesPerSecond": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "videoBitsPerSecond": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2400000
+          },
+          "audioBitsPerSecond": {
+            "type": "integer",
+            "minimum": 16000,
+            "maximum": 320000
+          },
+          "audioChannels": {
+            "enum": [
+              1,
+              2
+            ]
+          }
+        }
+      }
+    },
+    "programSlots": {
+      "const": "available"
+    }
+  }
+}

@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webrtc.ananta.de/contracts/native-packager/capacity-preview-request.v2.schema.json",
+  "title": "Explicit combined capacity preview request; output versions remain independent",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestVersion",
+        "trigger",
+        "roomId",
+        "packagerId",
+        "deviceFingerprint",
+        "requestedRenditions",
+        "allowHardwareAcceleration",
+        "previewVersion"
+      ],
+      "properties": {
+        "requestVersion": {
+          "const": 1
+        },
+        "trigger": {
+          "const": "user-action"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{5,47}$"
+        },
+        "packagerId": {
+          "type": "string",
+          "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$"
+        },
+        "deviceFingerprint": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        },
+        "requestedRenditions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "allowHardwareAcceleration": {
+          "type": "boolean"
+        },
+        "previewVersion": {
+          "const": 2
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestVersion",
+        "trigger",
+        "roomId",
+        "packagerId",
+        "deviceFingerprint",
+        "requestedRenditions",
+        "allowHardwareAcceleration",
+        "audioOutput",
+        "previewVersion"
+      ],
+      "properties": {
+        "requestVersion": {
+          "const": 2
+        },
+        "trigger": {
+          "const": "user-action"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{5,47}$"
+        },
+        "packagerId": {
+          "type": "string",
+          "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$"
+        },
+        "deviceFingerprint": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        },
+        "requestedRenditions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "allowHardwareAcceleration": {
+          "type": "boolean"
+        },
+        "audioOutput": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "codec",
+            "sampleRate",
+            "channels",
+            "targetBitsPerSecond"
+          ],
+          "properties": {
+            "codec": {
+              "const": "aac"
+            },
+            "sampleRate": {
+              "const": 48000
+            },
+            "channels": {
+              "enum": [
+                1,
+                2
+              ]
+            },
+            "targetBitsPerSecond": {
+              "type": "integer",
+              "minimum": 16000,
+              "maximum": 320000
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "channels": {
+                    "const": 1
+                  }
+                },
+                "required": [
+                  "channels"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "targetBitsPerSecond": {
+                    "type": "integer",
+                    "minimum": 16000,
+                    "maximum": 192000
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "previewVersion": {
+          "const": 2
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestVersion",
+        "trigger",
+        "roomId",
+        "packagerId",
+        "deviceFingerprint",
+        "requestedRenditions",
+        "allowHardwareAcceleration",
+        "audioOutput",
+        "videoOutput",
+        "previewVersion"
+      ],
+      "properties": {
+        "requestVersion": {
+          "const": 3
+        },
+        "trigger": {
+          "const": "user-action"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{5,47}$"
+        },
+        "packagerId": {
+          "type": "string",
+          "pattern": "^pkr_[A-Za-z0-9_-]{16,64}$"
+        },
+        "deviceFingerprint": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        },
+        "requestedRenditions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "allowHardwareAcceleration": {
+          "type": "boolean"
+        },
+        "audioOutput": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "codec",
+                "sampleRate",
+                "channels",
+                "targetBitsPerSecond"
+              ],
+              "properties": {
+                "codec": {
+                  "const": "aac"
+                },
+                "sampleRate": {
+                  "const": 48000
+                },
+                "channels": {
+                  "enum": [
+                    1,
+                    2
+                  ]
+                },
+                "targetBitsPerSecond": {
+                  "type": "integer",
+                  "minimum": 16000,
+                  "maximum": 320000
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "channels": {
+                        "const": 1
+                      }
+                    },
+                    "required": [
+                      "channels"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "targetBitsPerSecond": {
+                        "type": "integer",
+                        "minimum": 16000,
+                        "maximum": 192000
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "videoOutput": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profile"
+          ],
+          "properties": {
+            "profile": {
+              "enum": [
+                "balanced-v1",
+                "economy-v1",
+                "screen-v1"
+              ]
+            }
+          }
+        },
+        "previewVersion": {
+          "const": 2
+        }
+      }
+    }
+  ]
+}

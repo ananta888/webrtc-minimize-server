@@ -6,6 +6,9 @@ import { BroadcastGrantAuthority } from "../src/broadcast-grant-authority.js";
 import { broadcastGrantDeviceProofMessage } from "../src/broadcast-device-proof.js";
 import { deviceFingerprint } from "../src/device-proof.js";
 import { createAppServer } from "../src/server.js";
+import { broadcastSubjectRef, broadcastTenantRef } from "../src/broadcast-identifiers.js";
+
+const previewScope = owner => ({ tenantId: broadcastTenantRef(owner.issuer), principalRef: broadcastSubjectRef(owner) });
 
 const now = 1_800_000_000_000;
 function identity(subject = "owner", issuer = "https://identity.example/realms/ananta") {
@@ -61,10 +64,14 @@ for (const scope of ["deployment", "gateway", "tenant", "principal"]) {
     const b = f.create(scope === "principal" ? identity() : identity("second",
       ["deployment", "gateway"].includes(scope) ? "https://other.example/realm" : identity().issuer));
     assert.equal(f.runtime.programCount, 2, "drafts do not reserve running programs or room slots");
+    assert.equal(f.runtime.allowsNewProgram(previewScope(b.owner)), true);
+    assert.equal(f.runtime.programCount, 2, "preview allocates no program");
     f.start(a);
+    assert.equal(f.runtime.allowsNewProgram(previewScope(b.owner)), false);
     assert.throws(() => f.start(b), error => error.code === "broadcast_temporarily_unavailable" && error.status === 429);
     assert.equal(f.calls(), 1, "no native allocation was attempted for the denied start");
     f.runtime.stopProgram(a.owner, a.programId);
+    assert.equal(f.runtime.allowsNewProgram(previewScope(b.owner)), true);
     assert.doesNotThrow(() => f.start(b));
     assert.equal(f.calls(), 2);
     assert.equal(f.runtime.programStateCounts().preparing, 1);
@@ -120,6 +127,7 @@ for (const outcome of ["commit", "stop", "timeout", "issuer-failure"]) {
     }, () => { nativeCalls++; return {}; });
     const pending = whip(a); await entered;
     try {
+      assert.equal(runtime.allowsNewProgram(previewScope(owner)), false, "pending publisher occupies the preview slot");
       assert.throws(native, error => error.status === 429);
       await assert.rejects(whip(b), error => error.code === "broadcast_temporarily_unavailable" && error.status === 429);
       assert.equal(calls, 1); assert.equal(nativeCalls, 0);
@@ -136,6 +144,7 @@ for (const outcome of ["commit", "stop", "timeout", "issuer-failure"]) {
         else release();
         await rejection;
       }
+      assert.equal(runtime.allowsNewProgram(previewScope(owner)), true, "terminal cleanup releases preview capacity");
       assert.doesNotThrow(native);
       assert.equal(nativeCalls, 1);
       assert.equal(runtime.programStateCounts().preparing, 1);

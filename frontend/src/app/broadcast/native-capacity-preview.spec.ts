@@ -5,7 +5,7 @@ import { BroadcastControlPlaneService } from "./broadcast-control-plane.service"
 import Ajv2020 from "ajv/dist/2020.js";
 import { readFileSync } from "node:fs";
 const validateRequest = new Ajv2020({ strict: true }).compile(JSON.parse(readFileSync(
-  "contracts/native-packager/capacity-preview-request.v1.schema.json", "utf8")));
+  "contracts/native-packager/capacity-preview-request.v2.schema.json", "utf8")));
 
 const request = { roomId: "room-alpha", title: "Private title", visibility: "private" as const,
   packagerId: "pkr_aaaaaaaaaaaaaaaa", requestedRenditions: 1, allowHardwareAcceleration: false };
@@ -30,6 +30,17 @@ it("accepts only a bounded closed observation whose demand matches its actual la
     expect(() => parseNativeCapacityPreview(value, 1), change).toThrow("invalid_native_capacity_preview");
   }
   expect(() => parseNativeCapacityPreview(response(), 2)).toThrow();
+});
+
+const combinedResponse = (): NativeCapacityPreview => ({ ...response(), schema: "ananta.native-capacity-preview.v2", programSlots: "available" });
+it("combined preview requires explicit v2 confirmation and rejects downgrade or invented reservations", () => {
+  expect(parseNativeCapacityPreview(combinedResponse(), 1, 2)).toEqual(combinedResponse());
+  expect(() => parseNativeCapacityPreview(response(), 1, 2)).toThrow();
+  expect(() => parseNativeCapacityPreview(combinedResponse(), 1, 1)).toThrow();
+  for (const change of [{ programSlots: undefined }, { programSlots: "reserved" }, { programSlots: true },
+    { reserved: true }, { schema: "ananta.native-capacity-preview.v3" }, { availableSlots: 10 }]) {
+    expect(() => parseNativeCapacityPreview({ ...combinedResponse(), ...change }, 1, 2)).toThrow();
+  }
 });
 
 function controllerFixture() {
@@ -70,7 +81,7 @@ const json = (value: unknown) => new Response(JSON.stringify(value), { headers: 
 const service = () => new BroadcastControlPlaneService({ authorizationHeader: () => ({ authorization: "Bearer synthetic" }) } as never,
   { fingerprint: () => "a".repeat(43) } as never);
 it.each([1, 2, 3])("connects closed request version %s through the real lazy HTTP service without program creation", async version => {
-  const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(response()));
+  const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(combinedResponse()));
   await service().nativeCapacityPreview({ ...request,
     ...(version === 2 ? { audioOutput: { codec: "aac", sampleRate: 48000, channels: 1, targetBitsPerSecond: 48000 } as const } : {}),
     ...(version === 3 ? { videoOutput: { profile: "screen-v1" } as const } : {}) }, new AbortController().signal);
@@ -79,13 +90,14 @@ it.each([1, 2, 3])("connects closed request version %s through the real lazy HTT
   const options = fetch.mock.calls[0][1]!, body = JSON.parse(String(options.body));
   expect(validateRequest(body), JSON.stringify(validateRequest.errors)).toBe(true);
   expect(body.requestVersion).toBe(version); expect(body.trigger).toBe("user-action");
+  expect(body.previewVersion).toBe(2);
   expect(body.title).toBeUndefined(); expect(body.programId).toBeUndefined(); expect(body.authorization).toBeUndefined();
   if (version === 3) expect(body.audioOutput).toBeNull();
   expect(options).toMatchObject({ cache: "no-store", redirect: "error", credentials: "same-origin" });
 });
 it("fails closed on oversize, invalid, denied and aborted HTTP observations", async () => {
   const fetch = vi.spyOn(globalThis, "fetch");
-  for (const value of [json({ ...response(), extra: "x".repeat(5000) }), json({ ...response(), reserved: true }),
+  for (const value of [json(response()), json({ ...combinedResponse(), extra: "x".repeat(5000) }), json({ ...combinedResponse(), reserved: true }),
     new Response("denied", { status: 429 })]) {
     fetch.mockResolvedValueOnce(value);
     await expect(service().nativeCapacityPreview(request, new AbortController().signal)).rejects.toThrow();
