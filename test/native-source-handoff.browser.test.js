@@ -1,37 +1,9 @@
 import assert from "node:assert/strict";
-import fs from "node:fs/promises";
 import test from "node:test";
 import { nativeSceneLiveFixture } from "./helpers/native-scene-live-fixture.mjs";
 import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
-import { nativeAudioOutputObservation } from "./helpers/native-audio-output.mjs";
 import { observeBrowserStartup } from "./helpers/machine-browser-startup.mjs";
-
-async function confirm(page, action, accept = true) {
-  const dialog = page.waitForEvent("dialog"), pending = action(), opened = await dialog;
-  if (accept) await opened.accept(); else await opened.dismiss();
-  await pending;
-}
-async function publishOwnMicrophone(page) {
-  if (await page.locator("#broadcast-source-requests-open").count()) await page.locator("#broadcast-source-requests-open").click();
-  const panel = page.locator("app-broadcast-source-requests");
-  await panel.locator("#broadcast-source-request-kind").selectOption("microphone");
-  await confirm(page, () => panel.locator("#broadcast-source-request-own").press("Enter"));
-  await panel.getByRole("button", { name: "Eigene Quelle prüfen", exact: true }).last().click();
-  await panel.locator("#broadcast-source-approval select").selectOption("300000");
-  await confirm(page, () => panel.getByRole("button", { name: "Entschlüsselung und Broadcast ausdrücklich erlauben…", exact: true }).click());
-  await panel.locator("li", { hasText: "Sender aktiv" }).waitFor({ timeout: 15000 });
-}
-async function outputAudio(root, audible) {
-  const deadline = performance.now() + 15000;
-  do {
-    const value = (await nativeAudioOutputObservation(root, { encoding: true })).committed;
-    if (value?.audio?.decoded && value.encoding?.codec === "aac" && value.encoding.sampleRate === 48000
-      && value.encoding.channels === 1 && value.audio.channels.every(rms => audible ? rms > .01 : rms < .001)) return value;
-    await new Promise(resolve => setTimeout(resolve, 100));
-  } while (performance.now() < deadline);
-  assert.fail(audible ? "consented successor must emit mono AAC tone" : "successor must emit silent mono AAC before new consent");
-}
-const resources = async root => (await fs.readdir(root)).filter(name => /^res_[A-Za-z0-9_-]{16,64}$/.test(name));
+import { confirm, outputAudio, publishOwnMicrophone, resources } from "./helpers/native-source-own-microphone.mjs";
 
 test("rendered source handoff drains the real writer, preserves mono AAC and requires fresh source consent", { timeout: 120000 }, async t => {
   if (process.platform !== "linux") { t.skip("Two native processes require Linux containment and local FFmpeg"); return; }

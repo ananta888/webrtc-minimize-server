@@ -54,4 +54,38 @@ Snapshots werden beim Restore geschlossen validiert. Unbekannte Felder, falsche 
 
 `test/broadcast-failover-coordinator.test.js` simuliert Packager- und Gateway-Abbruch nach Lease-Ablauf, Grace Period und anschließender Übernahme. Der Test belegt den höheren Fence, abgewiesene alte Writer, genau einen Writer je Rolle, zwei Cleanup-/Takeover-Ereignisse und eine Unterbrechung innerhalb des Recovery-Budgets. Zusätzlich werden alle sechs Fehlerklassen, Quorum, Consent, sichtbarer Stop und metadata-only Restore geprüft.
 
-Das ist ein deterministischer Domain-/Chaos-Nachweis. Eine produktive Prozesssteuerung, ein verteilter Lease-Store, reale Gateway-/Host-Kills und gemessene HLS-Player-Unterbrechungen benötigen weiterhin den aktivierten Native-Packager-, Gateway- und Deploymentpfad. Solange diese Gates fehlen, bleibt Broadcast standardmäßig deaktiviert und der Todo-Track nur teilweise abgeschlossen.
+Das ist ein deterministischer Domain-/Chaos-Nachweis.
+
+## Chaos auf dem realen nativen Pfad (11. September)
+
+`test/native-source-chaos.browser.test.js` ergänzt den Domain-Nachweis um echte
+Prozesse: gebauter Native-Packager mit FFmpeg-Encoder, gebauter HLS-Origin,
+Control Plane, Angular-Regie und ein hls.js-Zuschauer. Drei definierte Phasen,
+ohne gelockerte Frist, Fence oder Wiederholung:
+
+1. **Packager-Absturz (SIGKILL) während einer consentierten Ausgabe.** Die
+   Control Plane setzt die Zuordnung beim Socket-Ende auf `failed`/
+   `CONTROL_DISCONNECTED` (12 ms), stoppt das Programm (`ended`) und die Regie
+   zeigt den Ausfall nach 821 ms. Der verwaiste Encoder endet von selbst über
+   das Pipe-Ende (29 ms, per `/proc`-cwd des Stage-Verzeichnisses geprüft,
+   ohne Prozessnamen oder Argumente zu behalten). Der Zuschauer bleibt nicht
+   „spielend“: Lifecycle `ended`, Medienzeit steht. Kein Writer bleibt aktiv.
+2. **Rückkehr derselben Packager-Identität.** Authentifizierung und
+   Capability nach 220 ms; der Start beansprucht nur das eigene tote
+   Ausgabeverzeichnis (`cleanOutputRoot`, hier bereits beim ersten Blick
+   entfernt). Ein neues Programm mit neuer Programm-ID, Zuordnung und
+   Ressource publiziert genau einmal; es existiert genau ein `res_`-Verzeichnis.
+3. **Origin-Absturz (SIGKILL) bei laufendem zweiten Programm.** Der Writer
+   behält seine gefencte Zuordnung (Origin-Verlust ist kein Writer-Verlust).
+   Ein neuer Zuschauer meldet ohne Origin keine Wiedergabe (`recovering`);
+   nach Neustart derselben Origin-Adresse spielt ein frischer Zuschauer nach
+   307 ms. Danach bleibt genau eine laufende Zuordnung; Stop entfernt die
+   Ausgabe, beide Prozesse laufen sauber weiter.
+
+Der Test ist Linux-gebunden (Prozess-Containment, lokales FFmpeg) und misst
+auf einem Host; die Zahlen sind Beobachtungen dieses Laufs, keine Budgets.
+Nicht gezeigt: der MediaMTX-/WHIP-Gateway-Pfad, ein verteilter Lease-Store,
+Host-/Netzpartition zwischen Rechnern, automatische Übernahme durch einen
+Standby ohne Regieaktion sowie gemessene Unterbrechung an mehreren realen
+Playern. Diese benötigen weiterhin den aktivierten Gateway- und Deploymentpfad.
+Solange diese Gates fehlen, bleibt Broadcast standardmäßig deaktiviert und der Todo-Track nur teilweise abgeschlossen.

@@ -43,3 +43,14 @@ test("a failed exit after requested SIGTERM is not a graceful cleanup", async ()
   await assert.rejects(f.process.close(), /scene_fixture_process_exit_unconfirmed/);
   assert.deepEqual(f.signals, ["SIGTERM"]);
 });
+
+test("a deliberate chaos crash is confirmed by the kill signal and does not count as a clean exit", async () => {
+  const f = fixture(child => queueMicrotask(() => child.emit("close", null, "SIGKILL")));
+  assert.equal(typeof f.process.pid, "undefined");
+  await f.process.crash();
+  assert.deepEqual(f.signals, ["SIGKILL"]); assert.equal(f.process.alive(), false);
+  await f.process.close();
+  await assert.rejects(f.process.crash(), /scene_fixture_process_already_terminal/);
+  const g = fixture();
+  await assert.rejects(g.process.crash(), /scene_fixture_crash_unconfirmed/);
+});

@@ -73,7 +73,8 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
     await fs.writeFile(path.join(directory, "successor.pem"), keys.privateKey.export({ type: "pkcs8", format: "pem" }), { mode: 0o600, flag: "wx" });
   }
   const gatewayPort = await unusedLoopbackPort();
-  const gateway = processes.start("origin", { BROADCAST_ORIGIN_ROOT: processes.output, BROADCAST_ORIGIN_ADDRESS: `127.0.0.1:${gatewayPort}` });
+  const gatewayEnvironment = { BROADCAST_ORIGIN_ROOT: processes.output, BROADCAST_ORIGIN_ADDRESS: `127.0.0.1:${gatewayPort}` };
+  let gateway = processes.start("origin", gatewayEnvironment);
   const config = { publicOrigin: origin, authMode: "required", oidcIssuer: issuer, oidcAudience: "human", oidcClientId: "human-browser",
     oidcAlgorithms: ["EdDSA"], nativePackagerSelfServiceEnabled: true, mediaE2eeMode: "required", stunUrls: [], turnServers: [],
     broadcastNativeOutputEnabled: true, broadcastGatewayOrigin: `http://127.0.0.1:${gatewayPort}`,
@@ -95,10 +96,11 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
   tls.on("request", (req, res) => app.server.emit("request", req, res));
   tls.on("upgrade", (req, socket, head) => app.server.emit("upgrade", req, socket, head));
   await new Promise(resolve => app.server.listen(0, "127.0.0.1", resolve));
-  const agent = processes.start("packager", { NATIVE_PACKAGER_CONTROL_URL: origin.replace("https:", "wss:") + "/native-packager",
+  const agentEnvironment = { NATIVE_PACKAGER_CONTROL_URL: origin.replace("https:", "wss:") + "/native-packager",
     NATIVE_PACKAGER_ID: packagerId, NATIVE_PACKAGER_IDENTITY_FILE: path.join(directory, "agent.pem"),
     NATIVE_PACKAGER_OUTPUT_ROOT: processes.output, NATIVE_PACKAGER_SOURCE_PROGRAMS: "enabled", NATIVE_PACKAGER_SOURCE_BUDGET: "compact-v1",
-    ...outputEnvironment, NATIVE_PACKAGER_FFMPEG: "ffmpeg" });
+    ...outputEnvironment, NATIVE_PACKAGER_FFMPEG: "ffmpeg" };
+  let agent = processes.start("packager", agentEnvironment);
   const successorAgent = packagerCount === 2 ? processes.start("packager", {
     NATIVE_PACKAGER_CONTROL_URL: origin.replace("https:", "wss:") + "/native-packager",
     NATIVE_PACKAGER_ID: definitions[1].id, NATIVE_PACKAGER_IDENTITY_FILE: path.join(directory, "successor.pem"),
@@ -186,6 +188,10 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
   await page.locator("#display-name").fill("Synthetic scene director");
   await page.locator("#join-room:not([disabled])").waitFor(); await page.locator("#join-room").press("Enter");
   await page.locator("#participant-count", { hasText: "1 / 20" }).waitFor({ timeout: 10_000 });
-  return { app, browser, context, page, origin, roomId: room.body.roomId, packagerId,
-    packagerIds: definitions.map(row => row.id), request, agent, successorAgent, gateway, output: processes.output, observation };
+  const fixture = { app, browser, context, page, origin, roomId: room.body.roomId, packagerId,
+    packagerIds: definitions.map(row => row.id), request, agent, successorAgent, gateway, output: processes.output, observation,
+    // Same identity, ID, output root and address as the crashed process; nothing else changes.
+    restartAgent() { assert.equal(agent.alive(), false); agent = fixture.agent = processes.start("packager", agentEnvironment); return agent; },
+    restartGateway() { assert.equal(gateway.alive(), false); gateway = fixture.gateway = processes.start("origin", gatewayEnvironment); return gateway; } };
+  return fixture;
 }

@@ -75,7 +75,7 @@ export async function nativeSceneProcesses(t, { observeSourceState = false } = {
 export function startSceneProcess(executable, environment, create = spawn, observed = false) {
   const child = create(executable, [], { env: environment, stdio: observed ? ["ignore", "pipe", "ignore"] : "ignore", detached: false });
   const observe = observed ? sceneProcessObserver(child) : async () => null;
-  let terminal = false, failed = false;
+  let terminal = false, failed = false, crashed = false;
   const finished = new Promise(resolve => {
     child.once("error", () => { failed = true; });
     child.once("close", (code, signal) => { failed ||= code !== 0 || signal != null; terminal = true; resolve(); });
@@ -89,10 +89,19 @@ export function startSceneProcess(executable, environment, create = spawn, obser
   };
   return {
     observe,
+    pid: child.pid,
     alive: () => !terminal && !failed,
+    // Deliberate chaos only: an abrupt kill is not a cleanup. The caller must
+    // verify orphaned encoders and output reclamation itself.
+    async crash() {
+      if (terminal) throw new Error("scene_fixture_process_already_terminal");
+      crashed = true;
+      child.kill("SIGKILL");
+      if (!await bounded(5000)) throw new Error("scene_fixture_crash_unconfirmed");
+    },
     async close() {
       if (terminal) {
-        if (failed) throw new Error("scene_fixture_process_exit_unconfirmed");
+        if (failed && !crashed) throw new Error("scene_fixture_process_exit_unconfirmed");
         return;
       }
       child.kill("SIGTERM");
