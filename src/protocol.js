@@ -182,6 +182,21 @@ export function parseClientMessage(raw) {
     if (!PEER_ID_PATTERN.test(value.grantId || "")) throw new ProtocolError("invalid_breakout_grant");
     return Object.freeze({ type: "breakout-revoke", grantId: value.grantId });
   }
+  if (value.type === "breakout-assign-balanced") {
+    if (!hasOnlyKeys(value, new Set(["type"]))) throw new ProtocolError("unknown_message_field");
+    return Object.freeze({ type: "breakout-assign-balanced" });
+  }
+  if (value.type === "breakout-choose") {
+    if (!hasOnlyKeys(value, new Set(["type", "childRoomId"]))) throw new ProtocolError("unknown_message_field");
+    return Object.freeze({
+      type: "breakout-choose",
+      childRoomId: normalizeRoomId(value.childRoomId),
+    });
+  }
+  if (value.type === "breakout-help-request") {
+    if (!hasOnlyKeys(value, new Set(["type"]))) throw new ProtocolError("unknown_message_field");
+    return Object.freeze({ type: "breakout-help-request" });
+  }
   if (value.type === "whiteboard-clear") {
     if (!hasOnlyKeys(value, new Set(["type"]))) throw new ProtocolError("unknown_message_field");
     return Object.freeze({ type: "whiteboard-clear" });

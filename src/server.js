@@ -36,7 +36,7 @@ import {
   parseClientMessage,
   ProtocolError,
 } from "./protocol.js";
-import { BreakoutRegistry } from "./breakout-set.js";
+import { BreakoutRegistry, MIN_BREAKOUT_GRANT_MS } from "./breakout-set.js";
 import { RoomAdmissionError, RoomFullError, RoomRegistry } from "./room-registry.js";
 import { REMOVE_UNDO_MS, RoomModerationError } from "./room-moderation.js";
 import { MeetObservability } from "./meet-observability.js";
@@ -1581,8 +1581,14 @@ function createHttpHandler(config, registry, services) {
             machineCapabilities: identity.machineCapabilities } : {}),
         });
         const directIceServers = config.stunUrls.map((urls) => ({ urls }));
-        const peerRelayIceServers = createEdgeTurnCredentials(config, principal);
-        const issuedTurn = createTurnCredentials(config, principal);
+        const turnPrincipal = reservedBreakout
+          ? `${principal}:breakout:${roomId}`
+          : principal;
+        const turnTtlMs = reservedBreakout
+          ? Math.min(config.turnCredentialTtlMs, Math.max(MIN_BREAKOUT_GRANT_MS, reservedBreakout.expiresAt - Date.now()))
+          : config.turnCredentialTtlMs;
+        const peerRelayIceServers = createEdgeTurnCredentials(config, turnPrincipal, Date.now(), turnTtlMs);
+        const issuedTurn = createTurnCredentials(config, turnPrincipal, Date.now(), turnTtlMs);
         if (peerRelayIceServers.length) meetObservability?.turn("peer-edge", peerRelayIceServers.length);
         if (issuedTurn.length) meetObservability?.turn("infrastructure", issuedTurn.length);
         const infrastructureRelayIceServers = [
@@ -2164,6 +2170,65 @@ function configureSignaling(
           }
           return;
         }
+        if (message.type === "breakout-assign-balanced") {
+          const grants = registry.assignBreakoutsBalanced(peer);
+          const snapshot = registry.breakoutSnapshot(peer.roomId);
+          const members = registry.members(peer.roomId);
+          for (const member of members) {
+            if (snapshot) safeSend(member.socket, snapshot);
+          }
+          for (const grant of grants) {
+            const member = members.find((m) => m.id === grant.targetPeerId);
+            if (member) {
+              safeSend(member.socket, {
+                type: "breakout-assigned",
+                grantId: grant.grantId,
+                setId: grant.setId,
+                childRoomId: grant.childRoomId,
+                parentRevision: grant.parentRevision,
+                expiresAt: grant.expiresAt,
+              });
+            }
+          }
+          return;
+        }
+        if (message.type === "breakout-choose") {
+          const grant = registry.chooseBreakout(peer, message.childRoomId);
+          const snapshot = registry.breakoutSnapshot(peer.roomId);
+          for (const member of registry.members(peer.roomId)) {
+            if (snapshot) safeSend(member.socket, snapshot);
+          }
+          safeSend(peer.socket, {
+            type: "breakout-assigned",
+            grantId: grant.grantId,
+            setId: grant.setId,
+            childRoomId: grant.childRoomId,
+            parentRevision: grant.parentRevision,
+            expiresAt: grant.expiresAt,
+          });
+          return;
+        }
+        if (message.type === "breakout-help-request") {
+          const help = registry.requestBreakoutHelp(peer);
+          const parentMembers = registry.members(help.parentRoomId);
+          for (const member of parentMembers) {
+            if (registry.peerRole(member) === "owner") {
+              safeSend(member.socket, {
+                version: 1,
+                type: "breakout-help-notified",
+                childRoomId: help.childRoomId,
+                requesterPeerId: help.requesterPeerId,
+                requestedAt: help.requestedAt,
+              });
+            }
+          }
+          safeSend(peer.socket, {
+            version: 1,
+            type: "breakout-help-acknowledged",
+            requestedAt: help.requestedAt,
+          });
+          return;
+        }
         if (message.type === "whiteboard-clear") {
           if (peer.machine === true || registry.peerRole(peer) !== "owner") {
             throw new RoomModerationError("moderation_forbidden");
@@ -2312,8 +2377,9 @@ function configureSignaling(
           return;
         }
         if (message.type === "media-agent-subscription-intent") {
+          if (message.roomId !== peer.roomId) throw new ProtocolError("invalid_agent_subscription_intent");
           const publication = registry.publication(
-            message.publisherPeerId, message.publicationId, message.roomId,
+            message.publisherPeerId, message.publicationId, peer.roomId,
           );
           if (!publication) throw new ProtocolError("agent_publication_unauthorized");
           if (message.enabled && !machineReceivePolicy.mediaAllowed(peer, message.publisherPeerId, message.publicationId)) {
@@ -2340,6 +2406,7 @@ function configureSignaling(
           return;
         }
         if (message.type === "media-agent-subscription-ack") {
+          if (message.roomId !== peer.roomId) throw new ProtocolError("invalid_agent_subscription_intent");
           const applied = mediaAgents.acknowledgeSubscription(peer, message);
           const publisher = registry.members(peer.roomId)
             .find((member) => member.id === message.publisherPeerId);

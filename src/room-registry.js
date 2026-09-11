@@ -139,6 +139,85 @@ export class RoomRegistry {
     }
   }
 
+  assignBreakoutsBalanced(actor, { ttlMs } = {}, now = Date.now()) {
+    const room = this.#rooms.get(actor.roomId);
+    if (!room || room.peers.get(actor.id) !== actor) throw new RoomAdmissionError("peer_not_joined");
+    if (!this.#breakouts) throw new RoomAdmissionError("breakout_unavailable");
+    const candidatePeers = [...room.peers.values()].filter((peer) =>
+      peer.id !== actor.id && peer.machine !== true
+    );
+    const occupiedByChild = new Map();
+    for (const childId of this.#breakouts.childRoomIds()) {
+      occupiedByChild.set(childId, this.#rooms.get(childId)?.peers.size || 0);
+    }
+    try {
+      return this.#breakouts.assignBalanced({
+        parentRoomId: actor.roomId,
+        ownerRole: peerRole(actor, room.creatorPrincipal),
+        candidatePeers,
+        occupiedByChild,
+        ttlMs,
+        now,
+      });
+    } catch (error) {
+      this.#breakoutError(error);
+    }
+  }
+
+  chooseBreakout(actor, childRoomId, { ttlMs } = {}, now = Date.now()) {
+    const room = this.#rooms.get(actor.roomId);
+    if (!room || room.peers.get(actor.id) !== actor) throw new RoomAdmissionError("peer_not_joined");
+    if (!this.#breakouts) throw new RoomAdmissionError("breakout_unavailable");
+    try {
+      return this.#breakouts.assignVoluntary({
+        parentRoomId: actor.roomId,
+        targetPeer: actor,
+        childRoomId,
+        ttlMs,
+        now,
+        occupied: this.#rooms.get(childRoomId)?.peers.size || 0,
+      });
+    } catch (error) {
+      this.#breakoutError(error);
+    }
+  }
+
+  resolveBreakoutJoin(actor, { preferredChildRoomId, ttlMs } = {}, now = Date.now()) {
+    const room = this.#rooms.get(actor.roomId);
+    if (!room || room.peers.get(actor.id) !== actor) throw new RoomAdmissionError("peer_not_joined");
+    if (!this.#breakouts) throw new RoomAdmissionError("breakout_unavailable");
+    const occupiedByChild = new Map();
+    for (const childId of this.#breakouts.childRoomIds()) {
+      occupiedByChild.set(childId, this.#rooms.get(childId)?.peers.size || 0);
+    }
+    try {
+      return this.#breakouts.resolveAssignment({
+        parentRoomId: actor.roomId,
+        targetPeer: actor,
+        preferredChildRoomId,
+        occupiedByChild,
+        ttlMs,
+        now,
+      });
+    } catch (error) {
+      this.#breakoutError(error);
+    }
+  }
+
+  requestBreakoutHelp(peer, now = Date.now()) {
+    const room = this.#rooms.get(peer.roomId);
+    if (!room || room.peers.get(peer.id) !== peer) throw new RoomAdmissionError("peer_not_joined");
+    if (!this.#breakouts) throw new RoomAdmissionError("breakout_unavailable");
+    const reserved = this.#breakouts.reserved(peer.roomId);
+    if (!reserved) throw new RoomAdmissionError("breakout_not_child_room");
+    return Object.freeze({
+      parentRoomId: reserved.parentRoomId,
+      childRoomId: peer.roomId,
+      requesterPeerId: peer.id,
+      requestedAt: now,
+    });
+  }
+
   breakoutSnapshot(parentRoomId, now = Date.now()) {
     return this.#breakouts?.snapshot(parentRoomId, now) || null;
   }
@@ -192,7 +271,9 @@ export class RoomRegistry {
         kind: reserved ? "breakout" : "room",
         parentRoomId: reserved ? reserved.parentRoomId : "",
         capacity,
-        creatorPrincipal: admission.creatorPrincipal || admission.principal || "anonymous",
+        creatorPrincipal: reserved
+          ? (this.#rooms.get(reserved.parentRoomId)?.creatorPrincipal || "owner")
+          : (admission.creatorPrincipal || admission.principal || "anonymous"),
         audit: [],
         auditSequence: 0,
         presenterPeerId: "",

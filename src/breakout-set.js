@@ -198,6 +198,155 @@ export class BreakoutRegistry {
     return freezeGrant(grant);
   }
 
+  assignBalanced({
+    parentRoomId, ownerRole, candidatePeers,
+    ttlMs = DEFAULT_BREAKOUT_GRANT_MS, now = Date.now(), occupiedByChild = new Map(),
+  }) {
+    if (ownerRole !== "owner") fail("breakout_owner_required");
+    const set = this.#sets.get(parentRoomId);
+    if (!set || set.state !== "open") fail("breakout_unavailable");
+    if (set.expiresAt <= now) fail("breakout_expired");
+    const openChildren = set.children.filter((child) => child.state === "open");
+    if (openChildren.length === 0) fail("breakout_unknown_child");
+
+    const eligiblePeers = (candidatePeers || []).filter((peer) =>
+      peer && peer.roomId === parentRoomId && peer.machine !== true
+      && typeof peer.principal === "string" && peer.principal.length > 0
+      && typeof peer.deviceFingerprint === "string" && peer.deviceFingerprint.length >= 8
+    );
+
+    eligiblePeers.sort((a, b) => a.id.localeCompare(b.id));
+    openChildren.sort((a, b) => a.roomId.localeCompare(b.roomId));
+
+    const candidateKeys = new Set(eligiblePeers.map((p) => `${p.principal}\0${p.deviceFingerprint}`));
+    set.grants = set.grants.filter((grant) => !(liveGrant(grant, now)
+      && candidateKeys.has(`${grant.principal}\0${grant.deviceFingerprint}`)));
+
+    const grants = [];
+    let childIndex = 0;
+    const initialChildrenCount = openChildren.length;
+
+    for (const peer of eligiblePeers) {
+      let assigned = false;
+      for (let attempt = 0; attempt < initialChildrenCount; attempt += 1) {
+        const child = openChildren[(childIndex + attempt) % initialChildrenCount];
+        const occupied = Number(occupiedByChild.get?.(child.roomId) ?? occupiedByChild[child.roomId] ?? 0);
+        const waiting = set.grants.filter((g) => liveGrant(g, now) && g.childRoomId === child.roomId
+          && !(g.principal === peer.principal && g.deviceFingerprint === peer.deviceFingerprint)).length;
+        if (waiting + occupied < child.capacity) {
+          const grant = this.assign({
+            parentRoomId,
+            ownerRole,
+            targetPeer: peer,
+            childRoomId: child.roomId,
+            ttlMs,
+            now,
+            occupied,
+          });
+          grants.push(grant);
+          childIndex = (childIndex + attempt + 1) % initialChildrenCount;
+          assigned = true;
+          break;
+        }
+      }
+      if (!assigned) break;
+    }
+    return Object.freeze(grants);
+  }
+
+  assignVoluntary({
+    parentRoomId, targetPeer, childRoomId,
+    ttlMs = DEFAULT_BREAKOUT_GRANT_MS, now = Date.now(), occupied = 0,
+  }) {
+    const set = this.#sets.get(parentRoomId);
+    if (!set || set.state !== "open") fail("breakout_unavailable");
+    if (set.expiresAt <= now) fail("breakout_expired");
+    if (!targetPeer || targetPeer.roomId !== parentRoomId) fail("breakout_target_not_member");
+    if (targetPeer.machine === true) fail("breakout_machine_denied");
+    if (typeof targetPeer.principal !== "string" || targetPeer.principal.length < 1) fail("invalid_breakout_principal");
+    if (typeof targetPeer.deviceFingerprint !== "string" || targetPeer.deviceFingerprint.length < 8) {
+      fail("invalid_breakout_device");
+    }
+    const child = set.children.find((item) => item.roomId === childRoomId && item.state === "open");
+    if (!child) fail("breakout_unknown_child");
+    if (!Number.isSafeInteger(ttlMs) || ttlMs < MIN_BREAKOUT_GRANT_MS || ttlMs > MAX_BREAKOUT_GRANT_MS) {
+      fail("invalid_breakout_grant");
+    }
+    if (!Number.isSafeInteger(occupied) || occupied < 0) fail("invalid_breakout_occupancy");
+    const expiresAt = Math.min(now + ttlMs, set.expiresAt);
+    if (expiresAt <= now) fail("breakout_expired");
+
+    set.grants = set.grants.filter((grant) => !(liveGrant(grant, now)
+      && grant.principal === targetPeer.principal
+      && grant.deviceFingerprint === targetPeer.deviceFingerprint));
+    const waiting = set.grants.filter((grant) => liveGrant(grant, now) && grant.childRoomId === childRoomId).length;
+    if (waiting + occupied >= child.capacity) fail("breakout_child_full");
+
+    const grant = {
+      grantId: crypto.randomBytes(8).toString("hex"),
+      setId: set.setId,
+      parentRoomId,
+      parentRevision: set.parentRevision,
+      childRoomId,
+      principal: targetPeer.principal,
+      deviceFingerprint: targetPeer.deviceFingerprint,
+      targetPeerId: targetPeer.id,
+      expiresAt,
+      consumedAt: 0,
+    };
+    set.grants.push(grant);
+    return freezeGrant(grant);
+  }
+
+  resolveAssignment({
+    parentRoomId, targetPeer, preferredChildRoomId,
+    ttlMs = DEFAULT_BREAKOUT_GRANT_MS, now = Date.now(), occupiedByChild = new Map(),
+  }) {
+    const set = this.#sets.get(parentRoomId);
+    if (!set || set.state !== "open") fail("breakout_unavailable");
+    if (set.expiresAt <= now) fail("breakout_expired");
+    const openChildren = set.children.filter((child) => child.state === "open");
+    if (openChildren.length === 0) fail("breakout_unknown_child");
+
+    if (preferredChildRoomId) {
+      const preferred = openChildren.find((c) => c.roomId === preferredChildRoomId);
+      if (preferred) {
+        const occupied = Number(occupiedByChild.get?.(preferred.roomId) ?? occupiedByChild[preferred.roomId] ?? 0);
+        const waiting = set.grants.filter((g) => liveGrant(g, now) && g.childRoomId === preferred.roomId
+          && !(g.principal === targetPeer?.principal && g.deviceFingerprint === targetPeer?.deviceFingerprint)).length;
+        if (waiting + occupied < preferred.capacity) {
+          return this.assignVoluntary({
+            parentRoomId,
+            targetPeer,
+            childRoomId: preferred.roomId,
+            ttlMs,
+            now,
+            occupied,
+          });
+        }
+      }
+    }
+
+    const scored = openChildren.map((child) => {
+      const occupied = Number(occupiedByChild.get?.(child.roomId) ?? occupiedByChild[child.roomId] ?? 0);
+      const waiting = set.grants.filter((g) => liveGrant(g, now) && g.childRoomId === child.roomId
+        && !(g.principal === targetPeer?.principal && g.deviceFingerprint === targetPeer?.deviceFingerprint)).length;
+      return { child, remaining: child.capacity - (waiting + occupied), occupied };
+    }).filter((item) => item.remaining > 0);
+
+    if (scored.length === 0) fail("breakout_all_children_full");
+    scored.sort((a, b) => b.remaining - a.remaining || a.child.roomId.localeCompare(b.child.roomId));
+
+    return this.assignVoluntary({
+      parentRoomId,
+      targetPeer,
+      childRoomId: scored[0].child.roomId,
+      ttlMs,
+      now,
+      occupied: scored[0].occupied,
+    });
+  }
+
   revoke({ parentRoomId, ownerRole, grantId, now = Date.now() }) {
     if (ownerRole !== "owner") fail("breakout_owner_required");
     const set = this.#sets.get(parentRoomId);

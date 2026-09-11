@@ -2,21 +2,21 @@ import crypto from "node:crypto";
 
 const MAX_EDGE_TURN_CREDENTIAL_TTL_MS = 10 * 60 * 1000;
 
-export function createTurnCredentials(config, principal, now = Date.now()) {
+export function createTurnCredentials(config, principal, now = Date.now(), ttlMs = config.turnCredentialTtlMs) {
   return createCredential(
     config.turnUrls,
     config.turnSharedSecret,
-    config.turnCredentialTtlMs,
+    ttlMs,
     principal,
     now,
   );
 }
 
-export function createEdgeTurnCredentials(config, principal, now = Date.now()) {
+export function createEdgeTurnCredentials(config, principal, now = Date.now(), ttlMs = config.turnCredentialTtlMs) {
   return (config.edgeTurnServers || []).flatMap((server) => createCredential(
     server.urls,
     server.sharedSecret,
-    Math.min(config.turnCredentialTtlMs, MAX_EDGE_TURN_CREDENTIAL_TTL_MS),
+    Math.min(ttlMs, MAX_EDGE_TURN_CREDENTIAL_TTL_MS),
     principal,
     now,
   ));

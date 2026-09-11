@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  BreakoutError, BreakoutRegistry, DEFAULT_BREAKOUT_LIFETIME_MS, roomsShareMembership,
+  BreakoutError, BreakoutRegistry, DEFAULT_BREAKOUT_LIFETIME_MS, MIN_BREAKOUT_GRANT_MS, roomsShareMembership,
 } from "../src/breakout-set.js";
 import { parseClientMessage, ProtocolError } from "../src/protocol.js";
 import { RoomAdmissionError, RoomFullError, RoomRegistry } from "../src/room-registry.js";
+import { createEdgeTurnCredentials, createTurnCredentials } from "../src/turn-credentials.js";
+import { buildRoomTopology } from "../src/media-topology.js";
 
 const code = (expected) => (error) => error instanceof BreakoutError && error.code === expected;
 const admission = (expected) => (error) => error instanceof RoomAdmissionError && error.code === expected;
@@ -251,4 +253,298 @@ test("breakout assignment messages are closed and content-free", () => {
   assert.deepEqual(parseClientMessage(JSON.stringify({
     type: "breakout-open", childCount: 2, capacity: 10,
   })), { type: "breakout-open", childCount: 2, capacity: 10 });
+});
+
+test("breakout sessions get child-bound, short-lived TURN credentials without inheriting parent consent", () => {
+  const rooms = registry();
+  const owner = joinParent(rooms, "room-parent9", "Ada", 1, "owner");
+  const guest = joinParent(rooms, "room-parent9", "Grace", 2, "guest");
+  rooms.setRelayConsent(owner, true, 3);
+  rooms.setRelayConsent(guest, true, 3);
+  assert.equal(owner.relayConsent, true);
+  assert.equal(guest.relayConsent, true);
+
+  const set = rooms.openBreakouts(owner, { childCount: 1, capacity: 2, lifetimeMs: 60_000 }, 10);
+  const childRoomId = set.children[0].roomId;
+  rooms.assignBreakout(owner, { targetPeerId: guest.id, childRoomId }, 20);
+
+  const childPeer = joinChild(rooms, guest, set, childRoomId, 25);
+  // Parent relay consent must NOT be inherited
+  assert.equal(childPeer.relayConsent, false);
+
+  const turnConfig = {
+    turnUrls: ["turn:turn.example.com:3478"],
+    turnSharedSecret: "test-secret-12345",
+    turnCredentialTtlMs: 24 * 60 * 60 * 1000,
+  };
+  const parentTurn = createTurnCredentials(turnConfig, guest.principal, 25);
+  const reserved = rooms.reservedBreakout(childRoomId);
+  const childTurnTtlMs = Math.min(
+    turnConfig.turnCredentialTtlMs,
+    Math.max(MIN_BREAKOUT_GRANT_MS, reserved.expiresAt - 25),
+  );
+  const childTurn = createTurnCredentials(
+    turnConfig,
+    `${childPeer.principal}:breakout:${childRoomId}`,
+    25,
+    childTurnTtlMs,
+  );
+
+  assert.equal(parentTurn.length, 1);
+  assert.equal(childTurn.length, 1);
+  assert.notEqual(parentTurn[0].username, childTurn[0].username);
+  // Child TURN username must expire with the child lifetime, not the full 24h
+  const childExpiresAt = Number(childTurn[0].username.split(":")[0]);
+  const parentExpiresAt = Number(parentTurn[0].username.split(":")[0]);
+  assert.ok(childExpiresAt < parentExpiresAt);
+  assert.equal(childExpiresAt, Math.floor((25 + childTurnTtlMs) / 1000));
+});
+
+test("media agents and relay topology in breakout rooms are isolated from parent publications and neighbor rooms", () => {
+  const rooms = registry();
+  const owner = joinParent(rooms, "room-parent10", "Ada", 1, "owner");
+  const guest1 = joinParent(rooms, "room-parent10", "Grace", 2, "guest1");
+  const guest2 = joinParent(rooms, "room-parent10", "Linus", 3, "guest2");
+
+  rooms.setMediaState(owner, { source: "camera", active: true, trackId: "track-owner-cam" }, 4);
+  assert.ok(rooms.publication(owner.id, "track-owner-cam", "room-parent10"));
+
+  const set = rooms.openBreakouts(owner, { childCount: 2, capacity: 4 }, 10);
+  const childA = set.children[0].roomId;
+  const childB = set.children[1].roomId;
+
+  rooms.assignBreakout(owner, { targetPeerId: guest1.id, childRoomId: childA }, 15);
+  rooms.assignBreakout(owner, { targetPeerId: guest2.id, childRoomId: childB }, 15);
+
+  const peerA = joinChild(rooms, guest1, set, childA, 20);
+  const peerB = joinChild(rooms, guest2, set, childB, 20);
+
+  // Cross-room publication lookup returns null
+  assert.equal(rooms.publication(owner.id, "track-owner-cam", childA), null);
+  assert.equal(rooms.publication(owner.id, "track-owner-cam", childB), null);
+
+  // Topology for childA only contains peerA, never owner or peerB
+  const epochs = { membership: 1, route: 1, topology: 1 };
+  const topologyA = buildRoomTopology(rooms.members(childA), epochs, {
+    enabled: true, minimumParticipants: 1, maxChildren: 2, maxHops: 2, leaseMs: 10_000, blockedRelayIds: [],
+  });
+  assert.deepEqual(topologyA.peers, [peerA.id]);
+
+  // Topology for parent room only contains remaining parent member
+  const topologyParent = buildRoomTopology(rooms.members("room-parent10"), epochs, {
+    enabled: true, minimumParticipants: 1, maxChildren: 2, maxHops: 2, leaseMs: 10_000, blockedRelayIds: [],
+  });
+  assert.deepEqual(topologyParent.peers, [owner.id]);
+});
+
+test("balanced policy assigns candidate peers evenly and respects child room capacity", () => {
+  const rooms = registry();
+  const owner = joinParent(rooms, "room-parent11", "Ada", 1, "owner");
+  const guest1 = joinParent(rooms, "room-parent11", "Grace", 2, "g1");
+  const guest2 = joinParent(rooms, "room-parent11", "Linus", 3, "g2");
+  const guest3 = joinParent(rooms, "room-parent11", "Tim", 4, "g3");
+
+  const set = rooms.openBreakouts(owner, { childCount: 2, capacity: 2 }, 10);
+  const childA = set.children[0].roomId;
+  const childB = set.children[1].roomId;
+
+  // Non-owner cannot trigger balanced assignment
+  assert.throws(
+    () => rooms.assignBreakoutsBalanced(guest1, {}, 11),
+    admission("breakout_owner_required"),
+  );
+
+  const grants = rooms.assignBreakoutsBalanced(owner, {}, 12);
+  assert.equal(grants.length, 3);
+  const inA = grants.filter((g) => g.childRoomId === childA).length;
+  const inB = grants.filter((g) => g.childRoomId === childB).length;
+  assert.equal(inA + inB, 3);
+  assert.ok(inA <= 2 && inB <= 2);
+  assert.equal(Math.abs(inA - inB), 1); // Balanced distribution
+
+  // Add a 4th guest and run balanced again
+  const guest4 = joinParent(rooms, "room-parent11", "Margaret", 5, "g4");
+  const grants2 = rooms.assignBreakoutsBalanced(owner, {}, 13);
+  assert.equal(grants2.length, 4); // All 4 now assigned (2 in childA, 2 in childB)
+  const inA2 = grants2.filter((g) => g.childRoomId === childA).length;
+  const inB2 = grants2.filter((g) => g.childRoomId === childB).length;
+  assert.equal(inA2, 2);
+  assert.equal(inB2, 2);
+
+  // Add 5th guest: capacity is 4 total, 5th cannot fit
+  const guest5 = joinParent(rooms, "room-parent11", "Alan", 6, "g5");
+  const grants3 = rooms.assignBreakoutsBalanced(owner, {}, 14);
+  // Total assigned cannot exceed capacity of open children (4)
+  assert.equal(grants3.length, 4);
+});
+
+test("voluntary self-selection allows participant choice without elevating privileges", () => {
+  const rooms = registry();
+  const owner = joinParent(rooms, "room-parent12", "Ada", 1, "owner");
+  const guest = joinParent(rooms, "room-parent12", "Grace", 2, "g1");
+
+  const set = rooms.openBreakouts(owner, { childCount: 2, capacity: 2 }, 10);
+  const childA = set.children[0].roomId;
+
+  // Participant chooses child room voluntarily
+  const grant = rooms.chooseBreakout(guest, childA, {}, 12);
+  assert.equal(grant.childRoomId, childA);
+  assert.equal(grant.targetPeerId, guest.id);
+
+  // Guest joins child room with voluntary grant
+  const childPeer = joinChild(rooms, guest, set, childA, 15);
+  // Privileges are not elevated: peer is not creator and not owner
+  assert.equal(childPeer.creator, false);
+  assert.notEqual(rooms.peerRole(childPeer), "owner");
+  assert.throws(
+    () => rooms.assignBreakout(childPeer, { targetPeerId: "someone", childRoomId: childA }, 16),
+    admission("breakout_owner_required"),
+  );
+
+  // When child is full, voluntary choice fails closed
+  const guest2 = joinParent(rooms, "room-parent12", "Linus", 17, "g2");
+  const guest3 = joinParent(rooms, "room-parent12", "Tim", 18, "g3");
+  rooms.chooseBreakout(guest2, childA, {}, 19);
+  assert.throws(
+    () => rooms.chooseBreakout(guest3, childA, {}, 20),
+    admission("breakout_child_full"),
+  );
+});
+
+test("conflict resolution and late joins fall back to available children or reject when exhausted", () => {
+  const rooms = registry();
+  const owner = joinParent(rooms, "room-parent13", "Ada", 1, "owner");
+  const set = rooms.openBreakouts(owner, { childCount: 2, capacity: 2 }, 10);
+  const childA = set.children[0].roomId;
+  const childB = set.children[1].roomId;
+
+  // Fill childA (2 peers)
+  const guest1 = joinParent(rooms, "room-parent13", "Grace", 2, "g1");
+  const guest2 = joinParent(rooms, "room-parent13", "Linus", 3, "g2");
+  rooms.chooseBreakout(guest1, childA, {}, 12);
+  rooms.chooseBreakout(guest2, childA, {}, 12);
+
+  // Late join / conflict: guest3 prefers childA (which is full), so resolution redirects to childB
+  const guest3 = joinParent(rooms, "room-parent13", "Margaret", 4, "g3");
+  const resolvedGrant = rooms.resolveBreakoutJoin(guest3, { preferredChildRoomId: childA }, 14);
+  assert.equal(resolvedGrant.childRoomId, childB);
+
+  // Fill childB (guest3 + guest4)
+  const guest4 = joinParent(rooms, "room-parent13", "Tim", 5, "g4");
+  rooms.chooseBreakout(guest4, childB, {}, 14);
+
+  // Now both childA and childB are full; guest5 must be rejected with breakout_all_children_full
+  const guest5 = joinParent(rooms, "room-parent13", "Alan", 6, "g5");
+  assert.throws(
+    () => rooms.resolveBreakoutJoin(guest5, { preferredChildRoomId: childA }, 15),
+    admission("breakout_all_children_full"),
+  );
+});
+
+test("protocol messages for balanced assignment and voluntary choose are validated", () => {
+  const balanced = parseClientMessage(JSON.stringify({ type: "breakout-assign-balanced" }));
+  assert.deepEqual(balanced, { type: "breakout-assign-balanced" });
+  assert.throws(
+    () => parseClientMessage(JSON.stringify({ type: "breakout-assign-balanced", extra: true })),
+    (error) => error instanceof ProtocolError && error.code === "unknown_message_field",
+  );
+
+  const choose = parseClientMessage(JSON.stringify({
+    type: "breakout-choose", childRoomId: "brk-0123456789abcdef01234567",
+  }));
+  assert.deepEqual(choose, {
+    type: "breakout-choose", childRoomId: "brk-0123456789abcdef01234567",
+  });
+  assert.throws(
+    () => parseClientMessage(JSON.stringify({
+      type: "breakout-choose", childRoomId: "brk-0123456789abcdef01234567", extra: 1,
+    })),
+    (error) => error instanceof ProtocolError && error.code === "unknown_message_field",
+  );
+
+  const help = parseClientMessage(JSON.stringify({ type: "breakout-help-request" }));
+  assert.deepEqual(help, { type: "breakout-help-request" });
+  assert.throws(
+    () => parseClientMessage(JSON.stringify({ type: "breakout-help-request", text: "Help me!" })),
+    (error) => error instanceof ProtocolError && error.code === "unknown_message_field",
+  );
+});
+
+test("breakout help requests are content-free and do not grant owner auto-entry", () => {
+  const rooms = registry();
+  const owner = joinParent(rooms, "room-parent14", "Ada", 1, "owner");
+  const guest = joinParent(rooms, "room-parent14", "Grace", 2, "guest");
+
+  // Calling help request from parent room is denied
+  assert.throws(
+    () => rooms.requestBreakoutHelp(guest, 5),
+    admission("breakout_not_child_room"),
+  );
+
+  const set = rooms.openBreakouts(owner, { childCount: 1, capacity: 2 }, 10);
+  const childRoomId = set.children[0].roomId;
+  rooms.assignBreakout(owner, { targetPeerId: guest.id, childRoomId }, 12);
+  const childPeer = joinChild(rooms, guest, set, childRoomId, 15);
+
+  const help = rooms.requestBreakoutHelp(childPeer, 20);
+  assert.deepEqual(help, {
+    parentRoomId: "room-parent14",
+    childRoomId,
+    requesterPeerId: childPeer.id,
+    requestedAt: 20,
+  });
+
+  // Verify help request contains ZERO chat or media payloads
+  assert.equal("text" in help || "media" in help || "audio" in help || "video" in help, false);
+
+  // Owner is still strictly in parent room and does NOT auto-join child room
+  assert.deepEqual(rooms.members("room-parent14").map((p) => p.id), [owner.id]);
+  assert.deepEqual(rooms.members(childRoomId).map((p) => p.id), [childPeer.id]);
+});
+
+test("controlled return to parent room clears child publications without restarting capture", () => {
+  const rooms = registry();
+  const owner = joinParent(rooms, "room-parent15", "Ada", 1, "owner");
+  const guest = joinParent(rooms, "room-parent15", "Grace", 2, "guest");
+  const set = rooms.openBreakouts(owner, { childCount: 1, capacity: 2 }, 10);
+  const childRoomId = set.children[0].roomId;
+  rooms.assignBreakout(owner, { targetPeerId: guest.id, childRoomId }, 12);
+  const childPeer = joinChild(rooms, guest, set, childRoomId, 15);
+
+  // Child peer publishes camera in child room
+  rooms.setMediaState(childPeer, { source: "camera", active: true, trackId: "track-child-cam" }, 20);
+  assert.ok(rooms.publication(childPeer.id, "track-child-cam", childRoomId));
+
+  // Return to parent: leaves child room first (stopping all media)
+  rooms.leave(childPeer, 25);
+  assert.equal(rooms.publication(childPeer.id, "track-child-cam", childRoomId), null);
+  assert.deepEqual(rooms.members(childRoomId), []);
+
+  // Peer rejoins parent room
+  const returnedPeer = rooms.join("room-parent15", {}, guest.name, 26, {
+    principal: guest.principal,
+    deviceFingerprint: guest.deviceFingerprint,
+  }).peer;
+
+  // Returning peer arrives in parent with 0 publications (no auto-capture)
+  assert.equal(returnedPeer.publications.size, 0);
+  assert.equal(rooms.publication(returnedPeer.id, "track-child-cam", "room-parent15"), null);
+});
+
+test("breakout countdown and expiry based on server time clean up sets deterministically", () => {
+  const rooms = registry();
+  const owner = joinParent(rooms, "room-parent16", "Ada", 1, "owner");
+  const set = rooms.openBreakouts(owner, { childCount: 1, capacity: 2, lifetimeMs: 60_000 }, 1_000);
+
+  // Expiration is locked to server timestamp
+  assert.equal(set.expiresAt, 61_000);
+
+  // At t=30_000, set is not due
+  rooms.prune(30_000);
+  assert.ok(rooms.reservedBreakout(set.children[0].roomId));
+
+  // At t=61_001, set is expired and pruned
+  rooms.prune(61_001);
+  assert.equal(rooms.reservedBreakout(set.children[0].roomId), null);
+  assert.equal(rooms.breakoutSnapshot("room-parent16", 61_001), null);
 });

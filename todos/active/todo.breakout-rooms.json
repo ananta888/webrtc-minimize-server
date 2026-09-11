@@ -36,13 +36,13 @@
       "id": "BRK-M3",
       "title": "TURN-, Relay- und Agent-Isolation",
       "task_ids": ["BRK-004"],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "BRK-M4",
       "title": "Zuordnungspolitik und Lobby",
       "task_ids": ["BRK-005", "BRK-006"],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "BRK-M5",
@@ -97,10 +97,10 @@
     {
       "id": "BRK-004",
       "title": "TURN-, Trusted-Relay- und Media-Agent-Isolation für Breakouts festlegen",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["BRK-001"],
       "acceptance_criteria": [
         "Agenten und Relay-Kanten werden pro Child-Raum neu gewählt und können keine Nachbarpublikation abonnieren.",
@@ -111,10 +111,10 @@
     {
       "id": "BRK-005",
       "title": "Manuelle, zufällige und freiwillige Breakout-Zuordnung als austauschbare Policy entwerfen",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["BRK-002"],
       "acceptance_criteria": [
         "Jede Policy liefert eine deterministische, validierte Zuordnung ohne Überschreitung der Child-Kapazität.",
@@ -125,10 +125,10 @@
     {
       "id": "BRK-006",
       "title": "Breakout-Lobby, Countdown, Hilferuf und kontrollierte Rückkehr gestalten",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "medium",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "depends_on": ["BRK-003", "BRK-005"],
       "acceptance_criteria": [
         "Countdown basiert auf Serverzeit und bleibt bei Hintergrundtabs verständlich.",
@@ -154,24 +154,27 @@
   "critical_path_tasks": ["BRK-001", "BRK-002", "BRK-003", "BRK-004", "BRK-005", "BRK-006", "BRK-007"],
   "tasks_status_summary": {
     "total": 7,
-    "by_status": { "todo": 4, "in_progress": 0, "partial": 0, "blocked": 0, "done": 3 },
-    "progress_percent_done": 42.86,
+    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 6 },
+    "progress_percent_done": 85.71,
     "by_priority": { "P0": 5, "P1": 2, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 1, "high": 2, "critical": 4 },
-    "critical_path": { "total": 7, "done": 3, "remaining": 4 },
-    "milestones": { "total": 5, "todo": 3, "in_progress": 0, "blocked": 0, "done": 2 }
+    "critical_path": { "total": 7, "done": 6, "remaining": 1 },
+    "milestones": { "total": 5, "todo": 1, "in_progress": 0, "blocked": 0, "done": 4 }
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 4,
+    "todo_remaining": 1,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 3
+    "done": 6
   },
   "summary_notes": [
     "2026-09-11 Track aus BBB-UX-012 bis BBB-UX-018. BRK-001 Domain: eigene Child-Room-IDs, Epochen, 20er-Cap je konkretem Raum, Join ohne Grant fail-closed. BRK-002 Grants folgen. BRK-007 Nutzergates zuletzt.",
     "2026-09-11 BRK-002: Owner-Grants an Principal/Gerät/Child/Parent-Revision/Ablauf, einmal verbraucht. Child-Code ohne Grant bleibt denied. Raumwechsel folgt als BRK-003.",
-    "2026-09-11 BRK-003: Keine Parallelmembership, Child-Tickets nur mit Live-Grant, expliziter Wechsel stoppt Medien/Mesh vor Join. Leerer Parent schließt das Set nicht. BRK-007 zuletzt."
+    "2026-09-11 BRK-003: Keine Parallelmembership, Child-Tickets nur mit Live-Grant, expliziter Wechsel stoppt Medien/Mesh vor Join. Leerer Parent schließt das Set nicht. BRK-007 zuletzt.",
+    "2026-09-11 BRK-004: Isolation umgesetzt: Child-gebundene TURN-Credentials, kein automatischer Relay-Consent, Topology und Media-Agents strikt raumgebunden.",
+    "2026-09-11 BRK-005: Zuordnungspolitiken umgesetzt: manuell, balanced/random, freiwillige Wahl ohne Rechteausweitung und serverseitige Konfliktauflösung.",
+    "2026-09-11 BRK-006: Serverzeit-Countdown, inhaltsfreier Hilferuf und medienfreie kontrollierte Rückkehr umgesetzt. Nur BRK-007 Nutzergates verbleiben."
   ]
 }

@@ -28,15 +28,39 @@ import { RoomSessionService } from "../webrtc/room-session.service";
           <p class="hint">Wechsel: lokale Medien und PeerConnections werden beendet.</p>
         } @else if (breakouts.phase() === "stranded") {
           <p class="hint">Wechsel fehlgeschlagen. Keine Membership, keine Medien. Rückweg nur mit neuem Beitritt.</p>
-        } @else if (breakouts.canOpen && !breakouts.setSnapshot()) {
+        } @else if (isChildRoom()) {
+          <p class="hint">Isolierter Unterraum. Rückkehr stoppt Medien zuerst. Capture startet nicht automatisch.</p>
+          <div class="whiteboard-tools">
+            <button id="breakout-return" type="button" class="button primary compact" (click)="breakouts.returnToParent()">Zurück zum Hauptraum</button>
+            <button id="breakout-help" type="button" class="button ghost compact" (click)="breakouts.requestHelp()">Hilfe anfordern</button>
+            @if (breakouts.helpAcknowledged()) {
+              <span class="badge">Hilfe angefordert</span>
+            }
+          </div>
+        } @else if (breakouts.canOpen() && !breakouts.setSnapshot()) {
           <p class="hint">Unterräume sind vom Hauptraum getrennt. Capture startet nicht.</p>
           <button id="breakout-open" type="button" class="button ghost compact" (click)="breakouts.open()">Breakouts öffnen</button>
-        } @else if (breakouts.canOpen && children().length > 0) {
+        } @else if (breakouts.canOpen() && children().length > 0) {
           <p class="hint">Zuweisung bindet Person und Gerät. Erraten des Unterraum-Codes ersetzt keinen Grant.</p>
+          @if (breakouts.helpNotified(); as help) {
+            <div class="breakout-help-banner" role="alert">
+              <p>Hilferuf aus Raum {{ help.childRoomId.slice(-6) }}</p>
+              <button id="breakout-help-dismiss" type="button" class="button ghost compact" (click)="breakouts.dismissHelp()">Bestätigen</button>
+            </div>
+          }
           <div class="whiteboard-tools">
+            <button id="breakout-balanced" type="button" class="button ghost compact" (click)="breakouts.assignBalanced()">Ausgewogen verteilen</button>
             @for (child of children(); track child) {
               <button type="button" class="button ghost compact" [attr.id]="'breakout-child-' + child"
                 (click)="assignFirst(child)">Zu {{ child.slice(-6) }}</button>
+            }
+          </div>
+        } @else if (!breakouts.canOpen && children().length > 0) {
+          <p class="hint">Freiwillige Unterraumwahl. Beitritt erfordert Bestätigung.</p>
+          <div class="whiteboard-tools">
+            @for (child of children(); track child) {
+              <button type="button" class="button ghost compact" [attr.id]="'breakout-choose-' + child"
+                (click)="breakouts.choose(child)">{{ child.slice(-6) }} beitreten</button>
             }
           </div>
         }
@@ -50,6 +74,10 @@ export class BreakoutControlsComponent {
     readonly breakouts: BreakoutSwitchService,
     private readonly moderation: RoomModerationService,
   ) {}
+
+  isChildRoom(): boolean {
+    return this.session.roomId().startsWith("brk-");
+  }
 
   children(): string[] {
     const snapshot = this.breakouts.setSnapshot();

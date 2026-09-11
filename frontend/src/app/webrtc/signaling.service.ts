@@ -37,6 +37,8 @@ export const SERVER_MESSAGE_VERSIONS = Object.freeze({
   "breakout-set": 1,
   "breakout-assigned": 1,
   "breakout-revoked": 1,
+  "breakout-help-notified": 1,
+  "breakout-help-acknowledged": 1,
   "overlay-key": 1,
   error: 1,
 } satisfies Readonly<Record<string, number>>);
