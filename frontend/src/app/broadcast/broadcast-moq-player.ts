@@ -1,3 +1,5 @@
+import { boundedPlaybackWait } from "./bounded-playback-wait";
+
 export type MoqPlaybackMode = "auto" | "hls-only" | "diagnose-moq";
 export type MoqPlaybackLifecycle =
   "idle" | "probing" | "connecting-moq" | "playing-moq" | "falling-back"
@@ -120,6 +122,7 @@ const MOQ_PINS = Object.freeze({
 });
 const MAX_FALLBACK_WINDOW_MS = 10_000;
 const MOQ_CONNECT_TIMEOUT_MS = 5_000;
+const PLAYBACK_CLEANUP_TIMEOUT_MS = 1_000;
 const MAX_PLAYBACK_PLAN_BYTES = 16 * 1024;
 
 export class BroadcastMoqPlayerError extends Error {
@@ -196,9 +199,14 @@ export class BroadcastMoqPlayer {
   private metrics: MoqPlaybackMetrics = initialMetrics();
   private rootController: AbortController | null = null;
   private moqController: AbortController | null = null;
-  private moqSession: MoqPlaybackSession | null = null;
+  private moqOpen: Promise<MoqPlaybackSession> | null = null;
+  private moqClosing: Promise<boolean> | null = null;
+  private hlsController: AbortController | null = null;
+  private hlsClosing: Promise<void> | null = null;
+  private stopPromise: Promise<void> | null = null;
   private plan: MoqPlaybackPlan | null = null;
   private startedAt = 0;
+  private startedMonotonicAt = 0;
   private rebufferStartedAt: number | null = null;
   private fallbackPromise: Promise<void> | null = null;
   private externalSignal: AbortSignal | null = null;
@@ -229,12 +237,14 @@ export class BroadcastMoqPlayer {
     this.plan = plan;
     this.requestedMode = plan.mode;
     this.startedAt = this.clock();
+    this.startedMonotonicAt = performance.now();
     this.rootController = new AbortController();
     this.externalSignal = signal;
     this.externalAbortListener = () => void this.stop("aborted");
     signal.addEventListener("abort", this.externalAbortListener, { once: true });
     if (signal.aborted) return this.stop("aborted");
     this.setState("probing", "none", null);
+    if (this.rootController.signal.aborted) return;
 
     if (!plan.authorized) {
       this.setState("failed", "none", "playback_authorization_unavailable");
@@ -244,13 +254,26 @@ export class BroadcastMoqPlayer {
     if (plan.negotiation.transport !== "moq") return this.openHls(plan.negotiation.reasonCode);
     if (!this.probe.secureContext) return this.openHls("moq_secure_context_unavailable");
     if (!this.probe.webTransportAvailable) return this.openHls("moq_webtransport_unavailable");
-    if (!await this.probe.decodeSupported(plan.codec)) return this.openHls("moq_codec_unavailable");
+    const capability = await boundedPlaybackWait(
+      Promise.resolve().then(() => this.probe.decodeSupported(plan.codec)),
+      MOQ_CONNECT_TIMEOUT_MS, this.rootController.signal,
+    );
     if (this.rootController.signal.aborted) return;
+    if (capability.state !== "fulfilled" || capability.value !== true) {
+      return this.openHls("moq_codec_unavailable");
+    }
     await this.openMoq();
   }
 
-  async stop(reasonCode = "user_stop"): Promise<void> {
-    if (this.lifecycle === "closed") return;
+  stop(reasonCode = "user_stop"): Promise<void> {
+    if (this.stopPromise) return this.stopPromise;
+    // Install ownership before emitting or invoking any adapter callbacks.
+    this.stopPromise = Promise.resolve().then(async () => {
+      await Promise.all([
+        boundedPlaybackWait(this.closeMoq(), PLAYBACK_CLEANUP_TIMEOUT_MS),
+        boundedPlaybackWait(this.closeHls(), PLAYBACK_CLEANUP_TIMEOUT_MS),
+      ]);
+    });
     if (this.externalSignal && this.externalAbortListener) {
       this.externalSignal.removeEventListener("abort", this.externalAbortListener);
     }
@@ -258,59 +281,58 @@ export class BroadcastMoqPlayer {
     this.externalAbortListener = null;
     this.rootController?.abort(new DOMException("stop", "AbortError"));
     this.moqController?.abort(new DOMException("stop", "AbortError"));
+    this.hlsController?.abort(new DOMException("stop", "AbortError"));
     this.finishRebuffer();
-    const session = this.moqSession;
-    this.moqSession = null;
-    if (session) await session.close().catch(() => undefined);
-    await this.hls.close().catch(() => undefined);
-    this.setState("closed", "none", reasonCode);
+    this.setState("closed", "none", REASON.test(reasonCode) ? reasonCode : "user_stop");
     this.plan = null;
+    return this.stopPromise;
   }
 
   private async openMoq(): Promise<void> {
     const plan = this.plan!;
-    this.moqController = new AbortController();
-    const rootAbort = () => this.moqController?.abort(new DOMException("stop", "AbortError"));
+    const controller = new AbortController();
+    this.moqController = controller;
+    const rootAbort = () => controller.abort(new DOMException("stop", "AbortError"));
     this.rootController!.signal.addEventListener("abort", rootAbort, { once: true });
     this.setState("connecting-moq", "none", null);
-    const openPromise = this.moq.open({
-      endpointRef: plan.endpointRef,
-      namespace: plan.namespace,
-      codec: plan.codec,
-      signal: this.moqController.signal,
-      onEvent: (event) => this.handleEvent(event),
+    this.moqOpen = Promise.resolve().then(() => {
+      if (controller.signal.aborted) throw new Error("aborted");
+      return this.moq.open({
+        endpointRef: plan.endpointRef,
+        namespace: plan.namespace,
+        codec: plan.codec,
+        signal: controller.signal,
+        onEvent: (event) => this.handleEvent(event),
+      });
     });
-    void openPromise.then((session) => {
-      if (this.moqController?.signal.aborted && session?.close) void session.close();
-    }, () => undefined);
-    let timeout: ReturnType<typeof setTimeout> | null = null;
     try {
-      const session = await Promise.race([
-        openPromise,
-        new Promise<never>((_, reject) => {
-          timeout = setTimeout(() => reject(new BroadcastMoqPlayerError("moq_handshake_timeout")),
-            MOQ_CONNECT_TIMEOUT_MS);
-        }),
-      ]);
+      const result = await boundedPlaybackWait(this.moqOpen, MOQ_CONNECT_TIMEOUT_MS,
+        controller.signal);
+      if (this.rootController?.signal.aborted) return;
+      if (controller.signal.aborted) {
+        await this.fallbackPromise;
+        return;
+      }
+      if (result.state !== "fulfilled") {
+        await this.fallback(result.state === "timeout" ? "moq_handshake_timeout" : "moq_handshake_failed");
+        return;
+      }
+      const session = result.value;
       if (!session || session.quicConnected !== true || typeof session.close !== "function") {
         fail("invalid_moq_playback_session");
       }
-      if (this.moqController.signal.aborted || this.rootController?.signal.aborted) {
-        await session.close().catch(() => undefined);
-        return;
-      }
-      this.moqSession = session;
       this.setState("playing-moq", "moq", "moq_compatible");
     } catch (error) {
       if (this.rootController?.signal.aborted) return;
       await this.fallback(error instanceof BroadcastMoqPlayerError ? error.code : "moq_handshake_failed");
     } finally {
-      if (timeout !== null) clearTimeout(timeout);
       this.rootController?.signal.removeEventListener("abort", rootAbort);
     }
   }
 
   private handleEvent(event: MoqPlaybackEvent): void {
+    if (this.rootController?.signal.aborted || this.moqController?.signal.aborted
+      || !["connecting-moq", "playing-moq"].includes(this.lifecycle)) return;
     if (!event || typeof event !== "object" || !("kind" in event)
       || !Object.prototype.hasOwnProperty.call(EVENT_FIELDS, event.kind)
       || Object.keys(event).some((field) => !EVENT_FIELDS[event.kind]?.has(field))) {
@@ -329,7 +351,7 @@ export class BroadcastMoqPlayer {
         break;
       case "object-received":
         if (!Number.isSafeInteger(event.bytes) || event.bytes < 0 || event.bytes > 1_048_576) return void this.fallback("invalid_moq_event");
-        this.updateMetrics({ egressBytes: this.metrics.egressBytes + event.bytes });
+        this.updateMetrics({ egressBytes: Math.min(Number.MAX_SAFE_INTEGER, this.metrics.egressBytes + event.bytes) });
         break;
       case "object-lost": this.addBounded("objectLoss", event.count); break;
       case "group-dropped": this.addBounded("droppedGroups", event.count); break;
@@ -361,33 +383,88 @@ export class BroadcastMoqPlayer {
 
   private async fallback(reasonCode: string): Promise<void> {
     if (this.fallbackPromise) return this.fallbackPromise;
-    this.fallbackPromise = this.performFallback(reasonCode);
+    this.moqController?.abort(new DOMException("fallback", "AbortError"));
+    this.finishRebuffer();
+    this.fallbackPromise = Promise.resolve().then(() => this.performFallback(reasonCode));
     return this.fallbackPromise;
   }
 
   private async performFallback(reasonCode: string): Promise<void> {
     if (!this.plan || this.rootController?.signal.aborted) return;
-    if (this.metrics.fallbackCount >= 1 || this.clock() - this.startedAt > MAX_FALLBACK_WINDOW_MS) {
+    const closing = this.closeMoq();
+    if (this.metrics.fallbackCount >= 1 || this.remainingFallbackMs() <= 0) {
       this.setState("failed", "none", "moq_fallback_budget_exhausted");
+      await boundedPlaybackWait(closing, PLAYBACK_CLEANUP_TIMEOUT_MS);
       return;
     }
     this.updateMetrics({ fallbackCount: this.metrics.fallbackCount + 1 });
     this.setState("falling-back", "none", reasonCode);
-    this.moqController?.abort(new DOMException("fallback", "AbortError"));
-    const session = this.moqSession;
-    this.moqSession = null;
-    if (session) await session.close().catch(() => undefined);
-    await this.openHls(reasonCode);
+    const cleanup = await boundedPlaybackWait(closing,
+      Math.min(PLAYBACK_CLEANUP_TIMEOUT_MS, this.remainingFallbackMs()), this.rootController!.signal);
+    if (this.rootController?.signal.aborted) return;
+    if (cleanup.state !== "fulfilled" || !cleanup.value) {
+      this.setState("failed", "none", "moq_cleanup_unconfirmed");
+      return;
+    }
+    if (this.remainingFallbackMs() <= 0) {
+      this.setState("failed", "none", "moq_fallback_budget_exhausted");
+      return;
+    }
+    await this.openHls(reasonCode, this.remainingFallbackMs());
   }
 
-  private async openHls(reasonCode: string): Promise<void> {
+  private async openHls(reasonCode: string, budgetMs = MOQ_CONNECT_TIMEOUT_MS): Promise<void> {
     if (!this.plan || this.rootController?.signal.aborted) return;
-    try {
-      await this.hls.open(this.plan.manifestUrl, this.rootController!.signal);
+    const manifestUrl = this.plan.manifestUrl;
+    const controller = new AbortController();
+    this.hlsController = controller;
+    const opening = Promise.resolve().then(() => {
+      if (controller.signal.aborted) throw new Error("aborted");
+      return this.hls.open(manifestUrl, controller.signal);
+    });
+    // A misbehaving adapter can complete after cancellation. Re-close that
+    // late completion; never publish it as playback or open another path.
+    void opening.then(() => {
+      if (controller.signal.aborted) {
+        this.hlsClosing = (this.hlsClosing ?? Promise.resolve()).catch(() => undefined)
+          .then(() => this.hls.close());
+        void this.hlsClosing.catch(() => undefined);
+      }
+    }, () => undefined);
+    const result = await boundedPlaybackWait(opening, budgetMs, this.rootController!.signal);
+    if (this.rootController?.signal.aborted) return;
+    if (result.state === "fulfilled") {
       this.setState("playing-hls", "hls", reasonCode);
-    } catch {
-      if (!this.rootController?.signal.aborted) this.setState("failed", "none", "hls_fallback_failed");
+    } else {
+      controller.abort(new DOMException("failed", "AbortError"));
+      this.setState("failed", "none", result.state === "timeout" ? "hls_fallback_timeout" : "hls_fallback_failed");
+      await boundedPlaybackWait(this.closeHls(), PLAYBACK_CLEANUP_TIMEOUT_MS);
     }
+  }
+
+  private remainingFallbackMs(): number {
+    const elapsed = this.clock() - this.startedAt;
+    const monotonicElapsed = performance.now() - this.startedMonotonicAt;
+    return Number.isFinite(elapsed) && elapsed >= 0 && monotonicElapsed >= 0
+      ? Math.max(0, MAX_FALLBACK_WINDOW_MS - Math.max(elapsed, monotonicElapsed)) : 0;
+  }
+
+  private closeMoq(): Promise<boolean> {
+    this.moqController?.abort(new DOMException("close", "AbortError"));
+    if (!this.moqClosing) {
+      this.moqClosing = this.moqOpen
+        ? this.moqOpen.then(async (session) => {
+          if (!session || typeof session.close !== "function") return false;
+          try { await session.close(); return true; } catch { return false; }
+        }, () => true)
+        : Promise.resolve(true);
+    }
+    return this.moqClosing;
+  }
+
+  private closeHls(): Promise<void> {
+    this.hlsClosing ??= Promise.resolve().then(() => this.hls.close());
+    return this.hlsClosing;
   }
 
   private updateMetrics(patch: Partial<MoqPlaybackMetrics>): void {
@@ -396,6 +473,7 @@ export class BroadcastMoqPlayer {
   }
 
   private setState(lifecycle: MoqPlaybackLifecycle, activePath: "none" | "moq" | "hls", reasonCode: string | null): void {
+    if (this.lifecycle === "closed") return;
     this.lifecycle = lifecycle;
     this.activePath = activePath;
     this.reasonCode = reasonCode;
@@ -404,6 +482,6 @@ export class BroadcastMoqPlayer {
   }
 
   private emit(): void {
-    this.onState(this.snapshot());
+    try { this.onState(this.snapshot()); } catch { /* UI observation cannot own cleanup. */ }
   }
 }
