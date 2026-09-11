@@ -1,5 +1,15 @@
 # Bounded private Ananta TLS readiness
 
+## First completed native-adapter probe (11 September)
+
+[CI 34580977330](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34580977330)
+at `c5d8009` is the first run in which the Ananta job reached the native-v1
+proxy: dependencies and browsers 47 s, audio clock 7 s (no mirror stall),
+build and image 38 s, TURN-UDP 35 s and TURN-TCP 32 s, with the Chromium and
+Firefox dialog cases passing on both paths. One green probe does not show
+that the earlier Node-proxy startup stall is gone for good; the following
+runs are the series that has to stay green.
+
 ## First native-adapter CI probe lost to the apt mirror (11 September)
 
 `d14e9d8` and `e4963d1` were pushed 23 seconds apart, so the workflow's
