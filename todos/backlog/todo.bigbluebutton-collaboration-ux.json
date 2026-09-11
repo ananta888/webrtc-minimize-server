@@ -177,7 +177,7 @@
         {
           "id": "BBB-UX-006",
           "title": "Accessibility-, Churn- und 20-Teilnehmer-Gate für die Moderationsansicht definieren",
-          "status": "open",
+          "status": "completed",
           "priority": "P1",
           "risk": "medium",
           "scope": [
@@ -623,7 +623,7 @@
         {
           "id": "BBB-UX-024",
           "title": "Whiteboard-Rendering, Text und Import gegen aktive Inhalte härten",
-          "status": "open",
+          "status": "completed",
           "priority": "P0",
           "risk": "critical",
           "scope": [
@@ -646,7 +646,7 @@
         {
           "id": "BBB-UX-025",
           "title": "Expliziten Export sowie Accessibility- und Mehrbrowser-Gates für Whiteboards planen",
-          "status": "open",
+          "status": "completed",
           "priority": "P1",
           "risk": "high",
           "scope": [
@@ -793,7 +793,7 @@
         {
           "id": "BBB-UX-031",
           "title": "Optionale lokale Foliendecks und Präsentations-Browsermatrix erforschen",
-          "status": "open",
+          "status": "completed",
           "priority": "P2",
           "risk": "high",
           "scope": [
@@ -1156,9 +1156,9 @@
   "meta": {
     "total_items": 44,
     "by_status": {
-      "completed": 29,
+      "completed": 33,
       "partial": 4,
-      "open": 11,
+      "open": 7,
       "deferred": 0,
       "blocked": 0
     },
@@ -1169,6 +1169,7 @@
       "P3": 0
     },
     "notes": [
+      "2026-09-11 BBB-UX-006, BBB-UX-024, BBB-UX-025 und BBB-UX-031 im Track todo.whiteboard-presentation-ux.json (WPU-001..WPU-008) vollständig umgesetzt, mit Chromium-/Firefox-Gates getestet und auf https://webrtc.ananta.de live ausgerollt.",
       "2026-09-11 BBB-UX-023, BBB-UX-043 und BBB-UX-044 im Track todo.meet-interactive-collaboration.json (INT-001..INT-007) vollständig implementiert und mit Multi-Browser-E2E-Gates verifiziert.",
       "2026-09-11 BBB-UX-023, BBB-UX-043 und BBB-UX-044 nach todos/active/todo.meet-interactive-collaboration.json promoviert (Whiteboard-ACL, Shared Notes, Polling).",
       "2026-09-11 BBB-UX-021 und BBB-UX-022 nach todo.whiteboard-overlay.json (WB-005 Formen/Text, WB-006 Late-Join-Sync) promoviert.",
