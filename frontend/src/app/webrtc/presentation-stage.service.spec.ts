@@ -24,7 +24,7 @@ describe("PresentationStageService", () => {
     const activeSpeakerIds = signal<readonly string[]>([]);
 
     const media = { publications } as any;
-    const mesh = { remoteMedia, activeSpeakerIds } as any;
+    const mesh = { remoteMedia, focusRemoteMedia: remoteMedia, activeSpeakerIds } as any;
     const moderation = { presenterPeerId } as any;
     const session = { peerId, displayName } as any;
 

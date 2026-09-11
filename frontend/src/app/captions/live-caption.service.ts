@@ -37,6 +37,36 @@ export interface LiveCaptionEmission {
 export type LiveCaptionEmissionListener = (emission: LiveCaptionEmission) => void;
 export type LiveCaptionSourceStopListener = (source: CaptionAudioSource, nextEpoch: number) => void;
 
+export type CaptionOverlayPosition = "bottom" | "top";
+export type CaptionOverlayFontSize = "small" | "medium" | "large";
+
+function storedPosition(): CaptionOverlayPosition {
+  try {
+    const val = localStorage.getItem("webrtc-caption-position-v1");
+    return val === "top" ? "top" : "bottom";
+  } catch {
+    return "bottom";
+  }
+}
+
+function storedFontSize(): CaptionOverlayFontSize {
+  try {
+    const val = localStorage.getItem("webrtc-caption-size-v1");
+    return val === "small" || val === "large" ? val : "medium";
+  } catch {
+    return "medium";
+  }
+}
+
+function storedMaxLines(): number {
+  try {
+    const val = Number(localStorage.getItem("webrtc-caption-lines-v1"));
+    return Number.isInteger(val) && val >= 1 && val <= 5 ? val : 3;
+  } catch {
+    return 3;
+  }
+}
+
 function storedBoolean(key: string, defaultValue: boolean): boolean {
   try {
     const value = localStorage.getItem(key);
@@ -69,10 +99,13 @@ export class LiveCaptionService {
   readonly starting = computed(() => this.startingSources().length > 0);
   readonly error = signal("");
   readonly showOverlay = signal(storedBoolean("webrtc-caption-overlay-v1", true));
+  readonly overlayPosition = signal<CaptionOverlayPosition>(storedPosition());
+  readonly overlayFontSize = signal<CaptionOverlayFontSize>(storedFontSize());
+  readonly overlayMaxLines = signal<number>(storedMaxLines());
   readonly shareWithRoom = signal(storedBoolean("webrtc-caption-share-v1", false));
   readonly entries = this.mesh.captions;
   readonly recentEntries = computed(() => this.entries().slice(-100).reverse());
-  readonly overlayEntries = computed(() => this.entries().slice(-3));
+  readonly overlayEntries = computed(() => this.entries().slice(-this.overlayMaxLines()));
   readonly supported = computed(() => this.audioGraphFactory.supported());
   private readonly partialTexts = signal<Record<CaptionAudioSource, string>>({
     microphone: "",
@@ -115,6 +148,71 @@ export class LiveCaptionService {
     const value = enabled === true;
     this.showOverlay.set(value);
     try { localStorage.setItem("webrtc-caption-overlay-v1", String(value)); } catch { /* optional preference */ }
+  }
+
+  setOverlayPosition(position: unknown): boolean {
+    if (position !== "bottom" && position !== "top") return false;
+    this.overlayPosition.set(position);
+    try { localStorage.setItem("webrtc-caption-position-v1", position); } catch { /* best-effort */ }
+    return true;
+  }
+
+  setOverlayFontSize(size: unknown): boolean {
+    if (size !== "small" && size !== "medium" && size !== "large") return false;
+    this.overlayFontSize.set(size);
+    try { localStorage.setItem("webrtc-caption-size-v1", size); } catch { /* best-effort */ }
+    return true;
+  }
+
+  setOverlayMaxLines(lines: unknown): boolean {
+    const count = Number(lines);
+    if (!Number.isInteger(count) || count < 1 || count > 5) return false;
+    this.overlayMaxLines.set(count);
+    try { localStorage.setItem("webrtc-caption-lines-v1", String(count)); } catch { /* best-effort */ }
+    return true;
+  }
+
+  resetOverlaySettings(): void {
+    this.setOverlayPosition("bottom");
+    this.setOverlayFontSize("medium");
+    this.setOverlayMaxLines(3);
+  }
+
+  formatTranscriptText(): string {
+    const entries = this.entries();
+    if (entries.length === 0) return "";
+    const header = [
+      "# webrtc-minimize-server Untertitel-Transkript",
+      `# Exportiert am: ${new Date().toISOString()}`,
+      "# Datenschutzhinweis: Nur mit Zustimmung aller Gesprächsteilnehmer verwenden.",
+      "",
+    ];
+    const body = entries.map((entry) => {
+      const time = new Date(entry.receivedAt).toTimeString().split(" ")[0];
+      const speaker = entry.local ? "Du" : entry.author;
+      const status = entry.final ? "" : " [unvollständig]";
+      return `[${time}] ${speaker} (${entry.source}, ${entry.language}): ${entry.text}${status}`;
+    });
+    return [...header, ...body].join("\n");
+  }
+
+  downloadTranscript(): boolean {
+    const text = this.formatTranscriptText();
+    if (!text) return false;
+    try {
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `webrtc-transkript-${new Date().toISOString().slice(0, 10)}.txt`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   sourceAvailable(source: CaptionAudioSource): boolean {

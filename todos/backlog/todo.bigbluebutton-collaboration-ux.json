@@ -699,7 +699,7 @@
         {
           "id": "BBB-UX-027",
           "title": "Moderne Bühnenansicht mit Filmstreifen, Fokus, Pin und lokalem Layout bauen",
-          "status": "partial",
+          "status": "completed",
           "priority": "P1",
           "risk": "medium",
           "scope": [
@@ -723,7 +723,7 @@
         {
           "id": "BBB-UX-028",
           "title": "Präsentationsstart und Quellenwechsel an explizite Capture-Lifecycles binden",
-          "status": "open",
+          "status": "completed",
           "priority": "P0",
           "risk": "critical",
           "scope": [
@@ -746,7 +746,7 @@
         {
           "id": "BBB-UX-029",
           "title": "Präsentationsbezogene Qualitäts- und Prioritätsstrategie ergänzen",
-          "status": "open",
+          "status": "completed",
           "priority": "P1",
           "risk": "high",
           "scope": [
@@ -770,7 +770,7 @@
         {
           "id": "BBB-UX-030",
           "title": "Presenter-Handoff, Ausfall und konfliktfreie Mehrmoderatorensteuerung definieren",
-          "status": "open",
+          "status": "completed",
           "priority": "P1",
           "risk": "high",
           "scope": [
@@ -831,7 +831,7 @@
         {
           "id": "BBB-UX-032",
           "title": "Untertitel-Overlay als responsives, kontrastreiches Designsystem spezifizieren",
-          "status": "open",
+          "status": "completed",
           "priority": "P1",
           "risk": "medium",
           "scope": [
@@ -855,7 +855,7 @@
         {
           "id": "BBB-UX-033",
           "title": "Sprecher, Sprache sowie Partial-/Final-Zustand ruhig und eindeutig darstellen",
-          "status": "open",
+          "status": "completed",
           "priority": "P1",
           "risk": "medium",
           "scope": [
@@ -878,7 +878,7 @@
         {
           "id": "BBB-UX-034",
           "title": "Rein lokale Einstellungen für Schrift, Größe, Position, Zeilen und Sprecherfarben anbieten",
-          "status": "open",
+          "status": "completed",
           "priority": "P2",
           "risk": "low",
           "scope": [
@@ -925,7 +925,7 @@
         {
           "id": "BBB-UX-036",
           "title": "Flüchtigen Untertitelverlauf, Löschen und optionalen lokalen Export datenschutzgerecht entscheiden",
-          "status": "open",
+          "status": "completed",
           "priority": "P0",
           "risk": "critical",
           "scope": [
@@ -1096,9 +1096,9 @@
   "meta": {
     "total_items": 42,
     "by_status": {
-      "completed": 18,
-      "partial": 3,
-      "open": 21,
+      "completed": 26,
+      "partial": 2,
+      "open": 14,
       "deferred": 0,
       "blocked": 0
     },
@@ -1109,6 +1109,8 @@
       "P3": 0
     },
     "notes": [
+      "2026-09-11 BBB-UX-032, BBB-UX-033, BBB-UX-034, BBB-UX-036 im Track todo.caption-design.json (CAP-001..CAP-003) umgesetzt und verifiziert. CAP-004 Nutzergates zuletzt.",
+      "2026-09-11 BBB-UX-027..030 im Track todo.presentation-mode.json (PRS-001..PRS-005) umgesetzt und verifiziert. BBB-UX-032..036 nach todo.caption-design.json promoviert.",
       "2026-09-11 BBB-UX-012 bis BBB-UX-017 im Track todo.breakout-rooms.json (BRK-001..BRK-006) umgesetzt und getestet; BBB-UX-018 partial (BRK-007 User-Gate).",
       "2026-09-11 BBB-UX-001/002/007/010 nach todos/active/todo.collaboration-moderation.json promoviert. Software zuerst, Nutzer-/Safari-/Churn-Gates als COL-004 zuletzt.",
       "2026-09-11 BBB-UX-003/008/009 als COL-005/006 promoviert: FIFO-Queue, Teilnehmerliste und Owner-Clear ohne Capture. Mehrbrowser-/Safari-Gates bleiben COL-004.",

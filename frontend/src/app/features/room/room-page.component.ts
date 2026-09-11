@@ -452,6 +452,22 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     this.captions.setOverlay(enabled);
   }
 
+  setCaptionPosition(position: unknown): void {
+    this.captions.setOverlayPosition(position);
+  }
+
+  setCaptionFontSize(size: unknown): void {
+    this.captions.setOverlayFontSize(size);
+  }
+
+  setCaptionMaxLines(lines: unknown): void {
+    this.captions.setOverlayMaxLines(lines);
+  }
+
+  downloadCaptionTranscript(): void {
+    this.captions.downloadTranscript();
+  }
+
   captionModelSize(sizeBytes: number): string {
     return formatModelSize(sizeBytes);
   }

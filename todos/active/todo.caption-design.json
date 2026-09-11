@@ -1,0 +1,170 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "caption-design",
+  "purpose": "Lokale Vosk-Untertitel visuell, einstellbar und datenschutzgerecht ausbauen, ohne Audio oder Transkripte an den Server zu senden.",
+  "goal": "Lokale Darstellungseinstellungen (Position, Schriftgröße, Zeilenanzahl), kontrastreiches Overlay und datenschutzgerechter lokaler Export.",
+  "status": "in_progress",
+  "created": "2026-09-11",
+  "updated": "2026-09-11",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "user_verification_last": true,
+  "related_tracks": [
+    {
+      "repository": "webrtc-minimize-server",
+      "path": "todos/backlog/todo.bigbluebutton-collaboration-ux.json",
+      "relationship": "Promoviert BBB-UX-032, BBB-UX-033, BBB-UX-034 und BBB-UX-036. Nutzer- und Gerätegates zuletzt als CAP-004."
+    }
+  ],
+  "milestones": [
+    {
+      "id": "CAP-M1",
+      "title": "Lokale Einstellungen und Overlay-Design",
+      "task_ids": [
+        "CAP-001",
+        "CAP-002"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "CAP-M2",
+      "title": "Transkript-Export und Datenschutz",
+      "task_ids": [
+        "CAP-003"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "CAP-M3",
+      "title": "Nutzer- und Gerätegates",
+      "task_ids": [
+        "CAP-004"
+      ],
+      "status": "todo"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "CAP-001",
+      "title": "Lokale Darstellungs- und Positionseinstellungen für Untertitel definieren",
+      "status": "done",
+      "priority": "P1",
+      "risk": "low",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Rein lokale Einstellungen für Position (oben/unten), Schriftgröße (klein/mittel/groß) und Zeilenanzahl (1..5).",
+        "Einstellungen persistieren in localStorage, wirken nur im eigenen Browser und starten weder Mikrofon noch Modell.",
+        "Overlay-Einträge passen sich dynamisch der gewählten Zeilenbegrenzung an."
+      ]
+    },
+    {
+      "id": "CAP-002",
+      "title": "Responsives und kontrastreiches Untertitel-Overlay mit Barrierefreiheit gestalten",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": [
+        "CAP-001"
+      ],
+      "acceptance_criteria": [
+        "Overlay überdeckt weder Mediensteuerung noch Hand- oder Status-Badges (Safe Area oben/unten).",
+        "Kontrastreicher Hintergrund mit Lesbarkeit über Video, Screen-Share und Mosaik.",
+        "Screenreader erhalten konsistente ARIA-Live-Ausgabe ohne Wiederholungsschleifen."
+      ]
+    },
+    {
+      "id": "CAP-003",
+      "title": "Flüchtigen Untertitelverlauf und lokalen Plaintext-Export mit Datenschutzhinweis bereitstellen",
+      "status": "done",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 100,
+      "depends_on": [
+        "CAP-001"
+      ],
+      "acceptance_criteria": [
+        "Export erzeugt eine lokale formatierte Textdatei nur nach sichtbarem Benutzerklick.",
+        "Klarer Datenschutzhinweis vor dem Export erinnert an das Informieren der Gesprächspartner.",
+        "Beim Verlassen des Raums oder Session-Reset wird der flüchtige Verlauf rückstandslos bereinigt."
+      ]
+    },
+    {
+      "id": "CAP-004",
+      "title": "Nutzer- und Gerätegates für Untertitelgestaltung zuletzt ausführen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 0,
+      "depends_on": [
+        "CAP-002",
+        "CAP-003"
+      ],
+      "acceptance_criteria": [
+        "Mindestens zwei Browseridentitäten belegen lokale Erkennung, Sprecheranzeige, Styling-Wechsel und Bereinigung.",
+        "Safari/iOS, Touch und 20-Teilnehmer-Churn bleiben Nutzergates."
+      ]
+    }
+  ],
+  "critical_path_tasks": [
+    "CAP-001",
+    "CAP-002",
+    "CAP-003",
+    "CAP-004"
+  ],
+  "tasks_status_summary": {
+    "total": 4,
+    "by_status": {
+      "todo": 1,
+      "in_progress": 0,
+      "partial": 0,
+      "blocked": 0,
+      "done": 3
+    },
+    "progress_percent_done": 75,
+    "by_priority": {
+      "P0": 1,
+      "P1": 3,
+      "P2": 0,
+      "P3": 0
+    },
+    "by_risk": {
+      "low": 1,
+      "medium": 2,
+      "high": 0,
+      "critical": 1
+    },
+    "critical_path": {
+      "total": 4,
+      "done": 3,
+      "remaining": 1
+    },
+    "milestones": {
+      "total": 3,
+      "todo": 1,
+      "in_progress": 0,
+      "blocked": 0,
+      "done": 2
+    }
+  }
+}

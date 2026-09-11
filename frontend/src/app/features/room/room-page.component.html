@@ -389,7 +389,17 @@
                 </article>
               }
               @if (captions.showOverlay() && captions.overlayEntries().length > 0) {
-                <div id="live-caption-overlay" class="live-caption-overlay" aria-live="polite" aria-label="Live-Untertitel">
+                <div id="live-caption-overlay"
+                     class="live-caption-overlay"
+                     [class.position-top]="captions.overlayPosition() === 'top'"
+                     [class.position-bottom]="captions.overlayPosition() === 'bottom'"
+                     [class.font-small]="captions.overlayFontSize() === 'small'"
+                     [class.font-medium]="captions.overlayFontSize() === 'medium'"
+                     [class.font-large]="captions.overlayFontSize() === 'large'"
+                     role="region"
+                     aria-live="polite"
+                     aria-atomic="false"
+                     aria-label="Live-Untertitel">
                   @for (entry of captions.overlayEntries(); track entry.id) {
                     <p [class.partial]="!entry.final"><strong>{{ entry.local ? 'Du' : entry.author }} · {{ captionSourceLabel(entry.source) }}</strong><span>{{ entry.text }}</span></p>
                   }
@@ -544,15 +554,51 @@
             @if (!captions.supported()) { <p class="screen-audio-warning">Dieser Browser stellt AudioWorklet nicht bereit. Es erfolgt kein automatischer oder serverseitiger Fallback.</p> }
             @if (captions.selectedSource() === 'microphone' && !captions.sourceAvailable('microphone')) { <p class="hint">Starte dein Mikrofon zuerst sichtbar im Live-Raum. Diese Seite fordert selbst keine Aufnahmeberechtigung an.</p> }
             @if (captions.selectedSource() === 'screen-audio' && !captions.sourceAvailable('screen-audio')) { <p class="hint">Aktiviere Bildschirmton unter „Einstellungen → Video &amp; Bandbreite“ und teile anschließend per sichtbarem Klick einen Tab oder Bildschirm mit Ton. Ob Audio verfügbar ist, entscheidet der Browser.</p> }
-            <label class="agent-consent caption-overlay-setting">
-              <input id="caption-overlay-enabled" type="checkbox" [ngModel]="captions.showOverlay()" (ngModelChange)="setCaptionOverlay($event)">
-              <span><strong>Untertitel über dem Live-Video einblenden</strong><small>Wirkt nur auf deinem Gerät und kann jederzeit ausgeschaltet werden.</small></span>
-            </label>
+            <div class="caption-overlay-config">
+              <label class="agent-consent caption-overlay-setting">
+                <input id="caption-overlay-enabled" type="checkbox" [ngModel]="captions.showOverlay()" (ngModelChange)="setCaptionOverlay($event)">
+                <span><strong>Untertitel über dem Live-Video einblenden</strong><small>Wirkt nur auf deinem Gerät und kann jederzeit ausgeschaltet werden.</small></span>
+              </label>
+
+              @if (captions.showOverlay()) {
+                <div class="caption-overlay-options">
+                  <label>Position
+                    <select id="caption-overlay-position" [ngModel]="captions.overlayPosition()" (ngModelChange)="setCaptionPosition($event)">
+                      <option value="bottom">Unten (Standard)</option>
+                      <option value="top">Oben</option>
+                    </select>
+                  </label>
+                  <label>Schriftgröße
+                    <select id="caption-overlay-size" [ngModel]="captions.overlayFontSize()" (ngModelChange)="setCaptionFontSize($event)">
+                      <option value="small">Klein</option>
+                      <option value="medium">Mittel (Standard)</option>
+                      <option value="large">Groß</option>
+                    </select>
+                  </label>
+                  <label>Max. Zeilen
+                    <select id="caption-overlay-lines" [ngModel]="captions.overlayMaxLines()" (ngModelChange)="setCaptionMaxLines($event)">
+                      <option [value]="1">1 Zeile</option>
+                      <option [value]="2">2 Zeilen</option>
+                      <option [value]="3">3 Zeilen (Standard)</option>
+                      <option [value]="4">4 Zeilen</option>
+                      <option [value]="5">5 Zeilen</option>
+                    </select>
+                  </label>
+                </div>
+              }
+            </div>
             <p class="caption-privacy-note">Mikrofon und Bildschirmton können parallel transkribiert werden; jede Quelle lässt sich einzeln stoppen. Keine Transkriptdatei wird erzeugt. Beim Verlassen des Raums verschwinden alle Untertitel aus dem erreichbaren Browserzustand. Erkennung kann Fehler enthalten und ist keine verlässliche Gesprächsdokumentation.</p>
           </section>
 
           <section class="surface caption-transcript-card" aria-labelledby="caption-transcript-heading">
-            <div class="owned-agent-heading"><div><p class="eyebrow">Flüchtiger Raumzustand</p><h2 id="caption-transcript-heading">Untertitelverlauf</h2></div><button id="clear-captions" class="text-action" type="button" [disabled]="captions.entries().length === 0" (click)="captions.clear()">Leeren</button></div>
+            <div class="owned-agent-heading">
+              <div><p class="eyebrow">Flüchtiger Raumzustand</p><h2 id="caption-transcript-heading">Untertitelverlauf</h2></div>
+              <div class="transcript-actions">
+                <button id="download-caption-transcript" class="button ghost compact" type="button" [disabled]="captions.entries().length === 0" (click)="downloadCaptionTranscript()">Transkript herunterladen (.txt)</button>
+                <button id="clear-captions" class="text-action" type="button" [disabled]="captions.entries().length === 0" (click)="captions.clear()">Leeren</button>
+              </div>
+            </div>
+            <p id="caption-export-privacy-note" class="caption-privacy-note">Datenschutzhinweis: Vor dem Herunterladen bitte alle Gesprächspartner informieren und deren Einverständnis einholen. Das Transkript wird rein lokal auf deinem Gerät erstellt und nicht auf dem Server gespeichert.</p>
             <div id="caption-transcript" class="caption-transcript" aria-live="polite">
               @for (entry of captions.recentEntries(); track entry.id) {
                 <article [class.partial]="!entry.final" [class.local]="entry.local">

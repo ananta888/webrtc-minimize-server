@@ -20,7 +20,7 @@ export class PresentationStageService {
   readonly stageLayout = computed<StageLayoutResult>(() => {
     const options: StageLayoutOptions = {
       localPublications: this.media.publications(),
-      remoteMedia: this.mesh.remoteMedia(),
+      remoteMedia: typeof this.mesh.focusRemoteMedia === "function" ? this.mesh.focusRemoteMedia() : this.mesh.remoteMedia(),
       ownPeerId: this.session.peerId(),
       ownPeerName: this.session.displayName(),
       presenterPeerId: this.moderation.presenterPeerId(),

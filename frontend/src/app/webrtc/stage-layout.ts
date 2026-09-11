@@ -155,8 +155,8 @@ export function computeStageLayout(options: StageLayoutOptions): StageLayoutResu
     selectedStageItem = allItems[0];
   }
 
-  // If auto and only 1 or 2 cameras and no pin, presenter or screen, grid is better unless stage requested
-  const isNaturalGrid = preference === "auto" && !hasScreenShare && pin === "" && presenter === "" && allItems.length <= 2;
+  // If auto and no pin, presenter or screen, grid is standard unless stage explicitly requested
+  const isNaturalGrid = preference === "auto" && !hasScreenShare && pin === "" && presenter === "";
   if (isNaturalGrid) {
     return {
       mode: "grid",

@@ -120,7 +120,11 @@ describe("Room page information architecture", () => {
     expect(template).toContain("captions.sourceAvailable(captions.selectedSource())");
     expect(template).toContain("entry.sharedWithRoom");
     expect(template).toContain("filteredCaptionModels()");
-    expect(template).toContain("Starte dein Mikrofon zuerst sichtbar im Live-Raum");
+    expect(template).toContain('id="caption-overlay-position"');
+    expect(template).toContain('id="caption-overlay-size"');
+    expect(template).toContain('id="caption-overlay-lines"');
+    expect(template).toContain('id="download-caption-transcript"');
+    expect(template).toContain('id="caption-export-privacy-note"');
     expect(captionCatalog).toContain("VOSK_BROWSER_SOURCE_REVISION");
     expect(captionCatalog).toContain('"vi-vn-small-0.3"');
     expect(captionService).toContain("this.media.microphoneTrack()");
@@ -128,8 +132,14 @@ describe("Room page information architecture", () => {
     expect(captionService).toContain("registerMicrophoneStopListener");
     expect(captionService).toContain("registerScreenAudioStopListener");
     expect(captionService).toContain("this.shareWithRoom()");
+    expect(captionService).toContain("formatTranscriptText()");
+    expect(captionService).toContain("downloadTranscript()");
     expect(captionService).not.toContain("getUserMedia");
     expect(captionService).not.toContain("getDisplayMedia");
+    expect(component).toContain("this.captions.setOverlayPosition(");
+    expect(component).toContain("this.captions.setOverlayFontSize(");
+    expect(component).toContain("this.captions.setOverlayMaxLines(");
+    expect(component).toContain("this.captions.downloadTranscript()");
     expect(component).not.toContain("getUserMedia");
     expect(component).not.toContain("getDisplayMedia");
   });

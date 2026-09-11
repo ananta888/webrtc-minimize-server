@@ -31,11 +31,12 @@ function fixture(options: { microphone?: boolean; screenAudio?: boolean; modelRe
     }),
   };
   const sendCaption = vi.fn(() => true);
+  const captionsSignal = signal<unknown[]>([]);
   const mesh = {
     participantCount: signal(options.participants ?? 2),
-    captions: signal([]),
+    captions: captionsSignal,
     sendCaption,
-    clearCaptions: vi.fn(),
+    clearCaptions: vi.fn(() => captionsSignal.set([])),
   };
   const recognizers: FakeRecognizer[] = [];
   const createRecognizer = () => {
@@ -249,5 +250,138 @@ describe("LiveCaptionService", () => {
     expect(close).toHaveBeenCalledOnce(); expect(emitted).not.toHaveBeenCalled();
     expect(test.models.createRecognizer).not.toHaveBeenCalled(); expect(test.service.active()).toBe(false);
     test.service.destroy();
+  });
+
+  it("manages overlay position, font size, and max lines preferences", () => {
+    const test = fixture();
+    expect(test.service.overlayPosition()).toBe("bottom");
+    expect(test.service.overlayFontSize()).toBe("medium");
+    expect(test.service.overlayMaxLines()).toBe(3);
+
+    expect(test.service.setOverlayPosition("top")).toBe(true);
+    expect(test.service.overlayPosition()).toBe("top");
+    expect(localStorage.getItem("webrtc-caption-position-v1")).toBe("top");
+    expect(test.service.setOverlayPosition("invalid")).toBe(false);
+    expect(test.service.overlayPosition()).toBe("top");
+
+    expect(test.service.setOverlayFontSize("large")).toBe(true);
+    expect(test.service.overlayFontSize()).toBe("large");
+    expect(localStorage.getItem("webrtc-caption-size-v1")).toBe("large");
+    expect(test.service.setOverlayFontSize("huge")).toBe(false);
+
+    expect(test.service.setOverlayMaxLines(5)).toBe(true);
+    expect(test.service.overlayMaxLines()).toBe(5);
+    expect(localStorage.getItem("webrtc-caption-lines-v1")).toBe("5");
+    expect(test.service.setOverlayMaxLines(0)).toBe(false);
+    expect(test.service.setOverlayMaxLines(6)).toBe(false);
+    expect(test.service.setOverlayMaxLines("invalid")).toBe(false);
+
+    test.service.resetOverlaySettings();
+    expect(test.service.overlayPosition()).toBe("bottom");
+    expect(test.service.overlayFontSize()).toBe("medium");
+    expect(test.service.overlayMaxLines()).toBe(3);
+  });
+
+  it("limits overlay entries to the configured max lines", () => {
+    const test = fixture();
+    const entries = [1, 2, 3, 4, 5].map((i) => ({
+      id: `caption-${i}`,
+      peerId: "p1",
+      author: "Alice",
+      language: "de-DE",
+      text: `Zeile ${i}`,
+      final: true,
+      local: false,
+      source: "microphone" as const,
+      sharedWithRoom: true,
+      receivedAt: Date.now(),
+    }));
+    test.mesh.captions.set(entries as never);
+
+    test.service.setOverlayMaxLines(2);
+    expect(test.service.overlayEntries()).toHaveLength(2);
+    expect(test.service.overlayEntries()[0].text).toBe("Zeile 4");
+    expect(test.service.overlayEntries()[1].text).toBe("Zeile 5");
+
+    test.service.setOverlayMaxLines(4);
+    expect(test.service.overlayEntries()).toHaveLength(4);
+    expect(test.service.overlayEntries()[0].text).toBe("Zeile 2");
+  });
+
+  it("formats transcript text with privacy disclaimer and speaker metadata", () => {
+    const test = fixture();
+    expect(test.service.formatTranscriptText()).toBe("");
+
+    const now = new Date("2026-09-11T12:00:00Z").getTime();
+    test.mesh.captions.set([
+      {
+        id: "c1",
+        peerId: "p-local",
+        author: "Du",
+        language: "de-DE",
+        text: "Hallo allerseits",
+        final: true,
+        local: true,
+        source: "microphone",
+        sharedWithRoom: true,
+        receivedAt: now,
+      },
+      {
+        id: "c2",
+        peerId: "p-remote",
+        author: "Bob",
+        language: "de-DE",
+        text: "Moin moin",
+        final: false,
+        local: false,
+        source: "screen-audio",
+        sharedWithRoom: true,
+        receivedAt: now + 5000,
+      },
+    ] as never);
+
+    const formatted = test.service.formatTranscriptText();
+    expect(formatted).toContain("# webrtc-minimize-server Untertitel-Transkript");
+    expect(formatted).toContain("# Datenschutzhinweis: Nur mit Zustimmung aller Gesprächsteilnehmer verwenden.");
+    expect(formatted).toContain("Du (microphone, de-DE): Hallo allerseits");
+    expect(formatted).toContain("Bob (screen-audio, de-DE): Moin moin [unvollständig]");
+  });
+
+  it("downloads local transcript via blob and revokes object URL", () => {
+    const test = fixture();
+    expect(test.service.downloadTranscript()).toBe(false);
+
+    test.mesh.captions.set([
+      {
+        id: "c1",
+        peerId: "p1",
+        author: "Du",
+        language: "de-DE",
+        text: "Testausgabe",
+        final: true,
+        local: true,
+        source: "microphone",
+        sharedWithRoom: false,
+        receivedAt: Date.now(),
+      },
+    ] as never);
+
+    const createObjectURL = vi.fn(() => "blob:https://localhost/transcript-123");
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
+
+    const appendChild = vi.spyOn(document.body, "appendChild");
+    const removeChild = vi.spyOn(document.body, "removeChild");
+
+    expect(test.service.downloadTranscript()).toBe(true);
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:https://localhost/transcript-123");
+    expect(appendChild).toHaveBeenCalledOnce();
+    expect(removeChild).toHaveBeenCalledOnce();
+
+    test.service.clear();
+    expect(test.mesh.clearCaptions).toHaveBeenCalled();
+    expect(test.service.formatTranscriptText()).toBe("");
   });
 });

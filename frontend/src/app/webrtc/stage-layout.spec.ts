@@ -84,6 +84,33 @@ describe("computeStageLayout", () => {
     expect(layout.allVideoItems).toHaveLength(2);
   });
 
+  it("selects grid mode for many cameras with auto preference when no screen/pin/presenter", () => {
+    const localCamera: LocalMediaView = {
+      source: "camera",
+      stream: mockStream(),
+      kind: "video",
+    };
+    const remoteCameras: RemoteMediaView[] = [1, 2, 3, 4, 5].map((i) => ({
+      key: `rem-cam-${i}`,
+      peerId: `p${i}`,
+      peerName: `Peer ${i}`,
+      source: "camera" as const,
+      kind: "video" as const,
+      stream: mockStream(),
+      transportPeerId: `p${i}`,
+    }));
+
+    const layout = computeStageLayout({
+      localPublications: [localCamera],
+      remoteMedia: remoteCameras,
+      ownPeerId: "local1",
+      preferredView: "auto",
+    });
+    expect(layout.mode).toBe("grid");
+    expect(layout.stageItem).toBeNull();
+    expect(layout.allVideoItems).toHaveLength(6);
+  });
+
   it("switches to stage mode screen-first when any screen is shared", () => {
     const localCamera: LocalMediaView = {
       source: "camera",
