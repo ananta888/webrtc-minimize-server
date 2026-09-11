@@ -989,7 +989,7 @@
         {
           "id": "BBB-UX-043",
           "title": "Flüchtiges kollaboratives Textpad (Shared Notes) über den Data-Overlay bereitstellen",
-          "status": "open",
+          "status": "completed",
           "priority": "P1",
           "risk": "medium",
           "scope": [
@@ -1011,7 +1011,7 @@
         {
           "id": "BBB-UX-044",
           "title": "Inhaltsfreie In-Meeting-Umfragen (Polling) mit anonymer Aggregation und Ergebnisveröffentlichung umsetzen",
-          "status": "open",
+          "status": "completed",
           "priority": "P1",
           "risk": "medium",
           "scope": [
@@ -1156,9 +1156,9 @@
   "meta": {
     "total_items": 44,
     "by_status": {
-      "completed": 27,
+      "completed": 29,
       "partial": 4,
-      "open": 13,
+      "open": 11,
       "deferred": 0,
       "blocked": 0
     },
@@ -1169,6 +1169,7 @@
       "P3": 0
     },
     "notes": [
+      "2026-09-11 BBB-UX-023, BBB-UX-043 und BBB-UX-044 im Track todo.meet-interactive-collaboration.json (INT-001..INT-007) vollständig implementiert und mit Multi-Browser-E2E-Gates verifiziert.",
       "2026-09-11 BBB-UX-023, BBB-UX-043 und BBB-UX-044 nach todos/active/todo.meet-interactive-collaboration.json promoviert (Whiteboard-ACL, Shared Notes, Polling).",
       "2026-09-11 BBB-UX-021 und BBB-UX-022 nach todo.whiteboard-overlay.json (WB-005 Formen/Text, WB-006 Late-Join-Sync) promoviert.",
       "2026-09-11 BBB-UX-032, BBB-UX-033, BBB-UX-034, BBB-UX-036 im Track todo.caption-design.json (CAP-001..CAP-003) umgesetzt und verifiziert. CAP-004 Nutzergates zuletzt.",

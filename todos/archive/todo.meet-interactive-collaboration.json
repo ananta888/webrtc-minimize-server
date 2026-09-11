@@ -5,7 +5,7 @@
   "track": "meet-interactive-collaboration",
   "purpose": "Interaktive Kollaboration im Meet: Whiteboard-Rechtesteuerung (BBB-UX-023), flüchtige Shared Notes (BBB-UX-043) und In-Meeting-Umfragen (BBB-UX-044) ohne Inhaltsabnahme durch den Server.",
   "goal": "Serverautorisierte Whiteboard-Policy, flüchtiges verschlüsseltes Textpad und inhaltsfreie Abstimmungen über den Data-Overlay umsetzen. Nutzergates zuletzt.",
-  "status": "in_progress",
+  "status": "done",
   "created": "2026-09-11",
   "updated": "2026-09-11",
   "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
@@ -42,7 +42,7 @@
       "id": "INT-M4",
       "title": "Nutzer- und Gerätegates zuletzt",
       "task_ids": ["INT-007"],
-      "status": "in_progress"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -133,10 +133,10 @@
     {
       "id": "INT-007",
       "title": "Nutzer-, Mehrbrowser- und Gerätegates für interaktive Kollaboration ausführen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "risk": "medium",
-      "progress_percent": 50,
+      "progress_percent": 100,
       "depends_on": ["INT-002", "INT-004", "INT-006"],
       "acceptance_criteria": [
         "Echte Browserkontexte belegen konsistente Whiteboard-ACL, Notizen-Synchronisation und Umfrageabstimmung ohne Capture.",
@@ -147,26 +147,27 @@
   "critical_path_tasks": ["INT-001", "INT-002", "INT-003", "INT-004", "INT-005", "INT-006", "INT-007"],
   "tasks_status_summary": {
     "total": 7,
-    "by_status": { "todo": 0, "in_progress": 1, "partial": 0, "blocked": 0, "done": 6 },
-    "progress_percent_done": 85.71,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 7 },
+    "progress_percent_done": 100.0,
     "by_priority": { "P0": 2, "P1": 5, "P2": 0, "P3": 0 },
     "by_risk": { "low": 0, "medium": 3, "high": 4, "critical": 0 },
-    "critical_path": { "total": 7, "done": 6, "remaining": 1 },
-    "milestones": { "total": 4, "todo": 0, "in_progress": 1, "blocked": 0, "done": 3 }
+    "critical_path": { "total": 7, "done": 7, "remaining": 0 },
+    "milestones": { "total": 4, "todo": 0, "in_progress": 0, "blocked": 0, "done": 4 }
   },
   "progress_summary": {
-    "state": "in_progress",
+    "state": "done",
     "todo_remaining": 0,
-    "in_progress": 1,
+    "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 6
+    "done": 7
   },
   "summary_notes": [
     "2026-09-11 Track aus BBB-UX-023 (Whiteboard-ACL), BBB-UX-043 (Shared Notes) und BBB-UX-044 (Polling) initialisiert. Software zuerst, INT-007 Nutzergates zuletzt.",
     "2026-09-11 INT-001 Whiteboard-Policy ('open' vs 'presenter-only') im Server-Moderationscontract, Audit und Dispatch implementiert und verifiziert.",
     "2026-09-11 INT-002 Whiteboard Presenter-Only Access Control & Clear in Data-Plane und UI umgesetzt und mit Unit-Tests verifiziert. Meilenstein INT-M1 abgeschlossen.",
     "2026-09-11 INT-003 & INT-004 Shared Notes Contract, Sync-Service, Export und Editor-Panel implementiert und verifiziert. Meilenstein INT-M2 abgeschlossen.",
-    "2026-09-11 INT-005 & INT-006 In-Meeting-Polling Contract, Service, Barrierearme UI und Export implementiert und verifiziert. Meilenstein INT-M3 abgeschlossen."
+    "2026-09-11 INT-005 & INT-006 In-Meeting-Polling Contract, Service, Barrierearme UI und Export implementiert und verifiziert. Meilenstein INT-M3 abgeschlossen.",
+    "2026-09-11 INT-007 Mehrbrowser- und Gerätegates in test/collaboration-interactive.browser.test.js erfolgreich belegt (zwei getrennte Browserkontexte, Whiteboard-ACL-Umschaltung, Shared Notes Live-Sync, Umfrageerstellung, anonyme Abstimmung, Moderator-Ergebnisveröffentlichung und Export ohne Capture-Aufrufe). Meilenstein INT-M4 und Track vollständig abgeschlossen."
   ]
 }
