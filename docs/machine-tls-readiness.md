@@ -1,5 +1,26 @@
 # Bounded private Ananta TLS readiness
 
+## First native-adapter CI probe lost to the apt mirror (11 September)
+
+`d14e9d8` and `e4963d1` were pushed 23 seconds apart, so the workflow's
+`cancel-in-progress` grouping produced one run, [CI 34578116825](https://github.com/ananta888/webrtc-minimize-server/actions/runs/34578116825),
+for the native adapter. All other jobs passed. The Ananta job was cancelled by
+its own ten-minute limit inside "Provide a synthetic Firefox audio clock":
+dependencies and browsers had installed in 44 seconds, but the Azure Ubuntu
+mirror stalled twice for about five minutes each (`Ign:2 libfftw3-single3`
+at 08:18:25, `Ign:3 liborc-0.4-0t64` at 08:23:24). The build, the native
+image and both dialog tests were skipped. **The native-v1 proxy therefore has
+no CI observation yet**; this sample says nothing about it.
+
+The two apt-backed steps now carry their own step limits (four and two
+minutes) and each `apt-get` call uses `Acquire::Retries=2` with 20-second
+transfer timeouts, so a hung mirror fails the named step early and visibly
+rather than silently consuming the readiness budget. The job limit, the
+five-second TLS deadline, container limits and the dialog tests are
+unchanged; this does not add a retry of the proxy or of any browser test.
+The next completed run of the same job is the first actual native-adapter
+probe.
+
 ## Explicit native test-proxy adapter (11 September)
 
 `MEET_TEST_PROXY_ENGINE=native-v1` selects a small statically linked Go

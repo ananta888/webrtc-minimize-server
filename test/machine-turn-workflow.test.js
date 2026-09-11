@@ -25,6 +25,25 @@ test("Ananta TURN TCP remains independent of UDP failure without bypassing setup
   assert.ok(job.steps.indexOf(transport("turn-udp")) < job.steps.indexOf(transport("turn-tcp")));
 });
 
+test("apt-backed setup steps fail within their own bound instead of consuming the job budget", () => {
+  // CI 34578116825 lost nine of ten minutes to a hung apt mirror before the proxy ever started.
+  const install = job.steps.find(step => step.name === "Install dependencies and browsers");
+  const audio = job.steps.find(step => step.name === "Provide a synthetic Firefox audio clock");
+  assert.equal(install["timeout-minutes"], 4);
+  assert.equal(audio["timeout-minutes"], 2);
+  assert.ok(install["timeout-minutes"] + audio["timeout-minutes"] < job["timeout-minutes"]);
+  const aptCalls = audio.run.split("\n").filter(line => /apt-get/.test(line));
+  assert.equal(aptCalls.length, 2);
+  for (const call of aptCalls) {
+    assert.match(call, /-o Acquire::Retries=2 /);
+    assert.match(call, /-o Acquire::http::Timeout=20 /);
+    assert.match(call, /-o Acquire::https::Timeout=20 /);
+  }
+  for (const step of job.steps) {
+    if (step !== install && step !== audio) assert.equal(step["timeout-minutes"], undefined);
+  }
+});
+
 test("both Ananta TURN paths retain strict real-browser gates and the bounded job", () => {
   assert.equal(job["timeout-minutes"], 10);
   assert.equal(job["continue-on-error"], undefined);

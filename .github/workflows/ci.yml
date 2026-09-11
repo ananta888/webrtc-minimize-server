@@ -93,13 +93,18 @@ jobs:
           node-version: 22
           cache: npm
       - name: Install dependencies and browsers
+        # Playwright's --with-deps also runs apt; a hung mirror must fail this
+        # step visibly instead of silently consuming the whole job budget.
+        timeout-minutes: 4
         run: |
           npm ci
           npx playwright install --with-deps chromium firefox
       - name: Provide a synthetic Firefox audio clock
+        timeout-minutes: 2
         run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y pulseaudio pulseaudio-utils
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 \
+            install --no-install-recommends -y pulseaudio pulseaudio-utils
           pulseaudio -n --daemonize=yes --exit-idle-time=-1 \
             --load="module-native-protocol-unix" \
             --load="module-null-sink sink_name=webrtc_ci_audio rate=48000 channels=2"
