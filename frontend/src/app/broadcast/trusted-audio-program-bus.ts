@@ -2,6 +2,7 @@ import { InjectionToken, Injectable, signal } from "@angular/core";
 
 import { BroadcastBrowserPortError, BroadcastProgramRef } from "./broadcast-ports";
 import { boundedBroadcastMediaStart } from "./broadcast-media-start";
+import { trustedAudioRouteAllowed } from "./trusted-audio-routing";
 
 export type TrustedAudioProgramProfileId = "speech" | "balanced" | "music";
 export type TrustedAudioProgramPriority = "speech" | "screen-audio" | "balanced";
@@ -179,6 +180,7 @@ export class BrowserTrustedAudioProgramBusFactory implements TrustedAudioProgram
       limiter.connect(outputMeter);
       outputMeter.connect(destination);
       if (monitoringMode === "headphones") {
+        if (!trustedAudioRouteAllowed("program", "monitor")) fail("invalid_trusted_audio_route");
         monitorGain = context.createGain();
         monitorGain.gain.value = 0.65;
         limiter.connect(monitorGain);

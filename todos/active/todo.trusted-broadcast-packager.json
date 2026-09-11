@@ -478,6 +478,8 @@
     },
     {
       "id": "TBP-014",
+      "audio_route_fence_plan": "2026-09-11: Monitor darf nicht ins Mikrofon/Program zurueck. Geschlossene Route-Funktion, Headphones nur program->monitor. Physischer Echo-Test bleibt offen.",
+      "audio_route_fence_result": "2026-09-11: trustedAudioRouteAllowed; Monitor/Talkback nicht in Capture/Program. Headphones-Zweig prueft die Route. 1 Vitest PASS. TBP-014 90 -> 91 in_progress. Kein Push.",
 
       "calibration_jitter_result": "2026-09-11: test/helpers/native-audio-frequency.mjs STABLE_LEVEL_TOLERANCE .05 mit Evidenzkommentar; neue Regression 'baseline wait tolerates decoded-tone jitter' gegen .02 FAIL (20 PASS/1 FAIL), mit .05 21 PASS; Rampentest bleibt PASS (verwirft weiterhin). Reale Browserlaeufe lokal nach Aenderung: gain/mute 66,7 s, balanced+speech-first 72,6 s, screen-first+unprocessed 81,4 s, 3 PASS/0 FAIL in 221 s inklusive Widerruf/erhaltenem Mikrofon/Stop; zweiter Einzellauf screen-first ebenfalls PASS. docs/native-audio-baseline-calibration.md Abschnitt 'Belegter Messjitter statt Rampe'. Lokaler Einzelhost-Nachweis; gemeinsame CI des Commits und realer Kopfhoerer-/Lautsprecher-/Bluetooth-Test bleiben offen. TBP-014 bleibt 90 in_progress, Summen unveraendert.",
 
@@ -531,7 +533,7 @@
       "status": "in_progress",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 90,
+      "progress_percent": 91,
       "depends_on": ["TBP-010", "TBP-013"],
       "acceptance_criteria": [
         "Der Packager mischt nur autorisierte Mikrofon-, Systemaudio- und optional freigegebene Remotequellen in einen getrennten Programmbus; lokales Monitoring speist nicht erneut in Mikrofon oder Screen-Audio ein.",
@@ -1195,11 +1197,13 @@
     },
     {
       "id": "TBP-039",
+      "origin_load_profile_plan": "2026-09-11: Geschlossenes Origin-only Lastprofil ohne Produktmaximum und ohne runtimeVerified true.",
+      "origin_load_profile_result": "2026-09-11: normalizeBroadcastLoadProfile origin-llhls, 1 Publisher, 1-20 Room, 1-50 Origin-Viewer Planung, runtimeVerified false Pflicht. CDN/51 Viewer deny. 1 Node-Test PASS. TBP-039 55 -> 58 in_progress. Kein Push.",
       "title": "Last-, Langzeit-, Qualitäts-, Chaos- und Kosten-Gates durchführen",
       "status": "in_progress",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 55,
+      "progress_percent": 58,
       "depends_on": ["TBP-020", "TBP-023", "TBP-024", "TBP-027", "TBP-033", "TBP-034", "TBP-035", "TBP-037", "TBP-038"],
       "acceptance_criteria": [
         "Reproduzierbare Profile testen mindestens einen Publisher plus 20 interaktive Room-Mitglieder sowie abgestufte Zuschauerlasten am Origin und über CDN, ohne eine unbelegte konkrete Maximalzahl als Produktgarantie zu veröffentlichen.",
