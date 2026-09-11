@@ -40,10 +40,38 @@ export function undoOwnWhiteboardOperations(
   const next = [...ops];
   while (next.length > 0 && next[next.length - 1].authorPeerId === ownPeerId) {
     const last = next.pop()!;
-    if (last.kind === "stroke-begin" || last.kind === "erase" || last.kind === "clear") break;
+    if (
+      last.kind === "stroke-begin" ||
+      last.kind === "erase" ||
+      last.kind === "clear" ||
+      last.kind === "shape" ||
+      last.kind === "text"
+    ) {
+      break;
+    }
   }
   return Object.freeze(next);
 }
+
+export function boundSyncOps(
+  ops: readonly WhiteboardOperation[],
+  maxOps = 64,
+  maxBytes = 11 * 1024,
+): readonly WhiteboardOperation[] {
+  const result: WhiteboardOperation[] = [];
+  let currentBytes = 100;
+  for (let i = ops.length - 1; i >= 0 && result.length < maxOps; i--) {
+    const op = ops[i];
+    if (op.kind === "sync-request" || op.kind === "sync-response") continue;
+    const opBytes = JSON.stringify(op).length;
+    if (currentBytes + opBytes > maxBytes) break;
+    result.unshift(op);
+    currentBytes += opBytes;
+  }
+  return Object.freeze(result);
+}
+
+
 
 export function ownerPeerIds(participants: readonly { peerId: string; role: string }[]): ReadonlySet<string> {
   return new Set(participants.filter((item) => item.role === "owner").map((item) => item.peerId));

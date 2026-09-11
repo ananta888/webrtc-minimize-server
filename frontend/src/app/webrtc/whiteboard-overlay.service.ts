@@ -12,6 +12,7 @@ import {
 } from "./whiteboard-contract";
 import {
   appendWhiteboardOperation,
+  boundSyncOps,
   ingestWhiteboardDelivery,
   ownerPeerIds,
   undoOwnWhiteboardOperations,
@@ -28,6 +29,7 @@ export class WhiteboardOverlayService {
   readonly canClear = computed(() => this.session.joined() && this.moderation.ownRole() === "owner");
   private lastDelivery = 0;
   private seen = new Set<string>();
+  private hasRequestedSync = false;
 
   constructor(
     private readonly mesh: PeerMeshService,
@@ -46,6 +48,10 @@ export class WhiteboardOverlayService {
         this.lastDelivery = item.id;
         this.ingest(item);
       }
+      if (!this.hasRequestedSync && this.ops().length === 0 && this.mesh.peerChoices().length > 0) {
+        this.hasRequestedSync = true;
+        this.requestSync();
+      }
     });
   }
 
@@ -57,6 +63,43 @@ export class WhiteboardOverlayService {
       seen: this.seen,
     });
     if (!operation) return false;
+
+    if (operation.kind === "sync-request") {
+      this.seen.add(operation.opId);
+      if (this.shouldRespondToSync()) {
+        const opsToSync = boundSyncOps(this.ops());
+        if (opsToSync.length > 0) {
+          const responseOp = parseWhiteboardOperation({
+            version: 1,
+            type: "whiteboard-op",
+            opId: opId(),
+            membershipEpoch: this.mesh.membershipEpoch(),
+            authorPeerId: this.session.peerId(),
+            kind: "sync-response",
+            payload: { ops: opsToSync },
+          });
+          if (responseOp) {
+            const bytes = encodeWhiteboardOperation(responseOp);
+            void this.mesh.sendOverlayData(delivery.originPeerId, bytes, "event");
+          }
+        }
+      }
+      return true;
+    }
+
+    if (operation.kind === "sync-response") {
+      this.seen.add(operation.opId);
+      const incomingOps = (operation.payload["ops"] as readonly WhiteboardOperation[]) || [];
+      for (const item of incomingOps) {
+        if (this.seen.has(item.opId)) continue;
+        if (item.kind === "sync-request" || item.kind === "sync-response") continue;
+        if (item.kind === "clear" && !ownerPeerIds(this.moderation.participants()).has(item.authorPeerId)) continue;
+        this.seen.add(item.opId);
+        this.ops.update((items) => appendWhiteboardOperation(items, item));
+      }
+      return true;
+    }
+
     if (operation.kind === "clear" && !ownerPeerIds(this.moderation.participants()).has(operation.authorPeerId)) {
       return false;
     }
@@ -67,6 +110,7 @@ export class WhiteboardOverlayService {
 
   publish(kind: WhiteboardKind, payload: WhiteboardOperation["payload"]): boolean {
     if (!this.session.joined() || this.mesh.membershipEpoch() < 1) return false;
+    if (kind === "sync-request" || kind === "sync-response") return false;
     if (kind === "clear" && this.moderation.ownRole() !== "owner") return false;
     const operation = parseWhiteboardOperation({
       version: 1, type: "whiteboard-op", opId: opId(), membershipEpoch: this.mesh.membershipEpoch(),
@@ -75,6 +119,27 @@ export class WhiteboardOverlayService {
     if (!operation) return false;
     this.seen.add(operation.opId);
     this.ops.update((items) => appendWhiteboardOperation(items, operation));
+    const bytes = encodeWhiteboardOperation(operation);
+    for (const peer of this.mesh.peerChoices()) {
+      if (this.mesh.machineReceive.isMachine(peer.id)) continue;
+      void this.mesh.sendOverlayData(peer.id, bytes, "event");
+    }
+    return true;
+  }
+
+  requestSync(): boolean {
+    if (!this.session.joined() || this.mesh.membershipEpoch() < 1) return false;
+    const operation = parseWhiteboardOperation({
+      version: 1,
+      type: "whiteboard-op",
+      opId: opId(),
+      membershipEpoch: this.mesh.membershipEpoch(),
+      authorPeerId: this.session.peerId(),
+      kind: "sync-request",
+      payload: {},
+    });
+    if (!operation) return false;
+    this.seen.add(operation.opId);
     const bytes = encodeWhiteboardOperation(operation);
     for (const peer of this.mesh.peerChoices()) {
       if (this.mesh.machineReceive.isMachine(peer.id)) continue;
@@ -97,6 +162,15 @@ export class WhiteboardOverlayService {
     this.ops.set([]);
     this.seen.clear();
     this.lastDelivery = 0;
+    this.hasRequestedSync = false;
+  }
+
+  private shouldRespondToSync(): boolean {
+    if (this.ops().length === 0) return false;
+    if (this.moderation.ownRole() === "owner") return true;
+    const owners = ownerPeerIds(this.moderation.participants());
+    const hasConnectedOwner = this.mesh.peerChoices().some((p) => owners.has(p.id));
+    return !hasConnectedOwner;
   }
 
   private applyClear(message: ServerMessage): void {
@@ -108,3 +182,4 @@ export class WhiteboardOverlayService {
     this.seen.clear();
   }
 }
+

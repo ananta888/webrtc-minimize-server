@@ -1,5 +1,15 @@
-export type WhiteboardKind = "stroke-begin" | "stroke-point" | "stroke-end" | "erase" | "clear";
-export type WhiteboardColor = "ink" | "mark" | "erase";
+export type WhiteboardKind =
+  | "stroke-begin"
+  | "stroke-point"
+  | "stroke-end"
+  | "erase"
+  | "clear"
+  | "shape"
+  | "text"
+  | "sync-request"
+  | "sync-response";
+export type WhiteboardColor = "ink" | "mark" | "accent" | "erase";
+export type WhiteboardShapeType = "rectangle" | "ellipse" | "line";
 
 export interface WhiteboardPoint { readonly x: number; readonly y: number; }
 export interface WhiteboardOperation {
@@ -14,10 +24,23 @@ export interface WhiteboardOperation {
 
 const PEER_ID = /^[a-f0-9]{16}$/;
 const OP_ID = /^[a-f0-9]{32}$/;
-const KINDS = new Set<WhiteboardKind>(["stroke-begin", "stroke-point", "stroke-end", "erase", "clear"]);
-const COLORS = new Set<WhiteboardColor>(["ink", "mark", "erase"]);
+const KINDS = new Set<WhiteboardKind>([
+  "stroke-begin", "stroke-point", "stroke-end", "erase", "clear",
+  "shape", "text", "sync-request", "sync-response",
+]);
+const COLORS = new Set<WhiteboardColor>(["ink", "mark", "accent", "erase"]);
+const SHAPES = new Set<WhiteboardShapeType>(["rectangle", "ellipse", "line"]);
 const MAX_POINTS = 32;
 const MAX_COORD = 10_000;
+const MAX_TEXT_LENGTH = 100;
+const MAX_SYNC_OPS = 64;
+
+export const WHITEBOARD_CONSTANTS = Object.freeze({
+  maxPoints: MAX_POINTS,
+  maxCoord: MAX_COORD,
+  maxTextLength: MAX_TEXT_LENGTH,
+  maxSyncOps: MAX_SYNC_OPS,
+});
 
 function exact(value: unknown, fields: readonly string[]): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
@@ -52,9 +75,12 @@ export function parseWhiteboardOperation(value: unknown): WhiteboardOperation | 
 }
 
 function parsePayload(kind: WhiteboardKind, payload: unknown): Readonly<Record<string, unknown>> | null {
-  if (kind === "clear") return exact(payload, []) ? {} : null;
+  if (kind === "clear" || kind === "sync-request") {
+    return exact(payload, []) ? {} : null;
+  }
   if (kind === "stroke-begin") {
-    if (!exact(payload, ["color", "width", "point"]) || typeof payload["color"] !== "string" || !COLORS.has(payload["color"] as WhiteboardColor)
+    if (!exact(payload, ["color", "width", "point"]) || typeof payload["color"] !== "string"
+      || !COLORS.has(payload["color"] as WhiteboardColor) || payload["color"] === "erase"
       || !integer(payload["width"], 1, 16)) return null;
     const start = point(payload["point"]);
     return start ? { color: payload["color"], width: payload["width"], point: start } : null;
@@ -63,12 +89,43 @@ function parsePayload(kind: WhiteboardKind, payload: unknown): Readonly<Record<s
     if (!exact(payload, ["points"]) || !Array.isArray(payload["points"])
       || payload["points"].length < 1 || payload["points"].length > MAX_POINTS) return null;
     const points = payload["points"].map(point);
-    return points.every(Boolean) ? { points } : null;
+    return points.every((p): p is WhiteboardPoint => p !== null) ? { points } : null;
   }
   if (kind === "stroke-end" || kind === "erase") {
     if (!exact(payload, ["point"])) return null;
     const end = point(payload["point"]);
     return end ? { point: end } : null;
+  }
+  if (kind === "shape") {
+    if (!exact(payload, ["shape", "color", "width", "start", "end"])) return null;
+    if (typeof payload["shape"] !== "string" || !SHAPES.has(payload["shape"] as WhiteboardShapeType)) return null;
+    if (typeof payload["color"] !== "string" || !COLORS.has(payload["color"] as WhiteboardColor) || payload["color"] === "erase") return null;
+    if (!integer(payload["width"], 1, 16)) return null;
+    const start = point(payload["start"]);
+    const end = point(payload["end"]);
+    if (!start || !end) return null;
+    return { shape: payload["shape"], color: payload["color"], width: payload["width"], start, end };
+  }
+  if (kind === "text") {
+    if (!exact(payload, ["text", "point", "color", "size"])) return null;
+    if (typeof payload["text"] !== "string" || !payload["text"].trim() || payload["text"].length > MAX_TEXT_LENGTH) return null;
+    if (/[\x00-\x1f\x7f]/.test(payload["text"])) return null;
+    if (typeof payload["color"] !== "string" || !COLORS.has(payload["color"] as WhiteboardColor) || payload["color"] === "erase") return null;
+    if (!integer(payload["size"], 10, 48)) return null;
+    const at = point(payload["point"]);
+    if (!at) return null;
+    return { text: payload["text"].trim(), point: at, color: payload["color"], size: payload["size"] };
+  }
+  if (kind === "sync-response") {
+    if (!exact(payload, ["ops"])) return null;
+    if (!Array.isArray(payload["ops"]) || payload["ops"].length > MAX_SYNC_OPS) return null;
+    const ops: WhiteboardOperation[] = [];
+    for (const item of payload["ops"]) {
+      const parsed = parseWhiteboardOperation(item);
+      if (!parsed || parsed.kind === "sync-request" || parsed.kind === "sync-response") return null;
+      ops.push(parsed);
+    }
+    return { ops: Object.freeze(ops) };
   }
   return null;
 }
@@ -86,3 +143,4 @@ export function encodeWhiteboardOperation(operation: WhiteboardOperation): Uint8
   if (!parsed) throw new Error("invalid_whiteboard_operation");
   return new TextEncoder().encode(JSON.stringify(parsed));
 }
+

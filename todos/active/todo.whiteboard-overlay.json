@@ -16,7 +16,7 @@
     {
       "repository": "webrtc-minimize-server",
       "path": "todos/backlog/todo.bigbluebutton-collaboration-ux.json",
-      "relationship": "Promoviert BBB-UX-019 und BBB-UX-020. Rendering, CRDT-Konvergenz und Browsergates folgen. Nutzer-Gates zuletzt als WB-004."
+      "relationship": "Promoviert BBB-UX-019 bis BBB-UX-022. Formen, Text und Snapshot-Sync folgen. Nutzer-Gates zuletzt als WB-004."
     }
   ],
   "milestones": [
@@ -28,12 +28,18 @@
     },
     {
       "id": "WB-M2",
-      "title": "Overlay-Transport und UI",
+      "title": "Overlay-Transport und Basis-UI",
       "task_ids": ["WB-002", "WB-003"],
       "status": "done"
     },
     {
       "id": "WB-M3",
+      "title": "Werkzeuge und Late-Join-Sync",
+      "task_ids": ["WB-005", "WB-006"],
+      "status": "done"
+    },
+    {
+      "id": "WB-M4",
       "title": "Nutzer- und Gerätegates zuletzt",
       "task_ids": ["WB-004"],
       "status": "todo"
@@ -83,28 +89,57 @@
       ]
     },
     {
+      "id": "WB-005",
+      "title": "Whiteboard-Werkzeuge um Formen (Rechteck, Ellipse, Linie) und gehärteten Text erweitern",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": ["WB-003"],
+      "acceptance_criteria": [
+        "Formen ('rectangle', 'ellipse', 'line') und Text ('text') werden mit geschlossenen Payloads typisiert und fail-closed validiert.",
+        "Canvas-Rendering zeichnet Formen und reinen Plaintext ohne HTML-, SVG- oder DOM-Injection.",
+        "Werkzeugauswahl in der UI (Stift, Marker, Rechteck, Kreis, Linie, Text, Radierer) erlaubt intuitive Bedienung ohne Capture-APIs."
+      ]
+    },
+    {
+      "id": "WB-006",
+      "title": "Flüchtige Snapshot-Synchronisation für spät beitretende Teilnehmer bereitstellen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["WB-005"],
+      "acceptance_criteria": [
+        "Neu beitretende Teilnehmer erhalten den aktuellen flüchtigen Tafelzustand über eine Snapshot-Anfrage via Opaque-Data-Overlay.",
+        "Snapshots werden vom Raum-Owner oder bestehenden Peers beantwortet und auf Obergrenze und Epoche validiert.",
+        "Keine Serverterminierung oder Persistenz; beim Verlassen des Raums wird der Tafelzustand vollständig verworfen."
+      ]
+    },
+    {
       "id": "WB-004",
       "title": "Nutzer- und Gerätegates für Whiteboard zuletzt ausführen",
       "status": "todo",
       "priority": "P1",
       "risk": "medium",
       "progress_percent": 0,
-      "depends_on": ["WB-003"],
+      "depends_on": ["WB-006"],
       "acceptance_criteria": [
         "Chromium- und Firefox-Mehrpeer-Konvergenz wird real geprüft.",
         "Safari/iOS, Touch und 20-Teilnehmer-Churn bleiben Nutzergates."
       ]
     }
   ],
-  "critical_path_tasks": ["WB-001", "WB-002", "WB-003", "WB-004"],
+  "critical_path_tasks": ["WB-001", "WB-002", "WB-003", "WB-005", "WB-006", "WB-004"],
   "tasks_status_summary": {
-    "total": 4,
-    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 3 },
-    "progress_percent_done": 75,
-    "by_priority": { "P0": 2, "P1": 2, "P2": 0, "P3": 0 },
-    "by_risk": { "low": 0, "medium": 1, "high": 1, "critical": 2 },
-    "critical_path": { "total": 4, "done": 3, "remaining": 1 },
-    "milestones": { "total": 3, "todo": 1, "in_progress": 0, "blocked": 0, "done": 2 }
+    "total": 6,
+    "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 5 },
+    "progress_percent_done": 83.33,
+    "by_priority": { "P0": 2, "P1": 4, "P2": 0, "P3": 0 },
+
+    "by_risk": { "low": 0, "medium": 2, "high": 2, "critical": 2 },
+    "critical_path": { "total": 6, "done": 5, "remaining": 1 },
+    "milestones": { "total": 4, "todo": 1, "in_progress": 0, "blocked": 0, "done": 3 }
   },
   "progress_summary": {
     "state": "in_progress",
@@ -112,10 +147,12 @@
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 3
+    "done": 5
   },
   "summary_notes": [
     "2026-09-11 Track aus BBB-UX-019/020. WB-001 Vertrag geschlossen (Node+Angular Parser). Overlay-Fanout und Canvas folgen. Persistenz bleibt aus. WB-004 Nutzergates zuletzt.",
-    "2026-09-11 WB-002 Overlay-Event-Fanout mit Origin=Autor und Membership-Epoch. WB-003 Canvas ohne HTML/Capture; Clear nur Owner über Signaling. WB-004 zuletzt."
+    "2026-09-11 WB-002 Overlay-Event-Fanout mit Origin=Autor und Membership-Epoch. WB-003 Canvas ohne HTML/Capture; Clear nur Owner über Signaling.",
+    "2026-09-11 WB-005 und WB-006 umgesetzt: Formen (Rechteck, Kreis/Ellipse, Linie), Plaintext und flüchtige Snapshot-Synchronisation (sync-request/sync-response) über Opaque-Data-Overlay. Canvas 2D Rendering ohne DOM/HTML-Injection. WB-004 Nutzergates zuletzt."
   ]
 }
+

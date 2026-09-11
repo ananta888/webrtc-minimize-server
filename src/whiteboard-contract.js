@@ -1,9 +1,15 @@
 const PEER_ID = /^[a-f0-9]{16}$/;
 const OP_ID = /^[a-f0-9]{32}$/;
-const KINDS = Object.freeze(["stroke-begin", "stroke-point", "stroke-end", "erase", "clear"]);
-const COLORS = Object.freeze(["ink", "mark", "erase"]);
+const KINDS = Object.freeze([
+  "stroke-begin", "stroke-point", "stroke-end", "erase", "clear",
+  "shape", "text", "sync-request", "sync-response",
+]);
+const COLORS = Object.freeze(["ink", "mark", "accent", "erase"]);
+const SHAPES = Object.freeze(["rectangle", "ellipse", "line"]);
 const MAX_POINTS = 32;
 const MAX_COORD = 10_000;
+const MAX_TEXT_LENGTH = 100;
+const MAX_SYNC_OPS = 64;
 
 export class WhiteboardContractError extends Error {
   constructor(code) {
@@ -57,13 +63,13 @@ export function parseWhiteboardOperation(value) {
 }
 
 function parsePayload(kind, payload) {
-  if (kind === "clear") {
+  if (kind === "clear" || kind === "sync-request") {
     exact(payload, new Set([]), "invalid_whiteboard_payload");
     return Object.freeze({});
   }
   if (kind === "stroke-begin") {
     exact(payload, new Set(["color", "width", "point"]), "invalid_whiteboard_payload");
-    if (!COLORS.includes(payload.color)) fail("invalid_whiteboard_payload");
+    if (!COLORS.includes(payload.color) || payload.color === "erase") fail("invalid_whiteboard_payload");
     return Object.freeze({
       color: payload.color,
       width: integer(payload.width, 1, 16, "invalid_whiteboard_payload"),
@@ -81,6 +87,42 @@ function parsePayload(kind, payload) {
     exact(payload, new Set(["point"]), "invalid_whiteboard_payload");
     return Object.freeze({ point: point(payload.point) });
   }
+  if (kind === "shape") {
+    exact(payload, new Set(["shape", "color", "width", "start", "end"]), "invalid_whiteboard_payload");
+    if (!SHAPES.includes(payload.shape)) fail("invalid_whiteboard_payload");
+    if (!COLORS.includes(payload.color) || payload.color === "erase") fail("invalid_whiteboard_payload");
+    return Object.freeze({
+      shape: payload.shape,
+      color: payload.color,
+      width: integer(payload.width, 1, 16, "invalid_whiteboard_payload"),
+      start: point(payload.start),
+      end: point(payload.end),
+    });
+  }
+  if (kind === "text") {
+    exact(payload, new Set(["text", "point", "color", "size"]), "invalid_whiteboard_payload");
+    if (typeof payload.text !== "string" || !payload.text.trim() || payload.text.length > MAX_TEXT_LENGTH) {
+      fail("invalid_whiteboard_payload");
+    }
+    if (/[\x00-\x1f\x7f]/.test(payload.text)) fail("invalid_whiteboard_payload");
+    if (!COLORS.includes(payload.color) || payload.color === "erase") fail("invalid_whiteboard_payload");
+    return Object.freeze({
+      text: payload.text.trim(),
+      point: point(payload.point),
+      color: payload.color,
+      size: integer(payload.size, 10, 48, "invalid_whiteboard_payload"),
+    });
+  }
+  if (kind === "sync-response") {
+    exact(payload, new Set(["ops"]), "invalid_whiteboard_payload");
+    if (!Array.isArray(payload.ops) || payload.ops.length > MAX_SYNC_OPS) fail("invalid_whiteboard_payload");
+    const ops = payload.ops.map((item) => {
+      const parsed = parseWhiteboardOperation(item);
+      if (parsed.kind === "sync-request" || parsed.kind === "sync-response") fail("invalid_whiteboard_payload");
+      return parsed;
+    });
+    return Object.freeze({ ops: Object.freeze(ops) });
+  }
   fail("unknown_whiteboard_kind");
 }
 
@@ -88,8 +130,11 @@ export const WHITEBOARD_CONTRACT = Object.freeze({
   version: 1,
   kinds: KINDS,
   colors: COLORS,
+  shapes: SHAPES,
   maxPoints: MAX_POINTS,
   maxCoord: MAX_COORD,
+  maxTextLength: MAX_TEXT_LENGTH,
+  maxSyncOps: MAX_SYNC_OPS,
   transport: "opaque-overlay-event",
   persistence: "ephemeral",
 });

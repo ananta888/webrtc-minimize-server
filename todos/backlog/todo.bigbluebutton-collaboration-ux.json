@@ -551,7 +551,7 @@
         {
           "id": "BBB-UX-021",
           "title": "Deterministische Whiteboard-Konvergenz, Snapshot und Late-Join-Resume implementieren",
-          "status": "open",
+          "status": "partial",
           "priority": "P1",
           "risk": "high",
           "scope": [
@@ -575,7 +575,7 @@
         {
           "id": "BBB-UX-022",
           "title": "Fokussierte Whiteboard-Werkzeuge und kollisionsarme Mehrnutzer-UX gestalten",
-          "status": "open",
+          "status": "partial",
           "priority": "P2",
           "risk": "medium",
           "scope": [
@@ -1097,8 +1097,8 @@
     "total_items": 42,
     "by_status": {
       "completed": 26,
-      "partial": 2,
-      "open": 14,
+      "partial": 4,
+      "open": 12,
       "deferred": 0,
       "blocked": 0
     },
@@ -1109,6 +1109,7 @@
       "P3": 0
     },
     "notes": [
+      "2026-09-11 BBB-UX-021 und BBB-UX-022 nach todo.whiteboard-overlay.json (WB-005 Formen/Text, WB-006 Late-Join-Sync) promoviert.",
       "2026-09-11 BBB-UX-032, BBB-UX-033, BBB-UX-034, BBB-UX-036 im Track todo.caption-design.json (CAP-001..CAP-003) umgesetzt und verifiziert. CAP-004 Nutzergates zuletzt.",
       "2026-09-11 BBB-UX-027..030 im Track todo.presentation-mode.json (PRS-001..PRS-005) umgesetzt und verifiziert. BBB-UX-032..036 nach todo.caption-design.json promoviert.",
       "2026-09-11 BBB-UX-012 bis BBB-UX-017 im Track todo.breakout-rooms.json (BRK-001..BRK-006) umgesetzt und getestet; BBB-UX-018 partial (BRK-007 User-Gate).",
