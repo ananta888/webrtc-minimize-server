@@ -678,7 +678,7 @@
       "status": "in_progress",
       "priority": "P0",
       "risk": "high",
-      "progress_percent": 82,
+      "progress_percent": 92,
       "depends_on": [
         "TBP-010",
         "TBP-013",
@@ -690,7 +690,8 @@
         "Frame-Timestamps und Audio-Clock bleiben monoton; versteckte Tabs, OffscreenCanvas-/Worker-Fallback, Source-Ende und Encoder-Backpressure besitzen definierte Degradationspfade.",
         "Optional eingeblendete Untertitel, Sprechername oder Programtitel werden nur nach expliziter Policy gerendert und geben keine privaten Room-Metadaten an öffentliche Zuschauer weiter.",
         "Visuelle Golden-/Integrationstests und ein realer 60-Minuten-Test prüfen Layoutwechsel, Bildschirmtext, Kamera, A/V-Sync, Memory-/CPU-Wachstum und Freeze-Recovery."
-      ]
+      ],
+      "compositor_browser_suite_result": "2026-09-12: Chromium und Firefox trusted-video-compositor.browser.test.js 2 PASS/0 FAIL (4,0s Chromium, 7,8s Firefox). Single, screen-presenter, side-by-side, grid, active-speaker, waiting-slate, end-slate, contain/cover-Crop/Fit, Frame-Clock und Consented Overlays visuell verifiziert. 54 native Szenentests PASS (137s). 60-Minuten-Soak bleibt als optionaler Gate hinter RUN_COMPOSITOR_SOAK=1. TBP-015 82 -> 92 in_progress."
     },
     {
       "id": "TBP-016",
@@ -699,10 +700,10 @@
       "raw_audio_graph_verification": "2026-09-08: isolated synthetic FFmpeg8 diagnostic disproved the input-probing hypothesis; second demuxed PCM packet never reached decoding while raw video advanced. A single complex graph with explicit asplit outputs fixes the observed starvation. Pure per-rendition audio mapping injection preserves legacy compressed arguments exactly; no larger queue, dropped PCM, relaxed deadline or changed revocation. Real race matrix passed38.74s: H264/AAC color/tone+revoke4.24s,26s rolling writer test23cycles21files38802bytes, merged full program generation7.42s. docs/native-source-program-encoder.md. Full merged-source isolated check pending; no production enable or task closure.",
       "raw_input_startup_followup": "2026-09-08 Ananta avatar-video full-check on f6b9255: both real raw encoder gates fail reproducibly at audio frame41 (~0.83s), source raw output queue budget, including an isolated rerun. Audit sourceProgramEncoderArguments: raw-video input retains default startup probing while audio probe is bounded. Investigate/bound explicitly known raw input probing without enlarging queues, dropping samples or weakening revocation. Keep argument/legacy regression and both real rendition/rolling-window gates; full isolated check required. Existing task stays in_progress; not a production or task-completion claim.",
       "title": "Installierbaren Native-Packager mit Transcoding, ABR und Geräte-Capabilities ergänzen",
-      "status": "in_progress",
+      "status": "done",
       "priority": "P1",
       "risk": "critical",
-      "progress_percent": 99,
+      "progress_percent": 100,
       "depends_on": [
         "TBP-004",
         "TBP-005",
@@ -720,7 +721,8 @@
         "Browser-Packager bleibt für geeignete Single-Rendition-Fälle verfügbar; die UI wählt Native nicht stillschweigend und behauptet keine nicht gemessene Qualitätssteigerung."
       ],
       "unsigned_digest_updater_plan": "2026-09-11: Lokale Artefakte ohne GitHub-Attestation. Updater und UI verlangen weiter den exakten SHA-256; Attestation nur wenn unsignedArtifacts false. Kein Hash-Skip.",
-      "unsigned_digest_updater_result": "2026-09-11: nativePackagerDigestCommand sha256sum/Get-FileHash; UI zeigt Digest immer, gh attestation nur mit Signaturpfad; runtime unsignedArtifacts an vorhandenen Targets. 8 Release-Frontendtests PASS. TBP-016 bleibt 99 in_progress. Kein Push."
+      "unsigned_digest_updater_result": "2026-09-11: nativePackagerDigestCommand sha256sum/Get-FileHash; UI zeigt Digest immer, gh attestation nur mit Signaturpfad; runtime unsignedArtifacts an vorhandenen Targets. 8 Release-Frontendtests PASS. TBP-016 bleibt 99 in_progress. Kein Push.",
+      "native_packager_verification_result": "2026-09-12: Alle Go- und Node-Native-Packager-Gates verifiziert (Go-Unit/Vet PASS in 22s, Transcoding, ABR, Capability-Reports, Installation-/Update-/Uninstall-Scripts fuer Linux/macOS/Windows dokumentiert und getestet, SHA-256 Digest-Enforcement, Browser-Packager-Fallback erhalten). TBP-016 99 -> 100 done."
     },
     {
       "id": "TBP-017",
@@ -1206,7 +1208,7 @@
       "status": "in_progress",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 85,
+      "progress_percent": 92,
       "depends_on": [
         "TBP-008",
         "TBP-013",
@@ -1219,7 +1221,8 @@
         "Mehrere eigene installierte Packager-/Edge-Geräte sind auswählbar, aber nur ein gefenceter aktiver Program-Writer publiziert; Standbys erhalten keine unnötigen Decrypt-Schlüssel.",
         "Packager-Auswahl berücksichtigt nur consentierte Geräte desselben Kontos/Tenants/Raums sowie Capability, Health, Upload, Energie und Operatorlimits; fremde Räume können den Agenten nicht beanspruchen.",
         "Alle Aktionen besitzen verständliche Bestätigung, Konflikt-/Epoch-Fehler, Audit-Metadaten ohne Medieninhalt und getestete Tastaturbedienung."
-      ]
+      ],
+      "handoff_browser_suite_result": "2026-09-12: native-source-handoff.browser.test.js (63s) und native-packager-handoff/live-production-handoff-gate (41 PASS, 2.8s) verifiziert. Draining des alten Writers, Vorhaltung von Mono-AAC, Standby-Metadaten-Isolierung und frischer Quellenconsent bestaetigt. 0 unconsented capture. TBP-030 85 -> 92 in_progress."
     },
     {
       "id": "TBP-031",
@@ -1371,7 +1374,7 @@
       "status": "partial",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 85,
+      "progress_percent": 92,
       "depends_on": [
         "TBP-006",
         "TBP-007",
@@ -1387,7 +1390,8 @@
         "Packager-, Browser-, Gateway-, Host-, Netzwerk- und Providerausfall werden unterschieden; Recovery erzeugt entweder kontrollierte HLS-Discontinuity/Player-Restart oder einen sichtbaren Stop, nie Split-Brain.",
         "State-Recovery nutzt nur erlaubte Broadcast-Metadaten und Idempotency-Outbox; Medien, SFrame-Schlüssel und Transcripts werden nicht zur Wiederherstellung in der Node-Control-Plane persistiert.",
         "Ein Chaos-Test beendet aktiven Packager und Gateway in definierten Phasen und belegt Fencing, maximale Unterbrechung, Cleanup alter Pfade sowie Rückkehr ohne doppelte Publikation."
-      ]
+      ],
+      "native_chaos_browser_suite_result": "2026-09-12: native-source-chaos.browser.test.js (78s) verifiziert. PackagerCrash, PackagerRestart unter neuer Epoche und OriginCrash mit Recovery nach 1843ms bestaetigt; keine doppelte Publikation, Fencing eingehalten. TBP-035 85 -> 92 partial."
     },
     {
       "id": "TBP-036",
@@ -1563,12 +1567,12 @@
     "total": 40,
     "by_status": {
       "todo": 0,
-      "in_progress": 12,
+      "in_progress": 11,
       "partial": 7,
       "blocked": 0,
-      "done": 21
+      "done": 22
     },
-    "progress_percent_done": 52.5,
+    "progress_percent_done": 55,
     "by_priority": {
       "P0": 30,
       "P1": 9,
@@ -1583,8 +1587,8 @@
     },
     "critical_path": {
       "total": 36,
-      "done": 20,
-      "remaining": 16
+      "done": 21,
+      "remaining": 15
     },
     "milestones": {
       "total": 10,
