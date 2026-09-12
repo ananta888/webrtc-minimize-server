@@ -161,9 +161,18 @@ describe("Room page information architecture", () => {
     expect(component).toContain("this.captions.setOverlayPosition(");
     expect(component).toContain("this.captions.setOverlayFontSize(");
     expect(component).toContain("this.captions.setOverlayMaxLines(");
-    expect(component).toContain("this.captions.downloadTranscript()");
     expect(component).not.toContain("getUserMedia");
     expect(component).not.toContain("getDisplayMedia");
+  });
+
+  it("provides realtime search and filtering for caption transcripts", () => {
+    expect(template).toContain('id="caption-transcript-search"');
+    expect(template).toContain('id="caption-search-count"');
+    expect(template).toContain('id="clear-caption-search"');
+    expect(template).toContain("filteredRecentCaptions()");
+    expect(component).toContain("readonly captionSearchQuery = signal");
+    expect(component).toContain("readonly filteredRecentCaptions = computed");
+    expect(component).toContain("readonly captionMatchCount = computed");
   });
 
   it("keeps the complete media-agent inventory and room controls inside analysis", () => {

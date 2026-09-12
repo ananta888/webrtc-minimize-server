@@ -2,7 +2,7 @@ import { Injectable, computed, signal } from "@angular/core";
 
 import { CaptionAudioSource } from "../webrtc/caption-contract";
 import { MediaPublicationService } from "../webrtc/media-publication.service";
-import { PeerMeshService } from "../webrtc/peer-mesh.service";
+import { CaptionEntry, PeerMeshService } from "../webrtc/peer-mesh.service";
 import { CaptionAudioGraph, CaptionAudioGraphFactory } from "./caption-audio-graph";
 import { VoskModelManagerService } from "./vosk-model-manager.service";
 import { VoskRecognizerPort } from "./vosk-runtime-adapter";
@@ -178,8 +178,10 @@ export class LiveCaptionService {
     this.setOverlayMaxLines(3);
   }
 
-  formatTranscriptText(): string {
-    const entries = this.entries();
+  formatTranscriptText(): string;
+  formatTranscriptText(entriesToFormat?: readonly CaptionEntry[]): string;
+  formatTranscriptText(entriesToFormat?: readonly CaptionEntry[]): string {
+    const entries = entriesToFormat ?? this.entries();
     if (entries.length === 0) return "";
     const header = [
       "# webrtc-minimize-server Untertitel-Transkript",
@@ -196,8 +198,10 @@ export class LiveCaptionService {
     return [...header, ...body].join("\n");
   }
 
-  downloadTranscript(): boolean {
-    const text = this.formatTranscriptText();
+  downloadTranscript(): boolean;
+  downloadTranscript(customEntries?: readonly CaptionEntry[]): boolean;
+  downloadTranscript(customEntries?: readonly CaptionEntry[]): boolean {
+    const text = this.formatTranscriptText(customEntries);
     if (!text) return false;
     try {
       const blob = new Blob([text], { type: "text/plain;charset=utf-8" });

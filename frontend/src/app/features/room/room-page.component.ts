@@ -127,6 +127,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   readonly newRoomVisibility = signal<RoomVisibility>("private");
   readonly chatInput = signal("");
   readonly captionModelSearch = signal("");
+  readonly captionSearchQuery = signal("");
   readonly workspaceTitle = signal("Pair Dev Workspace");
   readonly mediaAgentLabel = signal("Mein Rechner");
   readonly mediaAgentTarget = signal("");
@@ -155,6 +156,23 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     return this.captionModels.models.filter((model) => (
       `${model.language} ${model.nativeLanguage} ${model.languageTag} ${model.id}`.toLocaleLowerCase("de-DE").includes(query)
     ));
+  });
+  readonly filteredRecentCaptions = computed(() => {
+    const query = this.captionSearchQuery().trim().toLocaleLowerCase("de-DE");
+    const list = this.captions.recentEntries();
+    if (!query) return list;
+    return list.filter((entry) => {
+      const speaker = (entry.local ? "Du" : entry.author).toLocaleLowerCase("de-DE");
+      const text = entry.text.toLocaleLowerCase("de-DE");
+      const source = this.captionSourceLabel(entry.source).toLocaleLowerCase("de-DE");
+      const lang = entry.language.toLocaleLowerCase("de-DE");
+      return text.includes(query) || speaker.includes(query) || source.includes(query) || lang.includes(query);
+    });
+  });
+  readonly captionMatchCount = computed(() => {
+    const query = this.captionSearchQuery().trim();
+    if (!query) return null;
+    return this.filteredRecentCaptions().length;
   });
   readonly currentRoom = computed(() => {
     const roomId = this.session.joined() ? this.session.roomId() : this.roomInput();
@@ -470,7 +488,12 @@ export class RoomPageComponent implements OnInit, OnDestroy {
   }
 
   downloadCaptionTranscript(): void {
-    this.captions.downloadTranscript();
+    const query = this.captionSearchQuery().trim();
+    if (query) {
+      this.captions.downloadTranscript(this.filteredRecentCaptions());
+    } else {
+      this.captions.downloadTranscript();
+    }
   }
 
   captionModelSize(sizeBytes: number): string {

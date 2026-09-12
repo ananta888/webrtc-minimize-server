@@ -1,0 +1,183 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "whiteboard-laser-zoom-captions",
+  "purpose": "Erweiterung der Kollaborationswerkzeuge um synchronisierten Laserpointer (BBB-UX-022), stufenlosen Whiteboard Zoom/Pan sowie Echtzeit-Suche im Untertitelverlauf (BBB-UX-037).",
+  "goal": "Laserpointer für kollaborative Präsentationen bereitstellen, Whiteboard-Zoom & Pan für detaillierte Skizzen integrieren und Untertitel nach Text und Sprecher filterbar machen.",
+  "status": "done",
+  "created": "2026-09-12",
+  "updated": "2026-09-12",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "user_verification_last": true,
+  "related_tracks": [
+    {
+      "repository": "webrtc-minimize-server",
+      "path": "todos/backlog/todo.bigbluebutton-collaboration-ux.json",
+      "relationship": "Promoviert BBB-UX-022 (Laserpointer, Zoom) und BBB-UX-037 (Transkriptsuche & Filterung)."
+    }
+  ],
+  "milestones": [
+    {
+      "id": "WLC-M1",
+      "title": "Laserpointer-Synchronisation (BBB-UX-022)",
+      "task_ids": [
+        "WLC-001"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "WLC-M2",
+      "title": "Whiteboard Zoom und Pan (BBB-UX-022)",
+      "task_ids": [
+        "WLC-002"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "WLC-M3",
+      "title": "Untertitel Transkriptsuche & Filter (BBB-UX-037)",
+      "task_ids": [
+        "WLC-003"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "WLC-M4",
+      "title": "E2E- und Multi-Browser-Verifikation",
+      "task_ids": [
+        "WLC-004"
+      ],
+      "status": "done"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "WLC-001",
+      "title": "Synchronisierten Laserpointer für Präsentationen und Tafel implementieren",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Neues Werkzeug 'Laserpointer' (Werkzeug 8, Tastaturkürzel 8) im Whiteboard verfügbar.",
+        "Bewegungen mit dem Laserpointer senden flüchtige Positionsdaten über den verschlüsselten DataChannel an alle Peers im Raum.",
+        "Entfernte Laserpointer werden mit einem leuchtenden Indikator und Peer-Beschriftung auf dem Whiteboard dargestellt.",
+        "Inaktivität blendet den Laserpointer automatisch nach 2 Sekunden aus, ohne den persistenten Zeichenzustand zu verändern."
+      ]
+    },
+    {
+      "id": "WLC-002",
+      "title": "Stufenlosen Whiteboard Zoom und Pan integrieren",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": [
+        "WLC-001"
+      ],
+      "acceptance_criteria": [
+        "Zoom-Steuerung (+, -, 100% Reset) mit Zoomfaktor von 1.0x bis 3.0x in der Werkzeugleiste.",
+        "Pan-Modus bzw. Verschieben der Ansicht bei vergrößertem Zoom.",
+        "Sämtliche Maus-, Touch- und Stifteingaben werden über die Zoom- und Pan-Transformation akkurat auf die kanonischen Koordinaten (0..1000) abgebildet."
+      ]
+    },
+    {
+      "id": "WLC-003",
+      "title": "Echtzeit-Such- und Filterfunktion für den Untertitelverlauf ergänzen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "low",
+      "progress_percent": 100,
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Suchfeld im Untertitelverlauf ermöglicht die sofortige Filterung nach Begriffen und Sprechern.",
+        "Gefilterte Ansicht zeigt Trefferanzahl an und setzt die Ansicht bei Leerung sofort zurück.",
+        "Der Export (.txt) bleibt vom Filter unbeeinflusst oder exportiert optional gefilterte Treffer."
+      ]
+    },
+    {
+      "id": "WLC-004",
+      "title": "Umfassende Unit- und Browser-Tests für Laserpointer, Zoom/Pan und Transkriptsuche",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": [
+        "WLC-001",
+        "WLC-002",
+        "WLC-003"
+      ],
+      "acceptance_criteria": [
+        "Vitest Unit-Tests für Laser-Operationen, Zoom-Transformation und Transkript-Filterung bestehen.",
+        "Multi-Browser-Interaktion verifiziert, dass Laserpointer-Updates flüssig empfangen und dargestellt werden.",
+        "Build, Typ-Check und npm run check bestehen fehlerfrei."
+      ]
+    }
+  ],
+  "critical_path_tasks": [
+    "WLC-001",
+    "WLC-002",
+    "WLC-004"
+  ],
+  "tasks_status_summary": {
+    "total": 4,
+    "by_status": {
+      "todo": 0,
+      "in_progress": 0,
+      "partial": 0,
+      "blocked": 0,
+      "done": 4
+    },
+    "progress_percent_done": 100.0,
+    "by_priority": {
+      "P0": 0,
+      "P1": 4,
+      "P2": 0,
+      "P3": 0
+    },
+    "by_risk": {
+      "low": 1,
+      "medium": 3,
+      "high": 0,
+      "critical": 0
+    },
+    "critical_path": {
+      "total": 3,
+      "done": 3,
+      "remaining": 0
+    },
+    "milestones": {
+      "total": 4,
+      "todo": 0,
+      "in_progress": 0,
+      "blocked": 0,
+      "done": 4
+    }
+  },
+  "summary_notes": [
+    "2026-09-12 Track-Start: whiteboard-laser-zoom-captions initiiert gemaess Benutzerprioritaet. Ziel: Laserpointer-Werkzeug (BBB-UX-022), Zoom & Pan Steuerung und Transkriptsuche (BBB-UX-037).",
+    "2026-09-12 WLC-001/002/003/004 abgeschlossen: Laserpointer mit 40ms Throttling und 2.5s Decay, stufenloser Zoom (1.0x..3.0x) mit Pan-Viewport und kanonischer Koordinaten-Transformation, sowie Untertitel-Echtzeitsuche und selektiver Export implementiert.",
+    "2026-09-12 Verifikation: 189 Frontend-Testdateien (1627 Tests) grün, vollständiger node --test Suite (1769 Tests, 1764 passed, 0 fail, 5 skipped), tsc Typecheck, Angular Production Build, Go Unit-Gates und npm run check:prepare ohne Fehler bestanden."
+  ]
+}
+

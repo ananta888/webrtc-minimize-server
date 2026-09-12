@@ -7,6 +7,7 @@ import {
   Input,
   OnDestroy,
   ViewChild,
+  computed,
   effect,
   signal,
 } from "@angular/core";
@@ -26,7 +27,52 @@ import { loadSlidesFromFiles } from "./slide-deck-loader";
 const WIDTH = 640;
 const HEIGHT = 360;
 
-export type WhiteboardTool = "pen" | "mark" | "rectangle" | "ellipse" | "line" | "text" | "erase";
+export type WhiteboardTool =
+  | "pen"
+  | "mark"
+  | "rectangle"
+  | "ellipse"
+  | "line"
+  | "text"
+  | "erase"
+  | "laser"
+  | "pan";
+
+export function drawLaserDot(
+  ctx: CanvasRenderingContext2D,
+  pos: { x: number; y: number },
+  colorHex = "#ef4444",
+  alpha = 1.0,
+  label?: string,
+): void {
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  const grad = ctx.createRadialGradient(pos.x, pos.y, 1, pos.x, pos.y, 14);
+  grad.addColorStop(0, colorHex);
+  grad.addColorStop(0.3, "rgba(239, 68, 68, 0.6)");
+  grad.addColorStop(1, "rgba(239, 68, 68, 0)");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, 14, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (label) {
+    ctx.font = "bold 10px system-ui, sans-serif";
+    const width = ctx.measureText(label).width;
+    ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+    ctx.beginPath();
+    ctx.roundRect(pos.x + 8, pos.y - 14, width + 8, 16, 4);
+    ctx.fill();
+    ctx.fillStyle = "#f8fafc";
+    ctx.fillText(label, pos.x + 12, pos.y - 2);
+  }
+  ctx.restore();
+}
 
 function pixel(point: { x: number; y: number }): { x: number; y: number } {
   return { x: (point.x / 1000) * WIDTH, y: (point.y / 1000) * HEIGHT };
@@ -282,8 +328,8 @@ export function paintWhiteboard(
       </div>
 
       <!-- Drawing Tools -->
-      <div class="whiteboard-tools" role="toolbar" aria-label="Zeichenwerkzeuge (Tasten 1-7)">
-        <label>Werkzeug (1-7)
+      <div class="whiteboard-tools" role="toolbar" aria-label="Zeichenwerkzeuge (Tasten 1-9)">
+        <label>Werkzeug (1-9)
           <select id="whiteboard-tool-select" [value]="tool()" [disabled]="!board.canDraw()" (change)="selectTool($any($event.target).value)">
             <option value="pen">1: Stift</option>
             <option value="mark">2: Textmarker</option>
@@ -292,10 +338,12 @@ export function paintWhiteboard(
             <option value="line">5: Linie</option>
             <option value="text">6: Text</option>
             <option value="erase">7: Radierer</option>
+            <option value="laser">8: Laserpointer</option>
+            <option value="pan">9: Hand / Verschieben</option>
           </select>
         </label>
         <label>Farbe
-          <select id="whiteboard-color" [value]="selectedColor()" [disabled]="!board.canDraw() || tool() === 'erase' || tool() === 'mark'"
+          <select id="whiteboard-color" [value]="selectedColor()" [disabled]="!board.canDraw() || tool() === 'erase' || tool() === 'mark' || tool() === 'laser' || tool() === 'pan'"
             (change)="selectedColor.set($any($event.target).value)">
             <option value="ink">Tinte (Hell)</option>
             <option value="accent">Akzent (Cyan)</option>
@@ -308,6 +356,14 @@ export function paintWhiteboard(
               placeholder="Text eingeben (Klick auf Tafel platziert)..." [value]="textInput()" (input)="textInput.set($any($event.target).value)" />
           </label>
         }
+        <div class="whiteboard-zoom-controls" role="group" aria-label="Zoom-Steuerung (+, -, 0)">
+          <button id="whiteboard-zoom-out" type="button" class="button ghost compact" [disabled]="zoomLevel() <= 1.0"
+            (click)="zoomOut()" aria-label="Verkleinern (-)">−</button>
+          <button id="whiteboard-zoom-reset" type="button" class="button ghost compact"
+            (click)="resetZoom()" aria-label="Zoom zurücksetzen (1:1)">{{ zoomPercent() }}%</button>
+          <button id="whiteboard-zoom-in" type="button" class="button ghost compact" [disabled]="zoomLevel() >= 3.0"
+            (click)="zoomIn()" aria-label="Vergrößern (+)">+</button>
+        </div>
         <button id="whiteboard-undo" type="button" class="button ghost compact" [disabled]="!board.canDraw()"
           (click)="board.undoOwn()" aria-label="Letzte eigene Aktion rückgängig machen (Ctrl+Z)">Eigenes Undo</button>
         <button id="whiteboard-clear" type="button" class="button ghost compact danger" [disabled]="!board.canClear()"
@@ -316,12 +372,18 @@ export function paintWhiteboard(
 
       <!-- Canvas Area -->
       <div class="whiteboard-canvas-wrapper" [class.expanded-canvas]="expanded">
-        <canvas #canvas id="whiteboard-canvas" width="640" height="360" role="img" aria-label="Gemeinsame Tafel und Folienansicht"
-          tabindex="0"
-          (pointerdown)="down($event)" (pointermove)="move($event)" (pointerup)="up($event)" (pointerleave)="up($event)">
-        </canvas>
+        <div class="whiteboard-viewport">
+          <div class="whiteboard-stage"
+            [style.transform]="'translate(' + panOffset().x + 'px, ' + panOffset().y + 'px) scale(' + zoomLevel() + ')'"
+            [style.transform-origin]="'center center'">
+            <canvas #canvas id="whiteboard-canvas" width="640" height="360" role="img" aria-label="Gemeinsame Tafel und Folienansicht"
+              tabindex="0" [class.laser-cursor]="tool() === 'laser'" [class.pan-cursor]="tool() === 'pan'"
+              (pointerdown)="down($event)" (pointermove)="move($event)" (pointerup)="up($event)" (pointerleave)="leave($event)">
+            </canvas>
+          </div>
+        </div>
       </div>
-      <p class="hint">Tastatursteuerung: 1-7 für Werkzeuge · Ctrl+Z für Undo · Pfeiltasten für Folienwechsel. Inhalt bleibt lokal & E2EE.</p>
+      <p class="hint">Tastatursteuerung: 1-9 für Werkzeuge · +, -, 0 für Zoom · Ctrl+Z für Undo · Pfeiltasten für Folienwechsel. Inhalt bleibt lokal & E2EE.</p>
     </section>
   `,
   styles: [`
@@ -349,14 +411,23 @@ export function paintWhiteboard(
     .whiteboard-tools { display: flex; flex-wrap: wrap; gap: .45rem; align-items: end; }
     .whiteboard-tools label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; }
     .whiteboard-tools input[type="text"] { min-width: 12rem; padding: .3rem .5rem; border-radius: .4rem; border: 1px solid var(--line); background: var(--bg-surface); color: inherit; }
+    .whiteboard-zoom-controls { display: flex; gap: .2rem; align-items: center; }
 
     .whiteboard-canvas-wrapper { width: 100%; display: flex; justify-content: center; }
-    canvas {
+    .whiteboard-viewport {
       width: 100%; max-width: 44rem; aspect-ratio: 16 / 9;
-      border: 1px solid var(--line); border-radius: .7rem; background: #020408;
-      touch-action: none; cursor: crosshair; display: block;
+      overflow: hidden; border: 1px solid var(--line); border-radius: .7rem;
+      background: #020408; position: relative;
     }
-    .expanded-canvas canvas { max-width: 100%; }
+    .expanded-canvas .whiteboard-viewport { max-width: 100%; }
+    .whiteboard-stage { width: 100%; height: 100%; }
+    canvas {
+      width: 100%; height: 100%; display: block;
+      touch-action: none; cursor: crosshair;
+    }
+    canvas.laser-cursor { cursor: crosshair; }
+    canvas.pan-cursor { cursor: grab; }
+    canvas.pan-cursor:active { cursor: grabbing; }
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
   `],
 })
@@ -370,8 +441,17 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
   readonly textInput = signal<string>("");
   readonly textSize = signal<number>(16);
   readonly statusMessage = signal<string>("");
+  readonly zoomLevel = signal<number>(1.0);
+  readonly panOffset = signal<{ x: number; y: number }>({ x: 0, y: 0 });
+  readonly zoomPercent = computed(() => Math.round(this.zoomLevel() * 100));
+  readonly localLaser = signal<{ x: number; y: number } | null>(null);
 
   private drawing = false;
+  private isPanning = false;
+  private panStart: { x: number; y: number } | null = null;
+  private initialPanOffset: { x: number; y: number } = { x: 0, y: 0 };
+  private lastLaserSent = 0;
+  private localLaserTimeout: ReturnType<typeof setTimeout> | null = null;
   private dragStart: { x: number; y: number } | null = null;
   private dragCurrent: { x: number; y: number } | null = null;
   private backgroundImgElement: HTMLImageElement | null = null;
@@ -385,6 +465,8 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
     effect(() => {
       const ops = this.board.ops();
       const currentSlide = this.deck.currentSlide();
+      const _remoteLasers = this.board.remoteLasers();
+      const _localLaser = this.localLaser();
       this.updateSlideBackground(currentSlide?.dataUrl ?? "");
       this.repaint(ops);
     });
@@ -411,6 +493,16 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
     const ctx = canvas?.getContext("2d");
     if (ctx) {
       paintWhiteboard(ctx, ops, this.backgroundImgElement);
+      const remote = this.board.remoteLasers();
+      for (const [peerId, item] of remote.entries()) {
+        const p = pixel(item);
+        drawLaserDot(ctx, p, "#ef4444", 1.0, peerId.slice(0, 6));
+      }
+      const local = this.localLaser();
+      if (local) {
+        const p = pixel(local);
+        drawLaserDot(ctx, p, "#38bdf8", 1.0, "Ich");
+      }
     }
   }
 
@@ -423,6 +515,28 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
   selectTool(tool: WhiteboardTool): void {
     this.tool.set(tool);
     this.statusMessage.set(`Werkzeug gewählt: ${tool}`);
+  }
+
+  zoomIn(): void {
+    this.zoomLevel.update((z) => Math.min(3.0, +(z + 0.25).toFixed(2)));
+    this.statusMessage.set(`Zoom: ${this.zoomPercent()}%`);
+  }
+
+  zoomOut(): void {
+    this.zoomLevel.update((z) => {
+      const next = Math.max(1.0, +(z - 0.25).toFixed(2));
+      if (next === 1.0) {
+        this.panOffset.set({ x: 0, y: 0 });
+      }
+      return next;
+    });
+    this.statusMessage.set(`Zoom: ${this.zoomPercent()}%`);
+  }
+
+  resetZoom(): void {
+    this.zoomLevel.set(1.0);
+    this.panOffset.set({ x: 0, y: 0 });
+    this.statusMessage.set("Zoom zurückgesetzt (100%)");
   }
 
   prevSlide(): void {
@@ -493,6 +607,24 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
     if (event.key === "5") { this.selectTool("line"); return; }
     if (event.key === "6") { this.selectTool("text"); return; }
     if (event.key === "7") { this.selectTool("erase"); return; }
+    if (event.key === "8") { this.selectTool("laser"); return; }
+    if (event.key === "9") { this.selectTool("pan"); return; }
+
+    if (event.key === "+" || event.key === "=") {
+      event.preventDefault();
+      this.zoomIn();
+      return;
+    }
+    if (event.key === "-") {
+      event.preventDefault();
+      this.zoomOut();
+      return;
+    }
+    if (event.key === "0") {
+      event.preventDefault();
+      this.resetZoom();
+      return;
+    }
 
     if (event.key === "ArrowRight" || event.key === "PageDown") {
       event.preventDefault();
@@ -510,7 +642,12 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
     this.repaint();
   }
 
-  ngOnDestroy(): void {}
+  ngOnDestroy(): void {
+    if (this.localLaserTimeout) {
+      clearTimeout(this.localLaserTimeout);
+      this.localLaserTimeout = null;
+    }
+  }
 
   private coord(event: PointerEvent): { x: number; y: number } | null {
     if (!this.board.canDraw()) return null;
@@ -524,14 +661,47 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
     };
   }
 
+  private emitLaser(point: { x: number; y: number }): void {
+    this.localLaser.set(point);
+    if (this.localLaserTimeout) {
+      clearTimeout(this.localLaserTimeout);
+      this.localLaserTimeout = null;
+    }
+    const now = Date.now();
+    if (now - this.lastLaserSent >= 40) {
+      this.lastLaserSent = now;
+      this.board.sendLaser(point);
+    }
+  }
+
   down(event: PointerEvent): void {
+    const activeTool = this.tool();
+    if (activeTool === "pan" || event.button === 1) {
+      event.preventDefault();
+      this.isPanning = true;
+      this.panStart = { x: event.clientX, y: event.clientY };
+      this.initialPanOffset = { ...this.panOffset() };
+      this.canvasRef.nativeElement.setPointerCapture(event.pointerId);
+      return;
+    }
+
+    if (activeTool === "laser") {
+      event.preventDefault();
+      this.canvasRef.nativeElement.setPointerCapture(event.pointerId);
+      this.drawing = true;
+      const point = this.coord(event);
+      if (point) {
+        this.emitLaser(point);
+      }
+      return;
+    }
+
     if (!this.board.canDraw()) return;
     const point = this.coord(event);
     if (!point) return;
     event.preventDefault();
     this.canvasRef.nativeElement.setPointerCapture(event.pointerId);
 
-    const activeTool = this.tool();
     const activeColor = this.selectedColor();
     const activeWidth = this.selectedWidth();
 
@@ -564,11 +734,29 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
   }
 
   move(event: PointerEvent): void {
+    if (this.isPanning && this.panStart) {
+      const dx = event.clientX - this.panStart.x;
+      const dy = event.clientY - this.panStart.y;
+      this.panOffset.set({
+        x: Math.round(this.initialPanOffset.x + dx),
+        y: Math.round(this.initialPanOffset.y + dy),
+      });
+      return;
+    }
+
+    const activeTool = this.tool();
+    if (activeTool === "laser") {
+      const point = this.coord(event);
+      if (point) {
+        this.emitLaser(point);
+      }
+      return;
+    }
+
     if (!this.drawing) return;
     const point = this.coord(event);
     if (!point) return;
 
-    const activeTool = this.tool();
     const activeColor = this.selectedColor();
     const activeWidth = this.selectedWidth();
 
@@ -590,8 +778,27 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
   }
 
   up(event: PointerEvent): void {
+    if (this.isPanning) {
+      this.isPanning = false;
+      this.panStart = null;
+      try { this.canvasRef.nativeElement.releasePointerCapture(event.pointerId); } catch {}
+      return;
+    }
+
+    if (this.tool() === "laser") {
+      this.drawing = false;
+      try { this.canvasRef.nativeElement.releasePointerCapture(event.pointerId); } catch {}
+      if (this.localLaserTimeout) clearTimeout(this.localLaserTimeout);
+      this.localLaserTimeout = setTimeout(() => {
+        this.localLaser.set(null);
+        this.repaint();
+      }, 1000);
+      return;
+    }
+
     if (!this.drawing) return;
     this.drawing = false;
+    try { this.canvasRef.nativeElement.releasePointerCapture(event.pointerId); } catch {}
     const point = this.coord(event);
 
     const activeTool = this.tool();
@@ -611,6 +818,24 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
       this.dragCurrent = null;
     } else if (point && activeTool !== "erase") {
       this.board.publish("stroke-end", { point });
+    }
+  }
+
+  leave(event: PointerEvent): void {
+    if (this.isPanning) {
+      this.isPanning = false;
+      this.panStart = null;
+    }
+    if (this.tool() === "laser") {
+      if (this.localLaserTimeout) clearTimeout(this.localLaserTimeout);
+      this.localLaserTimeout = setTimeout(() => {
+        this.localLaser.set(null);
+        this.repaint();
+      }, 500);
+      return;
+    }
+    if (this.drawing) {
+      this.up(event);
     }
   }
 }

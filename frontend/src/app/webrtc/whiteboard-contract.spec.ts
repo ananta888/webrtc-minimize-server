@@ -66,5 +66,23 @@ describe("whiteboard contract", () => {
       payload: { ops: [reqOp] },
     })).toBeNull();
   });
+
+  it("handles laser pointer operation with point payload", () => {
+    const laserOp = {
+      ...op,
+      kind: "laser" as const,
+      payload: { point: { x: 350, y: 720 } },
+    };
+    const parsed = parseWhiteboardOperation(laserOp);
+    expect(parsed?.kind).toBe("laser");
+    expect(parsed?.payload).toEqual({ point: { x: 350, y: 720 } });
+    const bytes = encodeWhiteboardOperation(laserOp);
+    expect(decodeWhiteboardBytes(bytes)?.payload).toEqual({ point: { x: 350, y: 720 } });
+
+    // Rejects invalid points or extra payload
+    expect(parseWhiteboardOperation({ ...laserOp, payload: { point: { x: "bad", y: 0 } } })).toBeNull();
+    expect(parseWhiteboardOperation({ ...laserOp, payload: { point: { x: 0, y: 0 }, extra: true } })).toBeNull();
+  });
 });
+
 

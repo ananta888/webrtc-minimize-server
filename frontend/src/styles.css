@@ -473,6 +473,9 @@ app-media-control-bar { display: block; }
 .caption-overlay-options select { width: 100%; border: 1px solid var(--line); border-radius: .5rem; padding: .38rem .55rem; color: #f2f5f9; background: #0c121c; font-size: .75rem; }
 .transcript-actions { display: flex; align-items: center; gap: .55rem; }
 .caption-privacy-note { margin: 0; border-left: 2px solid var(--amber); padding-left: .7rem; color: #c8bda9; font-size: .68rem; line-height: 1.55; }
+.caption-search-bar { display: flex; align-items: center; gap: .6rem; }
+.caption-search-bar input[type="search"] { flex: 1; border: 1px solid var(--line); border-radius: .5rem; padding: .4rem .65rem; color: #f2f5f9; background: #0c121c; font-size: .78rem; }
+.caption-search-count { color: var(--muted); font-size: .72rem; white-space: nowrap; }
 .caption-transcript { display: flex; max-height: 35rem; flex-direction: column; gap: .5rem; overflow-y: auto; }
 .caption-transcript article { display: grid; gap: .35rem; border: 1px solid var(--line); border-left: 3px solid var(--violet); border-radius: .72rem; padding: .65rem .7rem; background: rgba(7, 10, 17, .38); }
 .caption-transcript article.local { border-left-color: var(--mint); }

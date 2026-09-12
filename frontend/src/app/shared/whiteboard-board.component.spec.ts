@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { paintShapePreview, paintWhiteboard } from "./whiteboard-board.component";
+import { drawLaserDot, paintShapePreview, paintWhiteboard } from "./whiteboard-board.component";
 
 const source = readFileSync("frontend/src/app/shared/whiteboard-board.component.ts", "utf8");
 
@@ -127,5 +127,52 @@ describe("WhiteboardBoardComponent", () => {
     paintWhiteboard(ctx as never, [], fakeImg);
     expect(calls).toContain("drawImage");
     expect(calls).not.toContain("clear");
+  });
+
+  it("draws laser dot with glow, center point and optional user badge", () => {
+    const calls: string[] = [];
+    const ctx = {
+      save: () => calls.push("save"),
+      restore: () => calls.push("restore"),
+      beginPath: () => calls.push("beginPath"),
+      arc: () => calls.push("arc"),
+      fill: () => calls.push("fill"),
+      roundRect: () => calls.push("roundRect"),
+      fillText: () => calls.push("fillText"),
+      measureText: (text: string) => ({ width: text.length * 7 }),
+      createRadialGradient: () => ({
+        addColorStop: () => {},
+      }),
+      globalAlpha: 1.0,
+      fillStyle: "",
+      font: "",
+    };
+
+    drawLaserDot(ctx as never, { x: 100, y: 150 }, "#ef4444", 1.0, "Alice");
+    expect(calls).toContain("save");
+    expect(calls).toContain("beginPath");
+    expect(calls).toContain("arc");
+    expect(calls).toContain("fill");
+    expect(calls).toContain("roundRect");
+    expect(calls).toContain("fillText");
+    expect(calls).toContain("restore");
+  });
+
+  it("includes laser pointer, pan tool, and zoom controls in template and shortcuts", () => {
+    expect(source).toContain('value="laser"');
+    expect(source).toContain('8: Laserpointer');
+    expect(source).toContain('value="pan"');
+    expect(source).toContain('9: Hand / Verschieben');
+    expect(source).toContain('id="whiteboard-zoom-in"');
+    expect(source).toContain('id="whiteboard-zoom-out"');
+    expect(source).toContain('id="whiteboard-zoom-reset"');
+    expect(source).toContain('class="whiteboard-viewport"');
+    expect(source).toContain('class="whiteboard-stage"');
+    expect(source).toContain('scale(\' + zoomLevel()');
+    expect(source).toContain('event.key === "8"');
+    expect(source).toContain('event.key === "9"');
+    expect(source).toContain('event.key === "+"');
+    expect(source).toContain('event.key === "-"');
+    expect(source).toContain('event.key === "0"');
   });
 });

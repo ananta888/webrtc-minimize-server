@@ -28,6 +28,7 @@ export function appendWhiteboardOperation(
   operation: WhiteboardOperation,
   limit = WHITEBOARD_OP_LIMIT,
 ): readonly WhiteboardOperation[] {
+  if (operation.kind === "laser") return ops;
   if (ops.some((item) => item.opId === operation.opId)) return ops;
   const next = [...ops, operation];
   return Object.freeze(next.length > limit ? next.slice(next.length - limit) : next);
@@ -62,7 +63,7 @@ export function boundSyncOps(
   let currentBytes = 100;
   for (let i = ops.length - 1; i >= 0 && result.length < maxOps; i--) {
     const op = ops[i];
-    if (op.kind === "sync-request" || op.kind === "sync-response") continue;
+    if (op.kind === "sync-request" || op.kind === "sync-response" || op.kind === "laser") continue;
     const opBytes = JSON.stringify(op).length;
     if (currentBytes + opBytes > maxBytes) break;
     result.unshift(op);

@@ -258,5 +258,46 @@ describe("WhiteboardOverlayService", () => {
     };
     expect(presenterService.ingest(delivery)).toBe(false);
   });
+
+  it("broadcasts laser pointer without mutating ops and ingests remote laser coordinates", () => {
+    const { service, mesh } = createService();
+
+    // Send laser
+    service.sendLaser({ x: 250, y: 400 });
+    expect(mesh.sendOverlayData).toHaveBeenCalledTimes(1);
+    expect(service.ops().length).toBe(0); // ephemeral, not added to ops
+
+    // Ingest laser from authorized peer
+    const laserOp = {
+      version: 1 as const,
+      type: "whiteboard-op" as const,
+      opId: "e".repeat(32),
+      membershipEpoch: 2,
+      authorPeerId: "bbbbbbbbbbbbbbbb",
+      kind: "laser" as const,
+      payload: { point: { x: 500, y: 600 } },
+    };
+    const delivery = {
+      id: 11,
+      originPeerId: "bbbbbbbbbbbbbbbb",
+      trafficClass: "event" as const,
+      data: encodeWhiteboardOperation(laserOp),
+    };
+    expect(service.ingest(delivery)).toBe(true);
+    expect(service.ops().length).toBe(0);
+    const lasers = service.remoteLasers();
+    expect(lasers.has("bbbbbbbbbbbbbbbb")).toBe(true);
+    expect(lasers.get("bbbbbbbbbbbbbbbb")?.x).toBe(500);
+    expect(lasers.get("bbbbbbbbbbbbbbbb")?.y).toBe(600);
+
+    // Prune old lasers
+    service.pruneOldLasers();
+    expect(service.remoteLasers().has("bbbbbbbbbbbbbbbb")).toBe(true);
+
+    // After reset, remoteLasers is cleared
+    service.reset();
+    expect(service.remoteLasers().size).toBe(0);
+  });
 });
+
 

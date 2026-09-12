@@ -1,4 +1,4 @@
-import { Injectable, computed, effect, signal } from "@angular/core";
+import { Injectable, OnDestroy, computed, effect, signal } from "@angular/core";
 
 import { OverlayDelivery, PeerMeshService } from "./peer-mesh.service";
 import { RoomModerationService } from "./room-moderation.service";
@@ -26,8 +26,9 @@ function opId(): string {
 }
 
 @Injectable({ providedIn: "root" })
-export class WhiteboardOverlayService {
+export class WhiteboardOverlayService implements OnDestroy {
   readonly ops = signal<readonly WhiteboardOperation[]>([]);
+  readonly remoteLasers = signal<ReadonlyMap<string, { x: number; y: number; updatedAt: number }>>(new Map());
   readonly canClear = computed(() => {
     if (!this.session.joined()) return true;
     return this.moderation.ownRole() === "owner" || this.moderation.ownPresenter();
@@ -41,6 +42,8 @@ export class WhiteboardOverlayService {
   private seen = new Set<string>();
   private hasRequestedSync = false;
   private wasJoined = false;
+  private lastLaserSent = 0;
+  private laserTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly mesh: PeerMeshService,
@@ -49,6 +52,7 @@ export class WhiteboardOverlayService {
     private readonly signaling: SignalingService,
   ) {
     this.signaling.subscribe((message) => this.applyClear(message));
+    this.laserTimer = setInterval(() => this.pruneOldLasers(), 500);
     effect(() => {
       const joined = this.session.joined();
       if (!joined) {
@@ -91,6 +95,15 @@ export class WhiteboardOverlayService {
       this.moderation.participants(),
       this.moderation.presenterPeerId(),
     );
+
+    if (operation.kind === "laser") {
+      if (!authorized.has(operation.authorPeerId)) return false;
+      const pt = operation.payload["point"] as { x: number; y: number } | undefined;
+      if (pt && typeof pt.x === "number" && typeof pt.y === "number") {
+        this.updateRemoteLaser(operation.authorPeerId, pt);
+      }
+      return true;
+    }
 
     if (operation.kind === "sync-request") {
       this.seen.add(operation.opId);
@@ -202,8 +215,66 @@ export class WhiteboardOverlayService {
     this.ops.update((items) => undoOwnWhiteboardOperations(items, own));
   }
 
+  sendLaser(point: { x: number; y: number }): void {
+    if (!this.canDraw()) return;
+    const now = Date.now();
+    if (now - this.lastLaserSent < 40) return;
+    this.lastLaserSent = now;
+    if (this.session.joined()) {
+      const epoch = Math.max(1, this.mesh.membershipEpoch());
+      const authorPeerId = this.session.peerId() || "0123456789abcdef";
+      const op = parseWhiteboardOperation({
+        version: 1,
+        type: "whiteboard-op",
+        opId: opId(),
+        membershipEpoch: epoch,
+        authorPeerId,
+        kind: "laser",
+        payload: { point },
+      });
+      if (op) {
+        const bytes = encodeWhiteboardOperation(op);
+        for (const peer of this.mesh.peerChoices()) {
+          if (this.mesh.machineReceive.isMachine(peer.id)) continue;
+          void this.mesh.sendOverlayData(peer.id, bytes, "event");
+        }
+      }
+    }
+  }
+
+  updateRemoteLaser(peerId: string, point: { x: number; y: number }): void {
+    const next = new Map(this.remoteLasers());
+    next.set(peerId, { ...point, updatedAt: Date.now() });
+    this.remoteLasers.set(next);
+  }
+
+  pruneOldLasers(): void {
+    const now = Date.now();
+    const current = this.remoteLasers();
+    if (current.size === 0) return;
+    let changed = false;
+    const next = new Map<string, { x: number; y: number; updatedAt: number }>();
+    for (const [peerId, laser] of current.entries()) {
+      if (now - laser.updatedAt <= 2500) {
+        next.set(peerId, laser);
+      } else {
+        changed = true;
+      }
+    }
+    if (changed) this.remoteLasers.set(next);
+  }
+
+  ngOnDestroy(): void {
+    if (this.laserTimer) {
+      clearInterval(this.laserTimer);
+      this.laserTimer = null;
+    }
+    this.remoteLasers.set(new Map());
+  }
+
   reset(): void {
     this.ops.set([]);
+    this.remoteLasers.set(new Map());
     this.seen.clear();
     this.lastDelivery = 0;
     this.hasRequestedSync = false;

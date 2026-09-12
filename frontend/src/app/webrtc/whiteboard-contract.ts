@@ -6,6 +6,7 @@ export type WhiteboardKind =
   | "clear"
   | "shape"
   | "text"
+  | "laser"
   | "sync-request"
   | "sync-response";
 export type WhiteboardColor = "ink" | "mark" | "accent" | "erase";
@@ -26,7 +27,7 @@ const PEER_ID = /^[a-f0-9]{16}$/;
 const OP_ID = /^[a-f0-9]{32}$/;
 const KINDS = new Set<WhiteboardKind>([
   "stroke-begin", "stroke-point", "stroke-end", "erase", "clear",
-  "shape", "text", "sync-request", "sync-response",
+  "shape", "text", "laser", "sync-request", "sync-response",
 ]);
 const COLORS = new Set<WhiteboardColor>(["ink", "mark", "accent", "erase"]);
 const SHAPES = new Set<WhiteboardShapeType>(["rectangle", "ellipse", "line"]);
@@ -91,7 +92,7 @@ function parsePayload(kind: WhiteboardKind, payload: unknown): Readonly<Record<s
     const points = payload["points"].map(point);
     return points.every((p): p is WhiteboardPoint => p !== null) ? { points } : null;
   }
-  if (kind === "stroke-end" || kind === "erase") {
+  if (kind === "stroke-end" || kind === "erase" || kind === "laser") {
     if (!exact(payload, ["point"])) return null;
     const end = point(payload["point"]);
     return end ? { point: end } : null;

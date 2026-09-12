@@ -630,19 +630,35 @@
             <div class="owned-agent-heading">
               <div><p class="eyebrow">Flüchtiger Raumzustand</p><h2 id="caption-transcript-heading">Untertitelverlauf</h2></div>
               <div class="transcript-actions">
-                <button id="download-caption-transcript" class="button ghost compact" type="button" [disabled]="captions.entries().length === 0" (click)="downloadCaptionTranscript()">Transkript herunterladen (.txt)</button>
+                <button id="download-caption-transcript" class="button ghost compact" type="button" [disabled]="captions.entries().length === 0" (click)="downloadCaptionTranscript()">{{ captionSearchQuery().trim() ? 'Gefilterte Treffer herunterladen (.txt)' : 'Transkript herunterladen (.txt)' }}</button>
                 <button id="clear-captions" class="text-action" type="button" [disabled]="captions.entries().length === 0" (click)="captions.clear()">Leeren</button>
               </div>
             </div>
             <p id="caption-export-privacy-note" class="caption-privacy-note">Datenschutzhinweis: Vor dem Herunterladen bitte alle Gesprächspartner informieren und deren Einverständnis einholen. Das Transkript wird rein lokal auf deinem Gerät erstellt und nicht auf dem Server gespeichert.</p>
+
+            <div class="caption-search-bar">
+              <label for="caption-transcript-search" class="sr-only">Transkript durchsuchen</label>
+              <input id="caption-transcript-search" type="search" autocomplete="off" placeholder="Transkript durchsuchen (Text, Sprecher)…" [ngModel]="captionSearchQuery()" (ngModelChange)="captionSearchQuery.set($event)">
+              @if (captionSearchQuery().trim()) {
+                <span id="caption-search-count" class="caption-search-count" aria-live="polite">
+                  {{ captionMatchCount() }} {{ captionMatchCount() === 1 ? 'Treffer' : 'Treffer' }}
+                </span>
+                <button id="clear-caption-search" type="button" class="text-action" (click)="captionSearchQuery.set('')">Suche löschen</button>
+              }
+            </div>
+
             <div id="caption-transcript" class="caption-transcript" aria-live="polite">
-              @for (entry of captions.recentEntries(); track entry.id) {
+              @for (entry of filteredRecentCaptions(); track entry.id) {
                 <article [class.partial]="!entry.final" [class.local]="entry.local">
                   <div><strong>{{ entry.local ? 'Du' : entry.author }}</strong><span class="caption-source-tag">{{ captionSourceLabel(entry.source) }}</span><span>{{ entry.language }}</span>@if (entry.local && !entry.sharedWithRoom) { <span class="caption-local-tag">nur lokal</span> }<time>{{ captionTime(entry.receivedAt) }}</time></div>
                   <p>{{ entry.text }}</p>
                 </article>
               } @empty {
-                <div class="list-empty"><span aria-hidden="true">CC</span><strong>Noch keine Untertitel</strong><p>Geladene Modelle starten nicht von selbst. Aktiviere Mikrofon oder Bildschirmton und starte die gewünschte Quelle.</p></div>
+                @if (captionSearchQuery().trim()) {
+                  <div class="list-empty"><span aria-hidden="true">🔍</span><strong>Keine Treffer</strong><p>Kein Untertitel passt zum Suchbegriff „{{ captionSearchQuery() }}“.</p></div>
+                } @else {
+                  <div class="list-empty"><span aria-hidden="true">CC</span><strong>Noch keine Untertitel</strong><p>Geladene Modelle starten nicht von selbst. Aktiviere Mikrofon oder Bildschirmton und starte die gewünschte Quelle.</p></div>
+                }
               }
             </div>
           </section>
