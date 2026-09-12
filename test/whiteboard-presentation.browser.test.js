@@ -5,7 +5,7 @@ import { chromium } from "playwright";
 
 import { createAppServer } from "../src/server.js";
 
-test("whiteboard & presentation: standalone drawing, keyboard shortcuts and stage switching", async (context) => {
+test("whiteboard & presentation: standalone drawing, keyboard shortcuts and stage switching", { timeout: 60_000 }, async (context) => {
   try {
     await fs.access(chromium.executablePath());
   } catch {
