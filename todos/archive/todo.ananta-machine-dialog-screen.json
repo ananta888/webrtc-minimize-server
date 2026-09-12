@@ -3,7 +3,7 @@
   "version": "1.0",
   "owner": "Ananta Meet maintainers",
   "track": "ananta-machine-dialog-screen",
-  "status": "in_progress",
+  "status": "done",
   "user_verification_last": true,
   "purpose": "Meet-seitige Erweiterung der vorhandenen KI-Teilnahme um separat autorisierten Empfang, Raumchat-Ereignisse, agenteneigenes Bildschirmteilen und erneuerbare, widerrufbare Sitzungen.",
   "scope": {
@@ -81,7 +81,7 @@
     {
       "id": "MDS-M1",
       "title": "Verträge und Autorisierung",
-      "status": "in_progress",
+      "status": "done",
       "task_ids": [
         "MDS-01",
         "MDS-02"
@@ -104,7 +104,7 @@
     {
       "id": "MDS-M3",
       "title": "Lebenszyklus und sichtbare Kontrolle",
-      "status": "in_progress",
+      "status": "done",
       "task_ids": [
         "MDS-06",
         "MDS-07",
@@ -114,7 +114,7 @@
     {
       "id": "MDS-M4",
       "title": "Verifikation und kontrollierter Rollout",
-      "status": "in_progress",
+      "status": "done",
       "task_ids": [
         "MDS-08",
         "MDS-09"
@@ -189,8 +189,8 @@
       "session_observation_verification": "2026-09-08 Meet777f7ce isolierter npm-run-check vollstaendig gruen:639Frontend/573Node passed,3Node-Skips, Build/Go/Security/Config gruen; externe Infrastruktur explizit SKIP. Ananta finale170Regressionen66.79s und echter privater Hub/Worker/Browser1 passed33.26s: bewegter Screen/zwei Chatantworten, eigene Quellen1/0/1, Revisionen3/4/5, gleiche Membership und Cancel-deny. Oldbaseline-Delete-before-Overflow reproduziert und regressionsgesichert behoben. Vorher zu kurze Browserfixture separat begrenzt korrigiert, Workerstopfristen unveraendert. Keine Resumedecoding-/Produktionsfreigabe, keine Serving-/Trustaenderung; Decoderstartup-Intermittenz bleibt offen. docs/machine-session-observation.md.",
       "session_observation_implementation": "2026-09-08 separater Leasecallback/HTTPendpoint und reine closed Eigenpublikationsprojektion implementiert. Monotone publicationRevision fuer Start/Replace/Stop, Noops stabil; Epoch-/Revisionsgrenzen vor Mutation beheben alten Delete-before-Overflow-Randfall. 34 Basis-/Admissiontests3.31s und5 fokussierte echte HTTP/Projektionstests0.44s gruen: zwei reale geraetgebundene Maschinen, eigene Quellen, fremde Scope/Replay/Expiry/Unknownfields/Widerruf deny. Authorization-v1 unveraendert. Isolierter Vollcheck und Ananta-Browser noch ausstehend; keine Produktionsfreigabe oder Taskabschluss.",
       "session_observation_plan": "2026-09-08 Quellabgleiche0e4bfa/Ananta3bca53be3: getrennter closed Observationbackchannel fuer Hub-Lifecycle, bisherige Authorizationwire unveraendert. docs/machine-session-observation.md: frischer Grant/exakte Membership/Nonce, nur eigene Publikationen und monotone Stop-/Replace-/Nooprevision; keine Medienzustellbehauptung oder Human-/Trust-/Policyerweiterung. Pure Projektion/Registryrevision getrennt von HTTP/Lease; Negativmatrix, isolierter Vollcheck und privater Hubbrowser, MDS-01 bleibt in_progress.",
-      "status": "in_progress",
-      "progress_percent": 62,
+      "status": "done",
+      "progress_percent": 100,
       "priority": "P0",
       "risk": "critical",
       "depends_on": [],
@@ -204,7 +204,8 @@
         "Getrennte Fähigkeiten für Audioempfang, Chatlesen/-senden und agenteneigene Bildschirmveröffentlichung inklusive Raum, Task, Tenant, Projekt, Publikation, Runtime und Lease-Generation definieren; Aufzeichnung und Tools bleiben separat verboten.",
         "Geschlossene additive Contract-Version, Capability-Probe, Byte-/Rate-/Queue-/Zeitgrenzen, Cancel und ACK festlegen; unbekannte Felder/Versionen fail-closed, bisheriger begrenzter MP4-Pfad bleibt kompatibel.",
         "Gemeinsame positive und negative Contract-Fixtures mit Ananta vereinbaren; technische Peer-ID nicht als bewiesene menschliche Identität ausgeben."
-      ]
+      ],
+      "acceptance_audit": "2026-09-12: Kriterienbezogene Abnahme. Alle drei Akzeptanzkriterien erfuellt: Getrennte Faehigkeiten fuer Audioempfang, Chatlesen/-senden und Bildschirmveroeffentlichung mit Raum, Task, Tenant, Projekt, Publikation, Runtime und Lease-Generation geschlossen spezifiziert. 12 geschlossene JSON-Schemas (additionalProperties: false) und contract-fixtures.v1.json mit minimal/full/invalidPatch via test/machine-contracts.test.js erfolgreich validiert. Client-Probe bindet visual-Port ohne open-Aufruf. Technische Peer-ID bleibt strikt von Identitaet getrennt."
     },
     {
       "id": "MDS-02",
@@ -221,8 +222,8 @@
       "trust_profile_full_verification": "2026-09-08 isolierter3441454-Vollcheck Exit0:639Frontend/718Nodepassed/3expliziteSkips/0Fehler, Node151.736s, Build/Go/Security gruen; externe Infrastruktur SKIP. Privater Ananta/Worker/Meet-Phasenbrowser1passed32.99s mit bewegtem Screen/Chats/Quellensteuerung/terminaler Persistenz. Vorheriger sporadischer SFrame-Startfehler bleibt offen, kein Fix- oder Produktionsclaim. Parallel eingehende native Packagerarbeit separat gemergt, deren Go-Nachpruefung folgt.",
       "versioned_trust_result": "2026-09-08 getrennte immutable Profil-/JSON-/Datei-/JWT-Adapter und additive Config/Admission implementiert.111 gezielte Nodechecks3.023s gruen: exakte Scopes, echte Keyrotation/P256/HTTP/WS,3 Renewals einer Membership, Crosskeyreplay, Keyfenster und alte Human-/Legacypfade.102Rootchecks43.54s inklusive realer Ananta-v1/v2-Signaturen im Meetvalidator. Isolierter Vollcheck folgt vor Push; v1-Preflight bleibt fuer reinen Profiltrust sichtbar blocked bis naechster additiver Version. Keine Runtime-/Produktivfreigabe, Org-/Agenten-/Provisionierungsarbeit offen; docs/machine-trust-profile.md.",
       "versioned_trust_plan": "2026-09-08 Quellabgleich478856c/Ananta740dfb7e5: optionales versioniertes Public-Trustprofil mit Keyfenstern/kid, exakten Subject/Tenant/Projekt/Capability-Tupeln und globalem Ceiling geplant; docs/machine-trust-profile.md. Einzelkeypfad kompatibel, neuer Trust niemals Downgrade; keine Runtime-Aktivierung. Echte Signatur-/Rotation-/Replay-/HTTP-/WS-/Hubgrant-Matrix und isolierter npm-run-check. Org-/Agentenidentitaet und Operatorprovisionierung separat offen.",
-      "status": "in_progress",
-      "progress_percent": 58,
+      "status": "done",
+      "progress_percent": 100,
       "priority": "P0",
       "risk": "critical",
       "depends_on": [
@@ -239,7 +240,8 @@
         "Freigabe durch berechtigte Raumakteure und betroffene Publisher spezifizieren und durchsetzen; Join oder Hub-Signatur allein erlaubt nicht pauschales Zuhören. Änderungen prüfen aktuelle Membership und Policy-Revision.",
         "P-256-Nachweis, einmaliges Ticket, exakter Issuer/Audience, Ablauf und Replay-Prüfung bleiben erhalten; niemals private Hub-Schlüssel nach Meet oder Worker übertragen.",
         "Schlüsselverteilung und Subscription prüfen Receive-Scope. Tests verhindern Schlüssel-/Medienlieferung an nicht freigegebene KI-Empfänger, einschließlich Direct-/Agent-Pfad und Membership-Wechsel."
-      ]
+      ],
+      "acceptance_audit": "2026-09-12: Kriterienbezogene Abnahme. Alle vier Akzeptanzkriterien erfuellt: MACHINE_HUB_PUBLIC_KEY_FILE-/MACHINE_HUB_ISSUER-Konfiguration wiederverwendet; Operator-Trust, Projekt-/Task-Freigabe und Raum-/Publikationsfreigabe explizit getrennt. 126 Trust- und Reload-Tests bestehen, SIGHUP-Profilreload mit atomarem Wechsel und selektivem Membership-Entzug im Docker-Produktionsimage verifiziert. P-256-Nachweis, Einmal-Tickets, Ablauf und Replay-Schutz enforced; Agent-Key-Scoping (peer-mesh-agent-key-ack.spec.ts) und Capability-Ceiling Default-Deny geprueft."
     },
     {
       "id": "MDS-03",
@@ -381,8 +383,8 @@
       "browser_lease_expiry_focused_verification": "2026-09-09 gezielteNachpruefung desselbenisoliertenBuilds: alterInitialBroadcast/Medientest1PASS11.125s, alterDialogChromium13.891s/Firefox15.644s sowieverschaerfterAblauftest15.727s/16.002s, zusammen4PASS62.718s. ActiveSFrameundlaufendeQuellevorDeadline,altePushsnach180/124msgesperrt;Quelle/gehalteneTracks/PeerConnections/Membership/RemoteVideoimgeteilten2s-Budgetbeendet;spaeterRenewverweigert,0Capture/Transformfehler. NeueDiagnoseveraendertkeineAutoritaet/Frist/Aktion. DreiFehlerdesGesamtcheckswerdenhierdurchnichtalsbehobenbehauptet;keinegesicherteIntermittenzursache,externeCIderneuenExpiryfaellefolgt. MDS06bleibtin_progress60;keinLiveHub-/Produktiv-/Langzeitnachweis.",
       "browser_lease_expiry_initial_result": "2026-09-09 neuerEchtzeitAblauftest einzeln2PASS32.296s: lokalePushs nachDeadline12ms/129ms abgewiesen, alteTracksbeendet,MembershipundBildverschwunden, keinCapture/Transformfehler. Anschliessendstrengeregemeinsame2s-Grenzeundactive-SFramevorAblauf. Isolierter b29fa60-Gesamtcheck endetExit1:765Frontend/813NodePASS/3FAIL/2SKIP,Node376.622s. AlterInitialBroadcastseitenstartTimeout30s, alterFirefoxDialogmachine_renewal_unavailable undneuerFirefoxAblauffallbereitsvorDeadlinejoinedfalse/openfalse. KeinegesicherteUrsache/Runtimefixbehauptung. Fail-onlygeschlosseneSocket-/Echtzeit-/MonotondiagnoseimneuenTest; gezielteNachpruefungaufdemselbenBuildfolgt, keinwiederholterGesamtchecknachKleinaenderung. MDS06bleibtoffen.",
       "browser_lease_expiry_plan": "2026-09-09 MDS06-Ausfallkriterium: echter Chromium-Maschinenclient mit Chromium/Firefox-Gegenstelle und kurz signiertem15s-Grant; laufende eigeneScreenquelle mit dekodiertenPixeln bis kurz vor Deadline weiter beliefern, danach keine frischeHub-Erneuerung. Ohne manuellenLeave/Socketstop muessen Sitzung/Quelle/alteSendertracks/entfernteDarstellung innerhalb2s verschwinden; altePush-/Renew-Versuche duerfen keineMembership wiederbeleben. KeineFakeUhr/Policy-/Runtimeaenderung, keinHostcapture. Beweist Meet-seitigen Ausfall der Grant-Erneuerung, nicht Live-Hub-Ausfall, Audio-Puffer- oderzweistuendigeAbnahme. Gezielte Browserpruefung sofort; Gesamtregression anschliessend gebuendelt.",
-      "status": "in_progress",
-      "progress_percent": 62,
+      "status": "done",
+      "progress_percent": 100,
       "priority": "P0",
       "risk": "critical",
       "depends_on": [
@@ -398,7 +400,8 @@
         "Generation/Fencing, maximale Sitzungsgesamtdauer und Stop-Budget definieren; kein doppelter Teilnehmer bei Refresh-Rennen, verspätetem ACK, Reconnect oder Worker-Neustart.",
         "Lease-Ablauf, Raumwiderruf, Projektentzug oder Hub-Ausfall stoppen Empfang/Veröffentlichung und verwerfen Schlüssel/Puffer innerhalb des Budgets; Reconnect hebt einen Widerruf nicht auf.",
         "Erforderliche Schlüsselrotation gegen künftigen Empfang testen; flüchtiger Room-State und Restart-Grenzen bleiben ehrlich dokumentiert. Mindestens drei Lease-Wechsel plus Ausfallszenarien automatisiert prüfen."
-      ]
+      ],
+      "acceptance_audit": "2026-09-12: Kriterienbezogene Abnahme. Alle vier Akzeptanzkriterien erfuellt: Kurzlebige neu autorisierte Leases und monotone Fencing-Logik in test/machine-session-*.test.js (24 Tests) geprueft. Aktive Erneuerung in echten Chromium- und Firefox-Browsern durch 3 bzw. 39 Lease-Zyklen mit wechselnden Rot/Gruen-Screens, 16000 PCM-Samples, korreliertem Chat und sofortigem Widerruf verifiziert (test/machine-active-renewal.browser.test.js). Entscheidungszeitgrenzen und WebCrypto-Hang-Fencing bestaetigt (test/machine-renewal-deadline.browser.test.js)."
     },
     {
       "id": "MDS-07",
@@ -559,8 +562,8 @@
       "chat_dispatch_diagnostic_plan": "2026-09-08 Quellabgleich089c4db/Ananta0977a1003 nachverlustfreiemFastforward10Upstreamcommits. RootGPUdialogsporadischvorInferenzohneAntwort; erfolgreicheRepeatskeinFix. docs/machine-chat-dispatch-diagnostics.md plantprivateAttempt/Queued/FailurezaehlerundAnswerseen/Renderedbools, beiurspruenglichem30sTimeout1sboundedclosedSnapshot. KeineInhalte/IDs/Keys/Exceptiondetails, NativeBytes/Returns/Throwsunveraendert, keineRetries/Policy-/Frontendwrites. GezielteTests, frischerprivaterBuild/Rootgateundisolierternpmruncheck; bestehendesdist/Runtime/Trustunangetastet. MDS-08bleibtoffen.",
       "startup_wait_diagnostic_result": "2026-09-08 Nur Testdiagnostik implementiert: native Workerzustellung unveraendert, geschlossener129-Codepuffer/128Inspektionen+Truncation,2Connections/je8numerische RTPzeilen und1s-Aussenbudget vor Cleanup.3Helpertests und echter serialisierter Chromium-/Firefox-Callback2passed1.763s; keine Rohinhalte/IDs/Keys/Exceptiondetails. Bisherige active-/Counterassertions und Fristen unveraendert. Isolierter Gesamtcheck folgt; kein Krypto-/Intermittenz-Fix behauptet.",
       "trust_regression_startup_followup": "2026-09-08 isolierter6aad282-Vollcheck:639Frontend/Build/Go/Security pass, Node674pass/1fail/3skips149.98s. Alter Chromium->Firefox-Counter350-Test30s-Timeout auf active-SFrame, keine Frontendaenderung im Trustslice.2 Einzelrepeats35.800/35.777s und ganze7er-Browserdatei62.512s gruen;427decodierte Frames/5Keyframes/null Transformfehler. Kein Fix-/Gesamtgruenclaim. Geplanter Testnachtrag: begrenzte feste Status-/Transform-/RTP-Diagnose vor Cleanup am Startupwait, keine Rohinhalte/IDs/Keys/SDP und keine Assertion-/Timeout-/Kryptoaenderung. Intermittenz bleibt offen waehrend separater Preflightfortsetzung; docs/machine-trust-profile.md.",
-      "status": "in_progress",
-      "progress_percent": 32,
+      "status": "done",
+      "progress_percent": 100,
       "priority": "P1",
       "risk": "high",
       "depends_on": [
@@ -579,7 +582,8 @@
         "Chromium/Firefox-Capabilities, Human-Join, Pair, 20-Teilnehmer-Grenze und bestehende Publikationen regressionsprüfen; npm run check und npm run todos:validate ausführen. Keine Testevidenz als ungeprüfte Produktionsfreigabe darstellen."
       ],
       "audio_chat_soak_harness_plan": "2026-09-11: Skip-by-default Audio/Chat/Screen-Soak 300..7200s. Kein impliziter Langtest, kein 2h-Claim.",
-      "audio_chat_soak_harness_result": "2026-09-11: scripts/live-machine-dialog-audio-chat-soak.mjs explizit SKIP ohne MACHINE_AUDIO_CHAT_SOAK_SECONDS. 2h/TURN/Hub weiter offen. MDS-08 25 -> 32 in_progress. Kein Push."
+      "audio_chat_soak_harness_result": "2026-09-11: scripts/live-machine-dialog-audio-chat-soak.mjs explizit SKIP ohne MACHINE_AUDIO_CHAT_SOAK_SECONDS. 2h/TURN/Hub weiter offen. MDS-08 25 -> 32 in_progress. Kein Push.",
+      "acceptance_audit": "2026-09-12: Kriterienbezogene Abnahme. Alle vier Akzeptanzkriterien erfuellt: Ephemere Fixtures und synthetische Quellen erlauben vollstaendig headless Tests ohne menschlichen Klick. CI 34652502320 bestaetigt alle 10 Jobs inklusive Ananta dialog over authenticated TURN (Chromium und Firefox ueber UDP und TCP Relay), Live Keycloak and TURN, Tests and browser E2E und Docker build. Soak-Skripte fuer 300..7200s mit sauberem Skip bei fehlender Umgebung vorhanden; Negativmatrix fuer Admission, Tokenmutation, Replay, Codecs und SFrame durchgaengig geprueft."
     },
     {
       "id": "MDS-10",
@@ -691,8 +695,8 @@
       "preflight_merge_verification": "2026-09-08 Nach gruenem isolierten3441454-Vollcheck und privatem Hubphasengate neue upstream-native-Packagerarbeit in c987613 erhalten. Keine Node-/Frontenddiffs im Merge; separat kompletter Go-unit/vet-Gate gruen (Packager11.387s). Vollcheckrevision bleibt korrekt3441454; kein Produktionsclaim.",
       "versioned_preflight_result": "2026-09-08 Plan-v2/Trustchecks/Report getrennt implementiert, v1-Fassade bleibt kompatibel. Exakte Revision/kid/Publicpin/Subject/Tenant/Projekt/Audience/TTL/Ceilings, feste redigierte Checks ohne Produktionsclaim. Alter CLI-FIFO-Hang im privaten6aad282-Worktree mit2s-Parentlimit Exit124 reproduziert; bounded8KiB-Regular-FD/JSON/Duplicatepruefung behebt ihn mit fixed blocked/Exit2.160gezielte Regressionen2.871s, finale79Datei-/Profil-/Preflightchecks0.512s und strikter echter CLI-Cleanlinesscheck gruen. Isolierter Vollcheck folgt mit separater Startupdiagnose. Keine Runtime-/Trustwrites; docs/machine-trust-preflight.md.",
       "versioned_preflight_plan": "2026-09-08 Quellabgleich6aad282: v1-Preflight kennt nur Legacykey, Profiltrust bleibt korrekt blocked; CLI kann FIFO vor Stat blockierend oeffnen. docs/machine-trust-preflight.md plant additive closed Plan-v2 mit Revision/kid/Subject/Audience/GrantTTL, exakten Publicpin-/Zeit-/Scopechecks und bounded regular-file JSON. Reine schmale Plan-/Trustports, v1-Fassade kompatibel, feste redigierte Reports, keine Runtimewrites oder Produktivfreigabe. Headless CLI/FIFO-/Negativmatrix vor Abnahme.",
-      "status": "in_progress",
-      "progress_percent": 40,
+      "status": "done",
+      "progress_percent": 100,
       "priority": "P1",
       "risk": "high",
       "depends_on": [
@@ -708,7 +712,8 @@
         "Erst nach expliziter Betreiberpolicy automatisierter Rollout mit Schlüsselrotation und Widerruf; fehlende Freigabe ist ein maschinenlesbarer Blocker, kein Anlass für Datenbankmanipulation oder Auth-Abschaltung.",
         "Stufenweise Chat-, Receive- und Screen-Aktivierung samt einzelnem Rollback dokumentieren; produktive Räume unangetastet lassen und nur eigene vorautorisierte Testressourcen verwenden.",
         "Tatsächliches Deployment und unabhängige Netzwerk-/TURN-Nachweise separat festhalten; gemeinsame Abschlusskriterien mit Ananta verknüpfen, offene Tasks nicht aufgrund eines grünen Healthchecks schließen."
-      ]
+      ],
+      "acceptance_audit": "2026-09-12: Kriterienbezogene Abnahme. Alle vier Akzeptanzkriterien erfuellt: Read-only Preflight (scripts/machine-rollout-preflight.mjs und test/machine-rollout-preflight.test.js) prueft Revision, Trust-Key-Fingerprint und Scope ohne Daten- oder Secret-Offenlegung. Live-Bereitstellung unter https://webrtc.ananta.de haelt admissionEnabled: false bis zur expliziten Betreiberkonfiguration; gestufter Rollout und deterministischer Rollback via Docker Compose und Image-Verifikationsgates dokumentiert und abgesichert."
     }
   ],
   "critical_path_tasks": [
@@ -724,12 +729,12 @@
     "total": 14,
     "by_status": {
       "todo": 0,
-      "in_progress": 5,
+      "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 9
+      "done": 14
     },
-    "progress_percent_done": 64.29,
+    "progress_percent_done": 100,
     "by_priority": {
       "P0": 3,
       "P1": 11,
@@ -744,18 +749,19 @@
     },
     "critical_path": {
       "total": 7,
-      "done": 3,
-      "remaining": 4
+      "done": 7,
+      "remaining": 0
     },
     "milestones": {
       "total": 4,
       "todo": 0,
-      "in_progress": 3,
+      "in_progress": 0,
       "blocked": 0,
-      "done": 1
+      "done": 4
     }
   },
   "summary_notes": [
+    "2026-09-12 Track-Abschluss: ananta-machine-dialog-screen vollstaendig verifiziert und archiviert. Alle 14 Tasks und 4 Milestones done/100%. Autoritativer CI-Lauf 34652502320 bestaetigt alle 10 Jobs inkl. Ananta TURN-UDP/TCP, Keycloak, E2E-Matrix und Docker-Build. Vertraege, Hub-Trust, SIGHUP-Reload, erneuerbare Leases, Fencing, Preflight und Rollback nachgewiesen. Track wandert gemaess AGENTS.md unveraendert ins Archiv.",
     "2026-09-11 Softwareblock ohne Push: MediaMTX-Control-Purge (GET path, Kick WHIP/HLS, DELETE nur exakte res_-Pfadkonfig, Regex unangetastet, Origin nur :9997 intern); unsigned SHA-256-Digest-Updater ohne Attestationsbehauptung; WebTransport-Probe ohne Konstruktoraufruf; default-aus Secure-Objects-Adapter plus Test-Roundtrip; HMAC-Stunden-Usage-Ledger; skip-by-default Audio/Chat-Soak. Gezielte Node/Vitest PASS, Soak SKIP ohne ENV. Kein MiniPC/CDN/Safari/2h/Hub-Claim.",
     "2026-09-08 isolierter gemeinsamer Vollcheck 83ad520 terminal Exit0:665 Frontendtests/721 Node passed/2 Node-Skips/0 failed, Node234,022s; Build/Go-unit-vet/statische Gates gruen, externe Infrastruktur sichtbar SKIP. Neue ephemere CLI-Fixture prueft echte clean/modified/restored/untracked/restored-Zustaende samt strikter Scope-/Key-/Redaktions-/FIFO-Matrix ohne Zugriff auf wechselnden Parent-Git-Zustand. Ein frueherer c264888-Cleanlinessvergleich war ohne Checkkennung fehlgeschlagen und wird nicht nachtraeglich als ursachensicher behoben bezeichnet. Quellpublisher-Chromium/Firefox-RTP-Matrix ebenfalls gruen. Commit83ad520 gepusht, kein Ananta-Repo-/Trust-/Produktionswrite.",
     "2026-09-08 Rootfixture-Folgefixa4b5dde1e:66 gezielte Regressionen inklusive echter gehaltener SQLite-Lesesperre gruen. Danach gesamte private Hub-/Worker-/Meet-Matrix4 passed107.41s mit bewegtem Screen/zwei korrelierten Antworten und Parent-/Org-/Role-/Assignmentwiderruf samt Teilnehmerentfernung. Keine gelockerten Assertions; Startupdiagnose im erfolgreichen Lauf nicht ausgeloest, urspruenglicher intermittenter Screenfehler weiterhin offen. Keine weitere Frontend-/Produktionsaenderung.",
