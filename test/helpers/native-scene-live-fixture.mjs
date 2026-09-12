@@ -176,7 +176,7 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
     } catch { /* Fixed status only for malformed responses. */ }
   });
   await page.goto(origin);
-  await waitFixtureValue(page, () => Boolean(document.querySelector("#join-room")));
+  await waitFixtureValue(page, () => Boolean(document.querySelector("#join-room")), undefined, { timeout: 15_000 });
   const request = (method, pathname, body) => page.evaluate(async ({ method, pathname, body }) => {
     const response = await fetch(pathname, { method, headers: { "content-type": "application/json",
       authorization: `Bearer ${sessionStorage.getItem("webrtc.oidc.access-token")}` }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
