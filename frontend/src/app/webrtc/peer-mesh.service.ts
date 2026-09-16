@@ -314,6 +314,7 @@ export class PeerMeshService {
   private readonly captionRevisions = new CaptionRevisionTracker();
   private controlSequence = 0;
   private activityTimer: ReturnType<typeof setInterval> | null = null;
+  private e2eeRecoveryTimer: ReturnType<typeof setInterval> | null = null;
   private qualityTimer: ReturnType<typeof setInterval> | null = null;
   private lastMeshTelemetrySentAt = 0;
   private lastAnnouncedAnalysisInterest = false;
@@ -1550,13 +1551,26 @@ export class PeerMeshService {
       void this.applyQualityPolicies();
     }, 500);
     this.qualityTimer = setInterval(() => void this.sampleQuality(), 2_000);
+    this.e2eeRecoveryTimer = setInterval(() => {
+      // A media-key exchange can be lost or invalidated by a key rotation and the
+      // state then hangs in "pending" forever (synthetic media never starts).
+      // While the mesh is stable, re-announce the overlay key and re-provision
+      // media keys so the handshake recovers instead of waiting.
+      if (!this.shouldProtectMedia() || !this.membershipStable || this.mediaE2eeState() !== "pending") return;
+      this.announceOverlayKey();
+      for (const peer of this.peers.values()) {
+        if (this.overlay.hasPeerKey(peer.id)) this.provisionMediaKeysForPeer(peer.id);
+      }
+    }, 4_000);
   }
 
   private stopTimers(): void {
     if (this.activityTimer) clearInterval(this.activityTimer);
     if (this.qualityTimer) clearInterval(this.qualityTimer);
+    if (this.e2eeRecoveryTimer) clearInterval(this.e2eeRecoveryTimer);
     this.activityTimer = null;
     this.qualityTimer = null;
+    this.e2eeRecoveryTimer = null;
   }
 
   private async sampleQuality(): Promise<void> {
