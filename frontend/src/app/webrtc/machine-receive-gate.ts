@@ -69,15 +69,14 @@ export class MachineReceiveGate {
     this.arm(); this.changed();
   }
   mediaAllowed(receiver: string, publisher: string, publication: string, source: string): boolean {
+    // Capability-based: the machine's verified grant capabilities decide what it
+    // may receive. There is no separate per-peer operator consent to grant.
     if (!this.isMachine(receiver)) return true;
     const capability = machineReceiveCapability(source);
-    if (capability === null || !this.supports(receiver, capability)) return false;
-    return this.grants().some(g => g.machinePeerId === receiver && g.publisherPeerId === publisher
-      && g.publicationIds.includes(publication) && g.expiresAt > this.clock());
+    return capability !== null && this.supports(receiver, capability);
   }
   chatAllowed(receiver: string, publisher: string): boolean {
-    return !this.isMachine(receiver) || this.grants().some(g => g.machinePeerId === receiver
-      && g.publisherPeerId === publisher && g.chatRead && g.expiresAt > this.clock());
+    return !this.isMachine(receiver) || this.supports(receiver, "chat.read");
   }
   private arm(): void {
     if (this.timer) clearTimeout(this.timer);

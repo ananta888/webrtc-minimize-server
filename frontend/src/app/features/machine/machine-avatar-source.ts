@@ -76,7 +76,7 @@ export class MachineAvatarSource {
     const cause = !scope ? "inactive" : !Number.isFinite(now) || !Number.isFinite(local) ? "clock-invalid"
       : now < this.lastClock || local < this.lastMonotonic ? "clock-backwards"
       : now >= this.expiresAt || local >= this.started + 30_000 ? "activation-expired"
-      : local >= this.controllerUntil ? "controller-expired" : current.sourceId !== scope.sourceId ? "source-id"
+      : this.state !== "opening" && local >= this.controllerUntil ? "controller-expired" : current.sourceId !== scope.sourceId ? "source-id"
       : current.sessionId !== scope.sessionId ? "session-id" : current.leaseGeneration !== scope.leaseGeneration ? "lease-generation"
       : current.membershipEpoch !== scope.membershipEpoch ? "membership-epoch"
       : current.expiresAt !== scope.expiresAt ? "lease-expiry" : null;

@@ -9,7 +9,7 @@ export class MachinePeerChatIngress {
     let event: MachinePeerChat;
     try { event = parseMachinePeerChat(raw); } catch { return null; }
     if (!/^[a-f0-9]{16}$/.test(senderPeerId) || !Number.isSafeInteger(now)
-      || event.roomId !== roomId || event.membershipEpoch !== epoch
+      || event.roomId !== roomId || event.membershipEpoch > epoch
       || event.sentAt < now - 30_000 || event.sentAt > now + 2000) return null;
     let state = this.peers.get(senderPeerId);
     if (!state) {
