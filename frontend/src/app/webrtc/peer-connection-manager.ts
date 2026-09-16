@@ -94,6 +94,7 @@ export class PeerConnectionManager {
     private readonly icePolicy: IceTierPolicy,
     private readonly dataOverlayEnabled: boolean,
     private readonly callbacks: ManagerCallbacks,
+    private readonly overlayInitiates: (peerId: string) => boolean = (peerId) => ownPeerId < peerId,
   ) {}
 
   add(peerId: string, name: string): ManagedPeer | null {
@@ -136,9 +137,13 @@ export class PeerConnectionManager {
       this.callbacks.channel(peer, pc.createDataChannel("control", { ordered: true }));
       this.callbacks.channel(peer, pc.createDataChannel("chat", { ordered: true }));
       this.callbacks.channel(peer, pc.createDataChannel("captions", { ordered: true }));
-      if (this.dataOverlayEnabled) {
-        this.callbacks.channel(peer, pc.createDataChannel("overlay", { ordered: false, maxRetransmits: 3 }));
-      }
+    }
+    // Exactly one side creates the overlay channel. A limited machine peer must
+    // own it so a human peer always receives the rekey transport it cannot be
+    // trusted to create; otherwise the lower peer id stays the deterministic
+    // owner. Never both: replace-on-adopt would close the shared channel.
+    if (this.dataOverlayEnabled && this.overlayInitiates(peerId)) {
+      this.callbacks.channel(peer, pc.createDataChannel("overlay", { ordered: false, maxRetransmits: 3 }));
     }
     this.scheduleFallback(peer);
     return peer;

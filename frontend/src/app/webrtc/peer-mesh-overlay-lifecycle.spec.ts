@@ -14,6 +14,7 @@ function fixture() {
     connections: { peers: new Map([[peerId, peer]]) }, optimization: { dataOverlayEnabled: true },
     machineReceive: { isMachine: () => false }, topology: { path: () => null },
     overlayInitialization: Promise.resolve(), overlayMode: signal("unavailable"),
+    bufferedOverlayKeys: new Map(),
     overlay: { encrypt: vi.fn(), receive: vi.fn(), setPeerKey: vi.fn(async () => {}) },
     updateOverlayAvailability: vi.fn(), provisionMediaKeysForPeer: vi.fn(), addChat: vi.fn(),
     queueOverlayPacket: vi.fn(() => true), sendOverlayAck: vi.fn(), acceptMediaE2eeEnvelope: vi.fn(),
@@ -81,6 +82,53 @@ describe("mesh revalidates overlay authority after asynchronous work", () => {
       packetId: "test", trafficClass: "rekey", data: bytes });
     await mesh.acceptOverlayPacket(peer, "{}");
     expect(mesh.acceptMediaE2eeEnvelope).toHaveBeenCalledWith(peerId, bytes);
+  });
+
+  it("buffers an ahead-of-epoch key and applies it once the epoch advances", async () => {
+    const { mesh, peerId } = fixture();
+    await mesh.acceptOverlayKey({ from: peerId, membershipEpoch: 2, key: {} });
+    expect(mesh.overlay.setPeerKey).not.toHaveBeenCalled();
+    mesh.membershipEpoch.set(2);
+    mesh.flushBufferedOverlayKeys();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(mesh.overlay.setPeerKey).toHaveBeenCalledOnce();
+    expect(mesh.provisionMediaKeysForPeer).toHaveBeenCalledWith(peerId);
+    expect(mesh.addChat).not.toHaveBeenCalled();
+  });
+
+  it("drops a buffered key once its epoch is already stale", async () => {
+    const { mesh, peerId } = fixture();
+    await mesh.acceptOverlayKey({ from: peerId, membershipEpoch: 2, key: {} });
+    mesh.membershipEpoch.set(3);
+    mesh.flushBufferedOverlayKeys();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(mesh.overlay.setPeerKey).not.toHaveBeenCalled();
+    expect(mesh.provisionMediaKeysForPeer).not.toHaveBeenCalled();
+  });
+
+  it("retries a transient import failure while the epoch is unchanged", async () => {
+    const { mesh, peerId } = fixture();
+    mesh.overlay.setPeerKey.mockRejectedValueOnce(new Error("overlay_lifecycle_changed"));
+    await mesh.acceptOverlayKey({ from: peerId, membershipEpoch: 1, key: {} });
+    expect(mesh.overlay.setPeerKey).toHaveBeenCalledTimes(2);
+    expect(mesh.provisionMediaKeysForPeer).toHaveBeenCalledWith(peerId);
+    expect(mesh.addChat).not.toHaveBeenCalled();
+  });
+
+  it("warns once when a transient import keeps failing", async () => {
+    const { mesh, peerId } = fixture();
+    mesh.overlay.setPeerKey.mockRejectedValue(new Error("overlay_lifecycle_changed"));
+    await mesh.acceptOverlayKey({ from: peerId, membershipEpoch: 1, key: {} });
+    expect(mesh.overlay.setPeerKey).toHaveBeenCalledTimes(3);
+    expect(mesh.addChat).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a malformed key", async () => {
+    const { mesh, peerId } = fixture();
+    mesh.overlay.setPeerKey.mockRejectedValue(new Error("invalid_overlay_key"));
+    await mesh.acceptOverlayKey({ from: peerId, membershipEpoch: 1, key: {} });
+    expect(mesh.overlay.setPeerKey).toHaveBeenCalledOnce();
+    expect(mesh.addChat).toHaveBeenCalledTimes(1);
   });
 });
 

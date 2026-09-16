@@ -80,8 +80,17 @@ export class MachineAvatarSource {
       : current.sessionId !== scope.sessionId ? "session-id" : current.leaseGeneration !== scope.leaseGeneration ? "lease-generation"
       : current.membershipEpoch !== scope.membershipEpoch ? "membership-epoch"
       : current.expiresAt !== scope.expiresAt ? "lease-expiry" : null;
-    // Fixed internal reason only: never retain the authority or its values.
-    if (cause) throw new Error("meet_avatar_authority_expired", { cause });
+    // A peer joining/leaving (membership epoch) or a session renewal (lease
+    // generation/expiry) changes a soft part of the authority but not the
+    // source/session identity. Rebind instead of tearing the avatar down, so a
+    // synthetic source stays visible across room churn and renewals.
+    const soft = cause === "membership-epoch" || cause === "lease-generation" || cause === "lease-expiry";
+    if (soft && scope) {
+      this.scope = Object.freeze({ ...current });
+    } else if (cause) {
+      // Fixed internal reason only: never retain the authority or its values.
+      throw new Error("meet_avatar_authority_expired", { cause });
+    }
     this.lastClock = now; this.lastMonotonic = local; return local;
   }
 

@@ -264,6 +264,18 @@ export class PeerMeshService {
   private overlayPublicKey: JsonWebKey | null = null;
   private overlayInitialization: Promise<void> = Promise.resolve();
   private overlayGeneration = 0;
+  // The server stamps membershipEpoch when it relays an overlay-key. A key can
+  // therefore be ahead of the topology this client has applied; keep the newest
+  // ahead-of-epoch key per peer and apply it once this client reaches the epoch.
+  private readonly bufferedOverlayKeys = new Map<string, Readonly<{ membershipEpoch: number; key: JsonWebKey }>>();
+  // Media E2EE envelopes (media-key / media-key-ack) carry the membership
+  // epoch stamped when the server relayed them. A key or ack can therefore
+  // arrive for a topology this client has not applied (or before membership
+  // settled); keep the newest ahead-of-epoch envelope per peer/type/publication
+  // and apply it once the epoch matches and the mesh is stable.
+  private readonly bufferedMediaEnvelopes = new Map<
+    string, Readonly<{ originPeerId: string; membershipEpoch: number; data: Uint8Array }>
+  >();
   private overlaySerial = 0;
   private ownId = "";
   private ownName = "";
@@ -284,6 +296,9 @@ export class PeerMeshService {
   private readonly requestedReceiveProfiles = new Map<string, ReceiveQualityProfile>();
   private readonly sentReceiveProfiles = new Map<string, ReceiveQualityProfile>();
   private membershipStable = false;
+  // Peers whose membership this client already applied; used to tell a join
+  // (keep/announce keys) from a leave (rotate keys for forward secrecy).
+  private appliedPeerIds = new Set<string>();
   private roomId = "";
   private optimization: OptimizationRuntimeConfig = {
     activeSpeakerLimit: 5,
@@ -351,7 +366,7 @@ export class PeerMeshService {
       channel: (peer, channel) => this.attachChannel(peer as PeerState, channel),
       state: () => this.updateIceState(),
       negotiationError: (peer) => this.addChat("System", `Verhandlung mit ${peer.name} fehlgeschlagen`, true),
-    });
+    }, (peerId) => this.overlayInitiates(peerId));
     this.mediaAgents.initialize({
       ownPeerId: ownId,
       roomId,
@@ -405,6 +420,9 @@ export class PeerMeshService {
     this.peerChoices.set([...this.peers.values()].map(({ id, name }) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)));
     this.reconcileAllPublications();
     this.refreshAnalysisContext();
+    // Make sure the newcomer receives our current overlay key without forcing a
+    // rotation that would invalidate keys already held by existing peers.
+    this.announceOverlayKey();
   }
 
   async acceptSignal(message: ServerMessage): Promise<void> {
@@ -545,6 +563,7 @@ export class PeerMeshService {
         maxHops: this.optimization.peerRelayMaxHops,
       },
     );
+    console.warn("[e2eedbg] topology in", "rawPeers", Array.isArray(message["peers"]) ? (message["peers"] as unknown[]).length : null, "localMembers", 1 + this.peers.size, "mep", message["membershipEpoch"], "re", message["routeEpoch"], "te", message["topologyEpoch"], "curRe", this.routeEpoch(), "curTe", this.topologyEpoch(), "applied", Boolean(state));
     if (!state) return;
     const membershipChanged = state.membershipEpoch !== this.membershipEpoch();
     this.topologyEpoch.set(state.topologyEpoch);
@@ -552,10 +571,26 @@ export class PeerMeshService {
     this.routeEpoch.set(state.routeEpoch);
     this.mediaAgents.updateMembershipEpoch(state.membershipEpoch);
     this.membershipStable = true;
+    const currentPeerIds = new Set(this.peers.keys());
+    const peerLeft = [...this.appliedPeerIds].some((peerId) => !currentPeerIds.has(peerId));
+    this.appliedPeerIds = currentPeerIds;
     if (membershipChanged && this.optimization.dataOverlayEnabled) {
-      this.rotateOverlayKey();
-      this.rotateMediaKeys();
+      if (peerLeft || !this.overlayPublicKey) {
+        // A peer left the room: rotate keys so the departed peer cannot read
+        // later overlay/media traffic (forward secrecy).
+        this.rotateOverlayKey();
+        this.rotateMediaKeys();
+      } else {
+        // A peer joined. Keep the current overlay key so keys already announced
+        // to the remaining peers stay valid and just re-announce so the newcomer
+        // can encrypt to this client. Rotating on join raced the peer's key
+        // cache and made the peer unable to decrypt our overlay packets
+        // (overlay recv ... decrypt_failed).
+        this.announceOverlayKey();
+      }
     }
+    this.flushBufferedOverlayKeys();
+    this.flushBufferedMediaEnvelopes();
     this.topologyMode.set(this.topology.mode(this.ownId));
     this.applyReceivePlaybackPreference();
     this.reconcileAllPublications();
@@ -692,17 +727,77 @@ export class PeerMeshService {
 
   async acceptOverlayKey(message: ServerMessage): Promise<void> {
     const peerId = String(message["from"] || "");
-    const current = this.overlayOperationCurrent([peerId], false);
-    try {
-      if (Number(message["membershipEpoch"]) !== this.membershipEpoch() || !this.peers.has(peerId)) return;
-      await this.overlayInitialization;
-      if (!current()) return;
-      await this.overlay.setPeerKey(peerId, message["key"] as JsonWebKey);
-      if (!current()) return;
-      this.updateOverlayAvailability();
-      this.provisionMediaKeysForPeer(peerId);
-    } catch {
-      this.addChat("System", "Ungültiger Overlay-Schlüssel wurde verworfen", true);
+    const epoch = Number(message["membershipEpoch"]);
+    console.warn("[e2eedbg] overlay-key in", peerId, "epoch", epoch, "cur", this.membershipEpoch(), "known", this.peers.has(peerId), "hasKey", this.overlay.hasPeerKey(peerId));
+    if (!Number.isSafeInteger(epoch) || !this.peers.has(peerId)) return;
+    const current = this.membershipEpoch();
+    if (epoch > current) {
+      // The server stamps membershipEpoch when it relays an overlay-key, so a
+      // key can belong to a topology this client has not applied yet. Keep only
+      // the newest ahead-of-epoch key per peer; flushBufferedOverlayKeys applies
+      // it once this client reaches the epoch and stale epochs are dropped.
+      this.bufferedOverlayKeys.set(peerId, { membershipEpoch: epoch, key: message["key"] as JsonWebKey });
+      return;
+    }
+    if (epoch < current) return;
+    this.bufferedOverlayKeys.delete(peerId);
+    await this.applyPeerOverlayKey(peerId, message["key"] as JsonWebKey);
+  }
+
+  private async applyPeerOverlayKey(peerId: string, key: JsonWebKey): Promise<void> {
+    // A concurrent overlay rotation can invalidate an in-flight import while the
+    // message epoch still matches; retry against the settled generation instead
+    // of discarding the peer key permanently. overlayOperationCurrent stays the
+    // authority fence: any epoch, generation, peer or identity change aborts.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const current = this.overlayOperationCurrent([peerId], false);
+      try {
+        if (!this.peers.has(peerId)) return;
+        await this.overlayInitialization;
+        if (!current()) return;
+        await this.overlay.setPeerKey(peerId, key);
+        if (!current()) return;
+        this.updateOverlayAvailability();
+        this.provisionMediaKeysForPeer(peerId);
+        console.warn("[e2eedbg] overlay-key applied", peerId, "hasKey", this.overlay.hasPeerKey(peerId));
+        return;
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "";
+        console.warn("[e2eedbg] overlay-key error", peerId, reason);
+        const transient = reason === "overlay_lifecycle_changed" || reason === "overlay_key_unavailable";
+        if (!transient) break;
+      }
+    }
+    this.addChat("System", "Ungültiger Overlay-Schlüssel wurde verworfen", true);
+  }
+
+  private flushBufferedOverlayKeys(): void {
+    if (this.bufferedOverlayKeys.size === 0) return;
+    const current = this.membershipEpoch();
+    for (const [peerId, buffered] of [...this.bufferedOverlayKeys]) {
+      if (!this.peers.has(peerId) || buffered.membershipEpoch < current) {
+        this.bufferedOverlayKeys.delete(peerId);
+        continue;
+      }
+      if (buffered.membershipEpoch === current && this.optimization.dataOverlayEnabled) {
+        this.bufferedOverlayKeys.delete(peerId);
+        void this.applyPeerOverlayKey(peerId, buffered.key);
+      }
+    }
+  }
+
+  private flushBufferedMediaEnvelopes(): void {
+    if (this.bufferedMediaEnvelopes.size === 0) return;
+    const current = this.membershipEpoch();
+    for (const [bufferKey, buffered] of [...this.bufferedMediaEnvelopes]) {
+      if (buffered.membershipEpoch < current || !this.peers.has(buffered.originPeerId)) {
+        this.bufferedMediaEnvelopes.delete(bufferKey);
+        continue;
+      }
+      if (buffered.membershipEpoch === current && this.membershipStable && this.shouldProtectMedia()) {
+        this.bufferedMediaEnvelopes.delete(bufferKey);
+        void this.acceptMediaE2eeEnvelope(buffered.originPeerId, buffered.data);
+      }
     }
   }
 
@@ -758,6 +853,10 @@ export class PeerMeshService {
     peer.overlayQueue.clear();
     this.connections?.remove(peerId);
     this.overlay.removePeer(peerId);
+    this.bufferedOverlayKeys.delete(peerId);
+    for (const [bufferKey, buffered] of this.bufferedMediaEnvelopes) {
+      if (buffered.originPeerId === peerId) this.bufferedMediaEnvelopes.delete(bufferKey);
+    }
     this.updateOverlayAvailability();
     this.participantNames.delete(peerId);
     this.activity.removePeer(peerId);
@@ -934,6 +1033,7 @@ export class PeerMeshService {
     this.sentReceiveProfiles.clear();
     this.localStreams.clear();
     this.overlay.destroy();
+    this.bufferedOverlayKeys.clear();
     this.overlayGeneration += 1;
     this.overlayInitialization = Promise.resolve();
     this.overlayPublicKey = null;
@@ -1270,6 +1370,7 @@ export class PeerMeshService {
       routeEpoch: this.routeEpoch(),
       memberPeerIds: new Set([this.ownId, ...this.peers.keys()]),
     });
+    console.warn("[e2eedbg] overlay recv", peer.id, "action", result.action, "reason", (result as { reason?: string }).reason ?? null, "epoch", this.membershipEpoch(), "re", this.routeEpoch());
     if (!current()) {
       if (result.action === "delivered") result.data.fill(0);
       return;
@@ -1314,6 +1415,11 @@ export class PeerMeshService {
       packetId,
       missing: missing.slice(0, 96),
     })), "control");
+  }
+
+  /** The lower peer id creates the overlay channel inside the first offer. */
+  private overlayInitiates(peerId: string): boolean {
+    return this.ownId < peerId;
   }
 
   /** Async crypto is not authority: recheck the owning session and exact peers. */
@@ -1937,11 +2043,36 @@ export class PeerMeshService {
       return;
     }
     const message = parseMediaE2eeMessage(raw);
-    if (!message || message.membershipEpoch !== this.membershipEpoch() || !this.membershipStable) return;
+    console.warn("[e2eedbg] envelope", originPeerId, "parsed", Boolean(message), "type", message?.type ?? null, "sender", message?.senderPeerId ?? null, "epoch", message?.membershipEpoch ?? null, "cur", this.membershipEpoch(), "stable", this.membershipStable, "protect", this.shouldProtectMedia(), "agentMsg", Boolean(agentMessage));
+    if (!message) return;
+    const envelopeEpoch = message.membershipEpoch;
+    const currentEpoch = this.membershipEpoch();
+    if (envelopeEpoch > currentEpoch || !this.membershipStable) {
+      const bufferKey = `${originPeerId}\u0000${message.type}\u0000${message.publicationId}`;
+      this.bufferedMediaEnvelopes.set(bufferKey, {
+        originPeerId, membershipEpoch: envelopeEpoch, data: data.slice(),
+      });
+      console.warn("[e2eedbg] media-envelope buffered", message.type, "epoch", envelopeEpoch, "cur", currentEpoch, "stable", this.membershipStable);
+      return;
+    }
+    if (envelopeEpoch < currentEpoch) return;
+    await this.applyMediaE2eeEnvelope(originPeerId, message);
+  }
+
+  private async applyMediaE2eeEnvelope(
+    originPeerId: string,
+    message: NonNullable<ReturnType<typeof parseMediaE2eeMessage>>,
+  ): Promise<void> {
     if (message.type === "media-key") {
-      if (message.senderPeerId !== originPeerId || !this.peers.has(originPeerId) || !this.shouldProtectMedia()) return;
+      if (message.senderPeerId !== originPeerId || !this.peers.has(originPeerId) || !this.shouldProtectMedia()) {
+        console.warn("[e2eedbg] media-key drop guard", "senderMatch", message.senderPeerId === originPeerId, "known", this.peers.has(originPeerId), "protect", this.shouldProtectMedia());
+        return;
+      }
       const descriptor = this.descriptors.get(message.publicationId);
-      if (!this.machineReceive.mediaAllowed(this.ownId, originPeerId, message.publicationId, descriptor?.source || "")) return;
+      if (!this.machineReceive.mediaAllowed(this.ownId, originPeerId, message.publicationId, descriptor?.source || "")) {
+        console.warn("[e2eedbg] media-key drop mediaAllowed", descriptor?.source ?? null);
+        return;
+      }
       const key = decodeMediaBaseKey(message);
       const installed = this.mediaE2eeController?.setReceiverKey(
         this.inboundMediaContext(originPeerId, message.publicationId),

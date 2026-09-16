@@ -1884,7 +1884,7 @@ function configureSignaling(
     }
   };
 
-  const broadcastTopology = (roomId, membershipChanged = false) => {
+  const broadcastTopology = (roomId, membershipChanged = false, renewOnly = false) => {
     const members = registry.members(roomId);
     if (members.length === 0) {
       roomEpochs.delete(roomId);
@@ -1895,8 +1895,13 @@ function configureSignaling(
     }
     const epochs = roomEpochs.get(roomId) || { membership: 0, route: 0, topology: 0 };
     if (membershipChanged) epochs.membership += 1;
-    epochs.route += 1;
-    epochs.topology += 1;
+    // A lease renewal resends the same topology with a fresh lease expiry; it is
+    // not a route change. Bumping route/topology epochs here invalidated the
+    // clients' E2EE overlay (overlay_lifecycle_changed) every renewal period.
+    if (!renewOnly) {
+      epochs.route += 1;
+      epochs.topology += 1;
+    }
     roomEpochs.set(roomId, epochs);
     if (membershipChanged) pruneTrustedSources();
     const topology = buildRoomTopology(members, epochs, {
@@ -2943,7 +2948,7 @@ function configureSignaling(
   }, 30_000);
   heartbeat.unref();
   const leaseRenewal = setInterval(() => {
-    for (const roomId of roomEpochs.keys()) broadcastTopology(roomId);
+    for (const roomId of roomEpochs.keys()) broadcastTopology(roomId, false, true);
   }, config.peerRouteRenewMs);
   leaseRenewal.unref();
   const mediaAgentRenewal = setInterval(() => {

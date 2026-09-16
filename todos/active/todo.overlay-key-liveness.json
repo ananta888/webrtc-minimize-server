@@ -1,0 +1,76 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "overlay-key-liveness",
+  "purpose": "Opaque-Overlay-Schluessel nach Membership-Rotationen zuverlaessig anwenden, damit Sender-Media-Kontexte aktiv werden und Maschinen-Publikationen nicht an einer dauerhaft pending E2EE scheitern.",
+  "goal": "Ein Peer-Overlay-Schluessel, der bezogen auf die Membership-Epoche zu frueh oder waehrend einer laufenden Rotation eintrifft, geht nicht mehr verloren: vorausliegende Epochen werden gepuffert und beim Erreichen der Epoche angewendet, transiente Import-Races werden begrenzt wiederholt. Stale Schluessel bleiben verworfen, und overlayOperationCurrent bleibt die Autoritaetsgrenze.",
+  "status": "done",
+  "created": "2026-09-14",
+  "updated": "2026-09-14",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Overlay-Key-Anwendung ueberlebt Membership-Races",
+      "task_ids": ["overlay-key-epoch-buffer", "overlay-key-import-retry"],
+      "status": "done"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "overlay-key-epoch-buffer",
+      "title": "Overlay-Keys vorausliegender Membership-Epochen puffern und beim Epochenwechsel anwenden",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "acceptOverlayKey puffert den juengsten Key pro Peer, wenn message.membershipEpoch groesser als die aktuelle Epoche ist",
+        "applyTopology wendet gepufferte Keys nach dem Setzen der Epoche an",
+        "Keys aelterer Epochen werden weiterhin verworfen",
+        "removePeer und close entfernen gepufferte Keys; overlayOperationCurrent bleibt die Autoritaetsgrenze",
+        "vitest peer-mesh-overlay-lifecycle deckt Puffer-Flush und Stale-Verwurf ab"
+      ]
+    },
+    {
+      "id": "overlay-key-import-retry",
+      "title": "Transiente setPeerKey-Importfehler begrenzt wiederholen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": ["overlay-key-epoch-buffer"],
+      "acceptance_criteria": [
+        "acceptOverlayKey wiederholt setPeerKey begrenzt, solange die Message-Epoche der aktuellen Epoche entspricht und der Peer existiert",
+        "Nach endgueltigem Scheitern wird weiterhin genau eine Systemwarnung ausgegeben",
+        "Epochen-, Generations-, Peer- oder Identitaetswechsel brechen ohne Import und ohne Provisionierung ab",
+        "vitest peer-mesh-overlay-lifecycle deckt Retry-Erfolg und Retry-Abbruch ab"
+      ]
+    }
+  ],
+  "critical_path_tasks": ["overlay-key-epoch-buffer", "overlay-key-import-retry"],
+  "tasks_status_summary": {
+    "total": 2,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 2 },
+    "progress_percent_done": 100,
+    "by_priority": { "P0": 0, "P1": 2, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 1, "high": 1, "critical": 0 },
+    "critical_path": { "total": 2, "done": 2, "remaining": 0 },
+    "milestones": { "total": 1, "todo": 0, "in_progress": 0, "blocked": 0, "done": 1 }
+  },
+  "progress_summary": {
+    "state": "done",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 2
+  },
+  "summary_notes": [
+    "Diagnose am Maschinen-Publish: mediaE2eeState bleibt pending, weil ein Peer-Overlay-Key-Race hasPeerKey/overlayReady false laesst; he.publish wartet 20s und bricht mit machine_media_timeout ab.",
+    "Deployt auf ananta-public-node (webrtc-room-server) als Image webrtc-minimize-server:oracle-deploy; Rollback-Tag webrtc-minimize-server:rollback-20260914 zeigt auf das vorherige Image."
+  ]
+}

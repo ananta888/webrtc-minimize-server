@@ -263,7 +263,12 @@ export class OpaqueDataOverlay {
     this.#prune(now);
     const packet = parseOverlayPacket(raw, now);
     if (!packet) return { action: "drop", reason: "invalid_packet" };
-    if (packet.membershipEpoch !== context.membershipEpoch || packet.routeEpoch !== context.routeEpoch) {
+    // routeEpoch fences relayed routes; a directly addressed packet has no route
+    // to be stale, so a peer whose route epoch lags must still deliver it. The
+    // membership epoch stays mandatory and the packet AAD keeps its own
+    // routeEpoch authenticated.
+    if (packet.membershipEpoch !== context.membershipEpoch
+      || (packet.path.length !== 2 && packet.routeEpoch !== context.routeEpoch)) {
       return { action: "drop", reason: "stale_epoch" };
     }
     if (packet.path.some((peerId) => !context.memberPeerIds.has(peerId))
@@ -325,7 +330,8 @@ export class OpaqueDataOverlay {
       }
       this.#clearAssembly(assemblyKey);
       return { action: "delivered", packetId: packet.packetId, originPeerId: assembly.originPeerId, trafficClass: assembly.trafficClass, data };
-    } catch {
+    } catch (error) {
+      console.warn("[e2eedbg] decrypt error", String(error));
       return { action: "drop", reason: "decrypt_failed" };
     }
   }

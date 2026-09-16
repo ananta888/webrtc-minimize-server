@@ -58,6 +58,23 @@ describe("opaque data overlay", () => {
     expect(origin.resume(pending.packetId, [999])).toEqual([]);
   });
 
+  it("delivers a directly addressed packet despite a lagging receiver route epoch", async () => {
+    const origin = new OpaqueDataOverlay();
+    const destination = new OpaqueDataOverlay();
+    const originPublic = await origin.initialize(alice);
+    const destinationPublic = await destination.initialize(bob);
+    await origin.setPeerKey(bob, destinationPublic);
+    await destination.setPeerKey(alice, originPublic);
+    const now = Date.now();
+    const [packet] = await origin.encrypt(bob, new TextEncoder().encode("hi"), {
+      membershipEpoch: 2, routeEpoch: 9, trafficClass: "control", path: [alice, bob],
+    }, now);
+    const delivered = await destination.receive(packet, alice, {
+      membershipEpoch: 2, routeEpoch: 4, memberPeerIds: new Set([alice, bob]),
+    }, now + 1);
+    expect(delivered.action).toBe("delivered");
+  });
+
   it("rejects stale epochs, loops, unknown fields and digest changes", async () => {
     const origin = new OpaqueDataOverlay();
     const destination = new OpaqueDataOverlay();

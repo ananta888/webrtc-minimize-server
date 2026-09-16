@@ -150,6 +150,34 @@ describe("staged ICE connection manager", () => {
     connections.close();
   });
 
+  it("lets an explicitly selected owner create the overlay channel above its peer id", () => {
+    const channels: string[] = [];
+    const connections = new PeerConnectionManager("ffffffffffffffff", policy, true, {
+      signal: () => undefined,
+      track: () => undefined,
+      channel: (_peer, channel) => channels.push(channel.label),
+      state: () => undefined,
+      negotiationError: () => undefined,
+    }, () => true);
+    connections.add("0000000000000001", "Human");
+    expect(channels).toEqual(["overlay"]);
+    connections.close();
+  });
+
+  it("creates no overlay channel when the owner declines it", () => {
+    const channels: string[] = [];
+    const connections = new PeerConnectionManager("0000000000000001", policy, true, {
+      signal: () => undefined,
+      track: () => undefined,
+      channel: (_peer, channel) => channels.push(channel.label),
+      state: () => undefined,
+      negotiationError: () => undefined,
+    }, () => false);
+    connections.add("ffffffffffffffff", "Grace");
+    expect(channels).toEqual(["control", "chat", "captions"]);
+    connections.close();
+  });
+
   it("replays a direct-mesh negotiation requested while an offer is outstanding", async () => {
     const descriptions: RTCSessionDescriptionInit[] = [];
     const connections = new PeerConnectionManager("0000000000000001", policy, true, {

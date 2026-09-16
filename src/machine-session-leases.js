@@ -49,7 +49,7 @@ export class MachineSessionLeases {
     }
     const id = `ms_${randomBytes(24).toString("base64url")}`;
     const record = { id, identity, binding: Object.freeze({ ...binding }), fingerprint, createdAt: now, lastNow: now,
-      expiresAt: identity.machineExpiresAt, absoluteExpiresAt: now + 7_200_000, generation: 1,
+      expiresAt: identity.machineExpiresAt, absoluteExpiresAt: now + 7_200_000 - 15_000, generation: 1,
       member: null, stop: null, timer: null };
     this.#records.set(id, record); this.#arm(record);
     return this.#view(record);
