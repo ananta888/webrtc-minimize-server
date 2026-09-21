@@ -15,7 +15,7 @@ function setup() {
   const timing = new MachineMediaTimingService({ joined: () => true, machineLease: () => ({ sessionId: "owned" }) } as never);
   return { canvas, drawing, track, mesh, create, ownership, timing, factory: new MachineAvatarSurfaceFactory(mesh as never, ownership, timing) };
 }
-afterEach(() => { vi.restoreAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 describe("neutral synthetic canvas adapter", () => {
   it("records frame submission only and preserves decoded timing failures through owned cleanup", () => {
     const f = setup(); f.timing.start("independent-owned-live-v1");
@@ -28,8 +28,52 @@ describe("neutral synthetic canvas adapter", () => {
       expect(f.timing.snapshot().sources.avatar).toMatchObject({ measurement: "decoded-video", position_us: 500_000 });
       position.mockImplementation(() => { throw new Error("frame_clock_failed"); });
       expect(() => video.ready()).toThrow("frame_clock_failed");
-      expect(f.timing.snapshot().sources.avatar!.state).toBe("failed"); expect(f.track.stop).toHaveBeenCalledTimes(2);
+      expect(f.timing.snapshot().sources.avatar!.state).toBe("failed");
+      // The camera publication was handed over, never re-attached, and is parked again after the failure.
+      expect(f.mesh.attachPublication).toHaveBeenCalledOnce(); expect(f.track.stop).not.toHaveBeenCalled();
     } finally { f.timing.close(); }
+  });
+  it("hands the live camera over to the next generation instead of detaching and re-attaching", () => {
+    vi.useFakeTimers(); const f = setup(), first = f.factory.create(); first.close();
+    expect(f.mesh.detachPublication).not.toHaveBeenCalled(); expect(f.track.stop).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(499);
+    const artwork = { draw: vi.fn(), close: vi.fn() }, second = f.factory.create(artwork);
+    expect(f.create).toHaveBeenCalledOnce(); expect(f.mesh.attachPublication).toHaveBeenCalledOnce();
+    expect(artwork.draw).toHaveBeenCalledWith(f.drawing); expect(second.ready()).toBe(true);
+    second.frame(3); expect(f.track.requestFrame).toHaveBeenCalledTimes(1);
+    expect(() => first.frame(4)).toThrow("meet_avatar_not_ready"); expect(first.ready()).toBe(false);
+    second.close(); vi.advanceTimersByTime(500);
+    expect(f.mesh.detachPublication).toHaveBeenCalledExactlyOnceWith("camera"); expect(f.track.stop).toHaveBeenCalledOnce();
+    expect(f.canvas.width).toBe(0); expect(f.ownership.claim(["camera"]).owns("camera")).toBe(true);
+  });
+  it("keeps a parked camera only while a successor holds it, bounded by a fixed ceiling", () => {
+    vi.useFakeTimers(); const f = setup();
+    f.factory.create().close(); const release = f.factory.hold(); vi.advanceTimersByTime(2000);
+    expect(f.mesh.detachPublication).not.toHaveBeenCalled();
+    const next = f.factory.create(); expect(f.mesh.attachPublication).toHaveBeenCalledOnce(); release(); release();
+    expect(next.ready()).toBe(true); next.close();
+    const stalled = f.factory.hold(); vi.advanceTimersByTime(9_999); expect(f.mesh.detachPublication).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1); expect(f.mesh.detachPublication).toHaveBeenCalledOnce(); stalled();
+    f.factory.create().close(); const late = f.factory.hold(); vi.advanceTimersByTime(600); late();
+    expect(f.mesh.detachPublication).toHaveBeenCalledTimes(2); expect(f.track.stop).toHaveBeenCalledTimes(2);
+  });
+  it("yields a parked camera to an unrelated MP4 claimant unless a successor avatar is loading", () => {
+    vi.useFakeTimers(); const f = setup(); f.factory.create().close();
+    const release = f.factory.hold();
+    expect(() => f.ownership.claim(["camera", "microphone"])).toThrow("meet_machine_publication_busy_or_invalid");
+    release(); const mp4 = f.ownership.claim(["camera", "microphone"]);
+    expect(f.mesh.detachPublication).toHaveBeenCalledExactlyOnceWith("camera"); expect(f.track.stop).toHaveBeenCalledOnce();
+    expect(() => f.factory.create()).toThrow("meet_machine_publication_busy_or_invalid"); mp4.release();
+    const fresh = f.factory.create(); expect(f.mesh.attachPublication).toHaveBeenCalledTimes(2); fresh.close();
+    vi.advanceTimersByTime(500); expect(f.mesh.detachPublication).toHaveBeenCalledTimes(2);
+  });
+  it("never adopts an ended parked track and discards it on the next generation", () => {
+    vi.useFakeTimers(); const f = setup(); f.factory.create().close(); f.track.readyState = "ended";
+    const stream2 = { getTracks: () => [{ kind: "video", readyState: "live", requestFrame: vi.fn(), stop: vi.fn(), contentHint: "" }] };
+    f.canvas.captureStream.mockReturnValue(stream2 as never);
+    const fresh = f.factory.create();
+    expect(f.mesh.detachPublication).toHaveBeenCalledOnce(); expect(f.track.stop).toHaveBeenCalledOnce();
+    expect(f.mesh.attachPublication).toHaveBeenCalledTimes(2); expect(fresh.ready()).toBe(true); fresh.close();
   });
   it("renders optional bounded artwork before immutable labels and releases its bitmap", () => {
     const f = setup(), artwork = { draw: vi.fn(), close: vi.fn() }, source = f.factory.create(artwork);
@@ -41,7 +85,7 @@ describe("neutral synthetic canvas adapter", () => {
     source.close(); source.close(); expect(artwork.close).toHaveBeenCalledOnce();
   });
   it("owns only a labeled 256px canvas camera alongside an independently held microphone", () => {
-    const f = setup(), mic = f.ownership.claim(["microphone"]), surface = f.factory.create();
+    vi.useFakeTimers(); const f = setup(), mic = f.ownership.claim(["microphone"]), surface = f.factory.create();
     expect(f.create).toHaveBeenCalledExactlyOnceWith("canvas"); expect(f.canvas.width).toBe(256);
     expect(f.canvas.captureStream).toHaveBeenCalledExactlyOnceWith(0);
     expect(f.drawing.fillText).toHaveBeenCalledWith("ANANTA", 128, 30);
@@ -49,7 +93,7 @@ describe("neutral synthetic canvas adapter", () => {
     expect(f.mesh.attachPublication).toHaveBeenCalledWith("camera", expect.anything());
     expect(surface.ready()).toBe(true); expect(f.mesh.localPublicationProtected).toHaveBeenCalledWith(f.track);
     surface.frame(1); expect(f.track.requestFrame).toHaveBeenCalledOnce();
-    surface.close(); surface.close(); expect(f.track.stop).toHaveBeenCalledOnce();
+    surface.close(); surface.close(); vi.advanceTimersByTime(500); expect(f.track.stop).toHaveBeenCalledOnce();
     expect(f.mesh.detachPublication).toHaveBeenCalledExactlyOnceWith("camera"); expect(f.canvas.width).toBe(0);
     expect(mic.owns("microphone")).toBe(true); mic.release();
   });
@@ -75,9 +119,10 @@ describe("neutral synthetic canvas adapter", () => {
     expect(f.ownership.claim(["camera"]).owns("camera")).toBe(true);
   });
   it("late cleanup cannot detach the next owner and unsupported browsers release claims", () => {
-    const f = setup(), old = f.factory.create(); old.close();
-    const fresh = f.factory.create(); old.close(); expect(f.mesh.detachPublication).toHaveBeenCalledOnce();
-    expect(fresh.ready()).toBe(true); fresh.close();
+    vi.useFakeTimers(); const f = setup(), old = f.factory.create(); old.close();
+    const fresh = f.factory.create(); old.close(); expect(f.mesh.detachPublication).not.toHaveBeenCalled();
+    expect(fresh.ready()).toBe(true); fresh.close(); vi.advanceTimersByTime(500);
+    expect(f.mesh.detachPublication).toHaveBeenCalledOnce();
     f.canvas.getContext.mockReturnValue(null as never);
     expect(() => f.factory.create()).toThrow("meet_avatar_unsupported");
     expect(f.ownership.claim(["camera"]).owns("camera")).toBe(true);

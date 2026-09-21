@@ -42,16 +42,31 @@ describe("closed bounded video artwork", () => {
     expect(f.decoder.draw).toHaveBeenCalledWith(drawing); expect(drawing.fillText).toHaveBeenCalledWith("TEST", 128, 183);
     source.frame(1); expect(f.surface.frame).toHaveBeenCalledExactlyOnceWith(1);
     source.close(); source.close(); expect(f.surface.close).toHaveBeenCalledOnce(); expect(f.decoder.close).toHaveBeenCalledOnce();
-    expect(() => f.loader.create(value(), f.check)).toThrow("decoder_busy");
-    f.pending.resolve(); await flush(); const next = f.loader.create(value(), f.check); next.close(); await flush();
+    // The next clip waits for the previous native play to settle; never two decoders.
+    const next = f.loader.create(value(), f.check); await flush();
+    expect(f.ports.decode).toHaveBeenCalledOnce(); expect(next.ready()).toBe(false);
+    f.pending.resolve(); await flush(); expect(f.ports.decode).toHaveBeenCalledTimes(2); expect(next.ready()).toBe(true);
+    next.close(); await flush();
   });
   it("revocation before digest completion never creates a decoder or releases its permit early", async () => {
     const f = setup(), gate = deferred();
     f.ports.digest.mockImplementation(async () => { await gate.promise; return "a".repeat(64); });
     const source = f.loader.create(value(), f.check); source.close();
-    for (let i = 0; i < 12; i++) expect(() => f.loader.create(value(), f.check)).toThrow("decoder_busy");
-    gate.resolve(); await flush(); expect(f.ports.decode).not.toHaveBeenCalled(); expect(f.ports.create).not.toHaveBeenCalled();
-    f.loader.create(value(), f.check).close(); await flush();
+    const waiting = f.loader.create(value(), f.check); await flush();
+    expect(f.ports.decode).not.toHaveBeenCalled(); expect(f.ports.create).not.toHaveBeenCalled();
+    gate.resolve(); await flush(); expect(f.ports.decode).toHaveBeenCalledOnce(); // Only the successor decodes.
+    expect(waiting.ready()).toBe(true); waiting.close(); await flush();
+  });
+  it("keeps the previous camera held from open until the clip surface exists or the clip closes", async () => {
+    const f = setup(), release = vi.fn(), hold = vi.fn(() => release);
+    const loader = new MachineAvatarVideoLoader({ ...f.ports, hold });
+    const source = loader.create(value(), f.check); expect(hold).toHaveBeenCalledOnce(); expect(release).not.toHaveBeenCalled();
+    await flush(); expect(release).not.toHaveBeenCalled();
+    expect(source.ready()).toBe(true); expect(release).toHaveBeenCalledOnce();
+    source.close(); expect(release).toHaveBeenCalledOnce(); f.pending.resolve(); await flush();
+    f.ports.digest.mockResolvedValue("b".repeat(64));
+    const failing = loader.create(value(), f.check); await flush();
+    expect(() => failing.ready()).toThrow(); expect(release).toHaveBeenCalledTimes(2);
   });
   it.each(["digest", "clock", "policy", "decode", "surface"])("fails without fallback after %s failure", async failure => {
     const f = setup();
@@ -68,8 +83,11 @@ describe("closed bounded video artwork", () => {
     const f = setup(), source = f.loader.create(value(), f.check); await flush(); expect(source.ready()).toBe(true);
     f.surface.close.mockImplementation(() => { throw new Error("cleanup"); });
     f.decoder.close.mockImplementation(() => { throw new Error("cleanup"); });
-    source.close(); expect(() => f.loader.create(value(), f.check)).toThrow("decoder_busy");
-    f.pending.resolve(); await flush(); f.loader.create(value(), f.check).close(); await flush();
+    source.close(); const next = f.loader.create(value(), f.check); await flush();
+    expect(f.ports.decode).toHaveBeenCalledOnce(); f.advance(2000);
+    expect(() => next.ready()).toThrow("decode_expired"); // A stalled predecessor is bounded by the decode deadline.
+    f.pending.resolve(); await flush(); expect(f.ports.decode).toHaveBeenCalledOnce();
+    f.loader.create(value(), f.check).close(); await flush();
   });
   it("checks current authority during each paint and rejects backward clock before decoder start", async () => {
     const f = setup(), source = f.loader.create(value(), f.check); await flush(); source.ready();

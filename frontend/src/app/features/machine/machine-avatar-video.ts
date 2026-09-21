@@ -5,6 +5,7 @@ import { AvatarVideoDecoder, decodeAvatarVideo } from "./machine-avatar-video-de
 
 interface VideoPorts {
   create(artwork: MachineAvatarArtwork): MachineAvatarSurface;
+  hold?: () => () => void; // Keeps the previous camera publication attached while this clip loads.
   decode?: (content: AvatarVideoContent) => AvatarVideoDecoder;
   digest?: (bytes: Uint8Array<ArrayBuffer>) => Promise<string>;
   clock?: () => number;
@@ -13,17 +14,20 @@ interface VideoPorts {
 
 /** One content/decoder lifetime, composed with the existing independently fenced camera. */
 export class MachineAvatarVideoLoader {
-  private busy = false;
+  // The single decoder permit: a clip's native play must settle before the
+  // next decoder exists, so a swap waits for its predecessor instead of failing.
+  private settled: Promise<void> = Promise.resolve();
   constructor(private readonly ports: VideoPorts) {}
 
   create(value: unknown, check: () => void): MachineAvatarSurface {
-    if (this.busy) throw new Error("meet_avatar_video_decoder_busy");
     const content = parseAvatarVideo(value), clock = this.ports.clock ?? Date.now, started = clock();
     const timed = this.ports.timing?.() === true;
     let closed = false, failure = false, pending = 1, decoder: AvatarVideoDecoder | undefined, surface: MachineAvatarSurface | undefined;
-    const releasePermit = () => { if (closed && pending === 0) this.busy = false; };
+    let settle: () => void = () => undefined, held: (() => void) | undefined;
+    const releasePermit = () => { if (closed && pending === 0) settle(); };
+    const release = () => { const owned = held; held = undefined; owned?.(); };
     const close = () => {
-      if (closed) return; closed = true; content.bytes.fill(0);
+      if (closed) return; closed = true; content.bytes.fill(0); release();
       const owned = surface; surface = undefined;
       try { owned?.close(); } catch { /* Still close decoder and release permit. */ }
       try { decoder?.close(); } catch { /* Source remains fenced. */ }
@@ -35,10 +39,13 @@ export class MachineAvatarVideoLoader {
       check();
     };
     try { current(); } catch (error) { content.bytes.fill(0); throw error; }
-    this.busy = true;
+    const previous = this.settled;
+    this.settled = new Promise<void>(resolve => { settle = resolve; });
+    held = this.ports.hold?.();
     void (async () => {
       try {
         if (await (this.ports.digest ?? digestVideo)(content.bytes) !== content.sha256) throw new Error("meet_avatar_video_digest_invalid");
+        await previous; // Never two native decoders; the deadline bounds a stalled predecessor.
         current(); decoder = this.ports.decode ? this.ports.decode(content) : decodeAvatarVideo(content, timed); content.bytes.fill(0);
         pending++;
         void decoder.settled.then(() => { pending--; releasePermit(); }, () => {
@@ -64,6 +71,7 @@ export class MachineAvatarVideoLoader {
             drawing.fillStyle = "#ffffff"; drawing.font = "10px sans-serif"; drawing.textAlign = "center";
             drawing.fillText(content.classification === "production" ? "IMPORTED" : content.classification === "test_only" ? "TEST" : "SYNTH", 128, 183);
           }, close: () => owned.close() });
+          release();
         }
         return decoder!.ready() && surface.ready();
       } catch (error) { close(); throw error; }

@@ -4,6 +4,7 @@ import { MachineAvatarSurface } from "./machine-avatar-source";
 const MAX_BYTES = 5 * 1024 * 1024;
 interface ImagePorts {
   create(artwork: MachineAvatarArtwork): MachineAvatarSurface;
+  hold?: () => () => void; // Keeps the previous camera publication attached while this image decodes.
   decode?: (blob: Blob) => Promise<ImageBitmap>;
   digest?: (bytes: Uint8Array<ArrayBuffer>) => Promise<string>;
   clock?: () => number;
@@ -19,8 +20,10 @@ export class MachineAvatarImageLoader {
     const { bytes, sha256, width, height } = parseAvatarImage(value);
     const clock = this.ports.clock ?? Date.now, started = clock(), deadline = started + 1000;
     let closed = false, failure: Error | undefined, surface: MachineAvatarSurface | undefined;
+    let held: (() => void) | undefined;
+    const release = () => { const owned = held; held = undefined; owned?.(); };
     const close = () => {
-      if (closed) return; closed = true;
+      if (closed) return; closed = true; release();
       const owned = surface; surface = undefined;
       try { owned?.close(); } catch { /* The source is fenced even if a browser cleanup fails. */ }
     };
@@ -30,6 +33,7 @@ export class MachineAvatarImageLoader {
       check();
     };
     current(); this.decoding = true;
+    held = this.ports.hold?.();
     const load = async () => {
       let bitmap: ImageBitmap | undefined;
       try {
@@ -45,6 +49,7 @@ export class MachineAvatarImageLoader {
         surface = this.ports.create({ draw: drawing => drawing.drawImage(owned, (256 - w) / 2, 40 + (128 - h) / 2, w, h),
           close: () => owned.close() });
         bitmap = undefined; // Surface now owns the decoded image.
+        release();
       } catch (error) {
         failure = error instanceof Error ? error : new Error("meet_avatar_image_failed");
         try { bitmap?.close(); } catch { /* Still release the source and decoder permit. */ }

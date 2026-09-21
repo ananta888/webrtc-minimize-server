@@ -80,6 +80,15 @@ describe("bounded image surface lifecycle", () => {
     f.ports.decode.mockResolvedValue(f.bitmap as unknown as ImageBitmap);
     const fresh = f.loader.create(input(), f.check); await settle(); expect(fresh.ready()).toBe(true); fresh.close();
   });
+  it("holds the previous camera from open until the image surface exists or the decode fails", async () => {
+    const f = setup(), release = vi.fn(), hold = vi.fn(() => release);
+    const loader = new MachineAvatarImageLoader({ ...f.ports, hold });
+    const source = loader.create(input(), f.check); expect(hold).toHaveBeenCalledOnce(); expect(release).not.toHaveBeenCalled();
+    await settle(); expect(release).toHaveBeenCalledOnce(); expect(source.ready()).toBe(true);
+    source.close(); expect(release).toHaveBeenCalledOnce();
+    f.ports.digest.mockResolvedValue("b".repeat(64)); loader.create(input(), f.check); await settle();
+    expect(release).toHaveBeenCalledTimes(2);
+  });
   it("close during decode never attaches late, even with the same new authority", async () => {
     const f = setup(); let resolve!: (bitmap: ImageBitmap) => void;
     f.ports.decode.mockImplementation(() => new Promise(done => { resolve = done; }));

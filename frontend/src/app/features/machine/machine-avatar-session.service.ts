@@ -13,8 +13,9 @@ export class MachineAvatarSessionService implements OnDestroy {
   readonly source: MachineAvatarSource;
   readonly videoProbe = probeAvatarVideo;
   constructor(session: RoomSessionService, mesh: PeerMeshService, surfaces: MachineAvatarSurfaceFactory, timing: MachineMediaTimingService) {
-    const images = new MachineAvatarImageLoader({ create: artwork => surfaces.create(artwork) });
-    const videos = new MachineAvatarVideoLoader({ create: artwork => surfaces.create(artwork), timing: () => timing.enabled() });
+    const images = new MachineAvatarImageLoader({ create: artwork => surfaces.create(artwork), hold: () => surfaces.hold() });
+    const videos = new MachineAvatarVideoLoader({ create: artwork => surfaces.create(artwork), hold: () => surfaces.hold(),
+      timing: () => timing.enabled() });
     this.source = new MachineAvatarSource({ authority: () => {
       const context = session.machineContext(), lease = session.machineLease();
       if (!session.joined() || !context || !lease || !mesh.machineReceive.supports(mesh.ownPeerId(), "avatar.publish")) {

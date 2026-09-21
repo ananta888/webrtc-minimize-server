@@ -67,20 +67,31 @@ describe("independent bounded avatar lifecycle", () => {
     expect(f.surface.frame).toHaveBeenCalledExactlyOnceWith(1);
     vi.advanceTimersByTime(1400); expect(f.source.status().state).toBe("failed");
   });
-  it("fences every authority dimension, revocation and backwards clock", async () => {
-    const changes = [
+  it("fences identity, revocation and backwards clock but rebinds soft membership/lease churn", async () => {
+    const hard = [
       (f: ReturnType<typeof setup>) => { f.authority.sourceId = "avatar:other"; },
       (f: ReturnType<typeof setup>) => { f.authority.sessionId = "ms_other"; },
-      (f: ReturnType<typeof setup>) => { f.authority.leaseGeneration++; },
-      (f: ReturnType<typeof setup>) => { f.authority.membershipEpoch++; },
-      (f: ReturnType<typeof setup>) => { f.authority.expiresAt++; },
       (f: ReturnType<typeof setup>) => { f.ports.authority.mockImplementation(() => { throw new Error("denied"); }); },
       () => { vi.setSystemTime(now - 1000); },
     ];
-    for (const change of changes) {
+    for (const change of hard) {
       vi.setSystemTime(now); const f = setup(); await f.open(); change(f); vi.advanceTimersByTime(100);
       expect(f.source.status().state).toBe("failed"); expect(f.surface.close).toHaveBeenCalledOnce();
       expect(f.surface.frame).toHaveBeenCalledOnce();
+    }
+    // A peer joining/leaving or a lease renewal keeps the same source/session
+    // identity: the synthetic source stays visible and is rebound to the new values.
+    const soft = [
+      (f: ReturnType<typeof setup>) => { f.authority.leaseGeneration++; },
+      (f: ReturnType<typeof setup>) => { f.authority.membershipEpoch++; },
+      (f: ReturnType<typeof setup>) => { f.authority.expiresAt++; },
+    ];
+    for (const change of soft) {
+      vi.setSystemTime(now); const f = setup(); await f.open(); change(f); vi.advanceTimersByTime(200);
+      expect(f.source.status().state).toBe("open"); expect(f.surface.close).not.toHaveBeenCalled();
+      expect(f.surface.frame).toHaveBeenCalledTimes(2);
+      f.authority.sessionId = "ms_other"; vi.advanceTimersByTime(100); // The rebound scope is fenced again.
+      expect(f.source.status().state).toBe("failed"); expect(f.surface.close).toHaveBeenCalledOnce();
     }
   });
   it("rejects cancellation during setup and stale close cannot stop a new generation", async () => {
@@ -109,24 +120,35 @@ describe("independent bounded avatar lifecycle", () => {
     expect(f.surface.frame).toHaveBeenCalledOnce(); f.surface.ready.mockReturnValue(true);
     vi.advanceTimersByTime(100); expect(f.source.status().state).toBe("open");
     expect(f.source.status().expiresAt).toBe(receipt.expiresAt); expect(f.surface.frame).toHaveBeenCalledTimes(2);
-    f.surface.ready.mockReturnValue(false); f.authority.leaseGeneration++;
+    f.surface.ready.mockReturnValue(false); f.authority.leaseGeneration++; // Renewal during rekey: rebind, still bounded.
+    vi.advanceTimersByTime(100); expect(f.source.status().state).toBe("waiting");
+    f.authority.sessionId = "ms_other";
     vi.advanceTimersByTime(100); expect(f.source.status().state).toBe("failed"); f.source.close();
   });
   it("closed polling does not consume generations or authority", async () => {
     const f = setup(); for (let i = 0; i < 4000; i++) { f.source.close(); f.source.status(); }
     expect(f.ports.authority).not.toHaveBeenCalled(); expect((await f.open()).generation).toBe(1); f.source.close();
   });
-  it.each(["clock-backwards", "membership-epoch", "lease-generation", "lease-expiry", "controller-expired"])(
+  it.each(["clock-backwards", "source-id", "session-id", "controller-expired"])(
     "retains a fixed internal %s reason without leaking authority values", async reason => {
       const f = setup(); const receipt = await f.open();
       if (reason === "clock-backwards") vi.setSystemTime(now - 1);
-      if (reason === "membership-epoch") f.authority.membershipEpoch++;
-      if (reason === "lease-generation") f.authority.leaseGeneration++;
-      if (reason === "lease-expiry") f.authority.expiresAt++;
+      if (reason === "source-id") f.authority.sourceId = "avatar:other";
+      if (reason === "session-id") f.authority.sessionId = "ms_other";
       if (reason === "controller-expired") vi.setSystemTime(now + 2500);
       let error: unknown; try { f.source.pulse(receipt.generation); } catch (caught) { error = caught; }
       expect(error).toMatchObject({ message: "meet_avatar_authority_expired", cause: reason });
       expect(f.source.status().state).toBe("failed"); expect(f.surface.close).toHaveBeenCalledOnce();
+    });
+  it.each(["membership-epoch", "lease-generation", "lease-expiry"])(
+    "rebinds a %s change under the same identity and keeps pulsing the same generation", async reason => {
+      const f = setup(); const receipt = await f.open();
+      if (reason === "membership-epoch") f.authority.membershipEpoch++;
+      if (reason === "lease-generation") f.authority.leaseGeneration++;
+      if (reason === "lease-expiry") f.authority.expiresAt++;
+      f.source.pulse(receipt.generation); vi.advanceTimersByTime(2400); f.source.pulse(receipt.generation);
+      expect(f.source.status()).toMatchObject({ state: "open", generation: receipt.generation });
+      expect(f.surface.close).not.toHaveBeenCalled(); f.source.close();
     });
   it("stops on a missing controller pulse and a late pulse cannot revive it", async () => {
     const f = setup(), lease = await f.open();
@@ -137,11 +159,12 @@ describe("independent bounded avatar lifecycle", () => {
     vi.advanceTimersByTime(2000); f.source.pulse(fresh.generation); vi.advanceTimersByTime(1000);
     expect(f.source.status().state).toBe("open"); f.source.close();
   });
-  it("never uses a pulse to extend expired authority or continue a pending setup after controller loss", async () => {
+  it("lets a pending setup outlive the controller heartbeat only until the setup timeout, never past identity loss", async () => {
     const f = setup(); f.surface.ready.mockReturnValue(false);
-    const pending = expect(f.open()).rejects.toThrow("meet_avatar_authority_expired");
-    vi.advanceTimersByTime(2500); await pending; expect(f.surface.frame).not.toHaveBeenCalled();
-    f.surface.ready.mockReturnValue(true); const fresh = await f.open(); f.authority.leaseGeneration++;
+    const pending = expect(f.open()).rejects.toThrow("meet_avatar_setup_timeout");
+    vi.advanceTimersByTime(2500); expect(f.source.status().state).toBe("opening"); // Waiting for E2EE, not a lost controller.
+    vi.advanceTimersByTime(7500); await pending; expect(f.surface.frame).not.toHaveBeenCalled();
+    f.surface.ready.mockReturnValue(true); const fresh = await f.open(); f.authority.sessionId = "ms_other";
     expect(() => f.source.pulse(fresh.generation)).toThrow(); expect(f.source.status().state).toBe("failed");
   });
 });

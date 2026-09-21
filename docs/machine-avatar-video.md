@@ -32,10 +32,37 @@ lip-synchronization or generated talking-head implementation.
 
 One loader permit covers hashing, the owned decoder and any still-pending native
 play completion. Closing during an asynchronous operation does not release that
-permit early; late work cannot attach a camera. Repeated blocked attempts do not
-enqueue more decoders. Setup is bounded to two seconds inside the unchanged
-source's 2.5-second controller watchdog and 30-second activation lease. Each
-frame still requires current session, membership, generation and key protection.
+permit early; late work cannot attach a camera. A following `open` does not fail
+with a busy error: its decoder is created only after the predecessor's native
+play has settled, so there are never two decoders, and a stalled predecessor is
+bounded by the unchanged two-second decode deadline. Setup is bounded to two
+seconds inside the source's 10-second setup timeout and 30-second activation
+lease. Each frame still requires current session, membership, generation and key
+protection.
+
+## Camera publication handover, 2026-09-21
+
+Ananta's companion swaps clips per speech segment and state (`close(generation)`
+followed by `open`), blocking its audio loop on the receipt. Each swap formerly
+created a new camera track: sender slot reuse, renegotiation and a fresh SFrame
+key exchange per swap, and `open` resolved only once the new track was protected
+(about 200 ms locally; up to `meet_avatar_setup_timeout` under load). The
+200 ms speech queue underran meanwhile.
+
+The surface factory now parks the live camera publication on close (canvas,
+capture track and ownership claim stay attached, no frame is submitted) and the
+next generation adopts it: no `detachPublication`/`attachPublication`, no new
+track id, no key exchange. Parking is bounded: 500 ms grace, extended only while
+an image/video loader holds it for its decode, and never beyond 10 s. An
+unrelated camera claimant (the MP4 publication path) takes a parked camera over
+synchronously unless a successor avatar is loading. The source polls setup at
+25 ms and returns to the 100 ms frame tick once open.
+
+`test/machine-avatar-clip-churn.browser.test.js` drives companion-like swaps
+inside a speech push loop: 19 generations provision exactly one camera key,
+each blocking swap takes about 100 ms and the speech worklet does not underrun.
+The 30-second activation lease is unchanged; the Hub must still reopen before
+it expires.
 
 Stop fences state first, clears retained input bytes, closes its surface and
 decoder, clears the element source, revokes its owned blob URL and releases its

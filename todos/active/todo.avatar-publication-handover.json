@@ -1,0 +1,135 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "avatar-publication-handover",
+  "purpose": "Wiederholtes avatar.open/close im Headless-Client (Ananta Companion/Dialog-Pump) darf weder in meet_avatar_setup_timeout laufen noch die camera-Publikation und den Speech-Pfad stoeren.",
+  "goal": "Ein Avatar-Generationswechsel ist ein reiner Decoder-Wechsel auf einer stabilen camera-Publikation: kein neues Track-Id, keine Renegotiation, kein neuer SFrame-Key-Austausch pro Wechsel. Ein neuer Video-Open wartet auf das settled-Permit des Vorgaengers, Ownership wird uebergeben statt ueberlappt, und der blockierende Wechsel bleibt kurz genug fuer die Speech-Queue.",
+  "status": "done",
+  "created": "2026-09-21",
+  "updated": "2026-09-21",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Stabile camera-Publikation und settled-gebundener Decoder-Wechsel",
+      "task_ids": [
+        "avatar-decoder-settled-wait",
+        "avatar-camera-handover",
+        "avatar-swap-nonblocking"
+      ],
+      "status": "done"
+    }
+  ],
+  "critical_path_tasks": [
+    "avatar-camera-handover"
+  ],
+  "tasks": [
+    {
+      "id": "avatar-decoder-settled-wait",
+      "title": "Neuer persona-video-Open wartet auf settled des vorherigen Decoders statt decoder_busy zu werfen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "MachineAvatarVideoLoader haelt ein einziges Decoder-Permit als Promise; der naechste Clip erzeugt seinen Decoder erst nach settled des Vorgaengers",
+        "Ein gestallter Vorgaenger wird weiterhin durch die 2s-Decode-Deadline (meet_avatar_video_decode_expired) begrenzt; nie zwei native Decoder",
+        "vitest machine-avatar-video.spec deckt Warten, Revocation vor Digest und gestallten Vorgaenger ab"
+      ]
+    },
+    {
+      "id": "avatar-camera-handover",
+      "title": "camera-Publikation bleibt ueber Avatar-Generationen stabil: Park/Adopt statt Detach/Reattach",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "MachineAvatarSurfaceFactory parkt die live camera-Publikation bei close (Canvas, Track, Claim) und der naechste create uebernimmt sie ohne attachPublication/detachPublication",
+        "Parken ist begrenzt: 500ms Grace, verlaengert nur durch hold() eines ladenden Nachfolgers (Image/Video-Loader), harte Obergrenze 10s",
+        "Ein fremder camera-Claimant (MP4-Pfad) uebernimmt eine geparkte Publikation synchron ueber MachinePublicationClaim.park/resume, ausser ein Nachfolger haelt sie",
+        "Browser-Evidenz: ueber 19 persona-video-Generationen wird genau ein camera-SFrame-Key provisioniert (provisionKey camera = 1)",
+        "vitest machine-avatar-surface.spec, machine-publication-ownership.spec, machine-avatar-image.spec decken Handover, Hold, Bound und Yield ab"
+      ]
+    },
+    {
+      "id": "avatar-swap-nonblocking",
+      "title": "Clip-Wechsel blockiert den Speech-Pfad nicht: Setup-Polling 25ms und Companion-aehnlicher Regressionstest",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "MachineAvatarSource pollt waehrend opening mit 25ms und faellt nach open auf 100ms zurueck; Frame-Rate (5 fps), Setup-Timeout 10s und Controller-Heartbeat unveraendert",
+        "test/machine-avatar-clip-churn.browser.test.js: blockierende close->open-Wechsel (thinking/segment/idle) innerhalb einer Speech-Push-Schleife; jeder Wechsel < 1500ms, kein Worklet-Underrun, keine setup_timeouts",
+        "Gemessen: Wechsel ~103ms (vorher ~204ms mit Underrun der 200ms-Speech-Queue)"
+      ]
+    }
+  ],
+  "tasks_status_summary": {
+    "total": 3,
+    "by_status": {
+      "todo": 0,
+      "in_progress": 0,
+      "partial": 0,
+      "blocked": 0,
+      "done": 3
+    },
+    "progress_percent_done": 100,
+    "by_priority": {
+      "P0": 1,
+      "P1": 2,
+      "P2": 0,
+      "P3": 0
+    },
+    "by_risk": {
+      "low": 0,
+      "medium": 2,
+      "high": 1,
+      "critical": 0
+    },
+    "critical_path": {
+      "total": 1,
+      "done": 1,
+      "remaining": 0
+    },
+    "milestones": {
+      "total": 1,
+      "todo": 0,
+      "in_progress": 0,
+      "blocked": 0,
+      "done": 1
+    }
+  },
+  "progress_summary": {
+    "state": "done",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 3
+  },
+  "summary_notes": [
+    "Diagnose (Playwright/Chromium, e2eedbg): jeder close->open erzeugte eine neue camera-Publikation mit neuem Track-Id, Sender-Slot-Reuse/Renegotiation und provisionKey camera pro Wechsel; open resolvte erst nach localPublicationProtected des neuen Tracks (~204ms lokal, in Produktion bis zum 10s-Setup-Timeout). Der blockierende Wechsel liess die 200ms-Speech-Queue leerlaufen (meet_speech_worklet_underrun).",
+    "Bekannt, nicht Teil dieses Tracks: Ananta-Companion oeffnet den Idle-Avatar nur alle 90s neu, die Aktivierung laeuft aber nach 30s ab (activation-expired); machine-active-renewal.browser, machine-chat-session.service.spec, machine-receive-gate.spec, peer-mesh-overlay-lifecycle.spec und peer-mesh-key-ack.spec schlagen bereits vor diesem Track fehl (Capability-/E2EE-Umbau ohne Spec-Update)."
+  ]
+}
