@@ -385,7 +385,18 @@ export class PeerMeshService {
         }));
         this.addChat("System", `Verhandlung mit ${peer.name} fehlgeschlagen`, true);
       },
+      diagnostics: (peerId) => this.signalingDiagnostics(peerId),
     }, (peerId) => this.overlayInitiates(peerId));
+    this.logSignalingEvent("mesh-initialized", {
+      ownId,
+      roomId,
+      selfMachine: this.machineReceive.isMachine(ownId),
+      dataOverlayEnabled: this.optimization.dataOverlayEnabled,
+      mediaE2eeMode: this.mediaE2ee.mode,
+      mediaE2eeSupported: e2eeSupported,
+      mediaE2eeState: this.mediaE2eeState(),
+      availableAgents: availableAgents.length,
+    });
     this.mediaAgents.initialize({
       ownPeerId: ownId,
       roomId,
@@ -427,8 +438,22 @@ export class PeerMeshService {
   }
 
   addPeer(peerId: string, name: string, machine = false, capabilities: unknown = []): void {
-    if (!peerId || peerId === this.ownId || this.peers.has(peerId)) return;
+    if (!peerId || peerId === this.ownId || this.peers.has(peerId)) {
+      this.logSignalingEvent("add-peer-skipped", {
+        peer: peerId,
+        reason: !peerId ? "empty-id" : peerId === this.ownId ? "own-id" : "already-known",
+      });
+      return;
+    }
     this.machineReceive.setMachine(peerId, machine, capabilities);
+    this.logSignalingEvent("add-peer", {
+      peer: peerId,
+      name,
+      machinePeer: machine,
+      selfMachine: this.machineReceive.isMachine(this.ownId),
+      initiator: this.ownId < peerId,
+      hasConnections: Boolean(this.connections),
+    });
     const peer = this.connections?.add(peerId, name) as PeerState | null;
     if (!peer) return;
     Object.defineProperty(peer, "overlayQueue", { value: new BoundedOverlayQueue(), enumerable: true });
@@ -446,7 +471,18 @@ export class PeerMeshService {
 
   async acceptSignal(message: ServerMessage): Promise<void> {
     const from = String(message["from"] || "");
-    if (!this.peers.has(from)) return; // Only server membership, never SDP, creates a peer.
+    if (!this.peers.has(from)) {
+      // [sigdbg] Only server membership, never SDP, creates a peer. A dropped
+      // description is never retried by the sender, so this peer then waits
+      // forever for an offer that already happened.
+      const description = message["description"] as RTCSessionDescriptionInit | undefined;
+      this.logSignalingEvent("signal-dropped-unknown-peer", {
+        peer: from,
+        kind: description ? String(description.type) : "candidate",
+        knownPeers: [...this.peers.keys()],
+      });
+      return;
+    }
     await this.connections?.acceptSignal(message);
   }
 
@@ -866,6 +902,7 @@ export class PeerMeshService {
   removePeer(peerId: string): void {
     const peer = this.peers.get(peerId);
     if (!peer) return;
+    this.logSignalingEvent("remove-peer", { peer: peerId, connectionState: peer.pc.connectionState });
     this.machineChatIngress.removePeer(peerId);
     this.membershipStable = false;
     this.clearAllMediaKeys();
@@ -1099,7 +1136,19 @@ export class PeerMeshService {
   }
 
   private sendSignal(to: string, payload: object): void {
-    this.signaling.send({ type: "signal", to, ...payload });
+    try {
+      this.signaling.send({ type: "signal", to, ...payload });
+    } catch (error) {
+      // [sigdbg] Rethrown unchanged: the offer path already treats this as a
+      // negotiation failure. Logged because a lost offer and a never-created
+      // offer look identical from the far side.
+      this.logSignalingEvent("signal-send-failed", {
+        peer: to,
+        kind: "description" in payload ? "description" : "candidate",
+        error: error instanceof Error ? error.message : "signal_send_failed",
+      });
+      throw error;
+    }
   }
 
   private publishRelayCapability(): void {
@@ -1318,11 +1367,19 @@ export class PeerMeshService {
       const existing = peer.senders.get(publication.id);
       const shouldSend = this.shouldSend(publication, peer.id);
       if (!shouldSend && existing) {
+        this.logSignalingEvent("sender-released", { peer: peer.id, publication: publication.id, source: publication.source });
         this.senderPool.release(peer.pc, existing);
         peer.senders.delete(publication.id);
         peer.appliedTiers.delete(publication.id);
       } else if (shouldSend && !existing && publication.track.readyState === "live") {
         if ((this.mediaE2ee.mode === "required" || this.mediaTransformFailed) && !this.shouldProtectMedia()) {
+          this.logSignalingEvent("sender-blocked-unprotected", {
+            peer: peer.id,
+            publication: publication.id,
+            source: publication.source,
+            mediaE2eeMode: this.mediaE2ee.mode,
+            mediaTransformFailed: this.mediaTransformFailed,
+          });
           this.mediaE2eeState.set("unsupported");
           continue;
         }
@@ -1338,6 +1395,14 @@ export class PeerMeshService {
             && this.shouldSend(publication, peer.id));
           const sender = lease.sender;
           peer.senders.set(publication.id, sender);
+          this.logSignalingEvent("sender-attached", {
+            peer: peer.id,
+            publication: publication.id,
+            source: publication.source,
+            local: publication.local,
+            connectionState: peer.pc.connectionState,
+            signalingState: peer.pc.signalingState,
+          });
           this.provisionMediaKey(publication, peer);
           void lease.ready.then(active => {
             if (peer.senders.get(publication.id) !== sender) return;
@@ -1350,6 +1415,12 @@ export class PeerMeshService {
           });
           if (!publication.local) this.relayCapability.set("available");
         } catch {
+          this.logSignalingEvent("sender-attach-failed", {
+            peer: peer.id,
+            publication: publication.id,
+            source: publication.source,
+            local: publication.local,
+          });
           if (!publication.local) {
             this.relayCapability.set("unsupported");
             if (this.relayConsent()) this.setRelayConsent(false);
@@ -1434,6 +1505,42 @@ export class PeerMeshService {
       packetId,
       missing: missing.slice(0, 96),
     })), "control");
+  }
+
+  /**
+   * [sigdbg] Diagnostics only: mesh-level context stamped onto every peer line
+   * the connection manager emits. Nothing here influences negotiation.
+   */
+  private signalingDiagnostics(peerId: string): Record<string, unknown> {
+    return {
+      signalingSocket: this.signaling.status(),
+      signalingError: this.signaling.lastError(),
+      membershipEpoch: this.membershipEpoch(),
+      membershipStable: this.membershipStable,
+      routeEpoch: this.routeEpoch(),
+      knownPeers: this.peers.size,
+      selfMachine: this.machineReceive.isMachine(this.ownId),
+      peerMachine: this.machineReceive.isMachine(peerId),
+      peerVideoReceive: this.machineReceive.supports(peerId, "video.receive"),
+      peerAudioReceive: this.machineReceive.supports(peerId, "audio.receive"),
+      overlayPeerKey: this.overlay.hasPeerKey(peerId),
+      overlayReady: this.overlayReady(),
+      overlayMode: this.overlayMode(),
+      mediaE2eeState: this.mediaE2eeState(),
+      localPublications: [...this.publications.values()].filter(item => item.local).length,
+    };
+  }
+
+  private logSignalingEvent(event: string, detail: Record<string, unknown> = {}): void {
+    console.warn("[sigdbg] " + JSON.stringify({
+      at: new Date().toISOString(),
+      event,
+      ownId: this.ownId,
+      signalingSocket: this.signaling.status(),
+      membershipEpoch: this.membershipEpoch(),
+      membershipStable: this.membershipStable,
+      ...detail,
+    }));
   }
 
   /** The lower peer id creates the overlay channel inside the first offer. */
