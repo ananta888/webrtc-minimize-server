@@ -75,10 +75,18 @@ export class MachineAvatarSurfaceFactory {
         try { return artwork?.mediaTiming?.(); }
         catch (error) { timing!.fail(); throw error; }
       };
-      const ready = () => !closed && claim.owns("camera") && track.readyState === "live"
-        && this.mesh.localPublicationProtected(track) && this.mesh.overlayReady()
-        && mediaPosition() !== null;
-      return { ready, frame: sequence => {
+      // Every part is phrased so that true means ready: ready() is their
+      // conjunction, and an inverted flag here would fence the source forever.
+      const readyParts = (): Record<string, boolean> => ({
+        notClosed: !closed,
+        ownsCamera: claim.owns("camera"),
+        trackLive: track.readyState === "live",
+        protectedPublication: this.mesh.localPublicationProtected(track),
+        overlayReady: this.mesh.overlayReady(),
+        mediaPosition: mediaPosition() !== null,
+      });
+      const ready = () => Object.values(readyParts()).every(Boolean);
+      return { ready, diagnostics: readyParts, frame: sequence => {
         if (!ready()) throw new Error("meet_avatar_not_ready");
         const position = mediaPosition();
         if (position === null) throw new Error("meet_avatar_not_ready");

@@ -33,11 +33,11 @@ export class MachineAvatarVideoLoader {
       try { decoder?.close(); } catch { /* Source remains fenced. */ }
       releasePermit();
     };
-    const current = () => {
+    const deadline = () => {
       const now = clock();
       if (closed || !Number.isFinite(now) || now < started || now >= started + 2000) throw new Error("meet_avatar_video_decode_expired");
-      check();
     };
+    const current = () => { deadline(); check(); };
     try { current(); } catch (error) { content.bytes.fill(0); throw error; }
     const previous = this.settled;
     this.settled = new Promise<void>(resolve => { settle = resolve; });
@@ -58,9 +58,13 @@ export class MachineAvatarVideoLoader {
       if (failure) throw new Error("meet_avatar_video_failed");
       if (closed) return false;
       try {
-        check();
         if (!surface) {
-          current();
+          deadline();
+          // The authority fence belongs to the owning source: while this clip is
+          // still attaching, a revoked scope reports "not ready" instead of
+          // throwing, so the source's own guard decides whether the generation
+          // ends. Only decode/digest failures and the decode deadline propagate.
+          try { check(); } catch { return false; }
           if (!decoder?.ready()) return false;
           const owned = decoder;
           surface = this.ports.create({ ...(timed ? { mediaTiming: () => {
@@ -75,6 +79,18 @@ export class MachineAvatarVideoLoader {
         }
         return decoder!.ready() && surface.ready();
       } catch (error) { close(); throw error; }
+    }, diagnostics: () => {
+      let surfaceParts: Record<string, unknown> = {};
+      try { surfaceParts = surface?.diagnostics?.() ?? {}; } catch { /* surface diagnostics only */ }
+      let decoderReady: unknown = "no-decoder";
+      let decoderParts: Record<string, unknown> = {};
+      if (decoder) {
+        try { decoderReady = decoder.ready(); } catch (error) { decoderReady = "threw:" + String(error); }
+        try { decoderParts = decoder.diagnostics?.() ?? {}; } catch { /* decoder diagnostics only */ }
+      }
+      // Distinct key: the loader's own flag must not shadow the surface's or the
+      // decoder's identically named part in the merged diagnostics.
+      return { ...surfaceParts, ...decoderParts, decoderReady, surfaceAttached: Boolean(surface), failure, loaderClosed: closed, pending };
     }, frame: sequence => {
       if (closed || !surface) throw new Error("meet_avatar_video_not_ready");
       try { check(); surface.frame(sequence); } catch (error) { close(); throw error; }

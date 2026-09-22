@@ -8,6 +8,7 @@ export interface AvatarVideoDecoder {
   draw(drawing: CanvasRenderingContext2D): void;
   close(): void;
   timing?(): DecodedFramePosition | null;
+  diagnostics?(): Record<string, unknown>;
 }
 
 /** One owned, muted blob decoder. No remote URL, media capture or audio output. */
@@ -38,7 +39,11 @@ export function decodeAvatarVideo(content: AvatarVideoContent, timed = false): A
     if (timed) frameClock = observeOwnedVideoFrames(video, content.repeatMode === "loop");
     const pending = video.play();
     const settled = Promise.resolve(pending).then(() => { if (closed) release(() => video.pause()); }, () => { failed = true; close(); });
-    return { settled, ready, ...(frameClock ? { timing: () => frameClock!.read() } : {}), draw: drawing => {
+    const diagnostics = () => ({ closed, failed, readyState: video.readyState, videoWidth: video.videoWidth,
+      videoHeight: video.videoHeight, duration: video.duration, muted: video.muted, volume: video.volume,
+      playbackRate: video.playbackRate, hasSrc: video.src === url, loop: video.loop, paused: video.paused,
+      errorCode: video.error ? video.error.code : 0, expectingLoop: content.repeatMode === "loop", frames: content.frames });
+    return { settled, ready, diagnostics, ...(frameClock ? { timing: () => frameClock!.read() } : {}), draw: drawing => {
       if (!ready()) throw new Error("meet_avatar_video_not_ready");
       drawing.drawImage(video, 64, 40, 128, 128);
     }, close };

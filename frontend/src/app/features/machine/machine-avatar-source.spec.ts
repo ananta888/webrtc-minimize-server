@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MachineAvatarSource } from "./machine-avatar-source";
+import type { MachineAvatarReceipt } from "./machine-avatar-source";
 
 const now = 1_788_000_000_000;
 function setup() {
@@ -157,6 +158,41 @@ describe("independent bounded avatar lifecycle", () => {
     expect(() => f.source.pulse(lease.generation)).toThrow(); expect(f.surface.frame).toHaveBeenCalledTimes(13);
     const fresh = await f.open(); expect(() => f.source.pulse(lease.generation)).toThrow("meet_avatar_pulse_stale");
     vi.advanceTimersByTime(2000); f.source.pulse(fresh.generation); vi.advanceTimersByTime(1000);
+    expect(f.source.status().state).toBe("open"); f.source.close();
+  });
+  it("hands out the receipt for a finished setup instead of fencing it, and resolves exactly once", async () => {
+    const f = setup(); f.surface.ready.mockReturnValue(false); f.authority.expiresAt = now + 600;
+    const warnings: string[] = [];
+    const warn = vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => { warnings.push(String(args[0])); });
+    const outcomes: string[] = []; let receipt: MachineAvatarReceipt | undefined;
+    const settled = f.source.open("avatar:hub", "neutral-ai-v1")
+      .then(value => { receipt = value; outcomes.push("resolved"); }, () => { outcomes.push("rejected"); });
+    // The media-key handshake lands on the last tick inside the activation
+    // window: a surface that reports ready has succeeded and must be settled,
+    // never pre-empted by the guard that is about to run out.
+    vi.advanceTimersByTime(550); expect(f.source.status().state).toBe("opening");
+    f.surface.ready.mockReturnValue(true); vi.advanceTimersByTime(25);
+    await settled;
+    expect(outcomes).toEqual(["resolved"]);
+    expect(receipt).toMatchObject({ generation: 1, profile: "neutral-ai-v1", expiresAt: now + 600 });
+    expect(f.surface.frame).toHaveBeenCalledExactlyOnceWith(1);
+    expect(f.source.status().state).toBe("open");
+    expect(warnings.filter(line => line.includes("authority-expired"))).toEqual([]);
+    // The elapsed activation window still ends the settled source on a later
+    // tick, so the controller re-opens instead of seeing its receipt rejected.
+    vi.advanceTimersByTime(25);
+    expect(f.source.status().state).toBe("failed"); expect(f.surface.close).toHaveBeenCalledOnce();
+    expect(warnings.some(line => line.includes("cause=activation-expired"))).toBe(true);
+    await Promise.resolve(); expect(outcomes).toEqual(["resolved"]);
+    warn.mockRestore();
+  });
+  it("observes readiness once per tick so two disagreeing looks cannot fence an open source", async () => {
+    const f = setup(); await f.open();
+    f.surface.ready.mockClear(); vi.advanceTimersByTime(100);
+    expect(f.surface.ready).toHaveBeenCalledOnce();
+    // A second look that flips to false must not be taken within the same tick.
+    let looks = 0; f.surface.ready.mockImplementation(() => ++looks === 1);
+    vi.advanceTimersByTime(100); expect(looks).toBe(1);
     expect(f.source.status().state).toBe("open"); f.source.close();
   });
   it("lets a pending setup outlive the controller heartbeat only until the setup timeout, never past identity loss", async () => {

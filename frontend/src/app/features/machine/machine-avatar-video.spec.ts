@@ -89,6 +89,19 @@ describe("closed bounded video artwork", () => {
     f.pending.resolve(); await flush(); expect(f.ports.decode).toHaveBeenCalledOnce();
     f.loader.create(value(), f.check).close(); await flush();
   });
+  it("reports not-ready while attaching under a fenced scope instead of throwing", async () => {
+    const f = setup(), source = f.loader.create(value(), f.check); await flush();
+    // The owning source is still opening: its guard decides whether the
+    // generation ends, so a revoked scope must not attach or throw here.
+    f.check.mockImplementation(() => { throw new Error("revoked"); });
+    expect(source.ready()).toBe(false); expect(f.ports.create).not.toHaveBeenCalled();
+    f.check.mockImplementation(() => undefined);
+    expect(source.ready()).toBe(true); expect(f.ports.create).toHaveBeenCalledOnce();
+    // A real decode failure still propagates rather than reporting not-ready.
+    f.decoder.ready.mockImplementation(() => { throw new Error("meet_avatar_video_decoder_failed"); });
+    expect(() => source.ready()).toThrow("decoder_failed");
+    f.pending.resolve(); await flush();
+  });
   it("checks current authority during each paint and rejects backward clock before decoder start", async () => {
     const f = setup(), source = f.loader.create(value(), f.check); await flush(); source.ready();
     f.check.mockImplementation(() => { throw new Error("revoked"); });
