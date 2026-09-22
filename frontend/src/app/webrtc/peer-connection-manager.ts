@@ -39,7 +39,7 @@ interface ManagerCallbacks {
   readonly track: (peer: ManagedPeer, track: MediaStreamTrack, receiver: RTCRtpReceiver) => void;
   readonly channel: (peer: ManagedPeer, channel: RTCDataChannel) => void;
   readonly state: (peer: ManagedPeer) => void;
-  readonly negotiationError: (peer: ManagedPeer) => void;
+  readonly negotiationError: (peer: ManagedPeer, error?: unknown) => void;
 }
 
 interface IceCandidateStat {
@@ -57,6 +57,47 @@ interface IcePairStat {
   readonly selected?: boolean;
   readonly localCandidateId?: string;
   readonly selectedCandidatePairId?: string;
+}
+
+/**
+ * Diagnostics only ([negdbg]). Nothing below influences negotiation, ICE tiers
+ * or media; it exists to explain a failed handshake in the companion log.
+ */
+const CANDIDATE_KINDS = ["host", "srflx", "prflx", "relay", "unknown"] as const;
+
+type IceCandidateKind = typeof CANDIDATE_KINDS[number];
+
+type CandidateCounts = Record<IceCandidateKind, number>;
+
+interface NegotiationDiagnostics {
+  readonly local: CandidateCounts;
+  readonly remote: CandidateCounts;
+  candidateErrors: number;
+}
+
+function emptyCandidateCounts(): CandidateCounts {
+  return { host: 0, srflx: 0, prflx: 0, relay: 0, unknown: 0 };
+}
+
+function candidateKind(candidate: string): IceCandidateKind {
+  const parsed = /\btyp (host|srflx|prflx|relay)\b/.exec(candidate)?.[1];
+  return (parsed as IceCandidateKind | undefined) ?? "unknown";
+}
+
+/**
+ * A rejected description can quote SDP back. Keep ephemeral session secrets out
+ * of the log and bound the line length; TURN credentials are never read here.
+ */
+export function describeNegotiationError(error: unknown): Readonly<{ name: string; message: string }> {
+  if (error === undefined || error === null) return { name: "unknown", message: "no error value captured" };
+  const source = error instanceof Error ? error : null;
+  const message = source ? source.message : String(error);
+  return {
+    name: source ? source.name : typeof error,
+    message: message
+      .replace(/(ice-pwd:|ice-ufrag:|fingerprint:)\S+/gi, "$1<redacted>")
+      .slice(0, 400),
+  };
 }
 
 const RESTART_COOLDOWN_MS = 10_000;
@@ -88,6 +129,8 @@ export function classifySelectedIcePath(
 
 export class PeerConnectionManager {
   readonly peers = new Map<string, ManagedPeer>();
+  // [negdbg] per-peer counters; a WeakMap keeps ManagedPeer and its teardown untouched.
+  private readonly negotiationDiagnostics = new WeakMap<ManagedPeer, NegotiationDiagnostics>();
 
   constructor(
     private readonly ownPeerId: string,
@@ -127,11 +170,32 @@ export class PeerConnectionManager {
       lastIceRestartAt: 0,
     };
     this.peers.set(peerId, peer);
-    pc.onicecandidate = ({ candidate }) => this.callbacks.signal(peerId, { candidate });
+    pc.onicecandidate = ({ candidate }) => {
+      this.countCandidate(peer, "local", candidate?.candidate);
+      this.callbacks.signal(peerId, { candidate });
+    };
     pc.ontrack = ({ track, receiver }) => this.callbacks.track(peer, track, receiver);
     pc.ondatachannel = ({ channel }) => this.callbacks.channel(peer, channel);
-    pc.oniceconnectionstatechange = () => this.handleConnectionState(peer);
-    pc.onconnectionstatechange = () => this.handleConnectionState(peer);
+    pc.oniceconnectionstatechange = () => {
+      this.logPeerEvent(peer, "iceconnectionstatechange");
+      this.handleConnectionState(peer);
+    };
+    pc.onconnectionstatechange = () => {
+      this.logPeerEvent(peer, "connectionstatechange");
+      this.handleConnectionState(peer);
+    };
+    pc.onicegatheringstatechange = () => this.logPeerEvent(peer, "icegatheringstatechange");
+    pc.onicecandidateerror = (event) => {
+      const failure = event as RTCPeerConnectionIceErrorEvent;
+      this.diagnosticsFor(peer).candidateErrors += 1;
+      this.logPeerEvent(peer, "icecandidateerror", {
+        errorCode: failure.errorCode,
+        errorText: failure.errorText,
+        url: failure.url,
+        address: failure.address,
+        port: failure.port,
+      });
+    };
     pc.onnegotiationneeded = () => void this.negotiate(peer);
     if (this.ownPeerId < peerId) {
       this.callbacks.channel(peer, pc.createDataChannel("control", { ordered: true }));
@@ -174,14 +238,16 @@ export class PeerConnectionManager {
         }
         return;
       }
+      const candidate = (message["candidate"] as RTCIceCandidateInit | null) ?? null;
+      this.countCandidate(peer, "remote", candidate?.candidate);
       try {
-        await peer.pc.addIceCandidate((message["candidate"] as RTCIceCandidateInit | null) ?? null);
+        await peer.pc.addIceCandidate(candidate);
       } catch (error) {
         if (!peer.ignoreOffer) throw error;
       }
-    } catch {
+    } catch (error) {
       peer.settingRemoteAnswerPending = false;
-      this.callbacks.negotiationError(peer);
+      this.reportNegotiationError(peer, "accept-signal", error);
     }
   }
 
@@ -209,9 +275,9 @@ export class PeerConnectionManager {
       await peer.pc.setLocalDescription();
       this.callbacks.signal(peer.id, { description: peer.pc.localDescription });
       offerCreated = true;
-    } catch {
+    } catch (error) {
       peer.needsNegotiation = true;
-      this.callbacks.negotiationError(peer);
+      this.reportNegotiationError(peer, "create-offer", error);
     } finally {
       peer.makingOffer = false;
       if (offerCreated && peer.needsNegotiation && peer.pc.signalingState === "stable") {
@@ -275,6 +341,69 @@ export class PeerConnectionManager {
   private clearFallback(peer: ManagedPeer): void {
     if (peer.fallbackTimer) clearTimeout(peer.fallbackTimer);
     peer.fallbackTimer = null;
+  }
+
+  private diagnosticsFor(peer: ManagedPeer): NegotiationDiagnostics {
+    const current = this.negotiationDiagnostics.get(peer);
+    if (current) return current;
+    const created: NegotiationDiagnostics = {
+      local: emptyCandidateCounts(),
+      remote: emptyCandidateCounts(),
+      candidateErrors: 0,
+    };
+    this.negotiationDiagnostics.set(peer, created);
+    return created;
+  }
+
+  private countCandidate(peer: ManagedPeer, side: "local" | "remote", candidate: string | undefined): void {
+    if (!candidate) return; // The null candidate only marks the end of gathering.
+    const diagnostics = this.diagnosticsFor(peer);
+    const counts = side === "local" ? diagnostics.local : diagnostics.remote;
+    counts[candidateKind(candidate)] += 1;
+  }
+
+  /** ICE server urls only: usernames and TURN credentials must never be logged. */
+  private configuredIceServerUrls(peer: ManagedPeer): readonly string[] {
+    return [...iceServerUrls(cumulativeIceServers(this.icePolicy, peer.iceTier))];
+  }
+
+  private peerStates(peer: ManagedPeer): Record<string, unknown> {
+    return {
+      iceConnectionState: peer.pc.iceConnectionState,
+      connectionState: peer.pc.connectionState,
+      signalingState: peer.pc.signalingState,
+      iceGatheringState: peer.pc.iceGatheringState,
+      iceTier: peer.iceTier,
+      icePath: peer.icePath,
+    };
+  }
+
+  private logPeerEvent(peer: ManagedPeer, event: string, detail: Record<string, unknown> = {}): void {
+    console.warn("[negdbg] " + JSON.stringify({
+      at: new Date().toISOString(),
+      event,
+      peer: peer.id,
+      name: peer.name,
+      ...this.peerStates(peer),
+      ...detail,
+    }));
+  }
+
+  private reportNegotiationError(peer: ManagedPeer, phase: string, error: unknown): void {
+    const diagnostics = this.diagnosticsFor(peer);
+    this.logPeerEvent(peer, "negotiation-failed", {
+      phase,
+      polite: peer.polite,
+      makingOffer: peer.makingOffer,
+      ignoreOffer: peer.ignoreOffer,
+      needsNegotiation: peer.needsNegotiation,
+      error: describeNegotiationError(error),
+      iceServers: this.configuredIceServerUrls(peer),
+      localCandidates: diagnostics.local,
+      remoteCandidates: diagnostics.remote,
+      candidateErrors: diagnostics.candidateErrors,
+    });
+    this.callbacks.negotiationError(peer, error);
   }
 
   private async detectIcePath(peer: ManagedPeer): Promise<void> {

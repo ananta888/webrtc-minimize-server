@@ -61,7 +61,7 @@ import {
   parseMediaE2eeMessage,
   randomMediaKey,
 } from "./media-e2ee-protocol";
-import { ManagedPeer, PeerConnectionManager } from "./peer-connection-manager";
+import { describeNegotiationError, ManagedPeer, PeerConnectionManager } from "./peer-connection-manager";
 import { PeerTopologyController } from "./peer-topology-controller";
 import { TrustedRelayController } from "./trusted-relay-controller";
 import { PeerQualityController } from "./peer-quality-controller";
@@ -315,6 +315,9 @@ export class PeerMeshService {
   private controlSequence = 0;
   private activityTimer: ReturnType<typeof setInterval> | null = null;
   private e2eeRecoveryTimer: ReturnType<typeof setInterval> | null = null;
+  private overlayDiagnosticsTimer: ReturnType<typeof setInterval> | null = null;
+  // [negdbg] last logged overlay line per peer, so an unchanged mesh stays readable.
+  private readonly overlayDiagnosticsSeen = new Map<string, Readonly<{ line: string; at: number }>>();
   private qualityTimer: ReturnType<typeof setInterval> | null = null;
   private lastMeshTelemetrySentAt = 0;
   private lastAnnouncedAnalysisInterest = false;
@@ -366,7 +369,22 @@ export class PeerMeshService {
       track: (peer, track, receiver) => this.acceptRemoteTrack(peer as PeerState, track, receiver),
       channel: (peer, channel) => this.attachChannel(peer as PeerState, channel),
       state: () => this.updateIceState(),
-      negotiationError: (peer) => this.addChat("System", `Verhandlung mit ${peer.name} fehlgeschlagen`, true),
+      negotiationError: (peer, error) => {
+        console.warn("[negdbg] " + JSON.stringify({
+          at: new Date().toISOString(),
+          event: "mesh-negotiation-failed",
+          peer: peer.id,
+          name: peer.name,
+          error: describeNegotiationError(error),
+          overlayChannel: peer.channels.get("overlay")?.readyState ?? "absent",
+          overlayPeerKey: this.overlay.hasPeerKey(peer.id),
+          overlayReady: this.overlayReady(),
+          mediaE2eeState: this.mediaE2eeState(),
+          membershipEpoch: this.membershipEpoch(),
+          membershipStable: this.membershipStable,
+        }));
+        this.addChat("System", `Verhandlung mit ${peer.name} fehlgeschlagen`, true);
+      },
     }, (peerId) => this.overlayInitiates(peerId));
     this.mediaAgents.initialize({
       ownPeerId: ownId,
@@ -1562,15 +1580,48 @@ export class PeerMeshService {
         if (this.overlay.hasPeerKey(peer.id)) this.provisionMediaKeysForPeer(peer.id);
       }
     }, 4_000);
+    this.overlayDiagnosticsTimer = setInterval(() => this.logOverlayDiagnostics(), 1_000);
+  }
+
+  /**
+   * Diagnostics only ([negdbg]): at most one line per peer per second, repeated
+   * lines suppressed until the state changes or the 10 s heartbeat elapses.
+   */
+  private logOverlayDiagnostics(): void {
+    const now = Date.now();
+    for (const peer of this.peers.values()) {
+      const state = {
+        event: "overlay-channel",
+        peer: peer.id,
+        name: peer.name,
+        overlayChannel: peer.channels.get("overlay")?.readyState ?? "absent",
+        overlayPeerKey: this.overlay.hasPeerKey(peer.id),
+        overlayReady: this.overlayReady(),
+        mediaE2eeState: this.mediaE2eeState(),
+        iceConnectionState: peer.pc.iceConnectionState,
+        connectionState: peer.pc.connectionState,
+      };
+      const line = JSON.stringify(state);
+      const seen = this.overlayDiagnosticsSeen.get(peer.id);
+      if (seen && seen.line === line && now - seen.at < 10_000) continue;
+      this.overlayDiagnosticsSeen.set(peer.id, { line, at: now });
+      console.warn("[negdbg] " + JSON.stringify({ at: new Date(now).toISOString(), ...state }));
+    }
+    for (const peerId of [...this.overlayDiagnosticsSeen.keys()]) {
+      if (!this.peers.has(peerId)) this.overlayDiagnosticsSeen.delete(peerId);
+    }
   }
 
   private stopTimers(): void {
     if (this.activityTimer) clearInterval(this.activityTimer);
     if (this.qualityTimer) clearInterval(this.qualityTimer);
     if (this.e2eeRecoveryTimer) clearInterval(this.e2eeRecoveryTimer);
+    if (this.overlayDiagnosticsTimer) clearInterval(this.overlayDiagnosticsTimer);
     this.activityTimer = null;
     this.qualityTimer = null;
     this.e2eeRecoveryTimer = null;
+    this.overlayDiagnosticsTimer = null;
+    this.overlayDiagnosticsSeen.clear();
   }
 
   private async sampleQuality(): Promise<void> {
@@ -2001,12 +2052,18 @@ export class PeerMeshService {
   private provisionMediaKeysForPeer(peerId: string): void {
     const peer = this.peers.get(peerId);
     if (!peer) return;
+    const locals = [...this.publications.values()].filter(item => item.local).map(item => `${item.id}:${item.source}`);
+    console.warn("[e2eedbg] provision peer", peerId, "locals", locals, "senders", [...peer.senders]);
     for (const publication of this.publications.values()) {
       if (publication.local && peer.senders.has(publication.id)) this.provisionMediaKey(publication, peer);
     }
   }
 
   private provisionMediaKey(publication: Publication, peer: PeerState): void {
+    const allow = this.machineReceive.mediaAllowed(peer.id, this.ownId, publication.id, publication.source);
+    console.warn("[e2eedbg] provisionKey", publication.id, publication.source, "allow", allow,
+      "local", publication.local, "protect", this.shouldProtectMedia(), "stable", this.membershipStable,
+      "mep", this.membershipEpoch(), "re", this.routeEpoch(), "hasKey", this.overlay.hasPeerKey(peer.id));
     if (!this.machineReceive.mediaAllowed(peer.id, this.ownId, publication.id, publication.source)) return;
     if (!publication.local || !this.shouldProtectMedia() || !this.membershipStable
       || this.membershipEpoch() < 1 || this.routeEpoch() < 1 || !this.overlay.hasPeerKey(peer.id)) return;
