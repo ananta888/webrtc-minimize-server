@@ -1,0 +1,148 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "media-negotiation-glare",
+  "purpose": "Der Machine/Companion-Client (polite) blieb live in have-local-offer haengen: ein kollidierender Remote-Offer scheiterte mit 'Failed to set remote offer sdp', die impolite Gegenseite ignorierte das Machine-Offer, und der Medienpfad (camera/SFrame) kam nie zustande, waehrend die DataChannels offen blieben.",
+  "goal": "Deterministische Perfect Negotiation ohne gegenseitiges Warten, koordinierte ICE-Restarts pro Tier und Diagnose, die Fehlermeldung, angewendete ICE-Konfiguration und Kandidatenpaare vollstaendig zeigt.",
+  "status": "done",
+  "created": "2026-09-23",
+  "updated": "2026-09-23",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Glare-feste Negotiation und koordinierte ICE-Tiers",
+      "task_ids": [
+        "glare-polite-rollback",
+        "glare-offer-timeout",
+        "ice-tier-restart-coordination",
+        "mediadbg-diagnostics"
+      ],
+      "status": "done"
+    }
+  ],
+  "critical_path_tasks": [
+    "glare-polite-rollback"
+  ],
+  "tasks": [
+    {
+      "id": "glare-polite-rollback",
+      "title": "Polite Glare-Aufloesung per explizitem Rollback, serialisierte Signale, stale Answers ignorieren",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "Polite Seite rollt ein eigenes (auch noch entstehendes) Offer per setLocalDescription({type:'rollback'}) zurueck, setzt den Remote-Offer, sendet eine Answer und re-offert danach; kein 'Failed to set remote offer sdp' und keine descriptionErrors im Glare-Fall",
+        "Impolite Seite ignoriert kollidierende Offers und deren Kandidaten ohne Fehlerpfad",
+        "Signale eines Peers werden strikt in Ankunftsreihenfolge angewendet; Answers ohne ausstehendes lokales Offer werden als stale verworfen",
+        "Ein abgelehnter Remote-Offer hinterlaesst keinen stale local offer und loest eine Neuverhandlung aus",
+        "peer-connection-manager.spec.ts: neue Glare-Tests schlagen gegen den alten Stand fehl und sind mit dem Fix gruen"
+      ]
+    },
+    {
+      "id": "glare-offer-timeout",
+      "title": "Unbeantwortetes Offer mit Backoff zurueckrollen (gegenseitiges Warten in have-local-offer aufloesen)",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "Ein Offer ohne Answer wird nach 8s zurueckgerollt und neu angeboten; der Timeout verdoppelt sich je Folge-Stall bis 60s (keine Endlosschleife)",
+        "Eine eingehende Answer setzt den Streak zurueck; eine spaete Answer auf ein zurueckgerolltes Offer erzeugt keinen Fehler"
+      ]
+    },
+    {
+      "id": "ice-tier-restart-coordination",
+      "title": "ICE-Tier-Restarts koordinieren und Relay-Kandidaten fuer beide Seiten sicherstellen",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "Bei einem Tier-Wechsel startet nur die polite Seite sofort restartIce(); die impolite Seite wartet 2s auf den Remote-Restart und restartet nur ohne diesen",
+        "Ein Remote-ICE-Restart zieht einen innerhalb der Grace-Zeit faelligen eigenen Tier-Wechsel vor (nur setConfiguration), damit die Answer bereits Relay-Kandidaten traegt"
+      ]
+    },
+    {
+      "id": "mediadbg-diagnostics",
+      "title": "[mediadbg]/[sigdbg] praezisieren: volle Fehlermeldung, angewendete iceServers-URLs, Description-Typen, Selected Pair, Gathering-Hinweise",
+      "status": "done",
+      "priority": "P2",
+      "risk": "low",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "Fehlermeldungen werden nicht mehr gekuerzt (ice-pwd/ice-ufrag/fingerprint bleiben redigiert)",
+        "Geloggt werden getConfiguration().iceServers-URLs und iceTransportPolicy, current/pending local/remote description-Typen, negotiationneeded mit Transceiver-Uebersicht, icecandidateerror je URL/Code und das Selected Candidate Pair ohne Adressen",
+        "Keine Credentials, Usernames, Kandidatenadressen oder SDP in den Logs"
+      ]
+    }
+  ],
+  "tasks_status_summary": {
+    "total": 4,
+    "by_status": {
+      "todo": 0,
+      "in_progress": 0,
+      "partial": 0,
+      "blocked": 0,
+      "done": 4
+    },
+    "progress_percent_done": 100,
+    "by_priority": {
+      "P0": 1,
+      "P1": 2,
+      "P2": 1,
+      "P3": 0
+    },
+    "by_risk": {
+      "low": 1,
+      "medium": 2,
+      "high": 1,
+      "critical": 0
+    },
+    "critical_path": {
+      "total": 1,
+      "done": 1,
+      "remaining": 0
+    },
+    "milestones": {
+      "total": 1,
+      "todo": 0,
+      "in_progress": 0,
+      "blocked": 0,
+      "done": 1
+    }
+  },
+  "progress_summary": {
+    "state": "done",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 4
+  },
+  "summary_notes": [
+    "Live-Befund (Machine, polite): signalingState have-local-offer, offersSent 38 / answersReceived 36, descriptionErrors 2, lastError 'Failed to set remote offer sdp: Session error code: ERR...' (auf 120 Zeichen gekuerzt). Ursache: Glare, u.a. deterministisch durch beidseitiges restartIce() beim gleichzeitigen Tier-Timer; die polite Seite verliess sich auf das implizite Rollback von setRemoteDescription, das scheiterte; danach warteten beide Seiten in have-local-offer (impolite ignoriert, polite beantwortet nie).",
+    "ICE: Der Peer startet nur mit directIceServers (STUN); TURN wird erst per setConfiguration+restartIce ab Tier 1/2 angewendet. srflx:0 bei beiden Seiten deutet auf nicht erreichbares STUN (UDP 19302) oder eine oeffentliche Host-Adresse hin; der neue ice-gathering-complete-Hinweis unterscheidet das live. Relay scheiterte, weil nur eine Seite eskalierte und ihre Relay-Kandidaten nur private Host-Kandidaten der Gegenseite erreichen konnten. Kein Server-Eingriff noetig; Produktions-TURN-Erreichbarkeit (3478 udp/tcp, 5349, 49160-49200/udp) bleibt live zu pruefen.",
+    "Vorbestehend rot und nicht Teil dieses Tracks: machine-receive-gate.spec, peer-mesh-key-ack.spec, peer-mesh-overlay-lifecycle.spec, machine-avatar-source.spec, machine-chat-session.service.spec (identisch auf HEAD vor diesem Track)."
+  ]
+}

@@ -86,10 +86,33 @@ interface NegotiationDiagnostics {
   offersReceived: number;
   answersReceived: number;
   offersIgnored: number;
+  staleAnswersIgnored: number;
+  localOffersRolledBack: number;
+  offersUnanswered: number;
   localDescriptionSet: number;
   remoteDescriptionSet: number;
   descriptionErrors: number;
   lastError: string;
+  remoteCandidateErrors: number;
+  // `${url}#${errorCode}` -> count; urls only, never usernames or addresses.
+  readonly candidateErrorsByUrl: Record<string, number>;
+}
+
+/**
+ * Perfect-negotiation bookkeeping that is not part of ManagedPeer, so the
+ * media-agent connections extending it stay untouched.
+ */
+interface NegotiationControl {
+  // Descriptions and candidates of one peer are applied strictly in arrival order.
+  signalQueue: Promise<void>;
+  // Resolves once a local setLocalDescription(offer) has settled.
+  offerInFlight: Promise<void> | null;
+  offerTimer: ReturnType<typeof setTimeout> | null;
+  unansweredStreak: number;
+  // Compared only to detect a remote ICE restart; never logged.
+  remoteIceUfrag: string;
+  remoteIceRestartAt: number;
+  deferredRestartTimer: ReturnType<typeof setTimeout> | null;
 }
 
 function emptyCandidateCounts(): CandidateCounts {
@@ -103,7 +126,9 @@ function candidateKind(candidate: string): IceCandidateKind {
 
 /**
  * A rejected description can quote SDP back. Keep ephemeral session secrets out
- * of the log and bound the line length; TURN credentials are never read here.
+ * of the log; the message itself stays complete because the decisive part of a
+ * libwebrtc "Session error description" sits at its end. TURN credentials are
+ * never read here.
  */
 export function describeNegotiationError(error: unknown): Readonly<{ name: string; message: string }> {
   if (error === undefined || error === null) return { name: "unknown", message: "no error value captured" };
@@ -111,14 +136,24 @@ export function describeNegotiationError(error: unknown): Readonly<{ name: strin
   const message = source ? source.message : String(error);
   return {
     name: source ? source.name : typeof error,
-    message: message
-      .replace(/(ice-pwd:|ice-ufrag:|fingerprint:)\S+/gi, "$1<redacted>")
-      .slice(0, 400),
+    message: message.replace(/(ice-pwd:|ice-ufrag:|fingerprint:)\S+/gi, "$1<redacted>"),
   };
+}
+
+/** First ice-ufrag of an SDP; only compared to detect a remote ICE restart. */
+function sdpIceUfrag(sdp: string | undefined): string {
+  return /^a=ice-ufrag:(\S+)/m.exec(sdp || "")?.[1] ?? "";
 }
 
 const RESTART_COOLDOWN_MS = 10_000;
 const TIER_EVENT_DEBOUNCE_MS = 1_000;
+// An offer that neither got answered nor collided is rolled back and re-offered;
+// the backoff doubles per consecutive stall so a dead peer never causes a tight loop.
+export const OFFER_ANSWER_TIMEOUT_MS = 8_000;
+const OFFER_ANSWER_TIMEOUT_MAX_MS = 60_000;
+// The impolite side waits this long for the polite side's ICE-restart offer
+// before restarting itself, so a tier step never produces two crossing offers.
+export const ICE_RESTART_GRACE_MS = 2_000;
 
 function statsValues(report: RTCStatsReport): readonly IcePairStat[] {
   const values: IcePairStat[] = [];
@@ -148,6 +183,7 @@ export class PeerConnectionManager {
   readonly peers = new Map<string, ManagedPeer>();
   // [negdbg] per-peer counters; a WeakMap keeps ManagedPeer and its teardown untouched.
   private readonly negotiationDiagnostics = new WeakMap<ManagedPeer, NegotiationDiagnostics>();
+  private readonly negotiationControl = new WeakMap<ManagedPeer, NegotiationControl>();
   // [sigdbg] throttled per-peer signaling heartbeat while the peer is not connected.
   private signalHeartbeat: ReturnType<typeof setInterval> | null = null;
   private readonly signalHeartbeatSeen = new Map<string, Readonly<{ line: string; at: number }>>();
@@ -220,27 +256,45 @@ export class PeerConnectionManager {
     pc.onconnectionstatechange = () => {
       this.logPeerEvent(peer, "connectionstatechange");
       this.handleConnectionState(peer);
+      if (["connected", "disconnected", "failed"].includes(pc.connectionState)) {
+        void this.logSelectedCandidatePair(peer, "connectionstatechange:" + pc.connectionState);
+      }
     };
-    pc.onicegatheringstatechange = () => this.logPeerEvent(peer, "icegatheringstatechange");
+    pc.onicegatheringstatechange = () => {
+      this.logPeerEvent(peer, "icegatheringstatechange");
+      if (pc.iceGatheringState === "complete") this.logGatheringSummary(peer);
+    };
     pc.onicecandidateerror = (event) => {
       const failure = event as RTCPeerConnectionIceErrorEvent;
       this.diagnosticsFor(peer).candidateErrors += 1;
+      // The local interface address stays out of the log; its family is enough
+      // to tell an IPv6-only STUN/TURN failure from a general one.
       const candidateFailure = {
         errorCode: failure.errorCode,
         errorText: failure.errorText,
         url: failure.url,
-        address: failure.address,
+        addressFamily: !failure.address ? null : failure.address.includes(":") ? "ipv6" : "ipv4",
         port: failure.port,
       };
+      const byUrl = this.diagnosticsFor(peer).candidateErrorsByUrl;
+      const key = (failure.url || "no-url") + "#" + failure.errorCode;
+      byUrl[key] = (byUrl[key] ?? 0) + 1;
       this.logPeerEvent(peer, "icecandidateerror", candidateFailure);
       this.logSignalEvent(peer, "icecandidateerror", {
         ...candidateFailure,
         candidateErrors: this.diagnosticsFor(peer).candidateErrors,
       });
+      this.logMediaEvent(peer, "icecandidateerror", { ...candidateFailure, candidateErrorsByUrl: byUrl });
     };
     pc.onnegotiationneeded = () => {
       diagnostics.negotiationNeeded += 1;
       this.logSignalEvent(peer, "negotiationneeded", { count: diagnostics.negotiationNeeded });
+      this.logMediaEvent(peer, "negotiationneeded", {
+        count: diagnostics.negotiationNeeded,
+        makingOffer: peer.makingOffer,
+        needsNegotiation: peer.needsNegotiation,
+        transceivers: this.transceiverSummary(peer),
+      });
       void this.negotiate(peer);
     };
     if (this.ownPeerId < peerId) {
@@ -277,17 +331,39 @@ export class PeerConnectionManager {
     this.callbacks.channel(peer, channel);
   }
 
-  async acceptSignal(message: ServerMessage): Promise<void> {
+  /**
+   * Signals of one peer are applied strictly in arrival order. The socket
+   * dispatches them without awaiting, so without this queue a candidate or a
+   * second description could run against a half-applied offer.
+   */
+  acceptSignal(message: ServerMessage): Promise<void> {
     const from = String(message["from"] || "");
     const known = this.peers.has(from);
     const peer = this.add(from, String(message["fromName"] || "Peer"));
-    if (!peer) return;
+    if (!peer) return Promise.resolve();
+    const control = this.controlFor(peer);
+    const applied = control.signalQueue.then(() => this.applySignal(peer, message, known));
+    control.signalQueue = applied.catch(() => undefined);
+    return applied;
+  }
+
+  private async applySignal(peer: ManagedPeer, message: ServerMessage, known: boolean): Promise<void> {
+    if (peer.pc.signalingState === "closed") return;
     const diagnostics = this.diagnosticsFor(peer);
+    const control = this.controlFor(peer);
     try {
       const description = message["description"] as RTCSessionDescriptionInit | undefined;
       if (description) {
         if (description.type === "offer") diagnostics.offersReceived += 1;
         else if (description.type === "answer") diagnostics.answersReceived += 1;
+        if (description.type === "answer" && peer.pc.signalingState !== "have-local-offer") {
+          // Our offer was rolled back (collision or answer timeout) before this
+          // answer arrived. Applying it would only fail with InvalidStateError;
+          // the pending renegotiation supersedes it.
+          diagnostics.staleAnswersIgnored += 1;
+          this.logSignalEvent(peer, "stale-answer-ignored", { count: diagnostics.staleAnswersIgnored });
+          return;
+        }
         const readyForOffer = !peer.makingOffer
           && (peer.pc.signalingState === "stable" || peer.settingRemoteAnswerPending);
         const offerCollision = description.type === "offer" && !readyForOffer;
@@ -307,12 +383,25 @@ export class PeerConnectionManager {
           this.logSignalEvent(peer, "offer-ignored", { count: diagnostics.offersIgnored });
           return;
         }
-        if (offerCollision) peer.needsNegotiation = true;
+        if (offerCollision) {
+          // Polite glare resolution: roll our own offer back explicitly instead
+          // of relying on setRemoteDescription's implicit rollback, which is the
+          // path that failed live with "Failed to set remote offer sdp". Our
+          // changes are re-offered once the remote offer is answered.
+          peer.needsNegotiation = true;
+          await this.rollbackLocalOffer(peer, "offer-collision");
+        }
+        if (description.type === "offer") this.noteRemoteIceRestart(peer, description.sdp);
         peer.settingRemoteAnswerPending = description.type === "answer";
         await peer.pc.setRemoteDescription(description);
         peer.settingRemoteAnswerPending = false;
         diagnostics.remoteDescriptionSet += 1;
+        control.remoteIceUfrag = sdpIceUfrag(description.sdp) || control.remoteIceUfrag;
         this.logSignalEvent(peer, "remote-description-set", { type: description.type });
+        if (description.type === "answer") {
+          this.clearOfferTimer(peer);
+          control.unansweredStreak = 0;
+        }
         if (description.type === "offer") {
           await peer.pc.setLocalDescription();
           this.callbacks.signal(peer.id, { description: peer.pc.localDescription });
@@ -320,6 +409,7 @@ export class PeerConnectionManager {
           diagnostics.answersSent += 1;
           this.logSignalEvent(peer, "answer-sent", { type: peer.pc.localDescription?.type ?? null });
         }
+        this.logMediaEvent(peer, "description-applied", { type: description.type, offerCollision });
         if (peer.needsNegotiation && peer.pc.signalingState === "stable") {
           void this.negotiate(peer);
         }
@@ -330,11 +420,26 @@ export class PeerConnectionManager {
       try {
         await peer.pc.addIceCandidate(candidate);
       } catch (error) {
-        if (!peer.ignoreOffer) throw error;
+        // A candidate of an ignored or rolled-back offer generation is expected
+        // to be rejected; it is diagnostic noise, not a failed negotiation.
+        diagnostics.remoteCandidateErrors += 1;
+        this.logSignalEvent(peer, "remote-candidate-rejected", {
+          ignoreOffer: peer.ignoreOffer,
+          remoteDescription: peer.pc.remoteDescription?.type ?? null,
+          count: diagnostics.remoteCandidateErrors,
+          error: describeNegotiationError(error),
+        });
       }
     } catch (error) {
       peer.settingRemoteAnswerPending = false;
       this.reportNegotiationError(peer, "accept-signal", error);
+      // A failed remote offer must not leave a stale local offer behind: the
+      // remote side waits for an answer to its own offer, so re-offer from a
+      // stable state and let the answer timeout break a mutual wait.
+      if (peer.pc.signalingState === "have-remote-offer") {
+        try { await peer.pc.setLocalDescription({ type: "rollback" }); } catch { /* reported above */ }
+      }
+      if (peer.needsNegotiation && peer.pc.signalingState === "stable") void this.negotiate(peer);
     }
   }
 
@@ -347,6 +452,8 @@ export class PeerConnectionManager {
     });
     this.signalHeartbeatSeen.delete(peerId);
     this.clearFallback(peer);
+    this.clearOfferTimer(peer);
+    this.clearDeferredRestart(peer);
     for (const channel of peer.channels.values()) channel.close();
     peer.pc.close();
     this.peers.delete(peerId);
@@ -360,6 +467,7 @@ export class PeerConnectionManager {
 
   private async negotiate(peer: ManagedPeer): Promise<void> {
     const diagnostics = this.diagnosticsFor(peer);
+    const control = this.controlFor(peer);
     peer.needsNegotiation = true;
     if (peer.makingOffer || peer.pc.signalingState !== "stable") {
       diagnostics.negotiateSkipped += 1;
@@ -372,14 +480,26 @@ export class PeerConnectionManager {
     peer.needsNegotiation = false;
     peer.makingOffer = true;
     let offerCreated = false;
+    const created = peer.pc.setLocalDescription();
+    control.offerInFlight = created.then(() => undefined, () => undefined);
     try {
-      await peer.pc.setLocalDescription();
-      this.callbacks.signal(peer.id, { description: peer.pc.localDescription });
+      await created;
+      const offer = peer.pc.localDescription;
+      // Re-read after the await: TypeScript would keep the pre-await "stable".
+      const state = peer.pc.signalingState as RTCSignalingState;
+      if (state !== "have-local-offer" || offer?.type !== "offer") {
+        // A polite rollback won the race; the answer path re-offers.
+        peer.needsNegotiation = true;
+        this.logSignalEvent(peer, "offer-superseded", { localDescription: offer?.type ?? null });
+        return;
+      }
+      this.callbacks.signal(peer.id, { description: offer });
       offerCreated = true;
       diagnostics.localDescriptionSet += 1;
       diagnostics.offersSent += 1;
+      this.armOfferTimer(peer, offer);
       this.logSignalEvent(peer, "offer-sent", {
-        type: peer.pc.localDescription?.type ?? null,
+        type: offer.type,
         count: diagnostics.offersSent,
       });
     } catch (error) {
@@ -387,16 +507,106 @@ export class PeerConnectionManager {
       this.reportNegotiationError(peer, "create-offer", error);
     } finally {
       peer.makingOffer = false;
+      control.offerInFlight = null;
       if (offerCreated && peer.needsNegotiation && peer.pc.signalingState === "stable") {
         queueMicrotask(() => void this.negotiate(peer));
       }
     }
   }
 
+  /** Rolls a pending local offer back; waits for an offer that is still being created. */
+  private async rollbackLocalOffer(peer: ManagedPeer, reason: string): Promise<boolean> {
+    const control = this.controlFor(peer);
+    if (control.offerInFlight) await control.offerInFlight;
+    this.clearOfferTimer(peer);
+    if (peer.pc.signalingState !== "have-local-offer") return false;
+    await peer.pc.setLocalDescription({ type: "rollback" });
+    const diagnostics = this.diagnosticsFor(peer);
+    diagnostics.localOffersRolledBack += 1;
+    this.logSignalEvent(peer, "local-offer-rolled-back", { reason, count: diagnostics.localOffersRolledBack });
+    return true;
+  }
+
+  /**
+   * Breaks a mutual wait: both sides in have-local-offer, the impolite side
+   * ignoring ours and ours never answered (e.g. after a rejected remote offer).
+   * Runs through the signal queue so it never interleaves with a description.
+   */
+  private armOfferTimer(peer: ManagedPeer, offer: RTCSessionDescription): void {
+    const control = this.controlFor(peer);
+    this.clearOfferTimer(peer);
+    const delay = Math.min(OFFER_ANSWER_TIMEOUT_MS * 2 ** Math.min(control.unansweredStreak, 3),
+      OFFER_ANSWER_TIMEOUT_MAX_MS);
+    control.offerTimer = setTimeout(() => {
+      control.offerTimer = null;
+      control.signalQueue = control.signalQueue.then(async () => {
+        if (peer.pc.signalingState !== "have-local-offer" || peer.pc.localDescription?.sdp !== offer.sdp) return;
+        control.unansweredStreak += 1;
+        const diagnostics = this.diagnosticsFor(peer);
+        diagnostics.offersUnanswered += 1;
+        this.logSignalEvent(peer, "offer-unanswered", {
+          afterMs: delay,
+          streak: control.unansweredStreak,
+          count: diagnostics.offersUnanswered,
+        });
+        try {
+          peer.needsNegotiation = true;
+          await this.rollbackLocalOffer(peer, "answer-timeout");
+        } catch (error) {
+          this.reportNegotiationError(peer, "offer-timeout-rollback", error);
+          return;
+        }
+        if ((peer.pc.signalingState as RTCSignalingState) === "stable") void this.negotiate(peer);
+      }).catch(() => undefined);
+    }, delay);
+  }
+
+  private clearOfferTimer(peer: ManagedPeer): void {
+    const control = this.negotiationControl.get(peer);
+    if (control?.offerTimer) clearTimeout(control.offerTimer);
+    if (control) control.offerTimer = null;
+  }
+
+  private controlFor(peer: ManagedPeer): NegotiationControl {
+    const current = this.negotiationControl.get(peer);
+    if (current) return current;
+    const created: NegotiationControl = {
+      signalQueue: Promise.resolve(),
+      offerInFlight: null,
+      offerTimer: null,
+      unansweredStreak: 0,
+      remoteIceUfrag: "",
+      remoteIceRestartAt: 0,
+      deferredRestartTimer: null,
+    };
+    this.negotiationControl.set(peer, created);
+    return created;
+  }
+
+  /**
+   * A remote ICE-restart offer regathers our candidates with the configuration
+   * active when we answer. While not connected, pull an imminent tier step
+   * forward so the answer already carries its relay candidates, and cancel our
+   * own deferred restart: the remote one already covers it.
+   */
+  private noteRemoteIceRestart(peer: ManagedPeer, sdp: string | undefined): void {
+    const control = this.controlFor(peer);
+    const ufrag = sdpIceUfrag(sdp);
+    if (!ufrag || !control.remoteIceUfrag || ufrag === control.remoteIceUfrag) return;
+    control.remoteIceRestartAt = Date.now();
+    this.clearDeferredRestart(peer);
+    const next = this.nextFallback(peer);
+    const connected = peer.pc.connectionState === "connected";
+    const pulledForward = !connected && next !== null && next.deadline - Date.now() <= ICE_RESTART_GRACE_MS;
+    if (pulledForward) this.activateTier(peer, next.tier, "none");
+    this.logMediaEvent(peer, "remote-ice-restart", { connected, pulledForwardTier: pulledForward ? next!.tier : null });
+  }
+
   private handleConnectionState(peer: ManagedPeer): void {
     const connected = new Set(["connected", "completed"]);
     if (connected.has(peer.pc.iceConnectionState) || peer.pc.connectionState === "connected") {
       this.clearFallback(peer);
+      this.clearDeferredRestart(peer);
       void this.detectIcePath(peer);
     } else if (peer.pc.iceConnectionState === "failed" || peer.pc.connectionState === "failed") {
       this.activateNextTier(peer);
@@ -406,15 +616,21 @@ export class PeerConnectionManager {
     this.callbacks.state(peer);
   }
 
-  private scheduleFallback(peer: ManagedPeer): void {
-    this.clearFallback(peer);
-    if (peer.pc.connectionState === "closed" || peer.iceTier === 2) return;
-    const nextTier = peer.iceTier === 0 && this.icePolicy.peerRelayIceServers.length > 0 ? 1 : 2;
-    if (nextTier === 2 && this.icePolicy.infrastructureRelayIceServers.length === 0) return;
-    const deadline = peer.iceStartedAt + (nextTier === 1
+  private nextFallback(peer: ManagedPeer): Readonly<{ tier: 1 | 2; deadline: number }> | null {
+    if (peer.pc.connectionState === "closed" || peer.iceTier === 2) return null;
+    const tier = peer.iceTier === 0 && this.icePolicy.peerRelayIceServers.length > 0 ? 1 : 2;
+    if (tier === 2 && this.icePolicy.infrastructureRelayIceServers.length === 0) return null;
+    const deadline = peer.iceStartedAt + (tier === 1
       ? this.icePolicy.peerRelayAfterMs
       : this.icePolicy.infrastructureRelayAfterMs);
-    peer.fallbackTimer = setTimeout(() => this.activateTier(peer, nextTier), Math.max(0, deadline - Date.now()));
+    return { tier, deadline };
+  }
+
+  private scheduleFallback(peer: ManagedPeer): void {
+    this.clearFallback(peer);
+    const next = this.nextFallback(peer);
+    if (!next) return;
+    peer.fallbackTimer = setTimeout(() => this.activateTier(peer, next.tier), Math.max(0, next.deadline - Date.now()));
   }
 
   private activateNextTier(peer: ManagedPeer): void {
@@ -430,19 +646,49 @@ export class PeerConnectionManager {
     }
     if (now - peer.lastIceRestartAt >= RESTART_COOLDOWN_MS && peer.pc.connectionState !== "closed") {
       peer.lastIceRestartAt = now;
-      peer.pc.restartIce();
+      this.restartIceCoordinated(peer, "cooldown");
     }
   }
 
-  private activateTier(peer: ManagedPeer, tier: 1 | 2): void {
+  /**
+   * Both sides run the same tier clock, so an unconditional restartIce() on
+   * each side produced two crossing ICE-restart offers (glare) at every tier
+   * step. `none` is used when a remote restart offer already regathers us.
+   */
+  private activateTier(peer: ManagedPeer, tier: 1 | 2, restart: "coordinated" | "none" = "coordinated"): void {
     if (tier <= peer.iceTier || peer.pc.connectionState === "closed") return;
     this.clearFallback(peer);
     peer.iceTier = tier;
     peer.lastIceRestartAt = Date.now();
     peer.pc.setConfiguration({ iceServers: [...cumulativeIceServers(this.icePolicy, tier)] });
-    peer.pc.restartIce();
+    this.logMediaEvent(peer, "ice-tier-activated", { tier, restart });
+    if (restart === "coordinated") this.restartIceCoordinated(peer, "tier-" + tier);
     this.callbacks.state(peer);
     this.scheduleFallback(peer);
+  }
+
+  /** The polite side restarts at once; the impolite side only if no remote restart arrives first. */
+  private restartIceCoordinated(peer: ManagedPeer, reason: string): void {
+    if (peer.polite) {
+      peer.pc.restartIce();
+      return;
+    }
+    this.clearDeferredRestart(peer);
+    const control = this.controlFor(peer);
+    const requestedAt = Date.now();
+    control.deferredRestartTimer = setTimeout(() => {
+      control.deferredRestartTimer = null;
+      if (peer.pc.connectionState === "closed" || peer.pc.connectionState === "connected") return;
+      if (control.remoteIceRestartAt >= requestedAt) return;
+      this.logMediaEvent(peer, "deferred-ice-restart", { reason, graceMs: ICE_RESTART_GRACE_MS });
+      peer.pc.restartIce();
+    }, ICE_RESTART_GRACE_MS);
+  }
+
+  private clearDeferredRestart(peer: ManagedPeer): void {
+    const control = this.negotiationControl.get(peer);
+    if (control?.deferredRestartTimer) clearTimeout(control.deferredRestartTimer);
+    if (control) control.deferredRestartTimer = null;
   }
 
   private clearFallback(peer: ManagedPeer): void {
@@ -467,10 +713,15 @@ export class PeerConnectionManager {
       offersReceived: 0,
       answersReceived: 0,
       offersIgnored: 0,
+      staleAnswersIgnored: 0,
+      localOffersRolledBack: 0,
+      offersUnanswered: 0,
       localDescriptionSet: 0,
       remoteDescriptionSet: 0,
       descriptionErrors: 0,
       lastError: "",
+      remoteCandidateErrors: 0,
+      candidateErrorsByUrl: {},
     };
     this.negotiationDiagnostics.set(peer, created);
     return created;
@@ -514,7 +765,7 @@ export class PeerConnectionManager {
     const diagnostics = this.diagnosticsFor(peer);
     const described = describeNegotiationError(error);
     diagnostics.descriptionErrors += 1;
-    diagnostics.lastError = phase + ":" + described.name + ":" + described.message.slice(0, 120);
+    diagnostics.lastError = phase + ":" + described.name + ":" + described.message;
     this.logSignalEvent(peer, "negotiation-failed", {
       phase,
       polite: peer.polite,
@@ -534,6 +785,12 @@ export class PeerConnectionManager {
       localCandidates: diagnostics.local,
       remoteCandidates: diagnostics.remote,
       candidateErrors: diagnostics.candidateErrors,
+    });
+    this.logMediaEvent(peer, "negotiation-failed", {
+      phase,
+      error: described,
+      descriptionErrors: diagnostics.descriptionErrors,
+      transceivers: this.transceiverSummary(peer),
     });
     this.callbacks.negotiationError(peer, error);
   }
@@ -610,6 +867,9 @@ export class PeerConnectionManager {
       offersReceived: diagnostics.offersReceived,
       answersReceived: diagnostics.answersReceived,
       offersIgnored: diagnostics.offersIgnored,
+      staleAnswersIgnored: diagnostics.staleAnswersIgnored,
+      localOffersRolledBack: diagnostics.localOffersRolledBack,
+      offersUnanswered: diagnostics.offersUnanswered,
       localDescriptionSet: diagnostics.localDescriptionSet,
       remoteDescriptionSet: diagnostics.remoteDescriptionSet,
       descriptionErrors: diagnostics.descriptionErrors,
@@ -617,7 +877,11 @@ export class PeerConnectionManager {
       localCandidates: diagnostics.local,
       remoteCandidates: diagnostics.remote,
       candidateErrors: diagnostics.candidateErrors,
+      candidateErrorsByUrl: diagnostics.candidateErrorsByUrl,
+      remoteCandidateErrors: diagnostics.remoteCandidateErrors,
       iceServers: this.configuredIceServerUrls(peer),
+      ...this.appliedIceConfiguration(peer),
+      ...this.descriptionTypes(peer),
       hypothesis: this.hypothesis(peer),
       ...(this.callbacks.diagnostics?.(peer.id) ?? {}),
     };
@@ -676,6 +940,146 @@ export class PeerConnectionManager {
       ...detail,
       ...(this.callbacks.diagnostics?.(peer.id) ?? {}),
     }));
+  }
+
+  /**
+   * [mediadbg] Diagnostics only: what the RTCPeerConnection really applied
+   * (not what the policy intended), description generations, transceivers and
+   * the selected candidate pair. Urls and candidate types only; addresses,
+   * usernames, credentials and SDP never reach the log.
+   */
+  private appliedIceConfiguration(peer: ManagedPeer): Record<string, unknown> {
+    const configuration = typeof peer.pc.getConfiguration === "function" ? peer.pc.getConfiguration() : null;
+    if (!configuration) return { appliedIceServers: null, iceTransportPolicy: null };
+    return {
+      appliedIceServers: [...iceServerUrls(configuration.iceServers ?? [])],
+      iceTransportPolicy: configuration.iceTransportPolicy ?? "all",
+      bundlePolicy: configuration.bundlePolicy ?? "balanced",
+    };
+  }
+
+  private descriptionTypes(peer: ManagedPeer): Record<string, unknown> {
+    const pc = peer.pc;
+    return {
+      currentLocalDescription: pc.currentLocalDescription?.type ?? null,
+      currentRemoteDescription: pc.currentRemoteDescription?.type ?? null,
+      pendingLocalDescription: pc.pendingLocalDescription?.type ?? null,
+      pendingRemoteDescription: pc.pendingRemoteDescription?.type ?? null,
+    };
+  }
+
+  private transceiverSummary(peer: ManagedPeer): readonly Record<string, unknown>[] {
+    const transceivers = typeof peer.pc.getTransceivers === "function" ? peer.pc.getTransceivers() : [];
+    return transceivers.map((transceiver) => ({
+      mid: transceiver.mid,
+      kind: transceiver.receiver.track?.kind ?? null,
+      direction: transceiver.direction,
+      currentDirection: transceiver.currentDirection,
+      sending: transceiver.sender.track !== null,
+    }));
+  }
+
+  private logMediaEvent(peer: ManagedPeer, event: string, detail: Record<string, unknown> = {}): void {
+    console.warn("[mediadbg] " + JSON.stringify({
+      at: new Date().toISOString(),
+      event,
+      peer: peer.id,
+      name: peer.name,
+      polite: peer.polite,
+      ...this.peerStates(peer),
+      ...this.descriptionTypes(peer),
+      ...this.appliedIceConfiguration(peer),
+      ...detail,
+    }));
+  }
+
+  /**
+   * Explains a missing candidate type once gathering completed. `srflx:0` with
+   * STUN errors means the STUN server was unreachable; without errors, the
+   * reflexive address equalled a host address (pruned as redundant) or UDP
+   * to STUN is silently filtered.
+   */
+  private logGatheringSummary(peer: ManagedPeer): void {
+    const diagnostics = this.diagnosticsFor(peer);
+    const applied = this.appliedIceConfiguration(peer)["appliedIceServers"] as string[] | null
+      ?? [...this.configuredIceServerUrls(peer)];
+    const stunUrls = applied.filter((url) => /^stuns?:/i.test(url));
+    const turnUrls = applied.filter((url) => /^turns?:/i.test(url));
+    const errorUrls = Object.keys(diagnostics.candidateErrorsByUrl);
+    const hints: string[] = [];
+    if (diagnostics.local.srflx === 0) {
+      if (stunUrls.length === 0 && turnUrls.length === 0) hints.push("no-srflx:no-stun-configured");
+      else if (errorUrls.some((key) => /^stuns?:/i.test(key))) hints.push("no-srflx:stun-errors");
+      else hints.push("no-srflx:no-stun-error(host-is-public-or-stun-udp-filtered)");
+    }
+    if (diagnostics.local.relay === 0 && peer.iceTier > 0) {
+      hints.push(turnUrls.length === 0
+        ? "no-relay:no-turn-applied"
+        : errorUrls.some((key) => /^turns?:/i.test(key)) ? "no-relay:turn-errors" : "no-relay:no-turn-error");
+    }
+    this.logMediaEvent(peer, "ice-gathering-complete", {
+      localCandidates: diagnostics.local,
+      remoteCandidates: diagnostics.remote,
+      stunUrls,
+      turnUrls,
+      candidateErrorsByUrl: diagnostics.candidateErrorsByUrl,
+      hints,
+    });
+  }
+
+  private async logSelectedCandidatePair(peer: ManagedPeer, reason: string): Promise<void> {
+    if (typeof peer.pc.getStats !== "function") return;
+    try {
+      const report = await peer.pc.getStats();
+      const values: Record<string, unknown>[] = [];
+      report.forEach((value) => values.push(value as Record<string, unknown>));
+      const byId = new Map(values.map((stat) => [String(stat["id"]), stat]));
+      const pairs = values.filter((stat) => stat["type"] === "candidate-pair");
+      const transport = values.find((stat) => stat["type"] === "transport" && stat["selectedCandidatePairId"]);
+      const selected = (transport ? byId.get(String(transport["selectedCandidatePairId"])) : undefined)
+        ?? pairs.find((pair) => pair["selected"] === true)
+        ?? pairs.find((pair) => pair["nominated"] === true && pair["state"] === "succeeded");
+      const candidate = (id: unknown) => {
+        const stat = id ? byId.get(String(id)) : undefined;
+        return stat ? {
+          candidateType: stat["candidateType"] ?? null,
+          protocol: stat["protocol"] ?? null,
+          relayProtocol: stat["relayProtocol"] ?? null,
+          url: stat["url"] ?? null,
+          networkType: stat["networkType"] ?? null,
+        } : null;
+      };
+      const pairStates: Record<string, number> = {};
+      const pairTypes: Record<string, number> = {};
+      for (const pair of pairs) {
+        const state = String(pair["state"] ?? "unknown");
+        pairStates[state] = (pairStates[state] ?? 0) + 1;
+        const local = byId.get(String(pair["localCandidateId"]))?.["candidateType"] ?? "?";
+        const remote = byId.get(String(pair["remoteCandidateId"]))?.["candidateType"] ?? "?";
+        const key = local + "->" + remote + ":" + state;
+        pairTypes[key] = (pairTypes[key] ?? 0) + 1;
+      }
+      this.logMediaEvent(peer, "selected-candidate-pair", {
+        reason,
+        selectedPair: selected ? {
+          state: selected["state"] ?? null,
+          nominated: selected["nominated"] ?? null,
+          local: candidate(selected["localCandidateId"]),
+          remote: candidate(selected["remoteCandidateId"]),
+          currentRoundTripTime: selected["currentRoundTripTime"] ?? null,
+          requestsSent: selected["requestsSent"] ?? null,
+          responsesReceived: selected["responsesReceived"] ?? null,
+          bytesSent: selected["bytesSent"] ?? null,
+          bytesReceived: selected["bytesReceived"] ?? null,
+        } : null,
+        dtlsState: transport?.["dtlsState"] ?? null,
+        pairs: pairs.length,
+        pairStates,
+        pairTypes,
+      });
+    } catch (error) {
+      this.logMediaEvent(peer, "selected-candidate-pair-unavailable", { reason, error: describeNegotiationError(error) });
+    }
   }
 
   private async detectIcePath(peer: ManagedPeer): Promise<void> {
