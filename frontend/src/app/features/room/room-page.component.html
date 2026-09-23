@@ -448,6 +448,18 @@
             <app-media-control-bar (leaveRoom)="leave()" />
           </div>
 
+          <section class="surface room-chat-dock">
+            <div class="surface-heading small">
+              <span class="feature-icon violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 01-4 4H8l-5 3V7a4 4 0 014-4h10a4 4 0 014 4z"/></svg></span>
+              <div><p class="eyebrow">DataChannel</p><h2>Raumchat</h2></div>
+            </div>
+            <app-room-chat-log id="chat-log" class="chat-log" aria-live="polite" [entries]="mesh.chat()" />
+            <form id="chat-form" class="chat-form" (submit)="$event.preventDefault(); sendChat()">
+              <input id="chat-message" maxlength="2000" autocomplete="off" placeholder="Nachricht schreiben…" [disabled]="!session.joined()" [ngModel]="chatInput()" (ngModelChange)="chatInput.set($event)" name="chatMessage">
+              <button class="send-button" type="submit" [disabled]="!session.joined() || !chatInput().trim()" aria-label="Nachricht senden">↑</button>
+            </form>
+          </section>
+
           <aside class="live-sidebar">
             <section class="surface compact-panel participant-sidebar">
               <app-room-participant-list />
@@ -465,15 +477,6 @@
             <section class="surface compact-panel">
               <app-poll-panel />
             </section>
-            <section class="surface compact-panel">
-              <div class="surface-heading small"><span class="feature-icon violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 01-4 4H8l-5 3V7a4 4 0 014-4h10a4 4 0 014 4z"/></svg></span><div><p class="eyebrow">DataChannel</p><h2>Raumchat</h2></div></div>
-              <app-room-chat-log id="chat-log" class="chat-log" aria-live="polite" [entries]="mesh.chat()" />
-              <form id="chat-form" class="chat-form" (submit)="$event.preventDefault(); sendChat()">
-                <input id="chat-message" maxlength="2000" autocomplete="off" placeholder="Nachricht schreiben…" [disabled]="!session.joined()" [ngModel]="chatInput()" (ngModelChange)="chatInput.set($event)" name="chatMessage">
-                <button class="send-button" type="submit" [disabled]="!session.joined() || !chatInput().trim()" aria-label="Nachricht senden">↑</button>
-              </form>
-            </section>
-
             <section class="surface compact-panel caption-compact-panel">
               <div class="surface-heading small"><span class="feature-icon amber" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 10a3 3 0 10-6 2 3 3 0 006 2M20 10a3 3 0 10-6 2 3 3 0 006 2"/></svg></span><div><p class="eyebrow">Lokal mit Vosk</p><h2>Live-Untertitel</h2></div></div>
               <p><strong>{{ captions.active() ? captionModelStatusLabel() : (captionModels.ready() ? 'Modell bereit' : 'Modell noch nicht geladen') }}</strong></p>

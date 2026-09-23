@@ -305,14 +305,21 @@ legend { color: #bac5d5; font-size: .78rem; font-weight: 700; }
 .room-context { margin-top: .5rem; color: var(--muted); font-size: .75rem; }
 .room-context code { border-right: 1px solid var(--line); padding-right: .65rem; }
 .view-actions { justify-content: flex-end; }
-.live-workspace { display: grid; max-width: 96rem; grid-template-columns: minmax(0, 1fr) minmax(17.5rem, 21rem); gap: 1rem; align-items: start; }
-.stage { min-width: 0; overflow: hidden; }
+.live-workspace { display: grid; max-width: 112rem; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: start; }
+.stage { order: 1; min-width: 0; overflow: hidden; }
+/* Layout: smaller peers in a strip on top, large speaker in the middle,
+   chat pinned below the video. */
+.media-grid.stage-layout .media-filmstrip { order: -1; }
+.room-chat-dock { order: 2; display: grid; gap: .5rem; padding: .85rem 1rem; }
+.room-chat-dock .chat-log { min-height: 7rem; max-height: 30vh; margin: 0; }
+.room-chat-dock .chat-form { position: sticky; bottom: 0; }
+.live-sidebar { order: 3; }
 .stage-view-switcher { display: flex; gap: .4rem; padding: .4rem .65rem; border-bottom: 1px solid var(--line); background: rgba(3, 5, 9, .8); }
 .stage-view-switcher button.active { background: rgba(102, 224, 183, .18); color: var(--mint); border-color: rgba(102, 224, 183, .45); font-weight: 600; }
 .stage-whiteboard-container { padding: .85rem; min-height: clamp(24rem, 61vh, 48rem); display: flex; flex-direction: column; background: #080b10; }
 .whiteboard-page-surface { padding: 1.25rem; min-height: 80vh; }
 .empty-media-actions { display: flex; gap: .5rem; margin-top: .6rem; flex-wrap: wrap; justify-content: center; }
-.media-grid { position: relative; display: grid; min-height: clamp(24rem, 61vh, 48rem); grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: .65rem; padding: .7rem; background: #080b10; }
+.media-grid { position: relative; display: grid; min-height: clamp(30rem, 74vh, 62rem); grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: .65rem; padding: .7rem; background: #080b10; }
 .media-grid.stage-layout { display: flex; flex-direction: column; }
 .stage-controls-bar { display: flex; justify-content: space-between; align-items: center; padding: .35rem .6rem; border-radius: .6rem; background: rgba(3, 5, 9, .75); border: 1px solid var(--line); margin-bottom: .45rem; }
 .stage-badges { display: flex; gap: .4rem; align-items: center; }
@@ -321,9 +328,9 @@ legend { color: #bac5d5; font-size: .78rem; font-weight: 700; }
 .stage-badge.presenter-badge { background: rgba(169, 139, 255, .16); color: var(--violet); border: 1px solid rgba(169, 139, 255, .35); }
 .stage-badge.pin-badge { background: rgba(230, 195, 92, .16); color: #e6c35c; border: 1px solid rgba(230, 195, 92, .35); }
 .stage-actions { display: flex; gap: .4rem; align-items: center; }
-.stage-primary-container { flex: 1 1 auto; min-height: clamp(18rem, 50vh, 42rem); display: flex; position: relative; }
-.media-card.stage-primary { flex: 1 1 100%; width: 100%; min-height: clamp(18rem, 50vh, 42rem); border-color: rgba(169, 139, 255, .35); }
-.media-card.stage-primary video { max-height: 65vh; object-fit: contain; }
+.stage-primary-container { flex: 1 1 auto; min-height: clamp(24rem, 64vh, 58rem); display: flex; position: relative; }
+.media-card.stage-primary { flex: 1 1 100%; width: 100%; min-height: clamp(24rem, 64vh, 58rem); border-color: rgba(169, 139, 255, .35); }
+.media-card.stage-primary video { max-height: 82vh; object-fit: contain; }
 .media-filmstrip { display: flex; gap: .55rem; overflow-x: auto; padding: .5rem 0 .2rem; scrollbar-width: thin; }
 .media-card.filmstrip-item { flex: 0 0 clamp(9rem, 16vw, 14rem); min-height: 7rem; height: 8rem; cursor: pointer; transition: transform .15s ease, border-color .15s ease; }
 .media-card.filmstrip-item:hover { border-color: var(--mint); transform: translateY(-2px); }
@@ -670,7 +677,12 @@ app-media-control-bar { display: block; }
   .pair-actions { align-items: stretch; flex-direction: column; }
   .invite-row { grid-template-columns: 1fr; }
   .view-actions { justify-content: flex-start; }
-  .media-grid { min-height: 55vh; }
+  .media-grid { min-height: 58vh; }
+  .stage-primary-container, .media-card.stage-primary { min-height: 52vh; }
+  .media-card.stage-primary video { max-height: 56vh; }
+  .media-card.filmstrip-item { flex: 0 0 44vw; }
+  .room-chat-dock { padding: .7rem; }
+  .room-chat-dock .chat-log { max-height: 26vh; }
   .empty-media { min-height: 50vh; }
   .media-control-bar { position: sticky; z-index: 10; bottom: 0; gap: .15rem; padding: .5rem .25rem; }
   .media-control { min-width: 0; flex: 1 1 0; padding-inline: .2rem; font-size: .55rem; }
