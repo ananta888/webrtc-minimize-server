@@ -79,7 +79,7 @@ export class MachineAvatarSource {
     const current = this.ports.authority(), scope = this.scope, now = this.clock(), local = this.monotonicClock();
     const cause = !scope ? "inactive" : !Number.isFinite(now) || !Number.isFinite(local) ? "clock-invalid"
       : now < this.lastClock || local < this.lastMonotonic ? "clock-backwards"
-      : now >= this.expiresAt || local >= this.started + 30_000 ? "activation-expired"
+      : now >= this.expiresAt || local >= this.started + 120_000 ? "activation-expired"
       : this.state !== "opening" && local >= this.controllerUntil ? "controller-expired" : current.sourceId !== scope.sourceId ? "source-id"
       : current.sessionId !== scope.sessionId ? "session-id" : current.leaseGeneration !== scope.leaseGeneration ? "lease-generation"
       : current.membershipEpoch !== scope.membershipEpoch ? "membership-epoch"
@@ -122,7 +122,7 @@ export class MachineAvatarSource {
         // The synthetic avatar only becomes ready once its publication is
         // media-E2EE protected, which needs the media-key handshake to land.
         // 10s was too tight and caused black/no-stream churn; give it 30s.
-        if (now - this.started >= 10_000) throw new Error("meet_avatar_setup_timeout");
+        if (now - this.started >= 110_000) throw new Error("meet_avatar_setup_timeout");
         if (now - this.lastReadyLog >= 1000) {
           this.lastReadyLog = now;
           try {
