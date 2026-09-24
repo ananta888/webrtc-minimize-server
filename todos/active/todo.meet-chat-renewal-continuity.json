@@ -1,0 +1,122 @@
+{
+ "$schema": "../todo.track.schema.json",
+ "version": 1,
+ "owner": "webrtc-minimize-server",
+ "track": "meet-chat-renewal-continuity",
+ "purpose": "Live verlor der Machine-Chat eine Nutzernachricht: alle ~40 s wechselt die Lease-Generation, der Endpoint schloss und leerte Queue, delivered und replied; Ereignisse im Fenster bis zum Reopen erreichten keinen Subscriber.",
+ "goal": "Unbestaetigte Human-Eingaben ueberleben einen Fence derselben Konversation, werden nach dem Reopen genau einmal lieferbar und beantwortbar, ohne Scope-, Quellen- oder Limitregeln aufzuweichen.",
+ "status": "in_progress",
+ "created": "2026-09-24",
+ "updated": "2026-09-24",
+ "status_scale": [
+  "todo",
+  "in_progress",
+  "partial",
+  "blocked",
+  "done"
+ ],
+ "priority_scale": [
+  "P0",
+  "P1",
+  "P2",
+  "P3"
+ ],
+ "risk_scale": [
+  "low",
+  "medium",
+  "high",
+  "critical"
+ ],
+ "milestones": [
+  {
+   "id": "M1",
+   "title": "Chat-Kontinuitaet ueber Renewal-Fences",
+   "task_ids": [
+    "chat-fence-continuity",
+    "chat-fence-live-verification"
+   ],
+   "status": "in_progress"
+  }
+ ],
+ "critical_path_tasks": [
+  "chat-fence-continuity"
+ ],
+ "tasks": [
+  {
+   "id": "chat-fence-continuity",
+   "title": "Unbestaetigte Human-Eingaben und Antwortidentitaet ueberleben einen Renewal-/Membership-/Policy-Fence des MachineChatEndpoint",
+   "status": "done",
+   "priority": "P0",
+   "risk": "high",
+   "progress_percent": 100,
+   "acceptance_criteria": [
+    "Ein Fence (meet_chat_authority_changed) schliesst die Queue wie bisher, suspendiert aber statt zu leeren: angenommene, nicht ge-ackte Eingaben, delivered- und replied-Zuordnung bleiben fuer hoechstens 30 s (ageMs) erhalten",
+    "Zwischen Fence und Reopen haelt ein Standby-Listener neue Human-Eingaben derselben Konversation (Quelle freigegeben, kein replyTo, nicht beantwortet, <= 32 Eintraege, gleiche Sender-ID-Bindung); Ueberlauf/ID-Konflikt beenden und leeren",
+    "open() uebernimmt nur bei gleicher origin/tenant/project/task/session/runtime/lease_id/room/own_peer und nicht sinkender Generation; Re-Admission laeuft durch dieselbe Quellen-, Alters- und Queue-Pruefung und bindet an die aktuelle Scope",
+    "Bereits beantwortete message_ids werden nie erneut geliefert oder beantwortet; ge-ackte, unbeantwortete bleiben genau einmal beantwortbar",
+    "Widerruf waehrend der Suspendierung leert binnen 250 ms, explizites close() leert sofort, eine andere Konversation erbt nichts",
+    "machine-chat-endpoint.spec.ts: 11 neue Faelle gruen; bestehende Endpoint-Faelle unveraendert gruen; tsc -p frontend/tsconfig.app.json sauber"
+   ]
+  },
+  {
+   "id": "chat-fence-live-verification",
+   "title": "Live-Nachweis im Meet: Nachricht im Renewal-Fenster wird vom Companion genau einmal beantwortet",
+   "status": "todo",
+   "priority": "P1",
+   "risk": "medium",
+   "progress_percent": 0,
+   "acceptance_criteria": [
+    "Deployter Client plus Companion-Abgleich (ananta todo.meet-chat-delivery): eine Nachricht kurz vor/waehrend eines Renewals erzeugt genau einen Trace und eine Antwort",
+    "Kein doppeltes Reply ueber mehrere Renewals; keine Chattexte im Companion-Diagnoselog des Abgleichs"
+   ]
+  }
+ ],
+ "tasks_status_summary": {
+  "total": 2,
+  "by_status": {
+   "todo": 1,
+   "in_progress": 0,
+   "partial": 0,
+   "blocked": 0,
+   "done": 1
+  },
+  "progress_percent_done": 50,
+  "by_priority": {
+   "P0": 1,
+   "P1": 1,
+   "P2": 0,
+   "P3": 0
+  },
+  "by_risk": {
+   "low": 0,
+   "medium": 1,
+   "high": 1,
+   "critical": 0
+  },
+  "critical_path": {
+   "total": 1,
+   "done": 1,
+   "remaining": 0
+  },
+  "milestones": {
+   "total": 1,
+   "todo": 0,
+   "in_progress": 1,
+   "blocked": 0,
+   "done": 0
+  }
+ },
+ "progress_summary": {
+  "state": "in_progress",
+  "todo_remaining": 1,
+  "in_progress": 0,
+  "partial": 0,
+  "blocked": 0,
+  "done": 1
+ },
+ "summary_notes": [
+  "Ursache: MachineChatEndpoint.open() rief close(), das delivered/replied leerte und die ephemere Queue verwarf; der Generationswechsel liess queue.check() werfen -> fail() -> close(). Nachrichten zwischen Fence und Reopen hatten keinen Subscriber.",
+  "Vorbestehend rot (auch auf HEAD f430a0a, unabhaengig von dieser Aenderung): 3 Faelle in machine-chat-session.service.spec.ts (Consent-Projektion) und 7 Avatar-Lifecycle-Faelle.",
+  "Kein Deployment; kein npm run check (Slice)."
+ ]
+}

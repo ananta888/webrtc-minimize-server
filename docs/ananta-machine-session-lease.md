@@ -230,7 +230,9 @@ aus aktueller Membership und Verbindung, niemals dem Text oder JSON-Absender.
 vor Zustellung. Normale Human-Räume behalten v1-Chat; v1 erzeugt keine
 maschinellen Events. Maschinen-/eigene Antworten starten keine KI-Schleife.
 Scopewechsel oder Entzug leeren den Endpoint spätestens beim nächsten Zugriff
-beziehungsweise nach 250 ms. Wiederöffnen spielt nichts nach.
+beziehungsweise nach 250 ms. Wiederöffnen spielt keine Historie nach; nur
+unquittierte Eingaben derselben Konversation überleben ein Renewal
+([Fortsetzung über einen Fence](machine-chat-correlation.md)).
 
 ### Audio
 

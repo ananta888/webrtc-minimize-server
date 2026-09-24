@@ -67,7 +67,7 @@ describe("isolated machine chat endpoint", () => {
     expect(() => f.endpoint.reply("a".repeat(32), "Antwort")).toThrow("meet_chat_authority_changed");
     expect(f.endpoint.status().open).toBe(false);
   });
-  it.each(["generation", "membership_epoch", "policy_revision"])("fences %s changes and clears pending replies", field => {
+  it.each(["generation", "membership_epoch", "policy_revision"])("fences %s changes without replying on the old fence", field => {
     const f = fixture(); f.endpoint.open(); f.emit(); f.endpoint.poll(); f.change({ [field]: 9 });
     expect(() => f.endpoint.reply("a".repeat(32), "Antwort")).toThrow("meet_chat_authority_changed");
     expect(f.sendReply).not.toHaveBeenCalled(); expect(f.unsubscribe).toHaveBeenCalledOnce();
@@ -133,5 +133,116 @@ describe("isolated machine chat endpoint", () => {
     expect(() => f.endpoint.reply("a".repeat(32), "Antwort")).toThrow("meet_chat_reply_denied");
     f.emit({ senderPeerId: "3333333333333333", messageId: "c".repeat(32) });
     expect(f.endpoint.poll().events).toHaveLength(1); f.endpoint.close();
+  });
+});
+
+describe("machine chat endpoint across a renewal fence", () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); });
+  afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+  const id = (c: string) => c.repeat(32);
+  const renew = (f: ReturnType<typeof fixture>, generation = 2) => { f.change({ generation }); vi.advanceTimersByTime(250); };
+
+  it("re-delivers a polled but unacknowledged input after the reopen, bound to the new generation", () => {
+    const f = fixture(); f.endpoint.open(); f.emit(); expect(f.endpoint.poll().events).toHaveLength(1);
+    renew(f);
+    expect(f.endpoint.status()).toEqual({ open: false, error: "meet_chat_authority_changed" });
+    expect(() => f.endpoint.poll()).toThrow("meet_chat_closed");
+    expect(f.endpoint.open().generation).toBe(2);
+    const batch = f.endpoint.poll();
+    expect(batch.events).toHaveLength(1);
+    expect(batch.events[0].event).toMatchObject({ message_id: id("a"), generation: 2, membership_epoch: 3, sender_peer_id: human });
+    f.endpoint.ack(batch.events[0].cursor);
+    f.endpoint.reply(id("a"), "Antwort"); expect(f.sendReply).toHaveBeenCalledOnce();
+    f.endpoint.close(); expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("holds inputs arriving between the fence and the reopen, and the input that met the fence", () => {
+    const f = fixture(); f.endpoint.open(); f.change({ generation: 2 });
+    f.emit({ messageId: id("b") });
+    expect(f.endpoint.status().open).toBe(false);
+    f.emit({ messageId: id("c") }); f.emit({ messageId: id("c") });
+    f.emit({ messageId: id("d"), senderKind: "machine" }); f.emit({ messageId: id("e"), replyTo: id("b") });
+    vi.advanceTimersByTime(1000); f.endpoint.open();
+    const batch = f.endpoint.poll();
+    expect(batch.events.map(e => e.event.message_id)).toEqual([id("b"), id("c")]);
+    expect(batch.events.every(e => e.event.generation === 2)).toBe(true);
+    f.endpoint.reply(id("b"), "Eins"); f.endpoint.reply(id("c"), "Zwei");
+    expect(f.sendReply).toHaveBeenCalledTimes(2); f.endpoint.close();
+  });
+
+  it("answers exactly once across repeated fences", () => {
+    const f = fixture(); f.endpoint.open(); f.emit(); f.emit({ messageId: id("b") });
+    const first = f.endpoint.poll(); f.endpoint.reply(id("a"), "Antwort");
+    renew(f); f.emit(); f.endpoint.open();
+    // "a" is answered: neither re-delivered nor answerable; "b" is still pending.
+    expect(f.endpoint.poll().events.map(e => e.event.message_id)).toEqual([id("b")]);
+    expect(() => f.endpoint.reply(id("a"), "Nochmal")).toThrow("meet_chat_reply_denied");
+    renew(f, 3); f.endpoint.open(); f.emit();
+    expect(f.endpoint.poll().events.map(e => e.event.message_id)).toEqual([id("b")]);
+    f.endpoint.reply(id("b"), "Antwort"); renew(f, 4); f.endpoint.open();
+    expect(f.endpoint.poll().events).toEqual([]);
+    expect(() => f.endpoint.reply(id("b"), "Nochmal")).toThrow("meet_chat_reply_denied");
+    expect(f.sendReply).toHaveBeenCalledTimes(2); expect(first.events).toHaveLength(2); f.endpoint.close();
+  });
+
+  it("keeps an acknowledged, unanswered input answerable once but does not re-deliver it", () => {
+    const f = fixture(); f.endpoint.open(); f.emit(); f.endpoint.ack(f.endpoint.poll().events[0].cursor);
+    renew(f); f.endpoint.open();
+    expect(f.endpoint.poll().events).toEqual([]);
+    expect(() => f.endpoint.reply(id("a"), "x".repeat(451))).toThrow("meet_chat_reply_denied");
+    f.endpoint.reply(id("a"), "Antwort");
+    expect(() => f.endpoint.reply(id("a"), "Antwort")).toThrow("meet_chat_reply_denied");
+    expect(f.sendReply).toHaveBeenCalledOnce(); f.endpoint.close();
+  });
+
+  it.each([
+    ["room", { room_id: "room-bbbbbbbbbbbbbbbbbb" }], ["session", { session_id: "other-session" }],
+    ["lease", { lease_id: "ms_" + "b".repeat(32) }], ["own peer", { own_peer_id: "4444444444444444" }],
+  ])("never carries inputs or reply identity into another conversation (%s)", (_name, scope) => {
+    const f = fixture(); f.endpoint.open(); f.emit(); f.endpoint.poll();
+    renew(f); f.change({ generation: 2, ...scope });
+    vi.advanceTimersByTime(250);
+    expect(f.endpoint.status()).toEqual({ open: false, error: "meet_chat_authority_changed" });
+    f.endpoint.open();
+    expect(f.endpoint.poll().events).toEqual([]);
+    expect(() => f.endpoint.reply(id("a"), "Antwort")).toThrow("meet_chat_reply_denied");
+    expect(f.sendReply).not.toHaveBeenCalled(); f.endpoint.close();
+  });
+
+  it("wipes a suspension on revocation within 250ms, on explicit close and after the age limit", () => {
+    const revoked = fixture(); revoked.endpoint.open(); revoked.emit(); revoked.endpoint.poll(); renew(revoked);
+    revoked.revoke(); vi.advanceTimersByTime(250);
+    expect(revoked.endpoint.status()).toEqual({ open: false, error: "meet_chat_receive_denied" });
+    expect(vi.getTimerCount()).toBe(0); expect(revoked.callback()).toBeNull();
+
+    const closed = fixture(); closed.endpoint.open(); closed.emit(); renew(closed);
+    closed.endpoint.close(); expect(vi.getTimerCount()).toBe(0); closed.endpoint.open();
+    expect(closed.endpoint.poll().events).toEqual([]); closed.endpoint.close();
+
+    const aged = fixture(); aged.endpoint.open(); aged.emit(); renew(aged);
+    vi.advanceTimersByTime(30_250); expect(vi.getTimerCount()).toBe(0);
+    aged.endpoint.open(); expect(aged.endpoint.poll().events).toEqual([]); aged.endpoint.close();
+  });
+
+  it("drops carried inputs past the age limit and re-checks the source at re-admission", () => {
+    const f = fixture(); f.endpoint.open(); f.emit({ sentAt: now - 29_000 }); f.emit({ messageId: id("b") });
+    renew(f); vi.advanceTimersByTime(1500); f.endpoint.open();
+    expect(f.endpoint.poll().events.map(e => e.event.message_id)).toEqual([id("b")]);
+    renew(f, 3); f.deny(); f.emit({ messageId: id("c") }); f.endpoint.open();
+    expect(f.endpoint.poll().events).toEqual([]);
+    expect(() => f.endpoint.reply(id("b"), "Antwort")).toThrow("meet_chat_reply_denied"); f.endpoint.close();
+  });
+
+  it("bounds the standby hold and keeps message-ID bindings through the gap", () => {
+    const f = fixture(); f.endpoint.open(); renew(f);
+    for (let i = 0; i < 33; i++) f.emit({ messageId: i.toString(16).padStart(32, "0") });
+    expect(f.endpoint.status()).toEqual({ open: false, error: "meet_chat_queue_exhausted" });
+    expect(vi.getTimerCount()).toBe(0); f.endpoint.open(); expect(f.endpoint.poll().events).toEqual([]); f.endpoint.close();
+
+    const g = fixture(); g.endpoint.open(); g.emit(); g.endpoint.poll(); renew(g);
+    g.emit({ senderPeerId: "3333333333333333", text: "Different source" });
+    expect(g.endpoint.status()).toEqual({ open: false, error: "meet_chat_message_id_conflict" });
+    g.endpoint.open(); expect(g.endpoint.poll().events).toEqual([]);
+    expect(() => g.endpoint.reply(id("a"), "Antwort")).toThrow("meet_chat_reply_denied"); g.endpoint.close();
   });
 });

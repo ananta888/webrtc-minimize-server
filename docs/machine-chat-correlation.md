@@ -18,9 +18,29 @@ Die Zuordnung bleibt nach ACK und Alterspruning erhalten, damit eine bereits
 ausgelieferte ID nicht einem anderen Sender zugeordnet werden kann. Sie nutzt
 das vorhandene Limit von 512 Dedup-Einträgen; darin liegen nur IDs und Sender,
 keine Chattexte. Gleiche Sender-Retries bleiben dedupliziert, unabhängige IDs
-dürfen identischen Text enthalten. Ein explizites Neuöffnen beginnt wie bisher
-ohne Historie; alte Antwortkorrelationen werden nicht übernommen. Das ist kein
+dürfen identischen Text enthalten. Ein explizites Schließen und Neuöffnen beginnt wie
+bisher ohne Historie; alte Antwortkorrelationen werden nicht übernommen. Das ist kein
 persistenter Schutz über mehrere Sitzungen hinweg.
+
+## Fortsetzung über einen Fence derselben Konversation
+
+Ein Lease-Renewal (neue Generation), ein Membership- oder Policy-Revisionswechsel
+fenced die Queue weiterhin mit `meet_chat_authority_changed`; auf dem alten
+Fence wird nichts mehr geliefert oder beantwortet. Der Endpoint leert dabei aber
+nicht mehr, sondern suspendiert höchstens 30 Sekunden (Frischegrenze): Er
+behält nur selbst angenommene, noch nicht quittierte Human-Eingaben sowie die
+`delivered`-/`replied`-Zuordnung. Ein Standby-Listener nimmt im Fenster bis zum
+Reopen neue Eingaben mit denselben Regeln an (freigegebene Quelle, kein
+`replyTo`, nicht beantwortet, höchstens 32, gleiche ID-Senderbindung; Überlauf
+oder Konflikt beenden und leeren). `open()` übernimmt diesen Bestand nur, wenn
+Origin, Tenant, Projekt, Task, Hub-Session, Runtime, Lease-ID, Raum und eigene
+Peer-ID gleich sind und die Generation nicht sinkt, und lässt jede Eingabe
+erneut durch Quellen-, Alters- und Queueprüfung unter der aktuellen Scope zu.
+Beantwortete IDs werden nie erneut geliefert oder beantwortet; quittierte, noch
+unbeantwortete bleiben genau einmal beantwortbar. Widerruf während der
+Suspendierung leert binnen 250 ms, ein explizites `close()` sofort. Das ist
+kein Verlauf: vor dem ersten `open()` oder nach `close()` Gesehenes wird nie
+nachgeliefert.
 
 Listener und Watchdog gehören außerdem zur konkreten Queueinstanz. Nach
 Close/Renew/Open können verspätete alte Callbacks weder Ereignisse mit der neuen
@@ -35,7 +55,7 @@ Die Meet-seitigen Kriterien von MDS-04 verteilen sich auf diese vorhandenen Port
 | Kriterium | Implementierung und Prüfung |
 |---|---|
 | Gebundene, flüchtige Ereignisse | `MachinePeerChatIngress` bindet den aktuellen Verbindungssender und prüft Raum/Epoch; `MachineChatSessionService` liefert nur aktuelle Hub-/Meet-Rechte. |
-| Reihenfolge und Grenzen | `MachineChatQueue` liefert lokale Eingangsreihenfolge über Cursor, maximal acht Ereignisse je Poll, 32 wartende Ereignisse/128 KiB und 512 IDs. ACK kann keine undelieferten Ereignisse konsumieren. Reopen liefert keine alte Historie nach. |
+| Reihenfolge und Grenzen | `MachineChatQueue` liefert lokale Eingangsreihenfolge über Cursor, maximal acht Ereignisse je Poll, 32 wartende Ereignisse/128 KiB und 512 IDs. ACK kann keine undelieferten Ereignisse konsumieren. Reopen liefert keine Historie nach; nur unquittierte Eingaben derselben Konversation überleben einen Fence. |
 | Einmalige Antworten | `MachineChatEndpoint` prüft separat aktuelles Senderecht und Quellenfreigabe, reserviert die gelieferte Eingangs-ID vor genau einem Sendeversuch. `PeerMeshService` erhält `replyTo` und die aus Membership bestimmte Maschinenkennzeichnung. |
 | Entzug und Isolation | Scopewechsel, Ablauf und Widerruf schließen die Subscription; Leave/Destroy schließen den Endpoint. Fremde Räume, erfundene Senderfelder, Oversize, Raten und alte Callbacks werden negativ geprüft. |
 
