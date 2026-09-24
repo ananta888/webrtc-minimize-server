@@ -1,0 +1,8 @@
+[Unit]
+Description=Probe coturn over STUN and restart it when it stops answering
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ananta-coturn-watch
