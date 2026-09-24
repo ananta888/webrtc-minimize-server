@@ -42,6 +42,12 @@ Suspendierung leert binnen 250 ms, ein explizites `close()` sofort. Das ist
 kein Verlauf: vor dem ersten `open()` oder nach `close()` Gesehenes wird nie
 nachgeliefert.
 
+Das Antwortfenster zählt ab der (letzten) Zustellung durch `poll()`, nicht ab dem
+`sentAt` des Senders: eine gelieferte Eingabe bleibt 120 Sekunden beantwortbar.
+`sentAt` begrenzt nur die Annahme (30 Sekunden Frische). Eine über einen Fence
+getragene Eingabe kann bei der Zustellung schon ~20 Sekunden alt sein; eine
+Modellrunde mit Werkzeugen danach darf sie trotzdem genau einmal beantworten.
+
 Listener und Watchdog gehören außerdem zur konkreten Queueinstanz. Nach
 Close/Renew/Open können verspätete alte Callbacks weder Ereignisse mit der neuen
 Leasegeneration etikettieren noch den Nachfolger schließen. Ein Entzug bereits

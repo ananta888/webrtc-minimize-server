@@ -33,13 +33,15 @@
    "title": "Chat-Kontinuitaet ueber Renewal-Fences",
    "task_ids": [
     "chat-fence-continuity",
+    "chat-reply-window-after-delivery",
     "chat-fence-live-verification"
    ],
    "status": "in_progress"
   }
  ],
  "critical_path_tasks": [
-  "chat-fence-continuity"
+  "chat-fence-continuity",
+  "chat-reply-window-after-delivery"
  ],
  "tasks": [
   {
@@ -59,6 +61,20 @@
    ]
   },
   {
+   "id": "chat-reply-window-after-delivery",
+   "title": "Eine ueber einen Fence getragene, zugestellte Human-Eingabe bleibt nach einer langen Modellrunde genau einmal beantwortbar (Live: meet_chat_reply_denied)",
+   "status": "done",
+   "priority": "P0",
+   "risk": "high",
+   "progress_percent": 100,
+   "acceptance_criteria": [
+    "Ursache belegt: delivered verfiel 30 s nach dem sentAt des Senders statt nach der Zustellung; eine waehrend des Sprechens gesendete, ueber den Renewal-Fence getragene Eingabe wurde erst ~20 s nach sentAt zugestellt, die Modellrunde dauerte 21,6 s -> reply() fand die ID nicht mehr in delivered -> meet_chat_reply_denied (Live 1790240011.163). Dieselbe Frage live und frisch (RECV 871.995 -> REPLY 898.410, 26,4 s) wurde im gleichen Senderecht angenommen",
+    "delivered speichert den Zustellzeitpunkt (clock() bei poll, bei erneuter Zustellung aktualisiert) und bleibt REPLY_WINDOW_MS = 120 s beantwortbar; sentAt begrenzt weiter nur die Annahme (30 s Frische)",
+    "Unveraendert: Quellen-Allowlist und aktuelles Senderecht bei reply(), <= 450 Zeichen, 32 delivered-/512 replied-Grenzen, Reservierung vor dem Senden, Widerruf leert binnen 250 ms",
+    "machine-chat-endpoint.spec.ts: Live-Fall (Eingabe ueberlebt Fence, zusaetzlich live doppelt empfangen, 21,6 s Runde -> genau ein sendReply, zweiter Versuch und weitere Fences ohne Neuzustellung/Antwort), Fence waehrend der Modellrunde (Neuzustellung, dann genau eine Antwort) und Antwortfenster ab Zustellung; ohne Fix 2 Faelle rot mit meet_chat_reply_denied, mit Fix 29/29 gruen; tsc -p frontend/tsconfig.app.json sauber"
+   ]
+  },
+  {
    "id": "chat-fence-live-verification",
    "title": "Live-Nachweis im Meet: Nachricht im Renewal-Fenster wird vom Companion genau einmal beantwortet",
    "status": "todo",
@@ -72,17 +88,17 @@
   }
  ],
  "tasks_status_summary": {
-  "total": 2,
+  "total": 3,
   "by_status": {
    "todo": 1,
    "in_progress": 0,
    "partial": 0,
    "blocked": 0,
-   "done": 1
+   "done": 2
   },
-  "progress_percent_done": 50,
+  "progress_percent_done": 66.67,
   "by_priority": {
-   "P0": 1,
+   "P0": 2,
    "P1": 1,
    "P2": 0,
    "P3": 0
@@ -90,12 +106,12 @@
   "by_risk": {
    "low": 0,
    "medium": 1,
-   "high": 1,
+   "high": 2,
    "critical": 0
   },
   "critical_path": {
-   "total": 1,
-   "done": 1,
+   "total": 2,
+   "done": 2,
    "remaining": 0
   },
   "milestones": {
@@ -112,10 +128,11 @@
   "in_progress": 0,
   "partial": 0,
   "blocked": 0,
-  "done": 1
+  "done": 2
  },
  "summary_notes": [
   "Ursache: MachineChatEndpoint.open() rief close(), das delivered/replied leerte und die ephemere Queue verwarf; der Generationswechsel liess queue.check() werfen -> fail() -> close(). Nachrichten zwischen Fence und Reopen hatten keinen Subscriber.",
+  "Folgeursache (Live 1790240011): delivered verfiel ab sentAt statt ab Zustellung; eine getragene Eingabe mit langer Modellrunde wurde abgelehnt. Antwortfenster jetzt 120 s ab (erneuter) Zustellung.",
   "Vorbestehend rot (auch auf HEAD f430a0a, unabhaengig von dieser Aenderung): 3 Faelle in machine-chat-session.service.spec.ts (Consent-Projektion) und 7 Avatar-Lifecycle-Faelle.",
   "Kein Deployment; kein npm run check (Slice)."
  ]

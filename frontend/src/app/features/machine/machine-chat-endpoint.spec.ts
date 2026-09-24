@@ -86,6 +86,16 @@ describe("isolated machine chat endpoint", () => {
     f.emit({ messageId: "b".repeat(32) }); f.endpoint.poll(); vi.advanceTimersByTime(30_001);
     expect(() => f.endpoint.reply("b".repeat(32), "Antwort")).toThrow(); f.endpoint.close();
   });
+  it("keeps a delivered input answerable for the reply window after delivery, not after sentAt", () => {
+    const f = fixture(); f.change({ deadline_ms: now + 600_000 }); f.endpoint.open();
+    f.emit({ sentAt: now - 25_000 }); f.emit({ messageId: "b".repeat(32) });
+    expect(f.endpoint.poll().events).toHaveLength(2);
+    vi.advanceTimersByTime(21_600);
+    f.endpoint.reply("a".repeat(32), "Antwort"); expect(f.sendReply).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(120_000 - 21_600 + 1);
+    expect(() => f.endpoint.reply("b".repeat(32), "Antwort")).toThrow("meet_chat_reply_denied");
+    expect(f.sendReply).toHaveBeenCalledOnce(); f.endpoint.close();
+  });
   it("terminates on overflow instead of silently skipping inputs", () => {
     const f = fixture(); f.endpoint.open();
     for (let i = 0; i < 33; i++) f.emit({ messageId: i.toString(16).padStart(32, "0") });
@@ -231,6 +241,38 @@ describe("machine chat endpoint across a renewal fence", () => {
     renew(f, 3); f.deny(); f.emit({ messageId: id("c") }); f.endpoint.open();
     expect(f.endpoint.poll().events).toEqual([]);
     expect(() => f.endpoint.reply(id("b"), "Antwort")).toThrow("meet_chat_reply_denied"); f.endpoint.close();
+  });
+
+  it("answers an input carried over a fence exactly once after a long model round (live regression)", () => {
+    // Live: the input arrived while the companion was speaking, met the renewal
+    // fence, was re-delivered by the reopened port ~20 s after sentAt, and the
+    // model round took 21.6 s. The reply window must count from the delivery.
+    const f = fixture(); f.endpoint.open(); vi.advanceTimersByTime(5000);
+    f.emit(); vi.advanceTimersByTime(15_000);
+    renew(f); vi.advanceTimersByTime(250); f.endpoint.open();
+    f.emit(); // the same input once more on the live path: no second delivery
+    const batch = f.endpoint.poll();
+    expect(batch.events.map(e => e.event.message_id)).toEqual([id("a")]);
+    vi.advanceTimersByTime(21_600);
+    expect(f.endpoint.status()).toEqual({ open: true, error: "" });
+    expect(f.endpoint.reply(id("a"), "Antwort")).toEqual({ messageId: id("f"), queuedPeers: 1 });
+    expect(f.sendReply).toHaveBeenCalledWith("Antwort", id("a"));
+    f.endpoint.ack(batch.events[0].cursor);
+    expect(() => f.endpoint.reply(id("a"), "Antwort")).toThrow("meet_chat_reply_denied");
+    renew(f, 3); f.emit(); f.endpoint.open();
+    expect(f.endpoint.poll().events).toEqual([]);
+    expect(() => f.endpoint.reply(id("a"), "Nochmal")).toThrow("meet_chat_reply_denied");
+    expect(f.sendReply).toHaveBeenCalledOnce(); f.endpoint.close();
+  });
+
+  it("keeps the reply of a carried input possible when a fence meets the model round", () => {
+    const f = fixture(); f.endpoint.open(); f.emit(); vi.advanceTimersByTime(20_000);
+    renew(f); f.endpoint.open(); f.endpoint.poll(); vi.advanceTimersByTime(8000);
+    renew(f, 3);
+    expect(() => f.endpoint.reply(id("a"), "Antwort")).toThrow("meet_chat_closed");
+    f.endpoint.open();
+    expect(f.endpoint.poll().events.map(e => e.event.message_id)).toEqual([id("a")]);
+    f.endpoint.reply(id("a"), "Antwort"); expect(f.sendReply).toHaveBeenCalledOnce(); f.endpoint.close();
   });
 
   it("bounds the standby hold and keeps message-ID bindings through the gap", () => {

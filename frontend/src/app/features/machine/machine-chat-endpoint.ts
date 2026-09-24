@@ -17,6 +17,10 @@ const continuity = ["origin", "tenant_id", "project_id", "task_id", "session_id"
 const continues = (previous: MachineChatScope, next: MachineChatScope) =>
   continuity.every(key => previous[key] === next[key]) && next.generation >= previous.generation;
 const SUSPEND_MS = MACHINE_CHAT_LIMITS.ageMs;
+// A delivered input stays answerable this long after its latest delivery. The
+// sender's sentAt only gates admission: a model round (tools, TTS) may start
+// close to the 30 s freshness limit, e.g. for an input carried over a fence.
+const REPLY_WINDOW_MS = 120_000;
 
 /** One isolated controller subscription. No history or LLM policy: only inputs
  * this endpoint accepted itself and that were not yet ACKed/answered survive a
@@ -81,7 +85,7 @@ export class MachineChatEndpoint {
   }
   private expire(): void {
     const now = this.clock();
-    for (const [id, value] of this.delivered) if (value.at < now - 30_000) this.delivered.delete(id);
+    for (const [id, value] of this.delivered) if (value.at < now - REPLY_WINDOW_MS) this.delivered.delete(id);
     for (const [id, value] of this.pending) if (value.event.sentAt < now - MACHINE_CHAT_LIMITS.ageMs) this.pending.delete(id);
   }
   private admissible(event: BoundPeerChat, carried: boolean): boolean {
@@ -110,7 +114,7 @@ export class MachineChatEndpoint {
     const batch = this.check().poll();
     for (const { cursor, event } of batch.events) {
       if (!this.delivered.has(event.message_id) && this.delivered.size >= 32) this.fail(new Error("meet_chat_reply_queue_exhausted"));
-      this.delivered.set(event.message_id, { sender: event.sender_peer_id, at: event.sent_at_ms });
+      this.delivered.set(event.message_id, { sender: event.sender_peer_id, at: this.clock() });
       const item = this.pending.get(event.message_id);
       if (item) item.cursor = cursor;
     }
