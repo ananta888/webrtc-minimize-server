@@ -41,6 +41,11 @@ interface ManagerCallbacks {
   readonly channel: (peer: ManagedPeer, channel: RTCDataChannel) => void;
   readonly state: (peer: ManagedPeer) => void;
   readonly negotiationError: (peer: ManagedPeer, error?: unknown) => void;
+  /**
+   * Replaces the RTCPeerConnection of a still-present member (remove + add of
+   * the same peer id). Without it the manager recreates the connection itself.
+   */
+  readonly resetPeer?: (peerId: string) => void;
   /** [sigdbg] Mesh-level context (signaling socket, membership, gates) for a peer line. */
   readonly diagnostics?: (peerId: string) => Record<string, unknown>;
 }
@@ -95,6 +100,11 @@ interface NegotiationDiagnostics {
   descriptionErrors: number;
   lastError: string;
   remoteCandidateErrors: number;
+  dtlsRolesPinned: number;
+  peerResetsInitiated: number;
+  peerResetsFollowed: number;
+  signalsDroppedAwaitingReset: number;
+  iceRestartsDeferred: number;
   // `${url}#${errorCode}` -> count; urls only, never usernames or addresses.
   readonly candidateErrorsByUrl: Record<string, number>;
 }
@@ -117,7 +127,19 @@ interface NegotiationControl {
   // Self-healing after the last ICE tier: fresh credentials plus an ICE restart.
   recoveryTimer: ReturnType<typeof setTimeout> | null;
   recoveryAttempt: number;
+  // An ICE restart requested while an offer/answer exchange was open; applied once stable.
+  pendingIceRestart: boolean;
+  // The transport refused its DTLS role; renegotiating it again cannot succeed.
+  dtlsConflict: boolean;
 }
+
+/** Per peer id, so it survives the ManagedPeer a reset replaces. */
+interface PeerResetState {
+  resetAt: number;
+  awaitingAckUntil: number;
+}
+
+type DtlsSetup = "active" | "passive";
 
 function emptyCandidateCounts(): CandidateCounts {
   return { host: 0, srflx: 0, prflx: 0, relay: 0, unknown: 0 };
@@ -149,6 +171,39 @@ function sdpIceUfrag(sdp: string | undefined): string {
   return /^a=ice-ufrag:(\S+)/m.exec(sdp || "")?.[1] ?? "";
 }
 
+function sdpDtlsSetup(sdp: string | undefined): string {
+  return /^a=setup:(\S+)/m.exec(sdp || "")?.[1] ?? "";
+}
+
+/**
+ * The DTLS role this side holds on the established transport, expressed as the
+ * setup attribute a later answer must carry (RFC 8842: a renegotiation keeps
+ * the role). Null before the first offer/answer exchange completed.
+ */
+export function establishedDtlsSetup(
+  local: RTCSessionDescriptionInit | null | undefined,
+  remote: RTCSessionDescriptionInit | null | undefined,
+): DtlsSetup | null {
+  if (!local?.sdp || !remote?.sdp) return null;
+  if (local.type === "answer") {
+    const own = sdpDtlsSetup(local.sdp);
+    return own === "active" || own === "passive" ? own : null;
+  }
+  if (local.type !== "offer" || remote.type !== "answer") return null;
+  const theirs = sdpDtlsSetup(remote.sdp);
+  return theirs === "active" ? "passive" : theirs === "passive" ? "active" : null;
+}
+
+/** Rewrites the resolved setup attributes of an answer; actpass never appears in one. */
+export function pinDtlsSetup(sdp: string, setup: DtlsSetup): string {
+  return sdp.replace(/^a=setup:(?:active|passive)(?=\r?$)/gm, "a=setup:" + setup);
+}
+
+/** libwebrtc: "Failed to set SSL role for the transport" (ERROR_CONTENT). */
+export function isDtlsRoleConflict(error: unknown): boolean {
+  return /\b(?:SSL|DTLS) role\b/i.test(describeNegotiationError(error).message);
+}
+
 const RESTART_COOLDOWN_MS = 10_000;
 const TIER_EVENT_DEBOUNCE_MS = 1_000;
 // An offer that neither got answered nor collided is rolled back and re-offered;
@@ -165,6 +220,14 @@ export const ICE_RESTART_GRACE_MS = 2_000;
 export const ICE_RECOVERY_BASE_MS = 10_000;
 export const ICE_RECOVERY_MAX_MS = 120_000;
 const ANSWER_CREDENTIAL_WAIT_MS = 1_500;
+// A DTLS role conflict breaks the transport for good. Both sides then rebuild
+// their RTCPeerConnection once; a further conflict within the cooldown is left
+// to the bounded recovery instead of rebuilding in a loop.
+export const PEER_RESET_COOLDOWN_MS = 120_000;
+export const PEER_RESET_ACK_TIMEOUT_MS = 10_000;
+// The signaling contract already carries `rollback` descriptions and nothing
+// else sends one peer-to-peer: it marks "I rebuilt my connection, rebuild yours".
+const PEER_RESET_MARKER: RTCSessionDescriptionInit = Object.freeze({ type: "rollback" });
 
 function statsValues(report: RTCStatsReport): readonly IcePairStat[] {
   const values: IcePairStat[] = [];
@@ -198,6 +261,7 @@ export class PeerConnectionManager {
   // [sigdbg] throttled per-peer signaling heartbeat while the peer is not connected.
   private signalHeartbeat: ReturnType<typeof setInterval> | null = null;
   private readonly signalHeartbeatSeen = new Map<string, Readonly<{ line: string; at: number }>>();
+  private readonly peerResets = new Map<string, PeerResetState>();
 
   // A fixed policy (tests, sessions without ephemeral TURN) keeps tier steps synchronous.
   private readonly policySource: IcePolicySource | null;
@@ -362,6 +426,24 @@ export class PeerConnectionManager {
    */
   acceptSignal(message: ServerMessage): Promise<void> {
     const from = String(message["from"] || "");
+    // Handled before queueing: the next signal of this sender already belongs
+    // to its rebuilt connection and must reach ours, not the replaced one.
+    if ((message["description"] as RTCSessionDescriptionInit | undefined)?.type === "rollback") {
+      this.acceptPeerReset(from);
+      return Promise.resolve();
+    }
+    if (this.awaitingPeerReset(from)) {
+      const waiting = this.peers.get(from);
+      if (waiting) {
+        const diagnostics = this.diagnosticsFor(waiting);
+        diagnostics.signalsDroppedAwaitingReset += 1;
+        this.logSignalEvent(waiting, "signal-dropped-awaiting-reset", {
+          kind: message["description"] ? "description" : "candidate",
+          count: diagnostics.signalsDroppedAwaitingReset,
+        });
+      }
+      return Promise.resolve();
+    }
     const known = this.peers.has(from);
     const peer = this.add(from, String(message["fromName"] || "Peer"));
     if (!peer) return Promise.resolve();
@@ -430,13 +512,14 @@ export class PeerConnectionManager {
           control.unansweredStreak = 0;
         }
         if (description.type === "offer") {
-          await peer.pc.setLocalDescription();
+          await this.setLocalAnswer(peer);
           this.callbacks.signal(peer.id, { description: peer.pc.localDescription });
           diagnostics.localDescriptionSet += 1;
           diagnostics.answersSent += 1;
           this.logSignalEvent(peer, "answer-sent", { type: peer.pc.localDescription?.type ?? null });
         }
         this.logMediaEvent(peer, "description-applied", { type: description.type, offerCollision });
+        this.flushPendingIceRestart(peer);
         if (peer.needsNegotiation && peer.pc.signalingState === "stable") {
           void this.negotiate(peer);
         }
@@ -460,6 +543,10 @@ export class PeerConnectionManager {
     } catch (error) {
       peer.settingRemoteAnswerPending = false;
       this.reportNegotiationError(peer, "accept-signal", error);
+      if (isDtlsRoleConflict(error)) {
+        this.handleDtlsConflict(peer, "accept-signal");
+        return;
+      }
       // A failed remote offer must not leave a stale local offer behind: the
       // remote side waits for an answer to its own offer, so re-offer from a
       // stable state and let the answer timeout break a mutual wait.
@@ -490,7 +577,149 @@ export class PeerConnectionManager {
 
   close(): void {
     for (const peerId of [...this.peers.keys()]) this.remove(peerId);
+    this.peerResets.clear();
     this.stopSignalHeartbeat();
+  }
+
+  /**
+   * Answers with the DTLS role the transport already holds. After an explicit
+   * rollback Chrome can generate an answer that flips the role (the default
+   * `active` for an `actpass` offer) although this side became DTLS server in
+   * the previous exchange; applying it fails with "Failed to set SSL role for
+   * the transport" and leaves the transport unusable.
+   */
+  private async setLocalAnswer(peer: ManagedPeer): Promise<void> {
+    const pc = peer.pc;
+    const setup = establishedDtlsSetup(pc.currentLocalDescription, pc.currentRemoteDescription);
+    if (!setup) {
+      await pc.setLocalDescription();
+      return;
+    }
+    const answer = await pc.createAnswer();
+    const sdp = pinDtlsSetup(answer.sdp ?? "", setup);
+    if (sdp !== answer.sdp) {
+      const diagnostics = this.diagnosticsFor(peer);
+      diagnostics.dtlsRolesPinned += 1;
+      this.logSignalEvent(peer, "dtls-role-pinned", {
+        setup,
+        generated: sdpDtlsSetup(answer.sdp),
+        count: diagnostics.dtlsRolesPinned,
+      });
+    }
+    await pc.setLocalDescription({ type: "answer", sdp });
+  }
+
+  /**
+   * A transport that refused its DTLS role cannot be renegotiated; every
+   * further offer would fail the same way. Rebuild it once (both sides), and
+   * otherwise stop renegotiating until the bounded recovery may try again.
+   */
+  private handleDtlsConflict(peer: ManagedPeer, phase: string): void {
+    const control = this.controlFor(peer);
+    control.dtlsConflict = true;
+    peer.needsNegotiation = false;
+    this.clearOfferTimer(peer);
+    this.clearDeferredRestart(peer);
+    control.pendingIceRestart = false;
+    if (this.initiatePeerReset(peer, "dtls-role-conflict:" + phase)) return;
+    if (peer.pc.signalingState === "have-remote-offer") {
+      void peer.pc.setLocalDescription({ type: "rollback" }).catch(() => undefined);
+    }
+    this.armRecovery(peer, "dtls-role-conflict");
+  }
+
+  private awaitingPeerReset(peerId: string): boolean {
+    const reset = this.peerResets.get(peerId);
+    return reset !== undefined && Date.now() < reset.awaitingAckUntil;
+  }
+
+  /** Rebuilds the connection and asks the remote side to do the same; at most once per cooldown. */
+  private initiatePeerReset(peer: ManagedPeer, reason: string): boolean {
+    const reset = this.peerResets.get(peer.id);
+    if (reset && Date.now() - reset.resetAt < PEER_RESET_COOLDOWN_MS) {
+      this.logSignalEvent(peer, "peer-reset-suppressed", {
+        reason,
+        sinceLastResetMs: Date.now() - reset.resetAt,
+        cooldownMs: PEER_RESET_COOLDOWN_MS,
+      });
+      return false;
+    }
+    // The marker goes out first, so everything after it comes from the new connection.
+    this.callbacks.signal(peer.id, { description: PEER_RESET_MARKER });
+    const replacement = this.recreatePeer(peer, reason);
+    if (replacement) this.diagnosticsFor(replacement).peerResetsInitiated += 1;
+    this.peerResets.get(peer.id)!.awaitingAckUntil = Date.now() + PEER_RESET_ACK_TIMEOUT_MS;
+    return true;
+  }
+
+  /**
+   * The remote side rebuilt its connection. Our transport can never match its
+   * fresh DTLS/ICE state, so follow once and acknowledge with the same marker.
+   * A marker crossing our own request is that request's acknowledgement; a late
+   * one within the cooldown is dropped, so two peers never ping-pong resets.
+   */
+  private acceptPeerReset(peerId: string): void {
+    const peer = this.peers.get(peerId);
+    if (!peer) return; // Only server membership creates a peer; a reset never does.
+    const reset = this.peerResets.get(peerId);
+    if (reset && Date.now() < reset.awaitingAckUntil) {
+      reset.awaitingAckUntil = 0;
+      this.logSignalEvent(peer, "peer-reset-acknowledged", {});
+      return;
+    }
+    if (reset && Date.now() - reset.resetAt < PEER_RESET_COOLDOWN_MS) {
+      this.logSignalEvent(peer, "peer-reset-ignored", { sinceLastResetMs: Date.now() - reset.resetAt });
+      return;
+    }
+    this.callbacks.signal(peerId, { description: PEER_RESET_MARKER });
+    const replacement = this.recreatePeer(peer, "remote-request");
+    if (replacement) this.diagnosticsFor(replacement).peerResetsFollowed += 1;
+  }
+
+  private recreatePeer(peer: ManagedPeer, reason: string): ManagedPeer | null {
+    const reset = this.peerResets.get(peer.id) ?? { resetAt: 0, awaitingAckUntil: 0 };
+    reset.resetAt = Date.now();
+    reset.awaitingAckUntil = 0;
+    this.peerResets.set(peer.id, reset);
+    this.logSignalEvent(peer, "peer-connection-reset", { reason, hypothesis: this.hypothesis(peer) });
+    this.logMediaEvent(peer, "peer-connection-reset", { reason });
+    if (this.callbacks.resetPeer) {
+      this.callbacks.resetPeer(peer.id);
+    } else {
+      this.remove(peer.id);
+      this.add(peer.id, peer.name);
+    }
+    const replacement = this.peers.get(peer.id);
+    return replacement && replacement !== peer ? replacement : null;
+  }
+
+  /** Nothing may restart ICE or re-offer while an offer/answer exchange is open. */
+  private signalingSettled(peer: ManagedPeer): boolean {
+    return peer.pc.signalingState === "stable" && !peer.makingOffer && !peer.settingRemoteAnswerPending
+      && !this.controlFor(peer).offerInFlight;
+  }
+
+  /** Restarts ICE now if signaling is settled, otherwise as soon as it is. */
+  private restartIceWhenSettled(peer: ManagedPeer, reason: string): void {
+    const control = this.controlFor(peer);
+    if (control.dtlsConflict) return;
+    if (this.signalingSettled(peer)) {
+      control.pendingIceRestart = false;
+      peer.pc.restartIce();
+      return;
+    }
+    const diagnostics = this.diagnosticsFor(peer);
+    diagnostics.iceRestartsDeferred += 1;
+    control.pendingIceRestart = true;
+    this.logMediaEvent(peer, "ice-restart-deferred", { reason, count: diagnostics.iceRestartsDeferred });
+  }
+
+  private flushPendingIceRestart(peer: ManagedPeer): void {
+    const control = this.controlFor(peer);
+    if (!control.pendingIceRestart || !this.signalingSettled(peer)) return;
+    control.pendingIceRestart = false;
+    this.logMediaEvent(peer, "ice-restart-resumed", {});
+    peer.pc.restartIce();
   }
 
   private async negotiate(peer: ManagedPeer): Promise<void> {
@@ -504,6 +733,16 @@ export class PeerConnectionManager {
         : "signaling-state:" + peer.pc.signalingState;
       this.logSignalEvent(peer, "negotiate-skipped", { reason: diagnostics.lastNegotiateSkip });
       return;
+    }
+    if (control.dtlsConflict) {
+      peer.needsNegotiation = false;
+      this.logSignalEvent(peer, "negotiate-skipped", { reason: "dtls-role-conflict" });
+      return;
+    }
+    // restartIce() only flags the next offer; this is that offer.
+    if (control.pendingIceRestart) {
+      control.pendingIceRestart = false;
+      peer.pc.restartIce();
     }
     peer.needsNegotiation = false;
     peer.makingOffer = true;
@@ -533,6 +772,11 @@ export class PeerConnectionManager {
     } catch (error) {
       peer.needsNegotiation = true;
       this.reportNegotiationError(peer, "create-offer", error);
+      if (isDtlsRoleConflict(error)) {
+        peer.makingOffer = false;
+        control.offerInFlight = null;
+        this.handleDtlsConflict(peer, "create-offer");
+      }
     } finally {
       peer.makingOffer = false;
       control.offerInFlight = null;
@@ -608,6 +852,8 @@ export class PeerConnectionManager {
       deferredRestartTimer: null,
       recoveryTimer: null,
       recoveryAttempt: 0,
+      pendingIceRestart: false,
+      dtlsConflict: false,
     };
     this.negotiationControl.set(peer, created);
     return created;
@@ -787,7 +1033,24 @@ export class PeerConnectionManager {
       control.recoveryAttempt = 0;
       return;
     }
+    if (control.dtlsConflict) {
+      // Only a rebuilt connection helps; an ICE restart would renegotiate the broken transport.
+      control.recoveryAttempt += 1;
+      if (!this.initiatePeerReset(peer, "recovery:" + reason)) this.armRecovery(peer, reason);
+      return;
+    }
     if (this.nextFallback(peer)) return; // The tier clock still owns this peer.
+    if (!this.signalingSettled(peer)) {
+      // An open offer/answer exchange is resolved by the answer or the offer
+      // timeout; restarting ICE on top of it only adds a crossing offer.
+      this.logMediaEvent(peer, "ice-recovery-deferred", {
+        reason,
+        attempt: control.recoveryAttempt + 1,
+        makingOffer: peer.makingOffer,
+      });
+      this.armRecovery(peer, reason);
+      return;
+    }
     control.recoveryAttempt += 1;
     // restartIce() marks negotiation as needed, so a failed or never-started
     // negotiation is re-offered through the regular perfect-negotiation path.
@@ -815,7 +1078,7 @@ export class PeerConnectionManager {
   /** The polite side restarts at once; the impolite side only if no remote restart arrives first. */
   private restartIceCoordinated(peer: ManagedPeer, reason: string): void {
     if (peer.polite) {
-      peer.pc.restartIce();
+      this.restartIceWhenSettled(peer, reason);
       return;
     }
     this.clearDeferredRestart(peer);
@@ -826,7 +1089,7 @@ export class PeerConnectionManager {
       if (peer.pc.connectionState === "closed" || peer.pc.connectionState === "connected") return;
       if (control.remoteIceRestartAt >= requestedAt) return;
       this.logMediaEvent(peer, "deferred-ice-restart", { reason, graceMs: ICE_RESTART_GRACE_MS });
-      peer.pc.restartIce();
+      this.restartIceWhenSettled(peer, reason);
     }, ICE_RESTART_GRACE_MS);
   }
 
@@ -866,6 +1129,11 @@ export class PeerConnectionManager {
       descriptionErrors: 0,
       lastError: "",
       remoteCandidateErrors: 0,
+      dtlsRolesPinned: 0,
+      peerResetsInitiated: 0,
+      peerResetsFollowed: 0,
+      signalsDroppedAwaitingReset: 0,
+      iceRestartsDeferred: 0,
       candidateErrorsByUrl: {},
     };
     this.negotiationDiagnostics.set(peer, created);
@@ -1025,6 +1293,12 @@ export class PeerConnectionManager {
       candidateErrors: diagnostics.candidateErrors,
       candidateErrorsByUrl: diagnostics.candidateErrorsByUrl,
       remoteCandidateErrors: diagnostics.remoteCandidateErrors,
+      dtlsRolesPinned: diagnostics.dtlsRolesPinned,
+      peerResetsInitiated: diagnostics.peerResetsInitiated,
+      peerResetsFollowed: diagnostics.peerResetsFollowed,
+      signalsDroppedAwaitingReset: diagnostics.signalsDroppedAwaitingReset,
+      iceRestartsDeferred: diagnostics.iceRestartsDeferred,
+      dtlsConflict: this.controlFor(peer).dtlsConflict,
       iceServers: this.configuredIceServerUrls(peer),
       ...this.appliedIceConfiguration(peer),
       ...this.descriptionTypes(peer),

@@ -1,0 +1,159 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "dtls-role-renegotiation",
+  "purpose": "Companion (polite) blieb nach Reload in have-local-offer mit iceConnectionState new: nach explizitem Glare-Rollback und Remote-Offer scheiterte die Answer mit 'Failed to set SSL role for the transport' (ERROR_CONTENT, mid 0); danach renegotiierten beide Seiten und die ICE-Recovery restartete in have-local-offer weiter (offersSent 6, descriptionErrors 2).",
+  "goal": "Renegotiation behaelt die etablierte DTLS-Rolle; ein dennoch defekter Transport wird beidseitig genau einmal neu aufgebaut; Recovery und ICE-Restarts laufen nie waehrend eines offenen Offer/Answer-Austauschs.",
+  "status": "in_progress",
+  "created": "2026-09-25",
+  "updated": "2026-09-25",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "DTLS-Rolle stabil, begrenzter Rebuild, signalisierungsgekoppelte Recovery",
+      "task_ids": [
+        "dtls-role-pinned-answer",
+        "dtls-conflict-peer-rebuild",
+        "recovery-signaling-coupling"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "M2",
+      "title": "Live-Browsernachweis",
+      "task_ids": [
+        "dtls-live-verification"
+      ],
+      "status": "todo"
+    }
+  ],
+  "critical_path_tasks": [
+    "dtls-role-pinned-answer",
+    "dtls-live-verification"
+  ],
+  "tasks": [
+    {
+      "id": "dtls-role-pinned-answer",
+      "title": "Answer nach Rollback mit der etablierten DTLS-Rolle (a=setup) erzeugen statt 'Failed to set SSL role for the transport'",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "Die DTLS-Rolle wird aus currentLocalDescription/currentRemoteDescription abgeleitet (eigene Answer: eigenes setup; eigenes Offer: Gegenrolle der Remote-Answer) und nur aufgeloeste setup-Zeilen (active/passive) der Answer werden darauf festgelegt",
+        "Ohne abgeschlossenen Austausch bleibt der implizite setLocalDescription()-Pfad unveraendert",
+        "peer-connection-manager.spec.ts: Rollback -> Remote-Offer -> Answer traegt a=setup:passive, kein Fehler, kein Rebuild; der Test schlaegt gegen den alten Stand fehl"
+      ]
+    },
+    {
+      "id": "dtls-conflict-peer-rebuild",
+      "title": "DTLS-Rollenkonflikt: beidseitiger, einmaliger PeerConnection-Neuaufbau statt Renegotiation-Schleife",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "Ein SSL/DTLS-Rollenfehler stoppt jede weitere Renegotiation des defekten Transports (dtlsConflict), sendet einmal den bereits vom Signaling-Contract erlaubten rollback-Marker und baut die PeerConnection ueber resetPeer (Mesh: removePeer+addPeer, Membership-Stabilitaet und Medienschluessel bleiben erhalten) neu auf",
+        "Die Gegenseite folgt genau einmal und quittiert mit demselben Marker; kreuzende Marker gelten als Quittung, verspaetete Marker innerhalb von 120 s werden ignoriert (kein Ping-Pong)",
+        "Signale der alten Remote-Verbindung werden bis zur Quittung (max. 10 s) verworfen; danach verhandelt die neue Verbindung genau einmal",
+        "Ein weiterer Konflikt innerhalb von 120 s loest keinen zweiten Rebuild und kein Offer aus; erst die begrenzte Recovery darf danach erneut aufbauen",
+        "Specs: genau ein Rebuild + eine Renegotiation, kein Loop, Follow/Ack, Kreuzung, Ack-Timeout"
+      ]
+    },
+    {
+      "id": "recovery-signaling-coupling",
+      "title": "ICE-Recovery und Tier-Restarts an den Signalisierungszustand koppeln",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "Recovery restartet ICE nicht in have-local-offer/have-remote-offer, waehrend makingOffer oder eines offenen Offers; sie wird mit gleichem Backoff neu geplant (Deckel 120 s bleibt)",
+        "Ein Tier-/Cooldown-Restart waehrend offenem Austausch wird vorgemerkt und erst im stabilen Zustand (nach Answer bzw. vor dem naechsten Offer) genau einmal ausgefuehrt",
+        "Wiederholte Glare-Kollisionen enden mit je einer Answer und einem Re-Offer und danach stabil ohne weitere Offers",
+        "Diagnose: dtlsRolesPinned, peerResetsInitiated/Followed, signalsDroppedAwaitingReset, iceRestartsDeferred, dtlsConflict im [sigdbg]-Snapshot"
+      ]
+    },
+    {
+      "id": "dtls-live-verification",
+      "title": "Live-Nachweis Chromium<->Chromium und Chromium<->Companion: Reload, Glare, ICE-Restart ohne SSL-role-Fehler",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 0,
+      "acceptance_criteria": [
+        "Companion-Log nach Reload + provoziertem Glare: kein 'Failed to set SSL role', iceConnectionState erreicht connected und bleibt nach ICE-Restart/Recovery verbunden",
+        "Falls Chrome die a=setup-Anpassung der lokalen Answer ablehnt, greift nachweislich der einmalige Rebuild (peer-connection-reset im Log)",
+        "Unverifiziert bis zum echten Browserlauf; kein Push allein fuer diesen Slice"
+      ]
+    }
+  ],
+  "tasks_status_summary": {
+    "total": 4,
+    "by_status": {
+      "todo": 1,
+      "in_progress": 0,
+      "partial": 0,
+      "blocked": 0,
+      "done": 3
+    },
+    "progress_percent_done": 75,
+    "by_priority": {
+      "P0": 2,
+      "P1": 2,
+      "P2": 0,
+      "P3": 0
+    },
+    "by_risk": {
+      "low": 0,
+      "medium": 2,
+      "high": 2,
+      "critical": 0
+    },
+    "critical_path": {
+      "total": 2,
+      "done": 1,
+      "remaining": 1
+    },
+    "milestones": {
+      "total": 2,
+      "todo": 1,
+      "in_progress": 0,
+      "blocked": 0,
+      "done": 1
+    }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 1,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 3
+  },
+  "summary_notes": [
+    "Ursache: Nach setLocalDescription({type:'rollback'}) erzeugt Chrome fuer ein actpass-Remote-Offer die Default-Answer a=setup:active, obwohl diese Seite im vorigen Austausch (eigenes Offer, Remote-Answer active) DTLS-Server wurde. Der Rollenwechsel auf dem bestehenden DTLS-Transport wird mit 'Failed to set SSL role for the transport' abgelehnt; der Transport bleibt unbenutzbar (ICE new), jede weitere Renegotiation scheitert gleich. Nicht TURN.",
+    "Der Rebuild-Marker nutzt den bestehenden Contract (signal.description.type 'rollback' ist serverseitig bereits erlaubt); keine Server-/Protokollaenderung. Ein alter Client ohne diesen Stand beantwortet den Marker nicht; der Initiator wartet dann hoechstens 10 s.",
+    "Vorbestehend rot und nicht Teil dieses Tracks (identisch auf HEAD 565467b): machine-receive-gate.spec, peer-mesh-key-ack.spec, peer-mesh-overlay-lifecycle.spec, machine-avatar-source.spec, machine-chat-session.service.spec, machine-source-clock.spec (27 Tests)."
+  ]
+}

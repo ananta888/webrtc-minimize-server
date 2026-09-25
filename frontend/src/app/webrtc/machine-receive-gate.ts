@@ -31,6 +31,7 @@ export class MachineReceiveGate {
   }
   supports(id: string, capability: string): boolean { return this.capabilities.get(id)?.includes(capability) === true; }
   isMachine(id: string): boolean { return this.machines.has(id); }
+  capabilitiesOf(id: string): readonly string[] { return this.capabilities.get(id) ?? []; }
   removePeer(id: string): void { this.machines.delete(id); this.members.delete(id); this.capabilities.delete(id); }
   apply(raw: unknown, roomId: string): void {
     if (!closed(raw, ["type", "version", "roomId", "revision", "grants"]) || raw["type"] !== "machine-receive-state"

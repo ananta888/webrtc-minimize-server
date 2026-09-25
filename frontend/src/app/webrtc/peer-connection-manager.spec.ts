@@ -4,9 +4,15 @@ import { IceTierPolicy } from "./ice-policy";
 import {
   classifySelectedIcePath,
   describeNegotiationError,
+  establishedDtlsSetup,
+  ICE_RECOVERY_BASE_MS,
   ICE_RESTART_GRACE_MS,
+  isDtlsRoleConflict,
   OFFER_ANSWER_TIMEOUT_MS,
+  PEER_RESET_ACK_TIMEOUT_MS,
+  PEER_RESET_COOLDOWN_MS,
   PeerConnectionManager,
+  pinDtlsSetup,
 } from "./peer-connection-manager";
 
 class FakePeerConnection {
@@ -428,6 +434,328 @@ describe("perfect negotiation glare resolution", () => {
     expect(peer.iceTier).toBe(1);
     expect(pc.configuration.iceServers).toHaveLength(2);
     expect(pc.restarts).toBe(0);
+    connections.close();
+  });
+});
+
+// The production error of the companion log, verbatim.
+const SSL_ROLE_ERROR = "Failed to execute 'setLocalDescription' on 'RTCPeerConnection': Session error code: "
+  + "ERROR_CONTENT. Session error description: Failed to apply the description for m= section with mid='0': "
+  + "Failed to set SSL role for the transport..";
+
+/**
+ * Models libwebrtc's DTLS role bookkeeping: once an offer/answer exchange has
+ * fixed this side as DTLS server (`passive`), an answer claiming `active` is
+ * refused. createAnswer() returns the default `active`, which is what Chrome
+ * generated after the explicit rollback in production.
+ */
+class DtlsFakePeerConnection extends FakePeerConnection {
+  currentLocalDescription: RTCSessionDescriptionInit | null = null;
+  currentRemoteDescription: RTCSessionDescriptionInit | null = null;
+  dtlsSetup: "active" | "passive" | null = null;
+  // A transport that already failed a role change refuses every answer.
+  refuseEveryAnswer = false;
+
+  establishAsOfferer(): void {
+    this.currentLocalDescription = { type: "offer", sdp: "v=0\r\na=ice-ufrag:local0\r\na=setup:actpass\r\n" };
+    this.currentRemoteDescription = { type: "answer", sdp: "v=0\r\na=ice-ufrag:remote1\r\na=setup:active\r\n" };
+    this.dtlsSetup = "passive";
+  }
+
+  async createAnswer(): Promise<RTCSessionDescriptionInit> {
+    return { type: "answer", sdp: "v=0\r\na=ice-ufrag:answer\r\na=setup:active\r\n" };
+  }
+
+  override async setLocalDescription(description?: RTCSessionDescriptionInit): Promise<void> {
+    const answering = description?.type === "answer" || (!description && this.signalingState === "have-remote-offer");
+    if (!answering) return super.setLocalDescription(description);
+    const sdp = description?.sdp ?? (await this.createAnswer()).sdp!;
+    const setup = /^a=setup:(\w+)/m.exec(sdp)?.[1];
+    if (this.refuseEveryAnswer || (this.dtlsSetup && setup !== this.dtlsSetup)) {
+      throw new DOMException(SSL_ROLE_ERROR, "OperationError");
+    }
+    return super.setLocalDescription({ type: "answer", sdp });
+  }
+}
+
+describe("DTLS role pinning", () => {
+  it("derives the established role from the current descriptions and pins only resolved setup lines", () => {
+    const offer = { type: "offer" as const, sdp: "v=0\r\na=setup:actpass\r\n" };
+    expect(establishedDtlsSetup(offer, { type: "answer", sdp: "v=0\r\na=setup:active\r\n" })).toBe("passive");
+    expect(establishedDtlsSetup(offer, { type: "answer", sdp: "v=0\r\na=setup:passive\r\n" })).toBe("active");
+    expect(establishedDtlsSetup({ type: "answer", sdp: "a=setup:active\r\n" }, offer)).toBe("active");
+    expect(establishedDtlsSetup(null, offer)).toBeNull();
+    expect(establishedDtlsSetup(offer, null)).toBeNull();
+    const answer = "v=0\r\nm=audio 9\r\na=setup:active\r\nm=video 9\r\na=setup:active\r\n";
+    expect(pinDtlsSetup(answer, "passive")).toBe("v=0\r\nm=audio 9\r\na=setup:passive\r\nm=video 9\r\na=setup:passive\r\n");
+    expect(pinDtlsSetup("a=setup:actpass\r\n", "passive")).toBe("a=setup:actpass\r\n");
+    expect(isDtlsRoleConflict(new DOMException(SSL_ROLE_ERROR, "OperationError"))).toBe(true);
+    expect(isDtlsRoleConflict(new DOMException("Failed to set remote offer sdp", "OperationError"))).toBe(false);
+  });
+});
+
+describe("DTLS role conflict after a polite rollback", () => {
+  const POLITE_SELF = "ffffffffffffffff";
+  const IMPOLITE_REMOTE = "0000000000000001";
+
+  function harness(options: { resetPeer?: boolean } = {}) {
+    const sent: RTCSessionDescriptionInit[] = [];
+    const errors: unknown[] = [];
+    const resets: string[] = [];
+    let connections: PeerConnectionManager;
+    connections = new PeerConnectionManager(POLITE_SELF, { ...policy, peerRelayIceServers: [], infrastructureRelayIceServers: [] }, false, {
+      signal: (_peerId, payload) => {
+        const description = (payload as { description?: RTCSessionDescriptionInit }).description;
+        if (description) sent.push({ type: description.type, sdp: description.sdp });
+      },
+      track: () => undefined,
+      channel: () => undefined,
+      state: () => undefined,
+      negotiationError: (_peer, error) => errors.push(error),
+      ...(options.resetPeer ? {
+        resetPeer: (peerId: string) => {
+          resets.push(peerId);
+          connections.remove(peerId);
+          connections.add(peerId, "Remote");
+        },
+      } : {}),
+    });
+    const first = connections.add(IMPOLITE_REMOTE, "Remote")!;
+    const deliver = (payload: Record<string, unknown>) => connections.acceptSignal({
+      type: "signal", from: IMPOLITE_REMOTE, fromName: "Remote", ...payload,
+    });
+    const current = () => connections.peers.get(IMPOLITE_REMOTE)!;
+    const markers = () => sent.filter((d) => d.type === "rollback").length;
+    return { connections, first, pc: first.pc as unknown as DtlsFakePeerConnection, sent, errors, resets, deliver, current, markers };
+  }
+
+  const remoteOffer = (ufrag: string): RTCSessionDescriptionInit => ({
+    type: "offer", sdp: `v=0\r\na=ice-ufrag:${ufrag}\r\na=setup:actpass\r\n`,
+  });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    FakePeerConnection.instances = [];
+    vi.stubGlobal("RTCPeerConnection", DtlsFakePeerConnection);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("answers a colliding remote offer with the established DTLS role instead of failing with 'Failed to set SSL role'", async () => {
+    const { connections, pc, sent, errors, deliver, markers } = harness();
+    pc.establishAsOfferer();
+    pc.onnegotiationneeded?.(new Event("negotiationneeded"));
+    await vi.waitFor(() => expect(sent.map((d) => d.type)).toEqual(["offer"]));
+
+    await deliver({ description: remoteOffer("remote2") });
+
+    expect(errors).toEqual([]);
+    expect(pc.operations).toEqual(["local-offer", "rollback", "remote-offer", "local-answer", "local-offer"]);
+    const answer = sent.find((d) => d.type === "answer")!;
+    expect(answer.sdp).toContain("a=setup:passive");
+    expect(answer.sdp).not.toContain("a=setup:active");
+    expect(markers()).toBe(0);
+    expect(FakePeerConnection.instances).toHaveLength(1);
+    connections.close();
+  });
+
+  it("rebuilds the connection exactly once on a refused DTLS role, renegotiates on the new one and never loops", async () => {
+    const { connections, first, pc, sent, errors, resets, deliver, current, markers } = harness({ resetPeer: true });
+    pc.establishAsOfferer();
+    pc.refuseEveryAnswer = true;
+    pc.onnegotiationneeded?.(new Event("negotiationneeded"));
+    await vi.waitFor(() => expect(sent.map((d) => d.type)).toEqual(["offer"]));
+
+    await deliver({ description: remoteOffer("remote2") });
+
+    expect(errors).toHaveLength(1);
+    expect(isDtlsRoleConflict(errors[0])).toBe(true);
+    expect(resets).toEqual([IMPOLITE_REMOTE]);
+    expect(markers()).toBe(1);
+    expect(sent.at(-1)?.type).toBe("rollback");
+    expect(pc.connectionState).toBe("closed");
+    // The broken transport is not renegotiated any more.
+    expect(pc.operations).toEqual(["local-offer", "rollback", "remote-offer"]);
+    const replacement = current();
+    expect(replacement).not.toBe(first);
+
+    // Signals the remote sent from its old connection before it saw our marker are dropped.
+    await deliver({ description: remoteOffer("remote3") });
+    await deliver({ candidate: { candidate: "candidate:1 1 udp 1 192.0.2.1 9 typ host", sdpMid: "0" } });
+    const fresh = replacement.pc as unknown as DtlsFakePeerConnection;
+    expect(fresh.operations).toEqual([]);
+
+    // The acknowledgement ends the wait; the fresh connection negotiates exactly once.
+    await deliver({ description: { type: "rollback" } });
+    expect(markers()).toBe(1);
+    await deliver({ description: remoteOffer("fresh1") });
+    expect(fresh.operations).toEqual(["remote-offer", "local-answer"]);
+    expect(sent.filter((d) => d.type === "answer")).toHaveLength(1);
+    expect(errors).toHaveLength(1);
+
+    // A second conflict inside the cooldown does not rebuild again and stops renegotiating.
+    fresh.establishAsOfferer();
+    fresh.refuseEveryAnswer = true;
+    await deliver({ description: remoteOffer("fresh2") });
+    expect(errors).toHaveLength(2);
+    expect(resets).toHaveLength(1);
+    expect(markers()).toBe(1);
+    expect(fresh.signalingState).toBe("stable");
+    const offersBefore = sent.filter((d) => d.type === "offer").length;
+    fresh.onnegotiationneeded?.(new Event("negotiationneeded"));
+    await vi.advanceTimersByTimeAsync(PEER_RESET_COOLDOWN_MS - 1_000);
+    expect(resets).toHaveLength(1);
+    expect(sent.filter((d) => d.type === "offer")).toHaveLength(offersBefore);
+    expect(fresh.restarts).toBe(0);
+
+    // After the cooldown the bounded recovery may rebuild once more, never in a tight loop.
+    await vi.advanceTimersByTimeAsync(PEER_RESET_COOLDOWN_MS);
+    expect(resets.length).toBeGreaterThanOrEqual(2);
+    expect(resets.length).toBeLessThanOrEqual(3);
+    connections.close();
+  });
+
+  it("follows a remote rebuild once, acknowledges it and ignores a late duplicate", async () => {
+    const { connections, first, pc, sent, deliver, current, markers } = harness();
+    pc.establishAsOfferer();
+    await deliver({ description: { type: "rollback" } });
+    expect(markers()).toBe(1);
+    expect(pc.connectionState).toBe("closed");
+    const replacement = current();
+    expect(replacement).not.toBe(first);
+
+    // The next remote signal already reaches the rebuilt connection.
+    await deliver({ description: remoteOffer("fresh1") });
+    expect((replacement.pc as unknown as DtlsFakePeerConnection).operations).toEqual(["remote-offer", "local-answer"]);
+
+    // A duplicate marker within the cooldown neither rebuilds nor answers: no ping-pong.
+    await deliver({ description: { type: "rollback" } });
+    expect(markers()).toBe(1);
+    expect(current()).toBe(replacement);
+    expect(sent.filter((d) => d.type === "answer")).toHaveLength(1);
+    connections.close();
+  });
+
+  it("treats a crossing rebuild request as the acknowledgement of its own", async () => {
+    const { connections, pc, sent, deliver, current, markers } = harness();
+    pc.establishAsOfferer();
+    pc.refuseEveryAnswer = true;
+    await deliver({ description: remoteOffer("remote2") });
+    expect(markers()).toBe(1);
+    const replacement = current();
+    await deliver({ description: { type: "rollback" } });
+    expect(markers()).toBe(1);
+    expect(current()).toBe(replacement);
+    expect(sent.filter((d) => d.type === "rollback")).toHaveLength(1);
+    connections.close();
+  });
+
+  it("stops waiting for an acknowledgement a peer without rebuild support never sends", async () => {
+    const { connections, pc, deliver, current } = harness();
+    pc.establishAsOfferer();
+    pc.refuseEveryAnswer = true;
+    await deliver({ description: remoteOffer("remote2") });
+    const fresh = current().pc as unknown as DtlsFakePeerConnection;
+    await deliver({ description: remoteOffer("old") });
+    expect(fresh.operations).toEqual([]);
+    await vi.advanceTimersByTimeAsync(PEER_RESET_ACK_TIMEOUT_MS);
+    await deliver({ description: remoteOffer("next") });
+    expect(fresh.operations).toEqual(["remote-offer", "local-answer"]);
+    connections.close();
+  });
+});
+
+describe("glare discipline and signaling-coupled ICE recovery", () => {
+  const POLITE_SELF = "ffffffffffffffff";
+  const REMOTE = "0000000000000001";
+
+  function harness(icePolicy: IceTierPolicy) {
+    const sent: RTCSessionDescriptionInit[] = [];
+    const errors: unknown[] = [];
+    const connections = new PeerConnectionManager(POLITE_SELF, icePolicy, false, {
+      signal: (_peerId, payload) => {
+        const description = (payload as { description?: RTCSessionDescriptionInit }).description;
+        if (description) sent.push({ type: description.type, sdp: description.sdp });
+      },
+      track: () => undefined,
+      channel: () => undefined,
+      state: () => undefined,
+      negotiationError: (_peer, error) => errors.push(error),
+    });
+    const peer = connections.add(REMOTE, "Remote")!;
+    const deliver = (payload: Record<string, unknown>) => connections.acceptSignal({
+      type: "signal", from: REMOTE, fromName: "Remote", ...payload,
+    });
+    return { connections, peer, pc: peer.pc as unknown as DtlsFakePeerConnection, sent, errors, deliver };
+  }
+
+  const answerFor = (ufrag: string): RTCSessionDescriptionInit => ({ type: "answer", sdp: `v=0\r\na=ice-ufrag:${ufrag}\r\n` });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    FakePeerConnection.instances = [];
+    vi.stubGlobal("RTCPeerConnection", DtlsFakePeerConnection);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("resolves repeated collisions with one answer and one re-offer each and ends stable", async () => {
+    const { connections, pc, sent, errors, deliver } = harness(policy);
+    pc.establishAsOfferer();
+    pc.onnegotiationneeded?.(new Event("negotiationneeded"));
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+    for (let round = 1; round <= 3; round += 1) {
+      await deliver({ description: { type: "offer", sdp: `v=0\r\na=ice-ufrag:remote1\r\na=setup:actpass\r\n` } });
+      await vi.waitFor(() => expect(sent.filter((d) => d.type === "offer")).toHaveLength(round + 1));
+      expect(sent.filter((d) => d.type === "answer")).toHaveLength(round);
+    }
+    expect(errors).toEqual([]);
+    expect(sent.every((d) => d.type !== "answer" || d.sdp!.includes("a=setup:passive"))).toBe(true);
+    await deliver({ description: answerFor("remote1") });
+    expect(pc.signalingState).toBe("stable");
+    await vi.advanceTimersByTimeAsync(OFFER_ANSWER_TIMEOUT_MS * 8);
+    expect(sent.filter((d) => d.type === "offer")).toHaveLength(4);
+    connections.close();
+  });
+
+  it("does not restart ICE for recovery while a local offer is open, and does once signaling is stable", async () => {
+    const { connections, pc, sent, deliver } = harness({ ...policy, peerRelayIceServers: [], infrastructureRelayIceServers: [] });
+    pc.onnegotiationneeded?.(new Event("negotiationneeded"));
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+    expect(pc.signalingState).toBe("have-local-offer");
+
+    await vi.advanceTimersByTimeAsync(ICE_RECOVERY_BASE_MS);
+    expect(pc.signalingState).toBe("have-local-offer");
+    expect(pc.restarts).toBe(0);
+    await vi.advanceTimersByTimeAsync(ICE_RECOVERY_BASE_MS);
+    expect(pc.restarts).toBe(0);
+
+    await deliver({ description: answerFor("remote1") });
+    expect(pc.signalingState).toBe("stable");
+    await vi.advanceTimersByTimeAsync(ICE_RECOVERY_BASE_MS);
+    expect(pc.restarts).toBe(1);
+    connections.close();
+  });
+
+  it("defers a tier-step ICE restart until the open offer is answered", async () => {
+    const { connections, peer, pc, sent, deliver } = harness(policy);
+    pc.onnegotiationneeded?.(new Event("negotiationneeded"));
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(peer.iceTier).toBe(1);
+    expect(pc.restarts).toBe(0);
+    await deliver({ description: answerFor("remote1") });
+    expect(pc.restarts).toBe(1);
     connections.close();
   });
 });

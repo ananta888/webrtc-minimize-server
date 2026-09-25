@@ -386,6 +386,7 @@ export class PeerMeshService {
         }));
         this.addChat("System", `Verhandlung mit ${peer.name} fehlgeschlagen`, true);
       },
+      resetPeer: (peerId) => this.resetPeerConnection(peerId),
       diagnostics: (peerId) => this.signalingDiagnostics(peerId),
     }, (peerId) => this.overlayInitiates(peerId));
     this.logSignalingEvent("mesh-initialized", {
@@ -898,6 +899,26 @@ export class PeerMeshService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Rebuilds the RTCPeerConnection of a member whose transport refused its
+   * DTLS role. Membership did not change, so a stable membership stays stable
+   * and media keys are provisioned again instead of waiting for a server epoch.
+   */
+  private resetPeerConnection(peerId: string): void {
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
+    const wasStable = this.membershipStable;
+    const machine = this.machineReceive.isMachine(peerId);
+    const capabilities = this.machineReceive.capabilitiesOf(peerId);
+    this.logSignalingEvent("reset-peer-connection", { peer: peerId, membershipStable: wasStable });
+    this.removePeer(peerId);
+    this.addPeer(peerId, peer.name, machine, capabilities);
+    if (!wasStable) return;
+    this.membershipStable = true;
+    this.rotateMediaKeys();
+    this.reconcileAllPublications();
   }
 
   removePeer(peerId: string): void {
