@@ -5,6 +5,7 @@ import {
   IceTierPolicy,
   iceServerUrls,
 } from "./ice-policy";
+import { IcePolicySource } from "./ice-credential-refresher";
 import { ServerMessage } from "./signaling.service";
 
 export type PeerChannelKind = "captions" | "chat" | "control" | "overlay";
@@ -113,6 +114,9 @@ interface NegotiationControl {
   remoteIceUfrag: string;
   remoteIceRestartAt: number;
   deferredRestartTimer: ReturnType<typeof setTimeout> | null;
+  // Self-healing after the last ICE tier: fresh credentials plus an ICE restart.
+  recoveryTimer: ReturnType<typeof setTimeout> | null;
+  recoveryAttempt: number;
 }
 
 function emptyCandidateCounts(): CandidateCounts {
@@ -154,6 +158,13 @@ const OFFER_ANSWER_TIMEOUT_MAX_MS = 60_000;
 // The impolite side waits this long for the polite side's ICE-restart offer
 // before restarting itself, so a tier step never produces two crossing offers.
 export const ICE_RESTART_GRACE_MS = 2_000;
+// A peer that is still not connected on its last ICE tier (stuck in new/checking,
+// failed or disconnected) is restarted with fresh TURN credentials. The delay
+// doubles per attempt up to the cap and resets once the peer connects, so a
+// long-lived tab or companion recovers without a restart storm.
+export const ICE_RECOVERY_BASE_MS = 10_000;
+export const ICE_RECOVERY_MAX_MS = 120_000;
+const ANSWER_CREDENTIAL_WAIT_MS = 1_500;
 
 function statsValues(report: RTCStatsReport): readonly IcePairStat[] {
   const values: IcePairStat[] = [];
@@ -188,13 +199,25 @@ export class PeerConnectionManager {
   private signalHeartbeat: ReturnType<typeof setInterval> | null = null;
   private readonly signalHeartbeatSeen = new Map<string, Readonly<{ line: string; at: number }>>();
 
+  // A fixed policy (tests, sessions without ephemeral TURN) keeps tier steps synchronous.
+  private readonly policySource: IcePolicySource | null;
+  private readonly fixedPolicy: IceTierPolicy | null;
+
   constructor(
     private readonly ownPeerId: string,
-    private readonly icePolicy: IceTierPolicy,
+    icePolicy: IceTierPolicy | IcePolicySource,
     private readonly dataOverlayEnabled: boolean,
     private readonly callbacks: ManagerCallbacks,
     private readonly overlayInitiates: (peerId: string) => boolean = (peerId) => ownPeerId < peerId,
-  ) {}
+  ) {
+    const source = "current" in icePolicy ? icePolicy : null;
+    this.policySource = source;
+    this.fixedPolicy = source ? null : icePolicy as IceTierPolicy;
+  }
+
+  private get icePolicy(): IceTierPolicy {
+    return this.policySource ? this.policySource.current() : this.fixedPolicy!;
+  }
 
   add(peerId: string, name: string): ManagedPeer | null {
     if (!peerId || peerId === this.ownPeerId) return null;
@@ -319,6 +342,7 @@ export class PeerConnectionManager {
       });
     }
     this.scheduleFallback(peer);
+    if (!this.nextFallback(peer)) this.armRecovery(peer, "no-relay-tier");
     this.startSignalHeartbeat();
     return peer;
   }
@@ -391,7 +415,10 @@ export class PeerConnectionManager {
           peer.needsNegotiation = true;
           await this.rollbackLocalOffer(peer, "offer-collision");
         }
-        if (description.type === "offer") this.noteRemoteIceRestart(peer, description.sdp);
+        if (description.type === "offer") {
+          const pulledForward = this.noteRemoteIceRestart(peer, description.sdp);
+          if (pulledForward) await pulledForward;
+        }
         peer.settingRemoteAnswerPending = description.type === "answer";
         await peer.pc.setRemoteDescription(description);
         peer.settingRemoteAnswerPending = false;
@@ -454,6 +481,7 @@ export class PeerConnectionManager {
     this.clearFallback(peer);
     this.clearOfferTimer(peer);
     this.clearDeferredRestart(peer);
+    this.clearRecovery(peer);
     for (const channel of peer.channels.values()) channel.close();
     peer.pc.close();
     this.peers.delete(peerId);
@@ -578,6 +606,8 @@ export class PeerConnectionManager {
       remoteIceUfrag: "",
       remoteIceRestartAt: 0,
       deferredRestartTimer: null,
+      recoveryTimer: null,
+      recoveryAttempt: 0,
     };
     this.negotiationControl.set(peer, created);
     return created;
@@ -589,7 +619,7 @@ export class PeerConnectionManager {
    * forward so the answer already carries its relay candidates, and cancel our
    * own deferred restart: the remote one already covers it.
    */
-  private noteRemoteIceRestart(peer: ManagedPeer, sdp: string | undefined): void {
+  private noteRemoteIceRestart(peer: ManagedPeer, sdp: string | undefined): Promise<void> | void {
     const control = this.controlFor(peer);
     const ufrag = sdpIceUfrag(sdp);
     if (!ufrag || !control.remoteIceUfrag || ufrag === control.remoteIceUfrag) return;
@@ -598,8 +628,19 @@ export class PeerConnectionManager {
     const next = this.nextFallback(peer);
     const connected = peer.pc.connectionState === "connected";
     const pulledForward = !connected && next !== null && next.deadline - Date.now() <= ICE_RESTART_GRACE_MS;
-    if (pulledForward) this.activateTier(peer, next.tier, "none");
     this.logMediaEvent(peer, "remote-ice-restart", { connected, pulledForwardTier: pulledForward ? next!.tier : null });
+    if (pulledForward) return this.boundAnswerDelay(this.activateTier(peer, next.tier, "none"));
+    // The remote restart regathers us with the configuration active at our
+    // answer; make sure that configuration does not carry expired credentials.
+    if (!connected && peer.iceTier > 0 && this.policySource) {
+      return this.boundAnswerDelay(this.applyFreshTier(peer, peer.iceTier, "remote-ice-restart"));
+    }
+  }
+
+  /** A slow credential fetch must not hold the answer past the remote offer timeout. */
+  private boundAnswerDelay(pending: Promise<void> | void): Promise<void> | void {
+    if (!pending) return;
+    return Promise.race([pending, new Promise<void>((resolve) => setTimeout(resolve, ANSWER_CREDENTIAL_WAIT_MS))]);
   }
 
   private handleConnectionState(peer: ManagedPeer): void {
@@ -607,6 +648,7 @@ export class PeerConnectionManager {
     if (connected.has(peer.pc.iceConnectionState) || peer.pc.connectionState === "connected") {
       this.clearFallback(peer);
       this.clearDeferredRestart(peer);
+      this.clearRecovery(peer, true);
       void this.detectIcePath(peer);
     } else if (peer.pc.iceConnectionState === "failed" || peer.pc.connectionState === "failed") {
       this.activateNextTier(peer);
@@ -646,8 +688,10 @@ export class PeerConnectionManager {
     }
     if (now - peer.lastIceRestartAt >= RESTART_COOLDOWN_MS && peer.pc.connectionState !== "closed") {
       peer.lastIceRestartAt = now;
-      this.restartIceCoordinated(peer, "cooldown");
+      if (this.policySource) void this.restartWithFreshCredentials(peer, "cooldown");
+      else this.restartIceCoordinated(peer, "cooldown");
     }
+    this.armRecovery(peer, "ice-" + peer.pc.iceConnectionState);
   }
 
   /**
@@ -655,16 +699,117 @@ export class PeerConnectionManager {
    * each side produced two crossing ICE-restart offers (glare) at every tier
    * step. `none` is used when a remote restart offer already regathers us.
    */
-  private activateTier(peer: ManagedPeer, tier: 1 | 2, restart: "coordinated" | "none" = "coordinated"): void {
+  private activateTier(peer: ManagedPeer, tier: 1 | 2, restart: "coordinated" | "none" = "coordinated"): Promise<void> | void {
     if (tier <= peer.iceTier || peer.pc.connectionState === "closed") return;
     this.clearFallback(peer);
     peer.iceTier = tier;
     peer.lastIceRestartAt = Date.now();
-    peer.pc.setConfiguration({ iceServers: [...cumulativeIceServers(this.icePolicy, tier)] });
+    if (!this.policySource) {
+      this.applyTier(peer, tier, restart, this.icePolicy);
+      return;
+    }
+    // TURN credentials are fetched right before the relay tier allocates, so a
+    // peer that arrives long after the session was admitted never presents an
+    // expired TURN REST username.
+    return this.policySource.refresh("tier-" + tier).then((fresh) => {
+      if (peer.pc.connectionState === "closed" || peer.iceTier !== tier) return;
+      if (!fresh) {
+        this.logMediaEvent(peer, "ice-tier-credentials-unavailable", { tier });
+        this.callbacks.state(peer);
+        this.scheduleFallback(peer);
+        this.armRecovery(peer, "credentials-unavailable");
+        return;
+      }
+      this.applyTier(peer, tier, restart, fresh);
+    });
+  }
+
+  private applyTier(peer: ManagedPeer, tier: 1 | 2, restart: "coordinated" | "none", policy: IceTierPolicy): void {
+    peer.pc.setConfiguration({ iceServers: [...cumulativeIceServers(policy, tier)] });
     this.logMediaEvent(peer, "ice-tier-activated", { tier, restart });
     if (restart === "coordinated") this.restartIceCoordinated(peer, "tier-" + tier);
     this.callbacks.state(peer);
     this.scheduleFallback(peer);
+    if (!this.nextFallback(peer)) this.armRecovery(peer, "last-tier");
+  }
+
+  /** Re-applies the current tier with freshly fetched credentials when they can be had. */
+  private async applyFreshTier(peer: ManagedPeer, tier: 0 | 1 | 2, reason: string): Promise<void> {
+    const fresh = await this.freshTierServers(tier, reason);
+    if (fresh && peer.pc.connectionState !== "closed" && peer.iceTier === tier) {
+      peer.pc.setConfiguration({ iceServers: [...fresh] });
+    }
+  }
+
+  private async freshTierServers(tier: 0 | 1 | 2, reason: string): Promise<readonly RTCIceServer[] | null> {
+    if (!this.policySource) return cumulativeIceServers(this.icePolicy, tier);
+    const fresh = await this.policySource.refresh(reason);
+    if (fresh) return cumulativeIceServers(fresh, tier);
+    // Direct STUN carries no credential; only relay tiers depend on a fresh one.
+    return tier === 0 ? cumulativeIceServers(this.icePolicy, 0) : null;
+  }
+
+  private async restartWithFreshCredentials(peer: ManagedPeer, reason: string): Promise<boolean> {
+    const tier = peer.iceTier;
+    const servers = await this.freshTierServers(tier, reason);
+    if (peer.pc.connectionState === "closed" || peer.iceTier !== tier) return false;
+    if (!servers) {
+      this.logMediaEvent(peer, "ice-restart-credentials-unavailable", { reason, tier });
+      return false;
+    }
+    peer.pc.setConfiguration({ iceServers: [...servers] });
+    peer.lastIceRestartAt = Date.now();
+    this.restartIceCoordinated(peer, reason);
+    return true;
+  }
+
+  private isConnected(peer: ManagedPeer): boolean {
+    return peer.pc.connectionState === "connected"
+      || peer.pc.iceConnectionState === "connected" || peer.pc.iceConnectionState === "completed";
+  }
+
+  /** Arms one bounded recovery attempt; a pending one is kept, never stacked. */
+  private armRecovery(peer: ManagedPeer, reason: string): void {
+    const control = this.controlFor(peer);
+    if (control.recoveryTimer || peer.pc.connectionState === "closed" || this.isConnected(peer)) return;
+    const delayMs = Math.min(ICE_RECOVERY_BASE_MS * 2 ** Math.min(control.recoveryAttempt, 8), ICE_RECOVERY_MAX_MS);
+    control.recoveryTimer = setTimeout(() => {
+      control.recoveryTimer = null;
+      void this.recover(peer, reason);
+    }, delayMs);
+    this.logMediaEvent(peer, "ice-recovery-scheduled", { reason, attempt: control.recoveryAttempt + 1, delayMs });
+  }
+
+  private async recover(peer: ManagedPeer, reason: string): Promise<void> {
+    if (peer.pc.connectionState === "closed" || this.peers.get(peer.id) !== peer) return;
+    const control = this.controlFor(peer);
+    if (this.isConnected(peer)) {
+      control.recoveryAttempt = 0;
+      return;
+    }
+    if (this.nextFallback(peer)) return; // The tier clock still owns this peer.
+    control.recoveryAttempt += 1;
+    // restartIce() marks negotiation as needed, so a failed or never-started
+    // negotiation is re-offered through the regular perfect-negotiation path.
+    const restarted = await this.restartWithFreshCredentials(peer, "recovery:" + reason);
+    this.logMediaEvent(peer, "ice-recovery-attempt", {
+      reason,
+      attempt: control.recoveryAttempt,
+      restarted,
+      diagnostics: this.hypothesis(peer),
+    });
+    this.armRecovery(peer, reason);
+  }
+
+  private clearRecovery(peer: ManagedPeer, connected = false): void {
+    const control = this.negotiationControl.get(peer);
+    if (!control) return;
+    if (control.recoveryTimer) clearTimeout(control.recoveryTimer);
+    control.recoveryTimer = null;
+    if (connected && control.recoveryAttempt > 0) {
+      this.logMediaEvent(peer, "ice-recovered", { attempts: control.recoveryAttempt });
+      control.recoveryAttempt = 0;
+    }
   }
 
   /** The polite side restarts at once; the impolite side only if no remote restart arrives first. */
@@ -793,6 +938,7 @@ export class PeerConnectionManager {
       transceivers: this.transceiverSummary(peer),
     });
     this.callbacks.negotiationError(peer, error);
+    this.armRecovery(peer, "negotiation-failed:" + phase);
   }
 
   /**

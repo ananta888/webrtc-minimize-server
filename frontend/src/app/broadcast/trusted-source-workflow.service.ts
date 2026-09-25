@@ -25,9 +25,13 @@ export class TrustedSourceWorkflowService implements OnDestroy {
       },
       track: publication => mesh.ownPublicationTrack(publication.publicationId, publication.source),
       send: message => signaling.sendSourceControl(message), changed: view => this.view.set(view),
-      start: (lease, track, signal, authorized, onState) => {
-        const policy = room.icePolicy();
-        if (!policy || !authorized(lease)) throw new Error("trusted_source_session_changed");
+      start: async (lease, track, signal, authorized, onState) => {
+        if (!room.icePolicy() || !authorized(lease)) throw new Error("trusted_source_session_changed");
+        // The publisher starts on the relay tier: its TURN credentials must be fresh.
+        const policy = await room.freshIcePolicy("trusted-source");
+        signal.throwIfAborted();
+        if (!policy) throw new Error("trusted_source_ice_credentials_unavailable");
+        if (!authorized(lease)) throw new Error("trusted_source_session_changed");
         return TrustedSourcePublisher.start(lease, track, { iceServers: [...cumulativeIceServers(policy, 2)] },
           { signal, authorized, onState, sendSignal: message => signaling.sendSourceControl(message) });
       },

@@ -5,6 +5,7 @@ import { selectedReceiveSources, VisualReceiveSelection } from "./machine-receiv
 
 import { AudioActivityService } from "./audio-activity.service";
 import { IcePathClass, IceTierPolicy } from "./ice-policy";
+import { IcePolicySource } from "./ice-credential-refresher";
 import {
   CAPTION_BUFFER_LIMIT,
   CaptionRateLimiter,
@@ -279,7 +280,7 @@ export class PeerMeshService {
   private overlaySerial = 0;
   private ownId = "";
   private ownName = "";
-  private icePolicy: IceTierPolicy | null = null;
+  private icePolicy: IceTierPolicy | IcePolicySource | null = null;
   private mediaE2ee: MediaE2eeRuntimeConfig = {
     mode: "disabled",
     cipherSuite: "AES_128_GCM_SHA256_128",
@@ -341,7 +342,7 @@ export class PeerMeshService {
     ownId: string,
     ownName: string,
     roomId: string,
-    icePolicy: IceTierPolicy,
+    icePolicy: IceTierPolicy | IcePolicySource,
     availableAgents: readonly AvailableMediaAgent[],
     optimization?: OptimizationRuntimeConfig,
     mediaE2ee?: MediaE2eeRuntimeConfig,

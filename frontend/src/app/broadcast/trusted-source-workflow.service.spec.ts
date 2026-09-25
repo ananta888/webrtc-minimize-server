@@ -23,7 +23,8 @@ it("connects the root service's real workflow to scoped signaling, ICE and the e
   }) }, unsubscribe = vi.fn();
   const mesh = { ownPeerId: () => peerId, membershipEpoch: () => epoch, ownPublicationTrack: vi.fn(() => track) };
   const service = new TrustedSourceWorkflowService({ claims: () => claims } as never, { fingerprint: () => fingerprint } as never,
-    { joined: () => joined, machineExpiresAt: () => 0, roomId: () => roomId, peerId: () => peerId, icePolicy: () => policy } as never,
+    { joined: () => joined, machineExpiresAt: () => 0, roomId: () => roomId, peerId: () => peerId, icePolicy: () => policy,
+      freshIcePolicy: async () => policy } as never,
     mesh as never, signaling as never);
   try {
     expect(signaling.sendSourceControl).not.toHaveBeenCalled(); expect(start).not.toHaveBeenCalled();

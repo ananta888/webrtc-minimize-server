@@ -126,8 +126,14 @@ export class NativePackagerBroadcastRuntimeService implements BroadcastPublicati
       5000, "native-packager-caption-loader-timeout");
     signal.throwIfAborted();
     if (!this.capability.available) throw new BroadcastBrowserPortError("native-bridge-not-ready");
-    const policy = this.room.icePolicy();
-    if (!policy || request.program.roomId !== this.room.roomId()) {
+    if (!this.room.icePolicy() || request.program.roomId !== this.room.roomId()) {
+      throw new BroadcastBrowserPortError("native-packager-room-session-required");
+    }
+    // The bridge connection starts on the relay tier: its TURN credentials must be fresh.
+    const policy = await this.room.freshIcePolicy("native-packager");
+    signal.throwIfAborted();
+    if (!policy) throw new BroadcastBrowserPortError("native-packager-ice-credentials-unavailable");
+    if (request.program.roomId !== this.room.roomId()) {
       throw new BroadcastBrowserPortError("native-packager-room-session-required");
     }
     const assignment = this.control.takePreparedNative(request.program);

@@ -228,6 +228,7 @@ Die öffentliche Voreinstellung steht in `.env.example`, das getrennte localhost
 - `SESSION_TICKET_TTL_MS`, `DEVICE_PROOF_MAX_AGE_MS`: enge Gültigkeitsfenster für Ticket und signierten Gerätenachweis.
 - `STUN_URLS`: kommaseparierte STUN-URLs.
 - `TURN_URLS`, `TURN_SHARED_SECRET`, `TURN_REALM`, `TURN_CREDENTIAL_TTL_MS`: Coturn-REST-Credentials mit HMAC und kurzer Gültigkeit.
+  Der Coturn-Watchdog `infra/deployment/ananta-coturn-watch.sh` prüft mit dem Secret aus `ANANTA_COTURN_SECRET_FILE` (root-only) zusätzlich eine echte authentifizierte TURN-Allocation und startet Coturn bei Fehlschlag mit Cooldown neu; ohne Secret bleibt es beim STUN-Bind.
 - `TURN_SERVERS_JSON`: optionales statisches `RTCIceServer`-Array für ausdrücklich kontrollierte Tests; nicht für Produktion empfohlen.
 - `EDGE_TURN_SERVERS_JSON`: serverseitige Liste freiwilliger Edge-TURN-Knoten mit `id`, `urls`, `realm` und jeweiligem `sharedSecret`; Secrets werden niemals an den Browser ausgegeben.
 - `PEER_EDGE_FALLBACK_MS`, `INFRASTRUCTURE_TURN_FALLBACK_MS`: begrenzte Eskalation von Direct/STUN zu Edge und anschließend Infrastruktur-TURN; der zweite Wert muss größer sein.
@@ -355,6 +356,7 @@ werden.
 - `POST /api/rooms`: privaten/öffentlichen Room-Invite, Pair-Invite oder authentifizierten persistenten Pair-Workspace erstellen
 - `PATCH /api/rooms/:roomId`: Name oder Sichtbarkeit ausschließlich als verifizierter Room-Owner ändern
 - `POST /api/sessions`: Bearer-Token und P-256-Gerätebeweis prüfen; Einmal-Ticket und kurzlebige TURN-Credentials ausstellen
+- `POST /api/ice-credentials`: mit dem sitzungsgebundenen `iceRefresh.token` aus `POST /api/sessions` frische TURN-REST-Credentials derselben Principal-/TTL-Grenzen beziehen; nur solange die zugehörige WebSocket-Membership lebt, rate-begrenzt, `Cache-Control: no-store`. Der Client holt sie vor jeder Relay-Tier-Aktivierung und jedem ICE-Restart sowie proaktiv zur halben Restlaufzeit; `/config` enthält keine ephemeren Credentials
 - `GET /api/workspaces`, `GET /api/workspaces/:id`: eigene Workspaces und revisionierte Membership lesen
 - `GET|POST /api/workspaces/:id/events`: permission-aware Timeline fortsetzen oder idempotentes Event schreiben
 - `PUT /api/workspaces/:id/cursor|presence`: monotonen Cursor beziehungsweise epochgebundene Presence-Lease setzen

@@ -1,6 +1,7 @@
 import { Injectable, computed, signal } from "@angular/core";
 
 import { cumulativeIceServers, iceServerUrls, IceTierPolicy } from "./ice-policy";
+import { IcePolicySource } from "./ice-credential-refresher";
 import {
   MediaAgentRouteState,
   MediaAgentLayer,
@@ -153,7 +154,7 @@ export class BlindMediaAgentService {
   private roomId = "";
   private membershipEpoch = 0;
   private lastRouteEpoch = 0;
-  private icePolicy: IceTierPolicy | null = null;
+  private iceSource: IceTierPolicy | IcePolicySource | null = null;
   private route: MediaAgentRouteState | null = null;
   private callbacks: MediaAgentCallbacks = EMPTY_CALLBACKS;
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -165,7 +166,7 @@ export class BlindMediaAgentService {
     ownPeerId: string;
     roomId: string;
     membershipEpoch: number;
-    icePolicy: IceTierPolicy;
+    icePolicy: IceTierPolicy | IcePolicySource;
     availableAgents: readonly AvailableMediaAgent[];
     callbacks: MediaAgentCallbacks;
   }>): void {
@@ -173,7 +174,7 @@ export class BlindMediaAgentService {
     this.ownPeerId = input.ownPeerId;
     this.roomId = input.roomId;
     this.membershipEpoch = input.membershipEpoch;
-    this.icePolicy = input.icePolicy;
+    this.iceSource = input.icePolicy;
     this.callbacks = input.callbacks;
     this.setAvailability(input.availableAgents);
     const agents = this.availableAgents();
@@ -586,7 +587,7 @@ export class BlindMediaAgentService {
     this.roomId = "";
     this.membershipEpoch = 0;
     this.lastRouteEpoch = 0;
-    this.icePolicy = null;
+    this.iceSource = null;
     this.route = null;
     this.callbacks = EMPTY_CALLBACKS;
   }
@@ -740,8 +741,22 @@ export class BlindMediaAgentService {
     if (now - connection.lastIceRestartAt >= ICE_RESTART_COOLDOWN_MS
       && connection.pc.connectionState !== "closed") {
       connection.lastIceRestartAt = now;
-      connection.pc.restartIce();
+      const source = this.iceSource;
+      if (!source || !("current" in source)) {
+        connection.pc.restartIce();
+        return;
+      }
+      void source.refresh("agent-restart").then((fresh) => {
+        if (!fresh || this.iceSource !== source || connection.pc.connectionState === "closed") return;
+        connection.pc.setConfiguration({ iceServers: [...cumulativeIceServers(fresh, connection.iceTier)] });
+        connection.pc.restartIce();
+      });
     }
+  }
+
+  private get icePolicy(): IceTierPolicy | null {
+    const source = this.iceSource;
+    return !source ? null : "current" in source ? source.current() : source;
   }
 
   private activateIceTier(connection: AgentConnection, tier: 1 | 2): void {
@@ -749,7 +764,25 @@ export class BlindMediaAgentService {
     this.clearIceFallback(connection);
     connection.iceTier = tier;
     connection.lastIceRestartAt = Date.now();
-    connection.pc.setConfiguration({ iceServers: [...cumulativeIceServers(this.icePolicy, tier)] });
+    const source = this.iceSource;
+    if (source && "current" in source) {
+      // Relay tiers allocate TURN now: never hand them credentials older than the refresh.
+      void source.refresh("agent-tier-" + tier).then((fresh) => {
+        if (this.iceSource !== source || connection.iceTier !== tier || connection.pc.connectionState === "closed") return;
+        if (!fresh) {
+          console.warn("[icecred] " + JSON.stringify({ event: "agent-tier-credentials-unavailable", agent: connection.agentId, tier }));
+          this.scheduleIceFallback(connection);
+          return;
+        }
+        this.applyIceTier(connection, fresh, tier);
+      });
+      return;
+    }
+    this.applyIceTier(connection, this.icePolicy, tier);
+  }
+
+  private applyIceTier(connection: AgentConnection, policy: IceTierPolicy, tier: 1 | 2): void {
+    connection.pc.setConfiguration({ iceServers: [...cumulativeIceServers(policy, tier)] });
     connection.pc.restartIce();
     this.updateStatus();
     this.callbacks.connectionChanged();

@@ -1848,6 +1848,69 @@ test("authorized sessions keep Edge-TURN credentials in the second ICE tier", as
   assert.equal(JSON.stringify(authorization.body).includes("0123456789abcdef0123456789abcdef"), false);
 });
 
+test("membership-bound ICE refresh re-issues TURN credentials only for a live session", async (context) => {
+  const app = await startTestServer({
+    turnUrls: ["turn:turn.test:3478?transport=udp"],
+    turnSharedSecret: "integration-secret",
+    turnCredentialTtlMs: 600_000,
+  });
+  context.after(() => app.close());
+  const refresh = (body, headers = {}) => fetch(`${app.httpUrl}/api/ice-credentials`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: app.httpUrl, ...headers },
+    body: JSON.stringify(body),
+  });
+  const ada = await connectAuthorized(app, "room-ice-refresh", "Ada");
+  const grant = ada.authorization.body.iceRefresh;
+  assert.equal(grant.path, "/api/ice-credentials");
+  assert.match(grant.token, /^[A-Za-z0-9_-]{43}$/);
+  const admittedUsername = ada.authorization.body.icePolicy.infrastructureRelayIceServers[0].username;
+  assert.equal(grant.expiresAt, Number(admittedUsername.split(":")[0]) * 1000);
+  await ada.next((message) => message.type === "welcome");
+
+  const startedAt = Date.now();
+  const response = await refresh({ refreshToken: grant.token });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  const body = await response.json();
+  assert.deepEqual(Object.keys(body).sort(), ["expiresAt", "icePolicy"]);
+  const [server] = body.icePolicy.infrastructureRelayIceServers;
+  assert.match(server.username, /^\d+:[a-f0-9]{20}$/);
+  assert.equal(server.username.split(":")[1], admittedUsername.split(":")[1], "same opaque principal");
+  assert.equal(server.credential, crypto.createHmac("sha1", "integration-secret").update(server.username).digest("base64"));
+  const expiresAt = Number(server.username.split(":")[0]) * 1000;
+  assert.equal(body.expiresAt, expiresAt);
+  assert.ok(expiresAt >= Math.floor((startedAt + 600_000) / 1000) * 1000 && expiresAt <= Date.now() + 600_000);
+  assert.deepEqual(body.icePolicy.directIceServers, [{ urls: "stun:stun.test:3478" }]);
+
+  assert.equal((await refresh({})).status, 401);
+  assert.equal((await refresh({ refreshToken: "a".repeat(43) })).status, 401);
+  assert.equal((await refresh({ refreshToken: grant.token, extra: 1 })).status, 400);
+  assert.equal((await refresh({ refreshToken: grant.token }, { origin: "https://evil.test" })).status, 400);
+  const get = await fetch(`${app.httpUrl}/api/ice-credentials`, { headers: { origin: app.httpUrl } });
+  assert.equal(get.status, 405);
+  assert.equal(get.headers.get("cache-control"), "no-store");
+
+  // A grant is not usable before its WebSocket joined, nor after it left.
+  const pending = await authorize(app, "room-ice-refresh", "Grace");
+  assert.equal((await refresh({ refreshToken: pending.body.iceRefresh.token })).status, 401);
+  const closed = new Promise((resolve) => ada.socket.once("close", resolve));
+  ada.socket.close();
+  await closed;
+  for (let attempt = 0; attempt < 50 && app.registry.members("room-ice-refresh").length > 0; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal((await refresh({ refreshToken: grant.token })).status, 401);
+});
+
+test("sessions without ephemeral TURN credentials carry no ICE refresh grant", async (context) => {
+  const app = await startTestServer();
+  context.after(() => app.close());
+  const authorization = await authorize(app, "room-no-turn", "Ada");
+  assert.equal(authorization.response.status, 201);
+  assert.equal(Object.hasOwn(authorization.body, "iceRefresh"), false);
+});
+
 for (const variant of ["normal", "reject", "handoff", "handoff-http-abort", "source-program", "source-program-audio", "source-program-video", "source-program-video-audio"]) test(variant.startsWith("source-program-video")
   ? `native source program HTTP v3 selects video strategy (${variant})`
   : variant === "source-program-audio"

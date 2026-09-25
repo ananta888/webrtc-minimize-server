@@ -5,6 +5,7 @@ import { RuntimeConfigService } from "../core/runtime-config.service";
 import { DeviceIdentityService } from "../identity/device-identity.service";
 import { MachineSessionContext, MachineSessionLease, parseMachineSessionContext, parseMachineSessionLease } from "./machine-session-contract";
 import { IceTierPolicy, parseIceTierPolicy } from "./ice-policy";
+import { IceCredentialRefresher, IcePolicySource, parseIceRefreshGrant } from "./ice-credential-refresher";
 import { PeerMeshService } from "./peer-mesh.service";
 import { RoomModerationService } from "./room-moderation.service";
 import { ServerMessage, SignalingService } from "./signaling.service";
@@ -19,6 +20,7 @@ interface SessionResponse {
   readonly signalingPath: string;
   readonly iceServers: readonly RTCIceServer[];
   readonly icePolicy: unknown;
+  readonly iceRefresh?: unknown;
   readonly identity: Readonly<{ authenticated: boolean; displayName?: string }>;
   readonly workspace?: Readonly<{ workspaceId: string; role: "owner" | "editor" | "viewer" }> | null;
 }
@@ -41,6 +43,7 @@ export class RoomSessionService {
   readonly machineLease = signal<MachineSessionLease | null>(null);
   readonly machineContext = signal<MachineSessionContext | null>(null);
   private machineRenewal: SessionOperation | null = null;
+  private iceRefresher: IceCredentialRefresher | null = null;
   private joinOperation: SessionOperation | null = null;
   private sessionGeneration = 0;
   private cleanupUnconfirmed = false;
@@ -110,6 +113,8 @@ export class RoomSessionService {
       if (!response.ok || !body.signalingPath || !Array.isArray(body.iceServers) || !icePolicy) {
         throw new Error(body.error || "session_authorization_failed");
       }
+      const iceRefreshGrant = body.iceRefresh === undefined ? null : parseIceRefreshGrant(body.iceRefresh);
+      if (body.iceRefresh !== undefined && !iceRefreshGrant) throw new Error("session_authorization_failed");
       if (machineGrant && (!Number.isSafeInteger(body.machineExpiresAt)
           || Number(body.machineExpiresAt) <= Date.now() || Number(body.machineExpiresAt) > Date.now() + 600_000
           || this.config.value()?.mediaE2ee.mode !== "required")) {
@@ -134,11 +139,16 @@ export class RoomSessionService {
       this.workspaceId.set(body.workspace?.workspaceId || "");
       this.workspaceRole.set(body.workspace?.role || "");
       this.icePolicy.set(icePolicy);
+      // TURN credentials expire after minutes; the session may last hours.
+      const iceSource: IceTierPolicy | IcePolicySource = iceRefreshGrant
+        ? this.startIceRefresher(icePolicy, iceRefreshGrant, generation)
+        : icePolicy;
       this.signaling.connect(
         body.signalingPath,
-        (message) => { if (generation === this.sessionGeneration) this.handleMessage(message, icePolicy); },
+        (message) => { if (generation === this.sessionGeneration) this.handleMessage(message, iceSource); },
         () => {
           if (generation !== this.sessionGeneration) return;
+          this.stopIceRefresher();
           this.cancelMachineRenewal();
           this.machineExpiresAt.set(0);
           this.joined.set(false);
@@ -149,11 +159,40 @@ export class RoomSessionService {
       );
     } catch (error) {
       if (generation === this.sessionGeneration) {
+        this.stopIceRefresher();
         this.cancelMachineRenewal(); this.machineExpiresAt.set(0);
         this.error.set(error instanceof Error ? error.message : "session_join_failed");
       }
       throw error;
     } finally { controller.dispose(); if (this.joinOperation === controller) this.joinOperation = null; }
+  }
+
+  /**
+   * The session's ICE policy with TURN credentials that are fresh enough for a
+   * new allocation; null while none can be obtained. Use it right before a new
+   * relay-capable RTCPeerConnection instead of the cached `icePolicy` signal.
+   */
+  async freshIcePolicy(reason: string): Promise<IceTierPolicy | null> {
+    const refresher = this.iceRefresher;
+    return refresher ? refresher.refresh(reason) : this.icePolicy();
+  }
+
+  private startIceRefresher(policy: IceTierPolicy, grant: NonNullable<ReturnType<typeof parseIceRefreshGrant>>,
+    generation: number): IceCredentialRefresher {
+    this.stopIceRefresher();
+    const refresher = new IceCredentialRefresher(policy, grant, {
+      updated: (fresh) => {
+        if (generation === this.sessionGeneration && this.iceRefresher === refresher) this.icePolicy.set(fresh);
+      },
+    });
+    this.iceRefresher = refresher;
+    refresher.start();
+    return refresher;
+  }
+
+  private stopIceRefresher(): void {
+    this.iceRefresher?.stop();
+    this.iceRefresher = null;
   }
 
   async renewMachine(grant: string): Promise<MachineSessionLease> {
@@ -193,6 +232,7 @@ export class RoomSessionService {
     this.workspaceId.set("");
     this.workspaceRole.set("");
     this.roomCreator.set(false);
+    this.stopIceRefresher();
     this.icePolicy.set(null);
     this.moderation?.reset();
     let cleanupFailed = false;
@@ -215,7 +255,7 @@ export class RoomSessionService {
     }
   }
 
-  private handleMessage(message: ServerMessage, icePolicy: IceTierPolicy): void {
+  private handleMessage(message: ServerMessage, icePolicy: IceTierPolicy | IcePolicySource): void {
     if (message.type === "welcome") {
       const ownId = String(message["peerId"] || "");
       this.mesh.initialize(

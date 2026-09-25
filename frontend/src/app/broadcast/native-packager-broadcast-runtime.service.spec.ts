@@ -122,10 +122,12 @@ describe("NativePackagerBroadcastRuntimeService", () => {
       selectedPackagerId: () => assignment.packagerId,
       eligible: () => [{ id: assignment.packagerId }],
     };
+    const icePolicy = () => ({ version: 1, directIceServers: [], peerRelayIceServers: [], infrastructureRelayIceServers: [],
+      peerRelayAfterMs: 1_000, infrastructureRelayAfterMs: 2_000 });
     const room = {
       joined: () => true, roomId: () => "room-alpha",
-      icePolicy: () => ({ version: 1, directIceServers: [], peerRelayIceServers: [], infrastructureRelayIceServers: [],
-        peerRelayAfterMs: 1_000, infrastructureRelayAfterMs: 2_000 }),
+      icePolicy,
+      freshIcePolicy: async () => icePolicy(),
     };
     const runtime = new NativePackagerBroadcastRuntimeService(
       control as never, composition as never, captions as never, captionSettings as never,

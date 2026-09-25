@@ -44,7 +44,8 @@ import { BroadcastUsageLedger } from "./broadcast-budget-policy.js";
 import { BroadcastFailoverCoordinator } from "./broadcast-failover-coordinator.js";
 import { SessionTicketError, SessionTicketStore } from "./session-tickets.js";
 import { createMediaAgentIceServers } from "./media-agent-ice.js";
-import { createEdgeTurnCredentials, createTurnCredentials } from "./turn-credentials.js";
+import { issueIcePolicy } from "./ice-policy.js";
+import { ICE_REFRESH_PATH, IceRefreshError, IceRefreshGrantStore } from "./ice-refresh-grants.js";
 import { createNativePackagerIceServers } from "./native-packager-ice.js";
 import { MediaMtxExternalAuthError, MediaMtxExternalAuthService } from "./mediamtx-external-auth.js";
 import { createMediaMtxControlClient } from "./mediamtx-control.js";
@@ -115,6 +116,7 @@ const MAX_HTTP_BODY_BYTES = 16 * 1024;
 const MAX_MEDIA_AGENT_SYNC_BYTES = 32 * 1024 * 1024;
 const ROOM_REQUEST_FIELDS = new Set(["mode", "persistent", "title", "visibility"]);
 const ROOM_UPDATE_FIELDS = new Set(["title", "visibility"]);
+const ICE_REFRESH_REQUEST_FIELDS = new Set(["refreshToken"]);
 const SESSION_REQUEST_FIELDS = new Set(["roomId", "displayName", "mode", "deviceProof", "workspaceInvite", "machineReceiveVersion"]);
 const EVENT_REQUEST_FIELDS = new Set(["eventId", "correlationId", "kind", "payload"]);
 const CURSOR_REQUEST_FIELDS = new Set(["sequence"]);
@@ -389,6 +391,7 @@ function errorStatus(error) {
   if (error instanceof NativeSourceAudioError) return error.status;
   if (error instanceof BroadcastSourceRequestError) return error.status;
   if (error instanceof MachineLeaseError) return error.status;
+  if (error instanceof IceRefreshError) return error.status;
   if (error instanceof RoomDirectoryError) return error.status;
   if (error instanceof PairWorkspaceError) return error.status;
   if (error instanceof MediaAgentEnrollmentError || error instanceof MediaAgentInstallerError) return error.status;
@@ -407,6 +410,17 @@ function errorStatus(error) {
   return 500;
 }
 
+function iceCredentialTtlMs(config, notAfter, now = Date.now()) {
+  return notAfter
+    ? Math.min(config.turnCredentialTtlMs, Math.max(MIN_BREAKOUT_GRANT_MS, notAfter - now))
+    : config.turnCredentialTtlMs;
+}
+
+function observeIssuedTurn(meetObservability, issued) {
+  if (issued.peerEdge) meetObservability?.turn("peer-edge", issued.peerEdge);
+  if (issued.infrastructure) meetObservability?.turn("infrastructure", issued.infrastructure);
+}
+
 function createHttpHandler(config, registry, services) {
   const nativeSourceScenes = services.nativeSourceScenes;
   const nativeSourceAudios = services.nativeSourceAudios;
@@ -416,6 +430,7 @@ function createHttpHandler(config, registry, services) {
     oidcVerifier,
     deviceProofVerifier,
     ticketStore,
+    iceRefreshGrants,
     workspaceStore,
     directory,
     publicDir,
@@ -1558,9 +1573,17 @@ function createHttpHandler(config, registry, services) {
           String(input.workspaceInvite || ""),
         ) || null;
         if (workspace && mode !== "pair") throw new PairWorkspaceError("workspace_pair_mode_required", 409);
-        const origin = requestOrigin(request, config);
         const machineLease = identity?.machineExpiresAt ? machineSessions.issue(identity, device.fingerprint) : null;
         const reservedBreakout = registry.reservedBreakout(roomId);
+        const turnPrincipal = reservedBreakout
+          ? `${principal}:breakout:${roomId}`
+          : principal;
+        const turnNotAfter = reservedBreakout ? reservedBreakout.expiresAt : 0;
+        const ice = issueIcePolicy(config, turnPrincipal, { ttlMs: iceCredentialTtlMs(config, turnNotAfter) });
+        const origin = requestOrigin(request, config);
+        const iceRefreshToken = ice.credentialsExpireAt !== null
+          ? iceRefreshGrants.issue({ turnPrincipal, turnNotAfter, origin })
+          : "";
         const issued = ticketStore.issue({
           roomId,
           mode,
@@ -1579,22 +1602,9 @@ function createHttpHandler(config, registry, services) {
           workspaceRole: workspace?.role || "",
           ...(machineLease ? { machineExpiresAt: identity.machineExpiresAt, machineSessionId: machineLease.sessionId,
             machineCapabilities: identity.machineCapabilities } : {}),
+          ...(iceRefreshToken ? { iceRefreshToken } : {}),
         });
-        const directIceServers = config.stunUrls.map((urls) => ({ urls }));
-        const turnPrincipal = reservedBreakout
-          ? `${principal}:breakout:${roomId}`
-          : principal;
-        const turnTtlMs = reservedBreakout
-          ? Math.min(config.turnCredentialTtlMs, Math.max(MIN_BREAKOUT_GRANT_MS, reservedBreakout.expiresAt - Date.now()))
-          : config.turnCredentialTtlMs;
-        const peerRelayIceServers = createEdgeTurnCredentials(config, turnPrincipal, Date.now(), turnTtlMs);
-        const issuedTurn = createTurnCredentials(config, turnPrincipal, Date.now(), turnTtlMs);
-        if (peerRelayIceServers.length) meetObservability?.turn("peer-edge", peerRelayIceServers.length);
-        if (issuedTurn.length) meetObservability?.turn("infrastructure", issuedTurn.length);
-        const infrastructureRelayIceServers = [
-          ...config.turnServers,
-          ...issuedTurn,
-        ];
+        observeIssuedTurn(meetObservability, ice.issued);
         sendJson(response, 201, {
           ticket: issued.ticket,
           expiresAt: issued.expiresAt,
@@ -1611,20 +1621,28 @@ function createHttpHandler(config, registry, services) {
           } : {}),
           identity: identity ? { authenticated: true, displayName: identity.displayName } : { authenticated: false },
           workspace,
-          icePolicy: {
-            version: 1,
-            directIceServers,
-            peerRelayIceServers,
-            infrastructureRelayIceServers,
-            peerRelayAfterMs: config.peerEdgeFallbackMs,
-            infrastructureRelayAfterMs: config.infrastructureTurnFallbackMs,
-          },
-          iceServers: [
-            ...directIceServers,
-            ...peerRelayIceServers,
-            ...infrastructureRelayIceServers,
-          ],
+          icePolicy: ice.icePolicy,
+          iceServers: ice.iceServers,
+          ...(iceRefreshToken ? {
+            iceRefresh: { path: ICE_REFRESH_PATH, token: iceRefreshToken, expiresAt: ice.credentialsExpireAt },
+          } : {}),
         }, securityHeaders(config));
+        return;
+      }
+      if (url.pathname === ICE_REFRESH_PATH) {
+        if (request.method !== "POST") {
+          response.writeHead(405, { allow: "POST", "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        if (!requestOriginAllowed(request, config) || url.search) throw new ProtocolError("origin_denied");
+        const input = await readJsonBody(request);
+        assertAllowedKeys(input, ICE_REFRESH_REQUEST_FIELDS);
+        const grant = iceRefreshGrants.redeem(input.refreshToken, { origin: request.headers.origin || "" });
+        const ice = issueIcePolicy(config, grant.turnPrincipal, { ttlMs: iceCredentialTtlMs(config, grant.turnNotAfter) });
+        observeIssuedTurn(meetObservability, ice.issued);
+        sendJson(response, 200, { icePolicy: ice.icePolicy, expiresAt: ice.credentialsExpireAt },
+          { ...securityHeaders(config), "cache-control": "no-store", pragma: "no-cache" });
         return;
       }
       if (url.pathname === "/api/workspaces" && request.method === "GET") {
@@ -1730,6 +1748,7 @@ function configureSignaling(
   nativeSourceScenes,
   nativeSourceAudios,
   meetObservability,
+  iceRefreshGrants,
 ) {
   const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
   const mediaAgentWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 96 * 1024 });
@@ -2028,9 +2047,14 @@ function configureSignaling(
     }
     let left = false;
     let sessionOpen = false;
+    if (identity.iceRefreshToken) {
+      iceRefreshGrants?.bind(identity.iceRefreshToken,
+        () => !left && socket.readyState === WebSocket.OPEN && registry.members(peer.roomId).includes(peer));
+    }
     const leave = () => {
       if (left) return;
       left = true;
+      if (identity.iceRefreshToken) iceRefreshGrants?.revoke(identity.iceRefreshToken);
       if (sessionOpen) meetObservability?.sessionClose();
       sessionOpen = false;
       try {
@@ -2940,6 +2964,7 @@ function configureSignaling(
     registry.prune();
     directory.prune(Date.now(), (roomId) => registry.members(roomId).length > 0);
     ticketStore.prune();
+    iceRefreshGrants?.prune();
     mediaAgentEvents.prune();
     nativePackagerAssignments.prune(Date.now(), (ownerPrincipal, expiredAssignment, stopCommand) => {
       safeSend(nativePackagers.socketFor(expiredAssignment.packagerId), stopCommand);
@@ -3001,6 +3026,9 @@ export function createAppServer(options = {}) {
     maxAgeMs: config.deviceProofMaxAgeMs,
   });
   const ticketStore = options.ticketStore || new SessionTicketStore({ ttlMs: config.sessionTicketTtlMs });
+  // A grant must survive the ticket's own lifetime until the WebSocket binds it.
+  const iceRefreshGrants = options.iceRefreshGrants
+    || new IceRefreshGrantStore({ bindTtlMs: (config.sessionTicketTtlMs || 30_000) + 5_000 });
   const mediaAgentEnrollmentStore = options.mediaAgentEnrollmentStore
     || (config.mediaAgentSelfServiceEnabled ? new MediaAgentEnrollmentStore({
       filename: config.mediaAgentRegistrationDb,
@@ -3172,6 +3200,7 @@ export function createAppServer(options = {}) {
     oidcVerifier,
     deviceProofVerifier,
     ticketStore,
+    iceRefreshGrants,
     workspaceStore,
     directory,
     publicDir,
@@ -3231,6 +3260,7 @@ export function createAppServer(options = {}) {
     services.nativeSourceScenes,
     services.nativeSourceAudios,
     meetObservability,
+    services.iceRefreshGrants,
   );
   services.trustedBroadcastSourceControl = signaling.trustedBroadcastSourceControl;
   return {
@@ -3242,6 +3272,7 @@ export function createAppServer(options = {}) {
     registry,
     directory,
     ticketStore,
+    iceRefreshGrants,
     workspaceStore,
     mediaAgents,
     mediaAgentEnrollmentStore,

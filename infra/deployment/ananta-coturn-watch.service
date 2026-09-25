@@ -1,8 +1,11 @@
 [Unit]
-Description=Probe coturn over STUN and restart it when it stops answering
+Description=Probe coturn over STUN and an authenticated TURN allocation; restart it when either fails
 After=docker.service
 Requires=docker.service
 
 [Service]
 Type=oneshot
+# Optional overrides (ANANTA_COTURN_HOST/PORT/CONTAINER/SECRET_FILE). The secret
+# file holds the coturn static-auth-secret, mode 0600 root:root.
+EnvironmentFile=-/etc/ananta/coturn-watch.env
 ExecStart=/usr/local/sbin/ananta-coturn-watch
