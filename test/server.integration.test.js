@@ -1583,6 +1583,48 @@ test("one browser atomically authorizes two owned agents for federation and cros
   for (const client of agents.values()) client.socket.close();
 });
 
+test("room directory keeps a public room id listed across a room-server restart", async (context) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "room-directory-http-"));
+  context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const oidcVerifier = {
+    async verify(token) {
+      if (token !== "bot") throw new AuthenticationError("invalid_access_token");
+      return { issuer: "https://identity.test/realms/webrtc", subject: "ananta-meet-bot", displayName: "Bot" };
+    },
+  };
+  const config = {
+    authMode: "required",
+    oidcIssuer: "https://identity.test/realms/webrtc",
+    oidcJwksUrl: "https://identity.test/certs",
+    oidcAudience: "webrtc-room-server",
+    oidcClientId: "webrtc-browser",
+    roomDirectoryDb: path.join(directory, "room-directory.sqlite"),
+  };
+  const first = await startTestServer(config, { oidcVerifier });
+  const created = await fetch(`${first.httpUrl}/api/rooms`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: first.httpUrl, authorization: "Bearer bot" },
+    body: JSON.stringify({ mode: "room", title: "Ananta ai-snake", visibility: "public" }),
+  }).then((response) => response.json());
+  await first.close();
+
+  const second = await startTestServer(config, { oidcVerifier });
+  context.after(() => second.close());
+  const anonymous = await fetch(`${second.httpUrl}/api/rooms`).then((response) => response.json());
+  assert.deepEqual(anonymous.publicRooms.map(({ roomId, title }) => ({ roomId, title })), [
+    { roomId: created.roomId, title: "Ananta ai-snake" },
+  ]);
+  const owner = await fetch(`${second.httpUrl}/api/rooms`, { headers: { authorization: "Bearer bot" } })
+    .then((response) => response.json());
+  assert.deepEqual(owner.ownRooms.map(({ roomId, owned }) => ({ roomId, owned })), [{ roomId: created.roomId, owned: true }]);
+  const patched = await fetch(`${second.httpUrl}/api/rooms/${created.roomId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", origin: second.httpUrl, authorization: "Bearer bot" },
+    body: JSON.stringify({ visibility: "public", title: "Ananta ai-snake" }),
+  });
+  assert.equal(patched.status, 200);
+});
+
 test("room directory separates public and owned rooms and enforces owner-only visibility changes", async (context) => {
   const identities = {
     owner: { issuer: "https://identity.test/realms/webrtc", subject: "owner", displayName: "Owner" },

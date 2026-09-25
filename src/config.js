@@ -17,6 +17,7 @@ import { BROADCAST_PROGRAM_RUNTIME_DEFAULT_MS } from "./broadcast-program-lifeti
 import { NATIVE_PACKAGER_RESOURCE_DEFAULTS, NATIVE_PACKAGER_RESOURCE_ENV } from "./native-packager-resource-budget.js";
 import { nativeEncoderMinutesFromEnvironment } from "./native-encoder-time-budget.js";
 import { nativePackagerScopedResourcesFromEnvironment } from "./native-packager-scoped-resources.js";
+import { normalizePinnedRooms } from "./room-directory.js";
 
 const DEFAULTS = Object.freeze({
   host: "0.0.0.0",
@@ -54,6 +55,9 @@ const DEFAULTS = Object.freeze({
   peerDataOverlayEnabled: true,
   pairWorkspaceEnabled: true,
   pairWorkspaceDb: "data/pair-workspaces.sqlite",
+  roomDirectoryDb: "",
+  roomDirectoryMaxPerOwner: 100,
+  roomDirectoryPinned: [],
   activeSpeakerLimit: 5,
   mediaAgents: [],
   mediaAgentLeaseMs: 30_000,
@@ -140,6 +144,21 @@ function machineTrustProfileEnvironment(env) {
     throw new Error("machine_trust_configuration_ambiguous");
   }
   return parseMachineTrustProfile(raw);
+}
+
+function parseRoomDirectoryPins(raw) {
+  if (raw === undefined || String(raw).trim() === "") return normalizePinnedRooms([]);
+  let value;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new Error("ROOM_DIRECTORY_PINNED_JSON must contain valid JSON");
+  }
+  try {
+    return normalizePinnedRooms(value);
+  } catch {
+    throw new Error("ROOM_DIRECTORY_PINNED_JSON must list at most 16 {roomId, title, visibility, ownerPrincipal} pins");
+  }
 }
 
 function boundedInteger(value, fallback, { minimum, maximum, name }) {
@@ -625,6 +644,11 @@ export function loadConfig(env = process.env) {
       "PAIR_WORKSPACE_ENABLED",
     ),
     pairWorkspaceDb: String(env.PAIR_WORKSPACE_DB || DEFAULTS.pairWorkspaceDb).trim(),
+    roomDirectoryDb: String(env.ROOM_DIRECTORY_DB || DEFAULTS.roomDirectoryDb).trim(),
+    roomDirectoryPinned: parseRoomDirectoryPins(env.ROOM_DIRECTORY_PINNED_JSON),
+    roomDirectoryMaxPerOwner: boundedInteger(env.ROOM_DIRECTORY_MAX_PER_OWNER, DEFAULTS.roomDirectoryMaxPerOwner, {
+      minimum: 1, maximum: 1_000, name: "ROOM_DIRECTORY_MAX_PER_OWNER",
+    }),
     activeSpeakerLimit: boundedInteger(env.ACTIVE_SPEAKER_LIMIT, DEFAULTS.activeSpeakerLimit, {
       minimum: 2, maximum: 5, name: "ACTIVE_SPEAKER_LIMIT",
     }),

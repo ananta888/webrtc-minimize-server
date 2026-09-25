@@ -1,0 +1,137 @@
+{
+ "$schema": "../todo.track.schema.json",
+ "version": 1,
+ "owner": "webrtc-minimize-server",
+ "track": "room-directory-persistence",
+ "purpose": "Das Raumverzeichnis war rein im Speicher: ein room-server-Neustart loeschte den oeffentlichen Eintrag des Ananta-ai-snake-Raums; der Raum blieb nur per Link erreichbar.",
+ "goal": "Oeffentliche Verzeichniseintraege ueberleben Neustarts mit stabiler Room-ID, ohne Membership, Peer-IDs oder Medien zu persistieren und ohne Clients die Wahl einer Room-ID zu erlauben.",
+ "status": "in_progress",
+ "created": "2026-09-25",
+ "updated": "2026-09-25",
+ "status_scale": [
+  "todo",
+  "in_progress",
+  "partial",
+  "blocked",
+  "done"
+ ],
+ "priority_scale": [
+  "P0",
+  "P1",
+  "P2",
+  "P3"
+ ],
+ "risk_scale": [
+  "low",
+  "medium",
+  "high",
+  "critical"
+ ],
+ "milestones": [
+  {
+   "id": "M1",
+   "title": "Persistentes Raumverzeichnis",
+   "task_ids": [
+    "room-directory-store",
+    "room-directory-pins",
+    "room-directory-live-verification"
+   ],
+   "status": "in_progress"
+  }
+ ],
+ "critical_path_tasks": [
+  "room-directory-store",
+  "room-directory-pins"
+ ],
+ "tasks": [
+  {
+   "id": "room-directory-store",
+   "title": "RoomDirectory optional persistent (node:sqlite, write-through) mit Restart-Schonfrist und Owner-Limit",
+   "status": "done",
+   "priority": "P0",
+   "risk": "high",
+   "progress_percent": 100,
+   "acceptance_criteria": [
+    "Ursache: RoomDirectory hielt #entries nur im Speicher; jeder room-server-Neustart leerte publicRooms (live: oeffentlicher Ananta-ai-snake-Raum nur noch per Link erreichbar)",
+    "ROOM_DIRECTORY_DB (leer = wie bisher nur Speicher; compose: /app/data/room-directory.sqlite im bestehenden Datenvolumen): create/update/touch/prune schreiben durch; Tabelle room_directory, PRAGMA user_version=1, neueres Schema bricht fail-closed ab",
+    "Restore verwirft Zeilen, die create/update ablehnen wuerden (ID-Form, Titel, Sichtbarkeit, Owner); die Idle-Uhr startet beim Restore neu, damit Mitglieder nach dem Neustart zurueckkehren koennen",
+    "ROOM_DIRECTORY_MAX_PER_OWNER (Default 100, 1..1000) begrenzt registrierte Eintraege je Principal (429 room_directory_owner_limit); keine globale Raumobergrenze",
+    "AGENTS.md-Persistenzregel um ausdruecklich konfigurierte Raumverzeichnis-Metadaten ergaenzt; Membership, Peer-IDs und Medien bleiben fluechtig",
+    "test/room-directory.test.js und HTTP-Integration (Neustart mit gleicher DB listet dieselbe roomId) gruen"
+   ]
+  },
+  {
+   "id": "room-directory-pins",
+   "title": "Operator-gepinnte Directory-Eintraege mit fester Room-ID (ROOM_DIRECTORY_PINNED_JSON)",
+   "status": "done",
+   "priority": "P0",
+   "risk": "medium",
+   "progress_percent": 100,
+   "acceptance_criteria": [
+    "Bis zu 16 Pins {roomId room-<18 hex>, title, visibility (Default public), ownerPrincipal issuer|subject}; ungueltige Konfiguration bricht beim Start ab",
+    "Pins werden bei jedem Start mit genau ihrer Room-ID wiederhergestellt (auch ohne Store), gehoeren dem Pin-Principal und werden nie idle-geprunt; Titel/Sichtbarkeit bleiben danach beim Owner",
+    "Nur die Operator-Konfiguration kann eine Room-ID vorgeben; POST /api/rooms erzeugt IDs weiter serverseitig",
+    "Begruendung: Persistenz allein haelt die ID nicht, wenn der Eintrag schon verloren ist (live) oder nach >1 h ohne Mitglieder geprunt wird; der Hub kann eine bestimmte ID nicht neu registrieren"
+   ]
+  },
+  {
+   "id": "room-directory-live-verification",
+   "title": "Live-Nachweis: oeffentlicher ai-snake-Raum ueberlebt docker restart mit gleicher Room-ID",
+   "status": "todo",
+   "priority": "P1",
+   "risk": "medium",
+   "progress_percent": 0,
+   "acceptance_criteria": [
+    "Deploy mit ROOM_DIRECTORY_DB und Pin fuer room-f83fb2149cf761cbee (Owner: Keycloak-Issuer|Subject von ananta-meet-bot)",
+    "GET /api/rooms listet den Raum vor und nach docker restart; Ananta-Companion meldet public_room reused=True (ananta todo.meet-public-room-self-heal MPR-004)"
+   ]
+  }
+ ],
+ "tasks_status_summary": {
+  "total": 3,
+  "by_status": {
+   "todo": 1,
+   "in_progress": 0,
+   "partial": 0,
+   "blocked": 0,
+   "done": 2
+  },
+  "progress_percent_done": 66.67,
+  "by_priority": {
+   "P0": 2,
+   "P1": 1,
+   "P2": 0,
+   "P3": 0
+  },
+  "by_risk": {
+   "low": 0,
+   "medium": 2,
+   "high": 1,
+   "critical": 0
+  },
+  "critical_path": {
+   "total": 2,
+   "done": 2,
+   "remaining": 0
+  },
+  "milestones": {
+   "total": 1,
+   "todo": 0,
+   "in_progress": 1,
+   "blocked": 0,
+   "done": 0
+  }
+ },
+ "progress_summary": {
+  "state": "in_progress",
+  "todo_remaining": 1,
+  "in_progress": 0,
+  "partial": 0,
+  "blocked": 0,
+  "done": 2
+ },
+ "summary_notes": [
+  "Hub-/Companion-Selbstheilung liegt in ananta (todos/active/todo.meet-public-room-self-heal.json).",
+  "Kein Deployment; kein npm run check (Slice); gezielte node --test-Laeufe in docker node:22."
+ ]
+}

@@ -2987,6 +2987,9 @@ export function createAppServer(options = {}) {
   const directory = options.directory || new RoomDirectory({
     maxParticipants: config.maxRoomParticipants,
     idleTtlMs: config.roomIdleTtlMs,
+    maxEntriesPerOwner: config.roomDirectoryMaxPerOwner,
+    filename: config.roomDirectoryDb,
+    pinned: config.roomDirectoryPinned,
   });
   const oidcVerifier = options.oidcVerifier || createOidcVerifier(config);
   const machineAdmission = new MachineAdmission({ publicKey: config.machineHubPublicKey, issuer: config.machineHubIssuer,
@@ -3213,6 +3216,7 @@ export function createAppServer(options = {}) {
   }
   server.on("close", () => machineSessions.destroy());
   if (!options.workspaceStore && workspaceStore) server.on("close", () => workspaceStore.close());
+  if (!options.directory) server.on("close", () => directory.close());
   if (!options.mediaAgentEnrollmentStore && mediaAgentEnrollmentStore) {
     server.on("close", () => mediaAgentEnrollmentStore.close());
   }

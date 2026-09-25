@@ -255,6 +255,8 @@ Die öffentliche Voreinstellung steht in `.env.example`, das getrennte localhost
 - `NATIVE_PACKAGER_REGISTRATION_DB`, `NATIVE_PACKAGER_ARTIFACT_DIR`: P-256-Registrierung und Verzeichnis der SHA-256-gebundenen plattformspezifischen Artefakte.
 - `NATIVE_PACKAGER_ENROLLMENT_TTL_MS`, `NATIVE_PACKAGER_MAX_PER_PRINCIPAL`: Ablauf des Einmaltickets und kontobezogene Gerätequote. Raumfreigaben bleiben flüchtig und default-aus.
 - `PAIR_WORKSPACE_ENABLED`, `PAIR_WORKSPACE_DB`: optionaler persistenter Pair-Workspace und Pfad seines SQLite-Volumes.
+- `ROOM_DIRECTORY_DB`, `ROOM_DIRECTORY_MAX_PER_OWNER`: optionaler SQLite-Pfad für Raumverzeichnis-Metadaten (Titel, Sichtbarkeit, Owner; leer = nur im Speicher) und Obergrenze registrierter Verzeichniseinträge je OIDC-Principal (Standard 100). Mit Pfad überlebt ein öffentlicher Eintrag samt Raum-ID einen Neustart; die Idle-Uhr beginnt beim Start neu. Membership, Peer-IDs und Medien bleiben flüchtig.
+- `ROOM_DIRECTORY_PINNED_JSON`: optionale Operator-Liste (höchstens 16) von `{roomId, title, visibility, ownerPrincipal}` (`ownerPrincipal` = `<OIDC-Issuer>|<Subject>`). Gepinnte Einträge werden bei jedem Start mit genau dieser Raum-ID wiederhergestellt, gehören dem genannten Principal und werden nie wegen Leerlaufs entfernt; Titel/Sichtbarkeit bleiben danach beim Owner. Nur diese Konfiguration kann eine Raum-ID vorgeben, die HTTP-API erzeugt IDs weiterhin serverseitig. Beispiel: der öffentliche Ananta-ai-snake-Raum mit dem Keycloak-Subject des Meet-Bots.
 
 Beispiel für einen externen Coturn-Dienst:
 

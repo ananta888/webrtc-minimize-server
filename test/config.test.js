@@ -25,6 +25,9 @@ test("loadConfig provides bounded browser-safe defaults", () => {
   assert.equal(config.peerRouteRenewMs, 25_000);
   assert.equal(config.peerDataOverlayEnabled, true);
   assert.equal(config.pairWorkspaceEnabled, true);
+  assert.equal(config.roomDirectoryDb, "");
+  assert.equal(config.roomDirectoryMaxPerOwner, 100);
+  assert.deepEqual(config.roomDirectoryPinned, []);
   assert.equal(config.activeSpeakerLimit, 5);
   assert.deepEqual(config.mediaAgents, []);
   assert.equal(config.mediaAgentLeaseMs, 30_000);
@@ -76,6 +79,11 @@ test("loadConfig parses TURN configuration without preserving unknown fields", (
 test("loadConfig rejects unsafe bounds and malformed public origins", () => {
   assert.equal(loadConfig({ MAX_ROOM_PARTICIPANTS: "2" }).maxRoomParticipants, 2);
   assert.throws(() => loadConfig({ MAX_ROOM_PARTICIPANTS: "21" }), /between 2 and 20/);
+  assert.throws(() => loadConfig({ ROOM_DIRECTORY_MAX_PER_OWNER: "0" }), /ROOM_DIRECTORY_MAX_PER_OWNER/);
+  assert.throws(() => loadConfig({ ROOM_DIRECTORY_PINNED_JSON: "{" }), /ROOM_DIRECTORY_PINNED_JSON/);
+  assert.throws(() => loadConfig({ ROOM_DIRECTORY_PINNED_JSON: "[{\"roomId\":\"x\"}]" }), /ROOM_DIRECTORY_PINNED_JSON/);
+  assert.equal(loadConfig({ ROOM_DIRECTORY_PINNED_JSON: JSON.stringify([{ roomId: "room-" + "a".repeat(18),
+    title: "Ananta ai-snake", ownerPrincipal: "issuer|bot" }]) }).roomDirectoryPinned[0].visibility, "public");
   assert.throws(() => loadConfig({ PUBLIC_ORIGIN: "https://example.test/app" }), /without a path/);
   assert.throws(() => loadConfig({ TURN_SERVERS_JSON: "{}" }), /must be an array/);
   assert.throws(() => loadConfig({ AUTH_MODE: "required" }), /OIDC_ISSUER/);
