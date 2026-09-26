@@ -101,6 +101,7 @@ import { TrustedBroadcastSourceGrants } from "./trusted-broadcast-source-grants.
 import { TrustedBroadcastSourceControl } from "./trusted-broadcast-source-control.js";
 import { TrustedBroadcastSourceActions } from "./trusted-broadcast-source-actions.js";
 import { executeSourceModeration } from "./broadcast-source-moderation.js";
+import { applyHttpKeepAlive } from "./http-keep-alive.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
@@ -3224,7 +3225,7 @@ export function createAppServer(options = {}) {
     broadcastUsageLedger,
     broadcastFailover,
   };
-  const server = http.createServer(createHttpHandler(config, registry, services));
+  const server = applyHttpKeepAlive(http.createServer(createHttpHandler(config, registry, services)), config);
   server.on("close", () => {
     broadcastMetrics.destroy();
     meetObservability.destroy();

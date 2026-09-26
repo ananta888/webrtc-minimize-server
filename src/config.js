@@ -27,6 +27,8 @@ const DEFAULTS = Object.freeze({
   turnServers: [],
   maxRoomParticipants: DEFAULT_ROOM_PARTICIPANTS,
   roomIdleTtlMs: 60 * 60 * 1000,
+  // Above Caddy's 2 min upstream idle timeout; see src/http-keep-alive.js.
+  httpKeepAliveTimeoutMs: 130_000,
   signalRateLimit: 300,
   authMode: "disabled",
   oidcIssuer: "",
@@ -571,6 +573,9 @@ export function loadConfig(env = process.env) {
     ),
     roomIdleTtlMs: boundedInteger(env.ROOM_IDLE_TTL_MS, DEFAULTS.roomIdleTtlMs, {
       minimum: 60_000, maximum: 24 * 60 * 60 * 1000, name: "ROOM_IDLE_TTL_MS",
+    }),
+    httpKeepAliveTimeoutMs: boundedInteger(env.HTTP_KEEP_ALIVE_TIMEOUT_MS, DEFAULTS.httpKeepAliveTimeoutMs, {
+      minimum: 5_000, maximum: 600_000, name: "HTTP_KEEP_ALIVE_TIMEOUT_MS",
     }),
     signalRateLimit: boundedInteger(env.SIGNAL_RATE_LIMIT, DEFAULTS.signalRateLimit, {
       minimum: 10, maximum: 1000, name: "SIGNAL_RATE_LIMIT",
