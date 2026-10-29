@@ -21,15 +21,15 @@ function fixture() {
 describe("machine chat session authority projection", () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); vi.stubGlobal("location", { origin: "https://meet.example" }); });
   afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); });
-  it("opens with only read authority and publisher consent without any send effect", () => {
+  it("opens with verified read authority without any send effect", () => {
     const f = fixture();
-    expect(f.service.endpoint.open()).toMatchObject({ generation: 1, deadline_ms: now + 30_000 });
+    expect(f.service.endpoint.open()).toMatchObject({ generation: 1, deadline_ms: now + 60_000 });
     expect(f.service.endpoint.poll().events).toEqual([]);
     expect(() => f.service.endpoint.reply("a".repeat(32), "Antwort")).toThrow("meet_chat_reply_denied");
     expect(f.service.endpoint.status().open).toBe(true);
     expect(f.mesh.sendMachineChatReply).not.toHaveBeenCalled(); f.service.ngOnDestroy();
   });
-  it.each(["send-only", "no-consent", "expired-consent", "not-joined"])("rejects %s without subscribing", mode => {
+  it.each(["send-only", "not-joined"])("rejects %s without subscribing", mode => {
     const f = fixture();
     if (mode === "send-only") { f.capabilities.delete("chat.read"); f.capabilities.add("chat.send"); }
     if (mode === "no-consent") f.grants.set([]);
@@ -37,6 +37,20 @@ describe("machine chat session authority projection", () => {
     if (mode === "not-joined") f.session.joined.set(false);
     expect(() => f.service.endpoint.open()).toThrow("meet_chat_authority_unavailable");
     expect(f.mesh.subscribeMachineChat).not.toHaveBeenCalled(); f.service.ngOnDestroy();
+  });
+  it.each(["no-consent", "expired-consent"])("legacy %s does not override Hub capability or lease", mode => {
+    const f = fixture();
+    f.grants.set(mode === "no-consent" ? [] : [{ machinePeerId: own, chatRead: true, expiresAt: now }]);
+    expect(f.service.endpoint.open()).toMatchObject({ generation: 1, deadline_ms: now + 60_000 });
+    expect(f.service.endpoint.poll().events).toEqual([]);
+    expect(f.mesh.sendMachineChatReply).not.toHaveBeenCalled(); f.service.ngOnDestroy();
+  });
+  it("Hub lease expiry prevents reopening even when old consent remains", () => {
+    const f = fixture(); f.service.endpoint.open();
+    vi.advanceTimersByTime(60_001);
+    expect(f.service.endpoint.status().open).toBe(false);
+    expect(() => f.service.endpoint.open()).toThrow("meet_chat_authority_changed");
+    f.service.ngOnDestroy();
   });
   it("fences a read-only subscription on renewal and requires explicit reopening", () => {
     const f = fixture(); f.service.endpoint.open();

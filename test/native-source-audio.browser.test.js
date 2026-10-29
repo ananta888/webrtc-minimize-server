@@ -21,7 +21,7 @@ async function confirm(page, action, accepted = true) {
 for (const strategies of [null, ["balanced", "speech-first"], ["screen-first", "unprocessed"]]) test(`rendered Angular audio controls actual native ${strategies ? "two-source priorities " + strategies.join("+") : "gain/mute"} without expanding consent`, { timeout: 150_000 }, async t => {
   if (process.platform !== "linux") { t.skip("Actual native production process requires Linux containment and local FFmpeg"); return; }
   const f = await nativeSceneLiveFixture(t, { allowSyntheticAudio: true, allowSyntheticScreen: Boolean(strategies), allowSyntheticScreenAudio: Boolean(strategies),
-    observeSourceState: Boolean(strategies) }), { page } = f;
+    observeSourceState: true, observeSourceLeases: true }), { page } = f;
   page.setDefaultTimeout(5000);
   let stage = "setup";
   const replies = [];

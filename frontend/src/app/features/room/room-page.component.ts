@@ -49,15 +49,18 @@ import { MediaControlBarComponent } from "../../shared/media-control-bar.compone
 import { RoomParticipantListComponent } from "../../shared/room-participant-list.component";
 import { BreakoutControlsComponent } from "../../shared/breakout-controls.component";
 import { WhiteboardBoardComponent } from "../../shared/whiteboard-board.component";
+import { DiagramPanelComponent } from "../../shared/diagram-panel.component";
 import { SharedNotesPanelComponent } from "../../shared/shared-notes-panel.component";
 import { PollPanelComponent } from "../../shared/poll-panel.component";
 import { MediaStreamDirective } from "../../shared/media-stream.directive";
+import { LocalPreviewSilenceDirective } from "../../shared/local-preview-silence.directive";
 import { MediaMosaicComponent } from "../../shared/media-mosaic.component";
 import { BlindMediaAgentService } from "../../webrtc/blind-media-agent.service";
 import { CaptionAudioSource } from "../../webrtc/caption-contract";
 import { OptimizationMode } from "../../webrtc/media-optimization-policy";
 import { MediaPublicationService } from "../../webrtc/media-publication.service";
 import { MediaStrategyService } from "../../webrtc/media-strategy.service";
+import { EchoGuardService } from "../../webrtc/echo-guard.service";
 import { PeerMeshService } from "../../webrtc/peer-mesh.service";
 import { ReceiveQualityPreferenceService } from "../../webrtc/receive-quality-preference.service";
 import { RoomMode, RoomSessionService } from "../../webrtc/room-session.service";
@@ -71,7 +74,7 @@ import { PresentationStageService } from "../../webrtc/presentation-stage.servic
 import { MeshAnalysisComponent } from "../../mesh-analysis/mesh-analysis.component";
 import { MachinePermissionsPanelComponent } from "../machine/machine-permissions-panel.component";
 
-type AppSection = "rooms" | "live" | "broadcast" | "captions" | "analysis" | "chat" | "settings" | "whiteboard";
+type AppSection = "rooms" | "live" | "broadcast" | "captions" | "analysis" | "chat" | "settings" | "whiteboard" | "diagram";
 
 @Component({
   selector: "app-room-page",
@@ -88,6 +91,8 @@ type AppSection = "rooms" | "live" | "broadcast" | "captions" | "analysis" | "ch
     PollPanelComponent,
     BreakoutControlsComponent,
     MediaStreamDirective,
+    LocalPreviewSilenceDirective,
+    DiagramPanelComponent,
     MediaMosaicComponent,
     MeshAnalysisComponent,
     MachinePermissionsPanelComponent,
@@ -221,6 +226,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
     readonly captions: LiveCaptionService,
     readonly captionModels: VoskModelManagerService,
     readonly mediaStrategy: MediaStrategyService,
+    readonly echoGuard: EchoGuardService,
     readonly receiveQuality: ReceiveQualityPreferenceService,
     readonly videoPreferences: VideoCapturePreferencesService,
     readonly directory: RoomDirectoryService,
@@ -251,7 +257,7 @@ export class RoomPageComponent implements OnInit, OnDestroy {
       this.stage.setFullscreen(Boolean(document.fullscreenElement));
     });
     const params = new URLSearchParams(location.search);
-    if (new Set<AppSection>(["rooms", "live", "broadcast", "captions", "analysis", "chat", "settings", "whiteboard"]).has(params.get("section") as AppSection)) {
+    if (new Set<AppSection>(["rooms", "live", "broadcast", "captions", "analysis", "chat", "settings", "whiteboard", "diagram"]).has(params.get("section") as AppSection)) {
       this.activeSection.set(params.get("section") as AppSection);
     }
     this.roomInput.set(params.get("room") || "");
@@ -551,6 +557,10 @@ export class RoomPageComponent implements OnInit, OnDestroy {
 
   setAudioQualityProfile(profile: unknown): void {
     void this.media.setAudioQualityProfile(profile);
+  }
+
+  confirmMusicEcho(): void {
+    this.media.confirmMusicEchoRisk();
   }
 
   setMediaPriorityAt(index: number, source: unknown): void {

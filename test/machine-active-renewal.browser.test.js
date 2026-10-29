@@ -10,7 +10,7 @@ if (!["ordinary", "extended"].includes(renewalProfile)) throw new Error("test_di
 const renewals = renewalProfile === "extended" ? 39 : 3;
 
 for (const humanEngine of ["chromium", "firefox"]) {
-  test(`${humanEngine} active audio/chat/screen recover through ${renewals} lease replacements without extending consent`,
+  test(`${humanEngine} active audio/chat/screen recover through ${renewals} lease replacements under current Hub capabilities`,
     { timeout: renewalProfile === "extended" ? 300_000 : 100_000 }, async t => {
     const f = await machineBrowserFixture(t, { humanEngine }), { human, machine } = f;
     t.after(async () => {
@@ -26,12 +26,8 @@ for (const humanEngine of ["chromium", "firefox"]) {
     await human.locator('#toggle-microphone[aria-pressed="true"]').waitFor();
     await human.locator(".nav-item", { hasText: "Analyse" }).click();
     const panel = human.locator("app-machine-permissions-panel");
-    await panel.getByRole("button", { name: "Für diese KI einstellen" }).click();
-    await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).check();
-    await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).check();
-    await panel.getByRole("button", { name: "Auswahl ausdrücklich freigeben" }).click();
-    await panel.getByText("Serverbestätigung erhalten.", { exact: true }).waitFor();
-    const consentText = await panel.getByText(/Bestätigte Freigabe bis/).innerText();
+    await panel.getByText("Leserecht vorhanden / Senderecht vorhanden", { exact: true }).waitFor();
+    assert.equal(await panel.locator('input, select').count(), 0);
     await machine.waitForFunction(() => window.anantaMachine.audio.sources().length === 1, null, { timeout: 12_000 });
     const receipts = [];
     let originalLease;
@@ -68,8 +64,7 @@ for (const humanEngine of ["chromium", "firefox"]) {
       originalLease ??= lease;
       assert.equal(lease.sessionId, originalLease.sessionId); assert.equal(lease.generation, originalLease.generation + phase);
       await human.locator(".nav-item", { hasText: "Analyse" }).click();
-      assert.equal(await panel.getByText(/Bestätigte Freigabe bis/).innerText(), consentText);
-      assert.equal(await panel.getByRole("button", { name: "Für diese KI einstellen" }).count(), 1);
+      await panel.getByText("Leserecht vorhanden / Senderecht vorhanden", { exact: true }).waitFor();
       receipts.push({ generation: lease.generation, samples: received.samples, nonzero: received.nonzero, color });
       if (phase === renewals) break;
       assert.deepEqual(await machine.evaluate(() => ({ audio: window.anantaMachine.audio.status().open,
@@ -80,24 +75,22 @@ for (const humanEngine of ["chromium", "firefox"]) {
         && !window.anantaMachine.screen.status().open, null, { timeout: 2000 });
       assert.deepEqual(await machine.evaluate(staleDialogDenied), { audio: true, chat: true, screen: true });
     }
-    // Publisher revocation affects receive rights, not an independently allowed
-    // agent-owned screen. A fresh Hub lease must not regrant those human sources.
-    await panel.getByRole("button", { name: "Meine Freigaben widerrufen" }).click();
-    await panel.getByText("Keine Empfangsfreigabe erteilt.", { exact: true }).waitFor();
-    await machine.waitForFunction(() => !window.anantaMachine.audio.status().open && !window.anantaMachine.chat.status().open
-      && window.anantaMachine.audio.sources().length === 0, null, { timeout: 2000 });
-    assert.equal(await machine.evaluate(() => window.anantaMachine.screen.status().open), true);
-    await machine.evaluate(grant => window.anantaMachine.renew(grant), await f.grant(caps));
+    // Capability replacement is not a legal same-session renewal. Rejection
+    // cannot be mistaken for revocation; explicit Leave ends actual authority.
+    await assert.rejects(machine.evaluate(grant => window.anantaMachine.renew(grant),
+      await f.grant(["screen.publish"])), /machine_renewal_denied/);
+    await machine.evaluate(async () => { await window.__activeDialog.stop(); window.anantaMachine.leave(); });
+    await machine.waitForFunction(() => !window.anantaMachine.status().joined
+      && !window.anantaMachine.audio.status().open && !window.anantaMachine.chat.status().open, null, { timeout: 2000 });
     const revoked = await machine.evaluate(() => {
       let chatDenied = false;
       try { window.anantaMachine.chat.open(); } catch { chatDenied = true; }
       return { chatDenied, sources: window.anantaMachine.audio.sources().length, joined: window.anantaMachine.status().joined };
     });
-    assert.deepEqual(revoked, { chatDenied: true, sources: 0, joined: true });
-    await human.locator(".nav-item").filter({ hasText: /^Live/ }).click();
-    assert.equal(await human.locator("#participant-count").innerText(), "2 / 20 Teilnehmer");
+    assert.deepEqual(revoked, { chatDenied: true, sources: 0, joined: false });
+    await panel.getByText("Zurzeit ist keine KI im Raum verbunden.", { exact: true }).waitFor();
     assert.deepEqual(await machine.evaluate(() => ({ capture: window.__captures, errors: window.__transformErrors })), { capture: 0, errors: [] });
     assert.deepEqual(await human.evaluate(() => ({ capture: window.__captures, errors: window.__transformErrors })), { capture: 1, errors: [] });
-    t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, unchangedConsent: true, receipts }));
+    t.diagnostic(JSON.stringify({ synthetic: true, productionEvidence: false, incompatibleRenewalDenied: true, leaveRevoked: true, receipts }));
   });
 }

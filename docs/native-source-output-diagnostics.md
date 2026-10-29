@@ -200,3 +200,9 @@ Separately, related broadcast cleanup hooks share one server-close listener,
 avoiding the new 11-listener warning without changing EventEmitter thresholds.
 The real HTTP/JWT/P-256/source-revoke fixture checks the listener bound and
 still verifies shutdown, passing in 2.146 seconds total without audio/browser.
+
+## Pre-close audio clock expiry and passive source authority
+
+Grouped audio gates reproduced native microphone clock failure3 (expiry) while writer authority, device generation and publication stayed stable. Because clock close wipes its normal report counters, the explicit private test overlay now additionally copies source_clock.go into an owned0600file. It records only bounded accepted/offered report counts and report/quarantine expiry booleans before that existing close branch. Nonblocking TryLock and80clock entries bound the recorder; it reads the already sampled clock time and never extends freshness, invokes policy or changes the12second deadline. Release source stays unchanged. The strict source-state-v2 projection carries these fields; old source-state-v1 remains exact and compatible. No timestamps, SSRCs, identifiers, media or keys are exported.
+
+A separate passive JS helper observes only the existing writer/capability/publication reads and preserves their return identity and thrown object. Its64entry/64row bound and closed metadata reveal binding changes without adding an authorization query. Nine focused checks pass in82.698ms and five paired actual native audio/encoding cases pass in210.746seconds. The successful run observes no expiry subtype; the earlier grouped failure is not treated as repaired. SRP keeps diagnosis out of production policy and timing, and existing getters remain substitutable (LSP).

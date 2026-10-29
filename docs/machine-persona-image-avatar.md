@@ -26,7 +26,7 @@ decoder retains its sole permit until it actually settles, even after source
 timeout/cancel; repeated opens cannot accumulate decoders. Late bitmaps are
 closed and never attach. The source generation and current authority are checked
 again before attachment. Canvas, bitmap and camera ownership are released on
-failure/stop. The existing 30-second activation, 2500-ms controller heartbeat,
+failure/stop. The 120-second activation capped by verified authority expiry, 2500-ms controller heartbeat,
 100-ms watchdog and concrete SFrame readiness remain unchanged.
 
 Lifecycle, image validation/loading, artwork layout and publication resources

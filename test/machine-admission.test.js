@@ -163,7 +163,8 @@ test("v2 scope and publisher receipts cross real HTTP/WebSocket boundaries witho
   const authorization = await receipt.json();
   assert.equal(authorization.schema, "ananta.meet-authorization.v1");
   assert.equal(authorization.nonce, "a".repeat(32)); assert.equal(authorization.peerId, machine.welcome.peerId);
-  assert.deepEqual(authorization.grants, granted.grants); assert.equal(authorization.receiveRevision, 1);
+  assert.deepEqual(authorization.grants, [{ ...granted.grants[0], expiresAt: authorization.lease.expiresAt }]);
+  assert.equal(authorization.receiveRevision, 1);
   assert.deepEqual(authorization.publications, [{ peerId: human.welcome.peerId, publicationId: "human-mic",
     source: "microphone", publicationEpoch: 1 }]);
   assert.equal((await inspect()).status, 401);

@@ -8,7 +8,7 @@ export interface MachineAvatarSurface {
   frame(sequence: number): void;
   close(): void;
 }
-export type MachineAvatarProfile = "neutral-ai-v1" | "persona-image-v1" | "persona-video-v1";
+export type MachineAvatarProfile = "neutral-ai-v1" | "persona-image-v1" | "persona-video-v1" | "persona-sequence-v1";
 interface AvatarPorts {
   authority(): MachineAvatarAuthority;
   create(profile: MachineAvatarProfile, image: unknown, check: () => void): MachineAvatarSurface;
@@ -17,8 +17,11 @@ interface AvatarPorts {
 }
 export interface MachineAvatarReceipt {
   schema: "ananta.meet-avatar-source.v1"; profile: MachineAvatarProfile;
-  generation: number; width: 256; height: 256; fps: 5; heartbeatMs: 2500; expiresAt: number;
+  generation: number; width: 256; height: 256; fps: 5 | 40; heartbeatMs: 2500; expiresAt: number;
 }
+const ACTIVATION_MS = 120_000;
+const SETUP_MS = 110_000;
+
 export class MachineAvatarSource {
   private generation = 0;
   private state: "closed" | "opening" | "open" | "waiting" | "failed" = "closed";
@@ -33,7 +36,6 @@ export class MachineAvatarSource {
   private expiresAt = 0;
   private frames = 0;
   private protectionLostAt = 0;
-  private lastReadyLog = 0;
   private controllerUntil = 0;
   private profile: MachineAvatarProfile = "neutral-ai-v1";
   private readonly clock: () => number;
@@ -47,7 +49,8 @@ export class MachineAvatarSource {
   async open(sourceId: string, profile: string, image?: unknown): Promise<MachineAvatarReceipt> {
     if (this.scope) throw new Error("meet_avatar_busy");
     const authority = this.ports.authority(), now = this.clock(), local = this.monotonicClock();
-    if ((profile !== "neutral-ai-v1" && profile !== "persona-image-v1" && profile !== "persona-video-v1")
+    if ((profile !== "neutral-ai-v1" && profile !== "persona-image-v1" && profile !== "persona-video-v1"
+        && profile !== "persona-sequence-v1")
       || (profile === "neutral-ai-v1" && image !== undefined) || (profile !== "neutral-ai-v1" && image === undefined)
       || typeof sourceId !== "string" || sourceId !== authority.sourceId
       || !authority.sessionId || !Number.isSafeInteger(authority.leaseGeneration) || authority.leaseGeneration < 1
@@ -58,7 +61,7 @@ export class MachineAvatarSource {
     this.scope = { ...authority }; this.generation++; this.state = "opening"; this.profile = profile;
     this.lastClock = now; this.started = this.lastMonotonic = local;
     this.lastFrame = 0; this.frames = 0; this.protectionLostAt = 0;
-    this.expiresAt = Math.min(authority.expiresAt, now + 30_000);
+    this.expiresAt = Math.min(authority.expiresAt, now + ACTIVATION_MS);
     this.controllerUntil = local + 2500;
     const generation = this.generation;
     try { this.surface = this.ports.create(profile, image, () => {
@@ -79,7 +82,7 @@ export class MachineAvatarSource {
     const current = this.ports.authority(), scope = this.scope, now = this.clock(), local = this.monotonicClock();
     const cause = !scope ? "inactive" : !Number.isFinite(now) || !Number.isFinite(local) ? "clock-invalid"
       : now < this.lastClock || local < this.lastMonotonic ? "clock-backwards"
-      : now >= this.expiresAt || local >= this.started + 120_000 ? "activation-expired"
+      : now >= this.expiresAt || local >= this.started + ACTIVATION_MS ? "activation-expired"
       : this.state !== "opening" && local >= this.controllerUntil ? "controller-expired" : current.sourceId !== scope.sourceId ? "source-id"
       : current.sessionId !== scope.sessionId ? "session-id" : current.leaseGeneration !== scope.leaseGeneration ? "lease-generation"
       : current.membershipEpoch !== scope.membershipEpoch ? "membership-epoch"
@@ -94,8 +97,7 @@ export class MachineAvatarSource {
     } else if (cause) {
       // Fixed internal reason only: never retain the authority or its values.
       try {
-        console.warn("[avatardbg] authority-expired cause=" + cause
-          + " current=" + JSON.stringify(current) + " scope=" + JSON.stringify(scope));
+        console.warn("[avatardbg] authority-expired cause=" + cause);
       } catch { /* Diagnostics must never break the avatar. */ }
       throw new Error("meet_avatar_authority_expired:" + cause, { cause });
     }
@@ -104,31 +106,23 @@ export class MachineAvatarSource {
 
   private tick(): void {
     try {
-      // Observe readiness once per tick: two ready() calls can disagree, and a
-      // source that is up must never be fenced by the second, stale look.
+      // Readiness is not authority: fence identity, clocks and expiry before
+      // exporting the first frame or settling the opening receipt.
+      let now = this.check();
       const ready = this.surface!.ready();
       if (this.state === "opening" && ready) {
-        // Setup finished. Settle opening -> open before any deadline can fence
-        // it: an expired activation window then ends the settled source on a
-        // later tick and forces a clean re-open, instead of rejecting a setup
-        // that demonstrably succeeded.
+        // A surface port may have synchronous side effects; readiness cannot
+        // retain the authority checked before that call.
+        now = this.check();
         this.state = "open"; this.protectionLostAt = 0;
-        clearInterval(this.timer); this.timer = setInterval(() => this.tick(), 100);
-        this.render(this.progress());
+        // The controller only receives its generation after setup succeeds.
+        this.controllerUntil = now + 2500;
+        clearInterval(this.timer); this.timer = setInterval(() => this.tick(), this.profile === "persona-sequence-v1" ? 25 : 100);
+        this.render(now);
         return;
       }
-      const now = this.check();
       if (this.state === "opening") {
-        // The synthetic avatar only becomes ready once its publication is
-        // media-E2EE protected, which needs the media-key handshake to land.
-        // 10s was too tight and caused black/no-stream churn; give it 30s.
-        if (now - this.started >= 110_000) throw new Error("meet_avatar_setup_timeout");
-        if (now - this.lastReadyLog >= 1000) {
-          this.lastReadyLog = now;
-          try {
-            console.warn("[avatardbg] opening " + JSON.stringify(this.surface!.diagnostics?.() ?? {}));
-          } catch { /* Diagnostics must never break the avatar. */ }
-        }
+        if (now - this.started >= SETUP_MS) throw new Error("meet_avatar_setup_timeout");
         return;
       }
       if (!ready) {
@@ -143,23 +137,17 @@ export class MachineAvatarSource {
     } catch (error) { this.release("failed", error instanceof Error ? error : new Error("meet_avatar_failed")); }
   }
 
-  /** Monotonic progress without the authority fence, for an already settled setup. */
-  private progress(): number {
-    const local = this.monotonicClock();
-    if (Number.isFinite(local) && local >= this.lastMonotonic) this.lastMonotonic = local;
-    return this.lastMonotonic;
-  }
-
   /** Paces frames and hands out the one-shot receipt; a released generation has none. */
   private render(now: number): void {
-    if (!this.frames || now - this.lastFrame >= 200) {
+    if (!this.frames || now - this.lastFrame >= (this.profile === "persona-sequence-v1" ? 25 : 200)) {
       this.surface!.frame(++this.frames); this.lastFrame = now;
     }
     const pending = this.pending;
     if (!pending) return;
     this.pending = undefined;
     pending.resolve({ schema: "ananta.meet-avatar-source.v1", profile: this.profile, generation: this.generation,
-      width: 256, height: 256, fps: 5, heartbeatMs: 2500, expiresAt: this.expiresAt });
+      width: 256, height: 256, fps: this.profile === "persona-sequence-v1" ? 40 : 5,
+      heartbeatMs: 2500, expiresAt: this.expiresAt });
   }
 
   status() {

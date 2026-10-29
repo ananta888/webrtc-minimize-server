@@ -17,7 +17,7 @@ function fixture() {
     mediaE2ee: { mode: "required" }, optimization: { dataOverlayEnabled: true }, mediaTransformFailed: false,
     mediaE2eeController: controller, mediaE2eeState: signal("pending"),
     connections: { peers: new Map([[peerId, { id: peerId }]]) },
-    pendingMediaKeys: new Map([[contextId, pending]]), agentMediaKeys: new Map(),
+    pendingMediaKeys: new Map([[contextId, pending]]), agentMediaKeys: new Map(), bufferedMediaEnvelopes: new Map(),
     activeSenderMediaContexts: new Set(), activeReceiverMediaContexts: new Set(),
     descriptors: new Map([["screen", { source: "screen" }]]),
     machineReceive: { mediaAllowed: vi.fn(() => true) }, sendOverlayData: vi.fn(async () => true),

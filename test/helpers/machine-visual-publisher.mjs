@@ -1,4 +1,3 @@
-import { waitFixtureValue } from "./machine-browser-wait.mjs";
 
 /** Installed in a test-owned publisher context only; never a physical capture. */
 export function installSyntheticVisualSource(kind) {
@@ -22,18 +21,10 @@ export async function startSyntheticVisualPublisher(page, source) {
   await page.locator(`#toggle-${source}[aria-pressed="true"]`).waitFor();
 }
 
-export async function grantSyntheticVisualPublisher(page, source) {
+export async function observeSyntheticVisualPublisher(page, source) {
   if (!["camera", "screen"].includes(source)) throw new Error("test_visual_source_invalid");
   await page.locator(".nav-item", { hasText: "Analyse" }).click();
   const panel = page.locator("app-machine-permissions-panel");
-  await panel.getByText("Keine Empfangsfreigabe erteilt.", { exact: true }).waitFor();
-  await panel.getByRole("button", { name: "Für diese KI einstellen" }).click();
-  // Selecting the same peer resets editor signals before Angular redraws the
-  // old checked DOM. Await that reset; check() must dispatch a new user action.
-  await waitFixtureValue(page, () => [...document.querySelectorAll("app-machine-permissions-panel fieldset input[type=checkbox]")]
-    .every(input => !input.checked));
-  await panel.getByLabel(source === "camera" ? "Meine laufende Kamera zur Analyse" : "Mein laufender Bildschirm zur Analyse", { exact: true }).check();
-  await panel.getByRole("button", { name: "Auswahl ausdrücklich freigeben" }).click();
-  await panel.getByText("Serverbestätigung erhalten.", { exact: true }).waitFor();
+  await panel.getByText("Vom Hub erlaubt für laufende Kamera- und Bildschirmquellen.", { exact: true }).waitFor();
   return panel;
 }

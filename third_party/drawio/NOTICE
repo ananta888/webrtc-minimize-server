@@ -1,0 +1,24 @@
+drawio (diagrams.net web application)
+Copyright (c) 2005-2025 JGraph Ltd / Camunda Services GmbH and contributors
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+these files except in compliance with the License. A copy of the License is
+distributed alongside this notice in the LICENSE file.
+
+Modifications:
+The web application in webapp/ is a subset of the built drawio.war release
+artifact v32.6.1. Files not required for the embedded editor were omitted
+(Java web-application scaffolding, development sources, viewer and
+cloud-integration bundles, template gallery, MathJax v4 assets and all message
+catalogs except English and German). In js/PreConfig.js the DRAW_MATH_URL was
+set to null to match the omitted MathJax assets. See README.md for the exact
+inventory and the SHA-256 of the release artifact.
+
+The bpmn.io watermark obligations of the separately licensed bpmn-js library
+do not apply to these files; the diagram editor's own branding is retained as
+shipped by upstream.
+
+Icon and stencil libraries shipped inside webapp/ remain subject to the
+additional terms stated in the upstream drawio README (no reuse as software
+assets in Atlassian products or marketplaces, including traced reproductions
+or AI-generated images created from them).

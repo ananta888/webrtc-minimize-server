@@ -42,6 +42,7 @@ export class MediaPublicationService {
   readonly localPublicationRevision = signal(1);
   readonly error = signal("");
   readonly pending = signal<LocalMediaSource | null>(null);
+  readonly musicEchoAcknowledged = signal(false);
   readonly screenAudioActive = signal(false);
   private readonly streams = new Map<LocalMediaSource, MediaStream>();
   private readonly microphoneStopListeners = new Set<() => void>();
@@ -240,9 +241,20 @@ export class MediaPublicationService {
   }
 
   async setAudioQualityProfile(profile: AudioQualityProfile | unknown): Promise<void> {
+    if (profile === "music" && this.active("microphone") && !this.musicEchoAcknowledged()) {
+      this.error.set("music_echo_confirmation_required");
+      return;
+    }
+    if (profile === "music") this.musicEchoAcknowledged.set(false);
     this.mediaStrategy.setAudioProfile(profile);
     await this.applyAudioPreferences();
     this.mesh.refreshMediaStrategy();
+  }
+
+  confirmMusicEchoRisk(): void {
+    this.musicEchoAcknowledged.set(true);
+    this.error.set("");
+    void this.setAudioQualityProfile("music");
   }
 
   setMediaPriorityAt(index: number, source: MediaPrioritySource | unknown): void {

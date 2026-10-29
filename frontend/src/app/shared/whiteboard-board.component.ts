@@ -24,8 +24,8 @@ import { SlidePresentationService } from "../webrtc/slide-presentation.service";
 import { exportCanvasToPdf, exportCanvasToPng } from "./pdf-export";
 import { loadSlidesFromFiles } from "./slide-deck-loader";
 
-const WIDTH = 640;
-const HEIGHT = 360;
+const WIDTH = 1920;
+const HEIGHT = 1080;
 
 export type WhiteboardTool =
   | "pen"
@@ -79,11 +79,31 @@ function pixel(point: { x: number; y: number }): { x: number; y: number } {
 }
 
 function color(value: string): string {
+  if (value.startsWith("#")) return value;
   if (value === "mark") return "#e6c35c";
   if (value === "accent") return "#38bdf8";
   if (value === "erase") return "#020408";
   return "#e8eef6";
 }
+
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+const COLOR_SWATCHES: readonly { value: WhiteboardColor; hex: string; label: string }[] = Object.freeze([
+  { value: "ink", hex: "#e8eef6", label: "Tinte" },
+  { value: "mark", hex: "#e6c35c", label: "Gelb" },
+  { value: "accent", hex: "#38bdf8", label: "Cyan" },
+  { value: "#f87171", hex: "#f87171", label: "Rot" },
+  { value: "#4ade80", hex: "#4ade80", label: "Grün" },
+  { value: "#94a3b8", hex: "#94a3b8", label: "Grau" },
+  { value: "#ffffff", hex: "#ffffff", label: "Weiß" },
+  { value: "#0ea5e9", hex: "#0ea5e9", label: "Blau" },
+  { value: "#6366f1", hex: "#6366f1", label: "Indigo" },
+  { value: "#a855f7", hex: "#a855f7", label: "Violett" },
+  { value: "#ec4899", hex: "#ec4899", label: "Pink" },
+  { value: "#f97316", hex: "#f97316", label: "Orange" },
+  { value: "#84cc16", hex: "#84cc16", label: "Limette" },
+  { value: "#14b8a6", hex: "#14b8a6", label: "Türkis" },
+  { value: "#78716c", hex: "#78716c", label: "Braun" },
+]);
 
 function isShapeTool(tool: string): tool is WhiteboardShapeType {
   return tool === "rectangle" || tool === "ellipse" || tool === "line";
@@ -315,41 +335,75 @@ export function paintWhiteboard(
         </div>
       </div>
 
-      <!-- Moderation / Policy Bar -->
-      <div class="whiteboard-status-row">
-        <span class="whiteboard-policy-status">
-          Modus: {{ moderation.whiteboardPolicy() === 'open' ? 'Alle Teilnehmer dürfen zeichnen' : 'Nur Presenter darf zeichnen' }}
-        </span>
-        @if (moderation.canControlWhiteboard()) {
-          <button id="whiteboard-toggle-policy" type="button" class="button ghost compact" (click)="togglePolicy()">
-            {{ moderation.whiteboardPolicy() === 'open' ? 'Auf Presenter beschränken' : 'Für alle freigeben' }}
-          </button>
-        }
-      </div>
-
       <!-- Drawing Tools -->
       <div class="whiteboard-tools" role="toolbar" aria-label="Zeichenwerkzeuge (Tasten 1-9)">
-        <label>Werkzeug (1-9)
-          <select id="whiteboard-tool-select" [value]="tool()" [disabled]="!board.canDraw()" (change)="selectTool($any($event.target).value)">
-            <option value="pen">1: Stift</option>
-            <option value="mark">2: Textmarker</option>
-            <option value="rectangle">3: Rechteck</option>
-            <option value="ellipse">4: Kreis / Ellipse</option>
-            <option value="line">5: Linie</option>
-            <option value="text">6: Text</option>
-            <option value="erase">7: Radierer</option>
-            <option value="laser">8: Laserpointer</option>
-            <option value="pan">9: Hand / Verschieben</option>
-          </select>
-        </label>
-        <label>Farbe
-          <select id="whiteboard-color" [value]="selectedColor()" [disabled]="!board.canDraw() || tool() === 'erase' || tool() === 'mark' || tool() === 'laser' || tool() === 'pan'"
-            (change)="selectedColor.set($any($event.target).value)">
-            <option value="ink">Tinte (Hell)</option>
-            <option value="accent">Akzent (Cyan)</option>
-            <option value="mark">Marker (Gelb)</option>
-          </select>
-        </label>
+        <div class="whiteboard-tool-buttons" role="group" aria-label="Zeichenwerkzeuge (Tasten 1-9)">
+          <button id="whiteboard-tool-pen" type="button" class="whiteboard-tool-button" [class.active]="tool() === 'pen'"
+            [attr.aria-pressed]="tool() === 'pen'" [disabled]="!board.canDraw()" (click)="selectTool('pen')" title="1: Stift" aria-label="Stift (1)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4-1L20 7l-3-3L5 16l-1 4z"/><path d="M15 6l3 3"/></svg>
+          </button>
+          <button id="whiteboard-tool-mark" type="button" class="whiteboard-tool-button" [class.active]="tool() === 'mark'"
+            [attr.aria-pressed]="tool() === 'mark'" [disabled]="!board.canDraw()" (click)="selectTool('mark')" title="2: Textmarker" aria-label="Textmarker (2)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h6"/><path d="M9 15l7-7 3 3-7 7-3-3z"/></svg>
+          </button>
+          <button id="whiteboard-tool-rectangle" type="button" class="whiteboard-tool-button" [class.active]="tool() === 'rectangle'"
+            [attr.aria-pressed]="tool() === 'rectangle'" [disabled]="!board.canDraw()" (click)="selectTool('rectangle')" title="3: Rechteck" aria-label="Rechteck (3)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>
+          </button>
+          <button id="whiteboard-tool-ellipse" type="button" class="whiteboard-tool-button" [class.active]="tool() === 'ellipse'"
+            [attr.aria-pressed]="tool() === 'ellipse'" [disabled]="!board.canDraw()" (click)="selectTool('ellipse')" title="4: Kreis / Ellipse" aria-label="Kreis oder Ellipse (4)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg>
+          </button>
+          <button id="whiteboard-tool-line" type="button" class="whiteboard-tool-button" [class.active]="tool() === 'line'"
+            [attr.aria-pressed]="tool() === 'line'" [disabled]="!board.canDraw()" (click)="selectTool('line')" title="5: Linie" aria-label="Linie (5)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19L19 5"/></svg>
+          </button>
+          <button id="whiteboard-tool-text" type="button" class="whiteboard-tool-button" [class.active]="tool() === 'text'"
+            [attr.aria-pressed]="tool() === 'text'" [disabled]="!board.canDraw()" (click)="selectTool('text')" title="6: Text" aria-label="Text (6)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6V4h14v2"/><path d="M12 4v16"/><path d="M9 20h6"/></svg>
+          </button>
+          <button id="whiteboard-tool-erase" type="button" class="whiteboard-tool-button" [class.active]="tool() === 'erase'"
+            [attr.aria-pressed]="tool() === 'erase'" [disabled]="!board.canDraw()" (click)="selectTool('erase')" title="7: Radierer" aria-label="Radierer (7)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16l8-8 6 6-8 8H6l-2-2z"/><path d="M10 20h10"/></svg>
+          </button>
+          <button id="whiteboard-tool-laser" type="button" class="whiteboard-tool-button" [class.active]="tool() === 'laser'"
+            [attr.aria-pressed]="tool() === 'laser'" [disabled]="!board.canDraw()" (click)="selectTool('laser')" title="8: Laserpointer" aria-label="Laserpointer (8)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.5"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+          </button>
+          <button id="whiteboard-tool-pan" type="button" class="whiteboard-tool-button" [class.active]="tool() === 'pan'"
+            [attr.aria-pressed]="tool() === 'pan'" [disabled]="!board.canDraw()" (click)="selectTool('pan')" title="9: Hand / Verschieben" aria-label="Hand oder Verschieben (9)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 11V6a1.5 1.5 0 013 0v5M11 11V5a1.5 1.5 0 013 0v6M14 11V7a1.5 1.5 0 013 0v7a6 6 0 01-6 6h-1a6 6 0 01-6-6v-3a1.5 1.5 0 013 0"/></svg>
+          </button>
+        </div>
+        <div class="whiteboard-color-tools" role="group" aria-label="Farben">
+          <div class="whiteboard-color-swatches">
+            @for (swatch of quickColors; track swatch.value) {
+              <button type="button" class="whiteboard-swatch" [class.active]="selectedColor() === swatch.value"
+                [attr.aria-pressed]="selectedColor() === swatch.value" [disabled]="colorDisabled()"
+                [style.background]="swatch.hex" (click)="selectColor(swatch.value)"
+                [title]="'Farbe: ' + swatch.label" [attr.aria-label]="'Farbe ' + swatch.label"></button>
+            }
+            <button id="whiteboard-color-palette-toggle" type="button" class="whiteboard-tool-button" [class.active]="paletteOpen()"
+              [disabled]="colorDisabled()" (click)="paletteOpen.set(!paletteOpen())" title="Farbpalette"
+              aria-label="Farbpalette öffnen oder schließen" [attr.aria-expanded]="paletteOpen()">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="8.5" cy="10" r="1.1"/><circle cx="15.5" cy="10" r="1.1"/><circle cx="9.5" cy="15" r="1.1"/><circle cx="15.5" cy="15" r="1.1"/></svg>
+            </button>
+          </div>
+          @if (paletteOpen()) {
+            <div class="whiteboard-color-palette" id="whiteboard-color-palette" role="group" aria-label="Erweiterte Farbpalette">
+              @for (swatch of paletteColors; track swatch.value) {
+                <button type="button" class="whiteboard-swatch" [class.active]="selectedColor() === swatch.value"
+                  [attr.aria-pressed]="selectedColor() === swatch.value" [disabled]="colorDisabled()"
+                  [style.background]="swatch.hex" (click)="selectColor(swatch.value)"
+                  [title]="'Farbe: ' + swatch.label" [attr.aria-label]="'Farbe ' + swatch.label"></button>
+              }
+              <label class="whiteboard-custom-color">Eigene Farbe
+                <input id="whiteboard-color-custom" type="color" [value]="currentHex()" [disabled]="colorDisabled()"
+                  (input)="selectColor($any($event.target).value)" />
+              </label>
+            </div>
+          }
+        </div>
         @if (tool() === 'text') {
           <label>Text
             <input id="whiteboard-text-input" type="text" maxlength="100" [disabled]="!board.canDraw()"
@@ -368,6 +422,14 @@ export function paintWhiteboard(
           (click)="board.undoOwn()" aria-label="Letzte eigene Aktion rückgängig machen (Ctrl+Z)">Eigenes Undo</button>
         <button id="whiteboard-clear" type="button" class="button ghost compact danger" [disabled]="!board.canClear()"
           (click)="board.requestClear()" aria-label="Aktuelle Folie leeren">Folie leeren</button>
+        <span class="whiteboard-policy-status">
+          Modus: {{ moderation.whiteboardPolicy() === 'open' ? 'Alle Teilnehmer dürfen zeichnen' : 'Nur Presenter darf zeichnen' }}
+        </span>
+        @if (moderation.canControlWhiteboard()) {
+          <button id="whiteboard-toggle-policy" type="button" class="button ghost compact" (click)="togglePolicy()">
+            {{ moderation.whiteboardPolicy() === 'open' ? 'Auf Presenter beschränken' : 'Für alle freigeben' }}
+          </button>
+        }
       </div>
 
       <!-- Canvas Area -->
@@ -376,19 +438,20 @@ export function paintWhiteboard(
           <div class="whiteboard-stage"
             [style.transform]="'translate(' + panOffset().x + 'px, ' + panOffset().y + 'px) scale(' + zoomLevel() + ')'"
             [style.transform-origin]="'center center'">
-            <canvas #canvas id="whiteboard-canvas" width="640" height="360" role="img" aria-label="Gemeinsame Tafel und Folienansicht"
+            <canvas #canvas id="whiteboard-canvas" width="1920" height="1080" role="img" aria-label="Gemeinsame Tafel und Folienansicht"
               tabindex="0" [class.laser-cursor]="tool() === 'laser'" [class.pan-cursor]="tool() === 'pan'"
               (pointerdown)="down($event)" (pointermove)="move($event)" (pointerup)="up($event)" (pointerleave)="leave($event)">
             </canvas>
           </div>
         </div>
       </div>
-      <p class="hint">Tastatursteuerung: 1-9 für Werkzeuge · +, -, 0 für Zoom · Ctrl+Z für Undo · Pfeiltasten für Folienwechsel. Inhalt bleibt lokal & E2EE.</p>
+      <p class="sr-only">Tastatursteuerung: 1-9 für Werkzeuge · +, -, 0 für Zoom · Ctrl+Z für Undo · Pfeiltasten für Folienwechsel. Inhalt bleibt lokal & E2EE.</p>
     </section>
   `,
   styles: [`
     .whiteboard-panel { display: grid; gap: .5rem; }
-    .whiteboard-panel.expanded-mode { gap: .75rem; width: 100%; height: 100%; }
+    .whiteboard-panel.expanded-mode { gap: .55rem; width: 100%; height: calc(100vh - 7.5rem); min-height: 30rem; display: flex; flex-direction: column; }
+    :host-context(.has-session-dock) .whiteboard-panel.expanded-mode { height: calc(100vh - 15.5rem); }
     .surface-heading { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
     .header-titles { flex: 1; }
     .header-badges { display: flex; gap: .35rem; align-items: center; }
@@ -410,6 +473,36 @@ export function paintWhiteboard(
 
     .whiteboard-tools { display: flex; flex-wrap: wrap; gap: .45rem; align-items: end; }
     .whiteboard-tools label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; }
+    .whiteboard-tool-buttons { display: flex; gap: .25rem; align-items: center; }
+    .whiteboard-tool-button {
+      display: grid; place-items: center; width: 2.15rem; height: 2.15rem; padding: 0;
+      border: 1px solid var(--line); border-radius: .45rem; background: transparent;
+      color: inherit; cursor: pointer; transition: background 120ms ease, border-color 120ms ease;
+    }
+    .whiteboard-tool-button:hover:not(:disabled) { border-color: var(--line-strong); background: rgba(255, 255, 255, .05); }
+    .whiteboard-tool-button.active { background: rgba(102, 224, 183, .18); border-color: rgba(102, 224, 183, .55); }
+    .whiteboard-tool-button:disabled { opacity: .45; cursor: not-allowed; }
+    .whiteboard-color-tools { position: relative; display: flex; align-items: center; }
+    .whiteboard-color-swatches { display: flex; gap: .3rem; align-items: center; }
+    .whiteboard-swatch {
+      width: 1.55rem; height: 1.55rem; border-radius: .55rem; padding: 0; cursor: pointer;
+      border: 2px solid rgba(255, 255, 255, .14); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .18);
+      transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+    }
+    .whiteboard-swatch:hover:not(:disabled) { transform: scale(1.08); border-color: rgba(255, 255, 255, .34); }
+    .whiteboard-swatch.active { border-color: rgba(102, 224, 183, .85); box-shadow: 0 0 0 2px rgba(102, 224, 183, .3); }
+    .whiteboard-swatch:disabled { opacity: .45; cursor: not-allowed; }
+    .whiteboard-color-palette {
+      position: absolute; top: calc(100% + .45rem); left: 0; z-index: 30;
+      display: grid; grid-template-columns: repeat(5, 1.55rem); gap: .45rem;
+      padding: .7rem; border-radius: .8rem; border: 1px solid var(--line);
+      background: rgba(12, 17, 26, .97); box-shadow: 0 18px 46px rgba(0, 0, 0, .45);
+    }
+    .whiteboard-custom-color { display: flex; flex-direction: column; gap: .3rem; grid-column: 1 / -1; font-size: .78rem; color: #bac5d5; }
+    .whiteboard-custom-color input[type="color"] {
+      width: 100%; height: 2.1rem; padding: .15rem; border: 1px solid var(--line);
+      border-radius: .55rem; background: transparent; cursor: pointer;
+    }
     .whiteboard-tools input[type="text"] { min-width: 12rem; padding: .3rem .5rem; border-radius: .4rem; border: 1px solid var(--line); background: var(--bg-surface); color: inherit; }
     .whiteboard-zoom-controls { display: flex; gap: .2rem; align-items: center; }
 
@@ -420,6 +513,8 @@ export function paintWhiteboard(
       background: #020408; position: relative;
     }
     .expanded-canvas .whiteboard-viewport { max-width: 100%; }
+    .expanded-canvas { flex: 1 1 auto; min-height: 0; display: flex; }
+    .expanded-canvas .whiteboard-viewport { width: 100%; height: 100%; aspect-ratio: auto; }
     .whiteboard-stage { width: 100%; height: 100%; }
     canvas {
       width: 100%; height: 100%; display: block;
@@ -437,6 +532,9 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
 
   readonly tool = signal<WhiteboardTool>("pen");
   readonly selectedColor = signal<WhiteboardColor>("ink");
+  readonly paletteOpen = signal(false);
+  readonly quickColors = COLOR_SWATCHES.slice(0, 5);
+  readonly paletteColors = COLOR_SWATCHES;
   readonly selectedWidth = signal<number>(2);
   readonly textInput = signal<string>("");
   readonly textSize = signal<number>(16);
@@ -449,6 +547,8 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
   private drawing = false;
   private isPanning = false;
   private panStart: { x: number; y: number } | null = null;
+  private pendingPoints: { x: number; y: number }[] = [];
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private initialPanOffset: { x: number; y: number } = { x: 0, y: 0 };
   private lastLaserSent = 0;
   private localLaserTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -488,6 +588,25 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
     img.src = dataUrl;
   }
 
+  private scheduleFlush(): void {
+    if (this.flushTimer) return;
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null;
+      this.flushPendingPoints();
+    }, 60);
+  }
+
+  private flushPendingPoints(): void {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    if (this.pendingPoints.length === 0) return;
+    const points = this.pendingPoints;
+    this.pendingPoints = [];
+    this.board.publish("stroke-point", { points });
+  }
+
   repaint(ops = this.board.ops()): void {
     const canvas = this.canvasRef?.nativeElement;
     const ctx = canvas?.getContext("2d");
@@ -515,6 +634,25 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
   selectTool(tool: WhiteboardTool): void {
     this.tool.set(tool);
     this.statusMessage.set(`Werkzeug gewählt: ${tool}`);
+  }
+
+  colorDisabled(): boolean {
+    return !this.board.canDraw() || this.tool() === "erase" || this.tool() === "mark"
+      || this.tool() === "laser" || this.tool() === "pan";
+  }
+
+  currentHex(): string {
+    return color(this.selectedColor());
+  }
+
+  selectColor(value: unknown): void {
+    if (value === "ink" || value === "mark" || value === "accent") {
+      this.selectedColor.set(value);
+      return;
+    }
+    if (typeof value === "string" && HEX_COLOR.test(value)) {
+      this.selectedColor.set(value as WhiteboardColor);
+    }
   }
 
   zoomIn(): void {
@@ -647,6 +785,10 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
       clearTimeout(this.localLaserTimeout);
       this.localLaserTimeout = null;
     }
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
   }
 
   private coord(event: PointerEvent): { x: number; y: number } | null {
@@ -675,6 +817,7 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
   }
 
   down(event: PointerEvent): void {
+    this.flushPendingPoints();
     const activeTool = this.tool();
     if (activeTool === "pan" || event.button === 1) {
       event.preventDefault();
@@ -773,11 +916,14 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
     } else if (activeTool === "erase") {
       this.board.publish("erase", { point });
     } else {
-      this.board.publish("stroke-point", { points: [point] });
+      this.pendingPoints.push(point);
+      if (this.pendingPoints.length >= 16) this.flushPendingPoints();
+      else this.scheduleFlush();
     }
   }
 
   up(event: PointerEvent): void {
+    this.flushPendingPoints();
     if (this.isPanning) {
       this.isPanning = false;
       this.panStart = null;
@@ -822,6 +968,7 @@ export class WhiteboardBoardComponent implements AfterViewInit, OnDestroy {
   }
 
   leave(event: PointerEvent): void {
+    this.flushPendingPoints();
     if (this.isPanning) {
       this.isPanning = false;
       this.panStart = null;

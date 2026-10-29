@@ -52,7 +52,8 @@ export class MachinePageComponent implements OnDestroy {
     join: (roomId, grant) => this.session.join(roomId, "Ananta (KI)", "room", grant),
     joined: () => this.session.joined(),
     cleanup: [() => this.expiry.close(), () => this.session.leave(),
-      () => this.machineAvatar.source.close(), () => this.machineSpeech.source.close(),
+      () => this.machineAvatar.source.close(), () => this.machineAvatar.sequences.close(),
+      () => this.machineSpeech.source.close(),
       () => this.machineScreenAudio.source.close(), () => this.machineScreen.source.close(),
       () => this.machineAudio.close(), () => this.machineVisual.close(),
       () => this.machineChat.endpoint.close(), () => this.machineMedia.publication.close(),
@@ -72,7 +73,8 @@ export class MachinePageComponent implements OnDestroy {
     media: Object.freeze({ publish: (input: unknown) => { this.requireLegacyMedia(); return this.machineMedia.publish(input); },
       close: () => this.machineMedia.publication.close(), status: () => this.machineMedia.publication.status() }),
     chat: Object.freeze({ open: () => this.machineChat.endpoint.open(),
-      poll: () => this.machineChat.endpoint.poll(), ack: (cursor: number) => this.machineChat.endpoint.ack(cursor),
+      poll: (afterCursor?: number) => this.machineChat.endpoint.poll(afterCursor), ack: (cursor: number) => this.machineChat.endpoint.ack(cursor),
+      redeliver: (messageIds: readonly string[]) => this.machineChat.endpoint.redeliver(messageIds),
       reply: (messageId: string, text: string) => this.machineChat.endpoint.reply(messageId, text),
       close: () => this.machineChat.endpoint.close(), status: () => this.machineChat.endpoint.status() }),
     audio: Object.freeze({ sources: () => this.machineAudio.sources(),
@@ -95,6 +97,11 @@ export class MachinePageComponent implements OnDestroy {
       close: () => this.machineSpeech.source.close(), status: () => this.machineSpeech.source.status() }),
     avatar: Object.freeze({ open: (sourceId: string, profile: string, image?: unknown) => this.machineAvatar.source.open(sourceId, profile, image),
       videoProbe: () => this.machineAvatar.videoProbe(),
+      sequenceProbe: () => this.machineAvatar.sequenceProbe(),
+      prepareSequence: (sourceId: string, content: unknown) => this.machineAvatar.sequences.prepare(sourceId, content),
+      sequenceStatus: (id: number) => this.machineAvatar.sequences.status(id),
+      sequenceQuality: (id: number) => this.machineAvatar.sequences.quality(id),
+      cancelSequence: (id: number) => this.machineAvatar.sequences.close(id),
       pulse: (generation: number) => this.machineAvatar.source.pulse(generation),
       close: (generation?: number) => this.machineAvatar.source.close(generation), status: () => this.machineAvatar.source.status() }),
     leave: () => this.leave(),
@@ -104,6 +111,7 @@ export class MachinePageComponent implements OnDestroy {
   };
 
   constructor() {
+    this.machineAvatar.bindSpeechProgress(() => this.machineSpeech.source.status());
     // Accessible only to code running in this isolated browser context (e.g. Playwright).
     Object.defineProperty(window, "anantaMachine", { configurable: true, value: this.api });
     effect(() => { if (!this.session.joined()) this.machineMedia.publication.close(); });

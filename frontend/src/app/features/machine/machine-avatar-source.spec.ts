@@ -4,7 +4,7 @@ import type { MachineAvatarReceipt } from "./machine-avatar-source";
 
 const now = 1_788_000_000_000;
 function setup() {
-  const authority = { sourceId: "avatar:hub", sessionId: "ms_test", leaseGeneration: 1, membershipEpoch: 2, expiresAt: now + 60_000 };
+  const authority = { sourceId: "avatar:hub", sessionId: "ms_test", leaseGeneration: 1, membershipEpoch: 2, expiresAt: now + 600_000 };
   const surface = { ready: vi.fn(() => true), frame: vi.fn(), close: vi.fn() };
   // This legacy fixture advances both clocks together; see the independent
   // timebase matrix in machine-source-clock.spec.ts for clock corrections.
@@ -15,6 +15,15 @@ function setup() {
 describe("independent bounded avatar lifecycle", () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); });
   afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+
+  it("adds sample-sequence pacing without changing legacy deadlines or heartbeat", async () => {
+    const f = setup();
+    const opened = await f.source.open("avatar:hub", "persona-sequence-v1", { id: 1, speechGeneration: 3 });
+    expect(opened).toMatchObject({ profile: "persona-sequence-v1", fps: 40, heartbeatMs: 2500 });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(f.surface.frame).toHaveBeenCalledTimes(5);
+    f.source.close();
+  });
 
   it("adds explicit image mode without silently accepting image bytes in neutral mode", async () => {
     const f = setup(), image = { png: "synthetic", sha256: "a".repeat(64) };
@@ -42,21 +51,21 @@ describe("independent bounded avatar lifecycle", () => {
   });
   it("renders at most five frames per second and closes at the total deadline", async () => {
     const f = setup(), receipt = await f.open();
-    expect(receipt).toMatchObject({ schema: "ananta.meet-avatar-source.v1", profile: "neutral-ai-v1", width: 256, height: 256, fps: 5, expiresAt: now + 30_000 });
+    expect(receipt).toMatchObject({ schema: "ananta.meet-avatar-source.v1", profile: "neutral-ai-v1", width: 256, height: 256, fps: 5, expiresAt: now + 120_000 });
     vi.advanceTimersByTime(999); expect(f.surface.frame).toHaveBeenCalledTimes(5);
     f.source.pulse(receipt.generation);
-    for (let i = 0; i < 14; i++) { vi.advanceTimersByTime(2000); f.source.pulse(receipt.generation); }
-    vi.advanceTimersByTime(1001); expect(f.surface.frame).toHaveBeenCalledTimes(150);
+    for (let i = 0; i < 59; i++) { vi.advanceTimersByTime(2000); f.source.pulse(receipt.generation); }
+    vi.advanceTimersByTime(1001); expect(f.surface.frame).toHaveBeenCalledTimes(600);
     expect(f.source.status().state).toBe("failed"); expect(f.surface.close).toHaveBeenCalledOnce();
-    vi.advanceTimersByTime(1000); expect(f.surface.frame).toHaveBeenCalledTimes(150);
+    vi.advanceTimersByTime(1000); expect(f.surface.frame).toHaveBeenCalledTimes(600);
     expect(vi.getTimerCount()).toBe(0);
   });
-  it("waits only ten seconds for protection and never renders before readiness", async () => {
+  it("waits only 110 seconds for protection and never renders before readiness", async () => {
     const f = setup(); f.surface.ready.mockReturnValue(false);
     const pending = expect(f.open()).rejects.toThrow("meet_avatar_setup_timeout");
     const generation = f.source.status().generation;
     for (let i = 0; i < 4; i++) { vi.advanceTimersByTime(2000); f.source.pulse(generation); }
-    vi.advanceTimersByTime(2000); await pending;
+    vi.advanceTimersByTime(102000); await pending;
     expect(f.surface.frame).not.toHaveBeenCalled(); expect(f.surface.close).toHaveBeenCalledOnce();
     f.surface.ready.mockReturnValue(true); vi.advanceTimersByTime(100);
     expect(f.source.status().state).toBe("failed");
@@ -138,7 +147,7 @@ describe("independent bounded avatar lifecycle", () => {
       if (reason === "session-id") f.authority.sessionId = "ms_other";
       if (reason === "controller-expired") vi.setSystemTime(now + 2500);
       let error: unknown; try { f.source.pulse(receipt.generation); } catch (caught) { error = caught; }
-      expect(error).toMatchObject({ message: "meet_avatar_authority_expired", cause: reason });
+      expect(error).toMatchObject({ message: "meet_avatar_authority_expired:" + reason, cause: reason });
       expect(f.source.status().state).toBe("failed"); expect(f.surface.close).toHaveBeenCalledOnce();
     });
   it.each(["membership-epoch", "lease-generation", "lease-expiry"])(
@@ -186,6 +195,42 @@ describe("independent bounded avatar lifecycle", () => {
     await Promise.resolve(); expect(outcomes).toEqual(["resolved"]);
     warn.mockRestore();
   });
+  it.each(["expiry", "identity", "clock"])("never settles newly ready setup after %s authority loss", async reason => {
+    const f = setup(); f.surface.ready.mockReturnValue(false);
+    const pending = expect(f.open()).rejects.toThrow("meet_avatar_authority_expired");
+    f.surface.ready.mockReturnValue(true);
+    if (reason === "expiry") vi.setSystemTime(now + 120_000);
+    if (reason === "identity") f.authority.sessionId = "ms_other";
+    if (reason === "clock") vi.setSystemTime(now - 100);
+    vi.advanceTimersByTime(25); await pending;
+    expect(f.surface.frame).not.toHaveBeenCalled(); expect(f.surface.close).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("rechecks authority after a newly ready surface changes the source synchronously", async () => {
+    const f = setup(); f.surface.ready.mockReturnValue(false);
+    const pending = expect(f.open()).rejects.toThrow("meet_avatar_authority_expired:session-id");
+    f.surface.ready.mockImplementation(() => { f.authority.sessionId = "ms_other"; return true; });
+    vi.advanceTimersByTime(25); await pending;
+    expect(f.surface.frame).not.toHaveBeenCalled(); expect(f.surface.close).toHaveBeenCalledOnce();
+  });
+  it("starts the controller deadline when a slow protected setup hands out its receipt", async () => {
+    const f = setup(); f.surface.ready.mockReturnValue(false);
+    const pending = f.open(); vi.advanceTimersByTime(30_000);
+    expect(f.source.status().state).toBe("opening");
+    f.surface.ready.mockReturnValue(true); vi.advanceTimersByTime(25);
+    const receipt = await pending;
+    expect(receipt.expiresAt).toBe(now + 120_000);
+    vi.advanceTimersByTime(2499); expect(f.source.status().state).toBe("open");
+    vi.advanceTimersByTime(1); expect(f.source.status().state).toBe("failed");
+    expect(f.surface.close).toHaveBeenCalledOnce();
+  });
+  it("logs only a fixed failure reason, never current or previous authority values", async () => {
+    const f = setup(), warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const receipt = await f.open(); f.authority.sessionId = "private-session-value";
+    expect(() => f.source.pulse(receipt.generation)).toThrow();
+    expect(warning).toHaveBeenCalledExactlyOnceWith("[avatardbg] authority-expired cause=session-id");
+    warning.mockRestore();
+  });
   it("observes readiness once per tick so two disagreeing looks cannot fence an open source", async () => {
     const f = setup(); await f.open();
     f.surface.ready.mockClear(); vi.advanceTimersByTime(100);
@@ -199,7 +244,7 @@ describe("independent bounded avatar lifecycle", () => {
     const f = setup(); f.surface.ready.mockReturnValue(false);
     const pending = expect(f.open()).rejects.toThrow("meet_avatar_setup_timeout");
     vi.advanceTimersByTime(2500); expect(f.source.status().state).toBe("opening"); // Waiting for E2EE, not a lost controller.
-    vi.advanceTimersByTime(7500); await pending; expect(f.surface.frame).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(107500); await pending; expect(f.surface.frame).not.toHaveBeenCalled();
     f.surface.ready.mockReturnValue(true); const fresh = await f.open(); f.authority.sessionId = "ms_other";
     expect(() => f.source.pulse(fresh.generation)).toThrow(); expect(f.source.status().state).toBe("failed");
   });

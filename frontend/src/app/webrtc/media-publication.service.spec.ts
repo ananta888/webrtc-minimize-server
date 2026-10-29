@@ -329,4 +329,46 @@ describe("MediaPublicationService", () => {
     expect(audio.track.stop).toHaveBeenCalledOnce();
     expect(mesh.detachPublication).toHaveBeenCalledWith("microphone");
   });
+
+  it("requires confirmation before enabling music profile while microphone is active", async () => {
+    const audio = fakeStream("audio");
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(audio.stream), getDisplayMedia: vi.fn() },
+    });
+    const mesh = { attachPublication: vi.fn(), detachPublication: vi.fn(), refreshMediaStrategy: vi.fn() };
+    const strategy = new MediaStrategyService();
+    const service = new MediaPublicationService(
+      mesh as never, new VideoCapturePreferencesService(), strategy,
+    );
+
+    await service.start("microphone");
+    expect(service.active("microphone")).toBe(true);
+
+    await service.setAudioQualityProfile("music");
+    expect(service.error()).toBe("music_echo_confirmation_required");
+    expect(strategy.audioProfile()).not.toBe("music");
+
+    service.confirmMusicEchoRisk();
+    await vi.waitFor(() => {
+      expect(strategy.audioProfile()).toBe("music");
+    });
+    expect(service.error()).toBe("");
+  });
+
+  it("enables music profile without confirmation when microphone is inactive", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn(), getDisplayMedia: vi.fn() },
+    });
+    const mesh = { attachPublication: vi.fn(), detachPublication: vi.fn(), refreshMediaStrategy: vi.fn() };
+    const strategy = new MediaStrategyService();
+    const service = new MediaPublicationService(
+      mesh as never, new VideoCapturePreferencesService(), strategy,
+    );
+
+    await service.setAudioQualityProfile("music");
+    expect(service.error()).toBe("");
+    expect(strategy.audioProfile()).toBe("music");
+  });
 });

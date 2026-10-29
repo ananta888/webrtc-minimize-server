@@ -121,7 +121,7 @@ export class WhiteboardOverlayService implements OnDestroy {
           });
           if (responseOp) {
             const bytes = encodeWhiteboardOperation(responseOp);
-            void this.mesh.sendOverlayData(delivery.originPeerId, bytes, "event");
+            void this.mesh.sendOverlayData(delivery.originPeerId, bytes, "bulk");
           }
         }
       }

@@ -2,13 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { machineBrowserFixture } from "./helpers/machine-browser-fixture.js";
 import { machineRelayObservation, assertMachineRelayObservation, waitMachineRelaySetup, machineRelayDiagnostics } from "./helpers/machine-relay-observation.js";
-import { observeMachinePermissionUi } from "./helpers/machine-browser-startup.mjs";
 
 const icePath = process.env.MACHINE_DIALOG_ICE_PATH ?? "direct";
 assert.ok(["direct", "turn-udp", "turn-tcp"].includes(icePath), "closed test ICE path");
 
 for (const humanEngine of ["chromium", "firefox"]) {
-test(`${humanEngine} human consent gates real machine chat, decrypted PCM and own screen through three renewals`, { timeout: 100_000 }, async t => {
+test(`${humanEngine} human capture and Hub capability gate real chat redelivery, decrypted PCM and own screen through three renewals`, { timeout: 100_000 }, async t => {
   const f = await machineBrowserFixture(t, { humanEngine, icePath }), { human, machine } = f;
   t.after(async () => { if (!machine.isClosed()) t.diagnostic(JSON.stringify(await machine.evaluate(() => ({
     e2ee: window.anantaMachine.status().e2ee, errors: window.__transformErrors, audio: window.anantaMachine.audio.status() })))); });
@@ -26,81 +25,21 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
   }
   assert.equal(await human.evaluate(() => window.__captures), 0);
   assert.deepEqual(await machine.evaluate(() => window.anantaMachine.audio.sources()), []);
-  assert.equal(await machine.evaluate(() => { try { window.anantaMachine.chat.open(); return true; } catch { return false; } }), false);
+  assert.equal(await machine.evaluate(() => { try { window.anantaMachine.chat.open(); return true; } catch { return false; } }), true);
   await human.locator(".nav-item", { hasText: "Analyse" }).click();
   const panel = human.locator("app-machine-permissions-panel");
-  await panel.getByRole("button", { name: "Für diese KI einstellen" }).click().catch(async error => {
-    t.diagnostic(JSON.stringify({ stage: "initial-machine-permission-entry", browser: f.humanStartup,
-      ui: await human.evaluate(observeMachinePermissionUi).catch(() => null) }));
-    throw error;
-  });
-  assert.equal(await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).isDisabled(), true);
-  assert.equal(await panel.getByLabel("Mein laufender Bildschirmton", { exact: true }).isDisabled(), true);
-  assert.equal(await human.evaluate(() => window.__captures), 0, "permission editor does not start capture");
+  await panel.getByText("Leserecht vorhanden / Senderecht vorhanden", { exact: true }).waitFor();
+  assert.equal(await panel.locator('input, select').count(), 0, "rights observation offers no ineffective consent editor");
+  assert.equal(await human.evaluate(() => window.__captures), 0, "rights observation does not start capture");
   await human.locator(".nav-item").filter({ hasText: /^Live/ }).click();
   await human.locator("#toggle-microphone").click();
   await human.locator('#toggle-microphone[aria-pressed="true"]').waitFor({ timeout: 5000 });
-  await human.locator(".nav-item", { hasText: "Analyse" }).click();
-  await panel.getByRole("button", { name: "Für diese KI einstellen" }).click();
-  await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).check();
-  await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).check();
-  // Replace the synthetic microphone through the persistent, user-clicked dock
-  // while the editor stays mounted. A checked source kind is not consent for
-  // the replacement publication, even if its label is identical.
   await human.locator("#toggle-microphone").click();
   await human.locator('#toggle-microphone[aria-pressed="false"]').waitFor();
-  await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).waitFor();
-  await human.waitForFunction(() => {
-    const input = document.querySelector('app-machine-permissions-panel input[type="checkbox"]');
-    return input?.disabled && !input.checked;
-  });
   await human.locator("#toggle-microphone").click();
   await human.locator('#toggle-microphone[aria-pressed="true"]').waitFor();
-  await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).check();
-  await panel.getByRole("button", { name: "Auswahl ausdrücklich freigeben" }).click();
-  await panel.getByRole("alert").filter({ hasText: "Quelle oder Sitzung seit der Auswahl geändert" }).waitFor();
-  const beforeFeedback = await human.evaluate(() => ({ captures: window.__captures, peers: window.__pcs.length }));
-  const details = panel.locator("details"), summary = details.locator("summary");
-  await summary.focus(); await human.keyboard.press("Enter");
-  assert.equal(await details.locator("code").innerText(), "machine_receive_selection_changed");
-  assert.equal(await details.locator("code").isVisible(), true);
-  await human.keyboard.press("Enter");
-  assert.equal(await details.locator("code").isVisible(), false);
-  assert.deepEqual(await human.evaluate(() => ({ captures: window.__captures, peers: window.__pcs.length })), beforeFeedback);
-  assert.deepEqual(await machine.evaluate(() => window.anantaMachine.audio.sources()), []);
-  assert.equal(await machine.evaluate(() => window.anantaMachine.chat.status().open), false);
-  await panel.getByRole("button", { name: "Für diese KI einstellen" }).click();
-  // No grant exists: opening the editor resets all checks. Wait for that reset
-  // before check(), which otherwise may skip the click on the OLD checked DOM.
-  await human.waitForFunction(() => {
-    const inputs = [...document.querySelectorAll('app-machine-permissions-panel input[type="checkbox"]')];
-    return inputs.length === 3 && inputs.every(input => !input.checked);
-  }, null, { timeout: 1500 });
-  await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).check();
-  await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).check();
-  await panel.getByRole("button", { name: "Auswahl ausdrücklich freigeben" }).click();
-  await panel.getByText("Serverbestätigung erhalten.", { exact: true }).waitFor().catch(async error => {
-    const codes = await panel.getByRole("alert").locator("code").allTextContents();
-    t.diagnostic(JSON.stringify({ consentFailure: codes.filter(code => /^machine_receive_[a-z_]{1,64}$/.test(code)).slice(0, 3) }));
-    throw error;
-  });
-  await panel.getByRole("button", { name: "Für diese KI einstellen" }).click();
-  // The click handler updates Angular signals; a returned click is not a DOM
-  // rendering ACK. Observe the exact selection, without another action/retry.
-  await human.waitForFunction(() => {
-    const inputs = document.querySelectorAll('app-machine-permissions-panel input[type="checkbox"]');
-    return inputs.length === 3 && inputs[0].checked && !inputs[1].checked && inputs[2].checked;
-  }, null, { timeout: 1500 }).catch(async error => {
-    t.diagnostic(JSON.stringify({ selection: await panel.evaluate(element => ({
-      inputs: [...element.querySelectorAll('input[type="checkbox"]')].map(input => ({ checked: input.checked, disabled: input.disabled })),
-      grantedAudioSources: Number(element.textContent.match(/Audioquellen: (\d+)/)?.[1] ?? -1),
-      chatGranted: /Chat: ja/.test(element.textContent),
-    })) }));
-    throw error;
-  });
-  assert.equal(await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).isChecked(), true);
-  assert.equal(await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).isChecked(), true);
-  assert.equal(await panel.getByLabel("Mein laufender Bildschirmton", { exact: true }).isChecked(), false);
+  await human.locator(".nav-item", { hasText: "Analyse" }).click();
+  await panel.getByText("Vom Hub erlaubt für laufende Raumquellen.", { exact: true }).waitFor();
   await machine.waitForFunction(() => window.anantaMachine.audio.sources().length === 1, null, { timeout: 12000 }).catch(async error => {
     if (icePath !== "direct") {
       t.diagnostic(JSON.stringify({ path: icePath, humanRelay: await machineRelayObservation(human),
@@ -138,9 +77,15 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
   await machine.waitForFunction(() => window.anantaMachine.chat.poll().events.length === 1);
   const event = await machine.evaluate(() => window.anantaMachine.chat.poll().events[0]);
   assert.equal(event.event.sender_kind, "human");
+  assert.deepEqual(await machine.evaluate(id => window.anantaMachine.chat.redeliver([id]), event.event.message_id),
+    { schema: "ananta.meet-chat-redelivery.draft1", message_ids: [event.event.message_id] });
   const answerText = "Bound synthetic answer <b>literal text</b>";
   await machine.evaluate(({ item, text }) => { window.anantaMachine.chat.ack(item.cursor); window.anantaMachine.chat.reply(item.event.message_id, text); }, { item: event, text: answerText });
   await human.locator("#chat-log").getByText(answerText, { exact: true }).waitFor();
+  assert.equal(await machine.evaluate(id => {
+    try { window.anantaMachine.chat.redeliver([id]); return false; }
+    catch (error) { return error.message === "meet_chat_redelivery_denied"; }
+  }, event.event.message_id), true, "answered input cannot be reconfirmed");
   const chatViewBaseline = await human.evaluate(() => ({ captures: window.__captures, peers: window.__pcs.length }));
   // The same display must work in both views without recreating media or
   // inferring machine classification from an author name or HTML-like text.
@@ -232,6 +177,22 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
       endpoint: index === 0 ? "human" : "machine", relay: observed }));
   }
   await machine.evaluate(() => window.anantaMachine.screen.close());
+  await machine.evaluate(() => window.anantaMachine.chat.open());
+  await human.getByRole("button", { name: "Chat", exact: true }).click();
+  for (let i = 0; i < 9; i++) {
+    await human.locator("#chat-message").fill(`Synthetic pending input ${i}`);
+    await human.locator("#chat-form button").click();
+  }
+  await machine.waitForFunction(() => window.anantaMachine.chat.poll().events.length === 8);
+  const heldIds = await machine.evaluate(() => {
+    const first = window.anantaMachine.chat.poll(0);
+    const second = window.anantaMachine.chat.poll(first.events.at(-1).cursor);
+    if (first.events.length !== 8 || second.events.length !== 1 || second.acknowledged !== 0)
+      throw new Error("test_pending_pagination_invalid");
+    const ids = [...first.events, ...second.events].map(item => item.event.message_id);
+    return window.anantaMachine.chat.redeliver(ids).message_ids;
+  });
+  assert.equal(new Set(heldIds).size, 9);
   for (let i = 0; i < 3; i++) {
     const before = await machine.evaluate(() => window.anantaMachine.status().lease);
     // JWT expirations are seconds, and renewal must actually extend the lease.
@@ -239,7 +200,16 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
     await machine.evaluate(grant => window.anantaMachine.renew(grant), await f.grant(caps));
     const after = await machine.evaluate(() => window.anantaMachine.status().lease);
     assert.equal(after.sessionId, before.sessionId); assert.equal(after.generation, before.generation + 1);
+    await machine.waitForFunction(() => !window.anantaMachine.chat.status().open, null, { timeout: 2000 });
+    assert.deepEqual(await machine.evaluate(ids => {
+      window.anantaMachine.chat.open(); return window.anantaMachine.chat.redeliver(ids).message_ids;
+    }, heldIds), heldIds, "only current same-conversation delivered inputs survive renewal");
   }
+  await machine.evaluate(ids => {
+    for (const id of ids) window.anantaMachine.chat.reply(id, "Synthetic held reply");
+  }, heldIds);
+  await human.waitForFunction(() => [...document.querySelectorAll("#chat-log .chat-entry")]
+    .filter(entry => entry.textContent.includes("Synthetic held reply")).length === 9);
   // Revoke an actively collecting subscription, not only a completed graph.
   t.after(async () => { if (!machine.isClosed()) await machine.evaluate(() => clearInterval(window.__audioRevokeTimer)); });
   await machine.evaluate(async () => {
@@ -265,9 +235,10 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
   await machine.waitForFunction(() => window.__audioRevokeObservation.chunks > 0, null, { timeout: 3000 });
   await human.locator(".nav-item", { hasText: "Analyse" }).click();
   assert.equal(await machine.evaluate(() => window.anantaMachine.audio.status().open), true);
-  await panel.getByRole("button", { name: "Meine Freigaben widerrufen" }).click();
-  await panel.getByText("Keine Empfangsfreigabe erteilt.", { exact: true }).waitFor();
-  await machine.waitForFunction(() => !window.anantaMachine.chat.status().open && !window.anantaMachine.audio.status().open
+  // Observing rights does not revoke the Hub capability. The private
+  // server's membership teardown is the authoritative loss for this fixture.
+  for (const socket of f.app.webSocketServer.clients) socket.terminate();
+  await machine.waitForFunction(() => !window.anantaMachine.status().joined && !window.anantaMachine.audio.status().open
     && window.anantaMachine.audio.sources().length === 0 && window.__audioRevokeObservation.closed, null, { timeout: 3000 });
   assert.equal(await machine.evaluate(() => window.__audioRevokeObservation.error), "meet_audio_binding_changed");
   assert.deepEqual(await machine.evaluate(() => {
@@ -276,6 +247,9 @@ test(`${humanEngine} human consent gates real machine chat, decrypted PCM and ow
     try { window.anantaMachine.audio.ack(1); } catch { ackDenied = true; }
     return { pollDenied, ackDenied };
   }), { pollDenied: true, ackDenied: true });
+  assert.equal(await machine.evaluate(() => {
+    try { window.anantaMachine.chat.redeliver(["0".repeat(32)]); return false; } catch { return true; }
+  }), true, "membership loss cannot reconfirm any input");
   assert.equal(await machine.evaluate(() => window.__captures), 0);
   await machine.evaluate(() => window.anantaMachine.leave());
   assert.equal(await machine.evaluate(() => window.anantaMachine.status().joined), false);

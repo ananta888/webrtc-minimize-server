@@ -20,7 +20,7 @@ import { MachineIntegrationCapability } from "./machine-integration-status";
     </p>
     @if (admission.state() === 'disabled') {
       <p>Der Betreiber muss zuerst öffentlichen Hub-Trust und die erlaubten Fähigkeiten konfigurieren.
-        Zusätzlich braucht Ananta einen freigegebenen Projektauftrag. Deine Quellenfreigabe allein schaltet die Anbindung nicht ein.</p>
+        Zusätzlich braucht Ananta einen freigegebenen Projektauftrag. Eine laufende Raumquelle allein schaltet die Anbindung nicht ein.</p>
     }
     @if (admission.integration(); as integration) {
       <div class="integration-table-scroll" tabindex="0" role="region" aria-label="Ananta-Funktionsübersicht">
@@ -33,8 +33,8 @@ import { MachineIntegrationCapability } from "./machine-integration-status";
               <tr [attr.data-machine-capability]="capability">
                 <th scope="row">{{ labels[capability] }}</th><td>Ja</td>
                 <td>{{ integration.operatorCapabilityCeiling.includes(capability) ? 'Enthalten' : 'Gesperrt' }}</td>
-                <td>{{ integration.publisherConsentRequired.includes(capability)
-                  ? 'Freigabe deiner konkreten Quelle unten'
+                <td>{{ ['audio.receive', 'video.receive', 'chat.read'].includes(capability)
+                  ? 'Aktuelles Hub-Empfangsrecht und Raumteilnahme'
                   : capability === 'chat.send' ? 'Freigegebener Eingang und korrelierte Antwort' : 'Autorisierte agenteneigene Quelle' }}</td>
               </tr>
             }
@@ -45,10 +45,10 @@ import { MachineIntegrationCapability } from "./machine-integration-status";
       </div>
       <p>„Enthalten“ bezeichnet nur die globale Obergrenze, keine erteilte Berechtigung.
         Hub-Trustprofil, Projektauftrag, Browserunterstützung und aktuelle Raumrechte können weiter einschränken.
-        Eine Sitzungserneuerung verlängert deine Quellenfreigaben nicht.</p>
+        Eine Sitzungserneuerung benötigt weiterhin einen gültigen Hub-Grant.</p>
     }
     <p>Diese Prüfung meldet weder einen verbundenen Hub noch einen laufenden Worker.
-      Audioempfang und Chatlesen benötigen zusätzlich deine Freigabe unten.
+      Audioempfang und Chatlesen benötigen aktuelle Hub-Rechte; die Übersicht unten zeigt die verbundenen KI-Endpunkte.
       Bildschirm, Avatar und Sprache erscheinen erst bei tatsächlich verfügbaren Remote-Tracks.</p>
     @if (admission.checkedAt(); as time) { <p>Zuletzt geprüft: {{ time | date:'HH:mm:ss' }} · Status maximal 30 Sekunden aktuell.</p> }
     <button type="button" [disabled]="admission.state() === 'checking'" (click)="admission.refresh()">Betreiberstatus aktualisieren</button>

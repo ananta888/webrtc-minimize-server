@@ -21,18 +21,22 @@ removes a newer activation. Argument-free close is reserved for whole-session
 cleanup in the same isolated controller context.
 
 `pulse(generation)` is an additional controller-liveness bound. The source must
-receive a pulse within 2.5 seconds, including while setup is pending. The Worker
+receive a pulse within 2.5 seconds after setup hands out its receipt. Pending
+setup is bounded separately to 110 seconds and always by the current authority. The Worker
 may pulse only after a fresh authenticated Hub exchange, never from an autonomous
 browser timer. A pulse verifies the unchanged source authority and cannot revive
-an expired or replaced generation, extend the 30-second activation or grant a
+an expired or replaced generation, extend the 120-second activation or grant a
 capability. It is not itself a cryptographic Hub receipt; the Worker remains
 responsible for verifying that receipt before forwarding a pulse.
 
 ## Bounds and responsibility
 
-- Maximum 30 seconds including 10-second setup; no self-renewal or hidden
-  retries. Session/lease/membership/capability changes and backwards clocks fence
-  the source within a 100-ms watchdog interval (subject to browser scheduling).
+- Maximum 120 seconds including at most 110 seconds of setup, capped by the
+  initial verified authority expiry. The 25-ms setup tick checks authority before
+  settling readiness; active frames use the 100-ms watchdog. Source/session loss,
+  expiry, capability denial and backwards clocks fence the source. Current
+  lease-generation/membership changes under the same identity may rebind without
+  extending the activation receipt. No self-renewal or hidden retries.
 - Maximum five newly requested frames/second, only from the owned canvas.
   When another publication briefly renegotiates SFrame readiness, the source
   enters `waiting` and requests **no frames**. Identical authority and restored

@@ -100,3 +100,117 @@ Abnahme und CI des exakten Chat-Commits bleiben erforderlich; kein Deployment.
 Wireformat, Hub-Trust, menschlicher Capture-Klick und getrennte Lese-/Senderechte
 bleiben unverändert. Diese Korrektur aktiviert keine Produktion und implementiert
 keine Modell-, Dialog-, Aufzeichnungs- oder Wiederverbindungsentscheidung.
+
+
+`chat.poll(afterCursor?)` bietet additive, begrenzte Pagination ohne ACK. Der Cursor darf nur zwischen dem bestaetigten Cursor und dem hoechsten bereits gelieferten Cursor liegen. Jede Seite hat weiterhin maximal acht Ereignisse; ohne Parameter bleibt das bisherige Verhalten erhalten. Der Controller setzt den Cursor nach Reopen auf null und bindet die Aufnahme weiterhin an aktuelle Autoritaet. Die 30-s-Frische, Queue-Grenzen, Quellenpruefung und Reply-Rechte bleiben unveraendert. Diese API allein behebt keine synchrone Companion-Poll-Pause; die Ananta-Komposition muss sie waehrend der Ausfuehrung bedienen. Queue-Domain und Endpoint bleiben getrennt (SRP/DIP); kein vorzeitiges ACK und keine Persistenz von Chat-Inhalten im Server.
+
+
+`chat.redeliver(messageIds)` bestaetigt maximal 32 eindeutige, bereits durch diesen
+Endpoint ausgelieferte und noch lebende unbeantwortete IDs erneut. Die Operation
+prueft aktuelle Read-/Lease-/Scope-Autoritaet und Quellenfreigabe, danach nochmals
+den exakten Queue-Owner und unveraenderte Registrierungen vor atomarer Aktualisierung.
+Unbekannte, beantwortete oder nach 120 s abgelaufene Registrierungen bleiben gesperrt.
+Keine Inhalte, neue Eingaben, ACKs, Senderechte oder Lease-Erweiterung werden erzeugt.
+Die 30-s-Erstaufnahme bleibt bestehen, das Antwortfenster endet 120 s nach letzter
+gueltiger Zustellung. Eine fortgesetzte Bestaetigung endet bei Hub-Widerruf oder
+Lease-Ablauf; `reply` prueft aktuelle Senderechte weiterhin separat.
+
+47 Endpointtests pruefen Frische, atomare Listenvalidierung, Widerruf, Quellenentzug,
+Ablauf, fremde Konversation, unveraenderte Senderechte und synchrone Source-Port-
+Seiteneffekte vor Mutation. Der Ananta-Pump nutzt die Operation hoechstens alle
+10 s fuer offene unbeantwortete Eingaben. Der echte TypeScript-Endpoint in Node
+und Anantas echter Python-run()-Loop bestehen zusammen fuer 2/3/32 Eingaben mit
+je 50 s synthetischer Modellrunde; insgesamt 364 Companion-Regressionstests.
+Browser/Hub/Modell-Ports sind dabei synthetisch, keine Live- oder Release-Evidence.
+Gemeinsame echte Browser-/Quellenwiderruf-Abnahme, voller Blockcheck und gepaartes
+Deployment bleiben offen. Aeltere Clients ohne redeliver beenden den aktualisierten
+Companion-Pfad bei offenen Eingaben; kein stiller unautorisierter Ersatz.
+
+
+Die aktuelle Receive-Policy folgt dem absichtlichen Commit `add3f5f`:
+verifizierte Hub-Capabilities autorisieren Chat-/Medienempfang; separate alte
+Publisher-Consent-Eintraege sind keine zusaetzliche technische Voraussetzung.
+Session-Lease und aktuelle Room-Membership bleiben verpflichtend. Ein Hub-
+Leserecht erteilt kein Senderecht; ein Quellenport nimmt nur aktuelle Mitglieder
+und deren bereits zugestellte Identitaeten an. Aenderung oder Ablauf alter
+Consent-Eintraege kann keine Hub-Capability erteilen oder widerrufen. Die alten
+Session/Gate-/Browser-Erwartungen wurden auf diesen bestehenden Vertrag
+abgeglichen; Produktionspolicy wurde dafuer nicht geaendert.
+
+Die aktuelle Production-Angular-Kopie besteht vier echte HTTPS/WebRTC-
+Browserfaelle: Chromium/Chromium und Firefox/Chromium fuer Live-Chat/PCM/Screen,
+Chromium/Chromium und Firefox/Firefox fuer Nur-Lese-Chat. Neun wartende Eingaben
+werden 8+1 ohne ACK paginiert, durch drei echte Renewals erneut bestaetigt und
+je einmal beantwortet. Bereits beantwortete IDs koennen nicht erneut bestaetigt
+werden; Nur-Lese-Receipts erteilen kein Senderecht. Echte private Server-
+Mitgliedschaftsverluste sperren Wiedereroeffnung/Redelivery und stoppen aktive
+Audioannahme. Die Fixtures verwenden ausschliesslich kryptografisch verifizierte
+synthetische Identitaeten, Quellen und eigenen lokalen Server, keine Produktion.
+62 Session/Endpoint/ReceiveGate- und 28 Queue-Tests, App-Typen und Production-
+Angular-Build bestehen. Dies ist Client-/Server-Abnahme, kein aktueller Python-
+Worker-/Browser-Gesamtloop und keine GPU-/Registry-Release-Evidence. Legacy-
+Consent-UI-Wording/Deprecation, voller Blockcheck und gepaartes Deployment bleiben
+als getrennte Arbeit offen; kein Push/Deploy.
+
+Ein zusaetzlicher Nachlauf der zwei Nur-Lese-Faelle prueft den Publisher-Verlust
+getrennt von Maschinen-Mitgliedschaft und Hub-Lease: Der menschliche Sender
+verlaesst den Raum, die Maschine bleibt joined mit gueltiger Lease, und redelivery
+der alten ID wird verweigert. Chromium und Firefox bestehen (2 wiederholte
+Matrixfaelle, 9.086 s, keine weitere eigenstaendige Vierer-Matrix).
+
+
+Die lokale Receive-Policy-Migration ist inzwischen weitergefuehrt: Die menschliche
+Quellenuebersicht ist passiv und zeigt Hub-Rechte fuer Audio, Bild, Chatlesen und
+Antworten getrennt. Unwirksame Legacy-Consent-Schalter sind aus der aktiven UI
+entfernt. Stoppen erfolgt ueber die bestehenden Mediensteuerungen oder Leave.
+Auch PCM- und Bildexport benutzen jetzt die schon geltende Hub-Capability-Policy
+statt einer zusaetzlichen alten Consent-Anforderung; aktuelle Lease, Membership,
+Quelle/Track, Publikationsepoche und begrenzte Export-Lifetimes bleiben Pflicht.
+139 Frontend- und 14 Node-Tests bestehen. 22 unterschiedliche echte Browserfaelle
+bestehen ueber Matrix und gezielten Renewal-Nachlauf; der anfaengliche Lauf hatte
+20 Erfolge und zwei falsche Renewal-Testannahmen und wird nicht als komplett
+gruener Gesamtlauf dargestellt. Faehigkeitswechsel ist weiterhin kein legaler
+Renewal; der korrigierte Test prueft diese Ablehnung und anschliessendes Leave.
+
+Legacy-Transport/Service und das alte Integration-v1-Feld
+`publisherConsentRequired` bleiben als Kompatibilitaetsschuld erhalten; die aktive
+UI interpretiert es nicht als aktuelle Freigabeanforderung. Private Audio-/Visual-
+Testbruecken stoppen reale synthetische Quellen fuer Entzug. Selektiver Multi-
+Worker-Widerruf muss vom owning Hub kommen: Der obsolete negative Consent-
+Brueckenbefehl endet bis zu dessen Fixture-Anschluss begrenzt mit
+`test_hub_receive_revocation_required`. Er stellt keinen erfolgreichen Entzug dar.
+Voller Clientblock, aktuelle gepinnte Worker-/Browser-Gesamtkomposition, Live-
+Provider/GPU und Registry-Release-/Deployment-Abnahme bleiben offen. Aktueller
+Nachweis: `artifacts/test-gates/meet-receive-policy-migration.v1.json`.
+
+
+Der aktuelle gekoppelte Hub-/Worker-Test hat eine weitere Legacy-Luecke
+geschlossen: Der Signaling-Backchannel lieferte nur alte Consent-Eintraege
+(Revision 0, leere Quellenliste), waehrend der Browser bereits Hub-Receive-Rechte
+benutzte. Eine kleine reine Serverprojektion stellt jetzt aktuelle
+Hub-Capabilities, authentifizierte menschliche Membership/Publikationen und
+Lease-Deadline im kompatiblen Quellenformat dar. Sie erteilt keine Senderechte
+oder neue Lease. Der Lease-Store liefert die aktuelle geschlossene Lease an
+seinen registrierten Port und prueft Liveness davor und danach.
+
+39 Node- und 18 Hub-Regressionsfaelle bestehen. Das frisch gebaute eigenstaendige
+Workerimage besteht die Quellcode-/Dependency-Pruefung. Zwei private reale
+Worker mit gepinntem Playwright 1.58.0, realer Hub-SQL/TaskQueue und aktuellem
+Client bestehen zwei korrelierte Antworten, gleichzeitige synthetische Sprache,
+unterschiedliche Avatare, unabhaengigen Bildwiderruf und gezielten Hub-Stopp
+einer Teilnahme bei weiterlaufender zweiter Teilnahme (67.63 s nach Fix). Der
+vorherige fehlgeschlagene Lauf wird im Bericht erhalten. Der vorhandene Hub-
+Task-Cancel ist der selektive Widerruf; ein neuer Legacy-Consent-Befehl ist
+dafuer nicht noetig. Dies ist eine Dialog-Runtime-Abnahme mit synthetischer
+Inferenz und keine Pruefung des Legacy-Companion-Gesamtloops unter langem
+Modell-/Medienrueckstau. Live-Provider/GPU, Deployment und produktive Registry-
+Freigabe bleiben offen. Bericht: `artifacts/test-gates/meet-hub-receive-projection.v1.json`.
+
+
+Der anschliessende volle Clientblock `npm run check` ist noch nicht bestanden:
+187 Frontenddateien/1694 Tests bestehen, vier Dateien/19 Tests schlagen fehl
+(SFrame-Key-ACK/Overlay-Testdoubles, Avatar-Setup/Reason/Clock), plus eine
+unhandled Rejection. Die spaeteren Build-/Leakage-/Go-/Node-/Infrastruktur-
+Stufen wurden nicht erreicht. Diese konkreten Regressionen sind im aktiven
+Track festgehalten und muessen untersucht und korrigiert werden; der erfolgreiche
+gekoppelte Teilnachweis wird nicht als gruener Gesamtblock ausgegeben.

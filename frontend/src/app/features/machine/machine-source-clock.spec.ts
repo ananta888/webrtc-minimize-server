@@ -54,7 +54,7 @@ for (const kind of ["speech", "avatar"] as const) {
     expect(f.source.status().state).toBe("failed"); expect(f.close).toHaveBeenCalledOnce();
   });
   it(`${kind}: heartbeats cannot extend the local activation cap with a frozen wall clock`, async () => {
-    const f = await fixture(kind), limit = kind === "speech" ? 50_000 : 30_000;
+    const f = await fixture(kind), limit = kind === "speech" ? 50_000 : 120_000;
     const expiresAt = f.receipt.expiresAt;
     for (monotonic = 1000; monotonic < limit; monotonic += 1000) {
       f.heartbeat(); expect(f.source.status().state).toBe("open");

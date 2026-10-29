@@ -9,9 +9,10 @@ const blue = pixel => pixel?.[2] > 170 && pixel[0] < 70 && pixel[1] < 70;
 
 export async function multiHubMedia(f) {
   await f.human.evaluate(installMultiPublisherObservation);
-  let step = "idle", publisher = null, floorObservation = null;
+  let step = "idle", publisher = null, floorObservation = null, mediaObservation = null;
   return {
-    diagnostic() { return { step, publisher, ...(floorObservation ? { floor: floorObservation } : {}) }; },
+    diagnostic() { return { step, publisher, ...(floorObservation ? { floor: floorObservation } : {}),
+      ...(mediaObservation ? { sources: mediaObservation } : {}) }; },
     async close() {
       await f.human.evaluate(async () => { await window.__speakerFloor?.close(); await window.__multiPublisher.close(); });
     },
@@ -57,33 +58,17 @@ export async function multiHubMedia(f) {
       }
       if (input.command === "consent" && Object.keys(input).length === 3
         && [0, 1].includes(input.publisher) && typeof input.enabled === "boolean") {
+        // Legacy bridge command is observation only. Selective withdrawal
+        // requires the owning Hub to replace/revoke the corresponding lease.
         publisher = input.publisher; step = "consent-navigation";
+        if (!input.enabled) throw new Error("test_hub_receive_revocation_required");
         await page.locator("#mesh-analysis-navigation").click();
-        const panel = page.locator("app-machine-permissions-panel");
-        const article = panel.locator("article").filter({ has: page.locator("code", { hasText: peers[input.publisher] }) });
-        step = "consent-target";
-        await article.getByRole("button", { name: "Für diese KI einstellen" }).click();
-        // A click is not a render barrier: the old target's checked DOM can
-        // coexist briefly with the new target's editor model. Observe both
-        // bindings before another input event, without changing application state.
-        step = "consent-render";
-        await waitFixtureValue(page, peer => {
-          const panel = document.querySelector("app-machine-permissions-panel");
-          const target = [...panel.querySelectorAll("article")].find(el => el.querySelector("code")?.textContent === peer);
-          return Boolean(target?.querySelector('button[aria-pressed="true"]'))
-            && panel.querySelector("fieldset")?.dataset.machinePeer === peer;
-        }, peers[input.publisher], { timeout: 5000 });
-        step = "consent-checkbox";
-        await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).uncheck();
-        await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).setChecked(input.enabled);
-        step = "consent-submit";
-        await panel.getByRole("button", { name: "Auswahl ausdrücklich freigeben" }).click();
-        step = "consent-confirmation";
-        await panel.getByText("Serverbestätigung erhalten.", { exact: true }).waitFor();
-        step = "consent-target-proof";
-        if (input.enabled) await article.getByText(/Chat: ja/).waitFor();
+        const article = page.locator("app-machine-permissions-panel").locator("article")
+          .filter({ has: page.locator("code", { hasText: peers[input.publisher] }) });
+        step = "receive-policy-observation";
+        await article.getByText(/Leserecht vorhanden/).waitFor();
         step = "idle"; publisher = null;
-        return { consent: input.publisher, enabled: input.enabled };
+        return { consent: input.publisher, enabled: true };
       }
       if (input.command === "ask" && Object.keys(input).length === 1) {
         await page.getByRole("button", { name: "Chat", exact: true }).click();
@@ -117,6 +102,7 @@ export async function multiHubMedia(f) {
         || !["avatars", "first-speech", "both-speech", "first-revoked", "survivor"].includes(input.phase)) {
         throw new Error("test_multi_media_command_invalid");
       }
+      step = "media-navigation";
       await page.locator(".nav-item").filter({ hasText: /^Live/ }).click();
       if (["first-speech", "both-speech"].includes(input.phase)) {
         let consecutive = 0;
@@ -128,8 +114,15 @@ export async function multiHubMedia(f) {
         });
         return { audio: input.phase === "both-speech" ? "both" : "first", consecutive: 3 };
       }
+      step = "media-observation";
       await waitFixtureValue(page, peers => window.__multiPublisher.snapshot(peers), peers, {
         timeout: 12000, accept: state => {
+          const pixel = value => Array.isArray(value) && value.length === 3
+            && value.every(n => Number.isInteger(n) && n >= 0 && n <= 255) ? value.slice() : null;
+          mediaObservation = { failed: state.failed === true,
+            publishers: Array.isArray(state.publishers) ? state.publishers.slice(0, 2).map(p => ({
+              camera: pixel(p.camera), screen: pixel(p.screen),
+            })) : [] };
           const [first, second] = state.publishers;
           return !state.failed && blue(second.camera) && second.screen !== null
             && (input.phase === "avatars" ? red(first.camera) && first.screen !== null

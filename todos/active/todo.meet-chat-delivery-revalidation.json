@@ -1,0 +1,299 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "meet-chat-delivery-revalidation",
+  "purpose": "Laengere Companion-Rueckstaende brauchen erneute aktuelle Zustellbestaetigung fuer bereits autorisierte Eingaben, ohne neue Eingaben nach der Frischegrenze aufzunehmen.",
+  "status": "partial",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Begrenzte aktuelle Zustellbestaetigung",
+      "task_ids": [
+        "chat-delivery-revalidation",
+        "receive-policy-ui",
+        "hub-receive-projection",
+        "client-block-regression"
+      ],
+      "status": "in_progress"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "chat-delivery-revalidation",
+      "title": "Bereits zugestellte Eingaben unter aktueller Chat-Autoritaet erneut bestaetigen",
+      "status": "partial",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 95,
+      "acceptance_criteria": [
+        "Nur bereits zugestellte, noch gueltige unbeantwortete IDs; maximal 32 eindeutige IDs; atomare Validierung",
+        "Aktuelle Queue/Hub-Lease und Quellenfreigabe werden vor Mutation erneut geprueft; fremde/abgelaufene/beantwortete IDs werden abgewiesen",
+        "Kein neuer Inhalt und keine neue Autoritaet; 30-s-Erstaufnahme und 120-s-Fenster ab letzter gueltiger Zustellung bleiben erhalten",
+        "Widerruf, andere Konversation und Lease-Deadline koennen nicht durch Wiederbestaetigung umgangen werden"
+      ],
+      "depends_on": [],
+      "verification": [
+        "Vitest machine-chat-endpoint.spec.ts: 47 passed",
+        "Node machine-chat.test.js: 28 passed",
+        "tsc frontend/tsconfig.app.json --noEmit: passed",
+        "Ananta real endpoint composition: 2/3/32 messages, 50 s each; 364 regression tests passed",
+        "Todo validator: passed",
+        "Current Angular production build passed",
+        "Vitest Session/Endpoint/ReceiveGate: 62 passed",
+        "Actual HTTPS/WebRTC browser matrix: 4 passed; 9 pending inputs, 3 renewals, read-only and server membership loss",
+        "Publisher membership loss with live machine Hub lease: Chromium and Firefox, 2 passed, 0 skipped; repeated existing matrix cases"
+      ]
+    },
+    {
+      "id": "receive-policy-ui",
+      "title": "Quellenuebersicht zeigt Hub-Capabilities statt unwirksamer Legacy-Consent-Schalter",
+      "status": "partial",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 95,
+      "acceptance_criteria": [
+        "Keine lokalen Legacy-Eintraege als aktuelle Empfangsautoritaet anzeigen oder bearbeiten",
+        "Empfang und Senden separat aus aktueller Peer-Membership und Hub-Capabilities beobachten; keine neue Autorisierung",
+        "Klare Stopmoeglichkeiten ueber bestehende Mediensteuerung und Raumverlassen; keine Capture-Aufrufe beim Laden",
+        "Headless Chromium/Firefox pruefen Dashboard, Chat/PCM/Renewal und Membershipverlust; Legacy-Ports kompatibel erhalten"
+      ],
+      "depends_on": [],
+      "verification": [
+        "139 frontend tests passed",
+        "14 Node bridge/diagnostic tests passed",
+        "Angular production build and App tsc passed",
+        "22 distinct Chromium/Firefox cases passed across main batch and corrected renewal recheck; no repeated green full batch",
+        "Full block verification/owning-Hub selective revoke/pinned Worker coupling remain open"
+      ]
+    },
+    {
+      "id": "hub-receive-projection",
+      "title": "Server-Backchannel projiziert verifizierte Hub-Empfangsrechte fuer aktuelle Quellen",
+      "status": "partial",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 95,
+      "acceptance_criteria": [
+        "Geschlossene aktuelle Hub-Lease/Membership/Capability-Projektion ohne Abhaengigkeit von Legacy-Consent",
+        "Nur aktuelle authentifizierte menschliche Quellen; keine fremden/abgelaufenen Lease- oder erweiterten Senderechte",
+        "Lease-Deadline und Receive-Revision stimmen mit aktuellem Browservertrag ueberein",
+        "Node Negativ-/Compatibility-Tests sowie gekoppelte Hub/zwei Worker Chat-/Medien-Abnahme"
+      ],
+      "depends_on": [
+        "receive-policy-ui"
+      ],
+      "verification": [
+        "39 Node source/HTTP/lease/trust tests passed",
+        "18 Ananta Hub multi-role/terminal regressions passed",
+        "Current packaged Worker source/dependency gate passed",
+        "Actual Hub/2 pinned Workers/current Angular persona-speech with 2 correlated chat replies and selective Hub cancellation passed after source projection fix (67.63 s)",
+        "Full client block check pending; production deployment/Registry remains separate"
+      ]
+    },
+    {
+      "id": "client-block-regression",
+      "title": "SFrame-Testdoubles und Avatar-Setup-/Clock-Regressionen aus vollem Blockcheck beheben",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "Vier konkret benannte Frontenddateien aus full_client_block_check untersuchen; aktuelle Produktvertraege und echte Schutzgrenzen erhalten",
+        "Headless gezielte Regression ohne Setup-Timeouts/unhandled Rejections und ohne Weglassen negativer Sicherheitspruefungen",
+        "Vorgeschriebenen npm run check nach Korrekturen abschliessen und verbleibende Live-Skips sichtbar dokumentieren",
+        "Volle Browser-Regressionen machine-multi-publisher und native-source-audio konkret diagnostizieren; Autoritaets-, Source-Lifetime- und Audio-Schutzgrenzen erhalten"
+      ],
+      "depends_on": [
+        "hub-receive-projection"
+      ],
+      "verification": [
+        "Full frontend block failed 19 tests/4 files after 1694 successes; exact failed files tracked in full_client_block_check",
+        "80 unique targeted frontend regressions passed; readiness/identity/clock/expiry/logging negative cases preserved",
+        "Full frontend block: 191 files, 1719 tests passed, no unhandled errors",
+        "Production build, leakage and four Go modules passed; full Node/browser suite still running",
+        "Running full Node/browser suite exposes Firefox multi-publisher and native-source-audio gain/mute failures; final diagnostics pending, no success claim.",
+        "Explicit owner avatar retirement recheck: Chromium/Firefox multi-publisher 2 passed, 0 skipped (9.11 s); original full-run failure retained separately.",
+        "Native gain/mute isolated replay: 1 passed, no code change (54.34 s). Original full-run source-loss/unmute failure still unresolved; do not classify as fixed or ignore.",
+        "Terminal full recheck exit 1: Node 1790 passed / 2 failed / 5 skipped. Read-only lease observation unit tests 2 passed; real diagnostic gain/mute replay passed (65.81 s). Fresh full block recheck required.",
+        "Second required full npm run check exit 0: frontend 1719 passed; Node/browser 1795 passed, 0 failed, 5 explicit skips; infrastructure stage completed with 14 explicit live skips."
+      ]
+    }
+  ],
+  "critical_path_tasks": [
+    "chat-delivery-revalidation",
+    "receive-policy-ui",
+    "hub-receive-projection",
+    "client-block-regression"
+  ],
+  "tasks_status_summary": {
+    "total": 4,
+    "by_status": {
+      "todo": 0,
+      "in_progress": 0,
+      "partial": 3,
+      "blocked": 0,
+      "done": 1
+    },
+    "progress_percent_done": 25,
+    "by_priority": {
+      "P0": 4,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    },
+    "by_risk": {
+      "low": 0,
+      "medium": 0,
+      "high": 4,
+      "critical": 0
+    },
+    "critical_path": {
+      "total": 4,
+      "done": 1,
+      "remaining": 3
+    },
+    "milestones": {
+      "total": 1,
+      "todo": 0,
+      "in_progress": 1,
+      "blocked": 0,
+      "done": 0
+    }
+  },
+  "summary_notes": [
+    "Lokaler Slice, kein Push oder Deploy. Die Operation erweitert keine Hub-Rechte oder Lease-Deadline und kann unbekannte/abgelaufene Eingaben nicht zurueckholen.",
+    "Browser-Endpoint und Ananta-Companion lokal implementiert und mit realem TypeScript-Endpoint/Node zusammen geprueft (synthetische Hub-/Modell-/Browserports). Keine Registry-Release-Evidence. Block-Verifikation, echte Browser-/Quellenwiderruf-Matrix und gepaartes Deployment bleiben offen; kein Push. SRP/DIP: Zustellautoritaet bleibt im Browser-Port, Hub-Lease bleibt Hub-eigen; Companion-Pump ist nur injizierte Ausfuehrungskomposition.",
+    "Historische erste Hypothese, durch Git-Historie korrigiert: Aktuelle Chromium/Firefox-Matrix reproduziert reopen nach Quellenwiderruf in beiden Engines. Production MachineChatSessionService bindet nur Hub-read/Lease, obwohl vorhandene Tests aktuelle menschliche Publisher-Consent und deren Deadline erwarten. Laufende Korrektur im selben Autorisierungs-Slice; kein Push/Deploy.",
+    "Git-Historie add3f5f belegt bewusste Hub-Capability-basierte Receive-Policy ohne separate Publisher-Consents. Alte Session-/Browser-Tests sind veraltet; keine Produktions-Policy zurueckgedreht. Abnahme aktualisiert auf Lease/Capability/Membership-Entzug statt obsolete Consent-Erwartung.",
+    "Reale Chromium/Firefox-Clientmatrix bestanden. Ananta-Bericht artifacts/test-gates/meet-chat-browser-redelivery.v1.json. Produktionspolicy aus add3f5f bleibt unveraendert; alte Consent-Tests ersetzen durch verifizierte Hub-Capability/Lease/Membership-Grenzen. Track bleibt partial fuer vollen Blockcheck, aktuellen Python-Worker/Browser-Gesamtloop und gepaartes Deployment. Legacy-Consent-UI-Wording/Deprecation ist gesonderte offene Schuld. Kein Push/Deploy.",
+    "Echte Publisher-Mitgliedschaft separat geprueft: Mensch verlaesst Raum, Maschine bleibt joined und Hub-Lease gueltig, redelivery verweigert in Chromium/Firefox. Zwei ueberlappende Nachlaeufe (9.086 s), keine vergroesserte Anzahl verschiedener Browserfaelle.",
+    "Aktueller UI-Slice entfernt irrefuehrende Legacy-Consent-Bedienung aus aktiver Ansicht. Legacy-Transport/Service und Integration-v1-Feld bleiben kompatibel; ihre separate Bereinigung ist keine Rueckkehr zu alten Approval-Gates.",
+    "UI-/PCM-/Visual-Legacy-Policy-Slice implementiert und lokal geprueft. Kein Push/Deploy. Ananta-Bericht meet-receive-policy-migration.v1.json. Legacy-Service/Transport/Integration-v1-Feld bleiben kompatibel, nicht aktuelle Empfangsautoritaet. Selektiver Multi-Worker-Hub-Widerruf braucht echten owning-Hub-Port; alte negative Consent-Bridgeaktion endet bounded statt falsche Freigabeentziehung zu bestaetigen.",
+    "Gekoppelter screen-only Hub/zwei Worker-Lauf besteht. Persona-/Speech-Lauf deckt offenen Legacy-Backchannel auf: receiveRevision=0/grants=[] trotz verifiziertem Hub chat.read; Worker bleibt closed. Serverprojektion wird auf bestehende Capability-Policy add3f5f migriert, keine Worker-eigene Autoritaet.",
+    "Quellenprojektion implementiert, keine neuen Hub-Rechte/Lease/Senderechte. Gekoppelter Persona/Speech-Lauf besteht nach behobener Legacy-Projection-Luecke (vorher closed ohne alte Consents). Bestehende Hub-Task-Cancellation beendet genau eine Teilnahme; zweiter Worker bleibt aktiv. Kein neuer Consent-Widerrufsport erforderlich. Vorhandener obsolete negative Consent-Bridgecommand bleibt bounded denied. Voller Blockcheck gestartet; kein Push/Deployment.",
+    "Voller Block gestartet und terminal fehlgeschlagen: 1694 Frontendtests gruen, 19 rot/4 Dateien plus unhandled error. Neues konkretes P0-Arbeitspaket fuer diese Fehler; keine Assertion-Loeschung oder Policy-Aufweichung. Nachfolgende npm-check-Stufen noch nicht erreicht; kein Push/Deploy.",
+    "Block-Regressionsarbeit gestartet. Git f430a0a autorisiert 120-s-Aktivierung/110-s-Setup; Tests erwarten noch 30/10 s. Produktivcode publiziert noch 30-s-Expiry und readiness ueberspringt Authority-Fence; diese Inkonsistenz und ungekapselte Authority-Debugdaten werden korrigiert. Overlay-Mockfehler teils nur durch Debug-Aufrufe verursacht, keine Kryptopruefung entfernen.",
+    "Full-block recheck frontend/build/leakage/Go passed; still-live Node suite reports two concrete browser failures. Await exact terminal stack before scoped remediation, no restart or blanket flaky classification.",
+    "Multi-publisher retirement investigation: fixture stops pulses then waits 2 s, less than the real 2.5-s controller deadline. Current contract deliberately rebinds membership under same session. Retire surviving owned generation explicitly before reopening; keep actual independent departure/media/negative-scope observations. Full run continues, affected file already finished.",
+    "Audio source-loss diagnosis: add test-only bounded read-only publisher lease/stop projection, retaining only enum codes/revision/relative deadlines; no IDs/content/tokens, no sending, retry, clock manipulation or relaxed source deadline. Actual replay passed but original source loss remains unresolved.",
+    "Local client-block-regression acceptance completed after full check exit 0. Original failed runs retained. No configured live infrastructure or production evidence claimed. Other track tasks remain partial pending their owning broader integration/rollout requirements; full legacy Companion.run remains tracked in Ananta.",
+    "Initial current-image coupling failed before chat because the Python Worker retained 30-second/150-frame bounds against the authorized current 120-second/600-frame client. Worker contract corrected; fresh packaged 14-module source check and actual Hub/two-Worker persona-speech gate pass (68.68s). Bounded bridge diagnostics preserved; broader hub-receive-projection rollout remains partial."
+  ],
+  "full_client_block_check": {
+    "status": "failed",
+    "command": "npm run check",
+    "exit_code": 1,
+    "stage": "check:prepare -> test:frontend",
+    "frontend": {
+      "files_passed": 187,
+      "files_failed": 4,
+      "tests_passed": 1694,
+      "tests_failed": 19,
+      "unhandled_errors": 1,
+      "seconds": 12.82
+    },
+    "failed_files": [
+      "frontend/src/app/webrtc/peer-mesh-key-ack.spec.ts",
+      "frontend/src/app/webrtc/peer-mesh-overlay-lifecycle.spec.ts",
+      "frontend/src/app/features/machine/machine-avatar-source.spec.ts",
+      "frontend/src/app/features/machine/machine-source-clock.spec.ts"
+    ],
+    "diagnosis": "Missing overlay.hasPeerKey/state Map test doubles; avatar setup tests time out, authority-reason shape assertions mismatch and local activation clock expectation fails. These require specific investigation; no blanket classification as obsolete tests or safe failures.",
+    "completed_prior_stages": [
+      "Todo validator",
+      "Workflow validator",
+      "Production deployment validator",
+      "Broadcast release validator",
+      "License validator",
+      "Broadcast TypeScript check"
+    ],
+    "not_reached": [
+      "Full build/security leakage/Go gate",
+      "Full Node/browser test suite",
+      "Live infrastructure gate"
+    ],
+    "classification": "local_headless_synthetic_technical_observation",
+    "production_release_evidence": false
+  },
+  "full_client_block_check_recheck": {
+    "exit_code": 1,
+    "infrastructure_stage": "not_reached",
+    "failures": {
+      "multi_publisher": "waitFixtureValue retirement deadline at line 61; corrected in later targeted run",
+      "native_audio": "uncheck locator timed out after actual source removal; current diagnosis still incomplete"
+    },
+    "explicit_skips": [
+      "container image canary scan: BROADCAST_IMAGE_ARCHIVE not configured",
+      "compositor long-run: RUN_COMPOSITOR_SOAK not enabled; physical A/V/CPU separate gates"
+    ],
+    "production_release_evidence": false,
+    "command": "npm run check",
+    "frontend_tests_passed": 1719,
+    "node": {
+      "total": 1797,
+      "passed": 1790,
+      "failed": 2,
+      "skipped": 5,
+      "seconds": 864.484857
+    }
+  },
+  "full_client_block_second_recheck": {
+    "status": "passed_with_explicit_live_skips",
+    "command": "npm run check",
+    "exit_code": 0,
+    "frontend": {
+      "files_passed": 191,
+      "tests_passed": 1719,
+      "failed": 0
+    },
+    "node_browser": {
+      "total": 1800,
+      "passed": 1795,
+      "failed": 0,
+      "skipped": 5,
+      "seconds": 872.49968
+    },
+    "build": "passed",
+    "leakage": "passed",
+    "go_modules_passed": 4,
+    "infrastructure_stage": "completed_with_explicit_skips",
+    "infrastructure_skips": [
+      "SKIP live Keycloak/TURN gate: set RUN_LIVE_INFRASTRUCTURE=1 with explicit test credentials",
+      "SKIP live native-packager onboarding gate: set RUN_LIVE_NATIVE_PACKAGER_ONBOARDING=1 with explicit test credentials",
+      "SKIP real Linux user-service lifecycle: set RUN_LINUX_PACKAGER_LIFECYCLE=1 with an active systemd user manager and FFmpeg",
+      "SKIP real macOS user-service lifecycle: set RUN_MACOS_PACKAGER_LIFECYCLE=1 in a macOS GUI login",
+      "SKIP Windows native-packager config/output gate: set RUN_WINDOWS_NATIVE_PACKAGER=1 on WSL with Docker and powershell.exe",
+      "SKIP real Windows installer lifecycle: set RUN_WINDOWS_PACKAGER_INSTALLER=1 on WSL with powershell.exe and FFmpeg",
+      "SKIP real Windows updater lifecycle: set RUN_WINDOWS_PACKAGER_UPDATER=1 on WSL with powershell.exe and FFmpeg",
+      "SKIP production broadcast gate: provide an isolated test identity and packager",
+      "SKIP live pinned MediaMTX adapter gate: set RUN_LIVE_MEDIAMTX_ADAPTER=1",
+      "SKIP secure MediaMTX authorization gate: set RUN_LIVE_MEDIAMTX_SECURE_AUTH=1 with Docker",
+      "SKIP live MediaMTX WHIP gate: set RUN_LIVE_WHIP_MEDIAMTX=1 with a pinned test endpoint",
+      "SKIP live native packager gate: set RUN_LIVE_NATIVE_PACKAGER=1 with FFmpeg 6+",
+      "SKIP live MediaMTX LL-HLS gate: set RUN_LIVE_MEDIAMTX_LLHLS=1 with Docker and FFmpeg 6+",
+      "SKIP MediaMTX origin load gate: set RUN_LIVE_MEDIAMTX_ORIGIN_LOAD=1 with Docker and FFmpeg 6+"
+    ],
+    "classification": "local_headless_synthetic_technical_observation",
+    "production_release_evidence": false
+  }
+}

@@ -30,6 +30,37 @@ describe("Room page information architecture", () => {
     expect(persistent).toContain("mesh.remoteAudio()");
     expect(template.match(/mesh\.remoteAudio\(\)/g)).toHaveLength(1);
   });
+
+  it("offers a room-wide diagram editor section with switchable edit policy", () => {
+    expect(template).toContain('id="diagram-navigation"');
+    expect(template).toContain("activeSection() === 'diagram'");
+    expect(template).toContain("<app-diagram-panel");
+    expect(component).toContain("DiagramPanelComponent");
+    expect(component).toContain('"whiteboard" | "diagram"');
+    const panel = readFileSync("frontend/src/app/shared/diagram-panel.component.ts", "utf8");
+    expect(panel).toContain('id="diagram-tool-select"');
+    expect(panel).toContain('id="diagram-toggle-policy"');
+    expect(panel).toContain('id="diagram-read-only-badge"');
+    expect(panel).toContain('id="diagram-export-bpmn"');
+    expect(panel).toContain('id="diagram-drawio-frame"');
+    expect(panel).toContain('id="diagram-export-drawio"');
+    expect(panel).toContain("setDiagramPolicy");
+    const styles = readFileSync("frontend/src/styles.css", "utf8");
+    expect(styles).toContain("svg:not(.diagram-editor-host svg)");
+  });
+
+  it("never plays the local microphone back to its owner", () => {
+    expect(template).not.toContain("<audio autoplay muted controls");
+    expect(template).toContain("keine lokale Wiedergabe");
+    expect(template).toContain('[appLocalPreviewSilence]="true"');
+    expect(template).toContain('[appLocalPreviewSilence]="stageItem.isLocal"');
+    expect(template).toContain('[appLocalPreviewSilence]="item.isLocal"');
+    expect(template).toContain('<audio autoplay [appMediaStream]="item.stream"');
+    const directive = readFileSync("frontend/src/app/shared/local-preview-silence.directive.ts", "utf8");
+    expect(directive).toContain("media.muted = true");
+    expect(directive).toContain("media.volume = 0");
+    expect(component).toContain("LocalPreviewSilenceDirective");
+  });
   it("links the top-right GitHub icon to this repository without reusing the app tab", () => {
     expect(template).toContain('id="github-repository"');
     expect(template).toContain('href="https://github.com/ananta888/webrtc-minimize-server"');
@@ -246,9 +277,12 @@ describe("Room page information architecture", () => {
     expect(template).toContain('id="media-priority-3"');
     expect(template).toContain('id="adaptive-video-mode"');
     expect(template).toContain('id="music-audio-warning"');
+    expect(template).toContain('id="music-echo-confirm"');
+    expect(template).toContain('id="aec-missing-warning"');
     expect(template).toContain("setMediaPriorityAt(0, $event)");
     expect(component).toContain("this.media.setMediaStrategyPreset(preset)");
     expect(component).toContain("this.media.setAudioQualityProfile(profile)");
+    expect(component).toContain("this.media.confirmMusicEchoRisk()");
     expect(component).toContain("this.media.setMediaPriorityAt(index, source)");
     expect(component).not.toContain("applyConstraints");
     expect(component).not.toContain("setParameters");

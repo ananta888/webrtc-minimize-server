@@ -92,7 +92,7 @@ export class MachineSessionLeases {
     const record = this.#records.get(id);
     if (!sameBinding(record.binding, identity.machineBinding) || record.binding.protocolVersion !== "v2"
       || !record[port] || typeof nonce !== "string" || !/^[a-f0-9]{32}$/.test(nonce)) fail("machine_lease_scope_invalid", 401);
-    const state = record[port]();
+    const state = record[port](this.#view(record));
     if (!this.live(id)) fail("machine_session_unavailable", 401);
     return Object.freeze({ schema, nonce,
       lease: this.#view(record), binding: Object.freeze({ ...record.binding }), ...state });

@@ -69,16 +69,19 @@ export class MachineAudioSessionService implements OnDestroy {
     if (!context || !lease || !this.session.joined() || lease.expiresAt <= Date.now()) throw new Error("meet_audio_lease_denied");
     const source = this.mesh.machineAudioSource(this.publicationId);
     if (source.track !== this.source?.track) throw new Error("meet_audio_source_changed");
-    const grant = this.mesh.machineReceive.grants().find(g => g.machinePeerId === own && g.publisherPeerId === source.peerId
-      && g.publicationIds.includes(this.publicationId) && g.expiresAt > Date.now());
-    const membershipEpoch = this.mesh.membershipEpoch(), revision = this.mesh.machineReceive.revision();
-    if (!grant || membershipEpoch < 1 || revision < 1) throw new Error("meet_audio_source_denied");
+    const membershipEpoch = this.mesh.membershipEpoch(), policyRevision = this.mesh.machineReceive.revision();
+    if (!this.mesh.machineReceive.isMachine(own) || !this.mesh.machineReceive.supports(own, "audio.receive")
+      || !Number.isSafeInteger(membershipEpoch) || membershipEpoch < 1
+      || !Number.isSafeInteger(policyRevision) || policyRevision < 0) throw new Error("meet_audio_source_denied");
+    // The verified Hub lease owns receive authority. Legacy consent records are
+    // not additional grants; revision zero denotes no legacy state, as in chat.
+    const revision = Math.max(1, policyRevision);
     return Object.freeze({ tenant_id: context.tenantId, project_id: context.projectId, task_id: context.taskId,
       lease_id: lease.sessionId, runtime_id: context.runtimeId, session_id: context.hubSessionId,
       generation: lease.generation, room_id: this.session.roomId(), membership_epoch: membershipEpoch,
       peer_id: source.peerId, own_peer_id: own, publication_id: this.publicationId,
       receive_revision: revision, source: source.source === "screen-audio" ? "screen_audio" : "microphone",
-      deadline_ms: Math.min(lease.expiresAt, grant.expiresAt) });
+      deadline_ms: lease.expiresAt });
   }
   private identity(binding: ReturnType<MachineAudioSessionService["currentBinding"]>) {
     const { deadline_ms: _deadline, ...identity } = binding;

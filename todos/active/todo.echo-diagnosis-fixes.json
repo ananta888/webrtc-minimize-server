@@ -1,0 +1,138 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "echo-diagnosis-fixes",
+  "purpose": "Akustisches Echo im WebRTC-Raum diagnostizieren und strukturell reduzieren: AEC-Verifikation, Machine-TTS-Mute, Music-Profil-Guard, optionaler Remote-Audio-Ducking-Guard und Ausschluss jeder lokalen Selbstwiedergabe des eigenen Mikrofons.",
+  "goal": "Echo tritt nicht mehr unbemerkt auf. Wenn echoCancellation nicht aktiv ist, wird der Nutzer prominent gewarnt. Machine-MP4-TTS spielt nicht mehr ungedämpft auf Lautsprechern. Das Music-Profil erfordert explizite Bestätigung wenn Mikro aktiv. Ein optionaler Echo-Guard dämpft das lokale Mikro wenn Remote-Audio laut spielt. Das eigene Mikrofon wird im Browser niemals lokal wiedergegeben.",
+  "status": "done",
+  "created": "2026-10-26",
+  "updated": "2026-10-28",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Echo-Quellen eliminieren und AEC verifizieren",
+      "task_ids": ["echo-aec-verification", "echo-machine-tts-mute", "echo-music-guard"],
+      "status": "done"
+    },
+    {
+      "id": "M2",
+      "title": "Echo-Guard: Remote-Audio-Ducking des lokalen Mikros",
+      "task_ids": ["echo-remote-ducking"],
+      "status": "done"
+    },
+    {
+      "id": "M3",
+      "title": "Lokale Selbstwiedergabe des eigenen Mikrofons strukturell ausschliessen",
+      "task_ids": ["echo-local-preview-sidetone"],
+      "status": "done"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "echo-aec-verification",
+      "title": "AEC-Verifikation: nach getUserMedia prüfen ob echoCancellation aktiv, prominent warnen wenn nicht",
+      "status": "done",
+      "priority": "P0",
+      "risk": "medium",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "Nach getUserMedia für Mikro wird track.getSettings().echoCancellation geprüft",
+        "Wenn echoCancellation !== true, wird ein prominenter UI-Hinweis angezeigt",
+        "Der Hinweis erklärt dass Echo auftreten kann und empfiehlt Kopfhörer oder speech-Profil",
+        "Bestehende Tests für media-publication laufen weiter"
+      ]
+    },
+    {
+      "id": "echo-machine-tts-mute",
+      "title": "Machine MP4-TTS lokal muten: video.muted=true und volume=0 wie Avatar-Decoder",
+      "status": "done",
+      "priority": "P0",
+      "risk": "low",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "machine-media-element.ts setzt video.muted=true und video.volume=0 vor play()",
+        "Der gecapturete Stream bleibt unveraendert (muting betrifft nur lokale Wiedergabe)",
+        "Bestehende Tests fuer machine-media-element laufen weiter"
+      ]
+    },
+    {
+      "id": "echo-music-guard",
+      "title": "Music-Profil Echo-Guard: Bestaetigung erzwingen wenn Mikro aktiv und AEC deaktiviert wird",
+      "status": "done",
+      "priority": "P1",
+      "risk": "low",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "Wenn audioProfile auf music gesetzt wird und Mikro aktiv ist, wird ein Warnhinweis angezeigt",
+        "Der Hinweis bleibt sichtbar solange das Music-Profil aktiv ist und Mikro laeuft",
+        "Bestehende Tests laufen weiter"
+      ]
+    },
+    {
+      "id": "echo-remote-ducking",
+      "title": "Echo-Guard: Optionaler Service der lokales Mikro daempft wenn Remote-Audio aktiv ist",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "Echo-Guard nutzt AudioActivityService.activePeerIds um Remote-Sprache zu erkennen",
+        "Wenn Remote-Audio aktiv und Guard enabled: localAudioTrack.enabled wird gedrosselt",
+        "Wenn Remote-Audio ruhig: localAudioTrack.enabled wird wieder aktiviert",
+        "Guard ist default-aus und per UI aktivierbar",
+        "Guard deaktiviert sich wenn AEC aktiv ist",
+        "Unit-Tests decken Ducking-Aktivierung und -Deaktivierung ab"
+      ]
+    },
+    {
+      "id": "echo-local-preview-sidetone",
+      "title": "Lokale Mikrofonvorschau strukturell stumm schalten: kein lokales Audioelement, harte Stummschaltung lokaler Vorschauen",
+      "status": "done",
+      "priority": "P0",
+      "risk": "low",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "Die lokale Audiovorschau rendert kein <audio>-Element mehr; der eigene Mikrofonstream wird im Browser nie lokal abgespielt",
+        "Ein sichtbarer Hinweis erklaert dass die eigene Stimme bewusst nicht lokal wiedergegeben wird",
+        "Lokale Vorschau-Videoelemente (auch Screen mit Bildschirmton) werden per Direktive hart stummgeschaltet (muted und volume 0)",
+        "Remote-Audiospuren und Buehnen-Videos bleiben unveraendert hoerbar",
+        "Vitest deckt Template und Direktive ab"
+      ]
+    }
+  ],
+  "critical_path_tasks": ["echo-aec-verification", "echo-machine-tts-mute", "echo-music-guard", "echo-remote-ducking", "echo-local-preview-sidetone"],
+  "tasks_status_summary": {
+    "total": 5,
+    "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 5 },
+    "progress_percent_done": 100,
+    "by_priority": { "P0": 3, "P1": 2, "P2": 0, "P3": 0 },
+    "by_risk": { "low": 3, "medium": 2, "high": 0, "critical": 0 },
+    "critical_path": { "total": 5, "done": 5, "remaining": 0 },
+    "milestones": { "total": 3, "todo": 0, "in_progress": 0, "blocked": 0, "done": 3 }
+  },
+  "progress_summary": {
+    "state": "done",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 5
+  },
+  "summary_notes": [
+    "Diagnose: Akustisches Echo durch Lautsprecher-Mikro-Rueckkopplung. Browser-AEC ist die einzige Abwehr, kann aber durch Music-Profil deaktiviert oder durch AudioContext-Wiedergabe umgangen werden.",
+    "Recherche-Quellen: vercel/ai#23573, dev.to Browser Voice Interaction AI Pitfall Guide 2026, protoface WebRTC AEC Blog, W3C mediacapture-extensions#31, Chromium crbug 327472528.",
+    "Fix 1: media-strategy.service.ts aecMissing computed signal + room-page.component.html Warnung.",
+    "Fix 2: machine-media-element.ts video.muted=true volume=0 vor play().",
+    "Fix 3: media-publication.service.ts music_echo_confirmation_required Guard + confirmMusicEchoRisk().",
+    "Fix 4: Neuer echo-guard.service.ts mit AudioActivityService-basiertem Ducking. Default-aus, deaktiviert sich bei aktivem AEC.",
+    "26 gezielte Tests bestanden (4 Testdateien). Physischer Echo-Test mit echten Browsern und Lautsprechern bleibt als manueller Verifikationsschritt offen.",
+    "2026-10-28 Produktionsdeployment auf webrtc.ananta.de aus isoliertem HEAD-Stand ausschliesslich mit Echo-Fixes: 49 gezielte Tests gruen, Produktionsbuild main-CRQ3TESR.js, interner und oeffentlicher Healthcheck HTTP 200, Container ohne Neustarts. Oeffentliches Bundle enthaelt alle vier Echo-Marker. Backup-Container webrtc-room-server-echo-backup-20261026 und Rollback-Image webrtc-minimize-server:rollback-before-echo-20261026 bleiben erhalten.",
+    "2026-10-28 Nachtrag Solo-Echo: Nutzer hoert sich auch ohne Remote-Teilnehmer. Analyse: remoteAudio() enthaelt keine lokalen Streams (replaceRemoteView nur fuer local:false), AudioGraphen sind gain-0, Broadcast-Monitor default-off mit Warnung. Einziger appseitiger Selbstmonitor-Pfad: lokale Audiovorschau <audio autoplay muted controls> in room-page.component.html; controls ist ein Entmute-Fussfall und browserseitiges muted+srcObject ist nicht garantiert. Task echo-local-preview-sidetone entfernt die lokale Audio-Wiedergabe strukturell.",
+    "2026-10-28 echo-local-preview-sidetone umgesetzt: lokale Audiovorschau durch Hinweis ersetzt, neue LocalPreviewSilenceDirective (muted + volume 0) fuer lokale Video- und Stage-Vorschauen inklusive Screen-mit-Bildschirmton. 53 gezielte Tests gruen, Produktionsbuild main-PGTQUY3Y.js, Frontend-Gesamtlauf 1741 gruen / 56 bekannte vorbestehende webcrypto-Fehler (auf sauberem Branch identisch). Physischer Kopfhoerer-/Lautsprechertest bleibt manuell.",
+    "2026-10-28 echo-local-preview-sidetone auf webrtc.ananta.de deployt (Image echo-sidetone-20261028, Bundle main-27GJUIPM.js): Health OK, 0 Neustarts, Bundle enthaelt alle Echo-Marker inkl. 'keine lokale Wiedergabe'. Erster Deployversuch scheiterte an einem ungueltigen Volume-Modus-String (doppelte rw/Propagations-Flags); der Fehlerpfad stellte den alten Container automatisch wieder her, Skript wurde korrigiert und gibt keine Kommandoargumente mehr aus. Rollback-Basis: Image echo-fixes-20261026 als rollback-before-echo-20261028, Backup-Container webrtc-room-server-echo-backup-20261028."
+  ]
+}

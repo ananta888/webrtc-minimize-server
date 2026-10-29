@@ -10,7 +10,7 @@ function fixture() {
   return { gate, changed, apply };
 }
 afterEach(() => vi.useRealTimers());
-it.each(["camera", "screen"])("separately granted %s keys require video.receive and exact scope", source => {
+it.each(["camera", "screen"])("%s requires verified video.receive independently of legacy consent", source => {
   const f = fixture();
   const g = { ...grant(), publicationIds: ["visual"], chatRead: false };
   f.apply([g]);
@@ -18,32 +18,36 @@ it.each(["camera", "screen"])("separately granted %s keys require video.receive 
   f.gate.setMachine(machine, true, ["video.receive"]);
   expect(f.gate.mediaAllowed(machine, human, "visual", source)).toBe(true);
   expect(f.gate.mediaAllowed(machine, human, "visual", "microphone")).toBe(false);
-  expect(f.gate.mediaAllowed(machine, human, "other", source)).toBe(false);
+  expect(f.gate.mediaAllowed(machine, human, "other", source)).toBe(true);
+  expect(f.gate.mediaAllowed(machine, human, "visual", "unknown-source")).toBe(false);
   f.gate.setMachine(machine, true, ["avatar.publish", "screen.publish"]);
   expect(f.gate.mediaAllowed(machine, human, "visual", source)).toBe(false); f.gate.clear();
 });
 it("machine receive defaults denied without changing human transport", () => {
-  const f = fixture();
+  const f = fixture(); f.gate.setMachine(machine, true, []); f.apply();
   expect(f.gate.mediaAllowed(machine, human, "mic", "microphone")).toBe(false);
   expect(f.gate.chatAllowed(machine, human)).toBe(false);
   expect(f.gate.mediaAllowed(human, machine, "avatar", "camera")).toBe(true);
   f.gate.clear();
 });
-it("only the exact publication/sender/receiver audio scope receives a key", () => {
-  const f = fixture(); f.apply();
+it("audio capability gates source kind; transport owners retain sender/publication binding", () => {
+  const f = fixture();
   expect(f.gate.mediaAllowed(machine, human, "mic", "microphone")).toBe(true);
-  for (const [publisher, publication, source] of [[human, "mic", "camera"], [human, "other", "microphone"], [machine, "mic", "microphone"]]) {
-    expect(f.gate.mediaAllowed(machine, publisher, publication, source)).toBe(false);
-  }
+  expect(f.gate.mediaAllowed(machine, human, "other", "microphone")).toBe(true);
+  expect(f.gate.mediaAllowed(machine, human, "mic", "camera")).toBe(false);
+  expect(f.gate.mediaAllowed(machine, human, "mic", "unknown-source")).toBe(false);
   expect(f.gate.chatAllowed(machine, human)).toBe(true);
-  f.apply([], 2); expect(f.changed).toHaveBeenCalledTimes(2);
-  expect(f.gate.mediaAllowed(machine, human, "mic", "microphone")).toBe(false); f.gate.clear();
+  f.apply(); f.apply([], 2); expect(f.changed).toHaveBeenCalledTimes(2);
+  expect(f.gate.mediaAllowed(machine, human, "mic", "microphone")).toBe(true);
+  f.gate.setMachine(machine, true, []);
+  expect(f.gate.mediaAllowed(machine, human, "mic", "microphone")).toBe(false);
+  expect(f.gate.chatAllowed(machine, human)).toBe(false); f.gate.clear();
 });
-it("expiry requests rotation independently of receipt delivery", () => {
+it("legacy consent expiry requests rotation without replacing Hub capability", () => {
   vi.useFakeTimers(); const f = fixture(); f.apply();
   vi.advanceTimersByTime(60_001);
   expect(f.changed).toHaveBeenCalledTimes(2); expect(f.gate.grants()).toEqual([]);
-  expect(f.gate.chatAllowed(machine, human)).toBe(false); f.gate.clear();
+  expect(f.gate.chatAllowed(machine, human)).toBe(true); f.gate.clear();
 });
 it("same revision cannot be repurposed and malformed policy revokes locally", () => {
   const f = fixture(); const g = grant(); f.apply([g]); f.apply([g]);
@@ -58,4 +62,12 @@ it("wrong room, unknown fields, stale revision, unknown members and duplicate gr
     expect(() => f.gate.apply({ type: "machine-receive-state", version: 1, roomId, revision: 2, grants: [grant()], ...patch }, roomId)).toThrow();
     expect(f.gate.grants()).toEqual([]); f.gate.clear();
   }
+});
+
+it("removing verified receive capability denies even when a legacy consent remains live", () => {
+  const f = fixture(); f.apply();
+  f.gate.setMachine(machine, true, ["screen.publish"]);
+  expect(f.gate.mediaAllowed(machine, human, "mic", "microphone")).toBe(false);
+  expect(f.gate.chatAllowed(machine, human)).toBe(false);
+  expect(f.gate.grants()).toHaveLength(1); f.gate.clear();
 });

@@ -94,21 +94,21 @@ test("two browser contexts verify whiteboard ACL, shared notes sync and in-meeti
 
   // 3. Verify Whiteboard ACL
   // Default is "open": both Alice and Bob have enabled tools
-  assert.equal(await alice.locator("#whiteboard-tool-select").isDisabled(), false);
-  assert.equal(await bob.locator("#whiteboard-tool-select").isDisabled(), false);
+  assert.equal(await alice.locator("#whiteboard-tool-pen").isDisabled(), false);
+  assert.equal(await bob.locator("#whiteboard-tool-pen").isDisabled(), false);
 
   // Alice toggles policy to "presenter-only"
   await alice.locator("#whiteboard-toggle-policy").click();
-  // Bob sees read-only badge and tool select is disabled
+  // Bob sees read-only badge and tools are disabled
   await bob.locator("#whiteboard-read-only-badge").waitFor({ timeout: 5_000 });
-  assert.equal(await bob.locator("#whiteboard-tool-select").isDisabled(), true);
+  assert.equal(await bob.locator("#whiteboard-tool-pen").isDisabled(), true);
   // Alice (owner) still has active tools
-  assert.equal(await alice.locator("#whiteboard-tool-select").isDisabled(), false);
+  assert.equal(await alice.locator("#whiteboard-tool-pen").isDisabled(), false);
 
   // Alice toggles back to "open"
   await alice.locator("#whiteboard-toggle-policy").click();
   await bob.waitForFunction(() => !document.querySelector("#whiteboard-read-only-badge"), { timeout: 5_000 });
-  assert.equal(await bob.locator("#whiteboard-tool-select").isDisabled(), false);
+  assert.equal(await bob.locator("#whiteboard-tool-pen").isDisabled(), false);
 
   // 4. Verify Shared Notes
   // Alice types in shared notes textarea

@@ -139,7 +139,7 @@ describe("WhiteboardOverlayService", () => {
     const calls = vi.mocked(mesh.sendOverlayData).mock.calls;
     const lastCall = calls[calls.length - 1];
     expect(lastCall[0]).toBe("bbbbbbbbbbbbbbbb");
-    expect(lastCall[2]).toBe("event");
+    expect(lastCall[2]).toBe("bulk");
     const decoded = decodeWhiteboardBytes(lastCall[1]);
     expect(decoded?.kind).toBe("sync-response");
     expect((decoded?.payload as { ops: unknown[] })?.ops?.length).toBe(1);

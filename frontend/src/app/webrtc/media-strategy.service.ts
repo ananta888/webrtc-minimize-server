@@ -221,6 +221,10 @@ export class MediaStrategyService {
     AUDIO_QUALITY_OPTIONS.find((option) => option.id === this.state().audioProfile)?.description || ""
   ));
   readonly appliedAudioLabel = computed(() => appliedAudioSettingsLabel(this.appliedAudio()));
+  readonly aecMissing = computed(() => {
+    const applied = this.appliedAudio();
+    return applied !== null && applied.echoCancellation !== true;
+  });
 
   selectPreset(value: unknown): void {
     if (isStandardPreset(value)) {

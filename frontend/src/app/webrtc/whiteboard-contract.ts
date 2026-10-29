@@ -9,7 +9,7 @@ export type WhiteboardKind =
   | "laser"
   | "sync-request"
   | "sync-response";
-export type WhiteboardColor = "ink" | "mark" | "accent" | "erase";
+export type WhiteboardColor = "ink" | "mark" | "accent" | "erase" | `#${string}`;
 export type WhiteboardShapeType = "rectangle" | "ellipse" | "line";
 
 export interface WhiteboardPoint { readonly x: number; readonly y: number; }
@@ -30,11 +30,17 @@ const KINDS = new Set<WhiteboardKind>([
   "shape", "text", "laser", "sync-request", "sync-response",
 ]);
 const COLORS = new Set<WhiteboardColor>(["ink", "mark", "accent", "erase"]);
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+function paintableColor(value: unknown): value is WhiteboardColor {
+  return typeof value === "string" && value !== "erase"
+    && (COLORS.has(value as WhiteboardColor) || HEX_COLOR.test(value));
+}
 const SHAPES = new Set<WhiteboardShapeType>(["rectangle", "ellipse", "line"]);
 const MAX_POINTS = 32;
 const MAX_COORD = 10_000;
 const MAX_TEXT_LENGTH = 100;
-const MAX_SYNC_OPS = 64;
+const MAX_SYNC_OPS = 2048;
 
 export const WHITEBOARD_CONSTANTS = Object.freeze({
   maxPoints: MAX_POINTS,
@@ -81,7 +87,7 @@ function parsePayload(kind: WhiteboardKind, payload: unknown): Readonly<Record<s
   }
   if (kind === "stroke-begin") {
     if (!exact(payload, ["color", "width", "point"]) || typeof payload["color"] !== "string"
-      || !COLORS.has(payload["color"] as WhiteboardColor) || payload["color"] === "erase"
+      || !paintableColor(payload["color"])
       || !integer(payload["width"], 1, 16)) return null;
     const start = point(payload["point"]);
     return start ? { color: payload["color"], width: payload["width"], point: start } : null;
@@ -100,7 +106,7 @@ function parsePayload(kind: WhiteboardKind, payload: unknown): Readonly<Record<s
   if (kind === "shape") {
     if (!exact(payload, ["shape", "color", "width", "start", "end"])) return null;
     if (typeof payload["shape"] !== "string" || !SHAPES.has(payload["shape"] as WhiteboardShapeType)) return null;
-    if (typeof payload["color"] !== "string" || !COLORS.has(payload["color"] as WhiteboardColor) || payload["color"] === "erase") return null;
+    if (!paintableColor(payload["color"])) return null;
     if (!integer(payload["width"], 1, 16)) return null;
     const start = point(payload["start"]);
     const end = point(payload["end"]);
@@ -111,7 +117,7 @@ function parsePayload(kind: WhiteboardKind, payload: unknown): Readonly<Record<s
     if (!exact(payload, ["text", "point", "color", "size"])) return null;
     if (typeof payload["text"] !== "string" || !payload["text"].trim() || payload["text"].length > MAX_TEXT_LENGTH) return null;
     if (/[\x00-\x1f\x7f]/.test(payload["text"])) return null;
-    if (typeof payload["color"] !== "string" || !COLORS.has(payload["color"] as WhiteboardColor) || payload["color"] === "erase") return null;
+    if (!paintableColor(payload["color"])) return null;
     if (!integer(payload["size"], 10, 48)) return null;
     const at = point(payload["point"]);
     if (!at) return null;

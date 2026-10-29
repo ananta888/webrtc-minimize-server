@@ -11,7 +11,7 @@ function setup() {
   const context = { tenantId: "tenant", projectId: "project", taskId: "task", runtimeId: "runtime", hubSessionId: "session" };
   const session = { joined: signal(true), roomId: signal("room-aaaaaaaaaaaaaaaaaa"), machineContext: () => context, machineLease: lease };
   const grants = signal([{ machinePeerId: own, publisherPeerId: human, publicationIds: ["camera"], expiresAt: now + 60_000 }]);
-  const mesh = { ownPeerId: () => own, membershipEpoch: signal(1), machineReceive: { revision: signal(1), grants },
+  const mesh = { ownPeerId: () => own, membershipEpoch: signal(1), machineReceive: { revision: signal(1), grants, isMachine: () => true, supports: vi.fn(() => true) },
     remoteMedia: () => [{ key: "camera" }],
     machineVisualSource: () => { if (!allowed) throw new Error("denied"); return { ...source }; } };
   const pixels = () => ({ width: 640, height: 360, bytes: new Uint8Array([255, 216, 1, 255, 217]) });
@@ -28,6 +28,13 @@ describe("bounded source-authorized visual session", () => {
     expect(f.service.sources()[0]).toEqual({ publicationId: "camera", peerId: human, source: "camera", publicationEpoch: 3 });
     f.deny(); expect(f.service.sources()).toEqual([]); expect(f.surfaces.connect).not.toHaveBeenCalled();
   });
+  it("uses only current Hub capabilities and lease when no legacy grant exists", async () => {
+    const f = setup(); f.grants.set([]); f.mesh.machineReceive.revision.set(0);
+    const sub = await f.service.open("camera");
+    expect(sub.binding).toMatchObject({ receive_revision: 1, deadline_ms: now + 60_000 });
+    expect(await f.service.frame(sub.subscriptionId)).toMatchObject({ sequence: 1 });
+    f.service.close();
+  });
   it("binds the actual epoch, lease and scope; caps three frames and wipes encoded input", async () => {
     const f = setup(), sub = await f.service.open("camera"), pixels = f.pixels();
     expect(sub.binding).toMatchObject({ publication_epoch: 3, publication_id: "camera", receive_revision: 1,
@@ -41,10 +48,10 @@ describe("bounded source-authorized visual session", () => {
     vi.advanceTimersByTime(500); await expect(f.service.frame(sub.subscriptionId)).rejects.toThrow();
     expect(f.surface.frame).toHaveBeenCalledTimes(3); f.service.close(); expect(vi.getTimerCount()).toBe(0);
   });
-  it.each(["grant", "source", "epoch", "track", "revision", "membership", "generation", "lease", "room", "scope", "leave", "clock", "deadline"])(
+  it.each(["capability", "source", "epoch", "track", "revision", "membership", "generation", "lease", "room", "scope", "leave", "clock", "deadline"])(
     "closes on %s mutation before another pixel export", async kind => {
       const f = setup(), sub = await f.service.open("camera");
-      if (kind === "grant") f.grants.set([]);
+      if (kind === "capability") f.mesh.machineReceive.supports.mockReturnValue(false);
       if (kind === "source") f.deny();
       if (kind === "epoch") f.source.publicationEpoch++;
       if (kind === "track") f.source.track = {};

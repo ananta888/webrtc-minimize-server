@@ -15,10 +15,7 @@ for (const humanEngine of ["chromium", "firefox"]) {
     await human.locator('#toggle-microphone[aria-pressed="true"]').waitFor();
     await human.locator(".nav-item", { hasText: "Analyse" }).click();
     const panel = human.locator("app-machine-permissions-panel");
-    await panel.getByRole("button", { name: "Für diese KI einstellen" }).click();
-    await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).check();
-    await panel.getByRole("button", { name: "Auswahl ausdrücklich freigeben" }).click();
-    await panel.getByText("Serverbestätigung erhalten.", { exact: true }).waitFor();
+    await panel.getByText("Vom Hub erlaubt für laufende Raumquellen.", { exact: true }).waitFor();
     await machine.waitForFunction(() => window.anantaMachine.audio.sources().length === 1, null, { timeout: 12000 });
     const result = await machine.evaluate(async () => {
       const api = window.anantaMachine.audio;
@@ -53,7 +50,7 @@ for (const humanEngine of ["chromium", "firefox"]) {
     assert.equal(result.idempotent, true); assert.equal(result.completed, true); assert.equal(result.remainingChunks, 0);
     assert.equal(result.replyDenied, true); assert.equal(result.e2ee, "active"); assert.equal(result.captures, 0);
     assert.deepEqual(result.errors, []);
-    await panel.getByRole("button", { name: "Meine Freigaben widerrufen" }).click();
+    for (const socket of f.app.webSocketServer.clients) socket.terminate();
     await machine.waitForFunction(() => !window.anantaMachine.audio.status().open, null, { timeout: 3000 });
     assert.equal(await machine.evaluate(() => {
       try { window.anantaMachine.audio.finish(window.__segmentSubscription, 17600); return false; } catch { return true; }

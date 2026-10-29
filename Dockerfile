@@ -111,6 +111,7 @@ COPY --from=media-agent-artifacts /out ./media-agent-downloads
 COPY --from=native-packager-release /release/artifacts ./native-packager-downloads
 COPY src ./src
 COPY contracts ./contracts
+COPY third_party/drawio ./third_party/drawio
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 EXPOSE 8080

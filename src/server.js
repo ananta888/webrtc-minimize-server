@@ -1,3 +1,4 @@
+import { machineReceiveAuthorization } from "./machine-receive-authorization.js";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import http from "node:http";
@@ -105,6 +106,7 @@ import { applyHttpKeepAlive } from "./http-keep-alive.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = path.resolve(MODULE_DIR, "../dist/browser");
+const DEFAULT_DRAWIO_DIR = path.resolve(MODULE_DIR, "../third_party/drawio/webapp");
 const MIME_TYPES = new Map([
   [".css", "text/css; charset=utf-8"],
   [".html", "text/html; charset=utf-8"],
@@ -112,6 +114,16 @@ const MIME_TYPES = new Map([
   [".json", "application/json; charset=utf-8"],
   [".svg", "image/svg+xml"],
   [".woff2", "font/woff2"],
+  [".woff", "font/woff"],
+  [".ttf", "font/ttf"],
+  [".eot", "application/vnd.ms-fontobject"],
+  [".png", "image/png"],
+  [".gif", "image/gif"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".ico", "image/x-icon"],
+  [".xml", "application/xml; charset=utf-8"],
+  [".txt", "text/plain; charset=utf-8"],
 ]);
 const MAX_HTTP_BODY_BYTES = 16 * 1024;
 const MAX_MEDIA_AGENT_SYNC_BYTES = 32 * 1024 * 1024;
@@ -137,27 +149,28 @@ function sendJson(response, statusCode, body, extraHeaders = {}) {
   response.end(payload);
 }
 
-function securityHeaders(config, { voskWorker = false } = {}) {
-  const connectSources = ["'self'", "ws:", "wss:", "https://raw.githubusercontent.com"];
+function securityHeaders(config, { voskWorker = false, drawio = false } = {}) {
+  const connectSources = drawio ? ["'self'"] : ["'self'", "ws:", "wss:", "https://raw.githubusercontent.com"];
   if (voskWorker) connectSources.push("blob:");
-  if (config.oidcIssuer) connectSources.push(new URL(config.oidcIssuer).origin);
+  if (!drawio && config.oidcIssuer) connectSources.push(new URL(config.oidcIssuer).origin);
   return {
     "content-security-policy": [
       "default-src 'self'",
       `connect-src ${connectSources.join(" ")}`,
-      `script-src 'self' 'wasm-unsafe-eval'${voskWorker ? " 'unsafe-eval'" : ""}`,
+      `script-src 'self' 'wasm-unsafe-eval'${voskWorker || drawio ? " 'unsafe-eval'" : ""}`,
+      "style-src 'self' 'unsafe-inline'",
       "worker-src 'self' blob:",
-      "img-src 'self' data:",
+      drawio ? "img-src 'self' data: blob:" : "img-src 'self' data:",
       "media-src 'self' blob:",
       "object-src 'none'",
       "base-uri 'none'",
-      "frame-ancestors 'none'",
+      drawio ? "frame-ancestors 'self'" : "frame-ancestors 'none'",
       "form-action 'self'",
     ].join("; "),
     "permissions-policy": "camera=(self), microphone=(self), display-capture=(self)",
     "referrer-policy": "no-referrer",
     "x-content-type-options": "nosniff",
-    "x-frame-options": "DENY",
+    "x-frame-options": drawio ? "SAMEORIGIN" : "DENY",
   };
 }
 
@@ -272,7 +285,7 @@ function publicRuntimeConfig(config, services = {}) {
   };
 }
 
-async function serveStatic(request, response, pathname, config, publicDir) {
+async function serveStatic(request, response, pathname, config, publicDir, { drawio = false } = {}) {
   let requestedPath;
   try {
     requestedPath = decodeURIComponent(pathname === "/" ? "/index.html" : pathname);
@@ -302,7 +315,7 @@ async function serveStatic(request, response, pathname, config, publicDir) {
       "content-type": MIME_TYPES.get(path.extname(absolutePath)) || "application/octet-stream",
       "content-length": content.length,
       "cache-control": requestedPath === "/index.html" ? "no-cache" : "public, max-age=300",
-      ...securityHeaders(config, { voskWorker: requestedPath === "/assets/vosk-worker.js" }),
+      ...securityHeaders(config, { voskWorker: requestedPath === "/assets/vosk-worker.js", drawio }),
     });
     response.end(content);
   } catch (error) {
@@ -435,6 +448,7 @@ function createHttpHandler(config, registry, services) {
     workspaceStore,
     directory,
     publicDir,
+    drawioDir,
     mediaAgents,
     mediaAgentEnrollmentStore,
     mediaAgentInstallerService,
@@ -1709,6 +1723,11 @@ function createHttpHandler(config, registry, services) {
         });
         return;
       }
+      if (url.pathname === "/drawio" || url.pathname.startsWith("/drawio/")) {
+        const drawioPath = url.pathname.slice("/drawio".length) || "/";
+        await serveStatic(request, response, drawioPath, config, drawioDir, { drawio: true });
+        return;
+      }
       await serveStatic(request, response, url.pathname, config, publicDir);
     } catch (error) {
       const status = errorStatus(error);
@@ -2027,18 +2046,13 @@ function configureSignaling(
         machineSessions.attach(identity.machineSessionId,
           () => registry.members(peer.roomId).includes(peer) && socket.readyState === WebSocket.OPEN,
           reason => { socket.close(1008, reason); const timer = setTimeout(() => socket.terminate(), 1000); timer.unref?.(); },
-          () => {
+          lease => {
             machineReceivePolicy.prune(peer.roomId);
             const policy = machineReceivePolicy.snapshot(peer.roomId);
-            const grants = policy.grants.filter(grant => grant.machinePeerId === peer.id);
+            const receive = machineReceiveAuthorization(peer, registry.members(peer.roomId), policy.revision, lease,
+              (owner, id, room) => registry.publication(owner, id, room));
             return Object.freeze({ peerId: peer.id, roomId: peer.roomId,
-              membershipEpoch: roomEpochs.get(peer.roomId)?.membership || 1,
-              receiveRevision: policy.revision,
-              grants: Object.freeze(grants),
-              publications: Object.freeze(grants.flatMap(grant => grant.publicationIds.flatMap(id => {
-                const publication = registry.publication(grant.publisherPeerId, id, peer.roomId);
-                return publication ? [Object.freeze({ peerId: grant.publisherPeerId, ...publication })] : [];
-              }))) });
+              membershipEpoch: roomEpochs.get(peer.roomId)?.membership || 1, ...receive });
           }, () => machineSessionObservation(peer, roomEpochs.get(peer.roomId)?.membership || 1),
           () => { leave(); return !registry.members(peer.roomId).includes(peer); });
       } catch {
@@ -2156,6 +2170,11 @@ function configureSignaling(
         }
         if (message.type === "whiteboard-policy-set") {
           registry.setWhiteboardPolicy(peer, message.policy);
+          broadcastModeration(peer.roomId);
+          return;
+        }
+        if (message.type === "diagram-policy-set") {
+          registry.setDiagramPolicy(peer, message.policy);
           broadcastModeration(peer.roomId);
           return;
         }
@@ -3085,6 +3104,7 @@ export function createAppServer(options = {}) {
   const workspaceStore = options.workspaceStore || (config.pairWorkspaceEnabled
     ? new PairWorkspaceStore({ filename: config.pairWorkspaceDb }) : null);
   const publicDir = path.resolve(options.publicDir || DEFAULT_PUBLIC_DIR);
+  const drawioDir = path.resolve(options.drawioDir || DEFAULT_DRAWIO_DIR);
   const mediaAgentEvents = {
     onRevoked: () => {},
     prune: () => mediaAgentEnrollmentStore?.prune(),
@@ -3205,6 +3225,7 @@ export function createAppServer(options = {}) {
     workspaceStore,
     directory,
     publicDir,
+    drawioDir,
     mediaAgents,
     mediaAgentEnrollmentStore,
     mediaAgentInstallerService,

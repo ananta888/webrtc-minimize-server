@@ -2,7 +2,7 @@
 import fs from "node:fs/promises";
 import readline from "node:readline";
 import { machineBrowserFixture } from "./machine-browser-fixture.js";
-import { startSyntheticVisualPublisher, grantSyntheticVisualPublisher } from "./machine-visual-publisher.mjs";
+import { startSyntheticVisualPublisher, observeSyntheticVisualPublisher } from "./machine-visual-publisher.mjs";
 
 async function run() {
 const cleanup = [];
@@ -33,13 +33,20 @@ try {
       reply({ source_started: true });
     } else if (line === "grant" && started && !granted) {
       stage = "grant";
-      await grantSyntheticVisualPublisher(f.human, source); granted = true;
+      const toggle = source === "screen-audio" ? "screen" : source;
+      if (await f.human.locator(`#toggle-${toggle}`).getAttribute("aria-pressed") === "false") {
+        await f.human.locator(`#toggle-${toggle}`).click();
+        await f.human.locator(`#toggle-${toggle}[aria-pressed="true"]`).waitFor();
+      }
+      await observeSyntheticVisualPublisher(f.human, source); granted = true;
       reply({ source_granted: true });
     } else if (line === "revoke" && granted) {
       stage = "revoke";
-      await f.human.locator("app-machine-permissions-panel").getByRole("button", { name: "Meine Freigaben widerrufen" }).click();
-      await f.human.locator("app-machine-permissions-panel").getByText("Keine Empfangsfreigabe erteilt.", { exact: true }).waitFor();
-      await f.human.locator("app-machine-permissions-panel").getByText("Serverbestätigung erhalten.", { exact: true }).waitFor();
+      // Stop the actual synthetic publication; never treat a legacy record as
+      // revocation of Hub authority. Only this fixture's source is affected.
+      const toggle = source === "screen-audio" ? "screen" : source;
+      await f.human.locator(`#toggle-${toggle}`).click();
+      await f.human.locator(`#toggle-${toggle}[aria-pressed="false"]`).waitFor();
       granted = false; reply({ source_revoked: true });
     } else throw new Error("test_visual_command_invalid");
   }

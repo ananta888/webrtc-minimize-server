@@ -47,11 +47,11 @@ for (const humanEngine of ["chromium", "firefox"]) {
     release();
     const error = human.locator("#machine-permissions-load-error");
     await error.waitFor();
-    assert.match(await error.innerText(), /Bestehende Freigaben sind dadurch nicht widerrufen/);
+    assert.match(await error.innerText(), /Bestehende Hub-Rechte sind dadurch nicht widerrufen/);
     assert.equal(await human.locator("app-machine-permissions-panel").count(), 0);
     assert.deepEqual(await human.evaluate(() => ({ captures: window.__captures, peers: window.__pcs.length })), before);
     assert.equal(requests, 1); assert.equal(f.app.registry.participantCount, 1);
-    const leave = error.getByRole("button", { name: "Raum verlassen und Freigaben beenden", exact: true });
+    const leave = error.getByRole("button", { name: "Raum verlassen und Quellen nicht weiter teilen", exact: true });
     await leave.focus(); assert.equal(await leave.evaluate(node => node === document.activeElement), true);
     await human.keyboard.press("Enter");
     await waitFixtureValue(human, () => document.querySelector("#join-room")?.disabled === false);
@@ -87,7 +87,7 @@ for (const humanEngine of ["chromium", "firefox"]) {
     assert.equal(await human.evaluate(() => window.__captures), 0);
   });
 
-  test(`${humanEngine} failed deferred operator status leaves source permissions usable`, { timeout: 35_000 }, async t => {
+  test(`${humanEngine} failed deferred operator status leaves current receive rights observable`, { timeout: 35_000 }, async t => {
     const chunk = await componentChunk("machine-admission-heading"), f = await machineBrowserFixture(t, { humanEngine });
     await f.machine.evaluate(([room, grant]) => window.anantaMachine.join(room, grant), [f.roomId, await f.grant(["chat.read"])]);
     await f.human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
@@ -95,13 +95,10 @@ for (const humanEngine of ["chromium", "firefox"]) {
     await f.human.locator("#mesh-analysis-navigation").press("Enter");
     const panel = f.human.locator("app-machine-permissions-panel");
     await panel.locator("#machine-admission-load-error").waitFor();
-    await panel.getByRole("button", { name: "Für diese KI einstellen", exact: true }).click();
-    await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).check();
-    await panel.getByRole("button", { name: "Auswahl ausdrücklich freigeben", exact: true }).click();
-    await panel.getByText("Serverbestätigung erhalten.", { exact: true }).waitFor();
+    await panel.getByText("Leserecht vorhanden / Kein Senderecht", { exact: true }).waitFor();
+    assert.equal(await panel.locator('input, select').count(), 0);
+    await panel.locator('#machine-receive-stop').waitFor();
     assert.equal(await f.human.evaluate(() => window.__captures), 0);
     assert.equal(f.app.registry.participantCount, 2);
-    await panel.getByRole("button", { name: "Meine Freigaben widerrufen", exact: true }).click();
-    await panel.getByText("Keine Empfangsfreigabe erteilt.", { exact: true }).waitFor();
   });
 }

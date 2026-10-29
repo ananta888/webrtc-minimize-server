@@ -123,6 +123,9 @@ async function run() {
   } catch (error) {
     const dockerFailure = machineDockerFailure(error);
     reply({ bridge_error: "test_multi_bridge_failed", stage,
+      fixture_error: ["test_fixture_wait_deadline", "test_fixture_wait_non_value",
+        "test_multi_peer_projection", "test_multi_media_command_invalid", "test_multi_observer_duplicate"]
+        .find(code => String(error.message).includes(code)) || "unclassified",
       ...(dockerFailure ? { infrastructure: dockerFailure } : {}),
       ...(["floor-start", "floor-result"].includes(stage) ? { floor_error: [
         "test_floor_observer_binding_invalid", "test_floor_observer_connection_invalid",

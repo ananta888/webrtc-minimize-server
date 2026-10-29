@@ -1,0 +1,158 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "whiteboard-board-ux",
+  "purpose": "Die gemeinsame Tafel benutzbar machen: vollstaendige Zeichnungshistorie (kein Verlust aelterer Striche), eine flaechenfuellende Tafel und eine Werkzeugleiste mit Symbolen statt ComboBox.",
+  "goal": "Alle gezeichneten Striche bleiben sichtbar (Retention und Late-Join-Sync decken denselben grosszuegigen Historie-Rahmen ab), die Tafel nutzt die Fensterflaeche in hoher Aufloesung, und die Zeichenwerkzeuge sind direkt als Symbolleiste erreichbar. Tastenkuerzel 1-9 und bestehende Policy-Logik bleiben erhalten.",
+  "status": "done",
+  "created": "2026-10-29",
+  "updated": "2026-10-29",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Vollstaendige Historie, grosse Flaeche, Symbolleiste",
+      "task_ids": [
+        "whiteboard-history-retention",
+        "whiteboard-canvas-size",
+        "whiteboard-tool-toolbar",
+        "whiteboard-color-palette"
+      ],
+      "status": "done"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "whiteboard-history-retention",
+      "title": "Zeichnungshistorie vervollstaendigen: Punkt-Batching, Ops/Byte-Limits, Late-Join-Sync ohne Abschneiden",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "Ursache behoben: move() publizierte einen Punkt pro Event (~80 Ops je Linie), das 256-Ops-Limit verdraengte alles ausser ~3 Linien",
+        "Punkte werden gebuendelt (bis 32 je Op laut Vertrag) und erst bei Bedarf gesendet",
+        "Retention laesst deutlich mehr zu (Ops- und Byte-Budget) und der Late-Join-Sync umfasst exakt die gesamte retinierte Historie",
+        "Sync-Antworten nutzen die bulk-Klasse und duerfen grosszuegigere Nachrichten; normale Ops bleiben bei 12 KiB begrenzt",
+        "Vertrag (Frontend und src-Spiegel) und zugehoerige Tests bleiben konsistent",
+        "Reproduktion: 6 Linien zeichnen, alle 6 bleiben sichtbar; Neuzugang sieht alle 6"
+      ]
+    },
+    {
+      "id": "whiteboard-canvas-size",
+      "title": "Tafel vergroessern: hohe Aufloesung (1920x1080) und Flaeche fuellt den verfuegbaren Bereich",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "Canvas-Aufloesung und Zeichenlogik skalieren gemeinsam (Strichbreiten und Textgroessen wirken wie bisher)",
+        "Die Tafel fuellt die Hoehe des Bereichs wie die Diagramm-Editoren; Zoom/Pan bleiben funktionsfaehig",
+        "Punkte auf der groesseren Flaeche bleiben normiert (0..1000) und damit bestehende Zeichnungen kompatibel"
+      ]
+    },
+    {
+      "id": "whiteboard-tool-toolbar",
+      "title": "Werkzeugleiste mit Symbolen statt ComboBox; Tastenkuerzel 1-9 bleiben; Browser-Tests aktualisieren",
+      "status": "done",
+      "priority": "P1",
+      "risk": "low",
+      "progress_percent": 100,
+      "depends_on": [
+        "whiteboard-canvas-size"
+      ],
+      "acceptance_criteria": [
+        "Jedes Werkzeug (Stift, Textmarker, Rechteck, Ellipse, Linie, Text, Radierer, Laser, Hand) ist als Icon-Button direkt waehlbar; der aktive Zustand ist sichtbar und als aria-pressed ausgewiesen",
+        "Tastenkuerzel 1-9 und Read-Only-Sperre wirken wie bisher",
+        "Browser-Tests (whiteboard-presentation, collaboration-interactive) werden auf die neuen Bedienelemente umgestellt"
+      ]
+    },
+    {
+      "id": "whiteboard-color-palette",
+      "title": "Moderne Farbpalette: Schnellfarben, aufklappbares Grid und eigener Farbwähler statt ComboBox",
+      "status": "done",
+      "priority": "P1",
+      "risk": "low",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "Fünf typische Schnellfarben liegen direkt in der Werkzeugleiste; ein Button blendet ein erweitertes Raster (15 Farben) plus HTML-Farbwähler für eigene Farben ein",
+        "Der Wire-Vertrag akzeptiert neben den semantischen Farben strikt geprüfte Hex-Werte (#rrggbb) und verwirft alles andere (Frontend und src-Spiegel)",
+        "Ausgewählte Farbe ist sichtbar (aria-pressed, aktiver Ring); Farbwahl ist bei Radierer/Textmarker/Laser/Hand gesperrt",
+        "Browser-Verifikation: Auswahl Rot erzeugt rote Tinte (2317 rote Samples, keine fremde), Grid und eigener Farbwähler sind bedienbar"
+      ]
+    }
+  ],
+  "critical_path_tasks": [
+    "whiteboard-history-retention",
+    "whiteboard-canvas-size",
+    "whiteboard-tool-toolbar"
+  ],
+  "tasks_status_summary": {
+    "total": 4,
+    "by_status": {
+      "todo": 0,
+      "in_progress": 0,
+      "partial": 0,
+      "blocked": 0,
+      "done": 4
+    },
+    "progress_percent_done": 100,
+    "by_priority": {
+      "P0": 1,
+      "P1": 3,
+      "P2": 0,
+      "P3": 0
+    },
+    "by_risk": {
+      "low": 2,
+      "medium": 1,
+      "high": 1,
+      "critical": 0
+    },
+    "critical_path": {
+      "total": 3,
+      "done": 3,
+      "remaining": 0
+    },
+    "milestones": {
+      "total": 1,
+      "todo": 0,
+      "in_progress": 0,
+      "blocked": 0,
+      "done": 1
+    }
+  },
+  "progress_summary": {
+    "state": "done",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 4
+  },
+  "summary_notes": [
+    "Nutzerhinweis 2026-10-29: Tafel zu klein, Werkzeug-Auswahl soll Symbolleiste werden, nur die letzten ~3 Linien bleiben sichtbar.",
+    "Root Cause Verschwinden (per Code bewiesen): whiteboard-board.component.ts move() veroeffentlicht pro Pointermove ein stroke-point-Op mit einem Punkt (~80 Ops je Linie); whiteboard-overlay.ts speichert nur 256 Ops — nach ~3 Linien werden aeltere Striche verdraengt und beim Neuzeichnen geloescht. Zusatzproblem: der Late-Join-Sync (boundSyncOps 64 Ops/11 KiB) schneidet die Historie ebenfalls ab.",
+    "2026-10-29 umgesetzt und deployt (Image whiteboard-ux3-20261029, Bundle main-RATBZ2HS.js): (1) Historie — move() buendelt Punkte (bis 16 je Op, Flush 60 ms), Retention 2048 Ops und 500 KiB Byte-Budget, Late-Join-Sync per boundSyncOps ueber exakt dieselbe Historie mit MAX_SYNC_OPS 2048 (Frontend und src-Spiegel), Sync-Antworten laufen als bulk (512 KiB-Cap), normale Ops bleiben 12 KiB; Browser-Reproduktion: 6 lange Linien (je ~120 Pointer-Events) bleiben vollstaendig sichtbar, Zeilenscan findet alle 6 Cluster. (2) Groesse — Canvas 1920x1080 statt 640x360, Flaeche fuellt den Bereich wie die Diagramm-Editoren (calc(100vh - 7.5rem), Session-Dock-Ueberhoehung wie dort), Punkte bleiben normiert 0..1000. (3) Symbolleiste — 9 Icon-Buttons mit aria-pressed und aktiver Hervorhebung statt ComboBox, Tasten 1-9 bleiben, Policy-Status und Umschalter in die Werkzeugleiste verschoben, Hinweistext sr-only; Browser-Tests (whiteboard-presentation, collaboration-interactive) und Spezifikationen auf die Buttons umgestellt. Verifikation: 41 vitest gruen, Node-Vertragstest gruen, Produktionsmarker live; Rollback rollback-before-whiteboard-20261029. Hinweis Groesse: bei sehr kleinen Fenstern bleibt die Flaeche durch die drei Bedienzeilen begrenzt; weiteres Zusammenlegen der Leisten ist moeglicher Folgeschritt.",
+    "2026-10-29 Farbpalette umgesetzt und deployt (Image whiteboard-color-20261029, Bundle main-CQKDX5JM.js): ComboBox entfernt; 5 Schnellfarben (Tinte, Gelb, Cyan, Rot, Grün) direkt in der Leiste, Button whiteboard-color-palette-toggle blendet ein 15-Farben-Grid plus HTML-Farbwähler (whiteboard-color-custom) ein. Vertrag erweitert: WhiteboardColor akzeptiert strikt geprüfte Hex-Farben (#rrggbb) neben den semantischen Werten (Frontend, src-Spiegel, Node-Test mit Negativfaellen); color() leitet Hex durch. Browser-Verifikation: 5 Schnellfarben, Grid 15 plus eigener Waehler, Auswahl Rot erzeugt rote Tinte, Farbwahl bei Radierer/Textmarker/Laser/Hand gesperrt; 16 vitest und Node-Vertragstest gruen. Rollback rollback-before-color-20261029."
+  ]
+}

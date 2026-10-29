@@ -110,8 +110,8 @@ export class MachineChatEndpoint {
       try { this.hold(event); } catch { /* Same. */ }
     }
   }
-  poll() {
-    const batch = this.check().poll();
+  poll(afterCursor?: number) {
+    const batch = this.check().poll(afterCursor);
     for (const { cursor, event } of batch.events) {
       if (!this.delivered.has(event.message_id) && this.delivered.size >= 32) this.fail(new Error("meet_chat_reply_queue_exhausted"));
       this.delivered.set(event.message_id, { sender: event.sender_peer_id, at: this.clock() });
@@ -119,6 +119,31 @@ export class MachineChatEndpoint {
       if (item) item.cursor = cursor;
     }
     return batch;
+  }
+  /** Reconfirm only this endpoint's still-live deliveries under current read
+   * and source rights. No new content, ACK, send grant or lease extension. */
+  redeliver(messageIds: readonly string[]) {
+    const queue = this.check();
+    if (!Array.isArray(messageIds) || messageIds.length > 32
+      || messageIds.some(id => typeof id !== "string" || id.length !== 32 || !/^[a-f0-9]{32}$/.test(id))
+      || new Set(messageIds).size !== messageIds.length) throw new Error("meet_chat_redelivery_denied");
+    const ids = [...messageIds];
+    const inputs = ids.map(id => this.delivered.get(id));
+    for (let i = 0; i < ids.length; i++) {
+      const input = inputs[i];
+      if (!input || this.replied.has(ids[i]) || !this.ports.sourceAllowed(input.sender))
+        throw new Error("meet_chat_redelivery_denied");
+    }
+    // A source adapter may synchronously revoke, reopen or answer. Recheck the
+    // exact owner and registrations before updating any delivery timestamp.
+    if (this.check() !== queue || inputs.some((input, i) =>
+      this.delivered.get(ids[i]) !== input || this.replied.has(ids[i])))
+      throw new Error("meet_chat_redelivery_denied");
+    const at = this.clock();
+    if (inputs.some(input => !input || input.at < at - REPLY_WINDOW_MS))
+      throw new Error("meet_chat_redelivery_denied");
+    for (const input of inputs) input!.at = at;
+    return Object.freeze({ schema: "ananta.meet-chat-redelivery.draft1", message_ids: Object.freeze(ids) });
   }
   ack(cursor: number): void {
     this.check().ack(cursor);

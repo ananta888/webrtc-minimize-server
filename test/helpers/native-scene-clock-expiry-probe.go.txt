@@ -1,0 +1,20 @@
+package main
+import ("testing";"time")
+func TestFixtureClockExpirySubtypes(t *testing.T) {
+ for _, quarantine := range []bool{false,true} {
+  t.Run(map[bool]string{false:"report",true:"quarantine"}[quarantine],func(t *testing.T) {
+   start:=time.Unix(1800000000,0); now:=start
+   p,err:=newSourcePublisherClock(start,func()time.Time{return now},0); if err!=nil {t.Fatal(err)}
+   c,err:=p.NewSource();if err!=nil {t.Fatal(err)}
+   if c.BindSourceClock(7,48000)!=nil {t.Fatal("bind")}
+   if err=c.SourceSenderReport(sourceSenderReport{7,1000<<32,50000});err!=nil {t.Fatal(err)}
+   if quarantine {c.mu.Lock();c.uncertain=true;c.uncertainAt=start;c.mu.Unlock();now=start.Add(10*time.Second)} else {now=start.Add(time.Second)}
+   seconds:=uint64(now.Sub(start)/time.Second)
+   if err=c.SourceSenderReport(sourceSenderReport{7,(1000+seconds)<<32,50000+uint32(seconds)*48000});err!=nil {t.Fatal(err)}
+   if quarantine {now=start.Add(12*time.Second)} else {now=start.Add(13*time.Second)}
+   if c.SourceClockTick()==nil || c.failure!=3 || c.reports!=0 {t.Fatal("expiry did not preserve existing terminal semantics")}
+   observed:=readSceneClockExpiry(c)
+   if !observed.available || observed.accepted!=2 || observed.offered!=2 || observed.reportExpired==quarantine || observed.quarantineExpired!=quarantine {t.Fatalf("incorrect closed diagnostic: %+v",observed)}
+  })
+ }
+}

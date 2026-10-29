@@ -55,9 +55,12 @@ for (const humanEngine of ["chromium", "firefox"]) {
         window.__avatarTestPulse.stop(); await window.__avatarCompanions.close(); window.anantaMachine.leave();
       });
       await human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
-      // Membership changes fence old sources; the surviving controller obtains
-      // fresh local source generations under its still-current session.
-      await second.machine.evaluate(async () => { window.__avatarTestPulse.stop(); await window.__avatarCompanions.close(); });
+      // Same-session membership changes may rebind the surviving avatar.
+      // Its owner explicitly retires that generation before opening a new one.
+      await second.machine.evaluate(async () => {
+        window.__avatarTestPulse.stop(); await window.__avatarCompanions.close();
+        window.anantaMachine.avatar.close();
+      });
       await waitFixtureValue(second.machine, retiredMachineAvatar, 2, { timeout: 2000 });
       await second.machine.evaluate(openTestImageAvatar, { sourceId: "avatar:" + second.binding.sessionId,
         image: syntheticAvatarImage([20, 20, 220]) });

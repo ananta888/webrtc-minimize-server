@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { machineBrowserFixture } from "./helpers/machine-browser-fixture.js";
 import { waitFixtureValue } from "./helpers/machine-browser-wait.mjs";
-import { startSyntheticVisualPublisher, grantSyntheticVisualPublisher } from "./helpers/machine-visual-publisher.mjs";
+import { startSyntheticVisualPublisher, observeSyntheticVisualPublisher } from "./helpers/machine-visual-publisher.mjs";
 
 for (const humanEngine of ["chromium", "firefox"]) for (const machineEngine of ["chromium", "firefox"])
   for (const source of ["camera", "screen"]) {
@@ -11,8 +11,7 @@ for (const humanEngine of ["chromium", "firefox"]) for (const machineEngine of [
     await machine.evaluate(([room, grant]) => window.anantaMachine.join(room, grant), [f.roomId, await f.grant(["video.receive"])]);
     await human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
     await startSyntheticVisualPublisher(human, source);
-    assert.deepEqual(await machine.evaluate(() => window.anantaMachine.visual.sources()), []);
-    const panel = await grantSyntheticVisualPublisher(human, source);
+    await observeSyntheticVisualPublisher(human, source);
     await waitFixtureValue(machine, () => window.anantaMachine.visual.sources().length === 1, null, { timeout: 12000 });
     const result = await machine.evaluate(async () => {
       const api = window.anantaMachine.visual, selected = api.sources()[0], sub = await api.open(selected.publicationId);
@@ -41,9 +40,9 @@ for (const humanEngine of ["chromium", "firefox"]) for (const machineEngine of [
     assert.ok(result.rgb[color] > 130 && result.rgb[(color + 1) % 3] < 65, "decoded frame matches the selected synthetic source");
     assert.equal(result.replayDenied, true); assert.equal(result.captures, 0); assert.equal(result.audioSources, 0);
     assert.equal(result.e2ee, "active"); assert.deepEqual(result.errors, []);
-    await panel.getByRole("button", { name: "Meine Freigaben widerrufen" }).click();
+    await human.locator(`#toggle-${source}`).click();
+    await human.locator(`#toggle-${source}[aria-pressed="false"]`).waitFor();
     await waitFixtureValue(machine, () => !window.anantaMachine.visual.status().open, null, { timeout: 3000 });
-    assert.deepEqual(await machine.evaluate(() => window.anantaMachine.visual.sources()), []);
     assert.equal(await machine.evaluate(async () => {
       try { await window.anantaMachine.visual.frame(window.__visualTestSubscription); return false; } catch { return true; }
     }), true);

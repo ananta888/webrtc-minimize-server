@@ -7,7 +7,7 @@ export interface MachineChatBatch {
 export class MachineChatQueue {
   constructor(ports: { authority: () => MachineChatAuthority | null; clock?: () => number });
   push(raw: unknown): boolean;
-  poll(): MachineChatBatch;
+  poll(afterCursor?: number): MachineChatBatch;
   ack(cursor: number): void;
   check(): void;
   checkReply(): void;

@@ -1,0 +1,96 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "meet-audio-only-observation",
+  "purpose": "Audio-only Meet-Companion bleibt ohne Kameratrack peergebunden beobachtbar; kein Capture- oder Policy-Wechsel.",
+  "status": "partial",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Audio-only Quellenbeobachtung",
+      "task_ids": [
+        "audio-source-observation"
+      ],
+      "status": "in_progress"
+    }
+  ],
+  "critical_path_tasks": [
+    "audio-source-observation"
+  ],
+  "tasks": [
+    {
+      "id": "audio-source-observation",
+      "title": "Remote-Audio mit aktueller Peer-/Publikationszuordnung statt Kameravoraussetzung beobachten",
+      "status": "partial",
+      "progress_percent": 95,
+      "priority": "P1",
+      "risk": "low",
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Audio-DOM zeigt bestehende aktuelle Peer-/Quellen-/Publikationsmetadaten ohne neue Autoritaet oder Capture.",
+        "Privater Beobachter ordnet Audio dem exakten Empfaengertrack zu, auch ohne Video; anderer Peer bleibt ausgeschlossen.",
+        "Gezielte Observer-Tests, Angular-Build, Todo-Gate und Ananta actual-container Avatar-/Speech-Pause bestehen."
+      ],
+      "architecture_review": "SRP/ISP: Darstellung uebernimmt bestehende Quellenmetadaten; Testobserver bleibt Beobachtung. Bestehende globale Browser-Testinstrumentierung bleibt explizite Testschuld, kein neuer Produkt- oder Policy-State.",
+      "verification": "15 targeted observer/reconnect tests pass; Angular build and48-document Todo gate pass; four actual Ananta source-pause cases pass. Full npm check:1796pass/1native compilation failure/5skip; exact failed case passes separately in63.244s. Compilation cause unclassified, broad all-green repeat remains pending. Infrastructure command completes with14explicit live skips; no live infrastructure acceptance claim."
+    }
+  ],
+  "tasks_status_summary": {
+    "total": 1,
+    "by_status": {
+      "todo": 0,
+      "in_progress": 0,
+      "partial": 1,
+      "blocked": 0,
+      "done": 0
+    },
+    "progress_percent_done": 0,
+    "by_priority": {
+      "P0": 0,
+      "P1": 1,
+      "P2": 0,
+      "P3": 0
+    },
+    "by_risk": {
+      "low": 1,
+      "medium": 0,
+      "high": 0,
+      "critical": 0
+    },
+    "critical_path": {
+      "total": 1,
+      "done": 0,
+      "remaining": 1
+    },
+    "milestones": {
+      "total": 1,
+      "todo": 0,
+      "in_progress": 1,
+      "blocked": 0,
+      "done": 0
+    }
+  },
+  "summary_notes": [
+    "Headless synthetische technische Beobachtung, keine produktive Release-Evidence; Root-Companion-Umstellung bleibt eigenstaendig."
+  ]
+}

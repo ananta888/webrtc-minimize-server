@@ -60,33 +60,33 @@ test("whiteboard & presentation: standalone drawing, keyboard shortcuts and stag
     const standaloneBadge = await page.locator("#whiteboard-standalone-badge").textContent();
     assert.match(standaloneBadge, /Lokale Skizze/);
 
-    // Verify tool selector and tools (1-7)
-    await page.locator("#whiteboard-tool-select").waitFor();
-    assert.equal(await page.locator("#whiteboard-tool-select").inputValue(), "pen");
+    // Verify tool buttons and tools (1-9)
+    await page.locator("#whiteboard-tool-pen").waitFor();
+    assert.equal(await page.locator("#whiteboard-tool-pen").getAttribute("aria-pressed"), "true");
 
-    // Test keyboard shortcuts (1-7)
+    // Test keyboard shortcuts (1-9)
     await page.locator("#whiteboard-canvas").focus();
     await page.keyboard.press("2");
-    await page.waitForFunction(() => document.querySelector("#whiteboard-tool-select")?.value === "mark");
-    assert.equal(await page.locator("#whiteboard-tool-select").inputValue(), "mark");
+    await page.waitForFunction(() => document.querySelector("#whiteboard-tool-mark")?.getAttribute("aria-pressed") === "true");
+    assert.equal(await page.locator("#whiteboard-tool-mark").getAttribute("aria-pressed"), "true");
 
     await page.keyboard.press("3");
-    await page.waitForFunction(() => document.querySelector("#whiteboard-tool-select")?.value === "rectangle");
+    await page.waitForFunction(() => document.querySelector("#whiteboard-tool-rectangle")?.getAttribute("aria-pressed") === "true");
 
     await page.keyboard.press("4");
-    await page.waitForFunction(() => document.querySelector("#whiteboard-tool-select")?.value === "ellipse");
+    await page.waitForFunction(() => document.querySelector("#whiteboard-tool-ellipse")?.getAttribute("aria-pressed") === "true");
 
     await page.keyboard.press("5");
-    await page.waitForFunction(() => document.querySelector("#whiteboard-tool-select")?.value === "line");
+    await page.waitForFunction(() => document.querySelector("#whiteboard-tool-line")?.getAttribute("aria-pressed") === "true");
 
     await page.keyboard.press("6");
-    await page.waitForFunction(() => document.querySelector("#whiteboard-tool-select")?.value === "text");
+    await page.waitForFunction(() => document.querySelector("#whiteboard-tool-text")?.getAttribute("aria-pressed") === "true");
 
     await page.keyboard.press("7");
-    await page.waitForFunction(() => document.querySelector("#whiteboard-tool-select")?.value === "erase");
+    await page.waitForFunction(() => document.querySelector("#whiteboard-tool-erase")?.getAttribute("aria-pressed") === "true");
 
     await page.keyboard.press("1");
-    await page.waitForFunction(() => document.querySelector("#whiteboard-tool-select")?.value === "pen");
+    await page.waitForFunction(() => document.querySelector("#whiteboard-tool-pen")?.getAttribute("aria-pressed") === "true");
 
     // Test slide deck controls
     assert.match(await page.locator("#whiteboard-slide-indicator").textContent(), /Folie 1 \/ 1/);

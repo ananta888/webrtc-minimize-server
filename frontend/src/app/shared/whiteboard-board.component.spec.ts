@@ -9,7 +9,11 @@ const source = readFileSync("frontend/src/app/shared/whiteboard-board.component.
 describe("WhiteboardBoardComponent", () => {
   it("paints canvas primitives only and never starts capture", () => {
     expect(source).toContain('id="whiteboard-canvas"');
-    expect(source).toContain('id="whiteboard-tool-select"');
+    expect(source).toContain('id="whiteboard-tool-pen"');
+    expect(source).toContain('id="whiteboard-tool-mark"');
+    expect(source).toContain('id="whiteboard-tool-rectangle"');
+    expect(source).toContain('id="whiteboard-tool-pan"');
+    expect(source).toContain("Zeichenwerkzeuge (Tasten 1-9)");
     expect(source).toContain('id="whiteboard-text-input"');
     expect(source).toContain("board.requestClear()");
     expect(source).toContain("board.undoOwn()");
@@ -159,9 +163,9 @@ describe("WhiteboardBoardComponent", () => {
   });
 
   it("includes laser pointer, pan tool, and zoom controls in template and shortcuts", () => {
-    expect(source).toContain('value="laser"');
+    expect(source).toContain('id="whiteboard-tool-laser"');
     expect(source).toContain('8: Laserpointer');
-    expect(source).toContain('value="pan"');
+    expect(source).toContain('id="whiteboard-tool-pan"');
     expect(source).toContain('9: Hand / Verschieben');
     expect(source).toContain('id="whiteboard-zoom-in"');
     expect(source).toContain('id="whiteboard-zoom-out"');

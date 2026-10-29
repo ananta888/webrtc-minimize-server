@@ -93,8 +93,12 @@ describe("MediaStrategyService", () => {
       .toBe("48 kHz · 2 Kanäle · 16 Bit · Echo aus · Rauschfilter aus · Pegelautomatik aus");
     service.recordAppliedAudio({ sampleRate: 44_100, channelCount: 1, echoCancellation: true });
     expect(service.appliedAudioLabel()).toBe("44100 Hz · 1 Kanal · Echo an");
+    expect(service.aecMissing()).toBe(false);
+    service.recordAppliedAudio({ sampleRate: 48_000, channelCount: 2, echoCancellation: false });
+    expect(service.aecMissing()).toBe(true);
     service.clearAppliedAudio();
     expect(service.appliedAudioLabel()).toBe("Nicht aktiv");
+    expect(service.aecMissing()).toBe(false);
   });
 
   it("combines relative priority with deterministic video bitrate and FPS ceilings", () => {

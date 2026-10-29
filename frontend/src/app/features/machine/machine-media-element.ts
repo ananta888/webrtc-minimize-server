@@ -23,6 +23,8 @@ export function createMachineMediaElement(bytes: Uint8Array<ArrayBuffer>, output
   try {
     video = document.createElement("video") as typeof video & {};
     if (typeof video.captureStream !== "function") throw new Error("machine_media_unsupported");
+    video.muted = true;
+    video.volume = 0;
     url = URL.createObjectURL(new Blob([bytes], { type: "video/mp4" }));
     video.src = url; video.preload = "auto";
     return { ready: () => !closed && video!.readyState >= 2,

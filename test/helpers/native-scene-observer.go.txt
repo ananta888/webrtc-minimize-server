@@ -1,6 +1,35 @@
 
 // TEST OVERLAY ONLY. Never compiled into release binaries. No observation
 // calls policy/timing methods, extends freshness or waits on a runtime lock.
+type sceneClockExpiry struct {
+ available, reportExpired, quarantineExpired bool
+ accepted, offered uint32
+}
+var sceneClockMu sync.Mutex
+var sceneClockDetails = make(map[*sourceMediaClock]sceneClockExpiry)
+func observeSceneClockOffered(c *sourceMediaClock) {
+ if !sceneClockMu.TryLock() { return }; defer sceneClockMu.Unlock()
+ value, exists := sceneClockDetails[c]
+ if !exists && len(sceneClockDetails) >= 80 { return }
+ if value.offered < 65535 { value.offered++ }
+ sceneClockDetails[c] = value
+}
+// Called under the existing clock lock with its already sampled time. No
+// policy read or clock advance; TryLock keeps instrumentation nonblocking.
+func observeSceneClockExpiry(c *sourceMediaClock, now, deadline time.Time) {
+ if !sceneClockMu.TryLock() { return }; defer sceneClockMu.Unlock()
+ value, exists := sceneClockDetails[c]
+ if !exists && len(sceneClockDetails) >= 80 { return }
+ value.available = true
+ value.reportExpired = c.bound && now.Sub(deadline) >= sourceClockTimeout
+ value.quarantineExpired = c.uncertain && now.Sub(c.uncertainAt) >= sourceClockTimeout
+ value.accepted = min(c.reports, 65535)
+ sceneClockDetails[c] = value
+}
+func readSceneClockExpiry(c *sourceMediaClock) sceneClockExpiry {
+ if !sceneClockMu.TryLock() { return sceneClockExpiry{} }; defer sceneClockMu.Unlock()
+ return sceneClockDetails[c]
+}
 func observeSceneFixture(ctx context.Context, c *client) {
 	requests := make(chan os.Signal, 1)
 	signal.Notify(requests, syscall.SIGUSR1)
@@ -35,6 +64,11 @@ type sceneFixtureSource struct {
 	Reports uint32 `json:"reports"`
 	ClockFailure uint8 `json:"clockFailure"`
 	Uncertain bool `json:"uncertain"`
+	ClockExpiryAvailable bool `json:"clockExpiryAvailable"`
+	ClockReportExpired bool `json:"clockReportExpired"`
+	ClockQuarantineExpired bool `json:"clockQuarantineExpired"`
+	ClockAcceptedAtExpiry uint32 `json:"clockAcceptedAtExpiry"`
+	ClockOfferedReports uint32 `json:"clockOfferedReports"`
 	DecoderAvailable bool `json:"decoderAvailable"`
 	DecoderClosed bool `json:"decoderClosed"`
 	DecoderStarted bool `json:"decoderStarted"`
@@ -55,7 +89,7 @@ type sceneFixtureState struct {
 }
 
 func sceneFixtureSnapshot(c *client) sceneFixtureState {
-	out := sceneFixtureState{Fixture: "source-state-v1", Sources: []sceneFixtureSource{}}
+	out := sceneFixtureState{Fixture: "source-state-v2", Sources: []sceneFixtureSource{}}
 	if !c.assignmentMu.TryLock() { return out }
 	var p *sourceProgramGeneration
 	if a := c.assignment; a != nil && a.sourceProgram != nil { p = a.sourceProgram.generation.Load() }
@@ -83,6 +117,11 @@ func sceneFixtureSnapshot(c *client) sceneFixtureState {
 			r.ClockAvailable, r.ClockClosed, r.ClockBound = true, clock.closed, clock.bound
 			r.Reports, r.ClockFailure, r.Uncertain = clock.reports, clock.failure, clock.uncertain
 			clock.mu.Unlock()
+		}
+		if l != nil {
+			detail := readSceneClockExpiry(l.sourceMediaClock)
+			r.ClockExpiryAvailable, r.ClockReportExpired, r.ClockQuarantineExpired = detail.available, detail.reportExpired, detail.quarantineExpired
+			r.ClockAcceptedAtExpiry, r.ClockOfferedReports = detail.accepted, detail.offered
 		}
 		if d != nil && d.mu.TryLock() {
 			r.DecoderAvailable, r.DecoderClosed, r.DecoderStarted = true, d.closed, d.started

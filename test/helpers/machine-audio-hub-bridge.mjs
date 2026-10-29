@@ -2,7 +2,7 @@
 import fs from "node:fs/promises";
 import readline from "node:readline";
 import { machineBrowserFixture } from "./machine-browser-fixture.js";
-import { startSyntheticAudioPublisher, grantSyntheticAudioPublisher } from "./machine-audio-publisher.mjs";
+import { startSyntheticAudioPublisher, observeSyntheticAudioPublisher } from "./machine-audio-publisher.mjs";
 
 async function run() {
 const cleanup = [];
@@ -26,7 +26,12 @@ try {
       reply({ source_started: true });
     } else if (line === "grant" && started && !granted) {
       stage = "grant";
-      await grantSyntheticAudioPublisher(f.human, source); granted = true; grantSpoken = false;
+      const toggle = source === "screen-audio" ? "screen" : source;
+      if (await f.human.locator(`#toggle-${toggle}`).getAttribute("aria-pressed") === "false") {
+        await f.human.locator(`#toggle-${toggle}`).click();
+        await f.human.locator(`#toggle-${toggle}[aria-pressed="true"]`).waitFor();
+      }
+      await observeSyntheticAudioPublisher(f.human, source); granted = true; grantSpoken = false;
       reply({ source_granted: true });
     } else if (line === "speak" && granted && !grantSpoken && spoken < 3) {
       stage = "speak";
@@ -34,10 +39,11 @@ try {
       reply({ speech_started: true });
     } else if (line === "revoke" && granted) {
       stage = "revoke";
-      const panel = f.human.locator("app-machine-permissions-panel");
-      await panel.getByRole("button", { name: "Meine Freigaben widerrufen" }).click();
-      await panel.getByText("Keine Empfangsfreigabe erteilt.", { exact: true }).waitFor();
-      await panel.getByText("Serverbestätigung erhalten.", { exact: true }).waitFor();
+      // Stop the actual synthetic publication; never treat a legacy record as
+      // revocation of Hub authority. Only this fixture's source is affected.
+      const toggle = source === "screen-audio" ? "screen" : source;
+      await f.human.locator(`#toggle-${toggle}`).click();
+      await f.human.locator(`#toggle-${toggle}[aria-pressed="false"]`).waitFor();
       granted = false; reply({ source_revoked: true });
     } else throw new Error("test_audio_command_invalid");
   }

@@ -1,6 +1,5 @@
-export const SPEECH_RATE = 22050;
-export const SPEECH_FRAME_SAMPLES = 441;
-export const SPEECH_QUEUE_SAMPLES = 4410;
+import { SPEECH_RATE, SPEECH_FRAME_SAMPLES, SPEECH_QUEUE_SAMPLES } from "./machine-speech-format";
+export { SPEECH_RATE, SPEECH_FRAME_SAMPLES, SPEECH_QUEUE_SAMPLES } from "./machine-speech-format";
 
 export interface MachineSpeechAuthority {
   readonly sourceId: string; readonly sessionId: string; readonly leaseGeneration: number;

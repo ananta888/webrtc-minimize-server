@@ -59,6 +59,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 14l3-4 3 3 4-5"/></svg>
           <span>Tafel</span>
         </button>
+        <button id="diagram-navigation" type="button" class="nav-item" [class.active]="activeSection() === 'diagram'" [attr.aria-current]="activeSection() === 'diagram' ? 'page' : null" (click)="show('diagram')">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="6" height="5" rx="1"/><rect x="15" y="14" width="6" height="5" rx="1"/><path d="M9 7.5h3a3 3 0 013 3v3.5"/></svg>
+          <span>Diagramme</span>
+        </button>
         <button id="broadcast-navigation" type="button" class="nav-item" [class.active]="activeSection() === 'broadcast'" [attr.aria-current]="activeSection() === 'broadcast' ? 'page' : null" (click)="show('broadcast')">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8a6 6 0 000 8M5 5a10 10 0 000 14M16 8a6 6 0 010 8M19 5a10 10 0 010 14"/><circle cx="12" cy="12" r="2"/></svg>
           <span>Broadcast</span>
@@ -99,7 +103,10 @@
         <div id="room-audio" class="remote-audio" aria-label="Aktive Remote-Audiospuren">
           @for (item of mesh.remoteAudio(); track item.key) {
             <span class="media-label audio-label">{{ item.peerName }} · {{ mediaLabel(item.source) }}</span>
-            <audio autoplay [appMediaStream]="item.stream" [attr.aria-label]="item.peerName + ' · ' + mediaLabel(item.source)"></audio>
+            <audio autoplay [appMediaStream]="item.stream"
+                   [attr.data-peer-id]="item.peerId" [attr.data-source]="item.source"
+                   [attr.data-publication-id]="item.key"
+                   [attr.aria-label]="item.peerName + ' · ' + mediaLabel(item.source)"></audio>
           }
         </div>
       }
@@ -361,7 +368,7 @@
                       [attr.data-source]="stageItem.source"
                     >
                       <span class="media-label">{{ stageItem.isLocal ? 'Du' : stageItem.peerName }} · {{ mediaLabel(stageItem.source) }}</span>
-                      <video autoplay playsinline [muted]="stageItem.isLocal" [appMediaStream]="stageItem.stream"></video>
+                      <video autoplay playsinline [muted]="stageItem.isLocal" [appLocalPreviewSilence]="stageItem.isLocal" [appMediaStream]="stageItem.stream"></video>
                     </article>
                   </div>
                 }
@@ -381,7 +388,7 @@
                         [attr.title]="item.peerName + ' anheften'"
                       >
                         <span class="media-label">{{ item.isLocal ? 'Du' : item.peerName }} · {{ mediaLabel(item.source) }}</span>
-                        <video autoplay playsinline [muted]="item.isLocal" [appMediaStream]="item.stream"></video>
+                        <video autoplay playsinline [muted]="item.isLocal" [appLocalPreviewSilence]="item.isLocal" [appMediaStream]="item.stream"></video>
                       </article>
                     }
                   </div>
@@ -390,8 +397,11 @@
                 @for (item of media.publications(); track item.source) {
                   <article class="media-card local-media">
                     <span class="media-label">Du · {{ mediaLabel(item.source) }}</span>
-                    @if (item.kind === 'video') { <video autoplay muted playsinline [appMediaStream]="item.stream"></video> }
-                    @else { <audio autoplay muted controls [appMediaStream]="item.stream"></audio> }
+                    @if (item.kind === 'video') {
+                      <video autoplay muted playsinline [appLocalPreviewSilence]="true" [appMediaStream]="item.stream"></video>
+                    } @else {
+                      <p class="hint local-audio-indicator" [attr.data-source]="item.source">Mikrofon wird gesendet · keine lokale Wiedergabe</p>
+                    }
                   </article>
                 }
                 @for (item of mesh.focusRemoteMedia(); track item.key) {
@@ -700,13 +710,13 @@
         <app-mesh-analysis />
         @if (session.joined()) {
           @defer (on immediate) { <app-machine-permissions-panel /> }
-          @loading { <p id="machine-permissions-loading" role="status">Ananta-Freigaben werden geladen…</p> }
+          @loading { <p id="machine-permissions-loading" role="status">Ananta-Empfangsrechte werden geladen…</p> }
           @error {
             <section id="machine-permissions-load-error" class="surface settings-card" aria-labelledby="machine-permissions-error-heading">
-              <h2 id="machine-permissions-error-heading">Ananta-Freigaben nicht geladen</h2>
-              <p role="alert">Die Bedienoberfläche konnte nicht geladen werden. Bestehende Freigaben sind dadurch nicht widerrufen.</p>
-              <p>Du kannst den Raum verlassen, um deine Freigaben zu beenden. Neuladen beendet ebenfalls diese Sitzung; danach musst du selbst erneut beitreten.</p>
-              <button type="button" (click)="leave()">Raum verlassen und Freigaben beenden</button>
+              <h2 id="machine-permissions-error-heading">Ananta-Empfangsrechte nicht geladen</h2>
+              <p role="alert">Die Bedienoberfläche konnte nicht geladen werden. Bestehende Hub-Rechte sind dadurch nicht widerrufen.</p>
+              <p>Du kannst den Raum verlassen, um deine Teilnahme und das Teilen deiner Quellen zu beenden. Neuladen beendet ebenfalls diese Sitzung; danach musst du selbst erneut beitreten.</p>
+              <button type="button" (click)="leave()">Raum verlassen und Quellen nicht weiter teilen</button>
               <button type="button" (click)="reloadPage()">Seite neu laden · Sitzung beenden</button>
             </section>
           }
@@ -741,7 +751,32 @@
               @if (mediaStrategy.audioProfile() === 'music') {
                 <p id="music-audio-warning" class="screen-audio-warning">Musik deaktiviert Echo-, Rausch- und Pegelfilter. Verwende Kopfhörer, sonst kann Gesprächston erneut ins Mikrofon gelangen.</p>
               }
+              @if (media.error() === 'music_echo_confirmation_required') {
+                <div id="music-echo-confirm" class="takeover-callout" role="alert">
+                  <div>
+                    <p class="eyebrow">Echo-Warnung</p>
+                    <p>Das Musik-Profil deaktiviert die Echounterdrückung. Dein Mikrofon ist aktiv — ohne Kopfhörer hören andere Teilnehmer ihre eigene Stimme als Echo.</p>
+                  </div>
+                  <div class="inline-actions">
+                    <button id="cancel-music-profile" class="button ghost" type="button" (click)="media.error.set('')">Abbrechen</button>
+                    <button id="confirm-music-profile" class="button primary" type="button" (click)="confirmMusicEcho()">Trotzdem aktivieren</button>
+                  </div>
+                </div>
+              }
+              @if (mediaStrategy.aecMissing()) {
+                <p id="aec-missing-warning" class="screen-audio-warning" role="alert">Echounterdrückung ist nicht aktiv! Ohne Kopfhörer kann deine Stimme bei anderen Teilnehmern als Echo zurückkommen. Wechsle zu einem Sprach-Profil oder verwende Kopfhörer.</p>
+              }
               <p class="applied-setting"><span>Tatsächlich aktiv</span><strong id="microphone-applied-settings">{{ mediaStrategy.appliedAudioLabel() }}</strong></p>
+              <label class="echo-guard-toggle">
+                <input id="echo-guard-enabled" type="checkbox" [ngModel]="echoGuard.enabled()" (ngModelChange)="echoGuard.toggle()" />
+                Echo-Schutz: Mikro dämpfen wenn andere sprechen
+              </label>
+              @if (echoGuard.enabled() && !echoGuard.available()) {
+                <p class="hint">Echo-Schutz ist bereit, aber nicht aktiv: {{ mediaStrategy.aecMissing() ? 'Mikrofon nicht aktiv.' : 'Echounterdrückung ist bereits aktiv — Echo-Schutz nicht nötig.' }}</p>
+              }
+              @if (echoGuard.ducking()) {
+                <p id="echo-guard-active" class="hint" role="status">Mikrofon wird gedämpft (Remote-Sprache erkannt).</p>
+              }
             </section>
 
             <section class="strategy-setting-group" aria-labelledby="media-priority-heading">
@@ -1047,6 +1082,12 @@
       @if (activeSection() === 'whiteboard') {
         <section class="whiteboard-page-surface surface">
           <app-whiteboard-board [expanded]="true" />
+        </section>
+      }
+
+      @if (activeSection() === 'diagram') {
+        <section class="diagram-page-surface surface">
+          <app-diagram-panel />
         </section>
       }
 

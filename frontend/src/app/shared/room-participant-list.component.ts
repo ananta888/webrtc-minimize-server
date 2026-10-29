@@ -267,6 +267,7 @@ export class RoomParticipantListComponent {
       "presenter-assign": "Bühne übergeben",
       "publication-stop": `Stoppaufforderung ${mediaObservationLabel(entry.source)}`,
       "whiteboard-policy-set": `Tafel-Modus geändert (${entry.source === "presenter-only" ? "Presenter" : "Offen"})`,
+      "diagram-policy-set": `Diagramm-Modus geändert (${entry.source === "presenter-only" ? "Presenter" : "Offen"})`,
     };
     return `${action[entry.action]} · ${entry.actorPeerId.slice(0, 8)} → ${entry.targetPeerId.slice(0, 8)}`;
   }

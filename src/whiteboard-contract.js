@@ -5,11 +5,17 @@ const KINDS = Object.freeze([
   "shape", "text", "sync-request", "sync-response",
 ]);
 const COLORS = Object.freeze(["ink", "mark", "accent", "erase"]);
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+function paintableColor(value) {
+  return typeof value === "string" && value !== "erase"
+    && (COLORS.includes(value) || HEX_COLOR.test(value));
+}
 const SHAPES = Object.freeze(["rectangle", "ellipse", "line"]);
 const MAX_POINTS = 32;
 const MAX_COORD = 10_000;
 const MAX_TEXT_LENGTH = 100;
-const MAX_SYNC_OPS = 64;
+const MAX_SYNC_OPS = 2048;
 
 export class WhiteboardContractError extends Error {
   constructor(code) {
@@ -69,7 +75,7 @@ function parsePayload(kind, payload) {
   }
   if (kind === "stroke-begin") {
     exact(payload, new Set(["color", "width", "point"]), "invalid_whiteboard_payload");
-    if (!COLORS.includes(payload.color) || payload.color === "erase") fail("invalid_whiteboard_payload");
+    if (!paintableColor(payload.color)) fail("invalid_whiteboard_payload");
     return Object.freeze({
       color: payload.color,
       width: integer(payload.width, 1, 16, "invalid_whiteboard_payload"),
@@ -90,7 +96,7 @@ function parsePayload(kind, payload) {
   if (kind === "shape") {
     exact(payload, new Set(["shape", "color", "width", "start", "end"]), "invalid_whiteboard_payload");
     if (!SHAPES.includes(payload.shape)) fail("invalid_whiteboard_payload");
-    if (!COLORS.includes(payload.color) || payload.color === "erase") fail("invalid_whiteboard_payload");
+    if (!paintableColor(payload.color)) fail("invalid_whiteboard_payload");
     return Object.freeze({
       shape: payload.shape,
       color: payload.color,
@@ -105,7 +111,7 @@ function parsePayload(kind, payload) {
       fail("invalid_whiteboard_payload");
     }
     if (/[\x00-\x1f\x7f]/.test(payload.text)) fail("invalid_whiteboard_payload");
-    if (!COLORS.includes(payload.color) || payload.color === "erase") fail("invalid_whiteboard_payload");
+    if (!paintableColor(payload.color)) fail("invalid_whiteboard_payload");
     return Object.freeze({
       text: payload.text.trim(),
       point: point(payload.point),

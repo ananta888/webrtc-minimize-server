@@ -1,0 +1,102 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "meet-chat-poll-pagination",
+  "purpose": "Companion muss waehrend langer Ausfuehrung alle wartenden Batches aufnehmen koennen, ohne vorzeitiges ACK.",
+  "status": "in_progress",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Begrenzte Poll-Pagination",
+      "task_ids": [
+        "chat-poll-pagination"
+      ],
+      "status": "in_progress"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "chat-poll-pagination",
+      "title": "Unbestaetigte Chat-Batches mit autorisiertem Cursor weiter lesen",
+      "status": "partial",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 95,
+      "acceptance_criteria": [
+        "poll(after_cursor) liest naechste begrenzte Seite ohne ACK oder neue Rechte; poll() bleibt kompatibel",
+        "Unbekannte/unzugestellte Cursor, Widerruf und Generationswechsel bleiben gesperrt",
+        "32er Queue, 8er Batch und 30-s-Frische bleiben unveraendert; Browser-Fassade reicht Cursor weiter"
+      ],
+      "depends_on": [],
+      "verification": [
+        "Node machine-chat.test.js: 28 passed",
+        "Vitest machine-chat-endpoint.spec.ts: 31 passed",
+        "tsc frontend/tsconfig.app.json --noEmit: passed",
+        "Todo validator: passed"
+      ]
+    }
+  ],
+  "critical_path_tasks": [
+    "chat-poll-pagination"
+  ],
+  "tasks_status_summary": {
+    "total": 1,
+    "by_status": {
+      "todo": 0,
+      "in_progress": 0,
+      "partial": 1,
+      "blocked": 0,
+      "done": 0
+    },
+    "progress_percent_done": 0,
+    "by_priority": {
+      "P0": 1,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    },
+    "by_risk": {
+      "low": 0,
+      "medium": 0,
+      "high": 1,
+      "critical": 0
+    },
+    "critical_path": {
+      "total": 1,
+      "done": 0,
+      "remaining": 1
+    },
+    "milestones": {
+      "total": 1,
+      "todo": 0,
+      "in_progress": 1,
+      "blocked": 0,
+      "done": 0
+    }
+  },
+  "summary_notes": [
+    "Lokaler Slice; kein Deploy oder Push. Ananta Companion-Komposition bleibt eigenstaendige Arbeit.",
+    "Client API implementiert und gezielt geprueft. Track bleibt partial bis zusammenhaengende Companion-Komposition und Block-Abnahme vorliegen; kein Push/Deploy.",
+    "Ananta Companion produktiv lokal angebunden und mit 354 Tests geprueft; Bericht: ananta/artifacts/test-gates/meet-companion-cooperative-composition.v1.json. Track bleibt partial fuer gemeinsame Browser-/Deployment- und Block-Abnahme; kein Push/Deploy."
+  ]
+}

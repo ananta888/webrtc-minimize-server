@@ -126,3 +126,44 @@ test("strict authority scope and callback failures never preserve access", () =>
   assert.throws(() => validateMachineChatScope({ ...f.authority.scope, origin: "https://webrtc.example/path" }));
   assert.throws(() => new MachineChatQueue({ authority: () => { throw new Error("secret detail"); } }), /authority_unavailable/);
 });
+
+
+test("poll cursor pages all bounded inputs without acknowledging them", () => {
+  const f = setup();
+  for (let i = 0; i < 32; i++) f.push({ message_id: `pagination-${i}` });
+  let cursor = 0;
+  const received = [];
+  for (let page = 0; page < 4; page++) {
+    const batch = f.queue.poll(cursor);
+    assert.equal(batch.acknowledged, 0);
+    assert.equal(batch.events.length, 8);
+    received.push(...batch.events.map(item => item.event.message_id));
+    cursor = batch.events.at(-1).cursor;
+  }
+  assert.equal(new Set(received).size, 32);
+  assert.equal(f.queue.poll(cursor).events.length, 0);
+  assert.equal(f.queue.poll().events[0].cursor, 1);
+  f.queue.ack(8);
+  assert.equal(f.queue.poll().events[0].cursor, 9);
+  assert.throws(() => f.queue.poll(7), /poll_cursor_invalid/);
+});
+
+test("poll pagination cannot consume undelivered or stale authority", () => {
+  const f = setup();
+  f.push();
+  for (const cursor of [1, -1, NaN, Infinity, true, '0', {}, 0.5]) {
+    assert.throws(() => f.queue.poll(cursor), /poll_cursor_invalid/);
+  }
+  assert.equal(f.queue.poll().events.length, 1);
+  f.authority.chatRead = false;
+  assert.throws(() => f.queue.poll(1), /receive_denied/);
+});
+
+test("paginated polling preserves admission freshness and generation fencing", () => {
+  const f = setup();
+  f.push();
+  f.advance(30_001);
+  assert.equal(f.queue.poll(0).events.length, 0);
+  f.authority.scope = { ...f.authority.scope, generation: 2 };
+  assert.throws(() => f.queue.poll(0), /authority_changed/);
+});

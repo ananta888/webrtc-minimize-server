@@ -10,15 +10,16 @@ function fixture() {
     lease_id: "ms_" + "a".repeat(32), generation: 1, room_id: "room-aaaaaaaaaaaaaaaaaa", membership_epoch: 3,
     policy_revision: 1, own_peer_id: "2222222222222222", deadline_ms: now + 60_000 } };
   let listener: ((event: BoundPeerChat) => void) | null = null;
-  let allowed = true, subscribing = () => {};
+  let allowed = true, subscribing = () => {}, sourceCheck = () => {};
   const sendReply = vi.fn(() => ({ messageId: "f".repeat(32), queuedPeers: 1 }));
   const unsubscribe = vi.fn(() => { listener = null; });
-  const endpoint = new MachineChatEndpoint({ authority: () => authority, sourceAllowed: () => allowed,
+  const endpoint = new MachineChatEndpoint({ authority: () => authority, sourceAllowed: () => { sourceCheck(); return allowed; },
     subscribe: callback => { listener = callback; subscribing(); return unsubscribe; }, sendReply });
   const emit = (extra: Partial<BoundPeerChat> = {}) => listener?.({ version: 2, type: "chat",
     roomId: authority.scope.room_id, membershipEpoch: 3, messageId: "a".repeat(32), replyTo: "",
     sentAt: Date.now(), text: "Frage", senderPeerId: human, senderKind: "human", ...extra });
   return { endpoint, emit, sendReply, unsubscribe, callback: () => listener,
+    onSourceCheck: (callback: () => void) => { sourceCheck = callback; },
     onSubscribe: (callback: () => void) => { subscribing = callback; }, deny: () => { allowed = false; },
     sending: (value: boolean) => { authority = { ...authority, chatSend: value }; },
     change: (scope: object) => { authority = { ...authority, scope: { ...authority.scope, ...scope } }; },
@@ -286,5 +287,106 @@ describe("machine chat endpoint across a renewal fence", () => {
     expect(g.endpoint.status()).toEqual({ open: false, error: "meet_chat_message_id_conflict" });
     g.endpoint.open(); expect(g.endpoint.poll().events).toEqual([]);
     expect(() => g.endpoint.reply(id("a"), "Antwort")).toThrow("meet_chat_reply_denied"); g.endpoint.close();
+  });
+});
+
+
+describe("paginated chat delivery", () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); });
+  afterEach(() => { vi.useRealTimers(); });
+  it("delivers later pages without premature ACK and preserves reply identity", () => {
+    const f = fixture(); f.endpoint.open();
+    for (let i = 1; i <= 16; i++) f.emit({ messageId: i.toString(16).padStart(32, "0") });
+    const first = f.endpoint.poll();
+    const second = f.endpoint.poll(first.events.at(-1)!.cursor);
+    expect(first.events).toHaveLength(8); expect(second.events).toHaveLength(8);
+    expect(second.acknowledged).toBe(0);
+    expect(f.endpoint.poll().events[0].cursor).toBe(first.events[0].cursor);
+    f.endpoint.reply(second.events[7].event.message_id, "Antwort");
+    expect(f.sendReply).toHaveBeenCalledOnce();
+    f.endpoint.ack(first.events[7].cursor);
+    expect(() => f.endpoint.poll(0)).toThrow("meet_chat_poll_cursor_invalid");
+    f.endpoint.close();
+  });
+  it("does not carry a pagination cursor into a renewed queue", () => {
+    const f = fixture(); f.endpoint.open(); f.emit();
+    const oldCursor = f.endpoint.poll().events[0].cursor;
+    f.change({ generation: 2 });
+    expect(() => f.endpoint.poll(oldCursor)).toThrow("meet_chat_authority_changed");
+    f.endpoint.open();
+    expect(() => f.endpoint.poll(oldCursor)).toThrow("meet_chat_poll_cursor_invalid");
+    expect(f.endpoint.poll(0).events).toHaveLength(1);
+    f.endpoint.close();
+  });
+});
+
+
+describe("bounded current chat redelivery", () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); });
+  afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+  const a = "a".repeat(32), b = "b".repeat(32);
+  function delivered() {
+    const f = fixture(); f.change({ deadline_ms: now + 600_000 });
+    f.endpoint.open(); f.emit(); f.endpoint.poll(); return f;
+  }
+  it("reconfirms an existing input past admission age without admitting new stale input or ACKing", () => {
+    const f = delivered(); vi.advanceTimersByTime(100_000);
+    expect(f.endpoint.redeliver([a])).toEqual({ schema: "ananta.meet-chat-redelivery.draft1", message_ids: [a] });
+    expect(f.endpoint.poll().events).toEqual([]);
+    expect(() => f.endpoint.redeliver([b])).toThrow("meet_chat_redelivery_denied");
+    const stale = fixture(); stale.change({ deadline_ms: now + 600_000 }); stale.endpoint.open();
+    stale.emit({ messageId: b, sentAt: now }); expect(stale.endpoint.status().open).toBe(false);
+    expect(() => stale.endpoint.redeliver([b])).toThrow(); stale.endpoint.close();
+    vi.advanceTimersByTime(100_000); f.endpoint.reply(a, "Antwort");
+    expect(f.sendReply).toHaveBeenCalledOnce(); f.endpoint.close();
+  });
+  it("does not revive an expired input or reconfirm an answered input", () => {
+    const f = delivered(); vi.advanceTimersByTime(120_001);
+    expect(() => f.endpoint.redeliver([a])).toThrow("meet_chat_redelivery_denied"); f.endpoint.close();
+    const g = delivered(); g.endpoint.reply(a, "Antwort");
+    expect(() => g.endpoint.redeliver([a])).toThrow("meet_chat_redelivery_denied"); g.endpoint.close();
+  });
+  it.each([[a, a], [a, b], [a + "\n"], Array.from({length: 33}, (_, i) => i.toString(16).padStart(32, "0"))])(
+    "validates the entire bounded ID list atomically (%j)", (...ids) => {
+      const f = delivered(); vi.advanceTimersByTime(100_000);
+      expect(() => f.endpoint.redeliver(ids)).toThrow("meet_chat_redelivery_denied");
+      vi.advanceTimersByTime(20_001);
+      expect(() => f.endpoint.reply(a, "Antwort")).toThrow("meet_chat_reply_denied"); f.endpoint.close();
+    });
+  it("requires delivery first and keeps current send rights separate", () => {
+    const f = fixture(); f.endpoint.open(); f.emit();
+    expect(() => f.endpoint.redeliver([a])).toThrow("meet_chat_redelivery_denied");
+    f.endpoint.poll(); f.sending(false); f.endpoint.redeliver([a]);
+    expect(() => f.endpoint.reply(a, "Antwort")).toThrow("meet_chat_reply_denied");
+    expect(f.sendReply).not.toHaveBeenCalled(); f.endpoint.close();
+  });
+  it.each(["revoked", "denied", "deadline", "foreign"])("does not bypass %s", reason => {
+    const f = delivered();
+    if (reason === "revoked") f.revoke();
+    if (reason === "denied") f.deny();
+    if (reason === "deadline") f.change({ deadline_ms: now });
+    if (reason === "foreign") { f.change({ task_id: "foreign", generation: 2 });
+      expect(() => f.endpoint.poll()).toThrow(); f.endpoint.open(); }
+    expect(() => f.endpoint.redeliver([a])).toThrow();
+    expect(f.sendReply).not.toHaveBeenCalled(); f.endpoint.close();
+  });
+  it("continues a currently authorized same-conversation renewal", () => {
+    const f = delivered(); vi.advanceTimersByTime(50_000); f.change({ generation: 2 });
+    expect(() => f.endpoint.poll()).toThrow("meet_chat_authority_changed");
+    f.endpoint.open(); expect(f.endpoint.poll().events).toEqual([]);
+    f.endpoint.redeliver([a]); vi.advanceTimersByTime(100_000); f.endpoint.reply(a, "Antwort");
+    expect(f.sendReply).toHaveBeenCalledOnce(); f.endpoint.close();
+  });
+  it.each(["revoke", "reopen", "answer", "expire"])("rechecks source-adapter side effects (%s) before mutation", action => {
+    const f = delivered(); vi.advanceTimersByTime(100_000);
+    f.onSourceCheck(() => {
+      f.onSourceCheck(() => {});
+      if (action === "revoke") f.revoke();
+      if (action === "reopen") f.endpoint.open();
+      if (action === "answer") f.endpoint.reply(a, "Antwort");
+      if (action === "expire") vi.setSystemTime(now + 120_001);
+    });
+    expect(() => f.endpoint.redeliver([a])).toThrow();
+    f.endpoint.close();
   });
 });

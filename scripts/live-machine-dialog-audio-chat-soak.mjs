@@ -30,11 +30,7 @@ test("isolated machine audio/chat/screen soak with PCM, chat ACK and bounded sto
   await human.locator('#toggle-microphone[aria-pressed="true"]').waitFor();
   await human.locator(".nav-item", { hasText: "Analyse" }).click();
   const panel = human.locator("app-machine-permissions-panel");
-  await panel.getByRole("button", { name: "Für diese KI einstellen" }).click();
-  await panel.getByLabel("Mein laufendes Mikrofon", { exact: true }).check();
-  await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).check();
-  await panel.getByRole("button", { name: "Auswahl ausdrücklich freigeben" }).click();
-  await panel.getByText("Serverbestätigung erhalten.", { exact: true }).waitFor();
+  await panel.getByText("Leserecht vorhanden / Senderecht vorhanden", { exact: true }).waitFor();
   await machine.waitForFunction(() => window.anantaMachine.audio.sources().length === 1, null, { timeout: 12_000 });
   const cdp = await machine.context().newCDPSession(machine);
   const initialHeap = (await cdp.send("Runtime.getHeapUsage")).usedSize;

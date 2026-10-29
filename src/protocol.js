@@ -163,6 +163,11 @@ export function parseClientMessage(raw) {
     if (value.policy !== "open" && value.policy !== "presenter-only") throw new ProtocolError("invalid_whiteboard_policy");
     return Object.freeze({ type: "whiteboard-policy-set", policy: value.policy });
   }
+  if (value.type === "diagram-policy-set") {
+    if (!hasOnlyKeys(value, new Set(["type", "policy"]))) throw new ProtocolError("unknown_message_field");
+    if (value.policy !== "open" && value.policy !== "presenter-only") throw new ProtocolError("invalid_diagram_policy");
+    return Object.freeze({ type: "diagram-policy-set", policy: value.policy });
+  }
   if (value.type === "breakout-open") {
     if (!hasOnlyKeys(value, new Set(["type", "childCount", "capacity"]))) throw new ProtocolError("unknown_message_field");
     if (!Number.isSafeInteger(value.childCount) || value.childCount < 1 || value.childCount > 10) {

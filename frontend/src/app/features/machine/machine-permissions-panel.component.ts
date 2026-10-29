@@ -1,99 +1,39 @@
-import { Component, computed, effect, inject, signal } from "@angular/core";
-import { machineReceiveFeedback } from "./machine-receive-feedback";
-import { DatePipe } from "@angular/common";
-import { MachineReceiveControlsService, MachineReceiveSelection } from "./machine-receive-controls.service";
+import { Component, inject } from "@angular/core";
+import { MachineReceiveObservationService } from "./machine-receive-observation.service";
 import { MachineAdmissionStatusComponent } from "./machine-admission-status.component";
 
 @Component({
-  selector: "app-machine-permissions-panel", standalone: true, imports: [DatePipe, MachineAdmissionStatusComponent],
-  providers: [MachineReceiveControlsService],
+  selector: "app-machine-permissions-panel", standalone: true, imports: [MachineAdmissionStatusComponent],
+  providers: [MachineReceiveObservationService],
   template: `<section aria-labelledby="machine-receive-heading">
-    <h2 id="machine-receive-heading">Ananta · Freigaben meiner Quellen</h2>
+    <h2 id="machine-receive-heading">Ananta · Empfangsrechte im Raum</h2>
     @defer (on immediate) { <app-machine-admission-status /> }
     @loading { <p id="machine-admission-loading" role="status">Betreiberstatus wird geladen…</p> }
-    @error { <p id="machine-admission-load-error" role="alert">Betreiberstatus nicht geladen. Der Aufnahmestatus ist unbekannt; deine Quellenfreigaben bleiben unten bedienbar.</p> }
-    <p>Ananta verarbeitet freigegebene Inhalte als entschlüsselnder KI-Endpunkt, nicht als blinder Relay.
-      Die Freigabe gilt nur für deine eigenen aktuellen Quellen. Aufnahme, Speicherung und externe Modellanbieter sind damit nicht erlaubt.</p>
-    @for (peer of controls.activities(); track peer.id) {
-      <article><h3>{{ peer.name }}</h3>
+    @error { <p id="machine-admission-load-error" role="alert">Betreiberstatus nicht geladen. Der globale Aufnahmestatus ist unbekannt; die verbundenen KI-Endpunkte bleiben unten sichtbar.</p> }
+    <p id="machine-receive-policy">Der Hub autorisiert den Empfang durch die KI während ihrer gültigen Raumsitzung.
+      Eine KI mit Audio- oder Bildempfangsrecht kann deine laufenden, im Raum geteilten Quellen entschlüsseln.
+      Mit Chatleserecht kann sie deine neuen Chatbeiträge lesen. Diese Übersicht erteilt und widerruft keine Rechte.</p>
+    <p id="machine-receive-stop">Stoppe Mikrofon, Kamera oder Bildschirm über die Mediensteuerung, um die jeweilige Quelle nicht weiter zu teilen.
+      Verlasse den Raum, um deine gesamte Teilnahme zu beenden. Frühere lokale Quellenfreigaben begrenzen die Hub-Rechte nicht.</p>
+    <p>Empfangsrechte bestätigen keine Aufnahme, Speicherung oder Nutzung externer Modellanbieter und erlauben diese nicht zusätzlich.</p>
+    @for (peer of observation.activities(); track peer.id) {
+      <article [attr.data-machine-peer]="peer.id"><h3>{{ peer.name }}</h3>
         <p>KI-Endpunkt · technische Peer-ID: <code>{{ peer.id }}</code>. Keine bewiesene menschliche Identität.</p>
-        @if (peer.grant; as grant) {
-          <p>Bestätigte Freigabe bis {{ grant.expiresAt | date:'HH:mm:ss' }} · Audioquellen: {{ peer.audioGrantCount }} · Chat: {{ grant.chatRead ? 'ja' : 'nein' }}
-            @if (peer.videoSupported) { · Videoquellen: {{ peer.videoGrantCount }} }</p>
-        } @else {
-          <p>Keine Empfangsfreigabe erteilt.</p>
-          @if (peer.grantState === 'expired') { <p>Die letzte Freigabe ist abgelaufen.</p> }
-        }
         <dl>
-          <dt>Audioempfang</dt><dd>{{ peer.audioSupported ? 'Vom Hub erlaubt; eigene Quellen benötigen zusätzlich deine Freigabe.' : 'Vom Hub nicht freigegeben.' }}</dd>
-          @if (peer.videoSupported) { <dt>Visueller Empfang</dt><dd>Vom Hub erlaubt; nur ausdrücklich freigegebene eigene Kamera-/Bildschirmquellen. Analyse-Endpunkt kann diese Inhalte entschlüsseln.</dd> }
-          <dt>Chat lesen / antworten</dt><dd>{{ peer.chatReadSupported ? 'Leserecht möglich' : 'Kein Leserecht' }} / {{ peer.chatSendSupported ? 'Senderecht vorhanden' : 'Kein Senderecht' }}</dd>
-          <dt>Agenteneigener Bildschirm</dt><dd>{{ peer.screenAvailable ? 'Remote-Track verfügbar' : peer.screenSupported ? 'Erlaubt, zurzeit kein Remote-Track' : 'Nicht freigegeben' }}</dd>
-          <dt>Agenteneigener Bildschirmton</dt><dd>{{ peer.screenAudioAvailable ? 'Separater Ton-Track verfügbar' : 'Kein Ton-Track' }}</dd>
+          <dt>Audioempfang</dt><dd>{{ peer.audioSupported ? 'Vom Hub erlaubt für laufende Raumquellen.' : 'Vom Hub nicht freigegeben.' }}</dd>
+          <dt>Visueller Empfang</dt><dd>{{ peer.videoSupported ? 'Vom Hub erlaubt für laufende Kamera- und Bildschirmquellen.' : 'Vom Hub nicht freigegeben.' }}</dd>
+          <dt>Chat lesen / antworten</dt><dd>{{ peer.chatReadSupported ? 'Leserecht vorhanden' : 'Kein Leserecht' }} / {{ peer.chatSendSupported ? 'Senderecht vorhanden' : 'Kein Senderecht' }}</dd>
+          <dt>Agenteneigener Bildschirm / Bildschirmton</dt><dd>{{ peer.screenAvailable ? 'Remote-Track verfügbar' : 'Kein Remote-Track' }} / {{ peer.screenAudioAvailable ? 'Separater Ton-Track verfügbar' : 'Kein Ton-Track' }}</dd>
           <dt>Avatar / synthetische Sprache</dt><dd>{{ peer.avatarAvailable ? 'Avatar-Track verfügbar' : 'Kein Avatar-Track' }} / {{ peer.speechAvailable ? 'Sprach-Track verfügbar' : 'Kein Sprach-Track' }}</dd>
           <dt>Tatsächliche KI-Verarbeitung</dt><dd>Nicht durch Meet bestätigt. Ein Recht oder Remote-Track beweist weder ASR-/Dialogaktivität noch flüssige Wiedergabe.</dd>
         </dl>
-        <button type="button" [attr.aria-pressed]="target() === peer.id" (click)="select(peer.id)">Für diese KI einstellen</button>
-        <button type="button" [disabled]="controls.state() === 'pending'" (click)="controls.request(peer.id, false, false, false, 1, 'user-action')">Meine Freigaben widerrufen</button>
       </article>
     } @empty { <p>Zurzeit ist keine KI im Raum verbunden.</p> }
-    @if (target()) {
-      <fieldset [attr.data-machine-peer]="target()"><legend>Ausgewählte KI: {{ targetName() }} · nur eigene Quellen</legend>
-        <label><input type="checkbox" [checked]="microphone()" (change)="microphone.set($any($event.target).checked)" [disabled]="!supports('audio.receive') || !controls.sourceAvailable('microphone')"> Mein laufendes Mikrofon</label>
-        @if (!controls.sourceAvailable('microphone')) { <p>Mikrofon nicht aktiv. Start ist ausschließlich über die Mediensteuerung möglich.</p> }
-        <label><input type="checkbox" [checked]="screenAudio()" (change)="screenAudio.set($any($event.target).checked)" [disabled]="!supports('audio.receive') || !controls.sourceAvailable('screen-audio')"> Mein laufender Bildschirmton</label>
-        @if (!controls.sourceAvailable('screen-audio')) { <p>Kein laufender Bildschirmton vorhanden.</p> }
-        <label><input type="checkbox" [checked]="chat()" (change)="chat.set($any($event.target).checked)" [disabled]="!supports('chat.read')"> Meine neuen Chatbeiträge</label>
-        @if (supports('video.receive')) {
-          <label><input type="checkbox" [checked]="camera()" (change)="camera.set($any($event.target).checked)" [disabled]="!controls.sourceAvailable('camera')"> Meine laufende Kamera zur Analyse</label>
-          <label><input type="checkbox" [checked]="screen()" (change)="screen.set($any($event.target).checked)" [disabled]="!controls.sourceAvailable('screen')"> Mein laufender Bildschirm zur Analyse</label>
-        }
-        <label>Gültigkeit <select [value]="minutes()" (change)="minutes.set(+$any($event.target).value)"><option value="1">1 Minute</option><option value="5">5 Minuten</option><option value="10">10 Minuten</option></select></label>
-        <p>Nur bereits laufende Quellen sind auswählbar. Diese Ansicht startet keine Aufnahme.
-          Die Auswahl ersetzt die bisherigen Freigaben für diese KI erst nach deinem Klick und der Serverbestätigung.
-          Ein bestätigtes Recht bedeutet noch nicht, dass Audioerkennung oder Dialog bereits aktiv sind.</p>
-        <button type="button" [disabled]="controls.state() === 'pending'" (click)="controls.request(target(), microphone(), screenAudio(), chat(), minutes(), 'user-action', selected, visualSelection())">Auswahl ausdrücklich freigeben</button>
-      </fieldset>
-    }
-    <p role="status" aria-live="polite">{{ controls.state() === 'pending' ? 'Warte auf Serverbestätigung…' : controls.state() === 'confirmed' ? 'Serverbestätigung erhalten.' : '' }}</p>
-    @if (controls.state() === 'expired') { <p role="status">Die Freigabe ist abgelaufen. Es wird nichts automatisch verlängert.</p> }
-    @if (controls.requestPeerId() && controls.state() !== 'idle') {
-      <p>Rückmeldung für KI-Peer <code>{{ controls.requestPeerId() }}</code>.</p>
-    }
-    @if (feedback(); as value) {
-      <div role="alert"><strong>{{ value.title }}</strong><p>{{ value.message }}</p>
-        @if (value.diagnostic) { <details><summary>Technische Diagnose</summary><code>{{ value.diagnostic }}</code></details> }
-      </div>
-    }
   </section>`,
   styles: [`section { margin-top: 1rem; padding: 1.25rem; border: 1px solid var(--border, #526075); border-radius: 1rem; }
-    fieldset, article { margin-block: 1rem; } label { display: block; margin-block: .75rem; } button { margin: .25rem .5rem .25rem 0; }
-    dt { font-weight: 600; margin-top: .75rem; } dd { margin-inline-start: 0; } code { overflow-wrap: anywhere; }`],
+    article { margin-block: 1rem; } dt { font-weight: 600; margin-top: .75rem; }
+    dd { margin-inline-start: 0; } code { overflow-wrap: anywhere; }`],
 })
 export class MachinePermissionsPanelComponent {
-  readonly controls = inject(MachineReceiveControlsService);
-  readonly feedback = computed(() => machineReceiveFeedback(this.controls.error()));
-  readonly target = signal(""); readonly microphone = signal(false); readonly screenAudio = signal(false);
-  readonly chat = signal(false); readonly minutes = signal(5);
-  readonly camera = signal(false); readonly screen = signal(false);
-  selected?: MachineReceiveSelection;
-  constructor() {
-    effect(() => {
-      if (this.target() && !this.controls.targets().some(peer => peer.id === this.target())) this.select("");
-      if (!this.controls.sourceAvailable("microphone") || !this.supports("audio.receive")) this.microphone.set(false);
-      if (!this.controls.sourceAvailable("screen-audio") || !this.supports("audio.receive")) this.screenAudio.set(false);
-      if (!this.supports("chat.read")) this.chat.set(false);
-      if (!this.supports("video.receive") || !this.controls.sourceAvailable("camera")) this.camera.set(false);
-      if (!this.supports("video.receive") || !this.controls.sourceAvailable("screen")) this.screen.set(false);
-    });
-  }
-  select(id: string): void {
-    const selection = this.controls.selection(id);
-    this.selected = id ? this.controls.selectionScope(id) : undefined;
-    this.target.set(id); this.microphone.set(selection.microphone); this.screenAudio.set(selection.screenAudio); this.chat.set(selection.chat);
-    this.camera.set(selection.camera ?? false); this.screen.set(selection.screen ?? false);
-  }
-  targetName(): string { return this.controls.targets().find(peer => peer.id === this.target())?.name || "Nicht verbunden"; }
-  visualSelection() { return this.supports("video.receive") ? { camera: this.camera(), screen: this.screen() } : undefined; }
-  supports(capability: string): boolean { return this.controls.mesh.machineReceive.supports(this.target(), capability); }
+  readonly observation = inject(MachineReceiveObservationService);
 }

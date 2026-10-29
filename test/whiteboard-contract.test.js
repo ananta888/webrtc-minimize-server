@@ -130,13 +130,27 @@ test("whiteboard sync-request and sync-response are strictly validated", () => {
     payload: { ops: [req] },
   }), /invalid_whiteboard_payload/);
 
-  // Exceeding MAX_SYNC_OPS (64)
-  const tooMany = Array.from({ length: 65 }, () => strokeOp);
+  // Exceeding MAX_SYNC_OPS (2048)
+  const tooMany = Array.from({ length: 2049 }, () => strokeOp);
   assert.throws(() => parseWhiteboardOperation({
     ...base,
     kind: "sync-response",
     payload: { ops: tooMany },
   }), /invalid_whiteboard_payload/);
+});
+
+test("whiteboard paint colors accept palette hex and reject garbage", () => {
+  const hexStroke = parseWhiteboardOperation({
+    ...base,
+    payload: { color: "#38bdf8", width: 2, point: { x: 1, y: -2 } },
+  });
+  assert.equal(hexStroke.payload.color, "#38bdf8");
+  for (const bad of ["#12345", "#1234567", "#gggggg", "red", "erase", 5, null]) {
+    assert.throws(() => parseWhiteboardOperation({
+      ...base,
+      payload: { color: bad, width: 2, point: { x: 1, y: -2 } },
+    }), /invalid_whiteboard_payload/);
+  }
 });
 
 test("whiteboard clear signaling is closed and content-free", () => {

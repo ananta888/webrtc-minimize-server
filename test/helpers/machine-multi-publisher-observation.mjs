@@ -46,7 +46,10 @@ export function installMultiPublisherObservation() {
   function associated(peer) {
     const elements = [...document.querySelectorAll(".remote-media[data-peer-id]")].filter(el => el.dataset.peerId === peer);
     const videoTracks = elements.flatMap(el => el.querySelector("video")?.srcObject?.getVideoTracks() || []);
-    const audio = [...tracks.values()].filter(entry => entry.pc.getReceivers().some(r => videoTracks.includes(r.track)));
+    const audioTracks = [...document.querySelectorAll("#room-audio audio[data-peer-id]")]
+      .filter(el => el.dataset.peerId === peer).flatMap(el => el.srcObject?.getAudioTracks() || []);
+    const audio = [...tracks.values()].filter(entry => audioTracks.includes(entry.track)
+      || entry.pc.getReceivers().some(r => videoTracks.includes(r.track)));
     return { elements, audio };
   }
   function audible(entry) {

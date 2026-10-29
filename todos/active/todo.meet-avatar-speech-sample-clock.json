@@ -1,0 +1,160 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "meet-avatar-speech-sample-clock",
+  "purpose": "Prepared agent-owned avatar clips follow the native speech played-sample clock instead of variable host/browser IPC latency.",
+  "status": "done",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Contract and audio-clock quality",
+      "task_ids": [
+        "sequence-contract-clock"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "M2",
+      "title": "Bounded native renderer and Worker acceptance",
+      "task_ids": [
+        "bounded-sequence-renderer",
+        "worker-sequence-acceptance"
+      ],
+      "status": "done"
+    }
+  ],
+  "critical_path_tasks": [
+    "sequence-contract-clock",
+    "bounded-sequence-renderer",
+    "worker-sequence-acceptance"
+  ],
+  "tasks": [
+    {
+      "id": "sequence-contract-clock",
+      "title": "Closed bounded sequence payload and native speech sample-to-frame mapping",
+      "status": "done",
+      "progress_percent": 100,
+      "priority": "P1",
+      "risk": "high",
+      "depends_on": [],
+      "acceptance_criteria": [
+        "At most five existing validated clips and480decoded frames/40s PCM; contiguous sample windows and unknown fields rejected.",
+        "Clock accepts only the bound speech generation and bounded monotonic played/received samples; failure or replacement retires it permanently.",
+        "Exact completion preserves only the last frame; progress never grants source authority; focused deterministic Vitest checks pass."
+      ],
+      "architecture_review": "SRP: payload and progress quality have separate components. DIP: progress is a small read-only snapshot, not a concrete graph or Hub. No captures, peer lists or policy decisions.",
+      "verification": "97 focused Vitest checks pass in726ms; strict isolated TypeScript compilation passes. Source lifecycle and video regressions are included; block verification remains pending."
+    },
+    {
+      "id": "bounded-sequence-renderer",
+      "title": "Prepare decoded frames with one owned decoder and publish from the native sample clock",
+      "status": "done",
+      "progress_percent": 100,
+      "priority": "P1",
+      "risk": "high",
+      "depends_on": [
+        "sequence-contract-clock"
+      ],
+      "acceptance_criteria": [
+        "One decoder, at most128MiB decoded frames, bounded preparation and cleanup on revoke/failure.",
+        "Additive native capability/profile and endpoint keep existing callers compatible.",
+        "Rendering revalidates existing native authority and closes on speech/lease/source replacement; no remote URLs or human capture."
+      ],
+      "verification": "Pollable native preparation/status/cancel endpoint and persona-sequence-v1 activation/surface wiring implemented.129 targeted lifecycle/controller/source regressions pass in999ms; Angular application TypeScript check passes. Actual browser decoder/publication and Worker GPU acceptance remain unverified. Actual private Chromium HTML decoding and native publication now pass the installed CPU-tone gate in83.13s after the empty cleanup regression fix. This does not establish portable browser or long GPU acceptance."
+    },
+    {
+      "id": "worker-sequence-acceptance",
+      "title": "Integrate the Worker sequence port and verify actual long GPU speech/browser delivery",
+      "status": "done",
+      "progress_percent": 100,
+      "priority": "P1",
+      "risk": "high",
+      "depends_on": [
+        "bounded-sequence-renderer"
+      ],
+      "acceptance_criteria": [
+        "Hub remains Task/policy/Registry owner; Worker receives only assigned closed scope.",
+        "Actual GPU LLM/TTS with long multisegment avatar delivery passes unchanged strict synchronization and source-withdrawal gates.",
+        "Block verification covers Todo gate and required repository checks; missing external Lipsync remains explicit, never a green synthetic substitute."
+      ],
+      "verification": "Default-off assigned Worker sequence adapter and strict native quality receipts implemented. 65 Worker/source/timeline tests pass; 61 native frontend tests and application TypeScript pass. Current packaged image contains 60 verified sources. First installed native CPU gate failed at room join before decoder/publication; bounded coded diagnostics are being collected. Actual long GPU synchronization and withdrawal acceptance remain required. After idempotent empty cleanup correction, the installed native CPU-tone gate passes in83.13s with three complete publications, six successful Hub test runs and zero Legacy calls; actual long GPU and withdrawal gates remain open. Combined actual GPU LLM/TTS native sequence gate passes in236.00s: three complete publications, two multisegment, maximum20ms under unchanged41.667ms. All1782 frontend tests pass in14.41s. Native withdrawal matrix and full block checks remain open; external Lipsync and production release are unverified. Nine actual installed native source-withdrawal cases pass in695.18s with synthetic model/CPU tone and zero Legacy calls; current-image lifecycle remainder and full repository check still running. Five remaining lifecycle cases pass; crash assertions pass but stopped-container diagnostic failed and is now corrected (2 regression tests pass), isolated crash rerun pending. Full repository prepare passes; Node1796pass/1fail/5skip exposes separate native two-source broadcast audio revoke failure; infrastructure phase was not reached. Additional actual GPU withdrawal first attempt timed out at model before TTS, not accepted; isolated hardware run pending. Corrected isolated crash gate passes106.49s. Isolated actual long GPU speech-withdrawal gate passes123.98s:260608samples/44.54s TTS, exactly one utterance, early cutoff before half PCM, subsequent actual model replies without resumed speech, six successful Hub test runs and removed private cache. All16current-image lifecycle cases are verified across batches. Only full repository block gate and its separately identified audio broadcast failure remain for this task; productive Lipsync is explicitly outside this acceptance. Third full Node check1800pass/1fail/5skip849.756s. Incoming microphone native clock expires (code3) while source authority remains stable; this belongs to separate native broadcast input, not Companion own-speech publication. New bounded test-only pre-close clock overlay/v2 snapshot is implemented;9unit checks82.698ms and five paired actual audio cases210.746s pass, but expiry subtype was not observed. Full block gate remains open, all task statuses partial, no archive. Final complete npm run check exits0:1782frontend,1803Node/0fail/5skip847.965s, build/static/leakage/Go unit-vet pass;14explicit live-infrastructure skips. Existing original Task/TTS/source/queue/drift limits unchanged. Earlier clock failure is retained, not claimed fixed. Track-specific closed native clock/renderer/Worker acceptance now complete; MuseTalk/latency/productive rollout remain in parent tracks."
+    }
+  ],
+  "tasks_status_summary": {
+    "total": 3,
+    "by_status": {
+      "todo": 0,
+      "in_progress": 0,
+      "partial": 0,
+      "blocked": 0,
+      "done": 3
+    },
+    "progress_percent_done": 100,
+    "by_priority": {
+      "P0": 0,
+      "P1": 3,
+      "P2": 0,
+      "P3": 0
+    },
+    "by_risk": {
+      "low": 0,
+      "medium": 0,
+      "high": 3,
+      "critical": 0
+    },
+    "critical_path": {
+      "total": 3,
+      "done": 3,
+      "remaining": 0
+    },
+    "milestones": {
+      "total": 2,
+      "todo": 0,
+      "in_progress": 0,
+      "blocked": 0,
+      "done": 2
+    }
+  },
+  "summary_notes": [
+    "Current Ananta real GPU gates complete model and TTS but host-timed clip swaps still violate strict audio scheduling; do not loosen gates or mark full migration complete.",
+    "Existing avatar surface handover is preserved; sample-clock preparation is additive execution infrastructure and has no membership/policy/Hub task authority.",
+    "Prepared content has no guessed speech generation: decode preparation precedes native speech opening; the clock binds only the actual returned generation. A completed generation cannot activate an old prepared sequence. Shared wire constants preserve old exports without making content/quality depend on speech lifecycle.",
+    "Decoder uses paused muted owned blob metadata/seek and ImageBitmap copying, never play or capture. In-flight bitmap work retains the preparation permit until it settles; late results are closed. Artwork checks authority before/after pixels and after observers; old generation/failure retires the atlas.",
+    "Preparation binds exact current native source/session/lease/membership/expiry and independent absolute/monotonic bounds; old assets cannot cross changed authority. Native activation validates actual speech progress before taking atlas ownership. New40fps source pacing is additive; existing profiles remain5fps with unchanged deadlines/heartbeat. Leave/destroy cancels unpublished preparation.",
+    "Worker native sequence is explicitly opt-in (MEET_COMPANION_NATIVE_SEQUENCE=1); no automatic fallback after selected native failure. Preparation precedes speech, current Hub checks stay active and exact live native quality receipts are validated. One-frame tail balancing preserves the existing maximum120 frames per clip.",
+    "Clock/renderer tasks are implemented and individually verified with actual native GPU delivery and source gates. Worker/block task stays open because full repository Node gate found separate native broadcast audio revoke failure and current-image crash/hardware withdrawal confirmation is pending. No archived completion or productive release claim.",
+    "Individual clock/renderer acceptance is proven, but statuses stay partial99 until the complete block check is green, per AGENTS rule5. Prior premature done statuses corrected; no archive or aggregate success claim.",
+    "2026-10-12 final full block command exits0; all three scoped tasks and milestones complete. No archive move/deploy/production release. Parent Meet goals retain configured lipsync, latency and productive rollout; historical clock expiry remains an explicitly unproven cause."
+  ],
+  "goal": "Bounded compatible sequence contract, single owned decoder preparation and sample-clock driven canvas publication; current authority and expiry remain outside timing counters.",
+  "created": "2026-10-12",
+  "updated": "2026-10-12",
+  "progress_summary": {
+    "state": "done",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 3
+  }
+}

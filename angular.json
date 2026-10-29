@@ -27,6 +27,11 @@
                 "glob": "**/*",
                 "input": "frontend/src/assets",
                 "output": "/assets/"
+              },
+              {
+                "glob": "**/*",
+                "input": "node_modules/bpmn-js/dist/assets",
+                "output": "/assets/bpmn"
               }
             ]
           },

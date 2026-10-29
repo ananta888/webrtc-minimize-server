@@ -6,16 +6,26 @@ export interface WhiteboardDelivery {
   readonly data: Uint8Array;
 }
 
-export const WHITEBOARD_OP_LIMIT = 256;
+export const WHITEBOARD_OP_LIMIT = 2048;
+export const WHITEBOARD_HISTORY_BYTES = 500 * 1024;
+export const WHITEBOARD_OP_MAX_BYTES = 12 * 1024;
+export const WHITEBOARD_SYNC_MAX_BYTES = 512 * 1024;
 
 export function ingestWhiteboardDelivery(
   delivery: WhiteboardDelivery,
   context: Readonly<{ membershipEpoch: number; knownPeerIds: ReadonlySet<string>; seen: ReadonlySet<string> }>,
 ): WhiteboardOperation | null {
-  if (delivery.trafficClass !== "event") return null;
-  if (delivery.data.byteLength > 12 * 1024) return null;
+  const bulk = delivery.trafficClass === "bulk";
+  if (!bulk && delivery.trafficClass !== "event") return null;
   const operation = decodeWhiteboardBytes(delivery.data);
   if (!operation) return null;
+  const syncResponse = operation.kind === "sync-response";
+  if (syncResponse) {
+    if (delivery.data.byteLength > WHITEBOARD_SYNC_MAX_BYTES) return null;
+  } else {
+    if (bulk) return null;
+    if (delivery.data.byteLength > WHITEBOARD_OP_MAX_BYTES) return null;
+  }
   if (operation.membershipEpoch !== context.membershipEpoch) return null;
   if (operation.authorPeerId !== delivery.originPeerId) return null;
   if (!context.knownPeerIds.has(operation.authorPeerId)) return null;
@@ -27,11 +37,18 @@ export function appendWhiteboardOperation(
   ops: readonly WhiteboardOperation[],
   operation: WhiteboardOperation,
   limit = WHITEBOARD_OP_LIMIT,
+  maxBytes = WHITEBOARD_HISTORY_BYTES,
 ): readonly WhiteboardOperation[] {
   if (operation.kind === "laser") return ops;
   if (ops.some((item) => item.opId === operation.opId)) return ops;
-  const next = [...ops, operation];
-  return Object.freeze(next.length > limit ? next.slice(next.length - limit) : next);
+  let next = [...ops, operation];
+  if (next.length > limit) next = next.slice(next.length - limit);
+  let bytes = JSON.stringify(next).length;
+  while (next.length > 1 && bytes > maxBytes) {
+    bytes -= JSON.stringify(next[0]).length;
+    next = next.slice(1);
+  }
+  return Object.freeze(next);
 }
 
 export function undoOwnWhiteboardOperations(
@@ -56,8 +73,8 @@ export function undoOwnWhiteboardOperations(
 
 export function boundSyncOps(
   ops: readonly WhiteboardOperation[],
-  maxOps = 64,
-  maxBytes = 11 * 1024,
+  maxOps = WHITEBOARD_OP_LIMIT,
+  maxBytes = WHITEBOARD_HISTORY_BYTES,
 ): readonly WhiteboardOperation[] {
   const result: WhiteboardOperation[] = [];
   let currentBytes = 100;

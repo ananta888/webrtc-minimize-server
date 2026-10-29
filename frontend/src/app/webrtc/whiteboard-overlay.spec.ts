@@ -35,6 +35,34 @@ describe("whiteboard overlay ingest", () => {
   it("deduplicates, bounds history and undoes only own trailing strokes", () => {
     const first = appendWhiteboardOperation([], op);
     expect(appendWhiteboardOperation(first, op)).toEqual(first);
+
+    // History keeps a large window and evicts oldest by count and bytes
+    let history: readonly typeof op[] = [];
+    for (let i = 0; i < 2500; i++) {
+      history = appendWhiteboardOperation(history, {
+        ...op,
+        opId: i.toString(16).padStart(32, "0"),
+      }) as readonly typeof op[];
+    }
+    expect(history.length).toBe(2048);
+    expect(history[0].opId).toBe((2500 - 2048).toString(16).padStart(32, "0"));
+    expect(history[history.length - 1].opId).toBe((2499).toString(16).padStart(32, "0"));
+    expect(JSON.stringify(history).length).toBeLessThanOrEqual(500 * 1024);
+
+    const fatOps = Array.from({ length: 5 }, (_, i) => ({
+      ...op,
+      opId: i.toString(16).padStart(32, "0"),
+      kind: "stroke-point" as const,
+      payload: { points: Array.from({ length: 32 }, (_, p) => ({ x: p * 10 + i, y: 100 })) },
+    }));
+    let byteBound: readonly typeof op[] = [];
+    for (const item of fatOps) {
+      byteBound = appendWhiteboardOperation(byteBound, item, 2048, 1500) as readonly typeof op[];
+    }
+    expect(byteBound.length).toBeGreaterThan(1);
+    expect(byteBound.length).toBeLessThan(5);
+    expect(JSON.stringify(byteBound).length).toBeLessThanOrEqual(1500);
+
     const ownEnd = { ...op, opId: "b".repeat(32), kind: "stroke-end" as const, payload: { point: { x: 3, y: 4 } } };
     const other = { ...op, opId: "c".repeat(32), authorPeerId: "bbbbbbbbbbbbbbbb" };
     const stacked = appendWhiteboardOperation(appendWhiteboardOperation(first, other), ownEnd);
@@ -71,10 +99,10 @@ describe("whiteboard overlay ingest", () => {
     expect(boundedByCount.length).toBe(64);
     expect(boundedByCount[boundedByCount.length - 1].opId).toBe(ops[ops.length - 1].opId);
 
-    // Default maxBytes limits when byte size exceeds 11 KB
+    // Defaults cover the retained history budget
     const boundedByDefault = boundSyncOps(ops, 64);
     expect(boundedByDefault.length).toBeLessThanOrEqual(64);
-    expect(JSON.stringify(boundedByDefault).length).toBeLessThan(11 * 1024);
+    expect(JSON.stringify(boundedByDefault).length).toBeLessThanOrEqual(500 * 1024);
 
     // Bounded by small maxBytes
     const tight = boundSyncOps(ops, 64, 500);

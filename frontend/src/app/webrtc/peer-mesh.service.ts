@@ -785,7 +785,6 @@ export class PeerMeshService {
   async acceptOverlayKey(message: ServerMessage): Promise<void> {
     const peerId = String(message["from"] || "");
     const epoch = Number(message["membershipEpoch"]);
-    console.warn("[e2eedbg] overlay-key in", peerId, "epoch", epoch, "cur", this.membershipEpoch(), "known", this.peers.has(peerId), "hasKey", this.overlay.hasPeerKey(peerId));
     if (!Number.isSafeInteger(epoch) || !this.peers.has(peerId)) return;
     const current = this.membershipEpoch();
     if (epoch > current) {
@@ -816,11 +815,9 @@ export class PeerMeshService {
         if (!current()) return;
         this.updateOverlayAvailability();
         this.provisionMediaKeysForPeer(peerId);
-        console.warn("[e2eedbg] overlay-key applied", peerId, "hasKey", this.overlay.hasPeerKey(peerId));
         return;
       } catch (error) {
         const reason = error instanceof Error ? error.message : "";
-        console.warn("[e2eedbg] overlay-key error", peerId, reason);
         const transient = reason === "overlay_lifecycle_changed" || reason === "overlay_key_unavailable";
         if (!transient) break;
       }
@@ -1482,7 +1479,6 @@ export class PeerMeshService {
       routeEpoch: this.routeEpoch(),
       memberPeerIds: new Set([this.ownId, ...this.peers.keys()]),
     });
-    console.warn("[e2eedbg] overlay recv", peer.id, "action", result.action, "reason", (result as { reason?: string }).reason ?? null, "epoch", this.membershipEpoch(), "re", this.routeEpoch());
     if (!current()) {
       if (result.action === "delivered") result.data.fill(0);
       return;
@@ -2182,7 +2178,6 @@ export class PeerMeshService {
     const peer = this.peers.get(peerId);
     if (!peer) return;
     const locals = [...this.publications.values()].filter(item => item.local).map(item => `${item.id}:${item.source}`);
-    console.warn("[e2eedbg] provision peer", peerId, "locals", locals, "senders", [...peer.senders]);
     for (const publication of this.publications.values()) {
       if (publication.local && peer.senders.has(publication.id)) this.provisionMediaKey(publication, peer);
     }
@@ -2190,9 +2185,7 @@ export class PeerMeshService {
 
   private provisionMediaKey(publication: Publication, peer: PeerState): void {
     const allow = this.machineReceive.mediaAllowed(peer.id, this.ownId, publication.id, publication.source);
-    console.warn("[e2eedbg] provisionKey", publication.id, publication.source, "allow", allow,
-      "local", publication.local, "protect", this.shouldProtectMedia(), "stable", this.membershipStable,
-      "mep", this.membershipEpoch(), "re", this.routeEpoch(), "hasKey", this.overlay.hasPeerKey(peer.id));
+
     if (!this.machineReceive.mediaAllowed(peer.id, this.ownId, publication.id, publication.source)) return;
     if (!publication.local || !this.shouldProtectMedia() || !this.membershipStable
       || this.membershipEpoch() < 1 || this.routeEpoch() < 1 || !this.overlay.hasPeerKey(peer.id)) return;
@@ -2243,7 +2236,6 @@ export class PeerMeshService {
       return;
     }
     const message = parseMediaE2eeMessage(raw);
-    console.warn("[e2eedbg] envelope", originPeerId, "parsed", Boolean(message), "type", message?.type ?? null, "sender", message?.senderPeerId ?? null, "epoch", message?.membershipEpoch ?? null, "cur", this.membershipEpoch(), "stable", this.membershipStable, "protect", this.shouldProtectMedia(), "agentMsg", Boolean(agentMessage));
     if (!message) return;
     const envelopeEpoch = message.membershipEpoch;
     const currentEpoch = this.membershipEpoch();

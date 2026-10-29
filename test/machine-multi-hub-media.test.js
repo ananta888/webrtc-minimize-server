@@ -58,41 +58,24 @@ test("revoked first image must actually disappear while the other identity retai
   assert.equal(f.observed.length, 2); await f.media.close();
 });
 
-for (const existingGrant of [false, true]) {
-test(`target switch renders existing consent=${existingGrant} before explicit replacement`, async () => {
-  let checked = true, model = true, submitted = null;
+test("legacy positive consent command observes Hub rights without issuing a grant", async () => {
   const actions = [];
-  const article = {
-    getByRole() { return { async click() { actions.push("select"); model = existingGrant; } }; },
-    getByText() { return { async waitFor() { actions.push("target-proof"); assert.equal(submitted, true); } }; },
-  };
-  const panel = {
-    locator() { return { filter() { return article; } }; },
-    getByLabel() { return {
-      async uncheck() { actions.push("uncheck"); if (checked) { checked = false; model = false; } },
-      async setChecked(value) { actions.push("setChecked"); if (checked !== value) { checked = value; model = value; } },
-    }; },
-    getByRole() { return { async click() { actions.push("submit"); submitted = model; } }; },
-    getByText() { return { async waitFor() {} }; },
-  };
-  const human = {
-    async evaluate(_fn, peer) {
-      if (peer === undefined) return;
-      assert.equal(peer, peers[1]); actions.push("render"); checked = model; return true;
-    },
-    locator(selector) {
-      if (selector === "app-machine-permissions-panel") return panel;
-      return { async click() {} };
-    },
-  };
+  const article = { getByText() { return { async waitFor() { actions.push("observe"); } }; } };
+  const panel = { locator() { return { filter() { return article; } }; } };
+  const human = { async evaluate() {}, locator(selector) {
+    if (selector === "app-machine-permissions-panel") return panel;
+    return { async click() { actions.push("navigate"); } };
+  } };
   const media = await multiHubMedia({ human });
   assert.deepEqual(await media.command({ command: "consent", publisher: 1, enabled: true }, peers),
     { consent: 1, enabled: true });
-  assert.deepEqual(actions, ["select", "render", "uncheck", "setChecked", "submit", "target-proof"]);
+  assert.deepEqual(actions, ["navigate", "observe"]);
   assert.deepEqual(media.diagnostic(), { step: "idle", publisher: null });
+  await assert.rejects(media.command({ command: "consent", publisher: 1, enabled: false }, peers),
+    /test_hub_receive_revocation_required/);
+  assert.deepEqual(actions, ["navigate", "observe"]);
   await media.close();
 });
-}
 
 test("failed consent diagnostic contains only a closed step and publisher index", async () => {
   const failure = new Error("private operator message must not enter the diagnostic");

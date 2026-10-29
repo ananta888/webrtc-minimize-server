@@ -212,3 +212,35 @@ test("whiteboard policy is owner/presenter controlled and reflected in snapshot 
   assert.throws(() => parseClientMessage(JSON.stringify({ type: "whiteboard-policy-set", policy: "open", extra: 1 })), (err) => err instanceof ProtocolError);
 });
 
+test("diagram policy is owner/presenter controlled and reflected in snapshot and audit", () => {
+  const registry = new RoomRegistry();
+  const owner = registry.join("room-diag", {}, "Ada", 1, { principal: "owner" }).peer;
+  const guest = registry.join("room-diag", {}, "Grace", 2, { principal: "guest" }).peer;
+
+  assert.equal(registry.moderationSnapshot("room-diag", 1).diagramPolicy, "open");
+  assert.throws(() => registry.setDiagramPolicy(guest, "presenter-only", 10), errorCode("moderation_forbidden"));
+
+  assert.equal(registry.setDiagramPolicy(owner, "presenter-only", 20), true);
+  let snapshot = registry.moderationSnapshot("room-diag", 1, { audit: true });
+  assert.equal(snapshot.diagramPolicy, "presenter-only");
+  assert.equal(snapshot.audit[0].action, "diagram-policy-set");
+  assert.equal(snapshot.audit[0].source, "presenter-only");
+
+  registry.assignPresenter(owner, guest.id, 30);
+  assert.equal(registry.setDiagramPolicy(guest, "open", 40), true);
+  snapshot = registry.moderationSnapshot("room-diag", 1, { audit: true });
+  assert.equal(snapshot.diagramPolicy, "open");
+  assert.equal(snapshot.whiteboardPolicy, "open");
+
+  assert.throws(() => registry.setDiagramPolicy(owner, "anyone", 50), errorCode("invalid_diagram_policy"));
+  const machine = registry.join("room-diag-bot", {}, "Bot", 3, { principal: "bot", machine: true, machineReceiveVersion: 1 }).peer;
+  assert.throws(() => registry.setDiagramPolicy(machine, "open", 60), errorCode("moderation_unavailable"));
+
+  assert.deepEqual(
+    parseClientMessage(JSON.stringify({ type: "diagram-policy-set", policy: "presenter-only" })),
+    { type: "diagram-policy-set", policy: "presenter-only" }
+  );
+  assert.throws(() => parseClientMessage(JSON.stringify({ type: "diagram-policy-set", policy: "invalid" })), (err) => err instanceof ProtocolError);
+  assert.throws(() => parseClientMessage(JSON.stringify({ type: "diagram-policy-set", policy: "open", extra: 1 })), (err) => err instanceof ProtocolError);
+});
+

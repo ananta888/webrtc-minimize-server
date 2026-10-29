@@ -14,9 +14,11 @@ import { NativePackagerControlRegistry } from "../../src/native-packager-control
 import { nativeSceneProcesses } from "./native-scene-processes.mjs";
 import { machineFixtureAssets } from "./machine-fixture-assets.mjs";
 import { waitFixtureValue } from "./machine-browser-wait.mjs";
+import { observeNativeSourceAuthority } from "./native-source-authority-observation.mjs";
 import { recordNativeSceneReply } from "./native-scene-reply-observation.mjs";
 import { nativeSceneOutputProfile } from "./native-scene-output-profile.mjs";
 import { recordNativeStatus } from "./native-status-observation.mjs";
+import { recordSourceLease } from "./native-source-lease-observation.mjs";
 
 const execute = promisify(execFile);
 async function unusedLoopbackPort() {
@@ -27,12 +29,13 @@ async function unusedLoopbackPort() {
 }
 
 export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, allowSyntheticAudio = false, allowSyntheticScreenAudio = false,
-  packagerCount = 1, outputProfile = "single-v1", observeSourceState = false } = {}) {
+  packagerCount = 1, outputProfile = "single-v1", observeSourceState = false, observeSourceLeases = false } = {}) {
   const outputEnvironment = nativeSceneOutputProfile(outputProfile);
   assert.ok(packagerCount === 1 || packagerCount === 2);
   assert.equal(typeof allowSyntheticScreen, "boolean");
   assert.equal(typeof allowSyntheticAudio, "boolean");
   assert.equal(typeof allowSyntheticScreenAudio, "boolean");
+  assert.equal(typeof observeSourceLeases, "boolean");
   assert.ok(!allowSyntheticScreenAudio || allowSyntheticScreen);
   let browser, tls, app;
   const observation = { http: [], native: [], scene: [] };
@@ -85,6 +88,10 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
     nativePackagerEnrollmentStore: { definitions: () => definitions, list: owner => owner === principal
       ? definitions.map(row => ({ ...row, createdAt: 1, lastAuthenticatedAt: 1, revokedAt: 0 })) : [] },
     nativePackagerInstallerService: { availableTargets: () => [] } });
+  if (observeSourceLeases) {
+    observation.sourceAuthority = [];
+    t.after(observeNativeSourceAuthority(app, observation.sourceAuthority));
+  }
   app.nativePackagerWebSocketServer.on("connection", socket => socket.on("message", bytes => {
     if (bytes.length > 65536) return;
     try {
@@ -157,6 +164,14 @@ export async function nativeSceneLiveFixture(t, { allowSyntheticScreen = false, 
     };
   }, { token, allowSyntheticScreen, allowSyntheticAudio, allowSyntheticScreenAudio });
   const page = await context.newPage();
+  if (observeSourceLeases) {
+    observation.sourceLeases = [];
+    page.on("websocket", socket => socket.on("framereceived", ({ payload }) => {
+      if (typeof payload !== "string" || Buffer.byteLength(payload) > 16384) return;
+      try { recordSourceLease(observation.sourceLeases, JSON.parse(payload), Date.now()); }
+      catch { /* No raw signaling diagnostics or protocol side effects. */ }
+    }));
+  }
   page.on("response", async response => {
     const pathname = new URL(response.url()).pathname;
     if (!pathname.startsWith("/api/broadcasts") || observation.http.length >= 32) return;

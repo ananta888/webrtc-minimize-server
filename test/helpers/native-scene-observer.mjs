@@ -8,21 +8,50 @@ export function instrumentSceneMain(source, observer) {
   return source.replace(marker, `${marker}\n\tobserveSceneFixture(ctx, client)`) + observer;
 }
 
+export function instrumentSceneClock(source) {
+  const expiry = "\t\tc.failLocked(3)", report = "func (c *sourceMediaClock) SourceSenderReport(report sourceSenderReport) error {";
+  if (source.split(expiry).length !== 2 || source.split(report).length !== 2 || source.includes("observeSceneClock")) {
+    throw new Error("scene_clock_observer_overlay_shape");
+  }
+  return source.replace(expiry, `\t\tobserveSceneClockExpiry(c, now, deadline)\n${expiry}`)
+    .replace(report, `${report}\n\tobserveSceneClockOffered(c)`);
+}
+
 export async function sceneObserverOverlay(module, directory, localGo) {
   const source = await fs.readFile(path.join(module, "main.go"), "utf8");
+  const clock = await fs.readFile(path.join(module, "source_clock.go"), "utf8");
   const observer = await fs.readFile(new URL("./native-scene-observer.go.txt", import.meta.url), "utf8");
   const main = path.join(directory, "observed-main.go"), overlay = path.join(directory, "observer-overlay.json");
   await fs.writeFile(main, instrumentSceneMain(source, observer), { mode: 0o600, flag: "wx" });
+  const observedClock = path.join(directory, "observed-clock.go");
+  await fs.writeFile(observedClock, instrumentSceneClock(clock), { mode: 0o600, flag: "wx" });
   await fs.writeFile(overlay, JSON.stringify({ Replace: {
     [localGo ? path.join(module, "main.go") : "/src/main.go"]: localGo ? main : "/out/observed-main.go",
+    [localGo ? path.join(module, "source_clock.go") : "/src/source_clock.go"]:
+      localGo ? observedClock : "/out/observed-clock.go",
   } }), { mode: 0o600, flag: "wx" });
   return localGo ? overlay : "/out/observer-overlay.json";
+}
+
+/** Deterministic synthetic expiry tests use the same private overlay hooks. */
+export async function sceneClockExpiryProbeOverlay(module, directory, localGo) {
+  const result = await sceneObserverOverlay(module, directory, localGo);
+  const probe = path.join(directory, "expiry-probe_test.go"), overlay = path.join(directory, "observer-overlay.json");
+  const source = await fs.readFile(new URL("./native-scene-clock-expiry-probe.go.txt", import.meta.url), "utf8");
+  await fs.writeFile(probe, source, { mode: 0o600, flag: "wx" });
+  const value = JSON.parse(await fs.readFile(overlay, "utf8"));
+  value.Replace[localGo ? path.join(module, "expiry_probe_test.go") : "/src/expiry_probe_test.go"] =
+    localGo ? probe : "/out/expiry-probe_test.go";
+  await fs.writeFile(overlay, JSON.stringify(value));
+  return result;
 }
 
 const booleans = ["lazyAvailable", "closed", "observed", "pending", "decoder", "needKey", "waitingClock",
   "clockAvailable", "clockClosed", "clockBound", "uncertain", "decoderAvailable", "decoderClosed", "decoderStarted",
   "mixerAvailable", "mixerClosed", "mixerStarted", "current"];
 const bounds = { reports: 65535, clockFailure: 7, queued: 2, timestamps: 8, pendingFrames: 8 };
+const expiryBooleans = ["clockExpiryAvailable", "clockReportExpired", "clockQuarantineExpired"];
+const expiryBounds = { clockAcceptedAtExpiry: 65535, clockOfferedReports: 65535 };
 const exactKeys = (value, keys) => value && typeof value === "object" && !Array.isArray(value)
   && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 export function parseSceneObservation(line) {
@@ -30,13 +59,16 @@ export function parseSceneObservation(line) {
   try {
     const value = JSON.parse(line);
     if (!exactKeys(value, ["fixture", "available", "programClosed", "sources"])
-      || value.fixture !== "source-state-v1" || typeof value.available !== "boolean" || typeof value.programClosed !== "boolean"
+      || !["source-state-v1", "source-state-v2"].includes(value.fixture)
+      || typeof value.available !== "boolean" || typeof value.programClosed !== "boolean"
       || !Array.isArray(value.sources) || value.sources.length > 80) return null;
     for (const row of value.sources) {
-      if (!exactKeys(row, ["kind", ...booleans, ...Object.keys(bounds)])
+      const flags = value.fixture === "source-state-v2" ? [...booleans, ...expiryBooleans] : booleans;
+      const limits = value.fixture === "source-state-v2" ? { ...bounds, ...expiryBounds } : bounds;
+      if (!exactKeys(row, ["kind", ...flags, ...Object.keys(limits)])
         || !["unknown", "camera", "screen", "microphone", "screen-audio"].includes(row.kind)
-        || !booleans.every(key => typeof row[key] === "boolean")
-        || !Object.entries(bounds).every(([key, max]) => Number.isSafeInteger(row[key]) && row[key] >= 0 && row[key] <= max)) return null;
+        || !flags.every(key => typeof row[key] === "boolean")
+        || !Object.entries(limits).every(([key, max]) => Number.isSafeInteger(row[key]) && row[key] >= 0 && row[key] <= max)) return null;
     }
     return value;
   } catch { return null; }

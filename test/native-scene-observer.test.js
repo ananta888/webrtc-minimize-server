@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { instrumentSceneMain, parseSceneObservation, sceneObserverOverlay, sceneProcessObserver } from "./helpers/native-scene-observer.mjs";
+import { instrumentSceneMain, instrumentSceneClock, parseSceneObservation, sceneObserverOverlay, sceneClockExpiryProbeOverlay, sceneProcessObserver } from "./helpers/native-scene-observer.mjs";
 import { startSceneProcess } from "./helpers/native-scene-processes.mjs";
 
 const sample = () => ({ fixture: "source-state-v1", available: true, programClosed: false, sources: [{
@@ -15,6 +15,20 @@ const sample = () => ({ fixture: "source-state-v1", available: true, programClos
   mixerStarted: true, current: true, pendingFrames: 1,
 }] });
 const line = () => JSON.stringify(sample()) + "\n";
+
+test("synthetic pre-close probe is a deterministic owned test overlay, never a release source", async t => {
+  const module = new URL("../native-broadcast-packager/", import.meta.url).pathname;
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "webrtc-expiry-probe-test-"));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  await sceneClockExpiryProbeOverlay(module, directory, false);
+  const overlay = JSON.parse(await fs.readFile(path.join(directory, "observer-overlay.json"), "utf8"));
+  assert.equal(overlay.Replace["/src/expiry_probe_test.go"], "/out/expiry-probe_test.go");
+  const source = await fs.readFile(path.join(directory, "expiry-probe_test.go"), "utf8");
+  assert.ok(source.includes("TestFixtureClockExpirySubtypes"));
+  assert.ok(source.includes("sourceSenderReport"));
+  assert.equal((await fs.stat(path.join(directory, "expiry-probe_test.go"))).mode & 0o777, 0o600);
+  await assert.rejects(fs.stat(path.join(module, "expiry_probe_test.go")), { code: "ENOENT" });
+});
 function processFixture() {
   const child = new EventEmitter(); child.stdout = new EventEmitter();
   const signals = []; child.kill = signal => { signals.push(signal); return true; };
@@ -36,6 +50,19 @@ test("scene observation accepts only fixed booleans, enums and bounded counts", 
   assert.equal(parseSceneObservation(JSON.stringify(missing)), null);
   assert.equal(parseSceneObservation("x".repeat(65537)), null);
   assert.equal(parseSceneObservation("{"), null);
+});
+
+test("v2 pre-close clock expiry is bounded and cannot become v1 authority or timing evidence", () => {
+  const value = sample(); value.fixture = "source-state-v2";
+  Object.assign(value.sources[0], { clockExpiryAvailable: true, clockReportExpired: true,
+    clockQuarantineExpired: false, clockAcceptedAtExpiry: 4, clockOfferedReports: 4 });
+  assert.deepEqual(parseSceneObservation(JSON.stringify(value)), value);
+  const old = { ...value, fixture: "source-state-v1" };
+  assert.equal(parseSceneObservation(JSON.stringify(old)), null);
+  value.sources[0].clockOfferedReports = 65536;
+  assert.equal(parseSceneObservation(JSON.stringify(value)), null);
+  value.sources[0].clockOfferedReports = 4; value.sources[0].clockReportExpired = 1;
+  assert.equal(parseSceneObservation(JSON.stringify(value)), null);
 });
 
 test("only two requested snapshots are read; unsolicited data and parallel reads do not create requests", async () => {
@@ -77,7 +104,7 @@ test("instrumented process opts into stdout only; default binaries have no signa
   f.child.emit("close", 0, null); await process.close();
 });
 
-test("Go overlay alters one owned main copy, fails closed on source drift and leaves release source intact", async t => {
+test("Go overlay alters owned main/clock copies, fails closed on source drift and leaves release source intact", async t => {
   const module = path.resolve("native-broadcast-packager");
   const original = await fs.readFile(path.join(module, "main.go"), "utf8");
   const observer = await fs.readFile(new URL("./helpers/native-scene-observer.go.txt", import.meta.url), "utf8");
@@ -86,6 +113,7 @@ test("Go overlay alters one owned main copy, fails closed on source drift and le
   assert.throws(() => instrumentSceneMain(copy, observer), /overlay_shape/);
   assert.throws(() => instrumentSceneMain(original + original, observer), /overlay_shape/);
   assert.throws(() => instrumentSceneMain("package main", observer), /overlay_shape/);
+  assert.throws(() => instrumentSceneClock("package main"), /overlay_shape/);
   for (const local of [true, false]) {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "webrtc-scene-overlay-test-"));
     t.after(() => fs.rm(directory, { recursive: true, force: true }));
@@ -93,7 +121,11 @@ test("Go overlay alters one owned main copy, fails closed on source drift and le
     assert.equal(overlay, local ? path.join(directory, "observer-overlay.json") : "/out/observer-overlay.json");
     const data = JSON.parse(await fs.readFile(path.join(directory, "observer-overlay.json"), "utf8"));
     assert.deepEqual(data, { Replace: { [local ? path.join(module, "main.go") : "/src/main.go"]:
-      local ? path.join(directory, "observed-main.go") : "/out/observed-main.go" } });
+      local ? path.join(directory, "observed-main.go") : "/out/observed-main.go",
+    [local ? path.join(module, "source_clock.go") : "/src/source_clock.go"]:
+      local ? path.join(directory, "observed-clock.go") : "/out/observed-clock.go" } });
+    assert.equal(await fs.readFile(path.join(directory, "observed-clock.go"), "utf8"),
+      instrumentSceneClock(await fs.readFile(path.join(module, "source_clock.go"), "utf8")));
     assert.equal(await fs.readFile(path.join(directory, "observed-main.go"), "utf8"), copy);
     assert.equal((await fs.stat(path.join(directory, "observed-main.go"))).mode & 0o777, 0o600);
     await assert.rejects(sceneObserverOverlay(module, directory, local), { code: "EEXIST" });

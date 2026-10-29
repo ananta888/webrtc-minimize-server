@@ -65,9 +65,11 @@ export class MachineChatQueue {
     this.#items.push({ cursor: ++this.#serial, event, bytes });
     return true;
   }
-  poll() {
-    this.#current(); this.#prune();
-    const batch = this.#items.slice(0, limits.batchEvents);
+  poll(afterCursor = this.#ack) {
+    this.#current();
+    if (!Number.isSafeInteger(afterCursor) || afterCursor < this.#ack || afterCursor > this.#delivered) fail("meet_chat_poll_cursor_invalid");
+    this.#prune();
+    const batch = this.#items.filter(item => item.cursor > afterCursor).slice(0, limits.batchEvents);
     if (batch.length) this.#delivered = Math.max(this.#delivered, batch.at(-1).cursor);
     return Object.freeze({ schema: "ananta.meet-chat-batch.draft1", acknowledged: this.#ack,
       events: Object.freeze(batch.map(({ cursor, event }) => Object.freeze({ cursor, event }))) });

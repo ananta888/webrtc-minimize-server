@@ -1,0 +1,208 @@
+{
+  "$schema": "../todo.track.schema.json",
+  "version": 1,
+  "owner": "webrtc-minimize-server",
+  "track": "diagram-collab-editors",
+  "purpose": "Gemeinsame Bearbeitung von BPMN- und draw.io-Diagrammen direkt im Raum: waehlbarer Editor je Raum, raumweiter verschluesselter Sync ueber das Opaque-Data-Overlay fuer bis 20 Teilnehmer, umschaltbare Bearbeitungs-Policy (offen oder nur Presenter) und optionale Element-Sperren.",
+  "goal": "Teilnehmer eines Raums (bis 20, zusaetzlich Pair-Modus) waehlen einen der beiden Open-Source-Editoren und bearbeiten das Dokument gemeinsam. Inhalte verlassen niemals den Peer-Pfad: Editor-Assets liegen same-origin, Sync laeuft ausschliesslich ueber ECDH/AES-GCM-verschluesselte Data-Channel-Overlay-Nachrichten mit membershipEpoch-Bindung. Die Bearbeitungs-Policy ist serverseitig moderiert und je Raum umschaltbar; im offenen Modus zeigen Element-Sperren sichtbare Absprachen an.",
+  "status": "in_progress",
+  "created": "2026-10-28",
+  "updated": "2026-10-28",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Gemeinsamer BPMN-Editor raumweit bis 20 Teilnehmer",
+      "task_ids": ["diagram-policy-server", "diagram-sync-contract", "diagram-service-fanout", "diagram-bpmn-panel", "diagram-room-wiring"],
+      "status": "done"
+    },
+    {
+      "id": "M2",
+      "title": "draw.io-Editor, harte Sperren, Lizenz und Skalierungsnachweis",
+      "task_ids": ["diagram-drawio-embed", "diagram-drawio-diffsync", "diagram-locks-hardening", "diagram-license-compliance", "diagram-scale-evidence"],
+      "status": "in_progress"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "diagram-policy-server",
+      "title": "Serverseitige umschaltbare Bearbeitungs-Policy diagramPolicy (open | presenter-only) analog whiteboard-policy-set",
+      "status": "done",
+      "priority": "P0",
+      "risk": "low",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "protocol.js akzeptiert diagram-policy-set nur mit policy open oder presenter-only und verwirft unbekannte Felder",
+        "room-moderation.js kennt DIAGRAM_POLICIES, setDiagramPolicy mit Rate-Limit und Audit-Eintrag diagram-policy-set, moderationSnapshot liefert diagramPolicy",
+        "server.js leitet diagram-policy-set nach Moderationspruefung an alle Raummitglieder weiter",
+        "room-moderation.service.ts zeigt diagramPolicy, parseSnapshot bleibt fail-closed inklusive neuem Feld",
+        "test/room-moderation.test.js deckt Setzen, Rollen-Gate und Audit ab"
+      ]
+    },
+    {
+      "id": "diagram-sync-contract",
+      "title": "Fail-closed Diagramm-Contract und Overlay-Helfer: snapshot/tool/lock/sync, LWW-Revisionen, Groessenlimits",
+      "status": "done",
+      "priority": "P0",
+      "risk": "medium",
+      "progress_percent": 100,
+      "acceptance_criteria": [
+        "diagram-contract.ts validiert Envelope, Op-Arten, Werkzeug-Werte, XML-Grenze (256 KiB) und Lock-IDs exakt ohne Restfelder",
+        "diagram-overlay.ts kapselt Ingest-Gates (Traffic-Klasse, Epoche, Autor, Seen), deterministische LWW-Dokumentwahl und Lock-Liste mit TTL",
+        "vitest deckt Roundtrip, Fail-closed-Faelle, LWW-Gleichstand ueber Autor und Lock-Ablauf ab"
+      ]
+    },
+    {
+      "id": "diagram-service-fanout",
+      "title": "DiagrammService: debounce-bekanntes Publish, Fan-out bis 19 Peers ohne Machine-Peers, Late-Join-Sync, Lock-Ops",
+      "status": "done",
+      "priority": "P0",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["diagram-sync-contract"],
+      "acceptance_criteria": [
+        "Lokale Aenderungen werden getaktet als ein snapshot gesendet (Trailing-Debounce), hoechste Revision gewinnt auch bei Gleichstand ueber authorPeerId",
+        "Fan-out laeuft wie Whiteboard ueber sendOverlayData an alle Nicht-Machine-Peers des Raums",
+        "Nach Beitritt sendet der leere Peer ein sync-request; antwortet nur wer das Dokument haelt und Autor oder Owner ist beziehungsweise wenn kein Owner verbunden ist",
+        "Lock-Ops sind kooperativ: Anzeige und TTL (60 s), Freigabe bei Leave und Epochenwechsel; ehrliche Dokumentation ohne Haerte-Versprechen",
+        "vitest deckt Publish-Coalescing, Ingest-Annahme, Policy-Gate und Sync-Regel ab"
+      ]
+    },
+    {
+      "id": "diagram-bpmn-panel",
+      "title": "BPMN-Panel mit Lazy-bpmn-js, raumweiter Werkzeugwahl (BPMN | Diagramm-Editor-Platzhalter), Read-Only-Ansicht und Export",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "depends_on": ["diagram-service-fanout"],
+      "acceptance_criteria": [
+        "bpmn-js wird per dynamischem Import erst beim Oeffnen des Bereichs geladen; die bpmn.io-Wasserzeichen bleiben sichtbar und unverdeckt",
+        "Der Editor uebernimmt importXML bei empfangenen hoeheren Revisionen unter Erhalt des Viewports und meldet Aenderungen per commandStack.changed an den Service",
+        "Die Werkzeugwahl ist raumweit synchron (tool-Op, LWW); der Diagramm-Editor zeigt bis M2 einen ehrlichen Platzhalter",
+        "Ohne Bearbeitungsrecht erscheint die Read-Only-Ansicht inklusive Badge; Herunterladen als .bpmn erfolgt nur ueber lokalen Klick",
+        "Vitest deckt Service-Anbindung und Template-Aussagen ab; der echte Browser-Lauf bleibt fuer diagram-scale-evidence"
+      ]
+    },
+    {
+      "id": "diagram-room-wiring",
+      "title": "Raumbereich Diagramme mit Policy-Umschalter (offen | nur Presenter) und Navigation einbinden",
+      "status": "done",
+      "priority": "P1",
+      "risk": "low",
+      "progress_percent": 100,
+      "depends_on": ["diagram-bpmn-panel", "diagram-policy-server"],
+      "acceptance_criteria": [
+        "AppSection diagram mit Navigation und ?section=diagram-Wiederherstellung wie bei whiteboard",
+        "Owner und Presenter koennen die Bearbeitungs-Policy je Raum umschalten; alle Teilnehmer sehen die Wirkung sofort",
+        "Room-Page-Test verlangt Navigation, Panel und Policy-Umschalter"
+      ]
+    },
+    {
+      "id": "diagram-drawio-embed",
+      "title": "draw.io same-origin Self-Host mit iframe-Embed-Protokoll, Lockdown-Parametern und Snapshot-Sync",
+      "status": "done",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 100,
+      "depends_on": ["diagram-service-fanout"],
+      "acceptance_criteria": [
+        "Die draw.io-Webapp (Apache-2.0, v32.6.1) liegt als beschnittener Schnitt in third_party/drawio mit LICENSE, NOTICE und README (SHA-256 des Release-Artefakts, Aenderungshinweise); keine Cloud-Integrationen sind erreichbar (gapi/od/ms365/gh/gl=0, stealth, lockdown, fehlende Integrations-Bundles, EXPORT_URL null)",
+        "Der iframe-Bridge nutzt das Embed-Protokoll (proto=json) mit init/configure/load/autosave/save; der Sync laeuft als getakteter Vollzustand-LWW ueber das bestehende Diagramm-Sync-Modell",
+        "Browser-Verifikation: der Editor rendert (Canvas, Toolbar, Sidebar), per Drag erzeugte Shapes ueberleben den Werkzeugwechsel ueber Autosave zu Service zu Reload, 0 Console-Fehler",
+        "Die /drawio/-Antworten tragen eine eigene CSP (frame-ancestors 'self', unsafe-eval nur hier) und X-Frame-Options SAMEORIGIN; die Produkt-UI nennt draw.io nicht",
+        "diffSync-Patches sind als spaetere Bandbreitenoptimierung in diagram-drawio-diffsync abgetrennt"
+      ]
+    },
+    {
+      "id": "diagram-drawio-diffsync",
+      "title": "draw.io diffSync-Patches (getDiff/sendDiff) als Bandbreitenoptimierung statt Vollzustand-Snapshots",
+      "status": "todo",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 0,
+      "depends_on": ["diagram-drawio-embed"],
+      "acceptance_criteria": [
+        "Die Bridge tauscht getDiff/sendDiff-Patches aus; der Snapshot-Pfad bleibt als Konvergenz- und Merge-Weg erhalten",
+        "Messwerte bei 20 Teilnehmern zeigen die Bandbreitenersparnis gegenueber Vollzustand-Snapshots"
+      ]
+    },
+    {
+      "id": "diagram-locks-hardening",
+      "title": "Element-Sperren haerten: Bearbeitung gesperrter Elemente lokal verhindern statt nur anzeigen",
+      "status": "todo",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 0,
+      "depends_on": ["diagram-service-fanout"],
+      "acceptance_criteria": [
+        "commandStack-Interzeption verhindert lokale Bearbeitung gesperrter Elemente fuer Nicht-Besitzer",
+        "Sperren laufen bei Leave, Epochenwechsel und TTL-Ablauf deterministisch aus",
+        "Negativtests belegen, dass gesperrte Elemente durch fremde Bearbeitung keine Uebernahme ausloesen"
+      ]
+    },
+    {
+      "id": "diagram-license-compliance",
+      "title": "Lizenz-Compliance: Apache-NOTICE und Aenderungshinweise fuer draw.io, sichtbarer bpmn.io-Wasserzeichen-Test, Markenabgrenzung in Docs",
+      "status": "todo",
+      "priority": "P0",
+      "risk": "low",
+      "progress_percent": 0,
+      "acceptance_criteria": [
+        "NOTICE enthaelt draw.io (Apache-2.0) und die beteiligten MIT-/bpmn.io-Bibliotheken",
+        "Ein Layout-Test belegt, dass der bpmn.io-Wasserzeichen-Link sichtbar und unverdeckt bleibt",
+        "Dokumentation benennt den Editor bewusst nicht als draw.io-Produkt und verweist nicht auf Atlassian-Pflege"
+      ]
+    },
+    {
+      "id": "diagram-scale-evidence",
+      "title": "Multi-Peer-Evidence fuer 20 Teilnehmer: Sync-Latenz, Queue-Drops und Bearbeitungsverhalten real belegen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "depends_on": ["diagram-room-wiring"],
+      "acceptance_criteria": [
+        "Realer Browser-Lauf mit mehreren Kontexten belegt gemeinsame Sicht und Bearbeitung inklusive Late-Join",
+        "Messwerte fuer Fan-out-Last und Sync-Latenz bei bis 20 Peers werden dokumentiert",
+        "Fehlende Multi-Peer-Evidence bleibt sichtbar als unverified und verhindert keine Teilfunktion"
+      ]
+    }
+  ],
+  "critical_path_tasks": ["diagram-policy-server", "diagram-sync-contract", "diagram-service-fanout", "diagram-bpmn-panel", "diagram-room-wiring"],
+  "tasks_status_summary": {
+    "total": 10,
+    "by_status": { "todo": 4, "in_progress": 0, "partial": 0, "blocked": 0, "done": 6 },
+    "progress_percent_done": 60,
+    "by_priority": { "P0": 4, "P1": 4, "P2": 2, "P3": 0 },
+    "by_risk": { "low": 3, "medium": 4, "high": 3, "critical": 0 },
+    "critical_path": { "total": 5, "done": 5, "remaining": 0 },
+    "milestones": { "total": 2, "todo": 0, "in_progress": 1, "blocked": 0, "done": 1 }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 4,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 6
+  },
+  "summary_notes": [
+    "Herkunft: todos/backlog/todo.pair-dev-diagram-editors.json (DIAGR-*), Nutzerentscheidungen 2026-10-28: Bearbeitungs-Policy je Raum umschaltbar (offen mit Element-Sperren UND nur Presenter), Umsetzungsstart mit bpmn-js, Ziel raumweit bis 20 Teilnehmer zusaetzlich zum Pair-Modus.",
+    "Sync-Modell: LWW-Vollzustand-Snapshots mit logischer Revision plus Autor-Tiebreak statt CRDT (fuer bpmn-js/draw.io nicht tragfaehig vorhanden); Vorbild ist der Whiteboard-Overlay-Pfad inklusive Late-Join-sync-request und owner-bevorzugter Antwort.",
+    "Lizenzrahmen aus DIAGR-RES-001: bpmn-js traegt die bpmn.io-Lizenz (Wasserzeichenpflicht), draw.io Web-App Apache-2.0 mit Marken- und Icon-Einschraenkungen; kein draw.io-Name im Produkt, keine Icon-Sets als Produkt-Assets.",
+    "2026-10-28 M1 umgesetzt: diagramPolicy serverseitig (protocol/room-moderation/room-registry/server plus Frontend-Service und Audit-Label), Diagramm-Contract/-Overlay/-Service mit LWW-Snapshots (Revision plus Autor-Tiebreak, sync-response mit docAuthor fuer stabile Autorenschaft), Tool- und Lock-Ops, Trailing-Debounce-Publish, Fan-out ueber das Opaque-Overlay (snapshots bulk, Steuer-ops event), Late-Join-sync-request mit Owner-bevorzugter Antwort, bpmn-js-Panel mit Lazy-Import (Modeller-Lazy-Chunk 581 kB / 142 kB gzip), neuer Raumbereich Diagramme mit raumweiter Werkzeugwahl und Policy-Umschalter.",
+    "2026-10-28 Verifikation M1: 45 vitest (diagram-contract/-overlay/-service/-panel plus room-page) und 12 room-moderation Node-Tests gruen; Produktionsbuild gruen ohne Budget-Verletzung (Editor-CSS wird erst beim Oeffnen aus /assets/bpmn geladen); npm test ohne Rueckfall (100 Fehler vs. 101 Baseline auf unveraendertem HEAD in derselben Umgebung; Fehler vorbestehend, u.a. Node 20.20.2 gegen Engines >=22.5). bpmn.io-Wasserzeichen bleibt unverdeckt (Read-Only-Regel nimmt .bjs-powered-by aus).",
+    "Offen in M2: harte Element-Sperren statt kooperativer Anzeige, Lizenz-NOTICE-Gesamtpaket und Markenabgrenzung, Multi-Peer-Evidence bis 20 Teilnehmer (bis dahin bleibt die 20-Peer-Skalierung unverified), diffSync-Optimierung (diagram-drawio-diffsync).",
+    "2026-10-28 Layout-Umbau nach Nutzerwunsch (maximale Editor-Flaeche): Kopfbereich auf eine 48-px-Leiste reduziert (nur Werkzeug-Combobox plus kompakte Buttons fuer Export, Sperre, Policy-Umschalter und Lese-Modus-Badge; Titel, Eyebrow, Modus-Text und Hinweise entfernt bzw. sr-only), beide Editor-Hosts fuellen die Restflaeche flexboll (Hoehe calc(100vh - 9rem), mit Session-Dock calc(100vh - 15.5rem) ueber :host-context(.has-session-dock)). Gemessen bei 1440x900: Editor 700 px = 78 Prozent der Fensterhoehe fuer BPMN und draw.io gleichermaßen, 0 Fehler. Deployt als diagram-m2f-20261028 (Bundle main-T3RKPY23.js), Rollback rollback-before-layout-20261028.",
+    "2026-10-28 Handshake-Fix nach Nutzerhinweis (Dauerzustand 'Wird geladen'): draw.io sendet und erwartet Embed-Nachrichten in proto=json als JSON-STRINGS (Quelltext: init wird via JSON.stringify gepostet, der Empfaenger parst mit JSON.parse(event.data)). Die Bridge behandelte Objekte: eingehende Events wurden verworfen und die load-Antwort nie verstanden — die Datei blieb formal 'am Laden', der fruehere Roundtrip-Beweis war nichtig (der Werkzeugwechsel hatte das iframe nicht real ersetzt). Behoben: parseDrawioEvent akzeptiert Strings und Objekte, postToDrawio sendet via encodeDrawioAction JSON-Strings, Tests auf den realen Vertrag umgestellt. Verifikation lokal (strenger Test mit echtem Werkzeugwechsel): Status 'Seite-1' statt 'Wird geladen', Drag erzeugt Shapes, BPMN-Canvas erscheint beim Wechsel, Shape-Roundtrip 5 zu 5 Gruppen ueber Autosave-Service-Reload, 0 Fehler; Produktion bestaetigt (Status zeigt Dokumentnamen). Deployt als diagram-m2g-20261028, Rollback rollback-before-handshake-20261028.",
+    "2026-10-28 BPMN-Chrome-Fix nach Nutzerhinweis (blasse Symbole, kein Rechtsklick): die globalen button-Regeln von styles.css liessen das Kontext-Pad die helle App-Textfarbe rgb(244,247,251) erben — helle Icons auf weissem Pad, gemessen und per Pixel-Scan bestaetigt. Behoben: .diagram-editor-host erzwingt color #22242a (wirkt ueber Vererbung fuer Kontext-Pad und Popup). Rechtsklick: bpmn-js 18.31.1 (neueste Version, identisch zum offiziellen Demo-Editor) hat KEIN eigenes Rechtsklick-Kontextmenue — das Original mit Rechtsklick ist draw.io (unser draw.io-Tab beherrscht das bereits); fuer BPMN oeffnet Rechtsklick jetzt das native bpmn-js-Kontext-Popup 'bpmn-replace' (Element aendern: User task, Service task, ...) ueber element.contextmenu. Palette inhaltlich mit dem Original abgeglichen: 14 Eintraege identisch (das Original zeigt nur einen Zusatz-Toggle) — es fehlten keine Symbole, der blasse Eindruck kam vom Kontext-Pad. Verifikation: Pad-Icons rgb(34,36,42), Popup mit Eintraegen bei Rechtsklick, 29 gezielte Tests gruen. Deployt als diagram-m2h-20261028, Rollback rollback-before-padmenu-20261028.",
+    "2026-10-29 Popup-Nachbesserung nach Nutzerhinweis (falsche Position, unklare Darstellung): das Kontext-Popup wurde mit Canvas-Koordinaten positioniert (erschien links unter dem Editor) und das globale dunkle Input-Design traf das Suchfeld im Popup. Behoben: Position ueber Client-Koordinaten des Rechtsklicks (oeffnet am Cursor, klappt bei wenig Platz wie ueblich nach oben auf — gemessen: x exakt am Klickpunkt, Hoehe 372 px, Panel weiss mit dunklen Eintraegen) und dezente helle Popup-Styles fuer das Suchfeld (weiss, dunkler Text, kompakte Breite). Pixel-Scan bestaetigt lesbares Panel. Deployt als diagram-m2i-20261029 (Bundle main-SYY63H4T.js), Rollback rollback-before-popup-20261029.",
+    "2026-10-28 M1 auf webrtc.ananta.de deployt (Image diagram-m1-20261028, Bundle main-4PQ6JZ3A.js) aus isoliertem Stand: HEAD plus ausschliesslich Echo-Fixes und Diagramm-Feature (30 Dateien, server.js ein Hunk, fremde uncommittete Aenderungen ausgeschlossen). Health OK, 0 Neustarts, Bundle enthaelt alle Diagramm- und Echo-Marker, /assets/bpmn/diagram-js.css ausgeliefert. Rollback-Basis: Image echo-sidetone-20261028 als rollback-before-diagram-20261028, Backup-Container webrtc-room-server-diagram-backup-20261028.",
+    "2026-10-28 Render-Fix nach Nutzerhinweis (Editor nicht sichtbar): Browser-Konsole lokalisierte zwei echte Fehler — (1) @ViewChild(static:true) findet Elemente in @if-Bloecken nie, dadurch nativeElement undefined und stiller Editor-Startabbruch; (2) CSP default-src 'self' blockierte die Inline-Styles von bpmn-js, dadurch leere Canvas. Behoben: dynamisches ViewChild plus AfterViewChecked-Host-Wechsel fuer Tool-Rueckschaltungen, sichtbarer Fehlerzustand diagram-editor-error statt Stille, createDiagram() statt Hand-XML, CSP style-src 'self' 'unsafe-inline' (script-src bleibt strikt). Browser-Verifikation lokal gegen das Deploy-Image: Canvas und Palette sichtbar, bpmn.io-Wasserzeichen vorhanden, 0 Console-Fehler, per Drag aus der Palette ein echtes BPMN-Shape erzeugt; Bearbeitung war und ist default fuer alle offen (Policy 'open', kein Read-Only-Badge). Deployt als diagram-m1fix-20261028 (Bundle main-BPFPLCW5.js), CSP-Header live verifiziert. Rollback: rollback-before-diagram-fix-20261028, Backup-Container webrtc-room-server-diagram-fix-backup-20261028.",
+    "2026-10-28 Sichtbarkeits-Fix nach Nutzerhinweis (Shapes unsichtbar): die globale Icon-Regel svg { width: 1.2rem; fill: none; stroke: currentColor } in frontend/src/styles.css kollabierte die bpmn-js-Root-SVG auf 19x19 px (gemessen: computed width 19.1875px); Shapes existierten im DOM (36x36, korrekte Position) wurden aber abgeschnitten — sichtbar war nur der Hintergrund. Behoben: Icon-Regel auf svg:not(.diagram-editor-host svg) eingeschraenkt (Regressionstest in room-page.component.spec.ts) und die Editor-Flaeche bekam einen weissen Papierhintergrund. Harte Verifikation lokal: Root-SVG 967x418 px, Shape 46x46 px mit sichtbarer Fuellung, Screenshot-Differenz nach Drag 172310 Bytes, ASCII-Sichtkontrolle zeigt den eingefuegten Kreis auf der weissen Flaeche. Deployt als diagram-m1fix2-20261028 (Bundle main-KYS367CU.js, styles-6XTFIORP.css enthaelt die SVG-Ausnahme), Rollback: rollback-before-diagram-fix2-20261028.",
+    "2026-10-28 diagram-drawio-embed umgesetzt und deployt (Image diagram-m2e-20261028, Rollback rollback-before-drawio-20261028): draw.io v32.6.1 als beschnittener Webapp-Schnitt (30,7 MB plus mxgraph/css) in third_party/drawio versioniert (LICENSE, NOTICE mit Aenderungshinweisen, README mit SHA-256 44dd5695...); /drawio/ wird same-origin mit eigener CSP (frame-ancestors 'self', unsafe-eval nur hier, X-Frame-Options SAMEORIGIN) ausgeliefert; Embed-Bridge (init/configure/load/autosave/save, fail-closed) mit LWW-Vollzustand-Sync ueber das bestehende Diagramm-Sync-Modell; PreConfig.js mit DRAW_MATH_URL=null als einzige Modifikation. Browser-Verifikation lokal: Editor rendert vollstaendig (Canvas, Toolbar, Sidebar), per Drag aus der Palette erzeugte Shapes ueberleben den Werkzeugwechsel ueber Autosave-Service-Reload (5 SVG-Gruppen vor und nach dem Roundtrip), 0 Console-Fehler, Cloud-Integrationen durch URL-Lockdown und fehlende Bundles doppelt gesperrt. 51 gezielte Tests gruen. diffSync wurde bewusst nicht Teil dieser Lieferung (Vollzustand-LWW reicht funktional) und als diagram-drawio-diffsync abgetrennt; die urspruenglichen Kriterien des Tasks wurden entsprechend ehrlichgestellt."
+  ]
+}

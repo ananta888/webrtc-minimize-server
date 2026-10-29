@@ -11,7 +11,7 @@ function setup() {
     machineContext: () => ({ tenantId: "tenant", projectId: "project", taskId: "task", runtimeId: "runtime", hubSessionId: "session" }),
     machineLease: signal({ sessionId: "ms_" + "a".repeat(32), generation: 1, expiresAt: now + 60_000 }) };
   const mesh = { ownPeerId: () => own, membershipEpoch: signal(1), machineReceive: { revision: signal(1),
-    supports: vi.fn(() => true),
+    isMachine: () => true, supports: vi.fn(() => true),
     grants: () => [{ machinePeerId: own, publisherPeerId: human, publicationIds: ["audio"], expiresAt: now + 60_000 }] },
     sendMachineChatReply: vi.fn(() => ({ messageId: "a".repeat(32), queuedPeers: 1 })),
     machineAudioSource: () => { if (!allowed) throw new Error("meet_audio_source_denied"); return { peerId: human, source: "screen-audio", track }; } };
@@ -92,6 +92,16 @@ describe("machine audio subscription", () => {
   });
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); });
   afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+  it("uses Hub authority without legacy grants and denies revoked capabilities", async () => {
+    const f = setup(); f.mesh.machineReceive.grants = () => [];
+    f.mesh.machineReceive.revision.set(0);
+    const sub = await f.service.open("audio");
+    expect(sub.binding).toMatchObject({ receive_revision: 1, deadline_ms: now + 60_000 });
+    f.mesh.machineReceive.supports.mockReturnValue(false);
+    expect(() => f.service.poll()).toThrow("meet_audio_binding_changed");
+    expect(f.service.status().open).toBe(false);
+    await expect(f.service.open("audio")).rejects.toThrow("meet_audio_source_denied");
+  });
   it("binds the current lease and source; exports bounded PCM chunks and wipes acknowledged bytes", async () => {
     const f = setup(), result = await f.service.open("audio", 1);
     expect(result).toMatchObject({ sampleRate: 16000, channels: 1, chunkSamples: 1600, binding: { source: "screen_audio", receive_revision: 1 } });

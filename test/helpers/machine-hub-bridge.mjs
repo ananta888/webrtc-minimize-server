@@ -74,14 +74,9 @@ try {
       await f.human.locator("#participant-count", { hasText: "2 / 20" }).waitFor();
       stage = "consent-panel-navigation";
       await f.human.locator("#mesh-analysis-navigation").click();
-      stage = "consent-machine-selection";
-      await panel.getByRole("button", { name: "Für diese KI einstellen" }).click();
-      stage = "consent-chat-selection";
-      await panel.getByLabel("Meine neuen Chatbeiträge", { exact: true }).check();
-      stage = "consent-submit";
-      await panel.getByRole("button", { name: "Auswahl ausdrücklich freigeben" }).click();
-      stage = "consent-confirmation";
-      await panel.getByText("Serverbestätigung erhalten.", { exact: true }).waitFor();
+      // Compatibility command: observe verified Hub rights, no local grant.
+      stage = "receive-policy-observation";
+      await panel.getByText(/Leserecht vorhanden/).waitFor();
       stage = "dialog";
       reply({ consent: true });
     } else if (line === "ask") {

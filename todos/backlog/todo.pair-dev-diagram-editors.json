@@ -1,0 +1,138 @@
+{
+  "$schema": "../todo.schema.json",
+  "version": 1,
+  "created": "2026-10-28",
+  "updated": "2026-10-28",
+  "project": "webrtc-minimize-server",
+  "review_basis": {
+    "reviewed_commit_range": "HEAD 20f4493 plus lokale Echo-Fixes (Arbeitsstand 2026-10-28)",
+    "review_goal": "Machbarkeit, Lizenzen, Self-Hosting und raumweite Sync-Architektur fuer eine gemeinsame draw.io-/bpmn.io-Bearbeitung in Räumen bis 20 Teilnehmer (und Pair-Modus) bewerten und in den Backlog ueberfuehren."
+  },
+  "categories": [
+    {
+      "name": "research",
+      "label": "Recherche und Lizenzrahmen",
+      "items": [
+        {
+          "id": "DIAGR-RES-001",
+          "title": "Machbarkeits-, Lizenz- und Integrationsrecherche draw.io + bpmn.io abgeschlossen",
+          "status": "completed",
+          "priority": "P0",
+          "detail": "draw.io Web-App Apache-2.0 (Self-Hosting offiziell erlaubt; Marke 'draw.io' darf nicht im Produktnamen/Logo erscheinen; Icon-/Stencil-Sets duerfen nicht als Produkt-Assets weiterverteilt werden, insbesondere nicht Atlassian-nah oder als KI-Trainingsdaten). drawio-desktop und docker-drawio sind GPL-3.0 — nur als Server-Image nutzen, keinen Code ins Produkt uebernehmen. bpmn-js traegt die bpmn.io-Lizenz (MIT + Pflicht-Watermark: der bpmn.io-Link im gerenderten Diagramm muss sichtbar und unverdeckt bleiben); bpmn-js-properties-panel und diagram-js sind MIT. Einbettung: draw.io ausschliesslich als iframe mit postMessage-Embed-Protokoll (?embed=1&proto=json, Aktionen load/save/autosave/diffSync/merge, Lockdown-Parameter gapi=0 od=0 ms365=0 gh=0 gl=0 stealth=1); bpmn-js als npm-Bundel (BpmnModeler, ~1 MB min / ~270 KB gzip plus CSS), kein noetiger iframe. Kollaboration: draw.io Self-Hosting hat KEIN natives Multi-User; nutzbar sind diffSync-Patches (getDiff/sendDiff) oder debounce-Vollzustand-LWW; bpmn-js: commandStack.changed -> debounce -> saveXML-Exchange plus Element-Locks (Pattern bpmn-collaborator); reifes CRDT-Binding existiert fuer keines der beiden (y-mxgraph fuer draw.io ist ein 11-Sterne-Prototyp). Dokumentgroessen: typisch 5-50 KB, Extremfaelle bis ~170 KB. Quellen: github.com/jgraph/drawio + Wiki FAQ/Self-Hosting/Embedding, drawio.com/docs/reference/embed-mode, bpmn.io/license, github.com/bpmn-io/bpmn-js, github.com/mizuka-wu/y-mxgraph, github.com/Henryk91/bpmn-collaborator."
+        },
+        {
+          "id": "DIAGR-LIC-001",
+          "title": "Lizenz-Compliance umsetzen: Apache-NOTICE fuer draw.io, Namens-/Markenabgrenzung, sichtbarer bpmn.io-Watermark",
+          "status": "open",
+          "priority": "P0"
+        }
+      ]
+    },
+    {
+      "name": "editor_integration",
+      "label": "Editor-Einbindung",
+      "items": [
+        {
+          "id": "DIAGR-ED-001",
+          "title": "draw.io als same-origin Self-Host einbetten: statische Webapp, iframe-Wrapper mit postMessage-Protokoll, CSP-Pfadrelaxation wie vosk-worker",
+          "status": "open",
+          "priority": "P1"
+        },
+        {
+          "id": "DIAGR-ED-002",
+          "title": "bpmn-js-Modeler als Lazy-Chunk mit Properties-Panel (MIT) in Angular einbinden, Watermark-Layout bewahren",
+          "status": "open",
+          "priority": "P1"
+        },
+        {
+          "id": "DIAGR-ED-003",
+          "title": "Editoren-Sperren und Lockdown erzwingen: keine Cloud-Integrationen (Drive/OneDrive/MS365/GitHub/GitLab), kein EXPORT_URL, Inhalte verlassen niemals den Ursprung",
+          "status": "open",
+          "priority": "P0"
+        }
+      ]
+    },
+    {
+      "name": "sync_collaboration",
+      "label": "Raumweiter Sync bis 20 Teilnehmer",
+      "items": [
+        {
+          "id": "DIAGR-SYNC-001",
+          "title": "Diagramm-Contract plus Overlay-Service analog Whiteboard-Muster (contract -> pure helpers -> Service mit overlayDeliveries-Watermark -> sendOverlayData) fuer bis 20 Peers",
+          "status": "open",
+          "priority": "P0",
+          "detail": "Envelope mit membershipEpoch/authorPeerId/opId, fail-closed exact()-Parsing, Snapshot-Verkehr als 'bulk' (Overlay erlaubt bis ~1152 KiB Payload, 12 KiB Chunks x 96), Edits als 'event' (Queue 64 msgs / 512 KiB je Peer). Bei 20 Teilnehmern Fan-out an 19 Peers: Debounce 0.5-2 s, rev+peerId LWW, keine Mitgliedschaft aus Data-Plane-Nachrichten."
+        },
+        {
+          "id": "DIAGR-SYNC-002",
+          "title": "Konfliktmodell fuer 20 Bearbeiter: LWW-Revisionen plus Element-Locks beziehungsweise Moderationspolicy 'presenter-only' wie beim Whiteboard",
+          "status": "open",
+          "priority": "P1"
+        },
+        {
+          "id": "DIAGR-SYNC-003",
+          "title": "Late-Join-Sync (sync-request/sync-response wie Whiteboard) und Chunking fuer grosse Diagramme (bis ~170 KB) hartet",
+          "status": "open",
+          "priority": "P1"
+        },
+        {
+          "id": "DIAGR-SYNC-004",
+          "title": "Skalierungsnachweis 20 Teilnehmer: Fan-out-Last, Queue-Drops und Sync-Latenz messen und Grenzen dokumentieren",
+          "status": "open",
+          "priority": "P2"
+        }
+      ]
+    },
+    {
+      "name": "room_ui_policy",
+      "label": "Raum-UI und Policy",
+      "items": [
+        {
+          "id": "DIAGR-UI-001",
+          "title": "Raumweite Auswahl des Werkzeugs (Diagramm-Editor versus BPMN-Editor) beim Raumbeitritt, gespiegelt als Raumzustand",
+          "status": "open",
+          "priority": "P1"
+        },
+        {
+          "id": "DIAGR-UI-002",
+          "title": "Bearbeitungs-Policy im Moderationsmodell aufnehmen: offen oder nur Presenter (20 Teilnehmer), Sichtbarkeit fuer alle",
+          "status": "open",
+          "priority": "P1"
+        },
+        {
+          "id": "DIAGR-UI-003",
+          "title": "Persistenz entscheiden: ephemeral wie Whiteboard (Default) versus Snapshots als Pair-Workspace-Events (nur Paar-Modus, 16 KiB-Grenze beachten)",
+          "status": "open",
+          "priority": "P2"
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "total_items": 12,
+    "by_status": { "completed": 1, "partial": 0, "open": 11 },
+    "notes": [
+      "Category-Todo: Research und Portfolio, kein ausfuehrbarer Track. Promotion in todos/active/todo.<track>.json erfolgt vor Codeaenderungen.",
+      "Nutzeranforderung: Bearbeitung muss raumweit mit bis 20 Teilnehmern funktionieren, nicht nur im Pair-Modus mit zwei Geraeten; der Pair-Modus bleibt zusaetzlich unterstuetzt.",
+      "Basisarchitektur ist das vorhandene Whiteboard-Muster: Opaque-Data-Overlay mit ECDH/AES-GCM je Peer, 12-KiB-Chunks mit Resume, membershipEpoch-Bindung, bounded Queues — skaliert im Whiteboard bereits auf 20 Peers.",
+      "Lizenz-Fallstricke: bpmn.io-Watermark darf nicht verdeckt werden (UI-Layout-Auflage); 'draw.io' ist Unionsmarke und darf nicht im Produktname/Logo erscheinen (Arbeitstitel z.B. 'Zeichenfläche'/'Diagramme'); Apache-2.0-NOTICE und Aenderungshinweise bei Patches; Icon-/Stencil-Sets nicht als Produkt-Assets weiterverteilen.",
+      "CSP: src/server.js securityHeaders erlaubt same-origin iframes (kein frame-src, Fallback default-src 'self'), blockiert aber Inline-Skripte der draw.io-Webapp — per-path-Relaxation wie fuer /assets/vosk-worker.js ist der dokumentierte Vorlaeufer; draw.io-Webapp-Artefakte liegen statisch unter dem eigenen Ursprung (~47 MB Fussabdruck, iframe haelt sie aus dem Angular-Bundle).",
+      "Empfohlener Reihenfolge-Start: erst bpmn-js (kein iframe, npm-Bundle) als tragfaehigen Sync-Durchstich fuer 20 Peers, danach draw.io mit diffSync.",
+      "Quellen: github.com/jgraph/drawio (Wiki FAQ/Self-Hosting/Embedding), drawio.com/docs/reference/embed-mode, drawio.com/docs/security/data-governance-lockdown, bpmn.io/license, github.com/bpmn-io/bpmn-js(-examples/-properties-panel), github.com/mizuka-wu/y-mxgraph, github.com/Henryk91/bpmn-collaborator, npm-Dist-Messungen bpmn-js v18."
+    ],
+    "recommended_order": [
+      "DIAGR-RES-001",
+      "DIAGR-LIC-001",
+      "DIAGR-SYNC-001",
+      "DIAGR-SYNC-002",
+      "DIAGR-ED-002",
+      "DIAGR-UI-001",
+      "DIAGR-ED-003",
+      "DIAGR-ED-001",
+      "DIAGR-SYNC-003",
+      "DIAGR-UI-002",
+      "DIAGR-SYNC-004",
+      "DIAGR-UI-003"
+    ]
+  }
+}

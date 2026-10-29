@@ -61,3 +61,19 @@ resumed decoded delivery is not claimed. The test's original sub-second wait was
 shorter than Worker control cadence; a separately tested bounded state wait fixes
 the fixture, not a production timer. These are synthetic technical results, not
 production release evidence or a fix for the separate decoder-startup intermittency.
+
+## Audio observation without camera
+
+Room audio elements expose their existing peer, source and publication metadata.
+The private multi-publisher observer associates each received audio track with
+that exact peer even when its camera track has been removed. The existing video/
+connection association remains a compatibility path; tracks are not counted
+twice. This is observation only: no new capture, publication authority or
+Signaling Control Plane policy is introduced.
+
+Two deterministic observer tests cover exact peer association and the legacy
+video path. The adjacent Ananta actual-container gate verifies continued speech
+when the avatar is paused, and continued avatar with silent paused speech.
+These are synthetic local technical observations, not production release proof.
+The broad global browser test instrumentation remains explicit test-only debt;
+rendering source metadata and receiver observation retain separate responsibilities.
